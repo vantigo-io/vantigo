@@ -13,7 +13,7 @@
     "db:migrate": {
       "cache": false
     },
-    "docker:build": {
+    "docker:package": {
       "cache": false
     },
     "dev": {

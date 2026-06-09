@@ -42,3 +42,16 @@ Vantigo is a modern developer's dream. If you want to contribute or build custom
 - **Frontend:** React, React Router, [Mantine](https://mantine.dev/).
 
 *Note for AI Agents & Contributors: Please read the [`AGENTS.md`](./AGENTS.md) file in the root directory for strict architectural guidelines before submitting Pull Requests.*
+
+---
+
+## 🛠️ Build & Package Pipeline
+
+Vantigo uses a highly optimized compile-on-host build pipeline to ensure lightning-fast Docker image builds (under 3 seconds) and minimal image sizes (~90MB). The workflow consists of three main phases:
+
+1. **Build (`bun run build`)**: Bundles and builds the frontend React/Mantine static assets inside `apps/idp/dist/web`.
+2. **Compile (`bun run compile` / `bun run compile:all`)**: Bundles the Hono backend entry point and compiles it along with the Bun runtime into a single, standalone native binary. 
+   - `bun run compile`: Compiles for the current host architecture (Darwin, Linux, Windows).
+   - `bun run compile:all`: Cross-compiles binaries for all supported targets (`linux-amd64`, `linux-arm64`, `mac-arm64`, `windows-amd64`).
+3. **Docker (`bun run docker:package`)**: Packages the pre-compiled native Linux binaries into a secure, minimal `gcr.io/distroless/cc-debian12:nonroot` Docker image using `docker buildx` for both `linux/amd64` and `linux/arm64` architectures.
+
