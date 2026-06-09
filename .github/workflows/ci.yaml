@@ -40,4 +40,6 @@ jobs:
         run: bun run type-check
 
       - name: 🧪 Run Application Test Suite
+        env:
+          TEST_MIGRATIONS: "true"
         run: bun test

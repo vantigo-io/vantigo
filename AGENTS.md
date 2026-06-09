@@ -47,3 +47,9 @@ To ensure 100% portability between Cloudflare and Docker, **business logic must 
 - **Husky** and **lint-staged** are configured to enforce `biome check --write` before any commit.
 - **Commitlint** is configured to enforce the Conventional Commits specification.
 - Do not bypass these hooks. Ensure all generated code passes Biome formatting checks.
+
+### 3.6. Testing Guidelines
+- **Test Importance**: High-quality tests are critical to verify that core business logic remains correct across edge (Cloudflare) and container (Docker) environments.
+- **Feature Coverage**: Every new domain feature or application route must be accompanied by corresponding unit or integration tests under `bun test`.
+- **Database Safeguard**: Any schema migration change must pass the automated `TEST_MIGRATIONS` validation step before it can be merged.
+

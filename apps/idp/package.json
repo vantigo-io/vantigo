@@ -37,6 +37,7 @@
     "@types/bun": "catalog:",
     "@vantigo/config": "workspace:*",
     "@types/react": "catalog:",
-    "@types/react-dom": "catalog:"
+    "@types/react-dom": "catalog:",
+    "testcontainers": "catalog:"
   }
 }

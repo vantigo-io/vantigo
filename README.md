@@ -55,3 +55,26 @@ Vantigo uses a highly optimized compile-on-host build pipeline to ensure lightni
    - `bun run compile:all`: Cross-compiles binaries for all supported targets (`linux-amd64`, `linux-arm64`, `mac-arm64`, `windows-amd64`).
 3. **Docker (`bun run docker:package`)**: Packages the pre-compiled native Linux binaries into a secure, minimal `gcr.io/distroless/cc-debian12:nonroot` Docker image using `docker buildx` for both `linux/amd64` and `linux/arm64` architectures.
 
+---
+
+## 🧪 Testing Strategy
+
+Testing is a first-class citizen in Vantigo. All new features and routes are required to have associated unit/integration tests:
+
+- **Unit Tests**: Run using `bun test` inside workspace directories.
+- **Verification Tests**: Run using `bun run type-check` for TS validation and `bun run lint` for Biome formatting checks.
+- **Database Migration Verification**: An opt-in integration test suite spins up a dynamic PostgreSQL instance using **Testcontainers** to verify that all SQL migration schemas apply successfully. 
+  - Run locally: `TEST_MIGRATIONS=true bun test`
+  - Automated: Executed conditionally on every PR build in GitHub Actions.
+
+  > [!TIP]
+  > **Running with Colima on macOS**
+  > If you use **Colima** as your local container runtime, `testcontainers` needs to be pointed to the Colima socket rather than the default Docker socket. Run the tests with the following environment variables:
+  > ```bash
+  > TEST_MIGRATIONS=true \
+  > DOCKER_HOST="unix://${HOME}/.colima/default/docker.sock" \
+  > TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="/var/run/docker.sock" \
+  > bun test
+  > ```
+  > Alternatively, you can add these export statements directly to your shell configuration (`.zshrc` or `.bashrc`).
+
