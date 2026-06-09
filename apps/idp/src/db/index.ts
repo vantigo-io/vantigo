@@ -17,8 +17,8 @@ export function getDb(connectionString: string): Database {
   if (!db || !client) {
     // In serverless, keep connection limit low per isolate instance (typically 1).
     // In Docker, we can increase the pool size if needed, but 10 is standard.
-    const maxConnections = process.env.DB_MAX_CONNECTIONS
-      ? Number.parseInt(process.env.DB_MAX_CONNECTIONS, 10)
+    const maxConnections = Bun.env.DB_MAX_CONNECTIONS
+      ? Number.parseInt(Bun.env.DB_MAX_CONNECTIONS, 10)
       : 10;
 
     client = postgres(connectionString, {

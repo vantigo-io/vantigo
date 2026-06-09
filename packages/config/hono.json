@@ -3,6 +3,6 @@
   "display": "Hono Cloudflare",
   "extends": "./base.json",
   "compilerOptions": {
-    "types": ["@cloudflare/workers-types/2023-12-01"]
+    "types": ["@cloudflare/workers-types"]
   }
 }

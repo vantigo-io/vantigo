@@ -16,7 +16,8 @@
     "compile:windows-amd64": "bun build ./src/entry.docker.ts --compile --target=bun-windows-x64 --outfile=../../dist/vantigo-idp-windows-amd64.exe",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "docker:package": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/vantigo-io/vantigo-idp:latest -f Dockerfile ../.."
+    "docker:package": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/vantigo-io/vantigo-idp:latest -f Dockerfile ../..",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "hono": "catalog:",
@@ -32,6 +33,10 @@
   "devDependencies": {
     "wrangler": "catalog:",
     "@cloudflare/workers-types": "catalog:",
-    "drizzle-kit": "catalog:"
+    "drizzle-kit": "catalog:",
+    "@types/bun": "catalog:",
+    "@vantigo/config": "workspace:*",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:"
   }
 }

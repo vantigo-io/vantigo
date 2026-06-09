@@ -36,5 +36,8 @@ jobs:
       - name: 🏗️ Verify Frontend Build & Backend Compilation
         run: bun run compile
 
+      - name: 🔍 TypeScript Type Checking
+        run: bun run type-check
+
       - name: 🧪 Run Application Test Suite
         run: bun test

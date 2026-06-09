@@ -3,7 +3,7 @@ import { app } from "./app";
 import { getDb } from "./db";
 
 // Ensure DATABASE_URL is set in self-hosted environment
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = Bun.env.DATABASE_URL;
 if (!databaseUrl) {
   console.error("CRITICAL: DATABASE_URL environment variable is required!");
   process.exit(1);
@@ -17,7 +17,7 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-const port = process.env.PORT || 3000;
+const port = Bun.env.PORT || 3000;
 console.log(`Starting Vantigo IDP (Docker Build) on http://localhost:${port}`);
 
 serve({

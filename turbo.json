@@ -16,6 +16,10 @@
     "docker:package": {
       "cache": false
     },
+    "type-check": {
+      "cache": true,
+      "dependsOn": ["^type-check"]
+    },
     "dev": {
       "cache": false,
       "persistent": true
