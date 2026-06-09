@@ -11,6 +11,7 @@ export const envSchema = z.object({
     .default("info"),
   AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required"),
   AUTH_URL: z.string().url("AUTH_URL must be a valid URL").optional(),
+  MIGRATIONS_PATH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

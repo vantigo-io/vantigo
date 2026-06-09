@@ -17,27 +17,24 @@ const db = getDb(env.DATABASE_URL);
 if (Bun.argv.includes("--migrate")) {
   logger.info("Running database migrations (--migrate flag detected)...");
 
-  // Resolve migrations folder path (support monorepo root, app root, and Docker runtimes)
-  const possiblePaths = [
-    path.resolve(process.cwd(), "apps/idp/src/db/migrations"),
-    path.resolve(process.cwd(), "src/db/migrations"),
-    path.resolve(process.cwd(), "db/migrations"),
-  ];
+  // Determine if running from a compiled binary or directly via Bun runtime
+  const isCompiled =
+    !process.execPath.endsWith("/bun") &&
+    !process.execPath.endsWith("\\bun") &&
+    !process.execPath.endsWith("/bun.exe");
 
-  let migrationsFolder = "";
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      migrationsFolder = p;
-      break;
-    }
-  }
+  // Deterministically resolve the migrations folder path
+  const migrationsFolder =
+    env.MIGRATIONS_PATH ||
+    (isCompiled
+      ? path.join(path.dirname(process.execPath), "db/migrations")
+      : path.join(import.meta.dir, "db/migrations"));
 
   logger.info(`Using migrations folder: ${migrationsFolder}`);
-  if (!migrationsFolder) {
-    logger.error("CRITICAL: Migrations folder not found! Searched in:");
-    for (const p of possiblePaths) {
-      logger.error(`  - ${p}`);
-    }
+  if (!fs.existsSync(migrationsFolder)) {
+    logger.error(
+      `CRITICAL: Migrations folder not found at: ${migrationsFolder}`,
+    );
     process.exit(1);
   }
 
