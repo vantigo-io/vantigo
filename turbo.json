@@ -7,7 +7,7 @@
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "compile": {
-      "dependsOn": ["^compile"],
+      "dependsOn": ["^compile", "build"],
       "outputs": ["dist/**"]
     },
     "db:migrate": {

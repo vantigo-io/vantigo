@@ -1,36 +1,23 @@
 import { $ } from "bun";
 
-let target = process.argv[2];
-if (!target) {
-  // Auto-detect host platform
-  const os = process.platform === "win32" ? "windows" : process.platform;
-  const arch = process.arch;
-  target = `${os}-${arch}`;
-  console.log(`No target specified. Auto-detected host platform: ${target}`);
-}
+const target =
+  process.argv[2] ||
+  `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
 
-// Map the target to a standardized docker/distribution suffix
-let suffix = target;
-if (target === "linux-x64") {
-  suffix = "linux-amd64";
-} else if (target === "linux-arm64") {
-  suffix = "linux-arm64";
-} else if (target === "darwin-arm64") {
-  suffix = "darwin-arm64";
-} else if (target === "windows-x64") {
-  suffix = "windows-amd64.exe";
-} else if (target === "darwin-x64") {
-  suffix = "darwin-amd64";
-}
+// Map to standardized docker/distribution suffix
+const suffixes: Record<string, string> = {
+  "linux-x64": "linux-amd64",
+  "linux-arm64": "linux-arm64",
+  "darwin-arm64": "darwin-arm64",
+  "darwin-x64": "darwin-amd64",
+  "windows-x64": "windows-amd64.exe",
+};
 
+const suffix = suffixes[target] || target;
 const outfile = `../../dist/vantigo-idp-${suffix}`;
 
-console.log(`Compiling apps/idp for target: ${target} -> ${outfile}`);
+console.log(
+  `Compiling apps/idp standalone binary: target=${target} -> outfile=${outfile}`,
+);
 
-// Ensure the frontend web assets are built first
-await $`bun run build:web`;
-
-// Compile the standalone binary for the specified target
 await $`bun build ./src/entry.docker.ts --compile --target=bun-${target} --outfile=${outfile}`;
-
-console.log(`Successfully compiled IDP standalone binary to: ${outfile}`);
