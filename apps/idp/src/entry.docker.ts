@@ -4,20 +4,18 @@ import { serve } from "bun";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { app } from "./app";
 import { getDb } from "./db";
+import { getDockerEnv } from "./env";
+import { logger } from "./logger";
 
-// Ensure DATABASE_URL is set in self-hosted environment
-const databaseUrl = Bun.env.DATABASE_URL;
-if (!databaseUrl) {
-  console.error("CRITICAL: DATABASE_URL environment variable is required!");
-  process.exit(1);
-}
+// Validate environment variables using Zod schema
+const env = getDockerEnv();
 
 // Pre-initialize Drizzle client once at startup
-const db = getDb(databaseUrl);
+const db = getDb(env.DATABASE_URL);
 
 // Check if --migrate argument is passed
 if (Bun.argv.includes("--migrate")) {
-  console.log("Running database migrations (--migrate flag detected)...");
+  logger.info("Running database migrations (--migrate flag detected)...");
 
   // Resolve migrations folder path (support monorepo root, app root, and Docker runtimes)
   const possiblePaths = [
@@ -34,24 +32,43 @@ if (Bun.argv.includes("--migrate")) {
     }
   }
 
-  console.log(`Using migrations folder: ${migrationsFolder}`);
+  logger.info(`Using migrations folder: ${migrationsFolder}`);
   if (!migrationsFolder) {
-    console.error("CRITICAL: Migrations folder not found! Searched in:");
+    logger.error("CRITICAL: Migrations folder not found! Searched in:");
     for (const p of possiblePaths) {
-      console.error(`  - ${p}`);
+      logger.error(`  - ${p}`);
     }
     process.exit(1);
   }
 
   try {
     await migrate(db, { migrationsFolder });
-    console.log("Database migrations applied successfully!");
+    logger.info("Database migrations applied successfully!");
     process.exit(0);
   } catch (error) {
-    console.error("CRITICAL: Failed to apply database migrations:", error);
+    logger.error(
+      { err: error },
+      "CRITICAL: Failed to apply database migrations",
+    );
     process.exit(1);
   }
 }
+
+// Request logging middleware
+app.use("*", async (c, next) => {
+  const start = Date.now();
+  await next();
+  const duration = Date.now() - start;
+  logger.info(
+    {
+      method: c.req.method,
+      url: c.req.url,
+      status: c.res.status,
+      durationMs: duration,
+    },
+    `${c.req.method} ${c.req.path} - ${c.res.status} (${duration}ms)`,
+  );
+});
 
 // Default mode: serve the API and frontend
 app.use("*", async (c, next) => {
@@ -59,10 +76,11 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-const port = Bun.env.PORT || 3000;
-console.log(`Starting Vantigo IDP (Docker Build) on http://localhost:${port}`);
+logger.info(
+  `Starting Vantigo IDP (Docker Build) on http://localhost:${env.PORT}`,
+);
 
 serve({
   fetch: app.fetch,
-  port,
+  port: env.PORT,
 });

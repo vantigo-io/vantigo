@@ -80,10 +80,10 @@ describe("Database Migrations", () => {
         const tableNames = result.map((row) => row.tablename);
         console.log("Tables created:", tableNames);
 
-        expect(tableNames).toContain("user");
-        expect(tableNames).toContain("session");
-        expect(tableNames).toContain("account");
-        expect(tableNames).toContain("verification");
+        expect(tableNames).toContain("users");
+        expect(tableNames).toContain("sessions");
+        expect(tableNames).toContain("accounts");
+        expect(tableNames).toContain("verifications");
 
         await sql.end();
         sql = null;
@@ -143,6 +143,7 @@ describe("Database Migrations", () => {
           env: {
             ...process.env,
             DATABASE_URL: connectionString,
+            AUTH_SECRET: "dummy_secret_for_validation_pass",
           },
         });
 
@@ -164,10 +165,10 @@ describe("Database Migrations", () => {
         const tableNames = result.map((row) => row.tablename);
         console.log("Tables created via binary:", tableNames);
 
-        expect(tableNames).toContain("user");
-        expect(tableNames).toContain("session");
-        expect(tableNames).toContain("account");
-        expect(tableNames).toContain("verification");
+        expect(tableNames).toContain("users");
+        expect(tableNames).toContain("sessions");
+        expect(tableNames).toContain("accounts");
+        expect(tableNames).toContain("verifications");
 
         await sql.end();
       } finally {

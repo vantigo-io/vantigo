@@ -28,7 +28,9 @@
     "@vantigo/auth": "workspace:*",
     "@vantigo/ui": "workspace:*",
     "drizzle-orm": "catalog:",
-    "postgres": "catalog:"
+    "postgres": "catalog:",
+    "pino": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "wrangler": "catalog:",
@@ -38,6 +40,7 @@
     "@vantigo/config": "workspace:*",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "testcontainers": "catalog:"
+    "testcontainers": "catalog:",
+    "pino-pretty": "catalog:"
   }
 }
