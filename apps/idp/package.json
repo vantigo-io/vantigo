@@ -1,0 +1,23 @@
+{
+  "name": "idp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:workerd": "wrangler dev",
+    "dev:docker": "bun run src/entry.docker.ts",
+    "dev": "bun run dev:workerd",
+    "build:web": "bun build ./src/web/index.tsx --outdir ./dist/web",
+    "compile": "bun build ./src/entry.docker.ts --compile --outfile ../../dist/vantigo-idp"
+  },
+  "dependencies": {
+    "hono": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "@vantigo/auth": "workspace:*",
+    "@vantigo/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "catalog:",
+    "@cloudflare/workers-types": "catalog:"
+  }
+}
