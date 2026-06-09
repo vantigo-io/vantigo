@@ -1,0 +1,10 @@
+# Ignore directories that contain large dependencies and caches
+node_modules
+**/node_modules
+.git
+.idea
+.turbo
+.bun
+dist/web
+*.bun-build
+.*.bun-build
