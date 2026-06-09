@@ -1,0 +1,37 @@
+name: 🛡️ Continuous Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 🧪 Verify Code Quality & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📦 Checkout Source Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Required for commitlint to see PR commit history
+
+      - name: 🔍 Check Conventional Commits
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: './commitlint.config.ts'
+
+      - name: ⚡ Setup Bun Runtime Environment
+        uses: oven-sh/setup-bun@v2
+
+      - name: 📥 Install Monorepo Dependencies
+        run: bun install --frozen-lockfile
+
+      - name: 🧹 Code Lint & Formatting Check (Biome)
+        run: bun run lint
+
+      - name: 🧪 Run Application Test Suite
+        run: bun test

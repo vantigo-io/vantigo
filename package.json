@@ -1,0 +1,31 @@
+{
+  "name": "vantigo-cloud",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:workerd": "turbo run dev:workerd",
+    "dev:docker": "turbo run dev:docker",
+    "build": "turbo run build",
+    "compile": "turbo run compile",
+    "db:migrate": "turbo run db:migrate",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.8.3",
+    "@commitlint/cli": "^19.3.0",
+    "@commitlint/config-conventional": "^19.2.2",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.7",
+    "turbo": "^2.0.4"
+  },
+  "workspaces": ["apps/*", "packages/*"],
+  "catalog": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@mantine/core": "^7.11.0",
+    "@mantine/hooks": "^7.11.0",
+    "better-auth": "^1.1.0"
+  }
+}

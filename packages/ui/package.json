@@ -1,0 +1,13 @@
+{
+  "name": "@vantigo/ui",
+  "version": "0.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@mantine/core": "catalog:",
+    "@mantine/hooks": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  }
+}

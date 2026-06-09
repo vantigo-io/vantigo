@@ -1,0 +1,8 @@
+node_modules
+.bun
+dist
+build
+.env
+.dev.vars
+.turbo
+.DS_Store
