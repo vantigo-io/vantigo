@@ -2,6 +2,7 @@
 
 > **IMPORTANT FOR ALL FUTURE AI AGENTS:**
 > This project follows strict architectural patterns. Do not deviate from these rules without explicit user permission.
+> All domain and vocabulary terms (e.g., User, Account, Session) MUST strictly align with the definitions in [Ubiquitous Language.md](./Ubiquitous%20Language.md).
 
 ## 1. Project Overview
 Vantigo is a suite of independent, deeply integrated business applications (similar to Odoo). The project is a monorepo containing multiple apps that all share the same UI system, configurations, and core tooling, but operate independently.

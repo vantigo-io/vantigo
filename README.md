@@ -41,7 +41,7 @@ Vantigo is a modern developer's dream. If you want to contribute or build custom
 - **Database:** Neon PostgreSQL + [Drizzle ORM](https://orm.drizzle.team/).
 - **Frontend:** React, React Router, [Mantine](https://mantine.dev/).
 
-*Note for AI Agents & Contributors: Please read the [`AGENTS.md`](./AGENTS.md) file in the root directory for strict architectural guidelines before submitting Pull Requests.*
+*Note for AI Agents & Contributors: Please read the [`AGENTS.md`](./AGENTS.md) file in the root directory for strict architectural guidelines and consult the [`Ubiquitous Language.md`](./Ubiquitous%20Language.md) glossary for domain terminology before contributing.*
 
 ---
 
