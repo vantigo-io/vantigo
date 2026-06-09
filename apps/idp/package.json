@@ -8,7 +8,9 @@
     "dev": "bun run dev:workerd",
     "build": "bun run build:web",
     "build:web": "bun build ./src/web/index.tsx --outdir ./dist/web",
-    "compile": "bun build ./src/entry.docker.ts --compile --outfile ../../dist/vantigo-idp"
+    "compile": "bun build ./src/entry.docker.ts --compile --outfile ../../dist/vantigo-idp",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "hono": "catalog:",
@@ -17,10 +19,13 @@
     "@mantine/core": "catalog:",
     "@mantine/hooks": "catalog:",
     "@vantigo/auth": "workspace:*",
-    "@vantigo/ui": "workspace:*"
+    "@vantigo/ui": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:"
   },
   "devDependencies": {
     "wrangler": "catalog:",
-    "@cloudflare/workers-types": "catalog:"
+    "@cloudflare/workers-types": "catalog:",
+    "drizzle-kit": "catalog:"
   }
 }
