@@ -6,6 +6,7 @@
     "dev:workerd": "wrangler dev",
     "dev:docker": "bun run src/entry.docker.ts",
     "dev": "bun run dev:workerd",
+    "build": "bun run build:web",
     "build:web": "bun build ./src/web/index.tsx --outdir ./dist/web",
     "compile": "bun build ./src/entry.docker.ts --compile --outfile ../../dist/vantigo-idp"
   },
@@ -13,6 +14,8 @@
     "hono": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "@mantine/core": "catalog:",
+    "@mantine/hooks": "catalog:",
     "@vantigo/auth": "workspace:*",
     "@vantigo/ui": "workspace:*"
   },

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.8.3/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "ignore": ["**/db/migrations/**", "**/dist/**"]
+    "includes": ["**", "!**/db/migrations", "!**/dist"]
   },
   "formatter": {
     "enabled": true,
@@ -29,7 +29,5 @@
       "quoteStyle": "double"
     }
   },
-  "organizeImports": {
-    "enabled": true
-  }
+  "assist": { "actions": { "source": { "organizeImports": "on" } } }
 }

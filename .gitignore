@@ -6,3 +6,7 @@ build
 .dev.vars
 .turbo
 .DS_Store
+
+# Build cache
+*.bun-build
+.*.bun-build
