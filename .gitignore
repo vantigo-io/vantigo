@@ -10,3 +10,4 @@ build
 # Build cache
 *.bun-build
 .*.bun-build
+.wrangler
