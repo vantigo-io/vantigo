@@ -13,6 +13,9 @@
     "db:migrate": {
       "cache": false
     },
+    "docker:build": {
+      "cache": false
+    },
     "dev": {
       "cache": false,
       "persistent": true

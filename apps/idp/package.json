@@ -15,7 +15,8 @@
     "compile:mac-arm64": "bun build ./src/entry.docker.ts --compile --target=bun-darwin-arm64 --outfile=../../dist/vantigo-idp-darwin-arm64",
     "compile:windows-amd64": "bun build ./src/entry.docker.ts --compile --target=bun-windows-x64 --outfile=../../dist/vantigo-idp-windows-amd64.exe",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "docker:build": "bun run compile:linux-$(bun -e 'console.log(process.arch === \"arm64\" ? \"arm64\" : \"amd64\")') && docker build -t vantigo-idp -f Dockerfile ../.."
   },
   "dependencies": {
     "hono": "catalog:",

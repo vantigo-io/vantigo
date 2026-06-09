@@ -10,6 +10,7 @@
     "build": "turbo run build",
     "compile": "turbo run compile",
     "db:migrate": "turbo run db:migrate",
+    "docker:build": "turbo run docker:build",
     "lint": "biome check .",
     "format": "biome check --write .",
     "prepare": "husky"
