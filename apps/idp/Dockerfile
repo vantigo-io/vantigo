@@ -10,6 +10,9 @@ ARG TARGETARCH=arm64
 # Copy the pre-compiled standalone binary from the host's dist/ directory
 COPY dist/vantigo-idp-linux-${TARGETARCH} /app/vantigo-idp
 
+# Copy the migrations directory from the monorepo root
+COPY apps/idp/src/db/migrations /app/db/migrations
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000

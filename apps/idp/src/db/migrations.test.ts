@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -10,7 +11,7 @@ const shouldSkip = Bun.env.TEST_MIGRATIONS !== "true";
 
 describe("Database Migrations", () => {
   test.skipIf(shouldSkip)(
-    "successfully apply all migrations",
+    "successfully apply all migrations programmatically",
     async () => {
       console.log("Starting PostgreSQL testcontainer...");
       const container = await new GenericContainer("postgres:16-alpine")
@@ -90,6 +91,86 @@ describe("Database Migrations", () => {
         if (sql) {
           await sql.end();
         }
+        console.log("Stopping PostgreSQL testcontainer...");
+        await container.stop();
+        console.log("PostgreSQL testcontainer stopped.");
+      }
+    },
+    60000,
+  ); // 60 seconds timeout
+
+  test.skipIf(shouldSkip)(
+    "compiled binary successfully applies migrations when invoked with --migrate",
+    async () => {
+      const binaryPath = path.resolve(
+        __dirname,
+        "../../../../dist/vantigo-idp",
+      );
+      if (!fs.existsSync(binaryPath)) {
+        console.warn(
+          `Compiled binary not found at ${binaryPath}. Skipping compiled binary test.`,
+        );
+        return;
+      }
+
+      console.log("Starting PostgreSQL testcontainer...");
+      const container = await new GenericContainer("postgres:16-alpine")
+        .withExposedPorts(5432)
+        .withEnvironment({
+          POSTGRES_USER: "postgres",
+          POSTGRES_PASSWORD: "password",
+          POSTGRES_DB: "vantigo_test",
+        })
+        .withWaitStrategy(
+          Wait.forLogMessage(
+            /.*database system is ready to accept connections.*/,
+            2,
+          ),
+        )
+        .start();
+
+      console.log("PostgreSQL testcontainer started.");
+
+      try {
+        const host = container.getHost();
+        const port = container.getMappedPort(5432);
+        const connectionString = `postgres://postgres:password@${host}:${port}/vantigo_test`;
+
+        console.log(
+          `Running compiled binary at ${binaryPath} with --migrate...`,
+        );
+        const proc = Bun.spawn([binaryPath, "--migrate"], {
+          env: {
+            ...process.env,
+            DATABASE_URL: connectionString,
+          },
+        });
+
+        const exitCode = await proc.exited;
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
+
+        console.log("Subprocess exited with code:", exitCode);
+        console.log("Subprocess stdout:", stdout);
+        console.log("Subprocess stderr:", stderr);
+
+        expect(exitCode).toBe(0);
+        expect(stdout).toContain("Database migrations applied successfully!");
+
+        // Verify that tables were actually created in the DB
+        const sql = postgres(connectionString, { max: 1 });
+        const result =
+          await sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`;
+        const tableNames = result.map((row) => row.tablename);
+        console.log("Tables created via binary:", tableNames);
+
+        expect(tableNames).toContain("user");
+        expect(tableNames).toContain("session");
+        expect(tableNames).toContain("account");
+        expect(tableNames).toContain("verification");
+
+        await sql.end();
+      } finally {
         console.log("Stopping PostgreSQL testcontainer...");
         await container.stop();
         console.log("PostgreSQL testcontainer stopped.");
