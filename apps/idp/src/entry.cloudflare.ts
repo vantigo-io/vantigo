@@ -1,4 +1,4 @@
-import type { Hono } from "hono";
+import type { Context, Hono, Next } from "hono";
 import { createIdpApp } from "./app";
 import { getDb } from "./db";
 import type { AppEnv } from "./types";
@@ -10,10 +10,9 @@ export default {
   async fetch(request: Request, env: any, ctx: any) {
     if (!appSingleton) {
       const sitePath = env.SITE_PATH || "/idp";
-      appSingleton = createIdpApp(sitePath);
 
-      // Injects Cloudflare native bindings and services into Hono context
-      appSingleton.use("*", async (c, next) => {
+      // Middleware to inject database client into Hono context
+      const dbMiddleware = async (c: Context<AppEnv>, next: Next) => {
         const connectionString =
           c.env.HYPERDRIVE?.connectionString || c.env.DATABASE_URL;
         if (!connectionString) {
@@ -27,7 +26,9 @@ export default {
         c.set("db", db);
 
         await next();
-      });
+      };
+
+      appSingleton = createIdpApp(sitePath, dbMiddleware);
     }
 
     return appSingleton.fetch(request, env, ctx);

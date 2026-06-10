@@ -2,19 +2,28 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { serve } from "bun";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
+import type { Context, Next } from "hono";
+import { z } from "zod";
 import { createIdpApp } from "./app";
 import { getDb } from "./db";
 import { getDockerEnv } from "./env";
 import { logger } from "./logger";
-
-// Validate environment variables using Zod schema
-const env = getDockerEnv();
-
-// Pre-initialize Drizzle client once at startup
-const db = getDb(env.DATABASE_URL);
+import type { AppEnv } from "./types";
 
 // Check if --migrate argument is passed
-if (Bun.argv.includes("--migrate")) {
+const isMigrationMode = process.argv.includes("--migrate");
+
+if (isMigrationMode) {
+  // Validate only database configuration for migration mode
+  const migrationEnv = z
+    .object({
+      DATABASE_URL: z.string().url("DATABASE_URL must be a valid URL"),
+      MIGRATIONS_PATH: z.string().optional(),
+    })
+    .parse(process.env);
+
+  const db = getDb(migrationEnv.DATABASE_URL);
+
   logger.info("Running database migrations (--migrate flag detected)...");
 
   // Determine if running from a compiled binary or directly via Bun runtime
@@ -25,7 +34,7 @@ if (Bun.argv.includes("--migrate")) {
 
   // Deterministically resolve the migrations folder path
   const migrationsFolder =
-    env.MIGRATIONS_PATH ||
+    migrationEnv.MIGRATIONS_PATH ||
     (isCompiled
       ? path.join(path.dirname(process.execPath), "db/migrations")
       : path.join(import.meta.dir, "db/migrations"));
@@ -51,11 +60,14 @@ if (Bun.argv.includes("--migrate")) {
   }
 }
 
-// Create Hono app using the configured SITE_PATH prefix
-const app = createIdpApp(env.SITE_PATH);
+// Server mode: Validate environment variables using Zod schema
+const env = getDockerEnv();
 
-// Request logging middleware
-app.use("*", async (c, next) => {
+// Pre-initialize Drizzle client once at startup
+const db = getDb(env.DATABASE_URL);
+
+// Middleware definitions (logger and database client injection)
+const loggerMiddleware = async (c: Context<AppEnv>, next: Next) => {
   const start = Date.now();
   await next();
   const duration = Date.now() - start;
@@ -68,13 +80,15 @@ app.use("*", async (c, next) => {
     },
     `${c.req.method} ${c.req.path} - ${c.res.status} (${duration}ms)`,
   );
-});
+};
 
-// Default mode: serve the API and frontend
-app.use("*", async (c, next) => {
+const dbMiddleware = async (c: Context<AppEnv>, next: Next) => {
   c.set("db", db);
   await next();
-});
+};
+
+// Create Hono app, injecting middlewares to run before routes are registered
+const app = createIdpApp(env.SITE_PATH, loggerMiddleware, dbMiddleware);
 
 logger.info(
   `Starting Vantigo IDP (Docker Build) on http://localhost:${env.PORT}`,
