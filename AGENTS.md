@@ -1,4 +1,4 @@
-# Vantigo Cloud - AI Agent Guidelines
+# Vantigo - AI Agent Guidelines
 
 > **IMPORTANT FOR ALL FUTURE AI AGENTS:**
 > This project follows strict architectural patterns. Do not deviate from these rules without explicit user permission.

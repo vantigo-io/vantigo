@@ -1,6 +1,6 @@
 # 📖 Ubiquitous Language
 
-This document establishes a shared, unambiguous vocabulary (Ubiquitous Language) for the **Vantigo Cloud** ecosystem. Both human developers and AI coding agents (LLMs) **MUST** strictly adhere to these definitions and terminology to prevent domain drift, design confusion, or architectural inconsistencies.
+This document establishes a shared, unambiguous vocabulary (Ubiquitous Language) for the **Vantigo** ecosystem. Both human developers and AI coding agents (LLMs) **MUST** strictly adhere to these definitions and terminology to prevent domain drift, design confusion, or architectural inconsistencies.
 
 ---
 
@@ -9,22 +9,22 @@ This document establishes a shared, unambiguous vocabulary (Ubiquitous Language)
 ### User
 * **Definition**: A single human actor who interacts with the Vantigo ecosystem.
 * **Context**: A user has a unique ID, core profile attributes (name, email, avatar), and acts as the root owner for all sessions and credential accounts.
-* **Database Mapping**: Represented by the `user` table.
+* **Database Mapping**: Represented by the `users` table.
 
 ### Account
 * **Definition**: A specific credential mechanism or login method associated with a **User**.
 * **Context**: A User can have multiple Accounts linked to them (e.g., a username/password credential account, a Google OAuth account, a GitHub OAuth account). It stores access tokens, refresh tokens, and encrypted passwords.
-* **Database Mapping**: Represented by the `account` table.
+* **Database Mapping**: Represented by the `accounts` table.
 
 ### Session
 * **Definition**: A temporal state of active authorization representing a validated login instance for a **User**.
 * **Context**: Each session has an expiration time, a secure token, and metadata tracking the login origin (IP address, User Agent). Sessions are cascade-deleted if the owner User is deleted.
-* **Database Mapping**: Represented by the `session` table.
+* **Database Mapping**: Represented by the `sessions` table.
 
 ### Verification
 * **Definition**: A short-lived cryptographic token or secret challenge used to verify a User's identity or action out-of-band.
 * **Context**: Used for flows such as email validation (verifying a User owns an email address) or password reset flows.
-* **Database Mapping**: Represented by the `verification` table.
+* **Database Mapping**: Represented by the `verifications` table.
 
 ### Identity Provider (IDP)
 * **Definition**: The centralized authentication service (`apps/idp`) responsible for managing users, sessions, and federating authentication to other Vantigo applications.

@@ -1,7 +1,7 @@
 <div align="center">
   <img src="./assets/logo.png" alt="Vantigo Logo" width="200" style="border-radius: 12px; margin-bottom: 20px;" />
   
-  # 🚀 Vantigo Cloud
+  # 🚀 Vantigo
 
   **The blazing-fast, open-source Enterprise Resource Planning (ERP) platform.**<br>
   Built from the ground up for modern businesses, self-hosters, and enterprise scale.
