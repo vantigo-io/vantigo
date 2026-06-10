@@ -1,0 +1,39 @@
+name: 🛡️ CodeQL Security & Quality Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * 0" # Runs weekly on Sunday at 00:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: 🔍 CodeQL Static Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+
+    steps:
+      - name: 📦 Checkout Source Code
+        uses: actions/checkout@v6
+
+      - name: 🔍 Initialize CodeQL Engine
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: 🛡️ Perform CodeQL Security & Quality Analysis
+        uses: github/codeql-action/analyze@v3
