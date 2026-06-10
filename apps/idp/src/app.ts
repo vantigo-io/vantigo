@@ -84,12 +84,12 @@ export function createIdpApp(
       };
     </script>`;
 
-    // Inject the config script, CSS stylesheet link, and JS module script tags dynamically matching sitePath
+    // Inject the config script, CSS stylesheet link, favicon link, and JS module script tags dynamically matching sitePath
     const htmlString = htmlContent as unknown as string;
     const dynamicHtml = htmlString
       .replace(
         "</head>",
-        `${configScript}<link rel="stylesheet" href="${prefix}/index.css"></head>`,
+        `${configScript}<link rel="stylesheet" href="${prefix}/index.css"><link rel="icon" type="image/png" href="${prefix}/favicon.png"></head>`,
       )
       .replace(
         "</body>",

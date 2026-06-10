@@ -44,6 +44,7 @@ export default {
       appSingleton.get("/index.js", serveCloudflareAsset("index.js"));
       appSingleton.get("/index.css", serveCloudflareAsset("index.css"));
       appSingleton.get("/logo.png", serveCloudflareAsset("logo.png"));
+      appSingleton.get("/favicon.png", serveCloudflareAsset("favicon.png"));
     }
 
     return appSingleton.fetch(request, env, ctx);

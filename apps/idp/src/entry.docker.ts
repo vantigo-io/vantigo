@@ -95,6 +95,7 @@ const app = createIdpApp(env.SITE_PATH, [loggerMiddleware, dbMiddleware]);
 app.use("/index.js", serveStatic({ path: "./dist/web/index.js" }));
 app.use("/index.css", serveStatic({ path: "./dist/web/index.css" }));
 app.use("/logo.png", serveStatic({ path: "./dist/web/logo.png" }));
+app.use("/favicon.png", serveStatic({ path: "./dist/web/favicon.png" }));
 
 logger.info(
   `Starting Vantigo IDP (Docker Build) on http://localhost:${env.PORT}`,
