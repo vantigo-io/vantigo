@@ -1,21 +1,35 @@
-import { app } from "./app";
+import type { Hono } from "hono";
+import { createIdpApp } from "./app";
 import { getDb } from "./db";
+import type { AppEnv } from "./types";
 
-// Injects Cloudflare native bindings and services into Hono context
-app.use("*", async (c, next) => {
-  const connectionString =
-    c.env.HYPERDRIVE?.connectionString || c.env.DATABASE_URL;
-  if (!connectionString) {
-    return c.text(
-      "Configuration error: DATABASE_URL or HYPERDRIVE missing",
-      500,
-    );
-  }
+let appSingleton: Hono<AppEnv> | null = null;
 
-  const db = getDb(connectionString);
-  c.set("db", db);
+export default {
+  // biome-ignore lint/suspicious/noExplicitAny: env bindings and execution context are dynamic at runtime
+  async fetch(request: Request, env: any, ctx: any) {
+    if (!appSingleton) {
+      const sitePath = env.SITE_PATH || "/idp";
+      appSingleton = createIdpApp(sitePath);
 
-  await next();
-});
+      // Injects Cloudflare native bindings and services into Hono context
+      appSingleton.use("*", async (c, next) => {
+        const connectionString =
+          c.env.HYPERDRIVE?.connectionString || c.env.DATABASE_URL;
+        if (!connectionString) {
+          return c.text(
+            "Configuration error: DATABASE_URL or HYPERDRIVE missing",
+            500,
+          );
+        }
 
-export default app;
+        const db = getDb(connectionString);
+        c.set("db", db);
+
+        await next();
+      });
+    }
+
+    return appSingleton.fetch(request, env, ctx);
+  },
+};

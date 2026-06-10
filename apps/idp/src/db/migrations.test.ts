@@ -144,6 +144,7 @@ describe("Database Migrations", () => {
             ...process.env,
             DATABASE_URL: connectionString,
             AUTH_SECRET: "dummy_secret_for_validation_pass",
+            SITE_URL: "http://localhost:3000",
             MIGRATIONS_PATH: path.resolve(__dirname, "./migrations"),
           },
         });

@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { serve } from "bun";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { app } from "./app";
+import { createIdpApp } from "./app";
 import { getDb } from "./db";
 import { getDockerEnv } from "./env";
 import { logger } from "./logger";
@@ -50,6 +50,9 @@ if (Bun.argv.includes("--migrate")) {
     process.exit(1);
   }
 }
+
+// Create Hono app using the configured SITE_PATH prefix
+const app = createIdpApp(env.SITE_PATH);
 
 // Request logging middleware
 app.use("*", async (c, next) => {
