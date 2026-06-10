@@ -9,6 +9,12 @@
   "placement": {
     "mode": "smart"
   },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "PLACEHOLDER_HYPERDRIVE_ID"
+    }
+  ],
   "vars": {
     "NODE_ENV": "development"
   }
