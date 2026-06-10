@@ -33,44 +33,77 @@ jobs:
           release-type: node
 
   compile-and-publish:
-    name: ⚙️  Cross-Compile & Bake Container
+    name: ⚙️  Cross-Compile, Bake Container & Sign
     needs: release-manager
     if: ${{ needs.release-manager.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
+      id-token: write
 
     steps:
-      - name: 📦 Checkout Code
+      - name: 📦 Checkout Code at Release Tag Position
         uses: actions/checkout@v6
         with:
           ref: ${{ needs.release-manager.outputs.tag_name }}
 
-      - name: ⚡ Setup Bun
+      - name: ⚡ Setup Bun Runtime Environment
         uses: oven-sh/setup-bun@v2
 
-      - name: 📥 Install Dependencies
+      - name: 📥 Install Monorepo Dependencies
         run: bun install --frozen-lockfile
 
       - name: 🏭 Cross-Compile Standalone Binaries
         run: bun --filter idp compile:all
 
-      - name: 🏗️ Setup Docker Buildx
+      - name: 🏗️ Initialize Multi-Arch Docker Buildx Framework
         uses: docker/setup-buildx-action@v4
 
-      - name: 🔑 Login to GHCR
+      - name: ⚗️  Install Cosign Image Signing Tool
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: 🔑 Authenticate to GitHub Container Registry (GHCR)
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🐳 Build & Push Docker Image
+      - name: 🏷️ Extract OCI Image Container Metadata Tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/vantigo-io/vantigo-idp
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.release-manager.outputs.tag_name }}
+
+      - name: 🐳 Bake & Push Multi-Arch Distroless Image Layer
+        id: push-step
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/idp/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/vantigo-io/vantigo-idp:latest,ghcr.io/vantigo-io/vantigo-idp:${{ needs.release-manager.outputs.tag_name }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: 🔐 Cryptographically Sign Production Container Manifest
+        run: |
+          cosign sign --yes "ghcr.io/vantigo-io/vantigo-idp@${{ steps.push-step.outputs.digest }}"
+
+      - name: 💎 Upload Native Assets & Inject Immutable SHA Pull Notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.push-step.outputs.digest }}
+          TAG: ${{ needs.release-manager.outputs.tag_name }}
+        run: |
+          # 1. Attach your multi-platform binaries to the GitHub Release page
+          gh release upload $TAG dist/vantigo-*
+          
+          # 2. Append verified cryptographic pull data cleanly to the release notes block
+          echo -e "\n\n### 🐳 Secure Production Container Pull Info\n\`\`\`bash\ndocker pull ghcr.io/vantigo-io/vantigo-idp@$DIGEST\n\`\`\`\n*Image verified and cryptographically signed via Sigstore/Cosign.*" > pull_info.txt
+          gh release view $TAG --json body --jq '.body' >> pull_info.txt
+          gh release edit $TAG --notes-file pull_info.txt
