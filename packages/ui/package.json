@@ -9,6 +9,7 @@
   "dependencies": {
     "@mantine/core": "catalog:",
     "@mantine/hooks": "catalog:",
+    "@tabler/icons-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

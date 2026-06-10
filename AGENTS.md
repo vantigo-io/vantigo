@@ -63,4 +63,9 @@ To ensure 100% portability between Cloudflare and Docker, **business logic must 
 - **Fast Failures**: Missing or invalid variables must block startup and trigger immediate process termination to prevent partial-state runtimes.
 - **Library Masking**: Keep third-party configuration variables generic and masked (e.g., use `AUTH_SECRET` instead of `BETTER_AUTH_SECRET`).
 
+### 3.9. Internationalization & Translation (i18n)
+- **Framework**: All frontend applications must support internationalization from the start using `i18next` and `react-i18next`.
+- **Resource Alignment**: When implementing new domain features, user-facing UI elements, or error states, future AI agents MUST update all translation resource files (e.g. English `en`, Norwegian `no`) to keep translations aligned and complete.
+
+
 

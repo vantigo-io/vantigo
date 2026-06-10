@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { serve } from "bun";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import type { Context, Next } from "hono";
+import { serveStatic } from "hono/bun";
 import { z } from "zod";
 import { createIdpApp } from "./app";
 import { getDb } from "./db";
@@ -89,6 +90,11 @@ const dbMiddleware = async (c: Context<AppEnv>, next: Next) => {
 
 // Create Hono app, injecting middlewares to run before routes are registered
 const app = createIdpApp(env.SITE_PATH, [loggerMiddleware, dbMiddleware]);
+
+// Serve static assets in Docker (natively mounted under SITE_PATH via Hono app basePath)
+app.use("/index.js", serveStatic({ path: "./dist/web/index.js" }));
+app.use("/index.css", serveStatic({ path: "./dist/web/index.css" }));
+app.use("/logo.png", serveStatic({ path: "./dist/web/logo.png" }));
 
 logger.info(
   `Starting Vantigo IDP (Docker Build) on http://localhost:${env.PORT}`,

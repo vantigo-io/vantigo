@@ -7,5 +7,9 @@ export interface AppEnv {
   Bindings: {
     HYPERDRIVE?: { connectionString: string };
     DATABASE_URL?: string;
+    AUTH_SECRET?: string;
+    SITE_URL?: string;
+    SITE_PATH?: string;
+    AUTH_URL?: string;
   };
 }
