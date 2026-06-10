@@ -20,5 +20,9 @@
   },
   "vars": {
     "NODE_ENV": "development"
+  },
+  "assets": {
+    "directory": "./dist/web",
+    "binding": "ASSETS"
   }
 }

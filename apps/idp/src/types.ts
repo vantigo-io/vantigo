@@ -11,5 +11,6 @@ export interface AppEnv {
     SITE_URL?: string;
     SITE_PATH?: string;
     AUTH_URL?: string;
+    ASSETS?: { fetch: typeof fetch };
   };
 }

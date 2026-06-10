@@ -29,6 +29,21 @@ export default {
       };
 
       appSingleton = createIdpApp(sitePath, [dbMiddleware]);
+
+      // Route static assets matching the SITE_PATH prefix through the Workers Assets binding
+      const serveCloudflareAsset =
+        (filename: string) => async (c: Context<AppEnv>) => {
+          if (c.env.ASSETS) {
+            const url = new URL(c.req.url);
+            url.pathname = `/${filename}`;
+            return c.env.ASSETS.fetch(new Request(url.toString(), c.req.raw));
+          }
+          return c.text("ASSETS binding missing", 500);
+        };
+
+      appSingleton.get("/index.js", serveCloudflareAsset("index.js"));
+      appSingleton.get("/index.css", serveCloudflareAsset("index.css"));
+      appSingleton.get("/logo.png", serveCloudflareAsset("logo.png"));
     }
 
     return appSingleton.fetch(request, env, ctx);
