@@ -17,10 +17,19 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      - name: 🔑 Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.VANTIGO_RELEASE_APP_ID }}
+          private-key: ${{ secrets.VANTIGO_RELEASE_APP_PRIVATE_KEY }}
+
       - name: 🤖 Run Release Please Engine
         id: release
         uses: googleapis/release-please-action@v5
         with:
+          token: '${{ steps.app-token.outputs.token }}'
+          repo-url: '${{ github.repository }}'
           release-type: node
 
   compile-and-publish:
