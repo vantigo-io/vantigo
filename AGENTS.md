@@ -53,3 +53,14 @@ To ensure 100% portability between Cloudflare and Docker, **business logic must 
 - **Feature Coverage**: Every new domain feature or application route must be accompanied by corresponding unit or integration tests under `bun test`.
 - **Database Safeguard**: Any schema migration change must pass the automated `TEST_MIGRATIONS` validation step before it can be merged.
 
+### 3.7. Logging & Observability
+- **Standard Logger**: Pino is the required logger for all Vantigo applications.
+- **Edge Portability**: Inside Cloudflare Workers, the logger must use browser/console JSON logging (writing to `console.log`) rather than Node-specific transport threads.
+- **Pretty Printing**: Local development loops utilize `pino-pretty` to enhance log readability.
+
+### 3.8. Environment Variables & Validation
+- **Schema Enforcement**: All environment variables for application boot configurations must be validated strictly using Zod schemas (`src/env.ts` in each application).
+- **Fast Failures**: Missing or invalid variables must block startup and trigger immediate process termination to prevent partial-state runtimes.
+- **Library Masking**: Keep third-party configuration variables generic and masked (e.g., use `AUTH_SECRET` instead of `BETTER_AUTH_SECRET`).
+
+
