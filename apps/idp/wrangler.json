@@ -12,6 +12,12 @@
       "id": "PLACEHOLDER_HYPERDRIVE_ID"
     }
   ],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
   "vars": {
     "NODE_ENV": "development"
   }
