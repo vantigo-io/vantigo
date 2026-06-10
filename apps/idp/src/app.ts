@@ -36,10 +36,14 @@ export function createIdpApp(
       c.env?.SITE_PATH ||
       (typeof process !== "undefined" ? process.env.SITE_PATH : undefined) ||
       "/idp";
-    const authUrl =
+    let authUrl =
       c.env?.AUTH_URL ||
       (typeof process !== "undefined" ? process.env.AUTH_URL : undefined) ||
       `${siteUrl}${sitePathVal}`;
+
+    if (authUrl && !authUrl.endsWith("/api/auth")) {
+      authUrl = `${authUrl.replace(/\/$/, "")}/api/auth`;
+    }
 
     if (!secret) {
       return c.text("Configuration error: AUTH_SECRET missing", 500);
