@@ -8,7 +8,7 @@ import type { AppEnv } from "./types";
  */
 export function createIdpApp(
   sitePath: string,
-  ...middlewares: MiddlewareHandler<AppEnv>[]
+  middlewares: MiddlewareHandler<AppEnv>[] = [],
 ) {
   const app = new Hono<AppEnv>().basePath(sitePath);
 

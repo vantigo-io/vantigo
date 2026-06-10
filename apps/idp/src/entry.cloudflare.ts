@@ -28,7 +28,7 @@ export default {
         await next();
       };
 
-      appSingleton = createIdpApp(sitePath, dbMiddleware);
+      appSingleton = createIdpApp(sitePath, [dbMiddleware]);
     }
 
     return appSingleton.fetch(request, env, ctx);

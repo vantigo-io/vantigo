@@ -88,7 +88,7 @@ const dbMiddleware = async (c: Context<AppEnv>, next: Next) => {
 };
 
 // Create Hono app, injecting middlewares to run before routes are registered
-const app = createIdpApp(env.SITE_PATH, loggerMiddleware, dbMiddleware);
+const app = createIdpApp(env.SITE_PATH, [loggerMiddleware, dbMiddleware]);
 
 logger.info(
   `Starting Vantigo IDP (Docker Build) on http://localhost:${env.PORT}`,
