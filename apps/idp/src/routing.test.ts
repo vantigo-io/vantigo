@@ -79,6 +79,17 @@ describe("Frontend and Authentication Routing", () => {
     expect(res.status).toBe(404);
   });
 
+  test("delegates static files to next handler (does not return html/404 immediately)", async () => {
+    const app = createIdpApp("/idp");
+
+    // Register a mock handler on the returned app instance representing downstream assets mapping
+    app.get("/index.js", (c) => c.text("mock_js_content"));
+
+    const res = await app.request("/idp/index.js");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("mock_js_content");
+  });
+
   test("routes Better-Auth ok endpoint without crashing", async () => {
     // Inject a dummy db client via middleware
     const dummyDb = {} as unknown as Database;

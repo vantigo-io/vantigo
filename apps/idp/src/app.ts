@@ -23,13 +23,14 @@ export function createIdpApp(
   app.route("/api", apiRouter);
 
   // Serve dynamic index.html for client-side SPA router
-  app.get("*", (c) => {
+  app.get("*", async (c, next) => {
     const prefix = sitePath === "/" ? "" : sitePath;
     const path = c.req.path;
 
-    // Do not intercept API requests or static file requests
+    // Do not intercept API requests or static file requests (let downstream handlers/middlewares resolve them)
     if (path.startsWith(`${prefix}/api/`) || path.includes(".")) {
-      return c.notFound();
+      await next();
+      return;
     }
 
     // Inject the CSS stylesheet link and JS module script tags dynamically matching sitePath
