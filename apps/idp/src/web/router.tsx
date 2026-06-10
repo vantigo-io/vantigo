@@ -8,8 +8,11 @@ import {
 } from "@tanstack/react-router";
 import { commonTheme } from "@vantigo/ui";
 import { authClient } from "./auth";
+import { getVantigoConfig } from "./config";
 import { AccountPage } from "./pages/account/page";
 import { LoginPage } from "./pages/login/page";
+
+const config = getVantigoConfig();
 
 // Root Route: Setup global Providers (Mantine, routing outlets)
 const rootRoute = createRootRoute({
@@ -20,17 +23,10 @@ const rootRoute = createRootRoute({
   ),
 });
 
-// Root Index Redirect Route (/) -> (/idp)
-const rootIndexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/",
-  component: () => <Navigate to="/idp" />,
-});
-
-// App Index Redirect Route (/idp) -> (/idp/account) or (/idp/login)
+// App Index Redirect Route (/) -> (/account) or (/login) relative to basepath
 const idpIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/idp",
+  path: "/",
   component: () => {
     const { data: session, isPending } = authClient.useSession();
     if (isPending) {
@@ -43,15 +39,15 @@ const idpIndexRoute = createRoute({
       );
     }
     if (session?.user) {
-      return <Navigate to="/idp/account" />;
+      return <Navigate to="/account" />;
     }
-    return <Navigate to="/idp/login" search={{ redirectUrl: undefined }} />;
+    return <Navigate to="/login" search={{ redirectUrl: undefined }} />;
   },
 });
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/idp/login",
+  path: "/login",
   validateSearch: (search: Record<string, unknown>) => {
     return {
       redirectUrl: (search.redirectUrl as string) || undefined,
@@ -62,13 +58,12 @@ const loginRoute = createRoute({
 
 const accountRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/idp/account",
+  path: "/account",
   component: AccountPage,
 });
 
-// Configure Route Tree
+// Configure Route Tree (routes are relative to basepath)
 const routeTree = rootRoute.addChildren([
-  rootIndexRoute,
   idpIndexRoute,
   loginRoute,
   accountRoute,
@@ -77,6 +72,7 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",
+  basepath: config.sitePath,
 });
 
 declare module "@tanstack/react-router" {

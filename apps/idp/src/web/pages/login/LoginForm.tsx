@@ -12,6 +12,7 @@ import type React from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authClient } from "../../auth";
+import { getVantigoConfig } from "../../config";
 
 interface LoginFormProps {
   redirectUrl?: string;
@@ -19,6 +20,7 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ redirectUrl, type }: LoginFormProps) {
+  const config = getVantigoConfig();
   const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -53,7 +55,7 @@ export function LoginForm({ redirectUrl, type }: LoginFormProps) {
         if (signInError) {
           setError(signInError.message || "Invalid credentials");
         } else {
-          window.location.href = redirectUrl || "/idp/account";
+          window.location.href = redirectUrl || `${config.sitePath}/account`;
         }
       } else {
         const { error: signUpError } = await authClient.signUp.email({
@@ -64,7 +66,7 @@ export function LoginForm({ redirectUrl, type }: LoginFormProps) {
         if (signUpError) {
           setError(signUpError.message || "Failed to register account");
         } else {
-          window.location.href = "/idp/account";
+          window.location.href = `${config.sitePath}/account`;
         }
       }
     } catch (err) {

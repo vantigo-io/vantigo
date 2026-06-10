@@ -33,12 +33,35 @@ export function createIdpApp(
       return;
     }
 
-    // Inject the CSS stylesheet link and JS module script tags dynamically matching sitePath
+    // Resolve dynamic site configuration from bindings or environment
+    const siteUrlVal =
+      c.env?.SITE_URL ||
+      (typeof process !== "undefined" ? process.env.SITE_URL : undefined) ||
+      c.req.url;
+    const sitePathVal =
+      c.env?.SITE_PATH ||
+      (typeof process !== "undefined" ? process.env.SITE_PATH : undefined) ||
+      sitePath ||
+      "/idp";
+
+    let origin = "http://localhost:3000";
+    try {
+      origin = new URL(siteUrlVal).origin;
+    } catch (_) {}
+
+    const configScript = `<script>
+      window.__VANTIGO_CONFIG__ = {
+        siteUrl: ${JSON.stringify(origin)},
+        sitePath: ${JSON.stringify(sitePathVal)}
+      };
+    </script>`;
+
+    // Inject the config script, CSS stylesheet link, and JS module script tags dynamically matching sitePath
     const htmlString = htmlContent as unknown as string;
     const dynamicHtml = htmlString
       .replace(
         "</head>",
-        `<link rel="stylesheet" href="${prefix}/index.css"></head>`,
+        `${configScript}<link rel="stylesheet" href="${prefix}/index.css"></head>`,
       )
       .replace(
         "</body>",

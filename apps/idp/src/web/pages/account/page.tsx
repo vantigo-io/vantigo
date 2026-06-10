@@ -11,8 +11,11 @@ import { Navigate } from "@tanstack/react-router";
 import { AuthenticatedShell } from "@vantigo/ui";
 import { useTranslation } from "react-i18next";
 import { authClient } from "../../auth";
+import { getVantigoConfig } from "../../config";
 import i18n from "../../i18n";
 import { ProfileCard } from "./ProfileCard";
+
+const config = getVantigoConfig();
 
 export function AccountPage() {
   const { t } = useTranslation();
@@ -30,14 +33,12 @@ export function AccountPage() {
 
   if (!session?.user) {
     // If not authenticated, redirect to login page preserving current target
-    return (
-      <Navigate to="/idp/login" search={{ redirectUrl: "/idp/account" }} />
-    );
+    return <Navigate to="/login" search={{ redirectUrl: "/account" }} />;
   }
 
   const handleSignOut = async () => {
     await authClient.signOut();
-    window.location.href = "/idp/login";
+    window.location.href = `${config.sitePath}/login`;
   };
 
   const toggleLanguage = () => {
