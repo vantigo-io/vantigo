@@ -31,6 +31,16 @@ We built Vantigo as an **Edge-Native Micro-application Suite**. By combining the
 
 ---
 
+## 📂 Applications
+
+Vantigo is a monorepo consisting of independent micro-applications. Each application manages its own database schema, UI routes, and configuration bindings:
+
+| Application Name | Directory | Description | Documentation |
+| :--- | :--- | :--- | :--- |
+| **Identity Provider (IDP)** | [`apps/idp`](./apps/idp) | The central authentication hub, SSO, and OAuth 2.1 identity provider. | [README.md](./apps/idp/README.md) |
+
+---
+
 ## 🏗️ Architecture for Developers
 
 Vantigo is a modern developer's dream. If you want to contribute or build custom modules, here is our stack:
