@@ -6,6 +6,9 @@
   "jurisdiction": {
     "identifier": "eu"
   },
+  "placement": {
+    "mode": "smart"
+  },
   "vars": {
     "NODE_ENV": "development"
   }
