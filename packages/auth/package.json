@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "better-auth": "catalog:",
+    "@better-auth/i18n": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

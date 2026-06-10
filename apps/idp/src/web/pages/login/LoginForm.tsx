@@ -8,6 +8,7 @@ import {
   Stack,
   TextInput,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import type React from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,15 +34,33 @@ export function LoginForm({ redirectUrl, type }: LoginFormProps) {
     setError("");
 
     if (!email) {
-      setError(t("errorEmailRequired"));
+      const msg = t("errorEmailRequired");
+      setError(msg);
+      notifications.show({
+        title: t("errorTitle"),
+        message: msg,
+        color: "red",
+      });
       return;
     }
     if (!password) {
-      setError(t("errorPasswordRequired"));
+      const msg = t("errorPasswordRequired");
+      setError(msg);
+      notifications.show({
+        title: t("errorTitle"),
+        message: msg,
+        color: "red",
+      });
       return;
     }
     if (type === "register" && !name) {
-      setError(t("errorNameRequired"));
+      const msg = t("errorNameRequired");
+      setError(msg);
+      notifications.show({
+        title: t("errorTitle"),
+        message: msg,
+        color: "red",
+      });
       return;
     }
 
@@ -53,8 +72,19 @@ export function LoginForm({ redirectUrl, type }: LoginFormProps) {
           password,
         });
         if (signInError) {
-          setError(signInError.message || "Invalid credentials");
+          const errMsg = signInError.message || t("errorInvalidCredentials");
+          setError(errMsg);
+          notifications.show({
+            title: t("errorTitle"),
+            message: errMsg,
+            color: "red",
+          });
         } else {
+          notifications.show({
+            title: t("successTitle"),
+            message: t("successSignIn"),
+            color: "green",
+          });
           window.location.href = redirectUrl || `${config.sitePath}/account`;
         }
       } else {
@@ -64,14 +94,31 @@ export function LoginForm({ redirectUrl, type }: LoginFormProps) {
           name,
         });
         if (signUpError) {
-          setError(signUpError.message || "Failed to register account");
+          const errMsg = signUpError.message || t("errorRegisterFailed");
+          setError(errMsg);
+          notifications.show({
+            title: t("errorTitle"),
+            message: errMsg,
+            color: "red",
+          });
         } else {
+          notifications.show({
+            title: t("successTitle"),
+            message: t("successSignUp"),
+            color: "green",
+          });
           window.location.href = `${config.sitePath}/account`;
         }
       }
     } catch (err) {
       const errorObject = err as Error;
-      setError(errorObject.message || "An unexpected error occurred");
+      const errMsg = errorObject.message || t("errorUnexpected");
+      setError(errMsg);
+      notifications.show({
+        title: t("errorTitle"),
+        message: errMsg,
+        color: "red",
+      });
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,6 @@
 import { Container, MantineProvider, Text } from "@mantine/core";
+import { Notifications } from "@mantine/notifications";
+import "@mantine/notifications/styles.css";
 import {
   createRootRoute,
   createRoute,
@@ -18,6 +20,7 @@ const config = getVantigoConfig();
 const rootRoute = createRootRoute({
   component: () => (
     <MantineProvider theme={commonTheme}>
+      <Notifications position="top-right" zIndex={1000} />
       <Outlet />
     </MantineProvider>
   ),

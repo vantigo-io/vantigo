@@ -25,6 +25,7 @@
     "react-dom": "catalog:",
     "@mantine/core": "catalog:",
     "@mantine/hooks": "catalog:",
+    "@mantine/notifications": "catalog:",
     "@tanstack/react-router": "catalog:",
     "better-auth": "catalog:",
     "i18next": "catalog:",
