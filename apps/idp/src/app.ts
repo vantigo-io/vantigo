@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { apiRouter } from "./api/routes";
 import type { AppEnv } from "./types";
 import htmlContent from "./web/index.html" with { type: "text" };
@@ -19,7 +20,34 @@ export function createIdpApp(
     app.use("*", mw);
   }
 
-  // Mount API router (health check & Better-Auth routes)
+  // Dynamic CORS middleware for API endpoints
+  app.use(
+    "/api/*",
+    cors({
+      origin: (origin, c) => {
+        const allowedOriginsEnv =
+          c.env?.CORS_ALLOWED_ORIGINS ||
+          (typeof process !== "undefined"
+            ? process.env.CORS_ALLOWED_ORIGINS
+            : undefined) ||
+          "";
+        const allowedOrigins = allowedOriginsEnv
+          .split(",")
+          .map((o: string) => o.trim());
+        if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+          return origin;
+        }
+        return undefined;
+      },
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      exposeHeaders: ["Content-Length"],
+      maxAge: 600,
+      credentials: true,
+    }),
+  );
+
+  // Mount API router (health check & Vantigo Auth routes)
   app.route("/api", apiRouter);
 
   // Serve dynamic index.html for client-side SPA router

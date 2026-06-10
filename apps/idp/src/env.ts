@@ -17,6 +17,8 @@ export const envSchema = z.object({
     .string()
     .startsWith("/", "SITE_PATH must start with '/'")
     .default("/idp"),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  COOKIE_DOMAIN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -12,5 +12,7 @@ export interface AppEnv {
     SITE_PATH?: string;
     AUTH_URL?: string;
     ASSETS?: { fetch: typeof fetch };
+    CORS_ALLOWED_ORIGINS?: string;
+    COOKIE_DOMAIN?: string;
   };
 }

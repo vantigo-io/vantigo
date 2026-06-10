@@ -90,7 +90,7 @@ describe("Frontend and Authentication Routing", () => {
     expect(await res.text()).toBe("mock_js_content");
   });
 
-  test("routes Better-Auth ok endpoint without crashing", async () => {
+  test("routes Vantigo Auth ok endpoint without crashing", async () => {
     // Inject a dummy db client via middleware
     const dummyDb = {} as unknown as Database;
     const dbMiddleware = async (c: Context<AppEnv>, next: Next) => {
@@ -108,5 +108,36 @@ describe("Frontend and Authentication Routing", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true });
+  });
+
+  test("returns correct CORS headers for allowed origins", async () => {
+    process.env.CORS_ALLOWED_ORIGINS =
+      "https://vantigo.cloud,https://crm.vantigo.cloud";
+    const app = createIdpApp("/idp");
+
+    // Options request (preflight) from an allowed origin
+    const resOptions = await app.request("/idp/api/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://vantigo.cloud",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    expect(resOptions.status).toBe(204);
+    expect(resOptions.headers.get("access-control-allow-origin")).toBe(
+      "https://vantigo.cloud",
+    );
+    expect(resOptions.headers.get("access-control-allow-credentials")).toBe(
+      "true",
+    );
+
+    // GET request from a disallowed origin
+    const resDisallowed = await app.request("/idp/api/health", {
+      headers: {
+        Origin: "https://evil.com",
+      },
+    });
+    expect(resDisallowed.status).toBe(200);
+    expect(resDisallowed.headers.get("access-control-allow-origin")).toBeNull();
   });
 });

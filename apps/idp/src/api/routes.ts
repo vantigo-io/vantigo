@@ -33,10 +33,15 @@ apiRouter.on(["POST", "GET"], "/auth/*", async (c) => {
     return c.text("Configuration error: AUTH_SECRET missing", 500);
   }
 
+  const cookieDomain =
+    c.env?.COOKIE_DOMAIN ||
+    (typeof process !== "undefined" ? process.env.COOKIE_DOMAIN : undefined);
+
   const auth = createVantigoAuth({
     db,
     secret,
     baseURL: authUrl,
+    cookieDomain,
   });
 
   return auth.handler(c.req.raw);

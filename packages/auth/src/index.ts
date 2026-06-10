@@ -6,10 +6,11 @@ export interface AuthOptions {
   db: any;
   secret: string;
   baseURL?: string;
+  cookieDomain?: string;
 }
 
 /**
- * Creates a base Better-Auth instance.
+ * Creates a base Vantigo auth instance.
  * Automatically maps to pluralized table names and uses custom AUTH_SECRET / AUTH_URL env vars.
  */
 export const createVantigoAuth = (options: AuthOptions) => {
@@ -20,6 +21,14 @@ export const createVantigoAuth = (options: AuthOptions) => {
     }),
     secret: options.secret,
     baseURL: options.baseURL,
+    advanced: {
+      cookiePrefix: "vantigo",
+      defaultCookieAttributes: options.cookieDomain
+        ? {
+            domain: options.cookieDomain,
+          }
+        : undefined,
+    },
     plugins: [
       // We will configure the OAuth 2.1 Provider Plugin here
     ],
