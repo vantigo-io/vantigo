@@ -90,6 +90,25 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: 🛡️ Scan production image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd901a18c0c169b1752b0d71191076f7f6a
+        with:
+          image-ref: 'ghcr.io/vantigo-io/vantigo-idp:${{ needs.release-manager.outputs.tag_name }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ⬆️ Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
       - name: 🔐 Cryptographically Sign Production Container Manifest
         run: |
           cosign sign --yes "ghcr.io/vantigo-io/vantigo-idp@${{ steps.push-step.outputs.digest }}"
