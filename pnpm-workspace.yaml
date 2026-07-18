@@ -4,6 +4,8 @@ packages:
 
 allowBuilds:
   lefthook: true
+  sharp: false
+  unrs-resolver: false
 
 catalog:
   '@biomejs/biome': ^2.5.4
