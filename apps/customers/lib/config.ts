@@ -8,6 +8,8 @@ const configSchema = z.object({
   VANTIGO_CUSTOMERS_AUTH_SECRET: z.string(),
 
   VANTIGO_CUSTOMERS_EMAIL_AND_PASSWORD_ENABLED: z.stringbool().default(false),
+
+  VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED: z.stringbool().default(true),
 });
 
 const parsedConfig = configSchema.safeParse(process.env);

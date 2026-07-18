@@ -30,4 +30,8 @@ export const auth = betterAuth({
   telemetry: {
     enabled: false,
   },
+  rateLimit: {
+    // Disabled in e2e tests; enabled everywhere else.
+    enabled: config.VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED,
+  },
 });

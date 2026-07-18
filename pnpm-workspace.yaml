@@ -5,9 +5,12 @@ packages:
 allowBuilds:
   '@parcel/watcher': true
   '@swc/core': true
-  esbuild: set this to true or false
+  cpu-features: false
+  esbuild: true
   lefthook: true
+  protobufjs: false
   sharp: false
+  ssh2: false
   unrs-resolver: false
 
 catalog:
@@ -28,6 +31,13 @@ catalog:
   better-auth: ^1.6.23
   next-intl: ^4.8.3
   '@tabler/icons-react': ^3.36.0
+  vitest: ^4.1.10
+  '@vitejs/plugin-react': ^6.0.3
+  jsdom: ^29.1.1
+  '@testing-library/react': ^16.3.2
+  '@testing-library/jest-dom': ^6.9.1
+  '@playwright/test': ^1.61.1
+  '@testcontainers/postgresql': ^12.0.4
   zod: ^4.4.3
   '@mantine/core': ^9.4.1
   '@mantine/hooks': ^9.4.1

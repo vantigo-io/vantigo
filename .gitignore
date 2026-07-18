@@ -124,3 +124,8 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+
+# Testing
+test-results/
+playwright-report/
+apps/*/e2e/.state.json
