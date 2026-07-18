@@ -1,11 +1,12 @@
 import { Group, Paper, Title } from "@mantine/core";
 import { LanguageToggle } from "@vantigo/customers/lib/i18n/language-toggle";
 import { getTranslations } from "next-intl/server";
-import { SignInForm } from "./sign-in-form";
-import classes from "./sign-in-page.module.css";
+import { Suspense } from "react";
+import classes from "../sign-in/sign-in-page.module.css";
+import { ResetPasswordForm } from "./reset-password-form";
 
-export default async function SignInPage() {
-  const t = await getTranslations("signIn");
+export default async function ResetPasswordPage() {
+  const t = await getTranslations("resetPassword");
 
   return (
     <div className={classes.wrapper}>
@@ -18,7 +19,9 @@ export default async function SignInPage() {
           {t("title")}
         </Title>
 
-        <SignInForm />
+        <Suspense>
+          <ResetPasswordForm />
+        </Suspense>
       </Paper>
     </div>
   );

@@ -1,6 +1,5 @@
-import { config } from "@vantigo/customers/lib/config";
 import { createAuthClient } from "better-auth/react";
 
-export const authClient = createAuthClient({
-  baseURL: config.VANTIGO_CUSTOMERS_BASE_URL,
-});
+// Same-origin: better-auth defaults to the current origin,
+// so no server config is needed (and lib/config must not leak into client bundles).
+export const authClient = createAuthClient();

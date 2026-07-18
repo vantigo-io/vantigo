@@ -1,5 +1,6 @@
 import { ColorSchemeScript, MantineProvider, mantineHtmlProps } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
+import { Notifications } from "@mantine/notifications";
 import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -40,6 +41,7 @@ export default async function RootLayout({
       <body>
         <NextIntlClientProvider>
           <MantineProvider defaultColorScheme="auto">
+            <Notifications />
             <ModalsProvider>{children}</ModalsProvider>
           </MantineProvider>
         </NextIntlClientProvider>

@@ -13,6 +13,10 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: config.VANTIGO_CUSTOMERS_EMAIL_AND_PASSWORD_ENABLED,
+    sendResetPassword: async ({ user, url }) => {
+      // TODO: Send a real email once an email provider is configured.
+      console.log(`[auth] Password reset requested for ${user.email}: ${url}`);
+    },
   },
   user: {
     additionalFields: {
