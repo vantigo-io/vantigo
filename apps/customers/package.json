@@ -1,22 +1,52 @@
 {
   "name": "@vantigo/customers",
-  "version": "0.1.0",
-  "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 10010",
     "build": "next build",
-    "start": "next start"
+    "start": "next start -p 10010",
+    "db": "drizzle-kit"
   },
   "dependencies": {
-    "next": "16.2.10",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "@mantine/charts": "catalog:",
+    "@mantine/code-highlight": "catalog:",
+    "@mantine/core": "catalog:",
+    "@mantine/dates": "catalog:",
+    "@mantine/dropzone": "catalog:",
+    "@mantine/form": "catalog:",
+    "@mantine/hooks": "catalog:",
+    "@mantine/modals": "catalog:",
+    "@mantine/notifications": "catalog:",
+    "@mantine/nprogress": "catalog:",
+    "@mantine/schedule": "catalog:",
+    "@mantine/spotlight": "catalog:",
+    "@mantine/tiptap": "catalog:",
+    "@tiptap/extension-link": "catalog:",
+    "@tiptap/pm": "catalog:",
+    "@tiptap/react": "catalog:",
+    "@tiptap/starter-kit": "catalog:",
+    "better-auth": "catalog:",
+    "dayjs": "catalog:",
+    "dotenv": "catalog:",
+    "drizzle-orm": "catalog:",
+    "next": "catalog:",
+    "next-intl": "catalog:",
+    "pg": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "recharts": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pg": "catalog:",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "drizzle-kit": "catalog:",
+    "postcss": "catalog:",
+    "postcss-preset-mantine": "catalog:",
+    "postcss-simple-vars": "catalog:",
+    "tsx": "catalog:",
     "typescript": "^5"
   }
 }

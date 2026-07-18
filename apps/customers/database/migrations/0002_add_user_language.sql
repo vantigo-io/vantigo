@@ -1,0 +1,1 @@
+ALTER TABLE "customers"."users" ADD COLUMN "language" text;

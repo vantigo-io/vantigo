@@ -1,0 +1,15 @@
+services:
+  postgresql:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vantigo
+      POSTGRES_PASSWORD: V4n71g05up3r54f3P455w0rd!
+      POSTGRES_DB: vantigo
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgresql:/var/lib/postgresql
+
+volumes:
+  postgresql:

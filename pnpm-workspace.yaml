@@ -3,6 +3,9 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
+  esbuild: set this to true or false
   lefthook: true
   sharp: false
   unrs-resolver: false
@@ -11,7 +14,41 @@ catalog:
   '@biomejs/biome': ^2.5.4
   '@commitlint/cli': ^21.2.1
   '@commitlint/config-conventional': ^21.2.0
+  '@types/pg': ^8.20.0
+  dotenv: ^17.4.2
+  drizzle-kit: ^0.31.10
+  drizzle-orm: ^0.45.2
   lefthook: ^2.1.10
+  next: 16.2.10
+  react: 19.2.4
+  react-dom: 19.2.4
+  pg: ^8.22.0
+  tsx: ^4.23.1
   turbo: ^2.10.5
+  better-auth: ^1.6.23
+  next-intl: ^4.8.3
+  zod: ^4.4.3
+  '@mantine/core': ^9.4.1
+  '@mantine/hooks': ^9.4.1
+  '@mantine/form': ^9.4.1
+  '@mantine/dates': ^9.4.1
+  dayjs: ^1.11.21
+  '@mantine/charts': ^9.4.1
+  recharts: ^3.9.2
+  '@mantine/notifications': ^9.4.1
+  '@mantine/code-highlight': ^9.4.1
+  '@mantine/tiptap': ^9.4.1
+  '@tiptap/pm': ^3.28.0
+  '@tiptap/react': ^3.28.0
+  '@tiptap/extension-link': ^3.28.0
+  '@tiptap/starter-kit': ^3.28.0
+  '@mantine/dropzone': ^9.4.1
+  '@mantine/spotlight': ^9.4.1
+  '@mantine/modals': ^9.4.1
+  '@mantine/nprogress': ^9.4.1
+  postcss: ^8.5.19
+  postcss-preset-mantine: ^1.18.0
+  postcss-simple-vars: ^7.0.1
+  '@mantine/schedule': ^9.4.1
 
 catalogMode: strict

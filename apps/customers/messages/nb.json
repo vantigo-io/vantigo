@@ -1,0 +1,25 @@
+{
+  "common": {
+    "appName": "Vantigo Customers",
+    "appDescription": "Din forbindelse med kundene dine"
+  },
+  "language": {
+    "label": "Språk",
+    "en": "Engelsk",
+    "nb": "Norsk"
+  },
+  "home": {
+    "greeting": "Hei mamma!"
+  },
+  "signIn": {
+    "title": "Velkommen tilbake!",
+    "emailLabel": "E-postadresse",
+    "emailPlaceholder": "hei@example.com",
+    "passwordLabel": "Passord",
+    "passwordPlaceholder": "Ditt passord",
+    "keepLoggedIn": "Hold meg innlogget",
+    "loginButton": "Logg inn",
+    "noAccount": "Har du ikke en konto?",
+    "register": "Registrer deg"
+  }
+}
