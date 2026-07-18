@@ -27,6 +27,7 @@ catalog:
   turbo: ^2.10.5
   better-auth: ^1.6.23
   next-intl: ^4.8.3
+  '@tabler/icons-react': ^3.36.0
   zod: ^4.4.3
   '@mantine/core': ^9.4.1
   '@mantine/hooks': ^9.4.1

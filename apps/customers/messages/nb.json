@@ -11,6 +11,26 @@
   "home": {
     "greeting": "Hei mamma!"
   },
+  "nav": {
+    "dashboard": "Dashbord",
+    "customers": "Kunder"
+  },
+  "userMenu": {
+    "language": "Språk",
+    "signOut": "Logg ut",
+    "signOutError": "Kunne ikke logge deg ut"
+  },
+  "dashboard": {
+    "title": "Dashbord",
+    "totalCustomers": "Totalt antall kunder",
+    "revenue": "Omsetning",
+    "openInvoices": "Åpne fakturaer",
+    "activeProjects": "Aktive prosjekter",
+    "diffDescription": "Sammenlignet med forrige måned"
+  },
+  "customers": {
+    "title": "Kunder"
+  },
   "signIn": {
     "title": "Velkommen tilbake!",
     "emailLabel": "E-postadresse",

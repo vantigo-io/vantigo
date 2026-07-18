@@ -6,7 +6,7 @@ const withNextIntl = createNextIntlPlugin("./lib/i18n/request.ts");
 const nextConfig: NextConfig = {
   reactCompiler: true,
   experimental: {
-    optimizePackageImports: ["@mantine/core", "@mantine/hooks"],
+    optimizePackageImports: ["@mantine/core", "@mantine/hooks", "@tabler/icons-react"],
   },
 };
 

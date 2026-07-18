@@ -11,6 +11,26 @@
   "home": {
     "greeting": "Hi mom!"
   },
+  "nav": {
+    "dashboard": "Dashboard",
+    "customers": "Customers"
+  },
+  "userMenu": {
+    "language": "Language",
+    "signOut": "Sign out",
+    "signOutError": "Could not sign you out"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalCustomers": "Total customers",
+    "revenue": "Revenue",
+    "openInvoices": "Open invoices",
+    "activeProjects": "Active projects",
+    "diffDescription": "Compared to previous month"
+  },
+  "customers": {
+    "title": "Customers"
+  },
   "signIn": {
     "title": "Welcome back!",
     "emailLabel": "Email address",

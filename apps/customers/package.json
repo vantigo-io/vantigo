@@ -7,6 +7,7 @@
     "db": "drizzle-kit"
   },
   "dependencies": {
+    "@tabler/icons-react": "catalog:",
     "@mantine/charts": "catalog:",
     "@mantine/code-highlight": "catalog:",
     "@mantine/core": "catalog:",
