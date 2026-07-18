@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+      timezone: "Europe/Oslo"
+
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      framework:
+        patterns:
+          - "next"
+          - "react*"
+      backend-core:
+        patterns:
+          - "drizzle-orm"
+          - "better-auth"
+          - "zod"
+      mantine-ui:
+        patterns:
+          - "@mantine/*"
+          - "mantine"
+      development-tooling:
+        dependency-type: "development"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker-dependencies:
+        patterns:
+          - "*"

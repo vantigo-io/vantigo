@@ -1,0 +1,33 @@
+{
+  "name": "vantigo",
+  "version": "1.0.0",
+  "description": "A collection of essential applications that helps you run your business",
+  "private": true,
+  "type": "module",
+  "homepage": "https://github.com/vantigo-io/vantigo#readme",
+  "bugs": {
+    "url": "https://github.com/vantigo-io/vantigo/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vantigo-io/vantigo.git"
+  },
+  "license": "agpl-3.0",
+  "author": "Anders Refsdal Olsen",
+  "scripts": {
+    "prepare": "lefthook install",
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo run //#lint",
+    "format": "turbo run //#format",
+    "test": "turbo test"
+  },
+  "packageManager": "pnpm@11.14.0+sha512.66c1ac4c7d4762d6d7dde44c7f3e5a73591ed0a0806e751d4ed32d4f004f25b2285a906b1fd8a9e3e621df3b4e2858bf88e50e0cf626bedbe977fe434a5caf85",
+  "devDependencies": {
+    "@biomejs/biome": "catalog:",
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
+    "lefthook": "catalog:",
+    "turbo": "catalog:"
+  }
+}
