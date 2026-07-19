@@ -61,6 +61,6 @@
     "postcss-preset-mantine": "catalog:",
     "postcss-simple-vars": "catalog:",
     "tsx": "catalog:",
-    "typescript": "^7"
+    "typescript": "^6"
   }
 }
