@@ -69,7 +69,7 @@ catalog:
   '@mantine/spotlight': ^9.4.1
   '@mantine/modals': ^9.4.1
   '@mantine/nprogress': ^9.4.1
-  postcss: ^8.5.19
+  postcss: ^8.5.20
   postcss-preset-mantine: ^1.18.0
   postcss-simple-vars: ^7.0.1
   '@mantine/schedule': ^9.4.1
