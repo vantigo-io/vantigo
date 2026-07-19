@@ -37,7 +37,12 @@ export function LegalTypeBadge({ legalType }: Readonly<{ legalType: Customer["le
 export function CreateCustomerModal({
   opened,
   onClose,
-}: Readonly<{ opened: boolean; onClose: () => void }>) {
+  defaultLegalType,
+}: Readonly<{
+  opened: boolean;
+  onClose: () => void;
+  defaultLegalType?: Customer["legalType"];
+}>) {
   const t = useTranslations("customers");
   const createCustomer = useCreateCustomer();
   const [warnings, setWarnings] = useState<DuplicateWarning[]>([]);
@@ -74,6 +79,7 @@ export function CreateCustomerModal({
       size="lg"
     >
       <CustomerForm
+        defaultLegalType={defaultLegalType}
         isSubmitting={createCustomer.isPending}
         warnings={warnings}
         submitLabel={t("form.create")}

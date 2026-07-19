@@ -32,6 +32,8 @@ import { BrregSearch } from "./brreg-search";
 
 export interface CustomerFormProps {
   initialValues?: Customer;
+  /** Default legal type for new customers (from user preference). */
+  defaultLegalType?: Customer["legalType"];
   isSubmitting: boolean;
   /** Duplicate warnings returned by the API after a save. */
   warnings?: DuplicateWarning[];
@@ -43,6 +45,7 @@ const COUNTRY_OPTIONS = ["NO", "SE", "DK", "FI", "DE", "GB", "US"];
 
 export function CustomerForm({
   initialValues,
+  defaultLegalType = "business",
   isSubmitting,
   warnings,
   submitLabel,
@@ -55,7 +58,7 @@ export function CustomerForm({
     mode: "uncontrolled",
     initialValues: {
       legalName: initialValues?.legalName ?? "",
-      legalType: initialValues?.legalType ?? "business",
+      legalType: initialValues?.legalType ?? defaultLegalType,
       legalCountry: initialValues?.legalCountry ?? "NO",
       legalId: initialValues?.legalId ?? "",
       email: initialValues?.email ?? "",

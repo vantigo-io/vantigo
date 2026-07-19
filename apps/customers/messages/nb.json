@@ -17,8 +17,67 @@
   },
   "userMenu": {
     "language": "Språk",
+    "settings": "Innstillinger",
     "signOut": "Logg ut",
     "signOutError": "Kunne ikke logge deg ut"
+  },
+  "settings": {
+    "title": "Innstillinger",
+    "tabs": {
+      "general": "Generelt",
+      "security": "Sikkerhet"
+    },
+    "profile": {
+      "avatarTitle": "Bilde",
+      "avatarUpload": "Last opp bilde",
+      "avatarRemove": "Fjern",
+      "avatarSaved": "Bildet er oppdatert",
+      "avatarTooLarge": "Bildet er for stort (maks 8 MB)",
+      "avatarError": "Kunne ikke behandle bildet",
+      "profileTitle": "Profil",
+      "nameLabel": "Navn",
+      "nameRequired": "Skriv inn navnet ditt",
+      "nameSaved": "Navnet er oppdatert",
+      "emailLabel": "E-postadresse",
+      "save": "Lagre endringer",
+      "saveError": "Kunne ikke lagre endringene",
+      "preferencesTitle": "Preferanser",
+      "languageLabel": "Språk",
+      "preferredCustomerTypeLabel": "Standard kundetype",
+      "preferredCustomerTypeDescription": "Forhåndsvalgt type når du oppretter en ny kunde",
+      "preferredCustomerType": {
+        "business": "Bedrift",
+        "private": "Privat",
+        "last": "Sist brukt"
+      },
+      "preferencesHint": "Preferanser lagres automatisk."
+    },
+    "password": {
+      "title": "Bytt passord",
+      "currentLabel": "Nåværende passord",
+      "currentRequired": "Skriv inn nåværende passord",
+      "newLabel": "Nytt passord",
+      "newPlaceholder": "Minst 8 tegn",
+      "confirmLabel": "Bekreft nytt passord",
+      "tooShort": "Passordet må være minst 8 tegn",
+      "mismatch": "Passordene er ikke like",
+      "submit": "Oppdater passord",
+      "errorTitle": "Kunne ikke bytte passord",
+      "errorMessage": "Passordet ble ikke endret",
+      "successTitle": "Passordet er oppdatert",
+      "successMessage": "Andre enheter er logget ut"
+    },
+    "sessions": {
+      "title": "Økter",
+      "current": "Denne enheten",
+      "unknownDevice": "Ukjent enhet",
+      "signedInAt": "Logget inn {date}",
+      "revoke": "Logg ut denne økten",
+      "revokeOthers": "Logg ut andre enheter",
+      "revoked": "Økten er logget ut",
+      "revokedOthers": "Andre enheter er logget ut",
+      "revokeError": "Kunne ikke logge ut økten"
+    }
   },
   "dashboard": {
     "title": "Dashbord",

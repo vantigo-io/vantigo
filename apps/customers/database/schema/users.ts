@@ -11,6 +11,10 @@ export const users = schema.table("users", {
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
   language: text("language"),
+  // "business" | "private" | "last" — default legal type when creating customers.
+  preferredCustomerType: text("preferred_customer_type"),
+  // Most recently used legal type; backs the "last" preference.
+  lastCustomerType: text("last_customer_type"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

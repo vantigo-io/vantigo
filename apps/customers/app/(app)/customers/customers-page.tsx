@@ -38,7 +38,9 @@ import {
 
 type SortField = (typeof customerSortFields)[number];
 
-export function CustomersPage() {
+export function CustomersPage({
+  defaultLegalType,
+}: Readonly<{ defaultLegalType?: Customer["legalType"] }>) {
   const t = useTranslations("customers");
   const locale = useLocale();
   const router = useRouter();
@@ -245,7 +247,11 @@ export function CustomersPage() {
         onRowClick={(customer) => router.push(`/customers/${customer.id}`)}
       />
 
-      <CreateCustomerModal opened={createOpened} onClose={() => setCreateOpened(false)} />
+      <CreateCustomerModal
+        opened={createOpened}
+        onClose={() => setCreateOpened(false)}
+        defaultLegalType={defaultLegalType}
+      />
       <EditCustomerModal customer={editing} onClose={() => setEditing(null)} />
     </>
   );

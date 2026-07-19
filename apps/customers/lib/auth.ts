@@ -25,6 +25,16 @@ export const auth = betterAuth({
         required: false,
         input: false,
       },
+      preferredCustomerType: {
+        type: "string",
+        required: false,
+        input: false,
+      },
+      lastCustomerType: {
+        type: "string",
+        required: false,
+        input: false,
+      },
     },
   },
   telemetry: {

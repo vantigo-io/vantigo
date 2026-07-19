@@ -2,9 +2,10 @@
 
 import { Avatar, Box, Group, Menu, Text, UnstyledButton } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconChevronRight, IconLogout } from "@tabler/icons-react";
+import { IconChevronRight, IconLogout, IconSettings } from "@tabler/icons-react";
 import { authClient } from "@vantigo/customers/lib/auth-client";
 import { LanguageToggle } from "@vantigo/customers/lib/i18n/language-toggle";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -65,6 +66,14 @@ export function UserButton({ user }: Readonly<{ user: ShellUser }>) {
         </Box>
 
         <Menu.Divider />
+
+        <Menu.Item
+          component={Link}
+          href="/settings"
+          leftSection={<IconSettings size={16} stroke={1.5} />}
+        >
+          {t("settings")}
+        </Menu.Item>
 
         <Menu.Item
           color="red"

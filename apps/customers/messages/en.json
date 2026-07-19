@@ -17,8 +17,67 @@
   },
   "userMenu": {
     "language": "Language",
+    "settings": "Settings",
     "signOut": "Sign out",
     "signOutError": "Could not sign you out"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "general": "General",
+      "security": "Security"
+    },
+    "profile": {
+      "avatarTitle": "Photo",
+      "avatarUpload": "Upload photo",
+      "avatarRemove": "Remove",
+      "avatarSaved": "Photo updated",
+      "avatarTooLarge": "Image is too large (max 8 MB)",
+      "avatarError": "Could not process the image",
+      "profileTitle": "Profile",
+      "nameLabel": "Name",
+      "nameRequired": "Enter your name",
+      "nameSaved": "Name updated",
+      "emailLabel": "Email address",
+      "save": "Save changes",
+      "saveError": "Could not save your changes",
+      "preferencesTitle": "Preferences",
+      "languageLabel": "Language",
+      "preferredCustomerTypeLabel": "Default customer type",
+      "preferredCustomerTypeDescription": "Pre-selected type when creating a new customer",
+      "preferredCustomerType": {
+        "business": "Business",
+        "private": "Private",
+        "last": "Last used"
+      },
+      "preferencesHint": "Preferences are saved automatically."
+    },
+    "password": {
+      "title": "Change password",
+      "currentLabel": "Current password",
+      "currentRequired": "Enter your current password",
+      "newLabel": "New password",
+      "newPlaceholder": "At least 8 characters",
+      "confirmLabel": "Confirm new password",
+      "tooShort": "Password must be at least 8 characters",
+      "mismatch": "Passwords do not match",
+      "submit": "Update password",
+      "errorTitle": "Password change failed",
+      "errorMessage": "Could not change your password",
+      "successTitle": "Password updated",
+      "successMessage": "Other devices have been signed out"
+    },
+    "sessions": {
+      "title": "Sessions",
+      "current": "This device",
+      "unknownDevice": "Unknown device",
+      "signedInAt": "Signed in {date}",
+      "revoke": "Sign out this session",
+      "revokeOthers": "Sign out other devices",
+      "revoked": "Session signed out",
+      "revokedOthers": "Other devices signed out",
+      "revokeError": "Could not sign out the session"
+    }
   },
   "dashboard": {
     "title": "Dashboard",
