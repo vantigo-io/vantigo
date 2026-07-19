@@ -1,6 +1,17 @@
 "use client";
 
-import { Alert, Anchor, Button, Group, Select, Stack, Textarea, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Button,
+  Group,
+  Input,
+  SegmentedControl,
+  Select,
+  Stack,
+  Textarea,
+  TextInput,
+} from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import type { Customer } from "@vantigo/customers/database/schema/customers";
@@ -12,6 +23,8 @@ import {
 import { zod4Resolver } from "mantine-form-zod-resolver";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
+import { BrregSearch } from "./brreg-search";
 
 export interface CustomerFormProps {
   initialValues?: Customer;
@@ -57,6 +70,21 @@ export function CustomerForm({
     },
   });
 
+  // The country/type pair decides validation rules, the legal-id label and
+  // whether the brreg search is available — track them reactively.
+  const [legalCountry, setLegalCountry] = useState(form.getValues().legalCountry);
+  const [legalType, setLegalType] = useState(form.getValues().legalType);
+  form.watch("legalCountry", ({ value }) => setLegalCountry(value));
+  form.watch("legalType", ({ value }) => setLegalType(value));
+
+  const isNorwegian = legalCountry === "NO";
+  const showBrregSearch = isNorwegian && legalType === "business";
+  const legalIdLabel = isNorwegian
+    ? legalType === "business"
+      ? t("legalIdOrgnr")
+      : t("legalIdFodselsnummer")
+    : t("legalId");
+
   return (
     <form
       onSubmit={form.onSubmit((values) =>
@@ -77,44 +105,59 @@ export function CustomerForm({
           </Alert>
         )}
 
-        <TextInput
-          label={t("legalName")}
-          placeholder={t("legalNamePlaceholder")}
-          withAsterisk
-          data-autofocus
-          key={form.key("legalName")}
-          {...form.getInputProps("legalName")}
-        />
-
-        <Group grow>
-          <Select
-            label={t("legalType")}
-            data={[
-              { value: "business", label: t("legalTypeBusiness") },
-              { value: "private", label: t("legalTypePrivate") },
-            ]}
-            allowDeselect={false}
-            withAsterisk
-            key={form.key("legalType")}
-            {...form.getInputProps("legalType")}
-          />
+        <Group grow align="flex-end">
           <Select
             label={t("legalCountry")}
             data={COUNTRY_OPTIONS}
             searchable
             allowDeselect={false}
             withAsterisk
+            data-autofocus
             key={form.key("legalCountry")}
             {...form.getInputProps("legalCountry")}
           />
+          <Input.Wrapper label={t("legalType")} withAsterisk>
+            <SegmentedControl
+              fullWidth
+              data={[
+                { value: "business", label: t("legalTypeBusiness") },
+                { value: "private", label: t("legalTypePrivate") },
+              ]}
+              key={form.key("legalType")}
+              {...form.getInputProps("legalType")}
+            />
+          </Input.Wrapper>
         </Group>
 
+        {showBrregSearch && (
+          <BrregSearch
+            onSelect={(company) => {
+              // An explicit selection overwrites; manual edits afterwards
+              // are never touched (fills only happen right here). Contact
+              // fields are voluntarily registered at brreg and only
+              // overwrite when actually present.
+              form.setFieldValue("legalId", company.orgnr);
+              form.setFieldValue("legalName", company.name);
+              if (company.email) form.setFieldValue("email", company.email);
+              if (company.phone) form.setFieldValue("phone", company.phone);
+            }}
+          />
+        )}
+
         <TextInput
-          label={t("legalId")}
-          placeholder={t("legalIdPlaceholder")}
+          label={legalIdLabel}
+          placeholder={isNorwegian ? legalIdLabel : t("legalIdPlaceholder")}
           withAsterisk
           key={form.key("legalId")}
           {...form.getInputProps("legalId")}
+        />
+
+        <TextInput
+          label={t("legalName")}
+          placeholder={t("legalNamePlaceholder")}
+          withAsterisk
+          key={form.key("legalName")}
+          {...form.getInputProps("legalName")}
         />
 
         <Group grow>

@@ -28,14 +28,14 @@ test.describe("customer management", () => {
 
     // Validation: invalid orgnr rejected client-side
     await modal.getByLabel("Name").fill(name);
-    await modal.getByLabel("Legal id").fill("123456789");
+    await modal.getByLabel("Organisation number").fill("123456789");
     await modal.getByLabel("Email").fill("kontakt@acme.no");
     await modal.getByLabel("Phone").fill("+4722334455");
     await modal.getByRole("button", { name: "Create customer" }).click();
     await expect(modal.getByText(/Invalid legal id/)).toBeVisible();
 
     // Fix legal id and submit
-    await modal.getByLabel("Legal id").fill(VALID_ORGNR);
+    await modal.getByLabel("Organisation number").fill(VALID_ORGNR);
     await modal.getByRole("button", { name: "Create customer" }).click();
     await expect(page.getByText("Customer created")).toBeVisible();
 
@@ -82,7 +82,7 @@ test.describe("customer management", () => {
       await page.getByRole("button", { name: "New customer" }).click();
       const modal = page.getByRole("dialog");
       await modal.getByLabel("Name").fill(customerName);
-      await modal.getByLabel("Legal id").fill(VALID_ORGNR_2);
+      await modal.getByLabel("Organisation number").fill(VALID_ORGNR_2);
       await modal.getByLabel("Email").fill("dup@duplo.no");
       await modal.getByLabel("Phone").fill("+4722334455");
       await modal.getByRole("button", { name: "Create customer" }).click();
@@ -113,5 +113,64 @@ test.describe("customer management", () => {
     await expect(
       page.getByText("No customers found").or(page.getByRole("table")).first(),
     ).toBeVisible();
+  });
+
+  test("brreg company search fills fields on selection but respects manual edits", async ({
+    page,
+  }) => {
+    // Mock the proxy route so the test never depends on brreg availability.
+    await page.route("**/api/brreg/search**", async (route) => {
+      const url = new URL(route.request().url());
+      const query = (url.searchParams.get("q") ?? "").toLowerCase();
+      const results = query.includes("equi")
+        ? [
+            {
+              orgnr: "923609016",
+              name: "EQUINOR ASA",
+              orgForm: "ASA",
+              city: "STAVANGER",
+              email: "post@equinor.com",
+              phone: "+4751990000",
+            },
+          ]
+        : query.includes("nocontact")
+          ? [{ orgnr: "974760673", name: "NOCONTACT AS" }]
+          : [];
+      await route.fulfill({ json: { results } });
+    });
+
+    await page.getByRole("button", { name: "New customer" }).click();
+    const modal = page.getByRole("dialog");
+
+    // Search box only visible for NO + business
+    await expect(modal.getByLabel("Company search")).toBeVisible();
+    await modal.getByText("Private", { exact: true }).click();
+    await expect(modal.getByLabel("Company search")).toBeHidden();
+    await modal.getByText("Business", { exact: true }).click();
+
+    // Search and select → fills orgnr + name + contact details
+    await modal.getByLabel("Company search").fill("equinor");
+    await page.getByRole("option", { name: /EQUINOR ASA/ }).click();
+    await expect(modal.getByLabel("Organisation number")).toHaveValue("923609016");
+    await expect(modal.getByLabel("Name")).toHaveValue("EQUINOR ASA");
+    await expect(modal.getByLabel("Email")).toHaveValue("post@equinor.com");
+    await expect(modal.getByLabel("Phone")).toHaveValue("+4751990000");
+
+    // Selecting a company WITHOUT contact info must not blank existing values
+    await modal.getByLabel("Company search").fill("nocontact");
+    await page.getByRole("option", { name: /NOCONTACT AS/ }).click();
+    await expect(modal.getByLabel("Organisation number")).toHaveValue("974760673");
+    await expect(modal.getByLabel("Name")).toHaveValue("NOCONTACT AS");
+    await expect(modal.getByLabel("Email")).toHaveValue("post@equinor.com");
+    await expect(modal.getByLabel("Phone")).toHaveValue("+4751990000");
+
+    // Manual rename afterwards must survive submission untouched
+    const manualName = `Nocontact Norge ${Date.now()}`;
+    await modal.getByLabel("Name").fill(manualName);
+    await modal.getByRole("button", { name: "Create customer" }).click();
+    await expect(page.getByText("Customer created")).toBeVisible();
+
+    await page.getByPlaceholder(/Search name/).fill(manualName);
+    await expect(page.getByRole("row", { name: new RegExp(manualName) })).toBeVisible();
   });
 });
