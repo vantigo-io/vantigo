@@ -1,18 +1,11 @@
 /**
- * Runs once when the server starts (never during `next build`).
- * Eagerly validates the runtime configuration so a misconfigured container
- * fails fast at boot with a readable error instead of on the first request.
+ * Runs once per runtime when the server starts (never during `next build`).
+ * The actual validation lives in instrumentation.node.ts and is only loaded
+ * in the Node.js runtime — the Edge bundle must stay free of Node APIs.
  */
 export async function register() {
-  try {
-    const { config } = await import("@vantigo/customers/lib/config");
-    // Any property access triggers full schema validation.
-    config.VANTIGO_CUSTOMERS_BASE_URL;
-    console.log("[startup] Environment configuration is valid.");
-  } catch (error) {
-    // Next would log the error but keep serving; a misconfigured container
-    // must terminate instead.
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { validateConfigOrExit } = await import("./instrumentation.node");
+    await validateConfigOrExit();
   }
 }
