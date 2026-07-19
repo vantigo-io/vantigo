@@ -1,4 +1,6 @@
 import { auth } from "@vantigo/customers/lib/auth";
+import { config } from "@vantigo/customers/lib/config";
+import { requiresTwoFactorSetup } from "@vantigo/customers/lib/settings/two-factor";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Providers } from "./providers";
@@ -13,6 +15,18 @@ export default async function AppLayout({
 
   if (!session?.user) {
     redirect("/sign-in");
+  }
+
+  if (
+    requiresTwoFactorSetup(
+      {
+        enabled: config.VANTIGO_CUSTOMERS_2FA_ENABLED,
+        enforced: config.VANTIGO_CUSTOMERS_2FA_ENFORCED,
+      },
+      session.user.twoFactorEnabled,
+    )
+  ) {
+    redirect("/two-factor/setup");
   }
 
   return (

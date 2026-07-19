@@ -57,7 +57,13 @@ readable error when something is missing.
 | `VANTIGO_CUSTOMERS_AUTH_SECRET` | ✅ | — | Secret used to sign sessions (long & random) |
 | `VANTIGO_CUSTOMERS_BASE_URL` | | `http://localhost:10010` | Public base URL of the app |
 | `VANTIGO_CUSTOMERS_EMAIL_AND_PASSWORD_ENABLED` | | `false` | Enable email + password authentication |
+| `VANTIGO_CUSTOMERS_2FA_ENABLED` | | `false` | Let users enable TOTP two-factor authentication in settings |
+| `VANTIGO_CUSTOMERS_2FA_ENFORCED` | | `false` | Require all users to set up 2FA (implies enabled) |
+| `VANTIGO_CUSTOMERS_2FA_ISSUER_NAME` | | `Vantigo.Customers` | Issuer label shown in authenticator apps |
 | `VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED` | | `true` | better-auth rate limiting |
+
+> **2FA recovery:** until the admin panel exists, resetting 2FA for a locked-out user is a manual
+> operation: `DELETE FROM customers.two_factors WHERE user_id = '<id>'; UPDATE customers.users SET two_factor_enabled = false WHERE id = '<id>';`
 
 ### 🗄️ Database
 

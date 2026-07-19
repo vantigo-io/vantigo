@@ -15,6 +15,7 @@ export const users = schema.table("users", {
   preferredCustomerType: text("preferred_customer_type"),
   // Most recently used legal type; backs the "last" preference.
   lastCustomerType: text("last_customer_type"),
+  twoFactorEnabled: boolean("two_factor_enabled").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

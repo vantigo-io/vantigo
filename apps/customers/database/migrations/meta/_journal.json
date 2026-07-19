@@ -43,6 +43,13 @@
       "when": 1784493259669,
       "tag": "0005_add_user_customer_type_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784494829173,
+      "tag": "0006_add_two_factor",
+      "breakpoints": true
     }
   ]
 }

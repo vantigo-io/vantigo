@@ -48,6 +48,7 @@ async function main() {
       VANTIGO_CUSTOMERS_AUTH_SECRET: "e2e-test-secret-at-least-32-chars!!",
       VANTIGO_CUSTOMERS_BASE_URL: "http://localhost:10012",
       VANTIGO_CUSTOMERS_EMAIL_AND_PASSWORD_ENABLED: "true",
+      VANTIGO_CUSTOMERS_2FA_ENABLED: "true",
       VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED: "false",
     },
     stdio: "inherit",

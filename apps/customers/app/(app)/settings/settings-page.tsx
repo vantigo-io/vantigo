@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { PasswordSection } from "./password-section";
 import { ProfileSection } from "./profile-section";
 import { SessionsSection } from "./sessions-section";
+import { TwoFactorSection } from "./two-factor-section";
 
 export interface SettingsUser {
   name: string;
@@ -26,10 +27,21 @@ export interface SettingsSession {
   current: boolean;
 }
 
+export interface SettingsTwoFactor {
+  available: boolean;
+  enforced: boolean;
+  enabled: boolean;
+}
+
 export function SettingsPage({
   user,
   sessions,
-}: Readonly<{ user: SettingsUser; sessions: SettingsSession[] }>) {
+  twoFactor,
+}: Readonly<{
+  user: SettingsUser;
+  sessions: SettingsSession[];
+  twoFactor: SettingsTwoFactor;
+}>) {
   const t = useTranslations("settings");
   const router = useRouter();
   const pathname = usePathname();
@@ -65,6 +77,9 @@ export function SettingsPage({
         <Tabs.Panel value="security" pt="lg">
           <Stack gap="lg">
             <PasswordSection />
+            {twoFactor.available && (
+              <TwoFactorSection enabled={twoFactor.enabled} enforced={twoFactor.enforced} />
+            )}
             <SessionsSection sessions={sessions} />
           </Stack>
         </Tabs.Panel>

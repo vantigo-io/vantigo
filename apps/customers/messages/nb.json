@@ -67,6 +67,28 @@
       "successTitle": "Passordet er oppdatert",
       "successMessage": "Andre enheter er logget ut"
     },
+    "twoFactor": {
+      "title": "Tofaktorautentisering",
+      "statusEnabled": "Aktivert",
+      "statusDisabled": "Deaktivert",
+      "description": "Beskytt kontoen din med en engangskode fra en autentiseringsapp i tillegg til passordet ditt.",
+      "enable": "Aktiver 2FA",
+      "enrollTitle": "Aktiver tofaktorautentisering",
+      "disable": "Deaktiver 2FA",
+      "disableTitle": "Deaktiver tofaktorautentisering",
+      "disableDescription": "Skriv inn passordet ditt for å skru av tofaktorautentisering. Reservekodene dine vil slutte å virke.",
+      "disableError": "Kunne ikke deaktivere tofaktorautentisering",
+      "disabled": "Tofaktorautentisering er deaktivert",
+      "enforcedHint": "Tofaktorautentisering er påkrevd av organisasjonen din.",
+      "regenerate": "Nye reservekoder",
+      "regenerateTitle": "Generer nye reservekoder",
+      "regenerateDescription": "Skriv inn passordet ditt for å generere et nytt sett med reservekoder. De gamle kodene slutter å virke.",
+      "regenerateDone": "Lagre disse nye reservekodene på et trygt sted. De gamle kodene virker ikke lenger.",
+      "regenerateError": "Kunne ikke generere reservekoder",
+      "passwordLabel": "Passord",
+      "cancel": "Avbryt",
+      "close": "Lukk"
+    },
     "sessions": {
       "title": "Økter",
       "current": "Denne enheten",
@@ -224,6 +246,48 @@
     "errorMessage": "Kunne ikke be om tilbakestilling av passord",
     "successTitle": "Sjekk innboksen din",
     "successMessage": "Hvis det finnes en konto for denne e-posten, er en tilbakestillingslenke sendt"
+  },
+  "twoFactor": {
+    "enroll": {
+      "passwordDescription": "Bekreft passordet ditt for å starte oppsett av tofaktorautentisering.",
+      "passwordLabel": "Passord",
+      "passwordRequired": "Skriv inn passordet ditt",
+      "continue": "Fortsett",
+      "enableError": "Kunne ikke starte tofaktoroppsett",
+      "scanDescription": "Skann QR-koden med autentiseringsappen din (f.eks. Google Authenticator, 1Password eller Authy).",
+      "qrAlt": "TOTP QR-kode",
+      "manualEntry": "Eller skriv inn denne koden manuelt:",
+      "backupTitle": "Reservekoder",
+      "backupDescription": "Lagre disse engangs-reservekodene på et trygt sted. Hver kode kan brukes én gang hvis du mister tilgang til autentiseringsappen.",
+      "copy": "Kopier",
+      "copied": "Kopiert",
+      "download": "Last ned",
+      "savedConfirm": "Jeg har lagret reservekodene mine",
+      "verifyDescription": "Skriv inn den 6-sifrede koden fra autentiseringsappen for å aktivere tofaktorautentisering.",
+      "verifyError": "Ugyldig kode, prøv igjen",
+      "back": "Tilbake",
+      "activate": "Aktiver",
+      "enabled": "Tofaktorautentisering er aktivert"
+    },
+    "verify": {
+      "title": "Tofaktorautentisering",
+      "description": "Skriv inn den 6-sifrede koden fra autentiseringsappen din.",
+      "backupDescription": "Skriv inn en av reservekodene dine. Hver kode kan bare brukes én gang.",
+      "backupCodeLabel": "Reservekode",
+      "trustDevice": "Stol på denne enheten i 30 dager",
+      "submit": "Bekreft",
+      "invalidCode": "Ugyldig kode, prøv igjen",
+      "invalidBackupCode": "Ugyldig reservekode",
+      "useBackupInstead": "Bruk en reservekode i stedet",
+      "useTotpInstead": "Bruk autentiseringsappen i stedet",
+      "backToSignIn": "Tilbake til innlogging",
+      "success": "Velkommen tilbake!"
+    },
+    "setup": {
+      "title": "Sett opp tofaktorautentisering",
+      "description": "Organisasjonen din krever tofaktorautentisering. Sett det opp nå for å fortsette.",
+      "signOut": "Logg ut"
+    }
   },
   "resetPassword": {
     "title": "Tilbakestill passordet ditt",

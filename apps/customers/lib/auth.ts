@@ -2,6 +2,7 @@ import { db } from "@vantigo/customers/database/db";
 import { config } from "@vantigo/customers/lib/config";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { twoFactor } from "better-auth/plugins";
 
 export const auth = betterAuth({
   appName: "Vantigo - Customers",
@@ -40,6 +41,11 @@ export const auth = betterAuth({
   telemetry: {
     enabled: false,
   },
+  plugins: [
+    twoFactor({
+      issuer: config.VANTIGO_CUSTOMERS_2FA_ISSUER_NAME,
+    }),
+  ],
   rateLimit: {
     // Disabled in e2e tests; enabled everywhere else.
     enabled: config.VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED,

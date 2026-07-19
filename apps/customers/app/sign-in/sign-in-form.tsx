@@ -35,7 +35,7 @@ export function SignInForm() {
   const handleSubmit = async (values: SignInFormValues) => {
     setIsSubmitting(true);
 
-    const { error } = await authClient.signIn.email({
+    const { data, error } = await authClient.signIn.email({
       email: values.email,
       password: values.password,
       rememberMe: values.rememberMe,
@@ -48,6 +48,12 @@ export function SignInForm() {
         title: t("errorTitle"),
         message: error.message ?? t("errorMessage"),
       });
+      return;
+    }
+
+    // 2FA-enabled users are redirected to /two-factor by the client plugin;
+    // keep the button in its loading state while the browser navigates.
+    if (data && "twoFactorRedirect" in data) {
       return;
     }
 

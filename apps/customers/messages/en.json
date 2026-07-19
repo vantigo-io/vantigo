@@ -67,6 +67,28 @@
       "successTitle": "Password updated",
       "successMessage": "Other devices have been signed out"
     },
+    "twoFactor": {
+      "title": "Two-factor authentication",
+      "statusEnabled": "Enabled",
+      "statusDisabled": "Disabled",
+      "description": "Protect your account with a one-time code from an authenticator app in addition to your password.",
+      "enable": "Enable 2FA",
+      "enrollTitle": "Enable two-factor authentication",
+      "disable": "Disable 2FA",
+      "disableTitle": "Disable two-factor authentication",
+      "disableDescription": "Enter your password to turn off two-factor authentication. Your backup codes will no longer work.",
+      "disableError": "Could not disable two-factor authentication",
+      "disabled": "Two-factor authentication disabled",
+      "enforcedHint": "Two-factor authentication is required by your organization.",
+      "regenerate": "New backup codes",
+      "regenerateTitle": "Generate new backup codes",
+      "regenerateDescription": "Enter your password to generate a new set of backup codes. Your old codes will stop working.",
+      "regenerateDone": "Store these new backup codes somewhere safe. Your old codes no longer work.",
+      "regenerateError": "Could not generate backup codes",
+      "passwordLabel": "Password",
+      "cancel": "Cancel",
+      "close": "Close"
+    },
     "sessions": {
       "title": "Sessions",
       "current": "This device",
@@ -224,6 +246,48 @@
     "errorMessage": "Could not request a password reset",
     "successTitle": "Check your inbox",
     "successMessage": "If an account exists for that email, a reset link has been sent"
+  },
+  "twoFactor": {
+    "enroll": {
+      "passwordDescription": "Confirm your password to start setting up two-factor authentication.",
+      "passwordLabel": "Password",
+      "passwordRequired": "Enter your password",
+      "continue": "Continue",
+      "enableError": "Could not start two-factor setup",
+      "scanDescription": "Scan the QR code with your authenticator app (e.g. Google Authenticator, 1Password or Authy).",
+      "qrAlt": "TOTP QR code",
+      "manualEntry": "Or enter this code manually:",
+      "backupTitle": "Backup codes",
+      "backupDescription": "Save these one-time backup codes somewhere safe. Each code can be used once if you lose access to your authenticator app.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "download": "Download",
+      "savedConfirm": "I have saved my backup codes",
+      "verifyDescription": "Enter the 6-digit code from your authenticator app to activate two-factor authentication.",
+      "verifyError": "Invalid code, please try again",
+      "back": "Back",
+      "activate": "Activate",
+      "enabled": "Two-factor authentication enabled"
+    },
+    "verify": {
+      "title": "Two-factor authentication",
+      "description": "Enter the 6-digit code from your authenticator app.",
+      "backupDescription": "Enter one of your backup codes. Each code can only be used once.",
+      "backupCodeLabel": "Backup code",
+      "trustDevice": "Trust this device for 30 days",
+      "submit": "Verify",
+      "invalidCode": "Invalid code, please try again",
+      "invalidBackupCode": "Invalid backup code",
+      "useBackupInstead": "Use a backup code instead",
+      "useTotpInstead": "Use your authenticator app instead",
+      "backToSignIn": "Back to sign in",
+      "success": "Welcome back!"
+    },
+    "setup": {
+      "title": "Set up two-factor authentication",
+      "description": "Your organization requires two-factor authentication. Set it up now to continue.",
+      "signOut": "Sign out"
+    }
   },
   "resetPassword": {
     "title": "Reset your password",

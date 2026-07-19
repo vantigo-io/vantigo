@@ -9,6 +9,10 @@ const configSchema = z.object({
 
   VANTIGO_CUSTOMERS_EMAIL_AND_PASSWORD_ENABLED: z.stringbool().default(false),
 
+  VANTIGO_CUSTOMERS_2FA_ENABLED: z.stringbool().default(false),
+  VANTIGO_CUSTOMERS_2FA_ENFORCED: z.stringbool().default(false),
+  VANTIGO_CUSTOMERS_2FA_ISSUER_NAME: z.string().default("Vantigo.Customers"),
+
   VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED: z.stringbool().default(true),
 });
 
@@ -24,6 +28,9 @@ const buildPhasePlaceholders: Config = {
   VANTIGO_CUSTOMERS_DATABASE_URL: "postgresql://build:build@localhost:5432/build",
   VANTIGO_CUSTOMERS_AUTH_SECRET: "build-phase-placeholder",
   VANTIGO_CUSTOMERS_EMAIL_AND_PASSWORD_ENABLED: false,
+  VANTIGO_CUSTOMERS_2FA_ENABLED: false,
+  VANTIGO_CUSTOMERS_2FA_ENFORCED: false,
+  VANTIGO_CUSTOMERS_2FA_ISSUER_NAME: "Vantigo.Customers",
   VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED: true,
 };
 
