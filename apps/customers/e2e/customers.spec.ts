@@ -41,7 +41,7 @@ test.describe("customer management", () => {
 
     // --- Appears in grid via search
     await page.getByPlaceholder(/Search name/).fill(name);
-    const row = page.getByRole("row", { name: new RegExp(name.replace(/[()]/g, "\\$&")) });
+    const row = page.getByRole("row").filter({ hasText: name });
     await expect(row.first()).toBeVisible();
     await expect(row.first().getByText("Business")).toBeVisible();
 
@@ -56,7 +56,8 @@ test.describe("customer management", () => {
     // --- Open detail page via row click
     await page.getByPlaceholder(/Search name/).fill(editedName);
     await page
-      .getByRole("row", { name: new RegExp(editedName.replace(/[()]/g, "\\$&")) })
+      .getByRole("row")
+      .filter({ hasText: editedName })
       .first()
       .getByText(editedName)
       .click();
@@ -103,8 +104,8 @@ test.describe("customer management", () => {
 
     // Both exist
     await page.getByPlaceholder(/Search name/).fill(name);
-    await expect(page.getByRole("row", { name: new RegExp(`${name} 1`) })).toBeVisible();
-    await expect(page.getByRole("row", { name: new RegExp(`${name} 2`) })).toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: `${name} 1` })).toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: `${name} 2` })).toBeVisible();
   });
 
   test("stats and filters reflect data", async ({ page }) => {
@@ -178,6 +179,6 @@ test.describe("customer management", () => {
     await expect(page.getByText("Customer created")).toBeVisible();
 
     await page.getByPlaceholder(/Search name/).fill(manualName);
-    await expect(page.getByRole("row", { name: new RegExp(manualName) })).toBeVisible();
+    await expect(page.getByRole("row").filter({ hasText: manualName })).toBeVisible();
   });
 });

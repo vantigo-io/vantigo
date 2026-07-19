@@ -1,9 +1,8 @@
 import { apiError, requireSession } from "@vantigo/customers/lib/api";
 import {
-  isOrgnrQuery,
   mapBrregEnhet,
   mapBrregSearchResponse,
-  normalizeOrgnr,
+  parseOrgnrQuery,
 } from "@vantigo/customers/lib/customers/brreg";
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -17,8 +16,11 @@ export async function GET(request: NextRequest) {
   if (query.length < 2) return NextResponse.json({ results: [] });
 
   try {
-    if (isOrgnrQuery(query)) {
-      const upstream = await fetch(`${BRREG_BASE}/enheter/${normalizeOrgnr(query)}`, {
+    // A numeric orgnr is looked up directly; interpolating a number keeps the
+    // URL free of user-controlled strings.
+    const orgnr = parseOrgnrQuery(query);
+    if (orgnr !== null) {
+      const upstream = await fetch(`${BRREG_BASE}/enheter/${orgnr}`, {
         headers: { accept: "application/json" },
         signal: AbortSignal.timeout(5000),
       });

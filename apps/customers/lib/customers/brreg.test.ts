@@ -1,25 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
-  isOrgnrQuery,
   mapBrregEnhet,
   mapBrregSearchResponse,
   normalizeBrregPhone,
-  normalizeOrgnr,
+  parseOrgnrQuery,
 } from "./brreg";
 
-describe("isOrgnrQuery", () => {
-  it("detects 9-digit queries, ignoring whitespace", () => {
-    expect(isOrgnrQuery("923609016")).toBe(true);
-    expect(isOrgnrQuery("923 609 016")).toBe(true);
-    expect(isOrgnrQuery("Equinor")).toBe(false);
-    expect(isOrgnrQuery("12345678")).toBe(false);
-    expect(isOrgnrQuery("1234567890")).toBe(false);
+describe("parseOrgnrQuery", () => {
+  it("parses 9-digit queries, ignoring whitespace", () => {
+    expect(parseOrgnrQuery("923609016")).toBe(923609016);
+    expect(parseOrgnrQuery("923 609 016")).toBe(923609016);
   });
-});
 
-describe("normalizeOrgnr", () => {
-  it("strips whitespace", () => {
-    expect(normalizeOrgnr("923 609 016")).toBe("923609016");
+  it("returns null for non-orgnr queries", () => {
+    expect(parseOrgnrQuery("Equinor")).toBeNull();
+    expect(parseOrgnrQuery("12345678")).toBeNull();
+    expect(parseOrgnrQuery("1234567890")).toBeNull();
+    expect(parseOrgnrQuery("")).toBeNull();
+  });
+
+  it("rejects leading zeros (orgnrs never start with 0)", () => {
+    expect(parseOrgnrQuery("023609016")).toBeNull();
   });
 });
 

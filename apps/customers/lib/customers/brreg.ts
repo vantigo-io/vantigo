@@ -25,12 +25,17 @@ interface BrregEnhet {
   mobil?: string | null;
 }
 
-export function isOrgnrQuery(query: string): boolean {
-  return /^\d{9}$/.test(query.replace(/\s/g, ""));
-}
-
-export function normalizeOrgnr(query: string): string {
-  return query.replace(/\s/g, "");
+/**
+ * Parses a query as a Norwegian organisation number, tolerating whitespace.
+ * Returns the orgnr as a number (orgnrs are 9 digits and never start with 0),
+ * or null when the query is not orgnr-shaped. Interpolating the numeric value
+ * into URLs is inherently injection-safe.
+ */
+export function parseOrgnrQuery(query: string): number | null {
+  const compact = query.replace(/\s/g, "");
+  if (!/^\d{9}$/.test(compact)) return null;
+  const orgnr = Number(compact);
+  return orgnr >= 100_000_000 ? orgnr : null;
 }
 
 /**
