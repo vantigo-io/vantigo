@@ -13,7 +13,8 @@
   },
   "nav": {
     "dashboard": "Dashbord",
-    "customers": "Kunder"
+    "customers": "Kunder",
+    "contacts": "Kontakter"
   },
   "userMenu": {
     "language": "Språk",
@@ -190,6 +191,83 @@
       "archivedTitle": "Kunde arkivert",
       "archivedMessage": "{name} ble arkivert",
       "errorTitle": "Noe gikk galt"
+    }
+  },
+  "contacts": {
+    "title": "Kontakter",
+    "newContact": "Ny kontakt",
+    "createTitle": "Ny kontakt",
+    "searchPlaceholder": "Søk på navn, e-post eller telefon...",
+    "empty": "Ingen kontakter funnet",
+    "table": {
+      "name": "Navn",
+      "email": "E-post",
+      "phone": "Telefon",
+      "customers": "Kunder",
+      "createdAt": "Opprettet"
+    },
+    "form": {
+      "name": "Navn",
+      "namePlaceholder": "Fullt navn",
+      "nameRequired": "Skriv inn et navn",
+      "invalidEmail": "Skriv inn en gyldig e-postadresse",
+      "email": "E-post",
+      "emailPlaceholder": "kari@example.com",
+      "phone": "Telefon",
+      "phonePlaceholder": "+47 22 33 44 55",
+      "notes": "Notater",
+      "create": "Opprett kontakt",
+      "save": "Lagre endringer"
+    },
+    "card": {
+      "title": "Kontakter",
+      "add": "Legg til kontakt",
+      "addTitle": "Legg til kontakt",
+      "empty": "Ingen kontakter er koblet ennå",
+      "primary": "Primær",
+      "actions": "Kontakthandlinger",
+      "modeNew": "Ny kontakt",
+      "modeExisting": "Eksisterende kontakt",
+      "searchLabel": "Kontakt",
+      "searchPlaceholder": "Søk i kontakter...",
+      "searchEmpty": "Ingen kontakter funnet",
+      "roleLabel": "Rolle",
+      "rolePlaceholder": "f.eks. daglig leder, regnskap",
+      "primaryLabel": "Primærkontakt for denne kunden",
+      "addSubmit": "Opprett og koble",
+      "linkSubmit": "Koble kontakt",
+      "added": "Kontakt lagt til",
+      "makePrimary": "Gjør til primær",
+      "editRole": "Endre rolle",
+      "editRoleTitle": "Endre rolle",
+      "unlink": "Fjern fra kunde",
+      "unlinkTitle": "Fjern kontakt",
+      "unlinkMessage": "Fjerne {name} fra denne kunden? Selve kontakten beholdes og kan kobles på nytt senere.",
+      "unlinkConfirm": "Fjern",
+      "unlinked": "{name} ble fjernet fra kunden",
+      "cancel": "Avbryt",
+      "save": "Lagre"
+    },
+    "detail": {
+      "backToList": "Tilbake til kontakter",
+      "edit": "Rediger",
+      "editTitle": "Rediger kontakt",
+      "delete": "Slett",
+      "deleteTitle": "Slett kontakt",
+      "deleteMessage": "Er du sikker på at du vil slette {name}? Dette kan ikke angres.",
+      "deleteMessageLinked": "{name} er koblet til {count, plural, one {# kunde} other {# kunder}}. Sletting fjerner også disse koblingene. Dette kan ikke angres.",
+      "deleteConfirm": "Slett",
+      "deleteCancel": "Avbryt",
+      "createdAt": "Opprettet",
+      "linkedCustomers": "Koblede kunder",
+      "noLinkedCustomers": "Ikke koblet til noen kunder",
+      "primary": "Primær",
+      "notFoundTitle": "Kontakten finnes ikke"
+    },
+    "notifications": {
+      "created": "{name} ble opprettet",
+      "updated": "Kontakten er oppdatert",
+      "deleted": "{name} ble slettet"
     }
   },
   "signIn": {

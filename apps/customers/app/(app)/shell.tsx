@@ -2,7 +2,7 @@
 
 import { AppShell, Burger, Group, NavLink, Text } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconLayoutDashboard, IconUsers } from "@tabler/icons-react";
+import { IconAddressBook, IconLayoutDashboard, IconUsers } from "@tabler/icons-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -27,6 +27,12 @@ export function Shell({
       label: t("nav.customers"),
       icon: IconUsers,
       active: pathname.startsWith("/customers"),
+    },
+    {
+      href: "/contacts",
+      label: t("nav.contacts"),
+      icon: IconAddressBook,
+      active: pathname.startsWith("/contacts"),
     },
   ];
 

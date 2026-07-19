@@ -1,5 +1,7 @@
 export * from "./accounts";
+export * from "./contacts";
 export * from "./customers";
+export * from "./customers-contacts";
 export * from "./schema";
 export * from "./sessions";
 export * from "./two-factors";

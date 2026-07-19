@@ -49,6 +49,8 @@ async function main() {
       VANTIGO_CUSTOMERS_BASE_URL: "http://localhost:10012",
       VANTIGO_CUSTOMERS_EMAIL_AND_PASSWORD_ENABLED: "true",
       VANTIGO_CUSTOMERS_2FA_ENABLED: "true",
+      // Explicitly off: enforcement would redirect every spec into 2FA setup.
+      VANTIGO_CUSTOMERS_2FA_ENFORCED: "false",
       VANTIGO_CUSTOMERS_RATE_LIMIT_ENABLED: "false",
     },
     stdio: "inherit",

@@ -26,6 +26,7 @@ import {
   LegalTypeBadge,
   useConfirmArchive,
 } from "../customer-modals";
+import { ContactsCard } from "./contacts-card";
 
 function Field({ label, value }: Readonly<{ label: string; value: React.ReactNode }>) {
   return (
@@ -168,6 +169,10 @@ export function CustomerDetail({ customerId }: Readonly<{ customerId: number }>)
           <Field label={t("form.notes")} value={customer.notes} />
         </Stack>
       </Card>
+
+      <Stack mt="lg">
+        <ContactsCard customerId={customer.id} />
+      </Stack>
 
       <EditCustomerModal customer={editing} onClose={() => setEditing(null)} />
     </>

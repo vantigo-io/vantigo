@@ -13,7 +13,8 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "customers": "Customers"
+    "customers": "Customers",
+    "contacts": "Contacts"
   },
   "userMenu": {
     "language": "Language",
@@ -190,6 +191,83 @@
       "archivedTitle": "Customer archived",
       "archivedMessage": "{name} was archived",
       "errorTitle": "Something went wrong"
+    }
+  },
+  "contacts": {
+    "title": "Contacts",
+    "newContact": "New contact",
+    "createTitle": "New contact",
+    "searchPlaceholder": "Search name, email or phone...",
+    "empty": "No contacts found",
+    "table": {
+      "name": "Name",
+      "email": "Email",
+      "phone": "Phone",
+      "customers": "Customers",
+      "createdAt": "Created"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "Full name",
+      "nameRequired": "Enter a name",
+      "invalidEmail": "Enter a valid email address",
+      "email": "Email",
+      "emailPlaceholder": "kari@example.com",
+      "phone": "Phone",
+      "phonePlaceholder": "+47 22 33 44 55",
+      "notes": "Notes",
+      "create": "Create contact",
+      "save": "Save changes"
+    },
+    "card": {
+      "title": "Contacts",
+      "add": "Add contact",
+      "addTitle": "Add contact",
+      "empty": "No contacts linked yet",
+      "primary": "Primary",
+      "actions": "Contact actions",
+      "modeNew": "New contact",
+      "modeExisting": "Existing contact",
+      "searchLabel": "Contact",
+      "searchPlaceholder": "Search contacts...",
+      "searchEmpty": "No contacts found",
+      "roleLabel": "Role",
+      "rolePlaceholder": "e.g. CEO, Accounting",
+      "primaryLabel": "Primary contact for this customer",
+      "addSubmit": "Create and link",
+      "linkSubmit": "Link contact",
+      "added": "Contact added",
+      "makePrimary": "Make primary",
+      "editRole": "Edit role",
+      "editRoleTitle": "Edit role",
+      "unlink": "Remove from customer",
+      "unlinkTitle": "Remove contact",
+      "unlinkMessage": "Remove {name} from this customer? The contact itself is kept and can be re-linked later.",
+      "unlinkConfirm": "Remove",
+      "unlinked": "{name} was removed from the customer",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "detail": {
+      "backToList": "Back to contacts",
+      "edit": "Edit",
+      "editTitle": "Edit contact",
+      "delete": "Delete",
+      "deleteTitle": "Delete contact",
+      "deleteMessage": "Are you sure you want to delete {name}? This cannot be undone.",
+      "deleteMessageLinked": "{name} is linked to {count, plural, one {# customer} other {# customers}}. Deleting the contact also removes those links. This cannot be undone.",
+      "deleteConfirm": "Delete",
+      "deleteCancel": "Cancel",
+      "createdAt": "Created",
+      "linkedCustomers": "Linked customers",
+      "noLinkedCustomers": "Not linked to any customers",
+      "primary": "Primary",
+      "notFoundTitle": "Contact not found"
+    },
+    "notifications": {
+      "created": "{name} was created",
+      "updated": "Contact updated",
+      "deleted": "{name} was deleted"
     }
   },
   "signIn": {
