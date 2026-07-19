@@ -1,8 +1,9 @@
 "use client";
 
-import { Anchor, Button, Center, Checkbox, PinInput, Stack, Text, TextInput } from "@mantine/core";
+import { Anchor, Button, Checkbox, Stack, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { authClient } from "@vantigo/customers/lib/auth-client";
+import { TotpPinInput } from "@vantigo/customers/lib/components/totp-pin-input";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -73,27 +74,14 @@ export function TwoFactorVerifyForm() {
           autoFocus
         />
       ) : (
-        <>
-          <Center>
-            <PinInput
-              length={6}
-              type="number"
-              oneTimeCode
-              autoFocus
-              data-testid="verify-pin"
-              value={code}
-              onChange={setCode}
-              onComplete={handleVerifyTotp}
-              disabled={isSubmitting}
-              error={error !== null}
-            />
-          </Center>
-          {error && (
-            <Text size="sm" c="red" ta="center">
-              {error}
-            </Text>
-          )}
-        </>
+        <TotpPinInput
+          testId="verify-pin"
+          value={code}
+          onChange={setCode}
+          onComplete={handleVerifyTotp}
+          disabled={isSubmitting}
+          error={error}
+        />
       )}
 
       <Checkbox

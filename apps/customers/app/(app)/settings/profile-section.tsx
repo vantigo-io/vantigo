@@ -25,63 +25,39 @@ import {
   isPreferredCustomerType,
   preferredCustomerTypes,
 } from "@vantigo/customers/lib/settings/preferences";
-import { zod4Resolver } from "mantine-form-zod-resolver";
-import { useRouter } from "next/navigation";
+import { useAuthAction } from "@vantigo/customers/lib/settings/use-auth-action";
 import { useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
-import { z } from "zod";
 import type { SettingsUser } from "./settings-page";
-
-const nameSchema = z.object({
-  name: z.string().trim().min(1, "name_required").max(200, "name_required"),
-});
 
 export function ProfileSection({ user }: Readonly<{ user: SettingsUser }>) {
   const t = useTranslations("settings.profile");
-  const router = useRouter();
+  const { run, isPending } = useAuthAction();
 
   // --- Name ---
-  const [isSavingName, setIsSavingName] = useState(false);
   const form = useForm({
     mode: "uncontrolled",
     initialValues: { name: user.name },
-    validate: (values) => {
-      const result = zod4Resolver(nameSchema)(values);
-      if (result.name) result.name = t("nameRequired");
-      return result;
+    validate: {
+      name: (value) => (value.trim() && value.length <= 200 ? null : t("nameRequired")),
     },
   });
 
-  const handleNameSubmit = async ({ name }: { name: string }) => {
-    setIsSavingName(true);
-    const { error } = await authClient.updateUser({ name: name.trim() });
-    setIsSavingName(false);
-
-    if (error) {
-      notifications.show({ color: "red", message: error.message ?? t("saveError") });
-      return;
-    }
-    notifications.show({ color: "green", message: t("nameSaved") });
-    router.refresh();
-  };
+  const handleNameSubmit = ({ name }: { name: string }) =>
+    run(() => authClient.updateUser({ name: name.trim() }), {
+      success: t("nameSaved"),
+      error: t("saveError"),
+    });
 
   // --- Avatar ---
-  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [image, setImage] = useState(user.image);
 
-  const updateImage = async (value: string | null) => {
-    setIsSavingAvatar(true);
-    const { error } = await authClient.updateUser({ image: value });
-    setIsSavingAvatar(false);
-
-    if (error) {
-      notifications.show({ color: "red", message: error.message ?? t("saveError") });
-      return;
-    }
-    setImage(value);
-    notifications.show({ color: "green", message: t("avatarSaved") });
-    router.refresh();
-  };
+  const updateImage = (value: string | null) =>
+    run(() => authClient.updateUser({ image: value }), {
+      success: t("avatarSaved"),
+      error: t("saveError"),
+      onSuccess: () => setImage(value),
+    });
 
   const handleAvatarFile = async (file: File | null) => {
     if (!file) return;
@@ -125,7 +101,7 @@ export function ProfileSection({ user }: Readonly<{ user: SettingsUser }>) {
                   <Button
                     {...props}
                     variant="default"
-                    loading={isSavingAvatar}
+                    loading={isPending}
                     leftSection={<IconUpload size={16} stroke={1.5} />}
                   >
                     {t("avatarUpload")}
@@ -136,7 +112,7 @@ export function ProfileSection({ user }: Readonly<{ user: SettingsUser }>) {
                 <Button
                   variant="subtle"
                   color="red"
-                  disabled={isSavingAvatar}
+                  disabled={isPending}
                   leftSection={<IconTrash size={16} stroke={1.5} />}
                   onClick={() => updateImage(null)}
                 >
@@ -160,7 +136,7 @@ export function ProfileSection({ user }: Readonly<{ user: SettingsUser }>) {
             />
             <TextInput label={t("emailLabel")} value={user.email} disabled />
             <Group justify="flex-end">
-              <Button type="submit" loading={isSavingName}>
+              <Button type="submit" loading={isPending}>
                 {t("save")}
               </Button>
             </Group>

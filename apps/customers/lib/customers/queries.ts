@@ -1,6 +1,6 @@
 import { db } from "@vantigo/customers/database/db";
 import { type Customer, customers } from "@vantigo/customers/database/schema/customers";
-import { and, asc, count, desc, eq, gte, ilike, ne, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, ne, or, type SQL, sql } from "drizzle-orm";
 import type { CustomerCreateInput, CustomerListQuery, CustomerUpdateInput } from "./schemas";
 
 const sortColumns = {
@@ -122,23 +122,19 @@ export async function getCustomerStats(): Promise<CustomerStats> {
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
-  const [[{ total }], [{ active }], [{ newThisMonth }], [{ businessCount }], [{ privateCount }]] =
-    await Promise.all([
-      db.select({ total: count() }).from(customers),
-      db.select({ active: count() }).from(customers).where(eq(customers.status, "active")),
-      db
-        .select({ newThisMonth: count() })
-        .from(customers)
-        .where(gte(customers.createdAt, startOfMonth)),
-      db
-        .select({ businessCount: count() })
-        .from(customers)
-        .where(eq(customers.legalType, "business")),
-      db
-        .select({ privateCount: count() })
-        .from(customers)
-        .where(eq(customers.legalType, "private")),
-    ]);
+  // Single round-trip using Postgres filtered aggregates.
+  const countWhere = (condition: SQL) =>
+    sql<number>`count(*) filter (where ${condition})`.mapWith(Number);
 
-  return { total, active, newThisMonth, businessCount, privateCount };
+  const [stats] = await db
+    .select({
+      total: count(),
+      active: countWhere(eq(customers.status, "active")),
+      newThisMonth: countWhere(gte(customers.createdAt, startOfMonth)),
+      businessCount: countWhere(eq(customers.legalType, "business")),
+      privateCount: countWhere(eq(customers.legalType, "private")),
+    })
+    .from(customers);
+
+  return stats;
 }

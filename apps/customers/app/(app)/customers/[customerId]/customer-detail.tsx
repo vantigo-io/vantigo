@@ -12,20 +12,20 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconArchive, IconArrowLeft, IconPencil } from "@tabler/icons-react";
 import type { Customer } from "@vantigo/customers/database/schema/customers";
-import {
-  useArchiveCustomer,
-  useCustomer,
-  useUpdateCustomer,
-} from "@vantigo/customers/lib/customers/hooks";
+import { useCustomer, useUpdateCustomer } from "@vantigo/customers/lib/customers/hooks";
 import { countryFlag, countryName } from "@vantigo/customers/lib/i18n/country";
 import Link from "next/link";
 import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
-import { CustomerStatusBadge, EditCustomerModal, LegalTypeBadge } from "../customer-modals";
+import {
+  CustomerStatusBadge,
+  EditCustomerModal,
+  LegalTypeBadge,
+  useConfirmArchive,
+} from "../customer-modals";
 
 function Field({ label, value }: Readonly<{ label: string; value: React.ReactNode }>) {
   return (
@@ -45,8 +45,8 @@ export function CustomerDetail({ customerId }: Readonly<{ customerId: number }>)
   const format = useFormatter();
   const locale = useLocale();
   const { data: customer, isLoading, isError } = useCustomer(customerId);
-  const archiveCustomer = useArchiveCustomer();
   const updateCustomer = useUpdateCustomer();
+  const confirmArchive = useConfirmArchive();
   const [editing, setEditing] = useState<Customer | null>(null);
 
   if (isLoading) {
@@ -68,26 +68,6 @@ export function CustomerDetail({ customerId }: Readonly<{ customerId: number }>)
       </Stack>
     );
   }
-
-  const confirmArchive = () => {
-    modals.openConfirmModal({
-      title: t("archiveConfirmTitle"),
-      children: <Text size="sm">{t("archiveConfirmMessage", { name: customer.legalName })}</Text>,
-      labels: { confirm: t("archiveConfirm"), cancel: t("archiveCancel") },
-      confirmProps: { color: "red" },
-      onConfirm: () => {
-        archiveCustomer.mutate(customer.id, {
-          onSuccess: () => {
-            notifications.show({
-              color: "green",
-              title: t("notifications.archivedTitle"),
-              message: t("notifications.archivedMessage", { name: customer.legalName }),
-            });
-          },
-        });
-      },
-    });
-  };
 
   const unarchive = () => {
     updateCustomer.mutate(
@@ -135,7 +115,7 @@ export function CustomerDetail({ customerId }: Readonly<{ customerId: number }>)
               color="red"
               variant="light"
               leftSection={<IconArchive size={16} />}
-              onClick={confirmArchive}
+              onClick={() => confirmArchive(customer)}
             >
               {t("table.archive")}
             </Button>

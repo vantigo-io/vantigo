@@ -1,7 +1,6 @@
 "use client";
 
 import { ActionIcon, Badge, Button, Card, Group, Stack, Text, Title, Tooltip } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import {
   IconDeviceDesktop,
   IconDeviceLaptop,
@@ -9,8 +8,8 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { authClient } from "@vantigo/customers/lib/auth-client";
+import { useAuthAction } from "@vantigo/customers/lib/settings/use-auth-action";
 import { summarizeUserAgent } from "@vantigo/customers/lib/settings/user-agent";
-import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useState } from "react";
 import type { SettingsSession } from "./settings-page";
@@ -24,37 +23,25 @@ function DeviceIcon({ os }: Readonly<{ os: string | null }>) {
 export function SessionsSection({ sessions }: Readonly<{ sessions: SettingsSession[] }>) {
   const t = useTranslations("settings.sessions");
   const format = useFormatter();
-  const router = useRouter();
+  const { run, isPending } = useAuthAction();
   const [busyToken, setBusyToken] = useState<string | null>(null);
-  const [isRevokingOthers, setIsRevokingOthers] = useState(false);
 
   const hasOtherSessions = sessions.some((s) => !s.current);
 
   const handleRevoke = async (token: string) => {
     setBusyToken(token);
-    const { error } = await authClient.revokeSession({ token });
+    await run(() => authClient.revokeSession({ token }), {
+      success: t("revoked"),
+      error: t("revokeError"),
+    });
     setBusyToken(null);
-
-    if (error) {
-      notifications.show({ color: "red", message: error.message ?? t("revokeError") });
-      return;
-    }
-    notifications.show({ color: "green", message: t("revoked") });
-    router.refresh();
   };
 
-  const handleRevokeOthers = async () => {
-    setIsRevokingOthers(true);
-    const { error } = await authClient.revokeOtherSessions();
-    setIsRevokingOthers(false);
-
-    if (error) {
-      notifications.show({ color: "red", message: error.message ?? t("revokeError") });
-      return;
-    }
-    notifications.show({ color: "green", message: t("revokedOthers") });
-    router.refresh();
-  };
+  const handleRevokeOthers = () =>
+    run(() => authClient.revokeOtherSessions(), {
+      success: t("revokedOthers"),
+      error: t("revokeError"),
+    });
 
   return (
     <Card withBorder maw={560}>
@@ -66,7 +53,7 @@ export function SessionsSection({ sessions }: Readonly<{ sessions: SettingsSessi
               variant="light"
               color="red"
               size="xs"
-              loading={isRevokingOthers}
+              loading={isPending && busyToken === null}
               onClick={handleRevokeOthers}
             >
               {t("revokeOthers")}

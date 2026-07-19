@@ -1,10 +1,15 @@
 "use client";
 
-import { Badge, Modal } from "@mantine/core";
+import { Badge, Modal, Text } from "@mantine/core";
+import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconBuilding, IconUser } from "@tabler/icons-react";
 import type { Customer } from "@vantigo/customers/database/schema/customers";
-import { useCreateCustomer, useUpdateCustomer } from "@vantigo/customers/lib/customers/hooks";
+import {
+  useArchiveCustomer,
+  useCreateCustomer,
+  useUpdateCustomer,
+} from "@vantigo/customers/lib/customers/hooks";
 import type { DuplicateWarning } from "@vantigo/customers/lib/customers/queries";
 import type { CustomerCreateInput } from "@vantigo/customers/lib/customers/schemas";
 import { useTranslations } from "next-intl";
@@ -32,6 +37,32 @@ export function LegalTypeBadge({ legalType }: Readonly<{ legalType: Customer["le
       {t(`legalType.${legalType}`)}
     </Badge>
   );
+}
+
+/** Confirm-and-archive flow shared by the list and detail views. */
+export function useConfirmArchive() {
+  const t = useTranslations("customers");
+  const archiveCustomer = useArchiveCustomer();
+
+  return (customer: Customer) => {
+    modals.openConfirmModal({
+      title: t("archiveConfirmTitle"),
+      children: <Text size="sm">{t("archiveConfirmMessage", { name: customer.legalName })}</Text>,
+      labels: { confirm: t("archiveConfirm"), cancel: t("archiveCancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => {
+        archiveCustomer.mutate(customer.id, {
+          onSuccess: () => {
+            notifications.show({
+              color: "green",
+              title: t("notifications.archivedTitle"),
+              message: t("notifications.archivedMessage", { name: customer.legalName }),
+            });
+          },
+        });
+      },
+    });
+  };
 }
 
 export function CreateCustomerModal({

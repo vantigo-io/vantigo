@@ -6,19 +6,18 @@ import {
   Center,
   Checkbox,
   Code,
-  CopyButton,
   Group,
   Image,
   PasswordInput,
-  PinInput,
-  SimpleGrid,
   Stack,
   Text,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { IconCopy, IconDownload, IconShieldLock } from "@tabler/icons-react";
+import { IconShieldLock } from "@tabler/icons-react";
 import { authClient } from "@vantigo/customers/lib/auth-client";
+import { BackupCodesList } from "@vantigo/customers/lib/components/backup-codes-list";
+import { TotpPinInput } from "@vantigo/customers/lib/components/totp-pin-input";
 import { totpSecretFromUri } from "@vantigo/customers/lib/settings/two-factor";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -82,16 +81,6 @@ export function TwoFactorEnrollment({ onEnabled }: Readonly<{ onEnabled: () => v
     onEnabled();
   };
 
-  const downloadBackupCodes = () => {
-    const blob = new Blob([backupCodes.join("\n")], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "vantigo-backup-codes.txt";
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   if (step === "password") {
     return (
       <form onSubmit={passwordForm.onSubmit(handleEnable)}>
@@ -135,36 +124,7 @@ export function TwoFactorEnrollment({ onEnabled }: Readonly<{ onEnabled: () => v
           {t("backupDescription")}
         </Alert>
 
-        <SimpleGrid cols={2} spacing="xs" data-testid="backup-codes">
-          {backupCodes.map((backupCode) => (
-            <Code key={backupCode} ta="center">
-              {backupCode}
-            </Code>
-          ))}
-        </SimpleGrid>
-
-        <Group>
-          <CopyButton value={backupCodes.join("\n")}>
-            {({ copied, copy }) => (
-              <Button
-                variant="default"
-                size="xs"
-                leftSection={<IconCopy size={14} />}
-                onClick={copy}
-              >
-                {copied ? t("copied") : t("copy")}
-              </Button>
-            )}
-          </CopyButton>
-          <Button
-            variant="default"
-            size="xs"
-            leftSection={<IconDownload size={14} />}
-            onClick={downloadBackupCodes}
-          >
-            {t("download")}
-          </Button>
-        </Group>
+        <BackupCodesList codes={backupCodes} />
 
         <Checkbox
           label={t("savedConfirm")}
@@ -184,25 +144,14 @@ export function TwoFactorEnrollment({ onEnabled }: Readonly<{ onEnabled: () => v
   return (
     <Stack gap="md">
       <Text size="sm">{t("verifyDescription")}</Text>
-      <Center>
-        <PinInput
-          length={6}
-          type="number"
-          oneTimeCode
-          autoFocus
-          data-testid="enroll-pin"
-          value={code}
-          onChange={setCode}
-          onComplete={handleVerify}
-          disabled={isSubmitting}
-          error={codeError !== null}
-        />
-      </Center>
-      {codeError && (
-        <Text size="sm" c="red" ta="center">
-          {codeError}
-        </Text>
-      )}
+      <TotpPinInput
+        testId="enroll-pin"
+        value={code}
+        onChange={setCode}
+        onComplete={handleVerify}
+        disabled={isSubmitting}
+        error={codeError}
+      />
       <Group justify="space-between">
         <Button variant="subtle" onClick={() => setStep("save")}>
           {t("back")}

@@ -1,22 +1,12 @@
 "use client";
 
-import {
-  Badge,
-  Button,
-  Card,
-  Code,
-  Group,
-  Modal,
-  PasswordInput,
-  SimpleGrid,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Badge, Button, Card, Group, Modal, Stack, Text, Title } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
 import { authClient } from "@vantigo/customers/lib/auth-client";
+import { BackupCodesList } from "@vantigo/customers/lib/components/backup-codes-list";
+import { PasswordConfirmModal } from "@vantigo/customers/lib/components/password-confirm-modal";
 import { TwoFactorEnrollment } from "@vantigo/customers/lib/components/two-factor-enrollment";
+import { useAuthAction } from "@vantigo/customers/lib/settings/use-auth-action";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -27,21 +17,45 @@ export function TwoFactorSection({
 }: Readonly<{ enabled: boolean; enforced: boolean }>) {
   const t = useTranslations("settings.twoFactor");
   const router = useRouter();
+  const { run, isPending } = useAuthAction();
 
   const [enrollOpened, enroll] = useDisclosure(false);
   const [disableOpened, disable] = useDisclosure(false);
   const [regenerateOpened, regenerate] = useDisclosure(false);
+  const [newCodes, setNewCodes] = useState<string[]>([]);
+
+  const handleDisable = async (password: string) => {
+    const result = await run(() => authClient.twoFactor.disable({ password }), {
+      success: t("disabled"),
+      error: t("disableError"),
+      onSuccess: disable.close,
+    });
+    return result !== null;
+  };
+
+  const handleRegenerate = async (password: string) => {
+    const result = await run(() => authClient.twoFactor.generateBackupCodes({ password }), {
+      error: t("regenerateError"),
+      refresh: false,
+    });
+    if (!result?.data) return false;
+    setNewCodes(result.data.backupCodes);
+    return true;
+  };
+
+  const closeRegenerate = () => {
+    setNewCodes([]);
+    regenerate.close();
+  };
 
   return (
     <Card withBorder maw={560}>
       <Stack gap="md">
-        <Group justify="space-between">
-          <Group gap="xs">
-            <Title order={4}>{t("title")}</Title>
-            <Badge color={enabled ? "teal" : "gray"} variant="light">
-              {enabled ? t("statusEnabled") : t("statusDisabled")}
-            </Badge>
-          </Group>
+        <Group gap="xs">
+          <Title order={4}>{t("title")}</Title>
+          <Badge color={enabled ? "teal" : "gray"} variant="light">
+            {enabled ? t("statusEnabled") : t("statusDisabled")}
+          </Badge>
         </Group>
 
         <Text size="sm" c="dimmed">
@@ -79,115 +93,36 @@ export function TwoFactorSection({
         />
       </Modal>
 
-      <DisableModal opened={disableOpened} onClose={disable.close} />
-      <RegenerateModal opened={regenerateOpened} onClose={regenerate.close} />
+      <PasswordConfirmModal
+        opened={disableOpened}
+        onClose={disable.close}
+        title={t("disableTitle")}
+        description={t("disableDescription")}
+        confirmLabel={t("disable")}
+        confirmColor="red"
+        isPending={isPending}
+        onConfirm={handleDisable}
+      />
+
+      <PasswordConfirmModal
+        opened={regenerateOpened}
+        onClose={closeRegenerate}
+        title={t("regenerateTitle")}
+        description={t("regenerateDescription")}
+        confirmLabel={t("regenerate")}
+        isPending={isPending}
+        onConfirm={handleRegenerate}
+      >
+        {newCodes.length > 0 ? (
+          <Stack gap="md">
+            <Text size="sm">{t("regenerateDone")}</Text>
+            <BackupCodesList codes={newCodes} />
+            <Group justify="flex-end">
+              <Button onClick={closeRegenerate}>{t("close")}</Button>
+            </Group>
+          </Stack>
+        ) : undefined}
+      </PasswordConfirmModal>
     </Card>
-  );
-}
-
-function DisableModal({ opened, onClose }: Readonly<{ opened: boolean; onClose: () => void }>) {
-  const t = useTranslations("settings.twoFactor");
-  const router = useRouter();
-  const [password, setPassword] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleDisable = async () => {
-    setIsSubmitting(true);
-    const { error } = await authClient.twoFactor.disable({ password });
-    setIsSubmitting(false);
-
-    if (error) {
-      notifications.show({ color: "red", message: error.message ?? t("disableError") });
-      return;
-    }
-    notifications.show({ color: "green", message: t("disabled") });
-    setPassword("");
-    onClose();
-    router.refresh();
-  };
-
-  return (
-    <Modal opened={opened} onClose={onClose} title={t("disableTitle")}>
-      <Stack gap="md">
-        <Text size="sm">{t("disableDescription")}</Text>
-        <PasswordInput
-          label={t("passwordLabel")}
-          value={password}
-          onChange={(event) => setPassword(event.currentTarget.value)}
-          autoComplete="current-password"
-        />
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>
-            {t("cancel")}
-          </Button>
-          <Button color="red" loading={isSubmitting} disabled={!password} onClick={handleDisable}>
-            {t("disable")}
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
-
-function RegenerateModal({ opened, onClose }: Readonly<{ opened: boolean; onClose: () => void }>) {
-  const t = useTranslations("settings.twoFactor");
-  const [password, setPassword] = useState("");
-  const [codes, setCodes] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleClose = () => {
-    setPassword("");
-    setCodes([]);
-    onClose();
-  };
-
-  const handleRegenerate = async () => {
-    setIsSubmitting(true);
-    const { data, error } = await authClient.twoFactor.generateBackupCodes({ password });
-    setIsSubmitting(false);
-
-    if (error || !data) {
-      notifications.show({ color: "red", message: error?.message ?? t("regenerateError") });
-      return;
-    }
-    setCodes(data.backupCodes);
-  };
-
-  return (
-    <Modal opened={opened} onClose={handleClose} title={t("regenerateTitle")}>
-      {codes.length > 0 ? (
-        <Stack gap="md">
-          <Text size="sm">{t("regenerateDone")}</Text>
-          <SimpleGrid cols={2} spacing="xs">
-            {codes.map((code) => (
-              <Code key={code} ta="center">
-                {code}
-              </Code>
-            ))}
-          </SimpleGrid>
-          <Group justify="flex-end">
-            <Button onClick={handleClose}>{t("close")}</Button>
-          </Group>
-        </Stack>
-      ) : (
-        <Stack gap="md">
-          <Text size="sm">{t("regenerateDescription")}</Text>
-          <PasswordInput
-            label={t("passwordLabel")}
-            value={password}
-            onChange={(event) => setPassword(event.currentTarget.value)}
-            autoComplete="current-password"
-          />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={handleClose}>
-              {t("cancel")}
-            </Button>
-            <Button loading={isSubmitting} disabled={!password} onClick={handleRegenerate}>
-              {t("regenerate")}
-            </Button>
-          </Group>
-        </Stack>
-      )}
-    </Modal>
   );
 }

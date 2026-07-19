@@ -62,9 +62,7 @@
       "tooShort": "Password must be at least 8 characters",
       "mismatch": "Passwords do not match",
       "submit": "Update password",
-      "errorTitle": "Password change failed",
       "errorMessage": "Could not change your password",
-      "successTitle": "Password updated",
       "successMessage": "Other devices have been signed out"
     },
     "twoFactor": {
@@ -259,9 +257,6 @@
       "manualEntry": "Or enter this code manually:",
       "backupTitle": "Backup codes",
       "backupDescription": "Save these one-time backup codes somewhere safe. Each code can be used once if you lose access to your authenticator app.",
-      "copy": "Copy",
-      "copied": "Copied",
-      "download": "Download",
       "savedConfirm": "I have saved my backup codes",
       "verifyDescription": "Enter the 6-digit code from your authenticator app to activate two-factor authentication.",
       "verifyError": "Invalid code, please try again",
@@ -287,6 +282,11 @@
       "title": "Set up two-factor authentication",
       "description": "Your organization requires two-factor authentication. Set it up now to continue.",
       "signOut": "Sign out"
+    },
+    "backupCodes": {
+      "copy": "Copy",
+      "copied": "Copied",
+      "download": "Download"
     }
   },
   "resetPassword": {

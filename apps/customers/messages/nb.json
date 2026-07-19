@@ -62,9 +62,7 @@
       "tooShort": "Passordet må være minst 8 tegn",
       "mismatch": "Passordene er ikke like",
       "submit": "Oppdater passord",
-      "errorTitle": "Kunne ikke bytte passord",
       "errorMessage": "Passordet ble ikke endret",
-      "successTitle": "Passordet er oppdatert",
       "successMessage": "Andre enheter er logget ut"
     },
     "twoFactor": {
@@ -259,9 +257,6 @@
       "manualEntry": "Eller skriv inn denne koden manuelt:",
       "backupTitle": "Reservekoder",
       "backupDescription": "Lagre disse engangs-reservekodene på et trygt sted. Hver kode kan brukes én gang hvis du mister tilgang til autentiseringsappen.",
-      "copy": "Kopier",
-      "copied": "Kopiert",
-      "download": "Last ned",
       "savedConfirm": "Jeg har lagret reservekodene mine",
       "verifyDescription": "Skriv inn den 6-sifrede koden fra autentiseringsappen for å aktivere tofaktorautentisering.",
       "verifyError": "Ugyldig kode, prøv igjen",
@@ -287,6 +282,11 @@
       "title": "Sett opp tofaktorautentisering",
       "description": "Organisasjonen din krever tofaktorautentisering. Sett det opp nå for å fortsette.",
       "signOut": "Logg ut"
+    },
+    "backupCodes": {
+      "copy": "Kopier",
+      "copied": "Kopiert",
+      "download": "Last ned"
     }
   },
   "resetPassword": {

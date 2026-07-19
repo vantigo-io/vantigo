@@ -2,12 +2,10 @@
 
 import { Button, Card, Group, PasswordInput, Stack, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { notifications } from "@mantine/notifications";
 import { authClient } from "@vantigo/customers/lib/auth-client";
+import { useAuthAction } from "@vantigo/customers/lib/settings/use-auth-action";
 import { zod4Resolver } from "mantine-form-zod-resolver";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
 import { z } from "zod";
 
 const passwordSchema = z
@@ -23,8 +21,7 @@ const passwordSchema = z
 
 export function PasswordSection() {
   const t = useTranslations("settings.password");
-  const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { run, isPending } = useAuthAction();
 
   const form = useForm({
     mode: "uncontrolled",
@@ -38,28 +35,16 @@ export function PasswordSection() {
     },
   });
 
-  const handleSubmit = async (values: typeof form.values) => {
-    setIsSubmitting(true);
-    const { error } = await authClient.changePassword({
-      currentPassword: values.currentPassword,
-      newPassword: values.newPassword,
-      revokeOtherSessions: true,
-    });
-    setIsSubmitting(false);
-
-    if (error) {
-      notifications.show({
-        color: "red",
-        title: t("errorTitle"),
-        message: error.message ?? t("errorMessage"),
-      });
-      return;
-    }
-
-    form.reset();
-    notifications.show({ color: "green", title: t("successTitle"), message: t("successMessage") });
-    router.refresh();
-  };
+  const handleSubmit = (values: typeof form.values) =>
+    run(
+      () =>
+        authClient.changePassword({
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword,
+          revokeOtherSessions: true,
+        }),
+      { success: t("successMessage"), error: t("errorMessage"), onSuccess: () => form.reset() },
+    );
 
   return (
     <Card withBorder maw={560}>
@@ -89,7 +74,7 @@ export function PasswordSection() {
             {...form.getInputProps("confirmPassword")}
           />
           <Group justify="flex-end">
-            <Button type="submit" loading={isSubmitting}>
+            <Button type="submit" loading={isPending}>
               {t("submit")}
             </Button>
           </Group>

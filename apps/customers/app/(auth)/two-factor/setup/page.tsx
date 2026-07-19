@@ -1,20 +1,14 @@
-import { Paper, Title } from "@mantine/core";
 import { auth } from "@vantigo/customers/lib/auth";
-import { config } from "@vantigo/customers/lib/config";
 import { isTwoFactorAvailable } from "@vantigo/customers/lib/settings/two-factor";
+import { getTwoFactorConfig } from "@vantigo/customers/lib/settings/two-factor-config";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import classes from "../../sign-in/sign-in-page.module.css";
+import { AuthTitle } from "../../auth-title";
 import { TwoFactorSetup } from "./two-factor-setup";
 
 export default async function TwoFactorSetupPage() {
-  const twoFactorConfig = {
-    enabled: config.VANTIGO_CUSTOMERS_2FA_ENABLED,
-    enforced: config.VANTIGO_CUSTOMERS_2FA_ENFORCED,
-  };
-
-  if (!isTwoFactorAvailable(twoFactorConfig)) {
+  if (!isTwoFactorAvailable(getTwoFactorConfig())) {
     redirect("/");
   }
 
@@ -29,14 +23,9 @@ export default async function TwoFactorSetupPage() {
   const t = await getTranslations("twoFactor.setup");
 
   return (
-    <div className={classes.wrapper}>
-      <Paper className={classes.form}>
-        <Title order={2} className={classes.title}>
-          {t("title")}
-        </Title>
-
-        <TwoFactorSetup />
-      </Paper>
-    </div>
+    <>
+      <AuthTitle>{t("title")}</AuthTitle>
+      <TwoFactorSetup />
+    </>
   );
 }

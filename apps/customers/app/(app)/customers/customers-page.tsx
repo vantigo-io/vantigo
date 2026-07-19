@@ -12,18 +12,12 @@ import {
   Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
 import { IconArchive, IconDots, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import type { SortingState } from "@tanstack/react-table";
 import type { Customer } from "@vantigo/customers/database/schema/customers";
 import { DataTable, type DataTableColumn } from "@vantigo/customers/lib/components/data-table";
 import { StatCard } from "@vantigo/customers/lib/components/stat-card";
-import {
-  useArchiveCustomer,
-  useCustomerStats,
-  useCustomers,
-} from "@vantigo/customers/lib/customers/hooks";
+import { useCustomerStats, useCustomers } from "@vantigo/customers/lib/customers/hooks";
 import type { customerSortFields } from "@vantigo/customers/lib/customers/schemas";
 import { countryFlag, countryName } from "@vantigo/customers/lib/i18n/country";
 import { useRouter } from "next/navigation";
@@ -34,6 +28,7 @@ import {
   CustomerStatusBadge,
   EditCustomerModal,
   LegalTypeBadge,
+  useConfirmArchive,
 } from "./customer-modals";
 
 type SortField = (typeof customerSortFields)[number];
@@ -67,27 +62,7 @@ export function CustomersPage({
 
   const { data, isLoading } = useCustomers(query);
   const { data: stats } = useCustomerStats();
-  const archiveCustomer = useArchiveCustomer();
-
-  const confirmArchive = (customer: Customer) => {
-    modals.openConfirmModal({
-      title: t("archiveConfirmTitle"),
-      children: <Text size="sm">{t("archiveConfirmMessage", { name: customer.legalName })}</Text>,
-      labels: { confirm: t("archiveConfirm"), cancel: t("archiveCancel") },
-      confirmProps: { color: "red" },
-      onConfirm: () => {
-        archiveCustomer.mutate(customer.id, {
-          onSuccess: () => {
-            notifications.show({
-              color: "green",
-              title: t("notifications.archivedTitle"),
-              message: t("notifications.archivedMessage", { name: customer.legalName }),
-            });
-          },
-        });
-      },
-    });
-  };
+  const confirmArchive = useConfirmArchive();
 
   const columns = useMemo<DataTableColumn<Customer>[]>(
     () => [

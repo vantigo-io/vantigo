@@ -18,6 +18,29 @@ async function fillDialogPassword(page: Page, password: string) {
   await page.getByRole("dialog").getByRole("textbox", { name: "Password" }).fill(password);
 }
 
+/** Full enrollment from the settings security tab; returns the TOTP secret and backup codes. */
+async function enrollTwoFactor(page: Page): Promise<{ secret: string; backupCodes: string[] }> {
+  await page.goto("/settings?tab=security");
+  await page.getByRole("button", { name: "Enable 2FA" }).click();
+  await fillDialogPassword(page, DEFAULT_PASSWORD);
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  const secret = (await page.getByTestId("totp-secret").textContent()) ?? "";
+  expect(secret.length).toBeGreaterThan(10);
+
+  const backupCodes = (await page.getByTestId("backup-codes").locator("code").allTextContents())
+    .map((code) => code.trim())
+    .filter(Boolean);
+  expect(backupCodes.length).toBeGreaterThan(0);
+
+  await page.getByLabel("I have saved my backup codes").check();
+  await page.getByRole("button", { name: "Continue" }).click();
+  await fillPin(page, "enroll-pin", totpCode(secret));
+  await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
+
+  return { secret, backupCodes };
+}
+
 test.describe("two-factor authentication", () => {
   test("enroll in settings, verify on sign-in, then use a backup code", async ({ page }) => {
     const email = uniqueEmail("2fa");
@@ -26,28 +49,7 @@ test.describe("two-factor authentication", () => {
     await signUp(page, { name, email, password: DEFAULT_PASSWORD });
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-    // --- Enroll from the settings security tab ---
-    await page.goto("/settings?tab=security");
-    await expect(page.getByRole("heading", { name: "Two-factor authentication" })).toBeVisible();
-    await page.getByRole("button", { name: "Enable 2FA" }).click();
-
-    await fillDialogPassword(page, DEFAULT_PASSWORD);
-    await page.getByRole("button", { name: "Continue" }).click();
-
-    const secret = (await page.getByTestId("totp-secret").textContent()) ?? "";
-    expect(secret.length).toBeGreaterThan(10);
-
-    const backupCodes = (await page.getByTestId("backup-codes").locator("code").allTextContents())
-      .map((code) => code.trim())
-      .filter(Boolean);
-    expect(backupCodes.length).toBeGreaterThan(0);
-
-    await page.getByLabel("I have saved my backup codes").check();
-    await page.getByRole("button", { name: "Continue" }).click();
-
-    await fillPin(page, "enroll-pin", totpCode(secret));
-    await expect(page.getByText("Two-factor authentication enabled")).toBeVisible();
-    await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
+    const { secret, backupCodes } = await enrollTwoFactor(page);
 
     // --- Sign out, sign in again: TOTP challenge ---
     await signOut(page, name);
@@ -75,16 +77,7 @@ test.describe("two-factor authentication", () => {
     await signUp(page, { name, email, password: DEFAULT_PASSWORD });
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-    await page.goto("/settings?tab=security");
-    await page.getByRole("button", { name: "Enable 2FA" }).click();
-    await fillDialogPassword(page, DEFAULT_PASSWORD);
-    await page.getByRole("button", { name: "Continue" }).click();
-
-    const secret = (await page.getByTestId("totp-secret").textContent()) ?? "";
-    await page.getByLabel("I have saved my backup codes").check();
-    await page.getByRole("button", { name: "Continue" }).click();
-    await fillPin(page, "enroll-pin", totpCode(secret));
-    await expect(page.getByText("Enabled", { exact: true })).toBeVisible();
+    await enrollTwoFactor(page);
 
     // Disable again.
     await page.getByRole("button", { name: "Disable 2FA" }).click();

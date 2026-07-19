@@ -1,6 +1,6 @@
 import { auth } from "@vantigo/customers/lib/auth";
-import { config } from "@vantigo/customers/lib/config";
 import { isTwoFactorAvailable } from "@vantigo/customers/lib/settings/two-factor";
+import { getTwoFactorConfig } from "@vantigo/customers/lib/settings/two-factor-config";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SettingsPage } from "./settings-page";
@@ -14,11 +14,7 @@ export default async function Page() {
   }
 
   const sessions = await auth.api.listSessions({ headers: requestHeaders });
-
-  const twoFactorConfig = {
-    enabled: config.VANTIGO_CUSTOMERS_2FA_ENABLED,
-    enforced: config.VANTIGO_CUSTOMERS_2FA_ENFORCED,
-  };
+  const twoFactorConfig = getTwoFactorConfig();
 
   return (
     <SettingsPage
@@ -43,7 +39,9 @@ export default async function Page() {
           userAgent: s.userAgent ?? null,
           current: s.id === session.session.id,
         }))
-        .sort((a, b) => (a.current ? -1 : b.current ? 1 : b.createdAt.localeCompare(a.createdAt)))}
+        .sort(
+          (a, b) => Number(b.current) - Number(a.current) || b.createdAt.localeCompare(a.createdAt),
+        )}
     />
   );
 }
