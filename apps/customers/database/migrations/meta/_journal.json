@@ -22,6 +22,13 @@
       "when": 1784408607341,
       "tag": "0002_add_user_language",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784471090009,
+      "tag": "0003_add_customers_table",
+      "breakpoints": true
     }
   ]
 }
