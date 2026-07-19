@@ -1,8 +1,5 @@
-import { Title } from "@mantine/core";
-import { getTranslations } from "next-intl/server";
+import { CustomersPage } from "./customers-page";
 
-export default async function CustomersPage() {
-  const t = await getTranslations("customers");
-
-  return <Title order={2}>{t("title")}</Title>;
+export default function Page() {
+  return <CustomersPage />;
 }

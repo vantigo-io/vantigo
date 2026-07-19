@@ -1,6 +1,7 @@
 import { auth } from "@vantigo/customers/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { Providers } from "./providers";
 import { Shell } from "./shell";
 
 export default async function AppLayout({
@@ -15,14 +16,16 @@ export default async function AppLayout({
   }
 
   return (
-    <Shell
-      user={{
-        name: session.user.name,
-        email: session.user.email,
-        image: session.user.image ?? undefined,
-      }}
-    >
-      {children}
-    </Shell>
+    <Providers>
+      <Shell
+        user={{
+          name: session.user.name,
+          email: session.user.email,
+          image: session.user.image ?? undefined,
+        }}
+      >
+        {children}
+      </Shell>
+    </Providers>
   );
 }

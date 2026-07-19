@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@tabler/icons-react": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-table": "catalog:",
+    "mantine-form-zod-resolver": "catalog:",
     "@mantine/charts": "catalog:",
     "@mantine/code-highlight": "catalog:",
     "@mantine/core": "catalog:",

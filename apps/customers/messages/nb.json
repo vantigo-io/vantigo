@@ -29,7 +29,82 @@
     "diffDescription": "Sammenlignet med forrige måned"
   },
   "customers": {
-    "title": "Kunder"
+    "title": "Kunder",
+    "newCustomer": "Ny kunde",
+    "createTitle": "Ny kunde",
+    "editTitle": "Rediger kunde #{id}",
+    "searchPlaceholder": "Søk på navn, e-post eller org.nr/fødselsnr...",
+    "filterLegalType": "Type",
+    "filterStatus": "Status",
+    "empty": "Ingen kunder funnet",
+    "legalType": {
+      "business": "Bedrift",
+      "private": "Privat"
+    },
+    "status": {
+      "active": "Aktiv",
+      "archived": "Arkivert"
+    },
+    "stats": {
+      "total": "Totalt antall kunder",
+      "newThisMonth": "Nye denne måneden",
+      "business": "Bedriftskunder",
+      "private": "Privatkunder"
+    },
+    "table": {
+      "id": "Nr.",
+      "legalName": "Navn",
+      "legalType": "Type",
+      "legalId": "Org.nr/fødselsnr",
+      "email": "E-post",
+      "phone": "Telefon",
+      "status": "Status",
+      "actions": "Handlinger",
+      "quickEdit": "Hurtigredigering",
+      "archive": "Arkiver"
+    },
+    "form": {
+      "legalName": "Navn",
+      "legalNamePlaceholder": "Kundens juridiske navn",
+      "legalType": "Type",
+      "legalTypeBusiness": "Bedrift",
+      "legalTypePrivate": "Privat",
+      "legalCountry": "Land",
+      "legalId": "Org.nr/fødselsnr",
+      "legalIdPlaceholder": "Organisasjonsnummer eller fødselsnummer",
+      "email": "E-post",
+      "emailPlaceholder": "post@example.no",
+      "phone": "Telefon",
+      "phonePlaceholder": "+47 22 33 44 55",
+      "notes": "Notater",
+      "create": "Opprett kunde",
+      "save": "Lagre endringer",
+      "invalidLegalId": "Ugyldig {legalType, select, business {organisasjonsnummer} other {fødselsnummer}} for {country}",
+      "duplicateTitle": "Mulig duplikat",
+      "duplicateLegalId": "En kunde med dette org.nr/fødselsnr finnes allerede:",
+      "duplicateEmail": "En kunde med denne e-posten finnes allerede:"
+    },
+    "archiveConfirmTitle": "Arkiver kunde",
+    "archiveConfirmMessage": "Er du sikker på at du vil arkivere {name}? Kunden skjules fra standardvisningen, men kan gjenopprettes senere.",
+    "archiveConfirm": "Arkiver",
+    "archiveCancel": "Avbryt",
+    "detail": {
+      "backToList": "Tilbake til kunder",
+      "edit": "Rediger",
+      "unarchive": "Reaktiver",
+      "createdAt": "Opprettet",
+      "notFoundTitle": "Fant ikke kunden",
+      "notFoundMessage": "Ingen kunde med nummer #{id} finnes."
+    },
+    "notifications": {
+      "createdTitle": "Kunde opprettet",
+      "createdMessage": "{name} ble opprettet som kunde #{id}",
+      "updatedTitle": "Kunde oppdatert",
+      "updatedMessage": "Kunde #{id} ble oppdatert",
+      "archivedTitle": "Kunde arkivert",
+      "archivedMessage": "{name} ble arkivert",
+      "errorTitle": "Noe gikk galt"
+    }
   },
   "signIn": {
     "title": "Velkommen tilbake!",

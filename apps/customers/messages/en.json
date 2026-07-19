@@ -29,7 +29,82 @@
     "diffDescription": "Compared to previous month"
   },
   "customers": {
-    "title": "Customers"
+    "title": "Customers",
+    "newCustomer": "New customer",
+    "createTitle": "New customer",
+    "editTitle": "Edit customer #{id}",
+    "searchPlaceholder": "Search name, email or legal id...",
+    "filterLegalType": "Type",
+    "filterStatus": "Status",
+    "empty": "No customers found",
+    "legalType": {
+      "business": "Business",
+      "private": "Private"
+    },
+    "status": {
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "stats": {
+      "total": "Total customers",
+      "newThisMonth": "New this month",
+      "business": "Business customers",
+      "private": "Private customers"
+    },
+    "table": {
+      "id": "No.",
+      "legalName": "Name",
+      "legalType": "Type",
+      "legalId": "Legal id",
+      "email": "Email",
+      "phone": "Phone",
+      "status": "Status",
+      "actions": "Actions",
+      "quickEdit": "Quick edit",
+      "archive": "Archive"
+    },
+    "form": {
+      "legalName": "Name",
+      "legalNamePlaceholder": "Legal name of the customer",
+      "legalType": "Type",
+      "legalTypeBusiness": "Business",
+      "legalTypePrivate": "Private",
+      "legalCountry": "Country",
+      "legalId": "Legal id",
+      "legalIdPlaceholder": "Org. number or national id",
+      "email": "Email",
+      "emailPlaceholder": "post@example.com",
+      "phone": "Phone",
+      "phonePlaceholder": "+47 22 33 44 55",
+      "notes": "Notes",
+      "create": "Create customer",
+      "save": "Save changes",
+      "invalidLegalId": "Invalid legal id for {legalType, select, business {a business} other {a private person}} in {country}",
+      "duplicateTitle": "Possible duplicate",
+      "duplicateLegalId": "A customer with this legal id already exists:",
+      "duplicateEmail": "A customer with this email already exists:"
+    },
+    "archiveConfirmTitle": "Archive customer",
+    "archiveConfirmMessage": "Are you sure you want to archive {name}? The customer will be hidden from the default view but can be restored later.",
+    "archiveConfirm": "Archive",
+    "archiveCancel": "Cancel",
+    "detail": {
+      "backToList": "Back to customers",
+      "edit": "Edit",
+      "unarchive": "Reactivate",
+      "createdAt": "Created",
+      "notFoundTitle": "Customer not found",
+      "notFoundMessage": "No customer with number #{id} exists."
+    },
+    "notifications": {
+      "createdTitle": "Customer created",
+      "createdMessage": "{name} was created as customer #{id}",
+      "updatedTitle": "Customer updated",
+      "updatedMessage": "Customer #{id} was updated",
+      "archivedTitle": "Customer archived",
+      "archivedMessage": "{name} was archived",
+      "errorTitle": "Something went wrong"
+    }
   },
   "signIn": {
     "title": "Welcome back!",

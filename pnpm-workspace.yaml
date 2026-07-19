@@ -31,6 +31,9 @@ catalog:
   better-auth: ^1.6.23
   next-intl: ^4.8.3
   '@tabler/icons-react': ^3.36.0
+  '@tanstack/react-query': ^5.101.2
+  '@tanstack/react-table': ^8.21.3
+  mantine-form-zod-resolver: ^1.3.0
   vitest: ^4.1.10
   '@vitejs/plugin-react': ^6.0.3
   jsdom: ^29.1.1
