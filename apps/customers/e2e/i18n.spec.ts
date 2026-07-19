@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { DEFAULT_PASSWORD, signIn, signOut, signUp, uniqueEmail } from "./helpers";
+import { DEFAULT_PASSWORD, signIn, signUp, uniqueEmail } from "./helpers";
 
 test.describe("i18n", () => {
   test("Norwegian browser gets Norwegian sign-in page", async ({ browser }) => {

@@ -24,6 +24,9 @@
       }
     }
   },
+  "files": {
+    "includes": ["**", "!**/*.module.css"]
+  },
   "javascript": {
     "formatter": {
       "quoteStyle": "double"
