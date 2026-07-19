@@ -4,6 +4,7 @@ import {
   Alert,
   Anchor,
   Button,
+  Center,
   Group,
   Input,
   SegmentedControl,
@@ -13,16 +14,17 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconBuilding, IconUser } from "@tabler/icons-react";
 import type { Customer } from "@vantigo/customers/database/schema/customers";
 import type { DuplicateWarning } from "@vantigo/customers/lib/customers/queries";
 import {
   type CustomerCreateInput,
   customerCreateSchema,
 } from "@vantigo/customers/lib/customers/schemas";
+import { countryLabel } from "@vantigo/customers/lib/i18n/country";
 import { zod4Resolver } from "mantine-form-zod-resolver";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { BrregSearch } from "./brreg-search";
 
@@ -45,6 +47,7 @@ export function CustomerForm({
   onSubmit,
 }: CustomerFormProps) {
   const t = useTranslations("customers.form");
+  const locale = useLocale();
 
   const form = useForm<CustomerCreateInput>({
     mode: "uncontrolled",
@@ -108,7 +111,10 @@ export function CustomerForm({
         <Group grow align="flex-end">
           <Select
             label={t("legalCountry")}
-            data={COUNTRY_OPTIONS}
+            data={COUNTRY_OPTIONS.map((code) => ({
+              value: code,
+              label: countryLabel(code, locale),
+            }))}
             searchable
             allowDeselect={false}
             withAsterisk
@@ -120,8 +126,24 @@ export function CustomerForm({
             <SegmentedControl
               fullWidth
               data={[
-                { value: "business", label: t("legalTypeBusiness") },
-                { value: "private", label: t("legalTypePrivate") },
+                {
+                  value: "business",
+                  label: (
+                    <Center style={{ gap: 6 }}>
+                      <IconBuilding size={16} stroke={1.5} />
+                      {t("legalTypeBusiness")}
+                    </Center>
+                  ),
+                },
+                {
+                  value: "private",
+                  label: (
+                    <Center style={{ gap: 6 }}>
+                      <IconUser size={16} stroke={1.5} />
+                      {t("legalTypePrivate")}
+                    </Center>
+                  ),
+                },
               ]}
               key={form.key("legalType")}
               {...form.getInputProps("legalType")}

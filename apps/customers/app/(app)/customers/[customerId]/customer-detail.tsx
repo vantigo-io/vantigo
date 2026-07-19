@@ -21,8 +21,9 @@ import {
   useCustomer,
   useUpdateCustomer,
 } from "@vantigo/customers/lib/customers/hooks";
+import { countryFlag, countryName } from "@vantigo/customers/lib/i18n/country";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 import { CustomerStatusBadge, EditCustomerModal, LegalTypeBadge } from "../customer-modals";
 
@@ -42,6 +43,7 @@ function Field({ label, value }: Readonly<{ label: string; value: React.ReactNod
 export function CustomerDetail({ customerId }: Readonly<{ customerId: number }>) {
   const t = useTranslations("customers");
   const format = useFormatter();
+  const locale = useLocale();
   const { data: customer, isLoading, isError } = useCustomer(customerId);
   const archiveCustomer = useArchiveCustomer();
   const updateCustomer = useUpdateCustomer();
@@ -151,7 +153,11 @@ export function CustomerDetail({ customerId }: Readonly<{ customerId: number }>)
           <Field label={t("form.legalType")} value={t(`legalType.${customer.legalType}`)} />
           <Field
             label={t("form.legalId")}
-            value={`${customer.legalId} (${customer.legalCountry})`}
+            value={
+              <span title={countryName(customer.legalCountry, locale)}>
+                {countryFlag(customer.legalCountry)} {customer.legalId}
+              </span>
+            }
           />
           <Field
             label={t("form.email")}

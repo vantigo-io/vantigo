@@ -25,8 +25,9 @@ import {
   useCustomers,
 } from "@vantigo/customers/lib/customers/hooks";
 import type { customerSortFields } from "@vantigo/customers/lib/customers/schemas";
+import { countryFlag, countryName } from "@vantigo/customers/lib/i18n/country";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useMemo, useState } from "react";
 import {
   CreateCustomerModal,
@@ -39,6 +40,7 @@ type SortField = (typeof customerSortFields)[number];
 
 export function CustomersPage() {
   const t = useTranslations("customers");
+  const locale = useLocale();
   const router = useRouter();
 
   const [page, setPage] = useState(1);
@@ -110,11 +112,8 @@ export function CustomersPage() {
         header: t("table.legalId"),
         enableSorting: false,
         cell: ({ row }) => (
-          <Text size="sm">
-            {row.original.legalId}{" "}
-            <Text span size="xs" c="dimmed">
-              ({row.original.legalCountry})
-            </Text>
+          <Text size="sm" title={countryName(row.original.legalCountry, locale)}>
+            {countryFlag(row.original.legalCountry)} {row.original.legalId}
           </Text>
         ),
       },
@@ -168,7 +167,7 @@ export function CustomersPage() {
       },
     ],
     // eslint-style exhaustive deps aren't in play; t is stable per locale
-    [t],
+    [t, locale],
   );
 
   return (

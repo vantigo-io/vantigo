@@ -62,7 +62,7 @@ test.describe("customer management", () => {
       .click();
     await expect(page).toHaveURL(/\/customers\/\d+/);
     await expect(page.getByRole("heading", { name: editedName })).toBeVisible();
-    await expect(page.getByText(`${VALID_ORGNR} (NO)`)).toBeVisible();
+    await expect(page.getByText(`🇳🇴 ${VALID_ORGNR}`)).toBeVisible();
 
     // --- Archive from detail page
     await page.getByRole("button", { name: "Archive" }).click();
@@ -144,9 +144,9 @@ test.describe("customer management", () => {
 
     // Search box only visible for NO + business
     await expect(modal.getByLabel("Company search")).toBeVisible();
-    await modal.getByText("Private", { exact: true }).click();
+    await modal.locator("label", { hasText: "Private" }).click();
     await expect(modal.getByLabel("Company search")).toBeHidden();
-    await modal.getByText("Business", { exact: true }).click();
+    await modal.locator("label", { hasText: "Business" }).click();
 
     // Search and select → fills orgnr + name + contact details
     await modal.getByLabel("Company search").fill("equinor");
