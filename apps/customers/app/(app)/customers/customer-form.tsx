@@ -118,7 +118,6 @@ export function CustomerForm({
             searchable
             allowDeselect={false}
             withAsterisk
-            data-autofocus
             key={form.key("legalCountry")}
             {...form.getInputProps("legalCountry")}
           />
