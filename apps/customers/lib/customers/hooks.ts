@@ -35,6 +35,40 @@ export function useCustomerStats() {
   });
 }
 
+/**
+ * Live duplicate lookup for the customer form: checks legalId and email
+ * against existing customers before saving. Purely advisory — writes are
+ * never blocked.
+ */
+export function useDuplicateCheck({
+  legalId,
+  email,
+  excludeId,
+}: {
+  legalId: string;
+  email: string;
+  excludeId?: number;
+}) {
+  return useQuery({
+    queryKey: [...customerKeys.all, "duplicate-check", { legalId, email, excludeId }],
+    queryFn: async () => {
+      const [byLegalId, byEmail] = await Promise.all([
+        legalId ? api.fetchCustomers({ legalId, pageSize: 1 }) : null,
+        email ? api.fetchCustomers({ email, pageSize: 1 }) : null,
+      ]);
+      const warnings: api.DuplicateWarning[] = [];
+      const legalIdMatch = byLegalId?.items.find((customer) => customer.id !== excludeId);
+      if (legalIdMatch) warnings.push({ code: "DUPLICATE_LEGAL_ID", existingId: legalIdMatch.id });
+      const emailMatch = byEmail?.items.find((customer) => customer.id !== excludeId);
+      if (emailMatch) warnings.push({ code: "DUPLICATE_EMAIL", existingId: emailMatch.id });
+      return warnings;
+    },
+    enabled: Boolean(legalId || email),
+    staleTime: 10_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useCreateCustomer() {
   const queryClient = useQueryClient();
   return useMutation({

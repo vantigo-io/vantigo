@@ -2,6 +2,7 @@
 
 import { Badge, Modal } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { IconBuilding, IconUser } from "@tabler/icons-react";
 import type { Customer } from "@vantigo/customers/database/schema/customers";
 import { useCreateCustomer, useUpdateCustomer } from "@vantigo/customers/lib/customers/hooks";
 import type { DuplicateWarning } from "@vantigo/customers/lib/customers/queries";
@@ -21,8 +22,13 @@ export function CustomerStatusBadge({ status }: Readonly<{ status: Customer["sta
 
 export function LegalTypeBadge({ legalType }: Readonly<{ legalType: Customer["legalType"] }>) {
   const t = useTranslations("customers");
+  const Icon = legalType === "business" ? IconBuilding : IconUser;
   return (
-    <Badge color={legalType === "business" ? "blue" : "grape"} variant="light">
+    <Badge
+      color={legalType === "business" ? "blue" : "grape"}
+      variant="light"
+      leftSection={<Icon size={12} stroke={1.5} />}
+    >
       {t(`legalType.${legalType}`)}
     </Badge>
   );

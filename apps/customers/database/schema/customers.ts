@@ -18,8 +18,8 @@ export const customers = schema.table(
     legalCountry: text("legal_country").notNull(),
     /** Fødselsnummer (private) or organisasjonsnummer (business) for NO. */
     legalId: text("legal_id").notNull(),
-    email: text("email").notNull(),
-    phone: text("phone").notNull(),
+    email: text("email"),
+    phone: text("phone"),
     status: text("status", { enum: customerStatuses }).default("active").notNull(),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

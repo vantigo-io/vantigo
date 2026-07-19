@@ -34,6 +34,7 @@ export async function listCustomers(query: CustomerListQuery): Promise<CustomerL
   if (query.legalType) filters.push(eq(customers.legalType, query.legalType));
   if (query.status) filters.push(eq(customers.status, query.status));
   if (query.legalId) filters.push(eq(customers.legalId, query.legalId));
+  if (query.email) filters.push(eq(customers.email, query.email));
 
   const where = filters.length > 0 ? and(...filters) : undefined;
   const orderBy =
@@ -85,7 +86,7 @@ export interface DuplicateWarning {
 
 /** Duplicates are warnings, never constraints: writes always succeed. */
 export async function findDuplicateWarnings(
-  input: { legalId?: string; email?: string },
+  input: { legalId?: string | null; email?: string | null },
   excludeId?: number,
 ): Promise<DuplicateWarning[]> {
   const warnings: DuplicateWarning[] = [];

@@ -75,24 +75,31 @@ test.describe("customer management", () => {
     await expect(page.getByText("Customer updated")).toBeVisible();
   });
 
-  test("duplicate legal id shows a warning but does not block", async ({ page }) => {
+  test("duplicate legal id warns while typing but does not block", async ({ page }) => {
     const name = `Duplo ${Date.now()} AS`;
 
-    const create = async (customerName: string) => {
+    const create = async (customerName: string, expectWarning: boolean) => {
       await page.getByRole("button", { name: "New customer" }).click();
       const modal = page.getByRole("dialog");
       await modal.getByLabel("Name").fill(customerName);
       await modal.getByLabel("Organisation number").fill(VALID_ORGNR_2);
-      await modal.getByLabel("Email").fill("dup@duplo.no");
-      await modal.getByLabel("Phone").fill("+4722334455");
+
+      // Live duplicate check fires before any save attempt
+      if (expectWarning) {
+        await expect(modal.getByText("Possible duplicate")).toBeVisible();
+      } else {
+        await expect(modal.getByText("Possible duplicate")).toBeHidden();
+      }
+
+      // Email and phone are optional — leave them empty
       await modal.getByRole("button", { name: "Create customer" }).click();
       await expect(page.getByText("Customer created")).toBeVisible();
       // Dismiss notification to avoid strict-mode clashes on the next round
       await page.getByText("Customer created").first().click();
     };
 
-    await create(`${name} 1`);
-    await create(`${name} 2`);
+    await create(`${name} 1`, false);
+    await create(`${name} 2`, true);
 
     // Both exist
     await page.getByPlaceholder(/Search name/).fill(name);

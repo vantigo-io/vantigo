@@ -16,6 +16,10 @@ const legalIdRefinement = (
   }
 };
 
+/** Empty strings from form inputs become null (fields are optional). */
+const emptyToNull = (value: unknown) =>
+  typeof value === "string" && value.trim() === "" ? null : value;
+
 const customerBaseSchema = z.object({
   legalName: z.string().trim().min(1).max(200),
   legalType: z.enum(legalTypes),
@@ -25,8 +29,8 @@ const customerBaseSchema = z.object({
     .length(2)
     .transform((value) => value.toUpperCase()),
   legalId: z.string().trim().min(1).max(32),
-  email: z.email().max(254),
-  phone: z.string().trim().min(4).max(20),
+  email: z.preprocess(emptyToNull, z.email().max(254).nullish()),
+  phone: z.preprocess(emptyToNull, z.string().trim().min(4).max(20).nullish()),
   notes: z.string().trim().max(5000).nullish(),
 });
 
@@ -82,6 +86,7 @@ export const customerListQuerySchema = z.object({
   legalType: z.enum(legalTypes).optional(),
   status: z.enum(customerStatuses).optional(),
   legalId: z.string().trim().max(32).optional(),
+  email: z.string().trim().max(254).optional(),
 });
 
 export type CustomerCreateInput = z.infer<typeof customerCreateSchema>;

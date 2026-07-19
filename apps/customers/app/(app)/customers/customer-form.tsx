@@ -14,8 +14,10 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertTriangle, IconBuilding, IconUser } from "@tabler/icons-react";
 import type { Customer } from "@vantigo/customers/database/schema/customers";
+import { useDuplicateCheck } from "@vantigo/customers/lib/customers/hooks";
 import type { DuplicateWarning } from "@vantigo/customers/lib/customers/queries";
 import {
   type CustomerCreateInput,
@@ -80,6 +82,22 @@ export function CustomerForm({
   form.watch("legalCountry", ({ value }) => setLegalCountry(value));
   form.watch("legalType", ({ value }) => setLegalType(value));
 
+  // Live duplicate check: advisory warning while typing, before any save.
+  const [legalId, setLegalId] = useState(form.getValues().legalId);
+  const [email, setEmail] = useState(form.getValues().email ?? "");
+  form.watch("legalId", ({ value }) => setLegalId(value));
+  form.watch("email", ({ value }) => setEmail(value ?? ""));
+  const [debouncedLegalId] = useDebouncedValue(legalId.trim(), 300);
+  const [debouncedEmail] = useDebouncedValue(email.trim(), 300);
+  const { data: liveWarnings } = useDuplicateCheck({
+    legalId: debouncedLegalId,
+    email: debouncedEmail,
+    excludeId: initialValues?.id,
+  });
+
+  // Post-save warnings from the API take precedence over live ones.
+  const visibleWarnings = warnings && warnings.length > 0 ? warnings : (liveWarnings ?? []);
+
   const isNorwegian = legalCountry === "NO";
   const showBrregSearch = isNorwegian && legalType === "business";
   const legalIdLabel = isNorwegian
@@ -95,9 +113,9 @@ export function CustomerForm({
       )}
     >
       <Stack gap="sm">
-        {warnings && warnings.length > 0 && (
+        {visibleWarnings.length > 0 && (
           <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("duplicateTitle")}>
-            {warnings.map((warning) => (
+            {visibleWarnings.map((warning) => (
               <div key={warning.code}>
                 {t(warning.code === "DUPLICATE_LEGAL_ID" ? "duplicateLegalId" : "duplicateEmail")}{" "}
                 <Anchor component={Link} href={`/customers/${warning.existingId}`} size="sm">
@@ -185,14 +203,12 @@ export function CustomerForm({
           <TextInput
             label={t("email")}
             placeholder={t("emailPlaceholder")}
-            withAsterisk
             key={form.key("email")}
             {...form.getInputProps("email")}
           />
           <TextInput
             label={t("phone")}
             placeholder={t("phonePlaceholder")}
-            withAsterisk
             key={form.key("phone")}
             {...form.getInputProps("phone")}
           />

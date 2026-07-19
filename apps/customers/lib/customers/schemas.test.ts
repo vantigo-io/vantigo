@@ -56,6 +56,21 @@ describe("customerCreateSchema", () => {
   it("rejects invalid email", () => {
     expect(customerCreateSchema.safeParse({ ...validCustomer, email: "nope" }).success).toBe(false);
   });
+
+  it("treats email and phone as optional", () => {
+    const { email, phone, ...withoutContact } = validCustomer;
+    const result = customerCreateSchema.safeParse(withoutContact);
+    expect(result.success).toBe(true);
+  });
+
+  it("normalizes empty contact strings to null", () => {
+    const result = customerCreateSchema.safeParse({ ...validCustomer, email: "", phone: "  " });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.email).toBeNull();
+      expect(result.data.phone).toBeNull();
+    }
+  });
 });
 
 describe("customerUpdateSchema", () => {

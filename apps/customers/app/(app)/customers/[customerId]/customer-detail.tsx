@@ -161,11 +161,19 @@ export function CustomerDetail({ customerId }: Readonly<{ customerId: number }>)
           />
           <Field
             label={t("form.email")}
-            value={<Anchor href={`mailto:${customer.email}`}>{customer.email}</Anchor>}
+            value={
+              customer.email ? (
+                <Anchor href={`mailto:${customer.email}`}>{customer.email}</Anchor>
+              ) : null
+            }
           />
           <Field
             label={t("form.phone")}
-            value={<Anchor href={`tel:${customer.phone}`}>{customer.phone}</Anchor>}
+            value={
+              customer.phone ? (
+                <Anchor href={`tel:${customer.phone}`}>{customer.phone}</Anchor>
+              ) : null
+            }
           />
           <Field
             label={t("detail.createdAt")}

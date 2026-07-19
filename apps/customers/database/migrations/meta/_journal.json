@@ -29,6 +29,13 @@
       "when": 1784471090009,
       "tag": "0003_add_customers_table",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784474525695,
+      "tag": "0004_customer_contact_optional",
+      "breakpoints": true
     }
   ]
 }
