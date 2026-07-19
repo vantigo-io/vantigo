@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    name: Pipeline
+    uses: ./.github/workflows/_pipeline.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      push-images: false
+    secrets: inherit

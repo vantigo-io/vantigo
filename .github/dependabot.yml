@@ -30,10 +30,32 @@ updates:
         dependency-type: "development"
 
   - package-ecosystem: "docker"
+    directories:
+      - "/apps/*"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+      timezone: "Europe/Oslo"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      docker-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+      timezone: "Europe/Oslo"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
     groups:
-      docker-dependencies:
+      actions:
         patterns:
           - "*"

@@ -1,0 +1,206 @@
+name: Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      push-images:
+        description: Push container images to GHCR
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      version:
+        description: Semver computed from conventional commits
+        value: ${{ jobs.version.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compute bumped version
+        id: bump
+        uses: orhun/git-cliff-action@v4
+        with:
+          args: --bumped-version
+        env:
+          OUTPUT: ""
+
+      - name: Report
+        run: 'echo "Computed version: ${{ steps.bump.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"'
+
+      - name: Validate tag against conventional commits
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          COMPUTED="${{ steps.bump.outputs.version }}"
+          if [ "$TAG" != "$COMPUTED" ]; then
+            echo "::warning::Pushed tag $TAG differs from computed bump $COMPUTED (conventional commits). Proceeding — manual tags have authority."
+          fi
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26 # keep in sync with .mise.toml
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec biome ci .
+
+  build-test:
+    name: Build & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26 # keep in sync with .mise.toml
+          cache: pnpm
+      - uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec turbo build
+      - run: pnpm exec turbo test
+      - name: Upload standalone build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-customers
+          path: |
+            apps/customers/.next/standalone
+            apps/customers/.next/static
+          if-no-files-found: error
+          retention-days: 1
+          include-hidden-files: true
+
+  e2e:
+    name: E2E tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26 # keep in sync with .mise.toml
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "version=$(pnpm --filter @vantigo/customers list @playwright/test --json | jq -r '.[0].devDependencies["@playwright/test"].version')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: apps/customers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run e2e tests
+        working-directory: apps/customers
+        run: pnpm run test:e2e
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: apps/customers/test-results
+          retention-days: 7
+
+  discover:
+    name: Discover containerized apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.list.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: List apps with a Dockerfile
+        id: list
+        run: |
+          APPS=$(find apps -maxdepth 2 -name Dockerfile -exec dirname {} \; | xargs -n1 basename | jq -R . | jq -sc .)
+          echo "apps=$APPS" >> "$GITHUB_OUTPUT"
+          echo "Discovered: $APPS"
+
+  container:
+    name: Container (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    needs: [version, build-test, discover]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        app: ${{ fromJSON(needs.discover.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download standalone build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: standalone-${{ matrix.app }}
+          path: apps/${{ matrix.app }}/.next
+
+      - name: Guard against native binaries (multi-arch safety)
+        run: |
+          NATIVE=$(find "apps/${{ matrix.app }}/.next/standalone" -name '*.node' || true)
+          if [ -n "$NATIVE" ]; then
+            echo "::error::Native binaries found in standalone output — the single-build multi-arch image would break on the other architecture:"
+            echo "$NATIVE"
+            exit 1
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Chainguard registry (base image)
+        uses: docker/login-action@v3
+        with:
+          registry: cgr.dev
+          username: ${{ secrets.CHAINGUARD_DOCKER_IDENTITY }}
+          password: ${{ secrets.CHAINGUARD_DOCKER_TOKEN }}
+
+      - name: Log in to GHCR
+        if: inputs.push-images
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Container metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}
+          tags: |
+            type=semver,pattern=v{{version}},value=${{ needs.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version.outputs.version }}
+            type=raw,value=latest,enable=${{ inputs.push-images }}
+            type=sha
+
+      - name: Build (and push) image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push-images }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,scope=${{ matrix.app }},mode=max
