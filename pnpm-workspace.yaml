@@ -2,6 +2,15 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# Security overrides for vulnerable transitive dependencies.
+# - postcss: next/better-auth/next-intl pin <8.5.10 (XSS in stringify, GHSA);
+#   remove once they ship postcss >=8.5.10 themselves.
+# - esbuild: drizzle-kit ships the deprecated @esbuild-kit loader chain with
+#   esbuild 0.18 (dev-server CORS advisory); remove when drizzle-kit drops it.
+overrides:
+  "postcss@<8.5.10": "8.5.19"
+  "esbuild@<0.25.0": ">=0.25.0"
+
 allowBuilds:
   '@parcel/watcher': true
   '@swc/core': true
