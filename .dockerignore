@@ -1,0 +1,32 @@
+# The Dockerfile only COPYs prebuilt artifacts; keep the context minimal.
+# Note: .next/standalone and .next/static MUST be included.
+.git
+.github
+.idea
+.vscode
+.turbo
+**/.turbo
+node_modules
+apps/*/node_modules
+packages/*/node_modules
+
+# Build caches and non-runtime Next output
+**/.next/cache
+**/.next/dev
+**/tsconfig.tsbuildinfo
+
+# Tests
+**/e2e
+**/test-results
+**/playwright-report
+**/*.test.*
+**/vitest.*
+
+# Secrets and local config
+.env
+.env.*
+.mise.toml
+
+# Docs and misc
+**/README.md
+compose.yaml
