@@ -112,6 +112,7 @@ export function ContactsPage() {
         sorting={sorting}
         isLoading={isLoading}
         emptyLabel={t("empty")}
+        getRowId={(contact) => String(contact.id)}
         onPageChange={setPage}
         onPageSizeChange={(size) => {
           setPageSize(size);

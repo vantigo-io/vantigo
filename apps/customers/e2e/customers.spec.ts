@@ -41,6 +41,9 @@ test.describe("customer management", () => {
 
     // --- Appears in grid via search
     await page.getByPlaceholder(/Search name/).fill(name);
+    // Wait for the filtered result (header + 1 row) so the debounced refetch
+    // has settled before interacting with row menus.
+    await expect(page.getByRole("row")).toHaveCount(2);
     const row = page.getByRole("row").filter({ hasText: name });
     await expect(row.first()).toBeVisible();
     await expect(row.first().getByText("Business")).toBeVisible();

@@ -213,6 +213,7 @@ export function CustomersPage({
         sorting={sorting}
         isLoading={isLoading}
         emptyLabel={t("empty")}
+        getRowId={(customer) => String(customer.id)}
         onPageChange={setPage}
         onPageSizeChange={(size) => {
           setPageSize(size);

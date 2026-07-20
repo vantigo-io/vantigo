@@ -34,6 +34,12 @@ export interface DataTableProps<TData> {
   sorting: SortingState;
   isLoading?: boolean;
   emptyLabel: string;
+  /**
+   * Stable row identity. Without it TanStack falls back to the row index,
+   * which remounts rows (closing any open row menus) whenever a background
+   * refetch reorders or filters the list.
+   */
+  getRowId?: (row: TData) => string;
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   onSortingChange: (sorting: SortingState) => void;
@@ -54,6 +60,7 @@ export function DataTable<TData>({
   sorting,
   isLoading,
   emptyLabel,
+  getRowId,
   onPageChange,
   onPageSizeChange,
   onSortingChange,
@@ -66,6 +73,7 @@ export function DataTable<TData>({
     manualSorting: true,
     manualPagination: true,
     enableSortingRemoval: false,
+    getRowId,
     onSortingChange: (updater) => {
       onSortingChange(typeof updater === "function" ? updater(sorting) : updater);
     },
