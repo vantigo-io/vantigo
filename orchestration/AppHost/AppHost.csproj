@@ -1,0 +1,21 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.4.6">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <UserSecretsId>c02eea8a-695d-4661-ab9f-b0a81deaff18</UserSecretsId>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Aspire.Hosting.JavaScript" />
+      <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+      <PackageReference Include="Scalar.Aspire" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\apps\customers\backend\Customers.Api\Customers.Api.csproj" />
+    </ItemGroup>
+
+</Project>

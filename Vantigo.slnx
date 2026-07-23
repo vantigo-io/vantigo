@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/apps/" />
+  <Folder Name="/apps/customers/" />
+  <Folder Name="/apps/customers/backend/">
+    <Project Path="apps/customers/backend/Customers.Api/Customers.Api.csproj" />
+  </Folder>
+  <Folder Name="/apps/customers/frontend/" />
+  <Folder Name="/orchestration/">
+    <Project Path="orchestration/AppHost/AppHost.csproj" />
+  </Folder>
+</Solution>
