@@ -2,6 +2,7 @@
   <Folder Name="/apps/" />
   <Folder Name="/apps/customers/" />
   <Folder Name="/apps/customers/backend/">
+    <Project Path="apps/customers/backend/Customers.Api.Tests/Customers.Api.Tests.csproj" />
     <Project Path="apps/customers/backend/Customers.Api/Customers.Api.csproj" />
   </Folder>
   <Folder Name="/apps/customers/frontend/" />

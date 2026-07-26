@@ -5,7 +5,9 @@ using Scalar.Aspire;
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Services
-var postgres = builder.AddPostgres("postgres");
+var postgres = builder.AddPostgres("postgres")
+    .WithDataVolume()
+    .WithPgAdmin();
 
 // Customers
 var customersDb = postgres.AddDatabase("customers-db", "customers");
@@ -13,7 +15,8 @@ var customersDb = postgres.AddDatabase("customers-db", "customers");
 var customersApi = builder
     .AddProject<Customers_Api>("customers-api", "dev")
     .WithOtlpExporter()
-    .WithReference(customersDb);
+    .WithReference(customersDb, connectionName: "Postgresql")
+    .WaitFor(customersDb);
 
 var customersFrontend = builder.AddViteApp("customers-frontend", "../../apps/customers/frontend")
     .WithReference(customersApi)
