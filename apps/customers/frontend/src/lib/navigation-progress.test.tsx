@@ -1,0 +1,66 @@
+import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from "@mantine/modals";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
+import { render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { routeTree } from "../routeTree.gen";
+import { wireNavigationProgress } from "./navigation-progress";
+
+const { startSpy, completeSpy } = vi.hoisted(() => ({
+  startSpy: vi.fn(),
+  completeSpy: vi.fn(),
+}));
+
+vi.mock("@mantine/nprogress", () => ({
+  nprogress: { start: startSpy, complete: completeSpy },
+}));
+
+describe("wireNavigationProgress", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    startSpy.mockClear();
+    completeSpy.mockClear();
+  });
+
+  it("starts the progress bar when a navigation loads and completes it when resolved", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ id: 1001, name: "Acme", identity: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const router = createRouter({
+      routeTree,
+      context: { queryClient },
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+    });
+
+    wireNavigationProgress(router);
+
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <ModalsProvider>
+            <RouterProvider router={router} />
+          </ModalsProvider>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+
+    await vi.waitFor(() => expect(router.state.status).toBe("idle"));
+    startSpy.mockClear();
+    completeSpy.mockClear();
+
+    await router.navigate({ to: "/customers/$customerId", params: { customerId: 1001 } });
+
+    await vi.waitFor(() => expect(startSpy).toHaveBeenCalled(), { timeout: 5000 });
+    await vi.waitFor(() => expect(completeSpy).toHaveBeenCalled(), { timeout: 5000 });
+  });
+});
