@@ -5,18 +5,22 @@ import {
   Divider,
   Group,
   Image,
+  Kbd,
   Menu,
   NavLink,
   Text,
+  TextInput,
   Title,
   UnstyledButton,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useOs } from "@mantine/hooks";
+import { spotlight } from "@mantine/spotlight";
 import {
   IconAddressBook,
   IconChevronRight,
   IconLayoutDashboard,
   IconLogout,
+  IconSearch,
   IconSettings,
   IconUsers,
 } from "@tabler/icons-react";
@@ -26,6 +30,7 @@ import { createRootRouteWithContext, Link, Outlet, useRouterState } from "@tanst
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
 import logo from "../assets/logo.png";
+import { AppSpotlight } from "../components/app-spotlight";
 import { mockUser } from "../lib/mock-user";
 
 const navItems = [
@@ -56,7 +61,11 @@ const RootLayout = () => {
       </AppShell.Header>
 
       <AppShell.Navbar p="md">
-        <AppShell.Section grow>
+        <AppShell.Section>
+          <SpotlightSearchBox />
+        </AppShell.Section>
+
+        <AppShell.Section grow mt="sm">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -106,9 +115,36 @@ const RootLayout = () => {
         <Outlet />
       </AppShell.Main>
 
+      <AppSpotlight />
       <TanStackRouterDevtools />
       <ReactQueryDevtools />
     </AppShell>
+  );
+};
+
+/**
+ * A search-box-styled button opening the global spotlight, with the platform's
+ * keyboard shortcut as a hint.
+ */
+const SpotlightSearchBox = () => {
+  const os = useOs();
+  const modKey = os === "macos" ? "\u2318" : "Ctrl";
+
+  return (
+    <TextInput
+      component="button"
+      type="button"
+      onClick={spotlight.open}
+      leftSection={<IconSearch size={16} stroke={1.5} />}
+      rightSection={<Kbd size="xs">{modKey} + K</Kbd>}
+      rightSectionWidth={70}
+      aria-label="Search"
+      styles={{ input: { cursor: "pointer" } }}
+    >
+      <Text size="sm" c="dimmed" component="span">
+        Search
+      </Text>
+    </TextInput>
   );
 };
 
