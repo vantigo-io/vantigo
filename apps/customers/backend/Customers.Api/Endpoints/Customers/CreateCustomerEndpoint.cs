@@ -39,6 +39,7 @@ internal static class CreateCustomerEndpoint
                     identity.Type,
                     identity.Id,
                     identity.Name,
+                    identity.Source,
                     out var legalIdentity,
                     out var identityErrors))
             {

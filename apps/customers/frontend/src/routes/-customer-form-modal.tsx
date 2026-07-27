@@ -39,13 +39,15 @@ interface CustomerFormValues {
     type: string;
     id: string;
     name: string;
+    /** Where the identity data came from; flips to "manual" when edited by hand. */
+    source: string;
   };
 }
 
 const emptyValues: CustomerFormValues = {
   name: "",
   hasIdentity: false,
-  identity: { country: "no", type: "business", id: "", name: "" },
+  identity: { country: "no", type: "business", id: "", name: "", source: "manual" },
 };
 
 const countryOptions = [{ value: "no", label: "Norway (NO)" }];
@@ -68,7 +70,13 @@ const valuesFromState = (state: CustomerModalState): CustomerFormValues => {
     name,
     hasIdentity: identity !== null,
     identity: identity
-      ? { country: identity.country, type: identity.type, id: identity.id, name: identity.name }
+      ? {
+          country: identity.country,
+          type: identity.type,
+          id: identity.id,
+          name: identity.name,
+          source: identity.source,
+        }
       : emptyValues.identity,
   };
 };
@@ -144,6 +152,7 @@ export const CustomerFormModal = ({ state, onClose }: CustomerFormModalProps) =>
             type: values.identity.type,
             id: values.identity.id.trim(),
             name: values.identity.name.trim(),
+            source: values.identity.source,
           }
         : null,
     });
@@ -197,6 +206,7 @@ const LegalIdentityFields = ({ form }: { form: UseFormReturnType<CustomerFormVal
       if (match) {
         form.setFieldValue("identity.name", match.legalName);
         form.setFieldValue("identity.id", match.legalId);
+        form.setFieldValue("identity.source", "brreg");
         notifications.show({
           color: "teal",
           title: "Registry data refreshed",
@@ -218,6 +228,9 @@ const LegalIdentityFields = ({ form }: { form: UseFormReturnType<CustomerFormVal
       });
     },
   });
+
+  const nameInputProps = form.getInputProps("identity.name");
+  const idInputProps = form.getInputProps("identity.id");
 
   return (
     <Stack gap="sm">
@@ -245,7 +258,11 @@ const LegalIdentityFields = ({ form }: { form: UseFormReturnType<CustomerFormVal
           label="Legal name"
           placeholder="The registered name of the entity"
           withAsterisk
-          {...form.getInputProps("identity.name")}
+          {...nameInputProps}
+          onChange={(event) => {
+            nameInputProps.onChange(event);
+            form.setFieldValue("identity.source", "manual");
+          }}
         />
       )}
 
@@ -271,7 +288,11 @@ const LegalIdentityFields = ({ form }: { form: UseFormReturnType<CustomerFormVal
             </Tooltip>
           )
         }
-        {...form.getInputProps("identity.id")}
+        {...idInputProps}
+        onChange={(event) => {
+          idInputProps.onChange(event);
+          form.setFieldValue("identity.source", "manual");
+        }}
       />
     </Stack>
   );
@@ -300,6 +321,7 @@ const LegalNameLookupInput = ({ form }: { form: UseFormReturnType<CustomerFormVa
         if (suggestion) {
           form.setFieldValue("identity.name", suggestion.legalName);
           form.setFieldValue("identity.id", suggestion.legalId);
+          form.setFieldValue("identity.source", "brreg");
         }
         combobox.closeDropdown();
       }}
@@ -314,6 +336,7 @@ const LegalNameLookupInput = ({ form }: { form: UseFormReturnType<CustomerFormVa
           {...inputProps}
           onChange={(event) => {
             inputProps.onChange(event);
+            form.setFieldValue("identity.source", "manual");
             combobox.openDropdown();
           }}
           onFocus={() => combobox.openDropdown()}

@@ -40,6 +40,7 @@ public sealed class CustomersEndpointsTests
                 type = "Business",
                 id = "923609016",
                 name = "Acme AS",
+                source = "brreg",
             },
         });
 
@@ -54,6 +55,7 @@ public sealed class CustomersEndpointsTests
         Assert.Equal("business", customer.Identity.Value.Type);
         Assert.Equal("923609016", customer.Identity.Value.Id);
         Assert.Equal("Acme AS", customer.Identity.Value.Name);
+        Assert.Equal("brreg", customer.Identity.Value.Source);
     }
 
     [Theory]
@@ -70,6 +72,7 @@ public sealed class CustomersEndpointsTests
                 type = "business",
                 id = legalId,
                 name = "Acme AS",
+                source = "manual",
             },
         });
 
@@ -106,6 +109,7 @@ public sealed class CustomersEndpointsTests
                 type = "business",
                 id = "  ",
                 name = "Acme AS",
+                source = "manual",
             },
         });
 
@@ -129,10 +133,63 @@ public sealed class CustomersEndpointsTests
                 type = "business",
                 id = "923609016",
                 name = new string('a', 256),
+                source = "manual",
             },
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("bogus")]
+    [InlineData("BRREG!")]
+    public async Task CreateCustomer_WithInvalidLegalSource_ReturnsBadRequestWithFieldError(string source)
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Acme",
+            identity = new
+            {
+                country = "no",
+                type = "business",
+                id = "923609016",
+                name = "Acme AS",
+                source,
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
+        var error = Assert.Single(problem.Errors);
+        Assert.Equal("identity.source", error.Key);
+    }
+
+    [Theory]
+    [InlineData("brreg")]
+    [InlineData("Manual")]
+    public async Task CreateCustomer_WithValidLegalSource_PersistsNormalizedSource(string source)
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Sourced",
+            identity = new
+            {
+                country = "no",
+                type = "business",
+                id = "923609016",
+                name = "Sourced AS",
+                source,
+            },
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
+
+        var customer = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
+
+        Assert.NotNull(customer.Identity);
+        Assert.Equal(source.ToLower(), customer.Identity.Value.Source);
     }
 
     [Fact]
@@ -185,6 +242,7 @@ public sealed class CustomersEndpointsTests
                 type = "Business",
                 id = "923609016",
                 name = "Replaceable AS",
+                source = "brreg",
             },
         });
 
@@ -196,6 +254,7 @@ public sealed class CustomersEndpointsTests
         Assert.Equal("business", updated.Identity.Value.Type);
         Assert.Equal("923609016", updated.Identity.Value.Id);
         Assert.Equal("Replaceable AS", updated.Identity.Value.Name);
+        Assert.Equal("brreg", updated.Identity.Value.Source);
     }
 
     [Fact]
@@ -210,6 +269,7 @@ public sealed class CustomersEndpointsTests
                 type = "business",
                 id = "912345670",
                 name = "Removable AS",
+                source = "manual",
             },
         });
         var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
@@ -246,6 +306,7 @@ public sealed class CustomersEndpointsTests
                 type = "business",
                 id = " ",
                 name = "Acme AS",
+                source = "manual",
             },
         });
 
@@ -320,6 +381,7 @@ public sealed class CustomersEndpointsTests
                 type = "business",
                 id = "912345678",
                 name = "Globex AS",
+                source = "manual",
             },
         });
         var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
@@ -403,6 +465,7 @@ public sealed class CustomersEndpointsTests
                 type = "business",
                 id = "998877665",
                 name = "Umbrella Norge AS",
+                source = "manual",
             },
         });
 
@@ -457,7 +520,7 @@ public sealed class CustomersEndpointsTests
 
     private readonly record struct Customer(int Id, string Name, LegalIdentity? Identity);
 
-    private readonly record struct LegalIdentity(string Country, string Type, string Id, string Name);
+    private readonly record struct LegalIdentity(string Country, string Type, string Id, string Name, string Source);
 
     private readonly record struct CustomerList(List<Customer> Data, Pagination Pagination);
 

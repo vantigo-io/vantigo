@@ -37,6 +37,7 @@ internal static class UpdateCustomerEndpoint
                     identity.Type,
                     identity.Id,
                     identity.Name,
+                    identity.Source,
                     out var legalIdentity,
                     out var identityErrors))
             {

@@ -11,6 +11,7 @@ internal readonly record struct LegalIdentityResponse
     public required string Type { get; init; }
     public required string Id { get; init; }
     public required string Name { get; init; }
+    public required string Source { get; init; }
 
     /// <summary>
     /// Maps a domain <see cref="LegalIdentity"/> to its API representation.
@@ -21,5 +22,6 @@ internal readonly record struct LegalIdentityResponse
         Type = identity.Type,
         Id = identity.Id,
         Name = identity.Name,
+        Source = identity.Source,
     };
 }

@@ -10,4 +10,5 @@ internal readonly record struct LegalIdentityRequest
     public required string Type { get; init; }
     public required string Id { get; init; }
     public required string Name { get; init; }
+    public required string Source { get; init; }
 }

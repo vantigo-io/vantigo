@@ -57,6 +57,13 @@ internal sealed class CustomerEntityTypeConfiguration : IEntityTypeConfiguration
                 .HasConversion(name => name.ToPersistence(), value => LegalName.FromPersistence(value))
                 .HasMaxLength(LegalName.MaxLength)
                 .IsUnicode(true);
+
+            identity.Property(i => i.Source)
+                .HasColumnName("legal_source")
+                .HasComment("Where the legal identity data of the customer was retrieved from")
+                .HasConversion(source => source.ToPersistence(), value => LegalSource.FromPersistence(value))
+                .HasMaxLength(50)
+                .IsUnicode(false);
         });
     }
 }

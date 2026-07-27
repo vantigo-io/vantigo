@@ -32,3 +32,15 @@ class ResizeObserverMock {
 window.ResizeObserver = window.ResizeObserver ?? ResizeObserverMock;
 
 window.HTMLElement.prototype.scrollIntoView = window.HTMLElement.prototype.scrollIntoView ?? vi.fn();
+
+window.scrollTo = vi.fn();
+
+// jsdom does not implement the async clipboard API used by useClipboard.
+// A plain async function (not vi.fn) so restoreAllMocks cannot strip the
+// implementation; tests spy on it with vi.spyOn when asserting copies.
+Object.defineProperty(navigator, "clipboard", {
+  writable: true,
+  value: {
+    writeText: async () => {},
+  },
+});

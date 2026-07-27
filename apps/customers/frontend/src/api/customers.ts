@@ -5,6 +5,7 @@ export interface LegalIdentityResponse {
   type: string;
   id: string;
   name: string;
+  source: string;
 }
 
 export interface CustomerResponse {
@@ -63,6 +64,34 @@ export const customersQueryOptions = (params: CustomersQueryParams) =>
     placeholderData: keepPreviousData,
   });
 
+/** The requested resource does not exist (HTTP 404). */
+export class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
+async function fetchCustomer(id: number, signal?: AbortSignal): Promise<CustomerResponse> {
+  const response = await fetch(`/api/v1/customers/${id}`, { signal });
+
+  if (response.status === 404) {
+    throw new NotFoundError(`Customer ${id} does not exist`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch customer (HTTP ${response.status})`);
+  }
+
+  return response.json();
+}
+
+export const customerQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: ["customers", id],
+    queryFn: ({ signal }) => fetchCustomer(id, signal),
+  });
+
 /**
  * A 400 validation problem (RFC 9457) from the API, carrying errors keyed by the
  * camelCase JSON path of the offending request field (e.g. "name").
@@ -98,6 +127,7 @@ export interface LegalIdentityInput {
   type: string;
   id: string;
   name: string;
+  source: string;
 }
 
 export interface CustomerInput {

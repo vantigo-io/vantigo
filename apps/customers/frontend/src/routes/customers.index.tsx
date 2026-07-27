@@ -21,6 +21,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { customersQueryOptions } from "../api/customers";
+import { LegalCountryBadge, LegalValueBadge, NoValue } from "../components/legal-badges";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
 const PAGE_SIZE = 25;
@@ -111,21 +112,36 @@ const CustomersPage = () => {
                   </Table.Thead>
                   <Table.Tbody>
                     {data.data.map((customer) => (
-                      <Table.Tr key={customer.id}>
+                      <Table.Tr
+                        key={customer.id}
+                        style={{ cursor: "pointer" }}
+                        onClick={() =>
+                          navigate({
+                            to: "/customers/$customerId",
+                            params: { customerId: customer.id },
+                          })
+                        }
+                      >
                         <Table.Td>{customer.id}</Table.Td>
                         <Table.Td>{customer.name}</Table.Td>
-                        <Table.Td>{customer.identity?.name ?? "—"}</Table.Td>
-                        <Table.Td>{customer.identity?.id ?? "—"}</Table.Td>
                         <Table.Td>
                           {customer.identity ? (
-                            <Badge variant="light" size="sm">
-                              {customer.identity.country}
-                            </Badge>
+                            <LegalValueBadge type={customer.identity.type}>{customer.identity.name}</LegalValueBadge>
                           ) : (
-                            "—"
+                            <NoValue />
                           )}
                         </Table.Td>
                         <Table.Td>
+                          {customer.identity ? (
+                            <LegalValueBadge type={customer.identity.type}>{customer.identity.id}</LegalValueBadge>
+                          ) : (
+                            <NoValue />
+                          )}
+                        </Table.Td>
+                        <Table.Td>
+                          {customer.identity ? <LegalCountryBadge country={customer.identity.country} /> : <NoValue />}
+                        </Table.Td>
+                        <Table.Td onClick={(event) => event.stopPropagation()}>
                           <ActionIcon
                             variant="subtle"
                             color="gray"
@@ -164,7 +180,7 @@ const CustomersPage = () => {
   );
 };
 
-export const Route = createFileRoute("/customers")({
+export const Route = createFileRoute("/customers/")({
   validateSearch: (search: Record<string, unknown>): CustomersSearch => ({
     page: Math.max(1, Number(search.page) || 1),
     search: typeof search.search === "string" ? search.search : "",

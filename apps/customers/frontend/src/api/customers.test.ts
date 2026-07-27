@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiValidationError, createCustomer, updateCustomer } from "./customers";
+import { ApiValidationError, createCustomer, customerQueryOptions, NotFoundError, updateCustomer } from "./customers";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -78,5 +78,37 @@ describe("updateCustomer", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
     await expect(updateCustomer(999999, { name: "Ghost" })).rejects.toThrow("Request failed (HTTP 404)");
+  });
+});
+
+describe("customerQueryOptions", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches a single customer by id", async () => {
+    const customer = { id: 1001, name: "Acme", identity: null };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, customer));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const options = customerQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({
+      signal: undefined,
+    });
+
+    expect(result).toEqual(customer);
+    expect(options.queryKey).toEqual(["customers", 1001]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", { signal: undefined });
+  });
+
+  it("throws NotFoundError on 404", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+
+    const options = customerQueryOptions(999999);
+    const error = await (options.queryFn as (context: unknown) => Promise<unknown>)({
+      signal: undefined,
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(NotFoundError);
   });
 });

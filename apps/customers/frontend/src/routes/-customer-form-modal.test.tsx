@@ -195,7 +195,7 @@ describe("CustomerFormModal", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Acme",
-        identity: { country: "no", type: "business", id: "923609016", name: "Acme AS" },
+        identity: { country: "no", type: "business", id: "923609016", name: "Acme AS", source: "manual" },
       }),
     });
   });
@@ -208,7 +208,7 @@ describe("CustomerFormModal", () => {
       customer: {
         id: 1001,
         name: "Equinor",
-        identity: { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA" },
+        identity: { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA", source: "brreg" },
       },
     });
 
@@ -231,7 +231,7 @@ describe("CustomerFormModal", () => {
       customer: {
         id: 1001,
         name: "Equinor",
-        identity: { country: "no", type: "business", id: "923609016", name: "Old Name AS" },
+        identity: { country: "no", type: "business", id: "923609016", name: "Old Name AS", source: "brreg" },
       },
     });
 
@@ -242,6 +242,67 @@ describe("CustomerFormModal", () => {
     });
     expect(await screen.findByText("Registry data refreshed")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/lookup/brreg?legalId=923609016", { signal: undefined });
+  });
+
+  it("submits source brreg after picking a registry suggestion", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.startsWith("/api/v1/lookup/brreg")) {
+        return Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "EQUINOR ASA" }] }));
+      }
+      return Promise.resolve(jsonResponse(201, { id: 1001 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { onClose } = renderModal({ mode: "create" });
+
+    await userEvent.type(screen.getByLabelText(/^name/i), "Equinor");
+    await userEvent.click(screen.getByRole("switch"));
+    await userEvent.type(screen.getByLabelText(/legal name/i), "equinor");
+    await userEvent.click(await screen.findByText("EQUINOR ASA"));
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Equinor",
+        identity: { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA", source: "brreg" },
+      }),
+    });
+  });
+
+  it("flips the source back to manual when registry data is edited by hand", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.startsWith("/api/v1/lookup/brreg")) {
+        return Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "EQUINOR ASA" }] }));
+      }
+      return Promise.resolve(jsonResponse(201, { id: 1001 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { onClose } = renderModal({ mode: "create" });
+
+    await userEvent.type(screen.getByLabelText(/^name/i), "Equinor");
+    await userEvent.click(screen.getByRole("switch"));
+    await userEvent.type(screen.getByLabelText(/legal name/i), "equinor");
+    await userEvent.click(await screen.findByText("EQUINOR ASA"));
+
+    // Hand-editing the legal id after picking from the registry degrades the source.
+    await userEvent.type(screen.getByLabelText(/^legal id \*/i), "1");
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Equinor",
+        identity: { country: "no", type: "business", id: "9236090161", name: "EQUINOR ASA", source: "manual" },
+      }),
+    });
   });
 
   it("maps nested identity server validation errors onto the right fields", async () => {
