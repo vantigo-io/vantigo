@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Customers.Api.Database;
 using Vantigo.Customers.Api.Endpoints;
+using Vantigo.Customers.Api.Endpoints.Lookup;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,15 @@ builder.Services
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgresql")));
 
+// Named client for the open Brønnøysundregisteret (Enhetsregisteret) API used by
+// the /lookup/brreg endpoint. The base URL is configurable so tests and other
+// environments can point it at a stub.
+builder.Services.AddHttpClient(BrregLookupEndpoint.HttpClientName, client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Brreg:BaseUrl"] ?? "https://data.brreg.no");
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -52,6 +62,7 @@ var api = app.NewVersionedApi()
     .HasApiVersion(new ApiVersion(1));
 
 api.MapCustomersEndpoints();
+api.MapLookupEndpoints();
 
 // Deep links like /customers must fall back to the SPA entry point. API and
 // OpenAPI endpoints match their own routes first and are unaffected.

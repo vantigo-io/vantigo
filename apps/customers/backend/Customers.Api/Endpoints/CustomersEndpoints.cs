@@ -21,6 +21,9 @@ internal static class CustomersEndpoints
             .WithName(GetCustomerRouteName)
             .WithSummary("Get a customer by id");
 
+        group.MapPut("/{id:int}", UpdateCustomerEndpoint.Handler)
+            .WithSummary("Update a customer");
+
         return app;
     }
 }

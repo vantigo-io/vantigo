@@ -144,6 +144,155 @@ public sealed class CustomersEndpointsTests
     }
 
     [Fact]
+    public async Task UpdateCustomer_WithValidName_UpdatesName()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Initech",
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
+
+        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}", new
+        {
+            name = "Initrode",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var updated = await response.Content.ReadFromJsonAsync<Customer>();
+        Assert.Equal(created.Id, updated.Id);
+        Assert.Equal("Initrode", updated.Name);
+
+        var fetched = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
+        Assert.Equal(updated, fetched);
+    }
+
+    [Fact]
+    public async Task UpdateCustomer_WithIdentity_ReplacesIdentity()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Replaceable",
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
+
+        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}", new
+        {
+            name = "Replaceable",
+            identity = new
+            {
+                country = "NO",
+                type = "Business",
+                id = "923609016",
+                name = "Replaceable AS",
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var updated = await response.Content.ReadFromJsonAsync<Customer>();
+        Assert.NotNull(updated.Identity);
+        Assert.Equal("no", updated.Identity.Value.Country);
+        Assert.Equal("business", updated.Identity.Value.Type);
+        Assert.Equal("923609016", updated.Identity.Value.Id);
+        Assert.Equal("Replaceable AS", updated.Identity.Value.Name);
+    }
+
+    [Fact]
+    public async Task UpdateCustomer_WithoutIdentity_RemovesExistingIdentity()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Removable",
+            identity = new
+            {
+                country = "no",
+                type = "business",
+                id = "912345670",
+                name = "Removable AS",
+            },
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
+
+        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}", new
+        {
+            name = "Removable",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var updated = await response.Content.ReadFromJsonAsync<Customer>();
+        Assert.Null(updated.Identity);
+
+        var fetched = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
+        Assert.Null(fetched.Identity);
+    }
+
+    [Fact]
+    public async Task UpdateCustomer_WithInvalidIdentityFields_ReportsAllErrorsAtOnce()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Identity Validation Co",
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
+
+        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}", new
+        {
+            name = "",
+            identity = new
+            {
+                country = "",
+                type = "business",
+                id = " ",
+                name = "Acme AS",
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
+        Assert.Equal(
+            new[] { "identity.country", "identity.id", "name" },
+            problem.Errors.Keys.Order());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task UpdateCustomer_WithInvalidName_ReturnsBadRequestWithFieldError(string name)
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new
+        {
+            name = "Update Validation Co",
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
+
+        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}", new
+        {
+            name,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
+        var error = Assert.Single(problem.Errors);
+        Assert.Equal("name", error.Key);
+    }
+
+    [Fact]
+    public async Task UpdateCustomer_WhenCustomerDoesNotExist_ReturnsNotFound()
+    {
+        var response = await _client.PutAsJsonAsync("/api/v1/customers/999999", new
+        {
+            name = "Ghost Corp",
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+
+    [Fact]
     public async Task GetCustomers_ReturnsCreatedCustomers()
     {
         var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new

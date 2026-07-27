@@ -1,6 +1,8 @@
 import {
+  ActionIcon,
   Alert,
   Badge,
+  Button,
   Card,
   Center,
   Group,
@@ -13,12 +15,13 @@ import {
   Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { IconAlertCircle, IconSearch } from "@tabler/icons-react";
+import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { customersQueryOptions } from "../api/customers";
+import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
 const PAGE_SIZE = 25;
 
@@ -33,6 +36,7 @@ const CustomersPage = () => {
 
   const [searchInput, setSearchInput] = useState(search);
   const [debouncedSearch] = useDebouncedValue(searchInput, 300);
+  const [modalState, setModalState] = useState<CustomerModalState | null>(null);
 
   useEffect(() => {
     if (debouncedSearch !== search) {
@@ -54,13 +58,20 @@ const CustomersPage = () => {
   return (
     <Stack gap="lg">
       <Group justify="space-between">
-        <Title order={2}>Customers</Title>
-        {data && (
-          <Badge variant="light" size="lg">
-            {data.pagination.totalCount} total
-          </Badge>
-        )}
+        <Group gap="sm">
+          <Title order={2}>Customers</Title>
+          {data && (
+            <Badge variant="light" size="lg">
+              {data.pagination.totalCount} total
+            </Badge>
+          )}
+        </Group>
+        <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+          Create new customer
+        </Button>
       </Group>
+
+      <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
 
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
@@ -95,6 +106,7 @@ const CustomersPage = () => {
                       <Table.Th>Legal name</Table.Th>
                       <Table.Th>Legal id</Table.Th>
                       <Table.Th>Country</Table.Th>
+                      <Table.Th w={48} aria-label="Actions" />
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -112,6 +124,16 @@ const CustomersPage = () => {
                           ) : (
                             "—"
                           )}
+                        </Table.Td>
+                        <Table.Td>
+                          <ActionIcon
+                            variant="subtle"
+                            color="gray"
+                            aria-label={`Edit ${customer.name}`}
+                            onClick={() => setModalState({ mode: "edit", customer })}
+                          >
+                            <IconPencil size={16} />
+                          </ActionIcon>
                         </Table.Td>
                       </Table.Tr>
                     ))}

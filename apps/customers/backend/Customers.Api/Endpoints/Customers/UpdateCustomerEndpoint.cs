@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Customers.Api.Database;
-using Vantigo.Customers.Api.Domain.Customers;
 using Vantigo.Customers.Api.Domain.Customers.Common;
 using Vantigo.Customers.Api.Domain.Customers.ValueObjects;
 using Vantigo.Customers.Api.Endpoints.Customers.Dtos;
@@ -9,20 +9,18 @@ using Vantigo.Customers.Api.Endpoints.Customers.Dtos;
 namespace Vantigo.Customers.Api.Endpoints.Customers;
 
 /// <summary>
-/// Creates a new customer. A customer only requires a friendly name at creation time.
-/// The legal identity is optional and can be attached later, for instance after it has
-/// been verified against a public registry.
+/// Updates an existing customer. The request carries the desired final state of the
+/// customer's editable fields: the friendly name is required, while the legal identity
+/// is replaced when given and removed when omitted or null.
 /// </summary>
-internal static class CreateCustomerEndpoint
+internal static class UpdateCustomerEndpoint
 {
-    internal static async Task<Results<CreatedAtRoute<Response>, ValidationProblem>> Handler(
+    internal static async Task<Results<Ok<CustomerResponse>, NotFound, ValidationProblem>> Handler(
+        int id,
         Request request,
         AppDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        // All validation errors are collected up front and keyed by the JSON path of
-        // the offending request field, so API clients can map them directly onto
-        // form fields.
         var errors = new Dictionary<string, string[]>();
 
         if (!FriendlyName.TryCreate(request.Name, out var name, out var nameError))
@@ -58,29 +56,24 @@ internal static class CreateCustomerEndpoint
             return TypedResults.ValidationProblem(errors, title: "Invalid customer");
         }
 
-        var customer = new Customer
-        {
-            Name = name,
-            Identity = customerIdentity,
-        };
+        var customer = await dbContext.Customers
+            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
-        dbContext.Customers.Add(customer);
+        if (customer is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        customer.Name = name;
+        customer.Identity = customerIdentity;
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return TypedResults.CreatedAtRoute(
-            new Response { Id = customer.Id },
-            CustomersEndpoints.GetCustomerRouteName,
-            new { id = customer.Id });
+        return TypedResults.Ok(CustomerResponse.FromDomain(customer));
     }
 
     internal readonly record struct Request
     {
         public required string Name { get; init; }
         public LegalIdentityRequest? Identity { get; init; }
-    }
-
-    internal readonly record struct Response
-    {
-        public required int Id { get; init; }
     }
 }

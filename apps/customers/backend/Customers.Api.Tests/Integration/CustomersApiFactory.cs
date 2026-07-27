@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 using Testcontainers.PostgreSql;
@@ -11,13 +12,17 @@ namespace Vantigo.Customers.Api.Tests.Integration;
 /// Boots the Customers API against a real PostgreSQL instance running in a
 /// Testcontainers-managed Docker container. The container is shared across all
 /// tests in the <see cref="CustomersApiCollection"/> to keep the test run fast.
-/// Migrations are applied by the API itself on startup.
+/// Migrations are applied by the API itself on startup. Outbound calls to
+/// Brønnøysundregisteret are routed to <see cref="BrregHandler"/> instead of the
+/// real registry.
 /// </summary>
 public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("customers")
         .Build();
+
+    public StubBrregHandler BrregHandler { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -34,6 +39,12 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
             {
                 ["ConnectionStrings:Postgresql"] = _postgres.GetConnectionString(),
             });
+        });
+
+        builder.ConfigureServices(services =>
+        {
+            services.AddHttpClient("brreg")
+                .ConfigurePrimaryHttpMessageHandler(() => BrregHandler);
         });
     }
 
