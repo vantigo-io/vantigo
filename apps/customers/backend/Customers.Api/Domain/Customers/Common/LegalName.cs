@@ -36,7 +36,7 @@ public readonly record struct LegalName
         _ => null,
     };
 
-    public static implicit operator LegalName(string value) => new (value);
+    public static implicit operator LegalName(string value) => new(value);
     public static implicit operator string(LegalName legalName) => legalName._value;
 
     /// <summary>
@@ -47,5 +47,5 @@ public readonly record struct LegalName
     /// <summary>
     /// Recreates a legal name from its persisted representation.
     /// </summary>
-    public static LegalName FromPersistence(string value) => new (value);
+    public static LegalName FromPersistence(string value) => new(value);
 }

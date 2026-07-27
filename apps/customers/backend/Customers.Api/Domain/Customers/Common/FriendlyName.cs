@@ -41,7 +41,7 @@ public readonly record struct FriendlyName
         _ => null,
     };
 
-    public static implicit operator FriendlyName(string value) => new (value);
+    public static implicit operator FriendlyName(string value) => new(value);
     public static implicit operator string(FriendlyName friendlyName) => friendlyName._value;
 
     /// <summary>
@@ -52,5 +52,5 @@ public readonly record struct FriendlyName
     /// <summary>
     /// Recreates a friendly name from its persisted representation.
     /// </summary>
-    public static FriendlyName FromPersistence(string value) => new (value);
+    public static FriendlyName FromPersistence(string value) => new(value);
 }

@@ -12,7 +12,14 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconChevronRight, IconLayoutDashboard, IconLogout, IconSettings, IconUsers } from "@tabler/icons-react";
+import {
+  IconAddressBook,
+  IconChevronRight,
+  IconLayoutDashboard,
+  IconLogout,
+  IconSettings,
+  IconUsers,
+} from "@tabler/icons-react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Link, Outlet, useRouterState } from "@tanstack/react-router";
@@ -24,6 +31,7 @@ import { mockUser } from "../lib/mock-user";
 const navItems = [
   { label: "Dashboard", to: "/", icon: IconLayoutDashboard },
   { label: "Customers", to: "/customers", icon: IconUsers },
+  { label: "Contacts", to: "/contacts", icon: IconAddressBook },
 ] as const;
 
 const RootLayout = () => {
@@ -56,7 +64,7 @@ const RootLayout = () => {
               to={item.to}
               label={item.label}
               leftSection={<item.icon size={18} stroke={1.5} />}
-              active={pathname === item.to}
+              active={item.to === "/" ? pathname === "/" : pathname.startsWith(item.to)}
               onClick={close}
             />
           ))}

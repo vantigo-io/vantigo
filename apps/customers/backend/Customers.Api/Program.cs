@@ -62,6 +62,7 @@ var api = app.NewVersionedApi()
     .HasApiVersion(new ApiVersion(1));
 
 api.MapCustomersEndpoints();
+api.MapContactsEndpoints();
 api.MapLookupEndpoints();
 
 // Deep links like /customers must fall back to the SPA entry point. API and

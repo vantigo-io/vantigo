@@ -36,7 +36,7 @@ public readonly record struct LegalId
         _ => null,
     };
 
-    public static implicit operator LegalId(string value) => new (value);
+    public static implicit operator LegalId(string value) => new(value);
     public static implicit operator string(LegalId legalId) => legalId._value;
 
     /// <summary>
@@ -47,5 +47,5 @@ public readonly record struct LegalId
     /// <summary>
     /// Recreates a legal id from its persisted representation.
     /// </summary>
-    public static LegalId FromPersistence(string value) => new (value);
+    public static LegalId FromPersistence(string value) => new(value);
 }

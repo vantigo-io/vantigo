@@ -46,7 +46,7 @@ public readonly record struct LegalSource
         _ => null,
     };
 
-    public static implicit operator LegalSource(string value) => new (value);
+    public static implicit operator LegalSource(string value) => new(value);
     public static implicit operator string(LegalSource legalSource) => legalSource._value;
 
     /// <summary>
@@ -57,5 +57,5 @@ public readonly record struct LegalSource
     /// <summary>
     /// Recreates a legal source from its persisted representation.
     /// </summary>
-    public static LegalSource FromPersistence(string value) => new (value);
+    public static LegalSource FromPersistence(string value) => new(value);
 }

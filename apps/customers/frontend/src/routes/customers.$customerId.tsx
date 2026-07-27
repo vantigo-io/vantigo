@@ -13,6 +13,7 @@ import {
   LegalValueBadge,
 } from "../components/legal-badges";
 import { getLegalSource } from "../lib/legal-sources";
+import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
 const tooltips = {
@@ -78,6 +79,8 @@ const CustomerDetailsPage = () => {
       </Stack>
 
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
+
+      <CustomerContactsCard customerId={customer.id} />
     </Stack>
   );
 };

@@ -35,7 +35,7 @@ public readonly record struct LegalType
             ? "A legal type cannot be null or empty"
             : null;
 
-    public static implicit operator LegalType(string value) => new (value);
+    public static implicit operator LegalType(string value) => new(value);
     public static implicit operator string(LegalType legalType) => legalType._value;
 
     /// <summary>
@@ -46,5 +46,5 @@ public readonly record struct LegalType
     /// <summary>
     /// Recreates a legal type from its persisted representation.
     /// </summary>
-    public static LegalType FromPersistence(string value) => new (value);
+    public static LegalType FromPersistence(string value) => new(value);
 }

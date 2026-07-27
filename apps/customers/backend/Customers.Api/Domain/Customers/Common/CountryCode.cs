@@ -32,7 +32,7 @@ public readonly record struct CountryCode
             ? "A country code cannot be null or empty"
             : null;
 
-    public static implicit operator CountryCode(string value) => new (value);
+    public static implicit operator CountryCode(string value) => new(value);
     public static implicit operator string(CountryCode countryCode) => countryCode._value;
 
     /// <summary>
@@ -43,5 +43,5 @@ public readonly record struct CountryCode
     /// <summary>
     /// Recreates a country code from its persisted representation.
     /// </summary>
-    public static CountryCode FromPersistence(string value) => new (value);
+    public static CountryCode FromPersistence(string value) => new(value);
 }

@@ -16,14 +16,14 @@ public sealed class Customer
     /// a customer has been persisted.
     /// </summary>
     public int Id { get; set; }
-    
+
     /// <summary>
     /// The name is a field that is used to define a "friendly name" of the customer. It is not
     /// necessarily connected to the legal name of the customer, but more of a name that can be
     /// used to identify the customer either before the legal data is known or as an alias.
     /// </summary>
     public FriendlyName Name { get; set; }
-    
+
     /// <summary>
     /// The Legal identity of the customer is used to correctly identify the customer in the public
     /// registry where the customer is located. For instance, in Norway every business needs to be
