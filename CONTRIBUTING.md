@@ -151,6 +151,11 @@ cd apps/customers/frontend
 bun run dev
 ```
 
+The SPA is built and embedded into the API's `wwwroot` **only on `dotnet publish`**
+(see the `BuildFrontend` target in `Customers.Api.csproj`). Plain `dotnet build` and
+`dotnet run` never touch the frontend — in development the Vite dev server serves the
+SPA and proxies `/api` to the API.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to

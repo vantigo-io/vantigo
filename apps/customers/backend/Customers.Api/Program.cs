@@ -42,11 +42,20 @@ if (app.Environment.IsDevelopment())
 
 app.MapOpenApi().WithDocumentPerVersion();
 
+// Serve the built SPA (embedded into wwwroot on publish) from "/". In development
+// the frontend runs on the Vite dev server, which proxies /api to this API.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 var api = app.NewVersionedApi()
     .MapGroup("/api/v{version:apiVersion}")
     .HasApiVersion(new ApiVersion(1));
 
 api.MapCustomersEndpoints();
+
+// Deep links like /customers must fall back to the SPA entry point. API and
+// OpenAPI endpoints match their own routes first and are unaffected.
+app.MapFallbackToFile("index.html");
 
 app.Run();
 
