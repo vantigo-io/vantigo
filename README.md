@@ -129,7 +129,7 @@ Bring your own PostgreSQL, point the connection string at it, and you have a run
 application — one container per app, nothing else required.
 
 Until images are published, you can run from source: `dotnet publish` the API projects
-and build the frontends with `npm run build`, or simply use the Aspire AppHost.
+and build the frontends with `bun run build`, or simply use the Aspire AppHost.
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same
 open-source stack for you.

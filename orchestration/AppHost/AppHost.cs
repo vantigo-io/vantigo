@@ -19,6 +19,7 @@ var customersApi = builder
     .WaitFor(customersDb);
 
 var customersFrontend = builder.AddViteApp("customers-frontend", "../../apps/customers/frontend")
+    .WithBun()
     .WithReference(customersApi)
     .WaitFor(customersApi);
 

@@ -142,12 +142,13 @@ dotnet ef migrations has-pending-model-changes
 
 ## Frontend development
 
-Aspire runs the frontend for you, but it can also be run standalone:
+Aspire runs the frontend for you, but it can also be run standalone. Dependencies are
+managed with [Bun](https://bun.sh) workspaces from the repository root:
 
 ```bash
+bun install
 cd apps/customers/frontend
-npm install
-npm run dev
+bun run dev
 ```
 
 ## Commit conventions
