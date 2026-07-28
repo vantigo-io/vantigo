@@ -3,7 +3,7 @@ import { ModalsProvider } from "@mantine/modals";
 import { Notifications, notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -39,7 +39,7 @@ const contact = (id: number, firstName: string, lastName: string, extra: object 
   ...extra,
 });
 
-const renderRoute = async (path: string) => {
+const renderRoute = async (path: string, heading: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -61,11 +61,12 @@ const renderRoute = async (path: string) => {
     </MantineProvider>,
   );
 
-  await vi.waitFor(() => expect(router.state.status).toBe("idle"));
+  await screen.findByRole("heading", { name: heading });
 };
 
 describe("contacts page", () => {
   afterEach(() => {
+    cleanup();
     notifications.clean();
     vi.unstubAllGlobals();
   });
@@ -106,7 +107,7 @@ describe("contacts page", () => {
       }),
     );
 
-    await renderRoute("/contacts");
+    await renderRoute("/contacts", "Contacts");
 
     expect(await screen.findByText("Dr. Anders Refsdal")).toBeInTheDocument();
     expect(screen.getByText("+47 934 89 731")).toBeInTheDocument();
@@ -158,7 +159,7 @@ describe("customer contacts card", () => {
         }),
     });
 
-    await renderRoute("/customers/2002");
+    await renderRoute("/customers/2002", "Refsdal Holding");
 
     expect(await screen.findByText("Anders Refsdal")).toBeInTheDocument();
     expect(screen.getByText("CEO")).toBeInTheDocument();
@@ -173,7 +174,7 @@ describe("customer contacts card", () => {
       "GET /api/v1/customers/2002/contacts": () => jsonResponse(200, { data: [] }),
     });
 
-    await renderRoute("/customers/2002");
+    await renderRoute("/customers/2002", "Refsdal Holding");
 
     expect(await screen.findByText(/no contacts associated/i)).toBeInTheDocument();
   });
@@ -199,7 +200,7 @@ describe("customer contacts card", () => {
       "POST /api/v1/customers/2002/contacts": attachSpy,
     });
 
-    await renderRoute("/customers/2002");
+    await renderRoute("/customers/2002", "Refsdal Holding");
 
     await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
 
@@ -237,7 +238,7 @@ describe("customer contacts card", () => {
       "POST /api/v1/customers/2002/contacts": attachSpy,
     });
 
-    await renderRoute("/customers/2002");
+    await renderRoute("/customers/2002", "Refsdal Holding");
 
     await userEvent.click(await screen.findByRole("button", { name: /add contact/i }));
 

@@ -2,7 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routeTree } from "../routeTree.gen";
@@ -19,6 +19,7 @@ vi.mock("@mantine/nprogress", () => ({
 
 describe("wireNavigationProgress", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
     startSpy.mockClear();
     completeSpy.mockClear();
@@ -54,7 +55,7 @@ describe("wireNavigationProgress", () => {
       </MantineProvider>,
     );
 
-    await vi.waitFor(() => expect(router.state.status).toBe("idle"));
+    await screen.findByRole("heading", { name: "Dashboard" });
     startSpy.mockClear();
     completeSpy.mockClear();
 

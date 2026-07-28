@@ -1,7 +1,7 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routeTree } from "../routeTree.gen";
@@ -12,7 +12,7 @@ const jsonResponse = (status: number, body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const renderRoute = async (path: string) => {
+const renderRoute = async (path: string, heading: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -31,11 +31,12 @@ const renderRoute = async (path: string) => {
     </MantineProvider>,
   );
 
-  await vi.waitFor(() => expect(router.state.status).toBe("idle"));
+  await screen.findByRole("heading", { name: heading });
 };
 
 describe("customer details page", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
@@ -56,7 +57,7 @@ describe("customer details page", () => {
       }),
     );
 
-    await renderRoute("/customers/1001");
+    await renderRoute("/customers/1001", "Equinor");
 
     expect(await screen.findByRole("heading", { name: "Equinor" })).toBeInTheDocument();
     expect(screen.getByText("#1001")).toBeInTheDocument();
@@ -74,7 +75,7 @@ describe("customer details page", () => {
   it("shows no legal identity row when the customer has none", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { id: 1002, name: "Acme", identity: null })));
 
-    await renderRoute("/customers/1002");
+    await renderRoute("/customers/1002", "Acme");
 
     expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument();
     expect(screen.getByText("#1002")).toBeInTheDocument();
@@ -84,7 +85,7 @@ describe("customer details page", () => {
   it("shows a not-found state for unknown customers", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
-    await renderRoute("/customers/999999");
+    await renderRoute("/customers/999999", "Customer not found");
 
     expect(await screen.findByText("Customer not found")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to customers/i })).toBeInTheDocument();

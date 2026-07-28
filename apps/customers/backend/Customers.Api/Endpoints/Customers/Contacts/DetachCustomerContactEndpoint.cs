@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers.Contacts;
 
@@ -15,12 +16,22 @@ internal static class DetachCustomerContactEndpoint
         int id,
         int contactId,
         AppDbContext dbContext,
+        ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {
-        var deleted = await dbContext.CustomersContacts
-            .Where(cc => cc.CustomerId == id && cc.ContactId == contactId)
-            .ExecuteDeleteAsync(cancellationToken);
+        var association = await dbContext.CustomersContacts
+            .Include(cc => cc.Contact)
+            .FirstOrDefaultAsync(cc => cc.CustomerId == id && cc.ContactId == contactId, cancellationToken);
 
-        return deleted > 0 ? TypedResults.NoContent() : TypedResults.NotFound();
+        if (association is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        dbContext.CustomersContacts.Remove(association);
+        timelineRecorder.RecordContactDetached(association);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.NoContent();
     }
 }

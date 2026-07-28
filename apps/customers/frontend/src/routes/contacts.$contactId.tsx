@@ -153,6 +153,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customers", association.customer.id, "timeline"] });
     },
     onError: (error) => {
       notifications.show({ color: "red", title: "Failed to remove customer", message: error.message });
@@ -355,6 +356,7 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["customers", customer.id, "timeline"] });
       close();
     },
     onError: (error) => {

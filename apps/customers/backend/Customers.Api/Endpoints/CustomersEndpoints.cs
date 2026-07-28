@@ -37,6 +37,42 @@ internal static class CustomersEndpoints
         group.MapDelete("/{id:int}/contacts/{contactId:int}", DetachCustomerContactEndpoint.Handler)
             .WithSummary("Remove a contact association from a customer");
 
+        group.MapGet("/{id:int}/timeline", TimelineEndpoints.List)
+            .WithSummary("List a customer's timeline")
+            .WithDescription("Filters: provenance, repeated eventType, occurredFrom, and occurredTo. Cursors are scoped to these filters.")
+            .Produces<TimelineListResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id:int}/timeline", TimelineEndpoints.Create)
+            .WithSummary("Create a manual customer timeline entry")
+            .Produces<TimelineResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{id:int}/timeline/{entryId:int}", TimelineEndpoints.Get)
+            .WithSummary("Get a customer timeline entry")
+            .Produces<TimelineResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
+        group.MapPut("/{id:int}/timeline/{entryId:int}", TimelineEndpoints.Update)
+            .WithSummary("Update a manual customer timeline entry")
+            .Produces<TimelineResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapDelete("/{id:int}/timeline/{entryId:int}", TimelineEndpoints.Delete)
+            .WithSummary("Delete a manual customer timeline entry")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapGet("/{id:int}/timeline/{entryId:int}/revisions", TimelineEndpoints.Revisions)
+            .WithSummary("List timeline entry revisions")
+            .Produces<TimelineRevisionListResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status404NotFound);
+
         return app;
     }
 }

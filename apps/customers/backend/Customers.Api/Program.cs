@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Vantigo.Customers.Api.Database;
 using Vantigo.Customers.Api.Endpoints;
 using Vantigo.Customers.Api.Endpoints.Lookup;
+using Vantigo.Customers.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,7 @@ builder.Services
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgresql")));
+builder.Services.AddScoped<ICustomerTimelineRecorder, CustomerTimelineRecorder>();
 
 // Named client for the open Brønnøysundregisteret (Enhetsregisteret) API used by
 // the /lookup/brreg endpoint. The base URL is configurable so tests and other

@@ -3,7 +3,7 @@ import { ModalsProvider } from "@mantine/modals";
 import { Notifications, notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -48,7 +48,7 @@ const stubFetch = (handlers: Record<string, (init?: RequestInit) => Response>) =
     }),
   );
 
-const renderRoute = async (path: string) => {
+const renderRoute = async (path: string, heading: string) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -70,11 +70,12 @@ const renderRoute = async (path: string) => {
     </MantineProvider>,
   );
 
-  await vi.waitFor(() => expect(router.state.status).toBe("idle"));
+  await screen.findByRole("heading", { name: heading });
 };
 
 describe("contact details page", () => {
   afterEach(() => {
+    cleanup();
     notifications.clean();
     vi.unstubAllGlobals();
   });
@@ -85,7 +86,7 @@ describe("contact details page", () => {
       "GET /api/v1/contacts/1001/customers": () => jsonResponse(200, { data: [] }),
     });
 
-    await renderRoute("/contacts/1001");
+    await renderRoute("/contacts/1001", "Dr. Anders Refsdal");
 
     expect(await screen.findByRole("heading", { name: "Dr. Anders Refsdal" })).toBeInTheDocument();
     expect(screen.getByText("#1001")).toBeInTheDocument();
@@ -110,7 +111,7 @@ describe("contact details page", () => {
         }),
     });
 
-    await renderRoute("/contacts/1001");
+    await renderRoute("/contacts/1001", "Dr. Anders Refsdal");
 
     const link = await screen.findByRole("link", { name: "Refsdal Holding" });
     expect(link).toHaveAttribute("href", "/customers/2002");
@@ -133,7 +134,7 @@ describe("contact details page", () => {
       "POST /api/v1/customers/2002/contacts": attachSpy,
     });
 
-    await renderRoute("/contacts/1001");
+    await renderRoute("/contacts/1001", "Dr. Anders Refsdal");
 
     await userEvent.click(await screen.findByRole("button", { name: /add customer/i }));
 
@@ -153,7 +154,7 @@ describe("contact details page", () => {
   it("shows a not-found state for unknown contacts", async () => {
     stubFetch({});
 
-    await renderRoute("/contacts/999999");
+    await renderRoute("/contacts/999999", "Contact not found");
 
     expect(await screen.findByText("Contact not found")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to contacts/i })).toBeInTheDocument();

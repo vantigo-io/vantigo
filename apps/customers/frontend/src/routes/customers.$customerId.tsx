@@ -15,6 +15,7 @@ import {
 import { getLegalSource } from "../lib/legal-sources";
 import { CustomerContactsCard } from "./-customer-contacts-card";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
+import { CustomerTimeline } from "./-customer-timeline";
 
 const tooltips = {
   legalName: "The official name of the entity as registered in the public registry.",
@@ -81,6 +82,7 @@ const CustomerDetailsPage = () => {
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
 
       <CustomerContactsCard customerId={customer.id} />
+      <CustomerTimeline customerId={customer.id} />
     </Stack>
   );
 };

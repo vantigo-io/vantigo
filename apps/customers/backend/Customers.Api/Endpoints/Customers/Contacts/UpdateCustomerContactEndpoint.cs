@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Customers.Api.Database;
 using Vantigo.Customers.Api.Endpoints.Customers.Contacts.Dtos;
+using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers.Contacts;
 
@@ -17,10 +18,12 @@ internal static class UpdateCustomerContactEndpoint
         int contactId,
         CustomerContactRequest request,
         AppDbContext dbContext,
+        ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {
         var association = await dbContext.CustomersContacts
             .Include(cc => cc.Contact)
+            .Include(cc => cc.Customer)
             .FirstOrDefaultAsync(cc => cc.CustomerId == id && cc.ContactId == contactId, cancellationToken);
 
         if (association is null)
@@ -28,11 +31,22 @@ internal static class UpdateCustomerContactEndpoint
             return TypedResults.NotFound();
         }
 
+        var previousRole = association.Role;
+        var previousPhone = association.Phone;
+        var previousEmail = association.Email;
+
         if (!request.TryApplyTo(association, out var errors))
         {
             return TypedResults.ValidationProblem(errors, title: "Invalid contact association");
         }
 
+        var changed = association.Role != previousRole ||
+                      association.Phone != previousPhone ||
+                      association.Email != previousEmail;
+        if (changed)
+        {
+            timelineRecorder.RecordContactRelationshipUpdated(association.Customer, association);
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Ok(CustomerContactResponse.FromDomain(association));

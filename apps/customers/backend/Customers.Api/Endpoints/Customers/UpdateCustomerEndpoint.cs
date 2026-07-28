@@ -5,6 +5,7 @@ using Vantigo.Customers.Api.Database;
 using Vantigo.Customers.Api.Domain.Customers.Common;
 using Vantigo.Customers.Api.Domain.Customers.ValueObjects;
 using Vantigo.Customers.Api.Endpoints.Customers.Dtos;
+using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers;
 
@@ -19,6 +20,7 @@ internal static class UpdateCustomerEndpoint
         int id,
         Request request,
         AppDbContext dbContext,
+        ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string[]>();
@@ -65,8 +67,14 @@ internal static class UpdateCustomerEndpoint
             return TypedResults.NotFound();
         }
 
+        var before = CustomerSnapshot.From(customer);
+        var changed = customer.Name != name || customer.Identity != customerIdentity;
         customer.Name = name;
         customer.Identity = customerIdentity;
+        if (changed)
+        {
+            timelineRecorder.RecordCustomerUpdated(customer, before);
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Ok(CustomerResponse.FromDomain(customer));

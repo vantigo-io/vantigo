@@ -70,6 +70,10 @@ const ContactsPage = () => {
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      const affectedCustomerIds = item.customer ? [item.customer.id] : [];
+      for (const customerId of affectedCustomerIds) {
+        queryClient.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
+      }
     },
     onError: (mutationError) => {
       notifications.show({

@@ -114,6 +114,7 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
       if (target) {
         queryClient.invalidateQueries({ queryKey: ["customers", target.customerId, "contacts"] });
         queryClient.invalidateQueries({ queryKey: ["contacts", target.contactId, "customers"] });
+        queryClient.invalidateQueries({ queryKey: ["customers", target.customerId, "timeline"] });
       }
       onClose();
     },

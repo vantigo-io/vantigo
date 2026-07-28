@@ -50,6 +50,8 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
   const [editing, setEditing] = useState<EditConnectionTarget | null>(null);
 
   const associations = data?.data ?? [];
+  const invalidateCustomerTimeline = () =>
+    queryClient.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
 
   const detach = useMutation({
     mutationFn: (association: CustomerContactResponse) => detachCustomerContact(customerId, association.contact.id),
@@ -61,6 +63,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
       });
       queryClient.invalidateQueries({ queryKey: ["customers", customerId, "contacts"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      invalidateCustomerTimeline();
     },
     onError: (error) => {
       notifications.show({ color: "red", title: "Failed to remove contact", message: error.message });
@@ -202,6 +205,8 @@ interface AddContactModalProps {
  */
 const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: AddContactModalProps) => {
   const queryClient = useQueryClient();
+  const invalidateCustomerTimeline = () =>
+    queryClient.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
   const combobox = useCombobox();
 
   const [searchInput, setSearchInput] = useState("");
@@ -255,6 +260,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
     });
     queryClient.invalidateQueries({ queryKey: ["customers", customerId, "contacts"] });
     queryClient.invalidateQueries({ queryKey: ["contacts"] });
+    invalidateCustomerTimeline();
     close();
   };
 

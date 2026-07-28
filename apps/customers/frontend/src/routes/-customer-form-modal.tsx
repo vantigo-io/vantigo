@@ -128,6 +128,7 @@ export const CustomerFormModal = ({ state, onClose }: CustomerFormModalProps) =>
         message: `"${form.values.name.trim()}" was ${isEdit ? "updated" : "created"} successfully.`,
       });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
+      if (isEdit) queryClient.invalidateQueries({ queryKey: ["customers", state.customer.id, "timeline"] });
       onClose();
     },
     onError: (error) => {

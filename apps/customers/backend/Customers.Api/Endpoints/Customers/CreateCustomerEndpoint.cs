@@ -5,6 +5,7 @@ using Vantigo.Customers.Api.Domain.Customers;
 using Vantigo.Customers.Api.Domain.Customers.Common;
 using Vantigo.Customers.Api.Domain.Customers.ValueObjects;
 using Vantigo.Customers.Api.Endpoints.Customers.Dtos;
+using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers;
 
@@ -18,6 +19,7 @@ internal static class CreateCustomerEndpoint
     internal static async Task<Results<CreatedAtRoute<Response>, ValidationProblem>> Handler(
         Request request,
         AppDbContext dbContext,
+        ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {
         // All validation errors are collected up front and keyed by the JSON path of
@@ -65,8 +67,14 @@ internal static class CreateCustomerEndpoint
             Identity = customerIdentity,
         };
 
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         dbContext.Customers.Add(customer);
+        // The customer identity is database-generated, so stage the event after the
+        // insert has been flushed, but keep both operations in the same transaction.
         await dbContext.SaveChangesAsync(cancellationToken);
+        timelineRecorder.RecordCustomerCreated(customer);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return TypedResults.CreatedAtRoute(
             new Response { Id = customer.Id },

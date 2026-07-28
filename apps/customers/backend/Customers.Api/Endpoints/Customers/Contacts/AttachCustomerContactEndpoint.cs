@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Vantigo.Customers.Api.Database;
 using Vantigo.Customers.Api.Domain.Contacts;
 using Vantigo.Customers.Api.Endpoints.Customers.Contacts.Dtos;
+using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers.Contacts;
 
@@ -18,6 +19,7 @@ internal static class AttachCustomerContactEndpoint
         int id,
         Request request,
         AppDbContext dbContext,
+        ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {
         var association = new CustomerContact
@@ -31,10 +33,16 @@ internal static class AttachCustomerContactEndpoint
             return TypedResults.ValidationProblem(errors, title: "Invalid contact association");
         }
 
-        var customerExists = await dbContext.Customers.AnyAsync(c => c.Id == id, cancellationToken);
-        var contact = await dbContext.Contacts.FirstOrDefaultAsync(c => c.Id == request.ContactId, cancellationToken);
+        // Serialize association creation with contact deletion on the contact row. This
+        // ensures a delete either observes this association and records its removal, or
+        // runs first and makes the attach a clean 404.
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var customer = await dbContext.Customers.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        var contact = await dbContext.Contacts
+            .FromSqlInterpolated($"SELECT * FROM contacts WHERE id = {request.ContactId} FOR UPDATE")
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (!customerExists || contact is null)
+        if (customer is null || contact is null)
         {
             return TypedResults.NotFound();
         }
@@ -52,7 +60,9 @@ internal static class AttachCustomerContactEndpoint
 
         association.Contact = contact;
         dbContext.CustomersContacts.Add(association);
+        timelineRecorder.RecordContactAttached(customer, association);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return TypedResults.Ok(CustomerContactResponse.FromDomain(association));
     }

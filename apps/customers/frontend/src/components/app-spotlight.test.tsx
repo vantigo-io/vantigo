@@ -2,7 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -47,12 +47,13 @@ const renderApp = async (path = "/") => {
     </MantineProvider>,
   );
 
-  await vi.waitFor(() => expect(router.state.status).toBe("idle"));
+  await screen.findByRole("heading", { name: "Dashboard" });
   return router;
 };
 
 describe("app spotlight", () => {
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
