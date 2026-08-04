@@ -7,13 +7,10 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
-
-using Npgsql;
 
 using Vantigo.Customers.Api;
+using Vantigo.Customers.Api.Database;
 using Vantigo.Customers.Api.Database.Accounts;
-using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Endpoints;
 using Vantigo.Customers.Api.Endpoints.Auth;
 using Vantigo.Customers.Api.Endpoints.Lookup;
@@ -43,24 +40,7 @@ builder.Services
     // to generate versioned OpenAPI documents.
     .AddOpenApi();
 
-builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("Postgresql");
-    if (string.IsNullOrWhiteSpace(connectionString))
-    {
-        throw new InvalidOperationException("ConnectionStrings:Postgresql is required.");
-    }
-
-    // One application-level data source gives both EF contexts the same ADO.NET
-    // pool while retaining separate DbContext lifetimes and migration histories.
-    return NpgsqlDataSource.Create(connectionString);
-});
-builder.Services.AddDbContext<CustomersDbContext>((serviceProvider, options) =>
-    options.UseNpgsql(serviceProvider.GetRequiredService<NpgsqlDataSource>()));
-builder.Services.AddDbContext<AccountsDbContext>((serviceProvider, options) =>
-    options.UseNpgsql(
-        serviceProvider.GetRequiredService<NpgsqlDataSource>(),
-        npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "accounts")));
+builder.Services.AddCustomerDatabases(builder.Configuration);
 builder.Services.AddSingleton<BootstrapSecretProvider>();
 InfrastructureConfiguration.AddConfiguredDataProtection(builder.Services, builder.Configuration, builder.Environment);
 InfrastructureConfiguration.ConfigureForwardedHeaders(builder.Services, builder.Configuration);
@@ -289,11 +269,7 @@ _ = app.Services.GetRequiredService<BootstrapSecretProvider>();
 // a deliberate operation instead of every application instance racing at startup.
 if (app.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
 {
-    await using var scope = app.Services.CreateAsyncScope();
-    var dbContext = scope.ServiceProvider.GetRequiredService<CustomersDbContext>();
-    await dbContext.Database.MigrateAsync();
-    var accountsDbContext = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
-    await accountsDbContext.Database.MigrateAsync();
+    await app.MigrateCustomerDatabasesAsync();
 }
 
 app.MapOpenApi().WithDocumentPerVersion();
