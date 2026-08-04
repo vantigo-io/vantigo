@@ -10,7 +10,7 @@ public sealed class CustomersEndpointsTests
 
     public CustomersEndpointsTests(CustomersApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateAuthenticatedClient();
     }
 
     [Fact]

@@ -2,9 +2,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using System.Net.Http.Json;
 
 using Testcontainers.PostgreSql;
+using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Tests.Integration;
 
@@ -18,15 +21,56 @@ namespace Vantigo.Customers.Api.Tests.Integration;
 /// </summary>
 public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    private const string BootstrapSecret = "integration-test-bootstrap-secret";
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("customers")
         .Build();
 
     public StubBrregHandler BrregHandler { get; } = new();
 
+    internal CapturingEmailSender EmailSender { get; } = new();
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+
+        using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        var tokenResponse = await client.GetAsync("/auth/antiforgery");
+        var token = await tokenResponse.Content.ReadFromJsonAsync<AntiforgeryToken>();
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
+        var bootstrap = await client.PostAsJsonAsync("/auth/bootstrap", new
+        {
+            secret = BootstrapSecret,
+            email = "owner@integration.test",
+            displayName = "Integration Owner",
+            password = "IntegrationPassword123",
+        });
+        if (bootstrap.StatusCode != System.Net.HttpStatusCode.Created)
+        {
+            throw new InvalidOperationException($"Fresh integration bootstrap failed: {bootstrap.StatusCode}");
+        }
+    }
+
+    public HttpClient CreateAuthenticatedClient()
+    {
+        var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        var token = client.GetFromJsonAsync<AntiforgeryToken>("/auth/antiforgery").GetAwaiter().GetResult();
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
+        var login = client.PostAsJsonAsync("/auth/login", new
+        {
+            email = "owner@integration.test",
+            password = "IntegrationPassword123",
+        }).GetAwaiter().GetResult();
+        if (!login.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Integration login failed: {login.StatusCode}");
+        }
+
+        client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+        var refreshedToken = client.GetFromJsonAsync<AntiforgeryToken>("/auth/antiforgery").GetAwaiter().GetResult();
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", refreshedToken!.Token);
+
+        return client;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -38,11 +82,16 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Postgresql"] = _postgres.GetConnectionString(),
+                ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
+                ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",
+                ["Authentication:Invitations:AcceptUrl"] = "http://test.local/invitations?token={token}",
             });
         });
 
         builder.ConfigureServices(services =>
         {
+            services.RemoveAll<IApplicationEmailSender>();
+            services.AddSingleton<IApplicationEmailSender>(EmailSender);
             services.AddHttpClient("brreg")
                 .ConfigurePrimaryHttpMessageHandler(() => BrregHandler);
         });
@@ -54,6 +103,8 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
         await _postgres.DisposeAsync();
     }
 }
+
+internal sealed record AntiforgeryToken(string Token);
 
 [CollectionDefinition(Name)]
 public sealed class CustomersApiCollection : ICollectionFixture<CustomersApiFactory>

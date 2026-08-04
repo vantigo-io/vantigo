@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { stubFetch } from "../test/fetch";
 import {
   attachCustomerContact,
   createContact,
@@ -23,7 +23,7 @@ describe("contacts api client", () => {
   it("POSTs new contacts to /api/v1/contacts", async () => {
     const contact = { id: 1001, firstName: "Anders", lastName: "Refsdal" };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, contact));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const result = await createContact({ firstName: "Anders", lastName: "Refsdal" });
 
@@ -36,8 +36,7 @@ describe("contacts api client", () => {
   });
 
   it("maps 400 validation problems to ApiValidationError", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn().mockResolvedValue(
         jsonResponse(400, {
           title: "Invalid contact",
@@ -55,8 +54,7 @@ describe("contacts api client", () => {
   });
 
   it("surfaces 409 conflicts with the problem detail", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn().mockResolvedValue(
         jsonResponse(409, {
           title: "Contact already associated",
@@ -71,7 +69,7 @@ describe("contacts api client", () => {
   });
 
   it("maps 404 to NotFoundError", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
     const error = await updateCustomerContact(1, 2, { role: "CEO" }).catch((e: unknown) => e);
 
@@ -80,7 +78,7 @@ describe("contacts api client", () => {
 
   it("uses the expected methods and urls for deletion and detachment", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     await deleteContact(1001);
     await detachCustomerContact(2002, 1001);

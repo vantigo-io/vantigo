@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { stubFetch } from "../test/fetch";
 import { ApiValidationError, createCustomer, customerQueryOptions, NotFoundError, updateCustomer } from "./customers";
 
 const jsonResponse = (status: number, body: unknown) =>
@@ -15,7 +15,7 @@ describe("createCustomer", () => {
 
   it("POSTs the name to /api/v1/customers and returns the created id", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 1001 }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const result = await createCustomer({ name: "Acme" });
 
@@ -28,8 +28,7 @@ describe("createCustomer", () => {
   });
 
   it("throws ApiValidationError with field errors on a 400 validation problem", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn().mockResolvedValue(
         jsonResponse(400, {
           title: "Invalid customer",
@@ -48,7 +47,7 @@ describe("createCustomer", () => {
   });
 
   it("throws a generic error on non-validation failures", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
 
     await expect(createCustomer({ name: "Acme" })).rejects.toThrow("Request failed (HTTP 500)");
   });
@@ -62,7 +61,7 @@ describe("updateCustomer", () => {
   it("PUTs the name to /api/v1/customers/{id} and returns the updated customer", async () => {
     const updated = { id: 1001, name: "Initrode", identity: null };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, updated));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const result = await updateCustomer(1001, { name: "Initrode" });
 
@@ -75,7 +74,7 @@ describe("updateCustomer", () => {
   });
 
   it("throws a generic error on 404", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
     await expect(updateCustomer(999999, { name: "Ghost" })).rejects.toThrow("Request failed (HTTP 404)");
   });
@@ -89,7 +88,7 @@ describe("customerQueryOptions", () => {
   it("fetches a single customer by id", async () => {
     const customer = { id: 1001, name: "Acme", identity: null };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, customer));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const options = customerQueryOptions(1001);
     const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({
@@ -102,7 +101,7 @@ describe("customerQueryOptions", () => {
   });
 
   it("throws NotFoundError on 404", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
     const options = customerQueryOptions(999999);
     const error = await (options.queryFn as (context: unknown) => Promise<unknown>)({

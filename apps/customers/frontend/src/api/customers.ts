@@ -1,4 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
+import { NotFoundError, request } from "./request";
+
+export { ApiValidationError, NotFoundError } from "./request";
 
 export interface LegalIdentityResponse {
   country: string;
@@ -48,13 +51,7 @@ async function fetchCustomers(
   if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
 
   const query = searchParams.size > 0 ? `?${searchParams}` : "";
-  const response = await fetch(`/api/v1/customers${query}`, { signal });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch customers (HTTP ${response.status})`);
-  }
-
-  return response.json();
+  return request(`/api/v1/customers${query}`, { signal });
 }
 
 export const customersQueryOptions = (params: CustomersQueryParams) =>
@@ -65,25 +62,13 @@ export const customersQueryOptions = (params: CustomersQueryParams) =>
   });
 
 /** The requested resource does not exist (HTTP 404). */
-export class NotFoundError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NotFoundError";
-  }
-}
-
 async function fetchCustomer(id: number, signal?: AbortSignal): Promise<CustomerResponse> {
-  const response = await fetch(`/api/v1/customers/${id}`, { signal });
-
-  if (response.status === 404) {
-    throw new NotFoundError(`Customer ${id} does not exist`);
+  try {
+    return await request(`/api/v1/customers/${id}`, { signal });
+  } catch (error) {
+    if ((error as { status?: number }).status === 404) throw new NotFoundError(`Customer ${id} does not exist`);
+    throw error;
   }
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch customer (HTTP ${response.status})`);
-  }
-
-  return response.json();
 }
 
 export const customerQueryOptions = (id: number) =>
@@ -96,32 +81,6 @@ export const customerQueryOptions = (id: number) =>
  * A 400 validation problem (RFC 9457) from the API, carrying errors keyed by the
  * camelCase JSON path of the offending request field (e.g. "name").
  */
-export class ApiValidationError extends Error {
-  readonly errors: Record<string, string[]>;
-
-  constructor(title: string, errors: Record<string, string[]>) {
-    super(title);
-    this.name = "ApiValidationError";
-    this.errors = errors;
-  }
-
-  /** The first error message per field, suitable for `form.setErrors`. */
-  get fieldErrors(): Record<string, string> {
-    return Object.fromEntries(Object.entries(this.errors).map(([field, messages]) => [field, messages[0]]));
-  }
-}
-
-async function throwApiError(response: Response): Promise<never> {
-  if (response.status === 400) {
-    const problem = await response.json().catch(() => null);
-    if (problem && typeof problem === "object" && "errors" in problem) {
-      throw new ApiValidationError(problem.title ?? "Validation failed", problem.errors);
-    }
-  }
-
-  throw new Error(`Request failed (HTTP ${response.status})`);
-}
-
 export interface LegalIdentityInput {
   country: string;
   type: string;
@@ -136,29 +95,17 @@ export interface CustomerInput {
 }
 
 export async function createCustomer(input: CustomerInput): Promise<{ id: number }> {
-  const response = await fetch("/api/v1/customers", {
+  return request<{ id: number }>("/api/v1/customers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-
-  if (!response.ok) {
-    await throwApiError(response);
-  }
-
-  return response.json();
 }
 
 export async function updateCustomer(id: number, input: CustomerInput): Promise<CustomerResponse> {
-  const response = await fetch(`/api/v1/customers/${id}`, {
+  return request<CustomerResponse>(`/api/v1/customers/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-
-  if (!response.ok) {
-    await throwApiError(response);
-  }
-
-  return response.json();
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { stubFetch } from "../test/fetch";
 import { fetchBrregLookup } from "./lookup";
 
 const jsonResponse = (status: number, body: unknown) =>
@@ -16,7 +16,7 @@ describe("fetchBrregLookup", () => {
   it("queries by free-text search", async () => {
     const body = { data: [{ legalId: "923609016", legalName: "EQUINOR ASA" }] };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, body));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const result = await fetchBrregLookup({ search: "equinor" });
 
@@ -26,7 +26,7 @@ describe("fetchBrregLookup", () => {
 
   it("queries by exact legal id", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { data: [] }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     await fetchBrregLookup({ legalId: "923609016" });
 
@@ -34,7 +34,7 @@ describe("fetchBrregLookup", () => {
   });
 
   it("throws on upstream failure", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 502 })));
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 502 })));
 
     await expect(fetchBrregLookup({ search: "equinor" })).rejects.toThrow("Lookup failed (HTTP 502)");
   });

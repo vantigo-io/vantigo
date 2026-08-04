@@ -5,6 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routeTree } from "../routeTree.gen";
+import { stubFetch } from "../test/fetch";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -41,21 +42,18 @@ describe("customer details page", () => {
   });
 
   it("shows the customer and its legal identity", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (url === "/api/v1/customers/1001") {
-          return Promise.resolve(
-            jsonResponse(200, {
-              id: 1001,
-              name: "Equinor",
-              identity: { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA", source: "brreg" },
-            }),
-          );
-        }
-        return Promise.resolve(new Response(null, { status: 404 }));
-      }),
-    );
+    stubFetch((url: RequestInfo | URL) => {
+      if (String(url) === "/api/v1/customers/1001") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            id: 1001,
+            name: "Equinor",
+            identity: { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA", source: "brreg" },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
 
     await renderRoute("/customers/1001", "Equinor");
 
@@ -73,7 +71,13 @@ describe("customer details page", () => {
   });
 
   it("shows no legal identity row when the customer has none", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { id: 1002, name: "Acme", identity: null })));
+    stubFetch((url: RequestInfo | URL) =>
+      String(url) === "/api/v1/customers/1002"
+        ? Promise.resolve(jsonResponse(200, { id: 1002, name: "Acme", identity: null }))
+        : String(url).includes("/timeline")
+          ? Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }))
+          : Promise.resolve(new Response(null, { status: 404 })),
+    );
 
     await renderRoute("/customers/1002", "Acme");
 
@@ -83,7 +87,7 @@ describe("customer details page", () => {
   });
 
   it("shows a not-found state for unknown customers", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
 
     await renderRoute("/customers/999999", "Customer not found");
 

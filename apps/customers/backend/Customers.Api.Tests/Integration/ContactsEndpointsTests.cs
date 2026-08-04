@@ -10,7 +10,7 @@ public sealed class ContactsEndpointsTests
 
     public ContactsEndpointsTests(CustomersApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateAuthenticatedClient();
     }
 
     private async Task<Contact> CreateContact(object request)

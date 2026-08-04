@@ -47,7 +47,7 @@ are expected to follow the design principles and API conventions below.
   paths (`name`, `identity.country`, ...), so frontends can map them directly onto
   form libraries like TanStack Form and Mantine Form.
 - **AOT-friendly by default** — no assembly scanning or reflection-based registration.
-  Entity configurations are applied explicitly in `AppDbContext.OnModelCreating`,
+  Entity configurations are applied explicitly in `CustomersDbContext.OnModelCreating`,
   and sorting/filtering uses whitelisted switch expressions rather than dynamic LINQ.
 - **One container per app** — in production, each application ships as a single
   container image in which the .NET API also serves the built frontend. In
@@ -122,22 +122,78 @@ integration tests that exercise the endpoint over HTTP.
 
 ## Database migrations
 
-EF Core migrations live next to the owning API (e.g.
-`apps/customers/backend/Customers.Api/Database/Migrations`). The `dotnet-ef` tool is
-pinned in the repo's tool manifest, so everyone uses the same version:
+The Customers API keeps two EF Core contexts in the same assembly and PostgreSQL
+database:
+
+```
+Customers.Api/Database/
+├── Customers/
+│   ├── CustomersDbContext.cs
+│   ├── Configurations/
+│   └── Migrations/
+└── Accounts/
+    ├── AccountsDbContext.cs
+    ├── ApplicationUser.cs, BootstrapState.cs, Invitation.cs
+    └── Migrations/
+```
+
+`CustomersDbContext` owns the customer, contact, relationship, and timeline tables
+in the default `public` schema. Its migration history is the default
+`public.__EFMigrationsHistory`. `AccountsDbContext` owns Identity and account
+entities in the `accounts` schema, with its separate
+`accounts.__EFMigrationsHistory`. The histories must never be mixed: always select
+the context explicitly when using `dotnet ef`.
+
+Both contexts use the same `NpgsqlDataSource`, and therefore the same underlying
+ADO.NET physical connection pool. This is not EF `DbContext` pooling. Context
+instances still have independent lifetimes, change tracking, and transactions; they
+do not share tracked entities or a transaction automatically.
+
+The `dotnet-ef` tool is pinned in the repo's tool manifest, so everyone uses the same
+version:
 
 ```bash
 dotnet tool restore
 
 cd apps/customers/backend/Customers.Api
-dotnet ef migrations add <MigrationName> -o Database/Migrations
 ```
 
-Migrations are applied automatically when the API starts in development. If you change
-the EF model, verify nothing is pending with:
+Run each command with the context and output directory that own the change.
+
+### Customers context
 
 ```bash
-dotnet ef migrations has-pending-model-changes
+dotnet ef migrations add <MigrationName> --context CustomersDbContext --output-dir Database/Customers/Migrations
+dotnet ef migrations list --context CustomersDbContext
+dotnet ef migrations script --context CustomersDbContext
+dotnet ef database update --context CustomersDbContext
+dotnet ef migrations has-pending-model-changes --context CustomersDbContext
+```
+
+### Accounts context
+
+```bash
+dotnet ef migrations add <MigrationName> --context AccountsDbContext --output-dir Database/Accounts/Migrations
+dotnet ef migrations list --context AccountsDbContext
+dotnet ef migrations script --context AccountsDbContext
+dotnet ef database update --context AccountsDbContext
+dotnet ef migrations has-pending-model-changes --context AccountsDbContext
+```
+
+Migrations are applied automatically for both contexts when the API starts in
+Development. Outside Development, startup migration is opt-in:
+
+```text
+Database__ApplyMigrationsOnStartup=true
+```
+
+When enabled, the API updates the Customers and Accounts contexts. Prefer one
+controlled migration job or deployment instance rather than enabling the flag on
+every replica. If you change either EF model, run that context's pending-model check:
+
+```bash
+dotnet ef migrations has-pending-model-changes --context CustomersDbContext
+dotnet ef migrations has-pending-model-changes --context AccountsDbContext
 ```
 
 ## Frontend development

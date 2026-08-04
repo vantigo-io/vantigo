@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Contacts;
 using Vantigo.Customers.Api.Domain.Customers;
 using Vantigo.Customers.Api.Domain.Timeline;
@@ -21,7 +21,7 @@ public interface ICustomerTimelineRecorder
 /// Stages explicit, endpoint-owned generated events in the current DbContext. It never
 /// saves independently, which keeps the domain mutation and its event in one unit of work.
 /// </summary>
-internal sealed class CustomerTimelineRecorder(AppDbContext dbContext) : ICustomerTimelineRecorder
+internal sealed class CustomerTimelineRecorder(CustomersDbContext dbContext) : ICustomerTimelineRecorder
 {
     private const string Producer = "customers.api";
 

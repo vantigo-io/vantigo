@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { request } from "./request";
 
 export interface LookupResult {
   legalId: string;
@@ -13,13 +14,14 @@ export type BrregLookupParams = { search: string } | { legalId: string };
 
 export async function fetchBrregLookup(params: BrregLookupParams, signal?: AbortSignal): Promise<LookupResponse> {
   const searchParams = new URLSearchParams(params);
-  const response = await fetch(`/api/v1/lookup/brreg?${searchParams}`, { signal });
-
-  if (!response.ok) {
-    throw new Error(`Lookup failed (HTTP ${response.status})`);
+  try {
+    return await request(`/api/v1/lookup/brreg?${searchParams}`, { signal });
+  } catch (error) {
+    if ((error as { status?: number }).status) {
+      throw new Error(`Lookup failed (HTTP ${(error as { status: number }).status})`, { cause: error });
+    }
+    throw error;
   }
-
-  return response.json();
 }
 
 export const MIN_LOOKUP_SEARCH_LENGTH = 2;

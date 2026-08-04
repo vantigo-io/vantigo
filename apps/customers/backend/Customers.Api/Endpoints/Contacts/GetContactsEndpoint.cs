@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Contacts;
 using Vantigo.Customers.Api.Endpoints.Contacts.Dtos;
 using Vantigo.Customers.Api.Endpoints.Dtos;
@@ -20,7 +20,7 @@ internal static class GetContactsEndpoint
 
     internal static async Task<Results<Ok<PaginatedResponse<Response>>, ProblemHttpResult>> Handler(
         [AsParameters] Request request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         if (Validate(request) is { } problem)
@@ -83,7 +83,7 @@ internal static class GetContactsEndpoint
     /// query, so the count and single-customer projection never fan out per contact.
     /// </summary>
     private static async Task<Dictionary<int, List<CustomerReference>>> LoadAssociations(
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         List<Contact> contacts,
         CancellationToken cancellationToken)
     {

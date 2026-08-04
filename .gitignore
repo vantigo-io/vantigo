@@ -5,6 +5,7 @@
 
 # dotenv files
 .env
+.slim/deepwork/
 
 # User-specific files
 *.rsuser

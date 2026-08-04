@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routeTree } from "../routeTree.gen";
+import { stubFetch as stubTestFetch } from "../test/fetch";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -39,14 +40,11 @@ const anders = {
 };
 
 const stubFetch = (handlers: Record<string, (init?: RequestInit) => Response>) =>
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      const key = `${init?.method ?? "GET"} ${url.split("?")[0]}`;
-      const handler = handlers[key];
-      return Promise.resolve(handler ? handler(init) : new Response(null, { status: 404 }));
-    }),
-  );
+  stubTestFetch((url: RequestInfo | URL, init?: RequestInit) => {
+    const key = `${init?.method ?? "GET"} ${String(url).split("?")[0]}`;
+    const handler = handlers[key];
+    return Promise.resolve(handler ? handler(init) : new Response(null, { status: 404 }));
+  });
 
 const renderRoute = async (path: string, heading: string) => {
   const queryClient = new QueryClient({

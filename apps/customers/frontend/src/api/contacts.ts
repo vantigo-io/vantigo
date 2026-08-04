@@ -1,6 +1,7 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 
-import { ApiValidationError, NotFoundError, type PaginatedResponse } from "./customers";
+import type { PaginatedResponse } from "./customers";
+import { NotFoundError, request } from "./request";
 
 export interface ContactResponse {
   id: number;
@@ -67,32 +68,6 @@ export interface ContactsQueryParams {
  * Performs an API request with the shared error handling: 400 validation problems
  * become ApiValidationError, 404 becomes NotFoundError, everything else a plain Error.
  */
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-
-  if (response.ok) {
-    return response.status === 204 ? (undefined as T) : response.json();
-  }
-
-  if (response.status === 404) {
-    throw new NotFoundError(`The requested resource does not exist (${url})`);
-  }
-
-  if (response.status === 400 || response.status === 409) {
-    const problem = await response.json().catch(() => null);
-    if (problem && typeof problem === "object") {
-      if ("errors" in problem) {
-        throw new ApiValidationError(problem.title ?? "Validation failed", problem.errors);
-      }
-      if ("title" in problem && typeof problem.title === "string") {
-        throw new Error(problem.detail ?? problem.title);
-      }
-    }
-  }
-
-  throw new Error(`Request failed (HTTP ${response.status})`);
-}
-
 const jsonBody = (method: string, body: unknown): RequestInit => ({
   method,
   headers: { "Content-Type": "application/json" },
@@ -128,7 +103,14 @@ export const customerContactsQueryOptions = (customerId: number) =>
 export const contactQueryOptions = (id: number) =>
   queryOptions({
     queryKey: ["contacts", id],
-    queryFn: ({ signal }) => request<ContactResponse>(`/api/v1/contacts/${id}`, { signal }),
+    queryFn: async ({ signal }) => {
+      try {
+        return await request<ContactResponse>(`/api/v1/contacts/${id}`, { signal });
+      } catch (error) {
+        if ((error as { status?: number }).status === 404) throw new NotFoundError(`Contact ${id} does not exist`);
+        throw error;
+      }
+    },
   });
 
 export const contactCustomersQueryOptions = (contactId: number) =>
@@ -152,7 +134,14 @@ export const attachCustomerContact = (customerId: number, input: CustomerContact
   request<CustomerContactResponse>(`/api/v1/customers/${customerId}/contacts`, jsonBody("POST", input));
 
 export const updateCustomerContact = (customerId: number, contactId: number, input: CustomerContactInput) =>
-  request<CustomerContactResponse>(`/api/v1/customers/${customerId}/contacts/${contactId}`, jsonBody("PUT", input));
+  request<CustomerContactResponse>(
+    `/api/v1/customers/${customerId}/contacts/${contactId}`,
+    jsonBody("PUT", input),
+  ).catch((error: unknown) => {
+    if ((error as { status?: number }).status === 404)
+      throw new NotFoundError("The requested contact association does not exist");
+    throw error;
+  });
 
 export const detachCustomerContact = (customerId: number, contactId: number) =>
   request<void>(`/api/v1/customers/${customerId}/contacts/${contactId}`, { method: "DELETE" });

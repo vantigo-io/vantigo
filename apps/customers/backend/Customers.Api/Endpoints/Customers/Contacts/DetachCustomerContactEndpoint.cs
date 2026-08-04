@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers.Contacts;
@@ -15,7 +15,7 @@ internal static class DetachCustomerContactEndpoint
     internal static async Task<Results<NoContent, NotFound>> Handler(
         int id,
         int contactId,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {

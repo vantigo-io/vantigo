@@ -97,12 +97,15 @@ dotnet run --project orchestration/AppHost
 The Aspire dashboard opens automatically and shows every running resource with logs,
 traces and endpoints:
 
-- **customers-api** — the Customers API (migrations are applied automatically on startup)
+- **customers-api** — the Customers API (development migrations are applied automatically on startup)
 - **customers-frontend** — the Customers SPA served by the Vite dev server
 - **scalar** — interactive API reference for every registered API
 - **postgres** — the PostgreSQL instance backing the applications
 
 That's it — no manual database setup, connection strings or environment files needed.
+
+For self-hosted Customers authentication, deployment configuration, and production
+migration guidance, see [Customers authentication](docs/customers-authentication.md).
 
 Ready to dig into the code? Head over to the
 [contributing guide](CONTRIBUTING.md) for the design principles, API conventions,

@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Timeline;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers;
@@ -35,7 +35,7 @@ internal static class TimelineEndpoints
         string[]? eventType,
         string? occurredFrom,
         string? occurredTo,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         if (limit is <= 0 or > MaximumLimit)
@@ -143,7 +143,7 @@ internal static class TimelineEndpoints
     internal static async Task<IResult> Create(
         int id,
         ManualTimelineRequest request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         if (!TryParseManual(request, out var parsed, out var errors))
@@ -168,7 +168,7 @@ internal static class TimelineEndpoints
     internal static async Task<IResult> Get(
         int id,
         int entryId,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var entry = await dbContext.CustomerTimelineEntries
@@ -185,7 +185,7 @@ internal static class TimelineEndpoints
         int id,
         int entryId,
         ManualTimelineRequest request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         if (!TryParseManual(request, out var parsed, out var errors))
@@ -235,7 +235,7 @@ internal static class TimelineEndpoints
         int id,
         int entryId,
         int? expectedRevision,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var entry = await dbContext.CustomerTimelineEntries
@@ -282,7 +282,7 @@ internal static class TimelineEndpoints
     internal static async Task<IResult> Revisions(
         int id,
         int entryId,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var exists = await dbContext.CustomerTimelineEntries

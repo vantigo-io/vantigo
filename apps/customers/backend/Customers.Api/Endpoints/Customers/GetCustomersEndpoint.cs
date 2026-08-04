@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Customers;
 using Vantigo.Customers.Api.Endpoints.Customers.Dtos;
 using Vantigo.Customers.Api.Endpoints.Dtos;
@@ -18,7 +18,7 @@ internal static class GetCustomersEndpoint
 
     internal static async Task<Results<Ok<PaginatedResponse<CustomerResponse>>, ProblemHttpResult>> Handler(
         [AsParameters] Request request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         if (Validate(request) is { } problem)

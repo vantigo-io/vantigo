@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Contacts;
 using Vantigo.Customers.Api.Endpoints.Customers.Contacts.Dtos;
 using Vantigo.Customers.Api.Services;
@@ -18,7 +18,7 @@ internal static class AttachCustomerContactEndpoint
     internal static async Task<Results<Ok<CustomerContactResponse>, NotFound, ProblemHttpResult, ValidationProblem>> Handler(
         int id,
         Request request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {

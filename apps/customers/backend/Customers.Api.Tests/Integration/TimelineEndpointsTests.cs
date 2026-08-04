@@ -10,7 +10,7 @@ public sealed class TimelineEndpointsTests
 
     public TimelineEndpointsTests(CustomersApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateAuthenticatedClient();
     }
 
     [Fact]

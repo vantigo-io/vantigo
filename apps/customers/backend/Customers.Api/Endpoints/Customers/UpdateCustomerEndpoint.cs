@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Customers.Common;
 using Vantigo.Customers.Api.Domain.Customers.ValueObjects;
 using Vantigo.Customers.Api.Endpoints.Customers.Dtos;
@@ -19,7 +19,7 @@ internal static class UpdateCustomerEndpoint
     internal static async Task<Results<Ok<CustomerResponse>, NotFound, ValidationProblem>> Handler(
         int id,
         Request request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {

@@ -5,7 +5,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { stubFetch } from "../test/fetch";
 import { ContactFormModal, type ContactModalState } from "./-contact-form-modal";
 
 const jsonResponse = (status: number, body: unknown) =>
@@ -36,7 +36,7 @@ describe("ContactFormModal name chips", () => {
   });
 
   it("hides the optional name fields until their chip is toggled", async () => {
-    vi.stubGlobal("fetch", vi.fn());
+    stubFetch(vi.fn());
 
     renderModal({ mode: "create" });
 
@@ -64,7 +64,7 @@ describe("ContactFormModal name chips", () => {
         email: null,
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     renderModal({ mode: "create" });
 
@@ -85,7 +85,7 @@ describe("ContactFormModal name chips", () => {
   });
 
   it("pre-opens chips for name parts that already have values when editing", async () => {
-    vi.stubGlobal("fetch", vi.fn());
+    stubFetch(vi.fn());
 
     renderModal({
       mode: "edit",

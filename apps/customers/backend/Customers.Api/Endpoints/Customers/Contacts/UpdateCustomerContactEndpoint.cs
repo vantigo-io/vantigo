@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Endpoints.Customers.Contacts.Dtos;
 using Vantigo.Customers.Api.Services;
 
@@ -17,7 +17,7 @@ internal static class UpdateCustomerContactEndpoint
         int id,
         int contactId,
         CustomerContactRequest request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {

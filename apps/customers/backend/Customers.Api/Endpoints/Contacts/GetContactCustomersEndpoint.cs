@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 
 namespace Vantigo.Customers.Api.Endpoints.Contacts;
 
@@ -14,7 +14,7 @@ internal static class GetContactCustomersEndpoint
 {
     internal static async Task<Results<Ok<Response>, NotFound>> Handler(
         int id,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var contactExists = await dbContext.Contacts

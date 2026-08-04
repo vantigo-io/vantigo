@@ -6,6 +6,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routeTree } from "../routeTree.gen";
+import { stubFetch } from "../test/fetch";
 import { wireNavigationProgress } from "./navigation-progress";
 
 const { startSpy, completeSpy } = vi.hoisted(() => ({
@@ -26,9 +27,8 @@ describe("wireNavigationProgress", () => {
   });
 
   it("starts the progress bar when a navigation loads and completes it when resolved", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
+    stubFetch(() =>
+      Promise.resolve(
         new Response(JSON.stringify({ id: 1001, name: "Acme", identity: null }), {
           status: 200,
           headers: { "Content-Type": "application/json" },

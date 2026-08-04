@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEntry } from "../api/timeline";
 import { createTimelineEntry, deleteTimelineEntry, fetchTimeline, updateTimelineEntry } from "../api/timeline";
+import { stubFetch } from "../test/fetch";
 import { CustomerTimeline } from "./-customer-timeline";
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
@@ -31,7 +32,7 @@ const entry = (overrides: Partial<TimelineEntry> = {}): TimelineEntry => ({
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const renderTimeline = async (fetchMock: ReturnType<typeof vi.fn>) => {
-  vi.stubGlobal("fetch", fetchMock);
+  stubFetch(fetchMock);
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <MantineProvider>
@@ -95,7 +96,7 @@ describe("timeline API contract", () => {
       .fn()
       .mockResolvedValueOnce(json(entry({ eventType: "interaction.meeting" })))
       .mockResolvedValueOnce(json(entry({ eventType: "interaction.email" })));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     await createTimelineEntry(42, { eventType: "interaction.meeting", occurredOn: "2026-07-20", note: "Meet" });
     await updateTimelineEntry(42, 7, { eventType: "interaction.email", occurredOn: "2026-07-21", note: "Email" }, 2);
@@ -119,7 +120,7 @@ describe("timeline API contract", () => {
       .mockResolvedValueOnce(json({ data: [entry()], nextCursor: "next-1" }))
       .mockResolvedValueOnce(json({ data: [], nextCursor: null }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     expect((await fetchTimeline(42)).nextCursor).toBe("next-1");
     await fetchTimeline(42, "next-1");
@@ -133,21 +134,19 @@ describe("timeline API contract", () => {
 describe("CustomerTimeline", () => {
   it("renders generated entries without edit or delete actions", async () => {
     await renderTimeline(
-      vi
-        .fn()
-        .mockResolvedValue(
-          json({
-            data: [
-              entry({
-                provenance: "generated",
-                eventType: "customer.contact_attached",
-                note: null,
-                summary: "Linked from customer relationship",
-              }),
-            ],
-            nextCursor: null,
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        json({
+          data: [
+            entry({
+              provenance: "generated",
+              eventType: "customer.contact_attached",
+              note: null,
+              summary: "Linked from customer relationship",
+            }),
+          ],
+          nextCursor: null,
+        }),
+      ),
     );
     expect(await screen.findByText("Contact linked")).toBeInTheDocument();
     expect(screen.getByText("Linked from customer relationship")).toBeInTheDocument();
@@ -356,7 +355,7 @@ describe("CustomerTimeline", () => {
 
   it("serializes the applied date range with repeated event types", async () => {
     const fetchMock = vi.fn().mockResolvedValue(json({ data: [], nextCursor: null }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     await fetchTimeline(42, undefined, undefined, {
       provenance: "manual",
@@ -400,36 +399,34 @@ describe("CustomerTimeline", () => {
   });
 
   it("renders all contact payload shapes once", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        json({
-          data: [
-            entry({
-              id: 1,
-              provenance: "generated",
-              note: null,
-              summary: "Contact linked: Jane Doe (#1002)",
-              payload: { contact: { id: 1002, displayName: "Jane Doe (#1002)" } },
-            }),
-            entry({
-              id: 2,
-              provenance: "generated",
-              note: null,
-              summary: null,
-              payload: { displayName: "Root Person" },
-            }),
-            entry({
-              id: 3,
-              provenance: "generated",
-              note: null,
-              summary: null,
-              payload: { contactName: "Legacy Person" },
-            }),
-          ],
-          nextCursor: null,
-        }),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      json({
+        data: [
+          entry({
+            id: 1,
+            provenance: "generated",
+            note: null,
+            summary: "Contact linked: Jane Doe (#1002)",
+            payload: { contact: { id: 1002, displayName: "Jane Doe (#1002)" } },
+          }),
+          entry({
+            id: 2,
+            provenance: "generated",
+            note: null,
+            summary: null,
+            payload: { displayName: "Root Person" },
+          }),
+          entry({
+            id: 3,
+            provenance: "generated",
+            note: null,
+            summary: null,
+            payload: { contactName: "Legacy Person" },
+          }),
+        ],
+        nextCursor: null,
+      }),
+    );
     await renderTimeline(fetchMock);
     expect((await screen.findAllByText(/Jane Doe \(#1002\)/)).length).toBe(1);
     expect((await screen.findAllByText(/Root Person/)).length).toBe(1);
@@ -459,21 +456,19 @@ describe("CustomerTimeline", () => {
     ],
   ])("renders legal identity %s changes without raw values", async (_label, before, after, expected) => {
     await renderTimeline(
-      vi
-        .fn()
-        .mockResolvedValue(
-          json({
-            data: [
-              entry({
-                provenance: "generated",
-                note: null,
-                summary: "Customer updated",
-                payload: { changes: { legalIdentity: { before, after } } },
-              }),
-            ],
-            nextCursor: null,
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        json({
+          data: [
+            entry({
+              provenance: "generated",
+              note: null,
+              summary: "Customer updated",
+              payload: { changes: { legalIdentity: { before, after } } },
+            }),
+          ],
+          nextCursor: null,
+        }),
+      ),
     );
     expect(await screen.findByText(expected)).toBeInTheDocument();
     expect(screen.queryByText(/undefined|none|\[object Object\]/i)).not.toBeInTheDocument();

@@ -23,6 +23,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      "/auth": {
+        target: process.env.services__customers_api__http__0 || "http://localhost:10010",
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   build: {

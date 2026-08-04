@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Endpoints.Contacts.Dtos;
 
 namespace Vantigo.Customers.Api.Endpoints.Contacts;
@@ -15,7 +15,7 @@ internal static class UpdateContactEndpoint
     internal static async Task<Results<Ok<ContactResponse>, NotFound, ValidationProblem>> Handler(
         int id,
         ContactRequest request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         if (!request.TryParse(out var parsed, out var errors))

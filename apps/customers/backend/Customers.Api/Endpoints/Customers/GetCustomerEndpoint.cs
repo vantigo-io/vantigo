@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Endpoints.Customers.Dtos;
 
 namespace Vantigo.Customers.Api.Endpoints.Customers;
@@ -13,7 +13,7 @@ internal static class GetCustomerEndpoint
 {
     internal static async Task<Results<Ok<CustomerResponse>, NotFound>> Handler(
         int id,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var customer = await dbContext.Customers

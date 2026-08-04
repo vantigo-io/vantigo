@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routeTree } from "../routeTree.gen";
+import { stubFetch } from "../test/fetch";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -58,7 +59,7 @@ describe("app spotlight", () => {
   });
 
   it("opens from the sidebar search box and shows the navigation actions", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, paginated([]))));
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, paginated([]))));
 
     await renderApp();
 
@@ -70,7 +71,7 @@ describe("app spotlight", () => {
   });
 
   it("navigates to the contacts page through a navigation action", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, paginated([]))));
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, paginated([]))));
 
     const router = await renderApp();
 
@@ -81,58 +82,55 @@ describe("app spotlight", () => {
   });
 
   it("searches customers and contacts and navigates to a result", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (url.startsWith("/api/v1/customers?")) {
-          return Promise.resolve(
-            jsonResponse(
-              200,
-              paginated([
-                {
-                  id: 2002,
-                  name: "Refsdal Holding",
-                  identity: {
-                    country: "no",
-                    type: "business",
-                    id: "923609016",
-                    name: "REFSDAL HOLDING AS",
-                    source: "brreg",
-                  },
+    stubFetch((url: RequestInfo | URL) => {
+      if (String(url).startsWith("/api/v1/customers?")) {
+        return Promise.resolve(
+          jsonResponse(
+            200,
+            paginated([
+              {
+                id: 2002,
+                name: "Refsdal Holding",
+                identity: {
+                  country: "no",
+                  type: "business",
+                  id: "923609016",
+                  name: "REFSDAL HOLDING AS",
+                  source: "brreg",
                 },
-              ]),
-            ),
-          );
-        }
-        if (url.startsWith("/api/v1/contacts?")) {
-          return Promise.resolve(
-            jsonResponse(
-              200,
-              paginated([
-                {
-                  contact: {
-                    id: 1001,
-                    firstName: "Anders",
-                    lastName: "Refsdal",
-                    middleName: null,
-                    prefix: null,
-                    suffix: null,
-                    phone: null,
-                    email: "anders@refsdal.no",
-                  },
-                  customerCount: 1,
-                  customer: { id: 2002, name: "Refsdal Holding" },
+              },
+            ]),
+          ),
+        );
+      }
+      if (String(url).startsWith("/api/v1/contacts?")) {
+        return Promise.resolve(
+          jsonResponse(
+            200,
+            paginated([
+              {
+                contact: {
+                  id: 1001,
+                  firstName: "Anders",
+                  lastName: "Refsdal",
+                  middleName: null,
+                  prefix: null,
+                  suffix: null,
+                  phone: null,
+                  email: "anders@refsdal.no",
                 },
-              ]),
-            ),
-          );
-        }
-        if (url === "/api/v1/customers/2002") {
-          return Promise.resolve(jsonResponse(200, { id: 2002, name: "Refsdal Holding", identity: null }));
-        }
-        return Promise.resolve(jsonResponse(200, { data: [] }));
-      }),
-    );
+                customerCount: 1,
+                customer: { id: 2002, name: "Refsdal Holding" },
+              },
+            ]),
+          ),
+        );
+      }
+      if (url === "/api/v1/customers/2002") {
+        return Promise.resolve(jsonResponse(200, { id: 2002, name: "Refsdal Holding", identity: null }));
+      }
+      return Promise.resolve(jsonResponse(200, { data: [] }));
+    });
 
     const router = await renderApp();
 
@@ -150,7 +148,7 @@ describe("app spotlight", () => {
   });
 
   it("shows an empty state when nothing matches", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, paginated([]))));
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, paginated([]))));
 
     await renderApp();
 

@@ -5,7 +5,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { stubFetch } from "../test/fetch";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
 const jsonResponse = (status: number, body: unknown) =>
@@ -40,7 +40,7 @@ describe("CustomerFormModal", () => {
 
   it("creates a customer and shows a success notification", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 1001 }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const { onClose, invalidateSpy } = renderModal({ mode: "create" });
 
@@ -60,7 +60,7 @@ describe("CustomerFormModal", () => {
 
   it("shows a client-side validation error without calling the API", async () => {
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     renderModal({ mode: "create" });
 
@@ -71,8 +71,7 @@ describe("CustomerFormModal", () => {
   });
 
   it("maps server validation errors onto the name field", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn().mockResolvedValue(
         jsonResponse(400, {
           title: "Invalid customer",
@@ -92,7 +91,7 @@ describe("CustomerFormModal", () => {
   });
 
   it("shows an error notification when the request fails unexpectedly", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
 
     const { onClose } = renderModal({ mode: "create" });
 
@@ -106,7 +105,7 @@ describe("CustomerFormModal", () => {
   it("prefills the current name and PUTs to the customer url when editing", async () => {
     const customer = { id: 1001, name: "Initech", identity: null };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ...customer, name: "Initrode" }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const { onClose } = renderModal({ mode: "edit", customer });
 
@@ -128,7 +127,7 @@ describe("CustomerFormModal", () => {
   });
 
   it("shows the legal identity fields only after opting in", async () => {
-    vi.stubGlobal("fetch", vi.fn());
+    stubFetch(vi.fn());
 
     renderModal({ mode: "create" });
 
@@ -156,7 +155,7 @@ describe("CustomerFormModal", () => {
       }
       return Promise.resolve(jsonResponse(201, { id: 1001 }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     renderModal({ mode: "create" });
 
@@ -178,7 +177,7 @@ describe("CustomerFormModal", () => {
       }
       return Promise.resolve(jsonResponse(201, { id: 1001 }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const { onClose } = renderModal({ mode: "create" });
 
@@ -201,7 +200,7 @@ describe("CustomerFormModal", () => {
   });
 
   it("prefills the legal identity when editing a customer that has one", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { data: [] })));
+    stubFetch(vi.fn().mockResolvedValue(jsonResponse(200, { data: [] })));
 
     renderModal({
       mode: "edit",
@@ -224,7 +223,7 @@ describe("CustomerFormModal", () => {
       }
       return Promise.resolve(jsonResponse(200, { data: [] }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     renderModal({
       mode: "edit",
@@ -251,7 +250,7 @@ describe("CustomerFormModal", () => {
       }
       return Promise.resolve(jsonResponse(201, { id: 1001 }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const { onClose } = renderModal({ mode: "create" });
 
@@ -280,7 +279,7 @@ describe("CustomerFormModal", () => {
       }
       return Promise.resolve(jsonResponse(201, { id: 1001 }));
     });
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const { onClose } = renderModal({ mode: "create" });
 
@@ -306,21 +305,19 @@ describe("CustomerFormModal", () => {
   });
 
   it("maps nested identity server validation errors onto the right fields", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (url.startsWith("/api/v1/lookup/brreg")) {
-          return Promise.resolve(jsonResponse(200, { data: [] }));
-        }
-        return Promise.resolve(
-          jsonResponse(400, {
-            title: "Invalid customer",
-            status: 400,
-            errors: { "identity.id": ["A legal id cannot be longer than 50 characters"] },
-          }),
-        );
-      }),
-    );
+    stubFetch((url: RequestInfo | URL) => {
+      const urlString = String(url);
+      if (urlString.startsWith("/api/v1/lookup/brreg")) {
+        return Promise.resolve(jsonResponse(200, { data: [] }));
+      }
+      return Promise.resolve(
+        jsonResponse(400, {
+          title: "Invalid customer",
+          status: 400,
+          errors: { "identity.id": ["A legal id cannot be longer than 50 characters"] },
+        }),
+      );
+    });
 
     const { onClose } = renderModal({ mode: "create" });
 

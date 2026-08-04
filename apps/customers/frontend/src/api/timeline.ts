@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { request } from "./request";
 
 export type TimelineProvenance = "manual" | "generated";
 export type TimelineSourceFilter = "all" | TimelineProvenance;
@@ -60,17 +61,6 @@ export interface TimelineRevision {
 export interface TimelineRevisionResponse {
   data: TimelineRevision[];
 }
-
-const request = async (url: string, init?: RequestInit) => {
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    const error = new Error(`Request failed (HTTP ${response.status}`);
-    Object.assign(error, { status: response.status });
-    throw error;
-  }
-  if (response.status === 204) return undefined;
-  return response.json();
-};
 
 export async function fetchTimeline(
   customerId: number,

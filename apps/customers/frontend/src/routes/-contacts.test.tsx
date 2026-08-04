@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { routeTree } from "../routeTree.gen";
+import { stubFetch as stubTestFetch } from "../test/fetch";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -72,40 +73,37 @@ describe("contacts page", () => {
   });
 
   it("lists contacts with a linked customer name for single associations and a count otherwise", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (url.startsWith("/api/v1/contacts")) {
-          return Promise.resolve(
-            jsonResponse(
-              200,
-              paginated([
-                {
-                  contact: contact(1001, "Anders", "Refsdal", {
-                    prefix: "Dr.",
-                    phone: "+47 934 89 731",
-                    email: "anders@refsdal.no",
-                  }),
-                  customerCount: 1,
-                  customer: { id: 2002, name: "Refsdal Holding" },
-                },
-                {
-                  contact: contact(1002, "Kari", "Nordmann"),
-                  customerCount: 3,
-                  customer: null,
-                },
-                {
-                  contact: contact(1003, "Ola", "Nordmann"),
-                  customerCount: 0,
-                  customer: null,
-                },
-              ]),
-            ),
-          );
-        }
-        return Promise.resolve(new Response(null, { status: 404 }));
-      }),
-    );
+    stubTestFetch((url: RequestInfo | URL) => {
+      if (String(url).startsWith("/api/v1/contacts")) {
+        return Promise.resolve(
+          jsonResponse(
+            200,
+            paginated([
+              {
+                contact: contact(1001, "Anders", "Refsdal", {
+                  prefix: "Dr.",
+                  phone: "+47 934 89 731",
+                  email: "anders@refsdal.no",
+                }),
+                customerCount: 1,
+                customer: { id: 2002, name: "Refsdal Holding" },
+              },
+              {
+                contact: contact(1002, "Kari", "Nordmann"),
+                customerCount: 3,
+                customer: null,
+              },
+              {
+                contact: contact(1003, "Ola", "Nordmann"),
+                customerCount: 0,
+                customer: null,
+              },
+            ]),
+          ),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
 
     await renderRoute("/contacts", "Contacts");
 
@@ -134,14 +132,11 @@ describe("customer contacts card", () => {
   };
 
   const stubFetch = (handlers: Record<string, (init?: RequestInit) => Response | Promise<Response>>) =>
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string, init?: RequestInit) => {
-        const key = `${init?.method ?? "GET"} ${url.split("?")[0]}`;
-        const handler = handlers[key];
-        return Promise.resolve(handler ? handler(init) : new Response(null, { status: 404 }));
-      }),
-    );
+    stubTestFetch((url: RequestInfo | URL, init?: RequestInit) => {
+      const key = `${init?.method ?? "GET"} ${String(url).split("?")[0]}`;
+      const handler = handlers[key];
+      return Promise.resolve(handler ? handler(init) : new Response(null, { status: 404 }));
+    });
 
   it("lists associated contacts with connection values falling back to the contact's own", async () => {
     stubFetch({

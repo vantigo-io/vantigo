@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Contacts;
 using Vantigo.Customers.Api.Endpoints.Contacts.Dtos;
 
@@ -15,7 +15,7 @@ internal static class CreateContactEndpoint
 {
     internal static async Task<Results<CreatedAtRoute<ContactResponse>, ValidationProblem>> Handler(
         ContactRequest request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         if (!request.TryParse(out var parsed, out var errors))

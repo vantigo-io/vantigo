@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 
-using Vantigo.Customers.Api.Database;
+using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Domain.Customers;
 using Vantigo.Customers.Api.Domain.Customers.Common;
 using Vantigo.Customers.Api.Domain.Customers.ValueObjects;
@@ -18,7 +18,7 @@ internal static class CreateCustomerEndpoint
 {
     internal static async Task<Results<CreatedAtRoute<Response>, ValidationProblem>> Handler(
         Request request,
-        AppDbContext dbContext,
+        CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {
