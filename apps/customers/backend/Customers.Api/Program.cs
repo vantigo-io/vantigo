@@ -1,7 +1,5 @@
 using System.Threading.RateLimiting;
 
-using Asp.Versioning;
-
 using Microsoft.AspNetCore.RateLimiting;
 
 using Vantigo.Customers.Api;
@@ -14,26 +12,7 @@ using Vantigo.Customers.Api.Services;
 var builder = WebApplication.CreateBuilder(args);
 var workforceOidc = WorkforceOidcOptions.Load(builder.Configuration, builder.Environment);
 
-builder.Services
-    .AddApiVersioning(options =>
-    {
-        options.DefaultApiVersion = new ApiVersion(1);
-        options.ApiVersionReader = new UrlSegmentApiVersionReader();
-        options.ReportApiVersions = true;
-    })
-    .AddApiExplorer(options =>
-    {
-        // Format the group name as "v1" so the OpenAPI documents are exposed at
-        // /openapi/v1.json, matching the default Microsoft.AspNetCore.OpenApi behavior.
-        options.GroupNameFormat = "'v'VVV";
-
-        // Replace the {version:apiVersion} route template parameter with the actual
-        // version number in the generated OpenAPI paths.
-        options.SubstituteApiVersionInUrl = true;
-    })
-    // Asp.Versioning's AddOpenApi must be used (instead of Microsoft.AspNetCore.OpenApi's)
-    // to generate versioned OpenAPI documents.
-    .AddOpenApi();
+builder.Services.AddCustomerApiVersioning();
 
 builder.Services.AddCustomerDatabases(builder.Configuration);
 builder.Services.AddSingleton<BootstrapSecretProvider>();
@@ -137,15 +116,7 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapAuthEndpoints(workforceOidc);
-
-var api = app.NewVersionedApi()
-    .MapGroup("/api/v{version:apiVersion}")
-    .HasApiVersion(new ApiVersion(1))
-    .RequireAuthorization(AuthPolicies.Business);
-
-api.MapCustomersEndpoints();
-api.MapContactsEndpoints();
-api.MapLookupEndpoints();
+app.MapVersionedBusinessEndpoints();
 
 // Never let an unrecognized API/auth URL be mistaken for an SPA deep link.
 app.Map("/api", () => Results.NotFound());
