@@ -165,9 +165,6 @@ internal static class InfrastructureConfiguration
     private static InvalidOperationException InvalidNetwork(string path, string value) =>
         new($"Invalid forwarded-header network configuration at '{path}': '{value}' must be a valid IPv4/IPv6 CIDR network.");
 
-    internal static string GetRateLimitPartitionKey(HttpContext context) =>
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
     private static IEnumerable<(string Value, string Path)> ConfigurationValues(IConfiguration configuration, string key)
     {
         var section = configuration.GetSection(key);

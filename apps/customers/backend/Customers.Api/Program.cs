@@ -1,7 +1,3 @@
-using System.Threading.RateLimiting;
-
-using Microsoft.AspNetCore.RateLimiting;
-
 using Vantigo.Customers.Api;
 using Vantigo.Customers.Api.Database;
 using Vantigo.Customers.Api.Endpoints;
@@ -20,66 +16,11 @@ InfrastructureConfiguration.AddConfiguredDataProtection(builder.Services, builde
 InfrastructureConfiguration.ConfigureForwardedHeaders(builder.Services, builder.Configuration);
 builder.Services.AddCustomerIdentity(builder.Environment);
 builder.Services.AddWorkforceOidc(workforceOidc, builder.Environment);
-builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
-if (string.Equals(builder.Configuration["Email:Provider"], "Smtp", StringComparison.OrdinalIgnoreCase))
-{
-    builder.Services.AddSingleton<IApplicationEmailSender, SmtpApplicationEmailSender>();
-}
-else
-{
-    builder.Services.AddSingleton<IApplicationEmailSender, LoggingApplicationEmailSender>();
-}
+builder.Services.AddApplicationEmail(builder.Configuration);
 builder.Services.AddCustomerAuthorization();
 builder.Services.AddCustomerAntiforgery(builder.Environment);
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.OnRejected = async (context, cancellationToken) =>
-    {
-        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter) && retryAfter is TimeSpan retryAfterDuration)
-        {
-            context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfterDuration.TotalSeconds)).ToString();
-        }
-
-        context.HttpContext.Response.ContentType = "application/json";
-        await context.HttpContext.Response.WriteAsJsonAsync(
-            new AuthErrorResponse(new AuthError("rate_limited", "Too many authentication attempts. Please try again later.")),
-            cancellationToken);
-    };
-    options.AddPolicy(AuthRateLimitPolicies.Login, context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            InfrastructureConfiguration.GetRateLimitPartitionKey(context),
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 100,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0,
-                AutoReplenishment = true,
-            }));
-    options.AddPolicy(AuthRateLimitPolicies.Bootstrap, context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            InfrastructureConfiguration.GetRateLimitPartitionKey(context),
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = 20,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0,
-                AutoReplenishment = true,
-            }));
-    options.AddPolicy(AuthRateLimitPolicies.Invitations, context =>
-        RateLimitPartition.GetFixedWindowLimiter(InfrastructureConfiguration.GetRateLimitPartitionKey(context),
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    options.AddPolicy(AuthRateLimitPolicies.InvitationAcceptance, context =>
-        RateLimitPartition.GetFixedWindowLimiter(InfrastructureConfiguration.GetRateLimitPartitionKey(context),
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    options.AddPolicy(AuthRateLimitPolicies.PasswordRecovery, context =>
-        RateLimitPartition.GetFixedWindowLimiter(InfrastructureConfiguration.GetRateLimitPartitionKey(context),
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(15), QueueLimit = 0 }));
-    options.AddPolicy(AuthRateLimitPolicies.Mfa, context =>
-        RateLimitPartition.GetFixedWindowLimiter(InfrastructureConfiguration.GetRateLimitPartitionKey(context),
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(5), QueueLimit = 0 }));
-});
-builder.Services.AddScoped<ICustomerTimelineRecorder, CustomerTimelineRecorder>();
+builder.Services.AddAuthenticationRateLimiting();
+builder.Services.AddCustomerTimeline();
 
 // Named client for the open Brønnøysundregisteret (Enhetsregisteret) API used by
 // the /lookup/brreg endpoint. The base URL is configurable so tests and other
