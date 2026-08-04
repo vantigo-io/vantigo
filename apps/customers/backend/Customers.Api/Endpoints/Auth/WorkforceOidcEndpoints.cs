@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+
 using Npgsql;
 
 using Vantigo.Customers.Api.Database.Accounts;

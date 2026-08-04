@@ -1,6 +1,6 @@
+using Vantigo.Customers.Api.Endpoints.Auth;
 using Vantigo.Customers.Api.Endpoints.Customers;
 using Vantigo.Customers.Api.Endpoints.Customers.Contacts;
-using Vantigo.Customers.Api.Endpoints.Auth;
 
 namespace Vantigo.Customers.Api.Endpoints;
 

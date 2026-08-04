@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using System.Threading.RateLimiting;
+
 using Asp.Versioning;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -5,17 +8,16 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using System.Threading.RateLimiting;
-using System.Security.Claims;
 
+using Npgsql;
+
+using Vantigo.Customers.Api;
 using Vantigo.Customers.Api.Database.Accounts;
 using Vantigo.Customers.Api.Database.Customers;
 using Vantigo.Customers.Api.Endpoints;
 using Vantigo.Customers.Api.Endpoints.Auth;
 using Vantigo.Customers.Api.Endpoints.Lookup;
 using Vantigo.Customers.Api.Services;
-using Vantigo.Customers.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 var workforceOidc = WorkforceOidcOptions.Load(builder.Configuration, builder.Environment);

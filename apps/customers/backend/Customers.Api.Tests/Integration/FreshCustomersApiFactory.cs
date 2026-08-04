@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 using Testcontainers.PostgreSql;
+
 using Vantigo.Customers.Api.Endpoints.Auth;
 using Vantigo.Customers.Api.Services;
 

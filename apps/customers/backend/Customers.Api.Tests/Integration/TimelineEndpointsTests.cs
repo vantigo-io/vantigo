@@ -51,7 +51,10 @@ public sealed class TimelineEndpointsTests
 
         var stale = await _client.PutAsJsonAsync($"/api/v1/customers/{customerId}/timeline/{created.Id}", new
         {
-            eventType = "note", occurredOn = "2026-07-27", note = "stale", expectedRevision = 1,
+            eventType = "note",
+            occurredOn = "2026-07-27",
+            note = "stale",
+            expectedRevision = 1,
         });
         Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
         Assert.Equal("application/problem+json", stale.Content.Headers.ContentType?.MediaType);
@@ -147,7 +150,8 @@ public sealed class TimelineEndpointsTests
         await _client.PutAsJsonAsync($"/api/v1/customers/{customerId}", new { name = "Timeline updated" });
         await _client.PostAsJsonAsync($"/api/v1/customers/{customerId}/contacts", new
         {
-            contactId = contact.Id, role = "CEO",
+            contactId = contact.Id,
+            role = "CEO",
         });
         await _client.PutAsJsonAsync($"/api/v1/customers/{customerId}/contacts/{contact.Id}", new { role = "CTO" });
         await _client.DeleteAsync($"/api/v1/customers/{customerId}/contacts/{contact.Id}");
@@ -165,7 +169,10 @@ public sealed class TimelineEndpointsTests
 
         var immutable = await _client.PutAsJsonAsync($"/api/v1/customers/{customerId}/timeline/{attached.Id}", new
         {
-            eventType = "note", occurredOn = "2026-07-27", note = "cannot edit", expectedRevision = 1,
+            eventType = "note",
+            occurredOn = "2026-07-27",
+            note = "cannot edit",
+            expectedRevision = 1,
         });
         Assert.Equal(HttpStatusCode.Conflict, immutable.StatusCode);
         Assert.Equal("application/problem+json", immutable.Content.Headers.ContentType?.MediaType);
@@ -297,7 +304,8 @@ public sealed class TimelineEndpointsTests
     {
         var response = await _client.PostAsJsonAsync("/api/v1/contacts", new
         {
-            firstName = "Timeline", lastName = Guid.NewGuid().ToString("N"),
+            firstName = "Timeline",
+            lastName = Guid.NewGuid().ToString("N"),
         });
         return await response.Content.ReadFromJsonAsync<Contact>();
     }
@@ -306,7 +314,10 @@ public sealed class TimelineEndpointsTests
     {
         var response = await _client.PostAsJsonAsync($"/api/v1/customers/{customerId}/timeline", new
         {
-            eventType = "note", occurredOn, note, occurredAt,
+            eventType = "note",
+            occurredOn,
+            note,
+            occurredAt,
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return await response.Content.ReadFromJsonAsync<TimelineEntry>();

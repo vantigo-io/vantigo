@@ -1,6 +1,7 @@
-using Microsoft.AspNetCore.Hosting;
 using System.Security.Cryptography;
 using System.Text;
+
+using Microsoft.AspNetCore.Hosting;
 
 namespace Vantigo.Customers.Api.Endpoints.Auth;
 

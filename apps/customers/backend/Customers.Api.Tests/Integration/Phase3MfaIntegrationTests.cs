@@ -1,12 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.DependencyInjection;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 using Vantigo.Customers.Api.Database.Accounts;
 

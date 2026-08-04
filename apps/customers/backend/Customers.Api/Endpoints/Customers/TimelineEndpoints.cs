@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+
 using Npgsql;
 
 using Vantigo.Customers.Api.Database.Customers;

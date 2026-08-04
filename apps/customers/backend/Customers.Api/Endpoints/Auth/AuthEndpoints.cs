@@ -1,11 +1,12 @@
-using System.Security.Cryptography;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
-using Microsoft.AspNetCore.Authentication;
 
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+
 using Npgsql;
 
 using Vantigo.Customers.Api.Database.Accounts;
