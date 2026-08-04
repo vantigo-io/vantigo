@@ -1,7 +1,9 @@
 using MailKit.Net.Smtp;
 using MailKit.Security;
-using MimeKit;
+
 using Microsoft.Extensions.Hosting;
+
+using MimeKit;
 
 using Vantigo.Communications.Api.Database.Communications;
 

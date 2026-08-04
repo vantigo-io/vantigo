@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace Vantigo.Communications.Api.Services;

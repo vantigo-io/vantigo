@@ -11,8 +11,12 @@ public sealed class CommunicationDomainTests
         var message = new EmailMessage { Id = Guid.NewGuid(), MailboxId = Guid.NewGuid(), Subject = "subject" };
         message.ExternalLinks.Add(new ExternalEntityLink
         {
-            Id = Guid.NewGuid(), MessageId = message.Id, SourceSystem = "customers",
-            SourceInstance = "tenant-a", EntityType = "account", ExternalEntityId = "000123",
+            Id = Guid.NewGuid(),
+            MessageId = message.Id,
+            SourceSystem = "customers",
+            SourceInstance = "tenant-a",
+            EntityType = "account",
+            ExternalEntityId = "000123",
             DisplayLabel = "Example",
         });
 

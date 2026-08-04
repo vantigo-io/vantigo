@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+
 using Npgsql;
 
 using Vantigo.Communications.Api.Database.Accounts;

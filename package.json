@@ -55,20 +55,11 @@
   },
   "scripts": {
     "prepare": "husky",
-    "format:check": "biome check . && dotnet format --verify-no-changes",
+    "format:check": "biome check . && dotnet format \"Vantigo.slnx\" --verify-no-changes --no-restore",
     "format:write": "biome check --write . && dotnet format"
-  },
-  "lint-staged": {
-    "*.{ts,tsx,js,jsx,json,css}": [
-      "biome check --write --no-errors-on-unmatched"
-    ],
-    "*.cs": [
-      "dotnet format --include"
-    ]
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.5",
-    "husky": "9.1.7",
-    "lint-staged": "17.2.0"
+    "husky": "9.1.7"
   }
 }

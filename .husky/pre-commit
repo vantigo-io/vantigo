@@ -1,2 +1,11 @@
 #!/bin/sh
-npx lint-staged
+set -e
+
+REPOSITORY_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPOSITORY_ROOT"
+
+printf '%s\n' 'Running: bunx biome check .'
+bunx biome check .
+
+printf '%s\n' 'Running: dotnet format "Vantigo.slnx" --verify-no-changes --no-restore'
+dotnet format "Vantigo.slnx" --verify-no-changes --no-restore

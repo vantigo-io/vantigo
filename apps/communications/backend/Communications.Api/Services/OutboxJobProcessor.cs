@@ -95,8 +95,11 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
                 delivery.AcceptedAt = now;
                 db.MessageEvents.Add(new MessageEvent
                 {
-                    Id = Guid.NewGuid(), MessageId = message.Id, DeliveryId = delivery.Id,
-                    EventType = "relay_accepted", OccurredAt = now,
+                    Id = Guid.NewGuid(),
+                    MessageId = message.Id,
+                    DeliveryId = delivery.Id,
+                    EventType = "relay_accepted",
+                    OccurredAt = now,
                 });
             }
             await db.SaveChangesAsync(cancellationToken);
@@ -129,8 +132,11 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
             delivery.LastError = null;
             db.MessageEvents.Add(new MessageEvent
             {
-                Id = Guid.NewGuid(), MessageId = message.Id, DeliveryId = delivery.Id,
-                EventType = "suppressed", OccurredAt = now,
+                Id = Guid.NewGuid(),
+                MessageId = message.Id,
+                DeliveryId = delivery.Id,
+                EventType = "suppressed",
+                OccurredAt = now,
             });
         }
         await db.SaveChangesAsync(cancellationToken);
@@ -156,8 +162,11 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
             delivery.LastError = current.LastError;
             db.MessageEvents.Add(new MessageEvent
             {
-                Id = Guid.NewGuid(), MessageId = current.MessageId, DeliveryId = delivery.Id,
-                EventType = terminal ? "submission_failed" : "retrying", OccurredAt = DateTimeOffset.UtcNow,
+                Id = Guid.NewGuid(),
+                MessageId = current.MessageId,
+                DeliveryId = delivery.Id,
+                EventType = terminal ? "submission_failed" : "retrying",
+                OccurredAt = DateTimeOffset.UtcNow,
             });
         }
         await db.SaveChangesAsync(cancellationToken);

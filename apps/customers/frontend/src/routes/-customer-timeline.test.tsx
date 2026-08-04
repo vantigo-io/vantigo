@@ -203,7 +203,12 @@ describe("CustomerTimeline", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add event" }));
     const createDialog = await screen.findByRole("dialog", { name: "Add timeline event" });
     await userEvent.click(within(createDialog).getByRole("combobox", { name: "Type" }));
-    await userEvent.click((await screen.findAllByText("Meeting")).at(-1)!);
+    const meetingOptions = await screen.findAllByText("Meeting");
+    expect(meetingOptions.length).toBeGreaterThan(0);
+    const meetingOption = meetingOptions.at(-1);
+    expect(meetingOption).toBeDefined();
+    if (!meetingOption) throw new Error("Meeting option is required");
+    await userEvent.click(meetingOption);
     await userEvent.type(within(createDialog).getByRole("textbox", { name: "Description" }), "Meet");
     await userEvent.click(within(createDialog).getByRole("button", { name: /^Add event$/ }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
@@ -330,7 +335,9 @@ describe("CustomerTimeline", () => {
     );
     const filteredCall = fetchMock.mock.calls.find(
       ([url]) => String(url).includes("eventType=interaction.call") && String(url).includes("eventType=note"),
-    )!;
+    );
+    expect(filteredCall).toBeDefined();
+    if (!filteredCall) throw new Error("Filtered timeline request is required");
     const filteredUrl = new URL(filteredCall[0], "http://localhost");
     expect(filteredUrl.searchParams.get("provenance")).toBe("manual");
     expect(filteredUrl.searchParams.getAll("eventType")).toEqual(["interaction.call", "note"]);
@@ -339,14 +346,18 @@ describe("CustomerTimeline", () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes("cursor=filtered-next"))).toBe(true),
     );
-    const nextCall = fetchMock.mock.calls.find(([url]) => String(url).includes("cursor=filtered-next"))!;
+    const nextCall = fetchMock.mock.calls.find(([url]) => String(url).includes("cursor=filtered-next"));
+    expect(nextCall).toBeDefined();
+    if (!nextCall) throw new Error("Next filtered timeline request is required");
     const nextUrl = new URL(nextCall[0], "http://localhost");
     expect(nextUrl.searchParams.get("cursor")).toBe("filtered-next");
     expect(nextUrl.searchParams.get("provenance")).toBe("manual");
     expect(nextUrl.searchParams.getAll("eventType")).toEqual(["interaction.call", "note"]);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("limit=25"))).toBe(true));
-    const resetCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("limit=25"))!;
+    const resetCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("limit=25"));
+    expect(resetCall).toBeDefined();
+    if (!resetCall) throw new Error("Reset timeline request is required");
     const resetUrl = new URL(resetCall[0], "http://localhost");
     expect(resetUrl.searchParams.get("provenance")).toBeNull();
     expect(resetUrl.searchParams.getAll("eventType")).toEqual([]);

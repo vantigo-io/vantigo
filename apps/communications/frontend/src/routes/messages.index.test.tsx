@@ -46,25 +46,23 @@ describe("message history", () => {
     document.body.innerHTML = "";
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify(
-              page([
-                {
-                  id: "m-1",
-                  subject: "Welcome",
-                  recipientCount: 1,
-                  status: "relay_accepted",
-                  source: null,
-                  createdAt: "2026-01-01T00:00:00Z",
-                },
-              ]),
-            ),
-            { status: 200 },
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify(
+            page([
+              {
+                id: "m-1",
+                subject: "Welcome",
+                recipientCount: 1,
+                status: "relay_accepted",
+                source: null,
+                createdAt: "2026-01-01T00:00:00Z",
+              },
+            ]),
           ),
+          { status: 200 },
         ),
+      ),
     );
     renderPage();
     await waitFor(() => expect(screen.getByText("Relay accepted")).toBeTruthy());

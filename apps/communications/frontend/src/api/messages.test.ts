@@ -9,7 +9,10 @@ describe("communications message API mapping", () => {
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 })));
     const options = messagesQueryOptions(3, 10);
-    const result = await options.queryFn!({ signal: new AbortController().signal } as never);
+    const queryFn = options.queryFn;
+    expect(queryFn).toBeDefined();
+    if (!queryFn) throw new Error("messages query function is required");
+    const result = await queryFn({ signal: new AbortController().signal } as never);
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/messages?page=3&pageSize=10",
       expect.objectContaining({ credentials: "include" }),
@@ -22,7 +25,10 @@ describe("communications message API mapping", () => {
       "fetch",
       vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [], pagination: {} }), { status: 200 })),
     );
-    await messageEventsQueryOptions("m-7", 2, 10).queryFn!({ signal: new AbortController().signal } as never);
+    const queryFn = messageEventsQueryOptions("m-7", 2, 10).queryFn;
+    expect(queryFn).toBeDefined();
+    if (!queryFn) throw new Error("message events query function is required");
+    await queryFn({ signal: new AbortController().signal } as never);
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/messages/m-7/events?page=2&pageSize=10",
       expect.objectContaining({ credentials: "include" }),

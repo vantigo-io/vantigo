@@ -1,4 +1,5 @@
 using System.Security.Claims;
+
 using Asp.Versioning;
 
 using Microsoft.AspNetCore.Antiforgery;
@@ -163,8 +164,12 @@ internal static class CommunicationsEndpoints
         var now = DateTimeOffset.UtcNow;
         var message = new EmailMessage
         {
-            Id = Guid.NewGuid(), MailboxId = mailbox.Id, Subject = request.Subject!,
-            TextBody = request.TextBody, HtmlBody = request.HtmlBody, CreatedAt = now,
+            Id = Guid.NewGuid(),
+            MailboxId = mailbox.Id,
+            Subject = request.Subject!,
+            TextBody = request.TextBody,
+            HtmlBody = request.HtmlBody,
+            CreatedAt = now,
             CreatedByUserId = Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null,
             Source = string.IsNullOrWhiteSpace(request.Source) ? null : request.Source,
         };
@@ -172,22 +177,32 @@ internal static class CommunicationsEndpoints
         {
             var delivery = new RecipientDelivery
             {
-                Id = Guid.NewGuid(), MessageId = message.Id, EmailAddress = recipient.EmailAddress,
-                RecipientType = recipient.Type, CreatedAt = now,
+                Id = Guid.NewGuid(),
+                MessageId = message.Id,
+                EmailAddress = recipient.EmailAddress,
+                RecipientType = recipient.Type,
+                CreatedAt = now,
             };
             message.Deliveries.Add(delivery);
             message.Events.Add(new MessageEvent
             {
-                Id = Guid.NewGuid(), MessageId = message.Id, DeliveryId = delivery.Id,
-                EventType = "queued", OccurredAt = now,
+                Id = Guid.NewGuid(),
+                MessageId = message.Id,
+                DeliveryId = delivery.Id,
+                EventType = "queued",
+                OccurredAt = now,
             });
         }
         foreach (var link in request.ExternalLinks ?? [])
             message.ExternalLinks.Add(new ExternalEntityLink
             {
-                Id = Guid.NewGuid(), MessageId = message.Id, SourceSystem = link!.SourceSystem!,
-                SourceInstance = link.SourceInstance!, EntityType = link.EntityType!,
-                ExternalEntityId = link.ExternalEntityId!, DisplayLabel = string.IsNullOrEmpty(link.DisplayLabel) ? null : link.DisplayLabel,
+                Id = Guid.NewGuid(),
+                MessageId = message.Id,
+                SourceSystem = link!.SourceSystem!,
+                SourceInstance = link.SourceInstance!,
+                EntityType = link.EntityType!,
+                ExternalEntityId = link.ExternalEntityId!,
+                DisplayLabel = string.IsNullOrEmpty(link.DisplayLabel) ? null : link.DisplayLabel,
             });
         message.Events.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, EventType = "message_queued", OccurredAt = now });
         db.EmailMessages.Add(message);

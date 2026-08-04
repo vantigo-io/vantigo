@@ -17,11 +17,19 @@ public sealed class OutboxWorkerTests(CommunicationsApiFactory factory)
         var mailbox = await db.SharedMailboxes.SingleAsync();
         var message = new EmailMessage
         {
-            Id = Guid.NewGuid(), MailboxId = mailbox.Id, Subject = "worker test", TextBody = "body", CreatedAt = DateTimeOffset.UtcNow,
+            Id = Guid.NewGuid(),
+            MailboxId = mailbox.Id,
+            Subject = "worker test",
+            TextBody = "body",
+            CreatedAt = DateTimeOffset.UtcNow,
         };
         var delivery = new RecipientDelivery
         {
-            Id = Guid.NewGuid(), MessageId = message.Id, EmailAddress = "worker@example.test", RecipientType = "to", CreatedAt = DateTimeOffset.UtcNow,
+            Id = Guid.NewGuid(),
+            MessageId = message.Id,
+            EmailAddress = "worker@example.test",
+            RecipientType = "to",
+            CreatedAt = DateTimeOffset.UtcNow,
         };
         message.Deliveries.Add(delivery);
         db.EmailMessages.Add(message);
@@ -47,11 +55,19 @@ public sealed class OutboxWorkerTests(CommunicationsApiFactory factory)
             var mailbox = await db.SharedMailboxes.SingleAsync();
             var message = new EmailMessage
             {
-                Id = Guid.NewGuid(), MailboxId = mailbox.Id, Subject = "failed worker test", TextBody = "body", CreatedAt = DateTimeOffset.UtcNow,
+                Id = Guid.NewGuid(),
+                MailboxId = mailbox.Id,
+                Subject = "failed worker test",
+                TextBody = "body",
+                CreatedAt = DateTimeOffset.UtcNow,
             };
             message.Deliveries.Add(new RecipientDelivery
             {
-                Id = Guid.NewGuid(), MessageId = message.Id, EmailAddress = "failed@example.test", RecipientType = "to", CreatedAt = DateTimeOffset.UtcNow,
+                Id = Guid.NewGuid(),
+                MessageId = message.Id,
+                EmailAddress = "failed@example.test",
+                RecipientType = "to",
+                CreatedAt = DateTimeOffset.UtcNow,
             });
             db.EmailMessages.Add(message);
             db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, Attempts = 8, CreatedAt = DateTimeOffset.UtcNow, NextAttemptAt = DateTimeOffset.UtcNow });
