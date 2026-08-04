@@ -10,6 +10,39 @@
         "lint-staged": "17.2.0",
       },
     },
+    "apps/communications/frontend": {
+      "name": "communications-frontend",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mantine/core": "catalog:",
+        "@mantine/hooks": "catalog:",
+        "@mantine/notifications": "catalog:",
+        "@tabler/icons-react": "catalog:",
+        "@tanstack/react-query": "catalog:",
+        "@tanstack/react-router": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+      },
+      "devDependencies": {
+        "@eslint/js": "catalog:",
+        "@tanstack/router-plugin": "catalog:",
+        "@testing-library/jest-dom": "catalog:",
+        "@testing-library/react": "catalog:",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "@vitejs/plugin-react": "catalog:",
+        "eslint": "catalog:",
+        "eslint-plugin-react-hooks": "catalog:",
+        "eslint-plugin-react-refresh": "catalog:",
+        "globals": "catalog:",
+        "jsdom": "catalog:",
+        "typescript": "catalog:",
+        "typescript-eslint": "catalog:",
+        "vite": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "apps/customers/frontend": {
       "name": "frontend",
       "version": "0.0.0",
@@ -523,6 +556,8 @@
     "chokidar": ["chokidar@5.0.0", "", { "dependencies": { "readdirp": "^5.0.0" } }, "sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw=="],
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
+
+    "communications-frontend": ["communications-frontend@workspace:apps/communications/frontend"],
 
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 

@@ -1,0 +1,8 @@
+# Build and package-manager output
+node_modules
+dist
+dist-ssr
+*.local
+
+# TanStack Router generates this file during development/builds.
+src/routeTree.gen.ts

@@ -1,12 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
   <PropertyGroup>
-    <AssemblyName>Vantigo.Customers.Api</AssemblyName>
-    <RootNamespace>Vantigo.Customers.Api</RootNamespace>
+    <AssemblyName>Vantigo.Communications.Api</AssemblyName>
+    <RootNamespace>Vantigo.Communications.Api</RootNamespace>
 
     <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
     <PublishProfile>DefaultContainer</PublishProfile>
-    <ContainerImageName>vantigo-io/customers</ContainerImageName>
+    <ContainerImageName>vantigo-io/communications</ContainerImageName>
     <ContainerImageTag>latest</ContainerImageTag>
     <ContainerPort>8080</ContainerPort>
   </PropertyGroup>
@@ -16,7 +15,6 @@
     <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" />
     <PackageReference Include="Asp.Versioning.OpenApi" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
@@ -29,23 +27,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Database\Customers\Migrations\" />
+    <Folder Include="Database\Communications\Migrations\" />
     <Folder Include="Database\Accounts\Migrations\" />
   </ItemGroup>
 
-  <!--
-    On publish, build the SPA and embed it into wwwroot so the API serves the frontend
-    from "/" in production. Plain `dotnet build`/`dotnet run` never touches the frontend;
-    development uses the Vite dev server with an /api proxy instead.
-  -->
+  <!-- A published build can contain a separately built SPA. The target is deliberately
+       conditional: the API remains a standalone backend when that frontend is absent. -->
   <PropertyGroup>
     <FrontendRoot>$(MSBuildProjectDirectory)/../../frontend</FrontendRoot>
   </PropertyGroup>
-
-  <Target Name="BuildFrontend" BeforeTargets="ComputeFilesToPublish">
+  <Target Name="BuildFrontend" BeforeTargets="ComputeFilesToPublish" Condition="Exists('$(FrontendRoot)')">
     <Exec Command="bun install --frozen-lockfile" WorkingDirectory="$(FrontendRoot)/../../.." />
     <Exec Command="bun run build" WorkingDirectory="$(FrontendRoot)" />
-
     <ItemGroup>
       <FrontendDistFiles Include="$(FrontendRoot)/dist/**" />
       <ResolvedFileToPublish Include="@(FrontendDistFiles)">
@@ -55,5 +48,4 @@
       </ResolvedFileToPublish>
     </ItemGroup>
   </Target>
-
 </Project>
