@@ -191,7 +191,6 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 | `DataProtection__ApplicationName` | Shared Data Protection application discriminator | framework default |
 | `ForwardedHeaders__KnownProxies` | Trusted proxy IP(s), comma-separated or indexed | ASP.NET Core safe defaults |
 | `ForwardedHeaders__KnownNetworks__0` | Trusted proxy network in IPv4/IPv6 CIDR form | ASP.NET Core safe defaults |
-| `Database__ApplyMigrationsOnStartup` | Explicit migration opt-in outside Development | `false` |
 | `Email__Provider` | `Smtp` selects SMTP; any other value selects logging | `Logging` |
 | `Email__From` | Sender mailbox | `no-reply@localhost` |
 | `Email__Smtp__Host` | SMTP server | unset |
@@ -238,8 +237,11 @@ connection pool, not EF DbContext pooling; they do not share tracking or transac
 See the [contributor migration commands](../CONTRIBUTING.md#database-migrations) for
 context-specific add, list, script, update, and pending-model checks.
 
-Development applies both contexts' migrations at startup. In every other environment
-migrations run only when `Database__ApplyMigrationsOnStartup=true`.
-Prefer a single controlled migration job or deployment instance rather than enabling
-this flag on every replica. Verify the database is reachable and the persistent
-Data Protection directory is ready before accepting browser traffic.
+Migrations run only through the `migrate` command, which applies both contexts and exits.
+In production, run it as a terminating job, wait for it to succeed, and then start the
+API with the explicit `api` command. The API does not apply migrations at startup. The
+platform must not start the API until the migration job has completed successfully.
+
+Development Aspire explicitly selects `migrate`, then the Development-only `seed`, and
+then `api`. Do not run `seed` in production. Verify the database is reachable and the
+persistent Data Protection directory is ready before accepting browser traffic.

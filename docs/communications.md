@@ -6,6 +6,27 @@ frontend through the hosting path used for that deployment. Aspire is the local
 composition that wires the `communications` logical PostgreSQL database, API, and
 frontend together; it is not a requirement for a standalone deployment.
 
+## Running the service
+
+The Communications executable requires one command: `api`, `migrate`, or `seed`.
+Without a command it prints usage and exits nonzero. `migrate` applies database
+migrations and exits. `seed` runs the deterministic Development-only seed and exits;
+`api` only hosts the service and does not automatically migrate or seed it.
+
+Run the commands directly with the Development launch profiles:
+
+```bash
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile migrate
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile seed
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile api
+```
+
+Aspire explicitly selects the `migrate`, `seed`, and `api` profiles in that order; it
+does not use `dev` for lifecycle selection. The `dev` profile remains a no-args
+Development convenience profile. In production, use the same image for a terminating
+`migrate` job, wait for it to succeed, and then run the image with the explicit `api`
+command. `seed` is Development-only and must not be used as a production job.
+
 ## Customers service integration
 
 Configure the Customers integration in Communications as `Customers:Enabled` and

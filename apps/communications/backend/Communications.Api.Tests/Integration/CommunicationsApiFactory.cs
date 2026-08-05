@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 
 using Testcontainers.PostgreSql;
 
+using Vantigo.Communications.Api;
 using Vantigo.Communications.Api.Services;
 
 namespace Vantigo.Communications.Api.Tests.Integration;
@@ -68,6 +69,7 @@ public sealed class CommunicationsApiFactory : WebApplicationFactory<Program>, I
         {
             ["ConnectionStrings:Postgresql"] = postgres.GetConnectionString(),
             ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
+            ["Development:Seed:Enabled"] = "false",
             ["Customers:Enabled"] = "true",
             ["Customers:ApiKey"] = ServiceKey,
             ["Communications:BootstrapMailbox:Enabled"] = "true",
@@ -77,6 +79,7 @@ public sealed class CommunicationsApiFactory : WebApplicationFactory<Program>, I
         }));
         builder.ConfigureServices(services =>
         {
+            services.AddSingleton<CommunicationsTestStartupPreparationMarker>();
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(Sender);
         });

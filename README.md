@@ -95,14 +95,75 @@ dotnet run --project orchestration/AppHost
 ```
 
 The Aspire dashboard opens automatically and shows every running resource with logs,
-traces and endpoints:
+traces and endpoints. Aspire starts the database, then explicitly selects each API's
+`migrate`, `seed`, and `api` profiles in that order:
 
-- **customers-api** — the Customers API (development migrations are applied automatically on startup)
+- **customers-api** — the Customers API
 - **customers-frontend** — the Customers SPA served by the Vite dev server
 - **scalar** — interactive API reference for every registered API
 - **postgres** — the PostgreSQL instance backing the applications
 
 That's it — no manual database setup, connection strings or environment files needed.
+
+### Direct API commands
+
+Each API executable requires exactly one command: `api`, `migrate`, or `seed`. Running
+the executable without a command prints usage and exits nonzero. `migrate` applies the
+database migrations and exits; `seed` runs the deterministic Development-only seed and
+exits; `api` only hosts the API and does not automatically migrate or seed the database.
+
+For example:
+
+```bash
+dotnet run --project apps/customers/backend/Customers.Api --launch-profile migrate
+dotnet run --project apps/customers/backend/Customers.Api --launch-profile seed
+dotnet run --project apps/customers/backend/Customers.Api --launch-profile api
+
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile migrate
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile seed
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile api
+```
+
+Aspire does not use the no-argument `dev` profile for lifecycle ordering. That profile
+remains a Development convenience profile with empty command arguments. For production,
+run the same image as a terminating `migrate` job, wait for it to succeed, and then run
+the image with the long-running `api` command. `seed` is Development-only and must not
+be used as a production deployment job.
+
+### Development-only seed data
+
+In `Development`, the `seed` command creates deterministic fixtures for Customers and
+Communications. Aspire runs this command automatically after migrations. Seed data is
+Development-only and includes synthetic data. Use `admin@vantigo.local` / `admin` to
+sign in as `Administrator`.
+This deliberately weak password and relaxed password policy are for Development/local use
+only; production retains the normal password requirements.
+
+The JSON configuration section is `Development:Seed`:
+
+```json
+{
+  "Development": {
+    "Seed": {
+      "Enabled": true,
+      "Data": {
+        "Customers": 6,
+        "Contacts": 6,
+        "Messages": 2
+      }
+    }
+  }
+}
+```
+
+`Development:Seed:Data` controls deterministic fixture counts. The Customers API supports
+`Customers` and `Contacts` (6 each by default); Communications supports `Messages` (2 by
+default). Each count must be between 0 and 100. Higher counts add deterministic data, while
+lowering a value does not delete existing local seed data. Use the matching environment
+variable form, for example `Development__Seed__Data__Customers=12`.
+
+To opt out, set `Development__Seed__Enabled=false`. Seeding is never enabled outside
+`Development`.
 
 For self-hosted Customers authentication, deployment configuration, and production
 migration guidance, see [Customers authentication](docs/customers-authentication.md).
@@ -125,11 +186,13 @@ docker run -d \
   --name vantigo-customers \
   -p 8080:8080 \
   -e ConnectionStrings__Postgresql="Host=your-postgres;Database=customers;Username=...;Password=..." \
-  ghcr.io/vantigo-io/customers
+  ghcr.io/vantigo-io/customers api
 ```
 
-Bring your own PostgreSQL, point the connection string at it, and you have a running
-application — one container per app, nothing else required.
+Bring your own PostgreSQL, point the connection string at it, and explicitly run the
+image with `api` after the terminating `migrate` job succeeds. This gives you a running
+application — one container per app, nothing else required. Do not run `seed` in
+production; it is only for Development.
 
 Until images are published, you can run from source: `dotnet publish` the API projects
 and build the frontends with `bun run build`, or simply use the Aspire AppHost.

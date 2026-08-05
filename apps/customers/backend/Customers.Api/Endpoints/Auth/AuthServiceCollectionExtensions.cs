@@ -18,10 +18,11 @@ internal static class AuthServiceCollectionExtensions
             .AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
             {
                 options.User.RequireUniqueEmail = true;
-                options.Password.RequiredLength = 12;
-                options.Password.RequireDigit = true;
-                options.Password.RequireUppercase = true;
-                options.Password.RequireLowercase = true;
+                var isDevelopment = environment.IsDevelopment();
+                options.Password.RequiredLength = isDevelopment ? 1 : 12;
+                options.Password.RequireDigit = !isDevelopment;
+                options.Password.RequireUppercase = !isDevelopment;
+                options.Password.RequireLowercase = !isDevelopment;
                 options.Password.RequireNonAlphanumeric = false;
                 options.Lockout.AllowedForNewUsers = true;
                 options.Lockout.MaxFailedAccessAttempts = 5;

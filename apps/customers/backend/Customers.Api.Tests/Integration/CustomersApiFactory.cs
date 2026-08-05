@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 
 using Testcontainers.PostgreSql;
 
+using Vantigo.Customers.Api;
 using Vantigo.Customers.Api.Services;
 
 namespace Vantigo.Customers.Api.Tests.Integration;
@@ -84,6 +85,7 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Postgresql"] = _postgres.GetConnectionString(),
+                ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
                 ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",
                 ["Authentication:Invitations:AcceptUrl"] = "http://test.local/invitations?token={token}",
@@ -92,6 +94,9 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
 
         builder.ConfigureServices(services =>
         {
+            services.AddSingleton(new CustomerApiTestStartupPreparation(
+                ApplyMigrations: true,
+                SeedDevelopmentData: false));
             services.RemoveAll<IApplicationEmailSender>();
             services.AddSingleton<IApplicationEmailSender>(EmailSender);
             services.AddHttpClient("brreg")

@@ -7,8 +7,27 @@ to get productive in the codebase.
 
 Follow the [Getting started](README.md#getting-started) section in the README —
 `dotnet tool restore` plus `dotnet run --project orchestration/AppHost` gives you the
-full environment: PostgreSQL, the APIs (with migrations applied automatically), the
-frontends and the Scalar API reference.
+full environment: PostgreSQL, the APIs, the frontends and the Scalar API reference.
+Aspire starts the database and explicitly selects the `migrate`, `seed`, and `api`
+profiles for each API in that order. In production, `migrate` is a terminating job:
+wait for it to succeed before starting the API with the explicit `api` command. Do not
+run `seed` in production; it is Development-only.
+
+Each API executable requires one of `api`, `migrate`, or `seed`; no command prints usage
+and exits nonzero. `migrate` applies migrations and exits, `seed` runs deterministic
+Development-only fixtures and exits, and `api` only hosts the API. The `api` command
+does not automatically migrate or seed. To run a command directly, use the matching
+Development launch profile, for example:
+
+```bash
+dotnet run --project apps/customers/backend/Customers.Api --launch-profile migrate
+dotnet run --project apps/customers/backend/Customers.Api --launch-profile seed
+dotnet run --project apps/customers/backend/Customers.Api --launch-profile api
+
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile migrate
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile seed
+dotnet run --project apps/communications/backend/Communications.Api --launch-profile api
+```
 
 ## Project layout
 
@@ -180,21 +199,34 @@ dotnet ef database update --context AccountsDbContext
 dotnet ef migrations has-pending-model-changes --context AccountsDbContext
 ```
 
-Migrations are applied automatically for both contexts when the API starts in
-Development. Outside Development, startup migration is opt-in:
-
-```text
-Database__ApplyMigrationsOnStartup=true
-```
-
-When enabled, the API updates the Customers and Accounts contexts. Prefer one
-controlled migration job or deployment instance rather than enabling the flag on
-every replica. If you change either EF model, run that context's pending-model check:
+Use the `migrate` command to apply both contexts; it exits when complete. The `api`
+command does not run migrations. Migrations run only through `migrate`: in production,
+wait for that terminating job to succeed before starting `api`. Development Aspire
+also runs `seed` after `migrate` and before `api`; `seed` must not be used in production.
+If you change either EF model, run that context's pending-model check:
 
 ```bash
 dotnet ef migrations has-pending-model-changes --context CustomersDbContext
 dotnet ef migrations has-pending-model-changes --context AccountsDbContext
 ```
+
+## Development seed data
+
+Deterministic seed code lives under each API's `Database/DevelopmentSeed/` and uses the
+local Bogus `UseSeed`. Changes to seed data or behavior must include coverage for
+determinism and restart idempotency.
+
+The seeded `admin` password and relaxed password policy are deliberately weak and apply
+only to Development/local use; production retains the normal password requirements.
+
+The `seed` command is only available in Development and exits after seeding. Aspire
+explicitly selects `migrate`, then `seed`, then `api` automatically. In production, use
+only the terminating `migrate` job followed by `api`; `seed` must not be run. Development
+fixture counts are configured under
+`Development:Seed:Data`: `Customers` and `Contacts` default to 6 each, and `Messages`
+defaults to 2. Counts range from 0 to 100; higher values add deterministic data, while
+lowering a value does not delete existing local seed data. Environment variables use the
+matching form, such as `Development__Seed__Data__Customers=12`.
 
 ## Frontend development
 

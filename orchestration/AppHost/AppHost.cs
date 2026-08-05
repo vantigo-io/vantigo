@@ -16,11 +16,22 @@ var communicationsCustomersApiKey = builder.AddParameter("communications-custome
 // Customers
 var customersDb = postgres.AddDatabase("customers-db", "customers");
 
-var customersApi = builder
-    .AddProject<Customers_Api>("customers-api", "dev")
-    .WithOtlpExporter()
+// Customers lifecycle: database → migrate → seed → API.
+var customersMigrate = builder
+    .AddProject<Customers_Api>("customers-migrate", "migrate")
     .WithReference(customersDb, connectionName: "Postgresql")
     .WaitFor(customersDb);
+
+var customersSeed = builder
+    .AddProject<Customers_Api>("customers-seed", "seed")
+    .WithReference(customersDb, connectionName: "Postgresql")
+    .WaitForCompletion(customersMigrate);
+
+var customersApi = builder
+    .AddProject<Customers_Api>("customers-api", "api")
+    .WithOtlpExporter()
+    .WithReference(customersDb, connectionName: "Postgresql")
+    .WaitForCompletion(customersSeed);
 
 var customersFrontend = builder.AddViteApp("customers-frontend", "../../apps/customers/frontend")
     .WithBun()
@@ -30,13 +41,24 @@ var customersFrontend = builder.AddViteApp("customers-frontend", "../../apps/cus
 // Communications
 var communicationsDb = postgres.AddDatabase("communications-db", "communications");
 
+// Communications lifecycle: database → migrate → seed → API.
+var communicationsMigrate = builder
+    .AddProject<Communications_Api>("communications-migrate", "migrate")
+    .WithReference(communicationsDb, connectionName: "Postgresql")
+    .WaitFor(communicationsDb);
+
+var communicationsSeed = builder
+    .AddProject<Communications_Api>("communications-seed", "seed")
+    .WithReference(communicationsDb, connectionName: "Postgresql")
+    .WaitForCompletion(communicationsMigrate);
+
 var communicationsApi = builder
-    .AddProject<Communications_Api>("communications-api", "dev")
+    .AddProject<Communications_Api>("communications-api", "api")
     .WithOtlpExporter()
     .WithEnvironment("Customers__Enabled", "true")
     .WithEnvironment("Customers__ApiKey", communicationsCustomersApiKey)
     .WithReference(communicationsDb, connectionName: "Postgresql")
-    .WaitFor(communicationsDb);
+    .WaitForCompletion(communicationsSeed);
 
 var communicationsFrontend = builder.AddViteApp("communications-frontend", "../../apps/communications/frontend")
     .WithBun()

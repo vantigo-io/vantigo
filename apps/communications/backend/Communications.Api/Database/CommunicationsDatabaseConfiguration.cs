@@ -24,28 +24,34 @@ internal static class CommunicationsDatabaseConfiguration
     }
 
     internal static async Task MigrateCommunicationsDatabasesAsync(this WebApplication app)
+        => await app.Services.MigrateCommunicationsDatabasesAsync();
+
+    internal static async Task MigrateCommunicationsDatabasesAsync(this IServiceProvider services)
     {
-        await using var scope = app.Services.CreateAsyncScope();
+        await using var scope = services.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>().Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<AccountsDbContext>().Database.MigrateAsync();
     }
 
     internal static async Task SeedConfiguredMailboxAsync(this WebApplication app)
+        => await app.Services.SeedConfiguredMailboxAsync(app.Configuration);
+
+    internal static async Task SeedConfiguredMailboxAsync(this IServiceProvider services, IConfiguration configuration)
     {
-        var configuration = app.Configuration.GetSection("Communications:BootstrapMailbox");
-        if (!configuration.GetValue<bool>("Enabled")) return;
-        var fromAddress = configuration["FromAddress"]?.Trim();
+        var mailboxConfiguration = configuration.GetSection("Communications:BootstrapMailbox");
+        if (!mailboxConfiguration.GetValue<bool>("Enabled")) return;
+        var fromAddress = mailboxConfiguration["FromAddress"]?.Trim();
         if (string.IsNullOrWhiteSpace(fromAddress))
             throw new InvalidOperationException("Communications:BootstrapMailbox:FromAddress is required when mailbox bootstrap is enabled.");
 
-        await using var scope = app.Services.CreateAsyncScope();
+        await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>();
         if (await db.SharedMailboxes.AnyAsync()) return;
         db.SharedMailboxes.Add(new SharedMailbox
         {
             Id = Guid.NewGuid(),
             FromAddress = fromAddress,
-            DisplayName = configuration["DisplayName"]?.Trim(),
+            DisplayName = mailboxConfiguration["DisplayName"]?.Trim(),
             CreatedAt = DateTimeOffset.UtcNow,
             IsActive = true,
         });

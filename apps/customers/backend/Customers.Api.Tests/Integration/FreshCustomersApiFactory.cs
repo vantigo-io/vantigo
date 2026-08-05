@@ -14,6 +14,7 @@ using Microsoft.Extensions.Hosting;
 
 using Testcontainers.PostgreSql;
 
+using Vantigo.Customers.Api;
 using Vantigo.Customers.Api.Endpoints.Auth;
 using Vantigo.Customers.Api.Services;
 
@@ -68,6 +69,7 @@ public sealed class FreshCustomersApiFactory : WebApplicationFactory<Program>, I
             var values = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Postgresql"] = _postgres.GetConnectionString(),
+                ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Owners:RequireMfa"] = RequireOwnerMfa.ToString(),
                 ["Authentication:Invitations:AcceptUrl"] = "http://test.local/invitations?token={token}",
                 ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",
@@ -88,6 +90,9 @@ public sealed class FreshCustomersApiFactory : WebApplicationFactory<Program>, I
 
         builder.ConfigureServices(services =>
         {
+            services.AddSingleton(new CustomerApiTestStartupPreparation(
+                ApplyMigrations: true,
+                SeedDevelopmentData: false));
             services.RemoveAll<IApplicationEmailSender>();
             services.AddSingleton<IApplicationEmailSender>(EmailSender);
         });
