@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate 🧪
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository 📥
+        uses: actions/checkout@v7
+
+      - name: Set up Bun 🥟
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Set up .NET 🟣
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: ./global.json
+
+      - name: Install frontend dependencies 📦
+        run: bun install --frozen-lockfile
+
+      - name: Restore .NET dependencies 🧰
+        run: dotnet restore Vantigo.slnx
+
+      - name: Check formatting 🎨
+        run: bun run format:check
+
+      - name: Lint frontends 🔎
+        run: bun run frontend:lint
+
+      - name: Test frontends 🧪
+        run: bun run frontend:test
+
+      - name: Build frontends 🏗️
+        run: bun run frontend:build
+
+      - name: Build .NET 🏗️
+        run: dotnet build Vantigo.slnx --no-restore --configuration Release
+
+      - name: Test .NET 🧪
+        run: dotnet test Vantigo.slnx --no-build --configuration Release

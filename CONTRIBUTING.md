@@ -6,8 +6,9 @@ to get productive in the codebase.
 ## Getting the stack running
 
 Follow the [Getting started](README.md#getting-started) section in the README —
-`dotnet tool restore` plus `dotnet run --project orchestration/AppHost` gives you the
-full environment: PostgreSQL, the APIs, the frontends and the Scalar API reference.
+`bun install --frozen-lockfile`, `dotnet tool restore`, plus
+`dotnet run --project orchestration/AppHost` gives you the full environment: PostgreSQL,
+the APIs, the frontends and the Scalar API reference.
 Aspire starts the database and explicitly selects the `migrate`, `seed`, and `api`
 profiles for each API in that order. In production, `migrate` is a terminating job:
 wait for it to succeed before starting the API with the explicit `api` command. Do not
@@ -34,11 +35,16 @@ dotnet run --project apps/communications/backend/Communications.Api --launch-pro
 ```
 vantigo/
 ├── apps/
-│   └── customers/
+│   ├── customers/
+│   │   ├── backend/
+│   │   │   ├── Customers.Api/         # ASP.NET Core minimal API
+│   │   │   └── Customers.Api.Tests/   # Unit + integration tests
+│   │   └── frontend/                  # React SPA (Vite, TanStack Router, Mantine)
+│   └── communications/
 │       ├── backend/
-│       │   ├── Customers.Api/         # ASP.NET Core minimal API
-│       │   └── Customers.Api.Tests/   # Unit + integration tests
-│       └── frontend/                  # React SPA (Vite, TanStack Router, Mantine)
+│       │   ├── Communications.Api/       # ASP.NET Core minimal API
+│       │   └── Communications.Api.Tests/ # Unit + integration tests
+│       └── frontend/                    # React SPA (Vite)
 ├── orchestration/
 │   └── AppHost/                       # .NET Aspire composition root
 └── assets/                            # Shared branding assets
@@ -234,9 +240,16 @@ Aspire runs the frontend for you, but it can also be run standalone. Dependencie
 managed with [Bun](https://bun.sh) workspaces from the repository root:
 
 ```bash
-bun install
-cd apps/customers/frontend
-bun run dev
+bun install --frozen-lockfile
+
+# Run either frontend from the repository root
+bun run --cwd apps/customers/frontend dev
+bun run --cwd apps/communications/frontend dev
+
+# Validate both frontends from the repository root
+bun run frontend:lint
+bun run frontend:test
+bun run frontend:build
 ```
 
 The SPA is built and embedded into the API's `wwwroot` **only on `dotnet publish`**

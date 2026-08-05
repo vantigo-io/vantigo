@@ -58,11 +58,16 @@ single [.NET Aspire](https://learn.microsoft.com/dotnet/aspire/) AppHost:
 ```
 vantigo/
 ├── apps/
-│   └── customers/
+│   ├── customers/
+│   │   ├── backend/
+│   │   │   ├── Customers.Api/         # ASP.NET Core minimal API
+│   │   │   └── Customers.Api.Tests/   # Unit + integration tests
+│   │   └── frontend/                  # React SPA (Vite, TanStack Router, Mantine)
+│   └── communications/
 │       ├── backend/
-│       │   ├── Customers.Api/         # ASP.NET Core minimal API
-│       │   └── Customers.Api.Tests/   # Unit + integration tests
-│       └── frontend/                  # React SPA (Vite, TanStack Router, Mantine)
+│       │   ├── Communications.Api/       # ASP.NET Core minimal API
+│       │   └── Communications.Api.Tests/ # Unit + integration tests
+│       └── frontend/                    # React SPA (Vite)
 ├── orchestration/
 │   └── AppHost/                       # .NET Aspire composition root
 └── assets/                            # Shared branding assets
@@ -77,8 +82,9 @@ the codebase? They're covered in the [contributing guide](CONTRIBUTING.md).
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- [Node.js](https://nodejs.org/) 20+
+- [.NET SDK](https://dotnet.microsoft.com/download/dotnet/10.0) with the selected baseline
+  defined in [`global.json`](global.json) (`10.0.302`, `rollForward: latestMajor`)
+- [Bun](https://bun.sh) 1.3.14, pinned by `.bun-version`
 - A Docker-compatible container runtime (Docker Desktop, [Colima](https://github.com/abiosoft/colima), Podman, ...)
 
 ### Run the full stack
@@ -86,6 +92,9 @@ the codebase? They're covered in the [contributing guide](CONTRIBUTING.md).
 ```bash
 git clone https://github.com/vantigo-io/vantigo.git
 cd vantigo
+
+# Install the root Bun workspace dependencies
+bun install --frozen-lockfile
 
 # Restore pinned local tools (dotnet-ef)
 dotnet tool restore
@@ -95,15 +104,50 @@ dotnet run --project orchestration/AppHost
 ```
 
 The Aspire dashboard opens automatically and shows every running resource with logs,
-traces and endpoints. Aspire starts the database, then explicitly selects each API's
+traces and endpoints. The AppHost provisions PostgreSQL and its application databases,
+runs the root Bun installer for both frontends, and explicitly selects each API's
 `migrate`, `seed`, and `api` profiles in that order:
 
-- **customers-api** — the Customers API
+- **bun-install** — root Bun workspace dependency installation
+- **postgres**, **customers-db**, and **communications-db** — PostgreSQL and application databases
+- **customers-migrate**, **customers-seed**, and **customers-api** — the Customers lifecycle and API
 - **customers-frontend** — the Customers SPA served by the Vite dev server
+- **communications-migrate**, **communications-seed**, and **communications-api** — the Communications lifecycle and API
+- **communications-frontend** — the Communications SPA served by the Vite dev server
 - **scalar** — interactive API reference for every registered API
-- **postgres** — the PostgreSQL instance backing the applications
 
 That's it — no manual database setup, connection strings or environment files needed.
+
+### Aspire troubleshooting
+
+- **Root Bun installer fails:** From the repository root, run `command -v bun` and
+  `bun --version` to verify that Bun 1.3.14 is available, then retry
+  `bun install --frozen-lockfile`. In the Aspire dashboard, open the `bun-install`
+  resource and inspect its logs for the installer error.
+- **A Vite frontend fails:** Inspect the logs for the affected `customers-frontend` or
+  `communications-frontend` resource. You can also reproduce it from the repository
+  root with `bun run --cwd apps/<application>/frontend dev`.
+- **An API is not ready:** Aspire runs each API's `migrate`, then `seed`, then `api`
+  profile. Check those resource logs and wait for the preceding profile to complete.
+- **Database or container failures:** Check that the Docker-compatible runtime is
+  running and inspect the `postgres` resource logs in the Aspire dashboard.
+
+### Standalone frontend development
+
+From the repository root, start either frontend without changing directories:
+
+```bash
+bun run --cwd apps/customers/frontend dev
+bun run --cwd apps/communications/frontend dev
+```
+
+The root convenience scripts validate both frontends:
+
+```bash
+bun run frontend:lint
+bun run frontend:test
+bun run frontend:build
+```
 
 ### Direct API commands
 
@@ -195,7 +239,9 @@ application — one container per app, nothing else required. Do not run `seed` 
 production; it is only for Development.
 
 Until images are published, you can run from source: `dotnet publish` the API projects
-and build the frontends with `bun run build`, or simply use the Aspire AppHost.
+and build the frontends from the repository root with `bun run --cwd apps/customers/frontend
+build` and `bun run --cwd apps/communications/frontend build`, or simply use the
+Aspire AppHost.
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same
 open-source stack for you.

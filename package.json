@@ -2,6 +2,7 @@
   "name": "vantigo",
   "description": "The development tools for typescript/javascript files used in Vantigo",
   "private": true,
+  "packageManager": "bun@1.3.14",
   "workspaces": {
     "packages": [
       "apps/*/frontend"
@@ -54,6 +55,9 @@
     }
   },
   "scripts": {
+    "frontend:lint": "bun run --cwd apps/communications/frontend lint && bun run --cwd apps/customers/frontend lint",
+    "frontend:test": "bun run --cwd apps/communications/frontend test && bun run --cwd apps/customers/frontend test",
+    "frontend:build": "bun run --cwd apps/communications/frontend build && bun run --cwd apps/customers/frontend build",
     "prepare": "husky",
     "format:check": "biome check . && dotnet format \"Vantigo.slnx\" --verify-no-changes --no-restore",
     "format:write": "biome check --write . && dotnet format"
