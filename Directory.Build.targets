@@ -1,0 +1,10 @@
+<Project>
+  <Target Name="SetContainerTagsFromGitVersion"
+          BeforeTargets="ComputeContainerConfig"
+          DependsOnTargets="GetVersion"
+          Condition="'$(EnableSdkContainerSupport)' == 'true'">
+    <PropertyGroup>
+      <ContainerImageTags>latest;v$(GitVersion_Major);v$(GitVersion_Major).$(GitVersion_Minor);v$(GitVersion_MajorMinorPatch)</ContainerImageTags>
+    </PropertyGroup>
+  </Target>
+</Project>
