@@ -4,6 +4,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
 
+    <UpdateAssemblyInfo>true</UpdateAssemblyInfo>
+
     <ContainerFamily>resolute-chiseled-extra</ContainerFamily>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GitVersion.MsBuild" PrivateAssets="All" />
+  </ItemGroup>
 </Project>

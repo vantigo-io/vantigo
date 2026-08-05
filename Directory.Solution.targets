@@ -2,4 +2,12 @@
   <Target Name="InstallFrontendDependencies" BeforeTargets="Publish">
     <Exec Command="bun install --frozen-lockfile" WorkingDirectory="$(SolutionDir)" />
   </Target>
+
+  <Target Name="SetContainerTagsFromGitVersion"
+          BeforeTargets="ComputeContainerConfig;PublishContainer;BeforePublish"
+          DependsOnTargets="GetVersion">
+    <PropertyGroup>
+      <ContainerImageTags>latest;$(GitVersion_SemVer);v$(GitVersion_MajorMinorPatch)</ContainerImageTags>
+    </PropertyGroup>
+  </Target>
 </Project>

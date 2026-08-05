@@ -6,8 +6,7 @@
 
     <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
     <PublishProfile>DefaultContainer</PublishProfile>
-    <ContainerImageName>vantigo-io/customers</ContainerImageName>
-    <ContainerImageTag>latest</ContainerImageTag>
+    <ContainerRepository>vantigo-io/customers</ContainerRepository>
     <ContainerPort>8080</ContainerPort>
   </PropertyGroup>
 

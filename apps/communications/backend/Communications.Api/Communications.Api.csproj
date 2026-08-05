@@ -5,8 +5,7 @@
 
     <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
     <PublishProfile>DefaultContainer</PublishProfile>
-    <ContainerImageName>vantigo-io/communications</ContainerImageName>
-    <ContainerImageTag>latest</ContainerImageTag>
+    <ContainerRepository>vantigo-io/communications</ContainerRepository>
     <ContainerPort>8080</ContainerPort>
   </PropertyGroup>
 
