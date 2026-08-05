@@ -108,9 +108,7 @@ function Shell() {
               Communications
             </Text>
           </Group>
-          <Menu.Item component="a" href={customersUrl} rightSection={<IconArrowUpRight size={14} />}>
-            Customers
-          </Menu.Item>
+          <NavLink component="a" href={customersUrl} label="Customers" rightSection={<IconArrowUpRight size={14} />} />
         </AppShell.Section>
       </AppShell.Navbar>
       <AppShell.Main>
