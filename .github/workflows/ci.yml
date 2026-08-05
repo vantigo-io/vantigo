@@ -2,49 +2,138 @@ name: CI
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate 🧪
+  metadata:
+    name: 📜 Metadata
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Check out repository 📥
+      - name: 🛎️ Checkout codebase
         uses: actions/checkout@v7
-
-      - name: Set up Bun 🥟
-        uses: oven-sh/setup-bun@v2
         with:
-          bun-version-file: .bun-version
+          fetch-depth: 0
 
-      - name: Set up .NET 🟣
+      - name: 💾 Setup .net
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: ./global.json
 
-      - name: Install frontend dependencies 📦
+      - name: 💾 Dotnet tool restore
+        run: dotnet tool restore
+
+      - name: 🧐 Determine Version
+        id: version
+        uses: gittools/actions/gitversion/execute@v4.7.0
+
+    outputs:
+      major: ${{ steps.version.outputs.major }}
+      minor: ${{ steps.version.outputs.minor }}
+      patch: ${{ steps.version.outputs.patch }}
+      fullSemVer: ${{ steps.version.outputs.fullSemVer }}
+      majorMinorPatch: ${{ steps.version.outputs.majorMinorPatch }}
+      assemblySemVer: ${{ steps.version.outputs.assemblySemVer }}
+
+  build_and_test_frontends:
+    needs: metadata
+    name: 🏗️ Build and test frontends
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 💾 Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Restore .NET dependencies 🧰
-        run: dotnet restore Vantigo.slnx
-
-      - name: Check formatting 🎨
+      - name: 🔍 Check formatting
         run: bun run format:check
 
-      - name: Lint frontends 🔎
+      - name: 🔍 Lint frontends
         run: bun run frontend:lint
 
-      - name: Test frontends 🧪
+      - name: 🧪 Test frontends
         run: bun run frontend:test
 
-      - name: Build frontends 🏗️
+      - name: 🏗 Build frontends️
         run: bun run frontend:build
+
+  build_and_test_backends:
+    needs: metadata
+    name: 🏗️ Build backends
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 💾 Setup .net
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: ./global.json
+
+      - name: 🧰 Restore .NET dependencies
+        run: dotnet restore Vantigo.slnx
 
       - name: Build .NET 🏗️
         run: dotnet build Vantigo.slnx --no-restore --configuration Release
 
       - name: Test .NET 🧪
         run: dotnet test Vantigo.slnx --no-build --configuration Release
+
+  build_images:
+    needs: [metadata, build_and_test_backends, build_and_test_frontends]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 💾 Setup .net
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: ./global.json
+
+      - name: 💾 Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: 📦 Package applications
+        run: |
+          dotnet publish \
+            --configuration Release \
+            -p:ContainerImageFormat=OCI
+          
+      - name: 🔐 Log in to GHCR
+        if: github.ref_name == 'main'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
