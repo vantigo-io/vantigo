@@ -4,6 +4,8 @@ using Scalar.Aspire;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+var rootInstaller = builder.AddExecutable("bun-install", "bun", "../../", "install", "--frozen-lockfile");
+
 // Services
 var postgres = builder.AddPostgres("postgres")
     .WithDataVolume()
@@ -34,9 +36,10 @@ var customersApi = builder
     .WaitForCompletion(customersSeed);
 
 var customersFrontend = builder.AddViteApp("customers-frontend", "../../apps/customers/frontend")
-    .WithBun()
+    .WithBun(install: false)
     .WithReference(customersApi)
-    .WaitFor(customersApi);
+    .WaitFor(customersApi)
+    .WaitForCompletion(rootInstaller);
 
 // Communications
 var communicationsDb = postgres.AddDatabase("communications-db", "communications");
@@ -61,9 +64,10 @@ var communicationsApi = builder
     .WaitForCompletion(communicationsSeed);
 
 var communicationsFrontend = builder.AddViteApp("communications-frontend", "../../apps/communications/frontend")
-    .WithBun()
+    .WithBun(install: false)
     .WithReference(communicationsApi)
-    .WaitFor(communicationsApi);
+    .WaitFor(communicationsApi)
+    .WaitForCompletion(rootInstaller);
 
 // Prepare Customers' server-side configuration and service discovery for its
 // future Communications client. Neither value is referenced by the Vite app.
