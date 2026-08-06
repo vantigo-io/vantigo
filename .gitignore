@@ -5,6 +5,8 @@
 
 # dotenv files
 .env
+deploy/compose/customers.env
+deploy/compose/communications.env
 .slim/deepwork/
 
 # User-specific files

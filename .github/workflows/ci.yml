@@ -108,6 +108,24 @@ jobs:
       - name: Test .NET 🧪
         run: dotnet test Vantigo.slnx --no-build --configuration Release
 
+  validate_compose:
+    needs: metadata
+    name: 🔍 Validate Docker Compose stack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 🔍 Validate compose configuration
+        working-directory: deploy/compose
+        run: |
+          cp .env.example .env
+          cp customers.env.example customers.env
+          cp communications.env.example communications.env
+          docker compose config -q
+
   build_images:
     needs: [metadata, build_and_test_backends, build_and_test_frontends]
     if: github.event_name == 'push' && github.ref != 'refs/heads/main'

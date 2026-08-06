@@ -50,6 +50,36 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 More applications are on the way — each one lands as a new vertical slice in
 [`apps/`](apps/) and plugs into the same platform conventions.
 
+## Quick start with Docker
+
+The fastest way to try Vantigo is with the pre-built container images and the
+ready-made Docker Compose stack in [`deploy/compose/`](deploy/compose/). All you
+need is Docker — no SDKs or build tools.
+
+```bash
+mkdir vantigo && cd vantigo
+base=https://raw.githubusercontent.com/vantigo-io/vantigo/main/deploy/compose
+curl -fsSLO "$base/compose.yaml"
+curl -fsSLO "$base/.env.example"
+curl -fsSLO "$base/customers.env.example"
+curl -fsSLO "$base/communications.env.example"
+
+cp .env.example .env                              # set a database password here
+cp customers.env.example customers.env
+cp communications.env.example communications.env
+
+docker compose up -d
+```
+
+Compose starts PostgreSQL, applies each application's database migrations, and
+brings up **Customers** on <http://localhost:8080> and **Communications** on
+<http://localhost:8081>. Then visit <http://localhost:8080/setup> to create your
+first Owner account — the one-time bootstrap secret is printed in the Customers
+logs (`docker compose logs customers`) unless you configured one yourself.
+
+The [compose guide](deploy/compose/README.md) covers configuration, first
+sign-in, production notes and upgrades in more detail.
+
 ## Architecture
 
 Vantigo is a monorepo of independently packaged applications, composed locally by a
@@ -70,6 +100,8 @@ vantigo/
 │       └── frontend/                    # React SPA (Vite)
 ├── orchestration/
 │   └── AppHost/                       # .NET Aspire composition root
+├── deploy/
+│   └── compose/                       # Ready-made Docker Compose stack
 └── assets/                            # Shared branding assets
 ```
 
@@ -78,13 +110,13 @@ also serves the built frontend. In development, .NET Aspire runs everything side
 side with one command. Curious about the design principles and API conventions behind
 the codebase? They're covered in the [contributing guide](CONTRIBUTING.md).
 
-## Getting started
+## Developing from source
 
 ### Prerequisites
 
-- [.NET SDK](https://dotnet.microsoft.com/download/dotnet/10.0) with the selected baseline
-  defined in [`global.json`](global.json) (`10.0.302`, `rollForward: latestMajor`)
-- [Bun](https://bun.sh) 1.3.14, pinned by `.bun-version`
+- [.NET SDK](https://dotnet.microsoft.com/download) matching the baseline pinned
+  in [`global.json`](global.json)
+- [Bun](https://bun.sh), with the version pinned in [`.bun-version`](.bun-version)
 - A Docker-compatible container runtime (Docker Desktop, [Colima](https://github.com/abiosoft/colima), Podman, ...)
 
 ### Run the full stack
@@ -121,9 +153,9 @@ That's it — no manual database setup, connection strings or environment files 
 ### Aspire troubleshooting
 
 - **Root Bun installer fails:** From the repository root, run `command -v bun` and
-  `bun --version` to verify that Bun 1.3.14 is available, then retry
-  `bun install --frozen-lockfile`. In the Aspire dashboard, open the `bun-install`
-  resource and inspect its logs for the installer error.
+  `bun --version` to verify that the Bun version pinned in `.bun-version` is
+  available, then retry `bun install --frozen-lockfile`. In the Aspire dashboard,
+  open the `bun-install` resource and inspect its logs for the installer error.
 - **A Vite frontend fails:** Inspect the logs for the affected `customers-frontend` or
   `communications-frontend` resource. You can also reproduce it from the repository
   root with `bun run --cwd apps/<application>/frontend dev`.
@@ -181,7 +213,9 @@ Communications. Aspire runs this command automatically after migrations. Seed da
 Development-only and includes synthetic data. Use `admin@vantigo.local` / `admin` to
 sign in as `Administrator`.
 This deliberately weak password and relaxed password policy are for Development/local use
-only; production retains the normal password requirements.
+only; production retains the normal password requirements. In a real deployment there
+is no seeded account — the first Owner is created through the `/setup` bootstrap flow
+described in the [quick start](#quick-start-with-docker).
 
 The JSON configuration section is `Development:Seed`:
 
@@ -218,30 +252,49 @@ testing and database migrations.
 
 ## Self-hosting
 
-> [!NOTE]
-> Published container images are **on the roadmap** and not available quite yet. The
-> section below describes the intended deployment model so you know what to expect.
+Each Vantigo application ships as a single, multi-architecture container image that
+runs the .NET API and serves the production frontend build from the same process.
+Images are published to GHCR on every release and signed with
+[Cosign](https://docs.sigstore.dev/cosign/):
 
-Each Vantigo application will ship as a single container image that runs the .NET API
-and serves the production frontend build from the same process:
+| Application    | Image                              |
+| -------------- | ---------------------------------- |
+| Customers      | `ghcr.io/vantigo-io/customers`      |
+| Communications | `ghcr.io/vantigo-io/communications` |
+
+Available tags: `latest`, `vX`, `vX.Y`, and `vX.Y.Z` — pin `vX.Y.Z` for
+reproducible deployments. Verify a signature with:
 
 ```bash
+cosign verify ghcr.io/vantigo-io/customers:latest \
+  --certificate-identity-regexp 'https://github.com/vantigo-io/vantigo' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The easiest deployment is the [Docker Compose stack](deploy/compose/) from the
+quick start. To integrate with your own infrastructure instead, bring your own
+PostgreSQL and run each image with the terminating `migrate` command first, then
+the long-running `api` command:
+
+```bash
+docker run --rm \
+  -e ConnectionStrings__Postgresql="Host=your-postgres;Database=customers;Username=...;Password=..." \
+  ghcr.io/vantigo-io/customers migrate
+
 docker run -d \
   --name vantigo-customers \
   -p 8080:8080 \
   -e ConnectionStrings__Postgresql="Host=your-postgres;Database=customers;Username=...;Password=..." \
+  -e DataProtection__KeysPath=/var/lib/vantigo/dataprotection \
+  -v vantigo-customers-dataprotection:/var/lib/vantigo/dataprotection \
   ghcr.io/vantigo-io/customers api
 ```
 
-Bring your own PostgreSQL, point the connection string at it, and explicitly run the
-image with `api` after the terminating `migrate` job succeeds. This gives you a running
-application — one container per app, nothing else required. Do not run `seed` in
-production; it is only for Development.
-
-Until images are published, you can run from source: `dotnet publish` the API projects
-and build the frontends from the repository root with `bun run --cwd apps/customers/frontend
-build` and `bun run --cwd apps/communications/frontend build`, or simply use the
-Aspire AppHost.
+A persistent `DataProtection__KeysPath` volume is required for the Customers app so
+sign-in cookies and account tokens survive restarts. Do not run `seed` in
+production; it is only for Development. Authentication, reverse-proxy and full
+configuration guidance lives in
+[Customers authentication](docs/customers-authentication.md).
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same
 open-source stack for you.
