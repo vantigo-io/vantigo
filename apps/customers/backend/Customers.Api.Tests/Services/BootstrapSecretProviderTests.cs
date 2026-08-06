@@ -46,7 +46,7 @@ public sealed class BootstrapSecretProviderTests
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) where TState : notnull =>
+            Func<TState, Exception?, string> formatter) =>
             Entries.Add(new Entry(level, formatter(state, exception)));
 
         public sealed record Entry(LogLevel Level, string Message);

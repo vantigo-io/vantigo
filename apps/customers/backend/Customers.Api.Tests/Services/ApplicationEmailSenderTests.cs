@@ -41,7 +41,6 @@ public sealed class ApplicationEmailSenderTests
             EventId eventId,
             TState state,
             Exception? exception,
-            Func<TState, Exception?, string> formatter)
-            where TState : notnull => States.Add(state!);
+            Func<TState, Exception?, string> formatter) => States.Add(state!);
     }
 }
