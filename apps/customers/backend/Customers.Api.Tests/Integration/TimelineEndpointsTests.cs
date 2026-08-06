@@ -47,8 +47,17 @@ public sealed class TimelineEndpointsTests
 
         var detail = await _client.GetFromJsonAsync<TimelineEntry>(
             $"/api/v1/customers/{customerId}/timeline/{created.Id}");
-        Assert.Equal(updated with { Payload = default }, detail with { Payload = default });
-        Assert.Equal(updated.Payload.GetRawText(), detail.Payload.GetRawText());
+        Assert.Equal(updated.Id, detail.Id);
+        Assert.Equal("interaction.call", detail.EventType);
+        Assert.Equal("manual", detail.Provenance);
+        Assert.Equal("Updated note", detail.Note);
+        Assert.Equal("Updated note", detail.Summary);
+        Assert.Equal("unattributed", detail.ActorKind);
+        Assert.Equal(2, detail.CurrentRevision);
+        Assert.Equal(new DateTimeOffset(2026, 7, 27, 10, 0, 0, TimeSpan.Zero), detail.OccurredAt);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, detail.Payload.ValueKind);
+        Assert.Equal(updated.CreatedAt, detail.CreatedAt, TimeSpan.FromTicks(10));
+        Assert.Equal(updated.UpdatedAt, detail.UpdatedAt, TimeSpan.FromTicks(10));
 
         var stale = await _client.PutAsJsonAsync($"/api/v1/customers/{customerId}/timeline/{created.Id}", new
         {
