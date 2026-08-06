@@ -1,0 +1,21 @@
+version: 2
+multi-ecosystem-groups:
+  all-dependencies:
+    schedule:
+      interval: weekly
+      day: sunday
+      time: '03:00'
+      timezone: Europe/Oslo
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    multi-ecosystem-group: all-dependencies
+    patterns: ['*']
+  - package-ecosystem: bun
+    directory: /
+    multi-ecosystem-group: all-dependencies
+    patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: /.github/workflows
+    multi-ecosystem-group: all-dependencies
+    patterns: ['*']
