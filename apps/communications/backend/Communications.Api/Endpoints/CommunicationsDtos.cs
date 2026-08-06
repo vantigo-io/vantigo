@@ -27,6 +27,7 @@ public sealed record CreateEmailRequest(
     string? Source);
 
 public sealed record CreateMailboxRequest(string? FromAddress, string? DisplayName);
+public sealed record UpdateMailboxRequest(string? DisplayName, bool? IsActive);
 public sealed record CreateSuppressionRequest(string? EmailAddress, string? Reason);
 
 public sealed record MailboxResponse(Guid Id, string FromAddress, string? DisplayName, DateTimeOffset CreatedAt, bool IsActive);
@@ -121,6 +122,18 @@ internal static class CommunicationValidation
         var errors = new Dictionary<string, string[]>();
         if (!IsEmail(request?.FromAddress)) errors["fromAddress"] = ["A valid FromAddress is required."];
         if (request?.DisplayName is not null && !ValidOptionalBoundValue(request.DisplayName, 200)) errors["displayName"] = ["DisplayName must be at most 200 characters and cannot contain surrounding whitespace or control characters."];
+        return errors;
+    }
+
+    internal static Dictionary<string, string[]> ValidateMailboxUpdate(UpdateMailboxRequest? request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (request is null)
+        {
+            errors["request"] = ["A request body is required."];
+            return errors;
+        }
+        if (request.DisplayName is not null && !ValidOptionalBoundValue(request.DisplayName, 200)) errors["displayName"] = ["DisplayName must be at most 200 characters and cannot contain surrounding whitespace or control characters."];
         return errors;
     }
 

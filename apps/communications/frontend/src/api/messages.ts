@@ -1,5 +1,21 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { request } from "./request";
+export type MessageRecipient = { email: string };
+export interface CreateMessageRequest {
+  subject: string;
+  textBody?: string;
+  htmlBody?: string;
+  to: MessageRecipient[];
+  cc?: MessageRecipient[];
+  bcc?: MessageRecipient[];
+  externalLinks?: ExternalLink[];
+  source?: string;
+}
+export interface CreateMessageResponse {
+  messageId: string;
+  status: MessageStatus;
+  idempotencyKey: string;
+}
 export type MessageStatus = "queued" | "relay_accepted" | "submission_failed";
 export interface MessageListItem {
   id: string;
@@ -76,4 +92,10 @@ export const messageEventsQueryOptions = (id: string, page = 1, pageSize = 50) =
         `/api/v1/messages/${encodeURIComponent(id)}/events?page=${page}&pageSize=${pageSize}`,
         { signal },
       ),
+  });
+export const createMessage = (body: CreateMessageRequest, idempotencyKey: string) =>
+  request<CreateMessageResponse>("/api/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(body),
   });

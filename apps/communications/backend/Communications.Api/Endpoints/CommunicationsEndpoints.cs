@@ -45,6 +45,7 @@ internal static class CommunicationsEndpoints
         owner.MapGet("/mailboxes", ListMailboxes);
         owner.MapGet("/mailboxes/{id:guid}", GetMailbox);
         owner.MapPost("/mailboxes", CreateMailbox).RequireAntiforgery();
+        owner.MapPut("/mailboxes/{id:guid}", UpdateMailbox).RequireAntiforgery();
         owner.MapGet("/suppressions", ListSuppressions);
         owner.MapGet("/suppressions/{id:guid}", GetSuppression);
         owner.MapPost("/suppressions", CreateSuppression).RequireAntiforgery();
@@ -254,6 +255,18 @@ internal static class CommunicationsEndpoints
         db.SharedMailboxes.Add(mailbox);
         await db.SaveChangesAsync(cancellationToken);
         return TypedResults.Created($"/api/v1/mailboxes/{mailbox.Id}", new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive));
+    }
+
+    private static async Task<IResult> UpdateMailbox(Guid id, UpdateMailboxRequest? request, CommunicationsDbContext db, CancellationToken cancellationToken)
+    {
+        var errors = CommunicationValidation.ValidateMailboxUpdate(request);
+        if (errors.Count > 0) return ValidationError(errors);
+        var mailbox = await db.SharedMailboxes.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (mailbox is null) return TypedResults.NotFound();
+        mailbox.DisplayName = string.IsNullOrEmpty(request!.DisplayName) ? null : request.DisplayName;
+        if (request.IsActive is { } isActive) mailbox.IsActive = isActive;
+        await db.SaveChangesAsync(cancellationToken);
+        return TypedResults.Ok(new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive));
     }
 
     private static async Task<IResult> ListSuppressions(CommunicationsDbContext db, CancellationToken cancellationToken) =>

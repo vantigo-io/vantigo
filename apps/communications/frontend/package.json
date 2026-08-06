@@ -12,11 +12,17 @@
   },
   "dependencies": {
     "@mantine/core": "catalog:",
+    "@mantine/form": "catalog:",
     "@mantine/hooks": "catalog:",
     "@mantine/notifications": "catalog:",
+    "@mantine/tiptap": "catalog:",
+    "@tabler/icons-react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
-    "@tabler/icons-react": "catalog:",
+    "@tiptap/extension-link": "catalog:",
+    "@tiptap/pm": "catalog:",
+    "@tiptap/react": "catalog:",
+    "@tiptap/starter-kit": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

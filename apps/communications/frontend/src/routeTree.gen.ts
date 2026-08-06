@@ -13,8 +13,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as AdminMailboxesRouteImport } from './routes/admin.mailboxes'
+import { Route as AdminSuppressionsRouteImport } from './routes/admin.suppressions'
 import { Route as MessagesIndexRouteImport } from './routes/messages.index'
 import { Route as MessagesMessageIdRouteImport } from './routes/messages.$messageId'
+import { Route as MessagesComposeRouteImport } from './routes/messages.compose'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -36,6 +39,16 @@ const SignInRoute = SignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminMailboxesRoute = AdminMailboxesRouteImport.update({
+  id: '/admin/mailboxes',
+  path: '/admin/mailboxes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSuppressionsRoute = AdminSuppressionsRouteImport.update({
+  id: '/admin/suppressions',
+  path: '/admin/suppressions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MessagesIndexRoute = MessagesIndexRouteImport.update({
   id: '/messages/',
   path: '/messages/',
@@ -46,13 +59,21 @@ const MessagesMessageIdRoute = MessagesMessageIdRouteImport.update({
   path: '/messages/$messageId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MessagesComposeRoute = MessagesComposeRouteImport.update({
+  id: '/messages/compose',
+  path: '/messages/compose',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/mailboxes': typeof AdminMailboxesRoute
+  '/admin/suppressions': typeof AdminSuppressionsRoute
   '/messages/$messageId': typeof MessagesMessageIdRoute
+  '/messages/compose': typeof MessagesComposeRoute
   '/messages/': typeof MessagesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -60,7 +81,10 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/mailboxes': typeof AdminMailboxesRoute
+  '/admin/suppressions': typeof AdminSuppressionsRoute
   '/messages/$messageId': typeof MessagesMessageIdRoute
+  '/messages/compose': typeof MessagesComposeRoute
   '/messages': typeof MessagesIndexRoute
 }
 export interface FileRoutesById {
@@ -69,7 +93,10 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/mailboxes': typeof AdminMailboxesRoute
+  '/admin/suppressions': typeof AdminSuppressionsRoute
   '/messages/$messageId': typeof MessagesMessageIdRoute
+  '/messages/compose': typeof MessagesComposeRoute
   '/messages/': typeof MessagesIndexRoute
 }
 export interface FileRouteTypes {
@@ -79,7 +106,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/mailboxes'
+    | '/admin/suppressions'
     | '/messages/$messageId'
+    | '/messages/compose'
     | '/messages/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -87,7 +117,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/mailboxes'
+    | '/admin/suppressions'
     | '/messages/$messageId'
+    | '/messages/compose'
     | '/messages'
   id:
     | '__root__'
@@ -95,7 +128,10 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/mailboxes'
+    | '/admin/suppressions'
     | '/messages/$messageId'
+    | '/messages/compose'
     | '/messages/'
   fileRoutesById: FileRoutesById
 }
@@ -104,7 +140,10 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
+  AdminMailboxesRoute: typeof AdminMailboxesRoute
+  AdminSuppressionsRoute: typeof AdminSuppressionsRoute
   MessagesMessageIdRoute: typeof MessagesMessageIdRoute
+  MessagesComposeRoute: typeof MessagesComposeRoute
   MessagesIndexRoute: typeof MessagesIndexRoute
 }
 
@@ -138,6 +177,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/mailboxes': {
+      id: '/admin/mailboxes'
+      path: '/admin/mailboxes'
+      fullPath: '/admin/mailboxes'
+      preLoaderRoute: typeof AdminMailboxesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/suppressions': {
+      id: '/admin/suppressions'
+      path: '/admin/suppressions'
+      fullPath: '/admin/suppressions'
+      preLoaderRoute: typeof AdminSuppressionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/messages/': {
       id: '/messages/'
       path: '/messages'
@@ -152,6 +205,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MessagesMessageIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/messages/compose': {
+      id: '/messages/compose'
+      path: '/messages/compose'
+      fullPath: '/messages/compose'
+      preLoaderRoute: typeof MessagesComposeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -160,7 +220,10 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
+  AdminMailboxesRoute: AdminMailboxesRoute,
+  AdminSuppressionsRoute: AdminSuppressionsRoute,
   MessagesMessageIdRoute: MessagesMessageIdRoute,
+  MessagesComposeRoute: MessagesComposeRoute,
   MessagesIndexRoute: MessagesIndexRoute,
 }
 export const routeTree = rootRouteImport

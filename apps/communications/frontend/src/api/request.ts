@@ -1,7 +1,11 @@
 let onUnauthorized: (() => void) | undefined;
 let csrfToken: string | null = null;
 let csrfRequest: Promise<string> | undefined;
-export type ApiError = Error & { status?: number };
+export type ApiError = Error & {
+  status?: number;
+  code?: string;
+  fields?: Record<string, string | string[]>;
+};
 export type RequestOptions = RequestInit & { handleUnauthorized?: boolean };
 export const setUnauthorizedHandler = (handler: (() => void) | undefined) => {
   onUnauthorized = handler;
@@ -40,7 +44,11 @@ export async function request<T>(url: string, init: RequestOptions = {}): Promis
     const body = await response.json().catch(() => ({}));
     const error: ApiError = Object.assign(
       new Error(body?.error?.message || body?.detail || body?.title || `Request failed (HTTP ${response.status})`),
-      { status: response.status },
+      {
+        status: response.status,
+        code: body?.error?.code,
+        fields: body?.error?.fields,
+      },
     );
     throw error;
   }

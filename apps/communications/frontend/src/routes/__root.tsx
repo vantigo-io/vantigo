@@ -87,11 +87,39 @@ function Shell() {
         <NavLink
           component={Link}
           to="/messages"
-          label="Message history"
+          label="Messages"
           leftSection={<IconInbox size={18} />}
-          active={pathname.startsWith("/messages")}
+          active={pathname.startsWith("/messages") && pathname !== "/messages/compose"}
           onClick={close}
         />
+        <NavLink
+          component={Link}
+          to="/messages/compose"
+          label="Compose"
+          leftSection={<IconAdjustments size={18} />}
+          active={pathname === "/messages/compose"}
+          onClick={close}
+        />
+        {user?.roles.includes("Owner") && (
+          <>
+            <NavLink
+              component={Link}
+              to="/admin/mailboxes"
+              label="Mailboxes"
+              leftSection={<IconInbox size={18} />}
+              active={pathname.startsWith("/admin/mailboxes")}
+              onClick={close}
+            />
+            <NavLink
+              component={Link}
+              to="/admin/suppressions"
+              label="Suppressions"
+              leftSection={<IconAdjustments size={18} />}
+              active={pathname.startsWith("/admin/suppressions")}
+              onClick={close}
+            />
+          </>
+        )}
         <NavLink
           component={Link}
           to="/settings"

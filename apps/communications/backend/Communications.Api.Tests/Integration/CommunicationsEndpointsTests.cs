@@ -95,6 +95,35 @@ public sealed class CommunicationsEndpointsTests(CommunicationsApiFactory factor
         Assert.Single(ids);
     }
 
+    [Fact]
+    public async Task Owner_can_update_mailbox_display_name_and_active_state()
+    {
+        using var owner = await factory.CreateAuthenticatedClientAsync();
+        var mailboxes = await owner.GetFromJsonAsync<IReadOnlyList<Mailbox>>("/api/v1/mailboxes");
+        var mailbox = mailboxes!.Single();
+
+        var missing = await owner.PutAsJsonAsync("/api/v1/mailboxes/" + Guid.NewGuid(), new { displayName = "Nope" });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+
+        var invalid = await owner.PutAsJsonAsync("/api/v1/mailboxes/" + mailbox.Id, new { displayName = new string('x', 201) });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var updated = await owner.PutAsJsonAsync("/api/v1/mailboxes/" + mailbox.Id, new { displayName = "Renamed Mailbox", isActive = false });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var body = await updated.Content.ReadFromJsonAsync<Mailbox>();
+        Assert.Equal("Renamed Mailbox", body!.DisplayName);
+        Assert.False(body.IsActive);
+        Assert.Equal(mailbox.FromAddress, body.FromAddress);
+
+        // Restore original state for other tests sharing the fixture.
+        var restored = await owner.PutAsJsonAsync("/api/v1/mailboxes/" + mailbox.Id, new { displayName = mailbox.DisplayName, isActive = true });
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+
+        using var anonymous = factory.CreateClient();
+        var unauthorized = await anonymous.PutAsJsonAsync("/api/v1/mailboxes/" + mailbox.Id, new { displayName = "Anon" });
+        Assert.True(unauthorized.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Redirect or HttpStatusCode.Found, unauthorized.StatusCode.ToString());
+    }
+
     private static object ValidPayload(string subject, string? firstRecipient = null) => new
     {
         subject,
@@ -115,6 +144,7 @@ public sealed class CommunicationsEndpointsTests(CommunicationsApiFactory factor
     };
 
     private sealed record CreateResponse(Guid MessageId, string Status, string IdempotencyKey);
+    private sealed record Mailbox(Guid Id, string FromAddress, string? DisplayName, DateTimeOffset CreatedAt, bool IsActive);
     private sealed record MessageDetail(Guid Id, string Subject, string? TextBody, string? HtmlBody, DateTimeOffset CreatedAt, string? Source, IReadOnlyList<Delivery> Deliveries, IReadOnlyList<ExternalLink> ExternalLinks);
     private sealed record Delivery(Guid Id, string EmailAddress, string RecipientType, string Status, int Attempts, string? LastError, DateTimeOffset? AcceptedAt);
     private sealed record ExternalLink(Guid Id, string SourceSystem, string SourceInstance, string EntityType, string ExternalEntityId, string? DisplayLabel);
