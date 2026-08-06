@@ -47,7 +47,8 @@ public sealed class TimelineEndpointsTests
 
         var detail = await _client.GetFromJsonAsync<TimelineEntry>(
             $"/api/v1/customers/{customerId}/timeline/{created.Id}");
-        Assert.Equal(updated, detail);
+        Assert.Equal(updated with { Payload = default }, detail with { Payload = default });
+        Assert.Equal(updated.Payload.GetRawText(), detail.Payload.GetRawText());
 
         var stale = await _client.PutAsJsonAsync($"/api/v1/customers/{customerId}/timeline/{created.Id}", new
         {
