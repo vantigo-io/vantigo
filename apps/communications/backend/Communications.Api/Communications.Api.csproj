@@ -7,6 +7,9 @@
     <PublishProfile>DefaultContainer</PublishProfile>
     <ContainerRepository>vantigo-io/communications</ContainerRepository>
     <ContainerPort>8080</ContainerPort>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <ContainerRuntimeIdentifiers>linux-x64;linux-arm64</ContainerRuntimeIdentifiers>
+    <ContainerPublishInParallel>false</ContainerPublishInParallel>
   </PropertyGroup>
 
   <ItemGroup>

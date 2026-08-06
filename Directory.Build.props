@@ -7,6 +7,7 @@
     <UpdateAssemblyInfo>true</UpdateAssemblyInfo>
 
     <ContainerFamily>resolute-chiseled-extra</ContainerFamily>
+    <ContainerImageFormat>OCI</ContainerImageFormat>
   </PropertyGroup>
 
   <ItemGroup>
