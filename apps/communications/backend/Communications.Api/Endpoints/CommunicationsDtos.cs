@@ -24,13 +24,31 @@ public sealed record CreateEmailRequest(
     IReadOnlyList<EmailRecipientRequest?>? Cc,
     IReadOnlyList<EmailRecipientRequest?>? Bcc,
     IReadOnlyList<ExternalEntityLinkRequest?>? ExternalLinks,
-    string? Source);
+    string? Source,
+    Guid? MailboxId = null);
 
-public sealed record CreateMailboxRequest(string? FromAddress, string? DisplayName);
-public sealed record UpdateMailboxRequest(string? DisplayName, bool? IsActive);
+public sealed record SmtpMailboxCredentialRequest(string? Host, int? Port, bool? UseSsl, string? Username, string? Password);
+public sealed record MailgunMailboxCredentialRequest(string? Domain, string? Region, string? ApiKey);
+public sealed record CreateMailboxRequest(
+    string? FromAddress,
+    string? DisplayName,
+    string? Provider = "smtp",
+    bool? IsDefault = null,
+    SmtpMailboxCredentialRequest? Smtp = null,
+    MailgunMailboxCredentialRequest? Mailgun = null);
+public sealed record UpdateMailboxRequest(
+    string? DisplayName,
+    bool? IsActive,
+    bool? IsDefault = null,
+    string? Provider = null,
+    SmtpMailboxCredentialRequest? Smtp = null,
+    MailgunMailboxCredentialRequest? Mailgun = null);
 public sealed record CreateSuppressionRequest(string? EmailAddress, string? Reason);
 
-public sealed record MailboxResponse(Guid Id, string FromAddress, string? DisplayName, DateTimeOffset CreatedAt, bool IsActive);
+public sealed record MailboxSettingsSummary(string? Host, int? Port, bool? UseSsl, string? Username, string? Domain, string? Region);
+public sealed record MailboxResponse(Guid Id, string FromAddress, string? DisplayName, DateTimeOffset CreatedAt, bool IsActive,
+    string Provider, bool IsDefault, bool HasCredentials, MailboxSettingsSummary? Settings);
+public sealed record MailboxSummaryResponse(Guid Id, string FromAddress, string? DisplayName);
 
 public sealed record MessageListItem(
     Guid Id,
@@ -38,7 +56,8 @@ public sealed record MessageListItem(
     DateTimeOffset CreatedAt,
     int RecipientCount,
     string Status,
-    string? Source);
+    string? Source,
+    MailboxSummaryResponse Mailbox);
 
 public sealed record DeliveryResponse(
     Guid Id,
@@ -66,7 +85,8 @@ public sealed record MessageDetailResponse(
     DateTimeOffset CreatedAt,
     string? Source,
     IReadOnlyList<DeliveryResponse> Deliveries,
-    IReadOnlyList<ExternalEntityLinkResponse> ExternalLinks);
+    IReadOnlyList<ExternalEntityLinkResponse> ExternalLinks,
+    MailboxSummaryResponse Mailbox);
 
 public sealed record MessageEventResponse(
     Guid Id,
@@ -122,6 +142,7 @@ internal static class CommunicationValidation
         var errors = new Dictionary<string, string[]>();
         if (!IsEmail(request?.FromAddress)) errors["fromAddress"] = ["A valid FromAddress is required."];
         if (request?.DisplayName is not null && !ValidOptionalBoundValue(request.DisplayName, 200)) errors["displayName"] = ["DisplayName must be at most 200 characters and cannot contain surrounding whitespace or control characters."];
+        ValidateProvider(errors, request?.Provider, request?.Smtp, request?.Mailgun, true);
         return errors;
     }
 
@@ -134,7 +155,32 @@ internal static class CommunicationValidation
             return errors;
         }
         if (request.DisplayName is not null && !ValidOptionalBoundValue(request.DisplayName, 200)) errors["displayName"] = ["DisplayName must be at most 200 characters and cannot contain surrounding whitespace or control characters."];
+        ValidateProvider(errors, request.Provider, request.Smtp, request.Mailgun, false);
         return errors;
+    }
+
+    internal static string ProviderName(string? provider) => string.IsNullOrWhiteSpace(provider) ? "smtp" : provider.Trim().ToLowerInvariant();
+
+    private static void ValidateProvider(Dictionary<string, string[]> errors, string? provider, SmtpMailboxCredentialRequest? smtp,
+        MailgunMailboxCredentialRequest? mailgun, bool create)
+    {
+        var name = ProviderName(provider ?? (!create && mailgun is not null ? "mailgun" : "smtp"));
+        if (name is not ("smtp" or "mailgun"))
+        {
+            errors["provider"] = ["Provider must be smtp or mailgun."];
+            return;
+        }
+        if (smtp is not null && mailgun is not null) errors["credentials"] = ["Only the selected provider credential may be supplied."];
+        if (name == "smtp")
+        {
+            if (mailgun is not null) errors["mailgun"] = ["Mailgun credentials require the mailgun provider."];
+            if (smtp is not null && (string.IsNullOrWhiteSpace(smtp.Host) || smtp.Port is null or < 1 or > 65535))
+                errors["smtp"] = ["SMTP credentials require a host and a port from 1 through 65535."];
+            return;
+        }
+        if (smtp is not null) errors["smtp"] = ["SMTP credentials require the smtp provider."];
+        if (mailgun is null || string.IsNullOrWhiteSpace(mailgun.Domain) || mailgun.Region?.Trim().ToLowerInvariant() is not ("us" or "eu") || string.IsNullOrWhiteSpace(mailgun.ApiKey))
+            errors["mailgun"] = ["Mailgun credentials require a domain, region (us or eu), and API key."];
     }
 
     internal static Dictionary<string, string[]> ValidateSuppression(CreateSuppressionRequest? request)

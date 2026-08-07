@@ -2,14 +2,17 @@ using System.Net.Http.Json;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http;
 
 using Testcontainers.PostgreSql;
 
 using Vantigo.Communications.Api;
+using Vantigo.Communications.Api.Database.Communications;
 using Vantigo.Communications.Api.Services;
 
 namespace Vantigo.Communications.Api.Tests.Integration;
@@ -17,12 +20,14 @@ namespace Vantigo.Communications.Api.Tests.Integration;
 public sealed class CommunicationsApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private const string BootstrapSecret = "integration-bootstrap-secret";
+    public const string BootstrapMailboxAddress = "noreply@integration.test";
     public const string ServiceKey = "integration-customers-service-key";
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("communications")
         .Build();
 
     public CapturingEmailSender Sender { get; } = new();
+    public FailingMailgunHandler MailgunHandler { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -73,7 +78,7 @@ public sealed class CommunicationsApiFactory : WebApplicationFactory<Program>, I
             ["Customers:Enabled"] = "true",
             ["Customers:ApiKey"] = ServiceKey,
             ["Communications:BootstrapMailbox:Enabled"] = "true",
-            ["Communications:BootstrapMailbox:FromAddress"] = "noreply@integration.test",
+            ["Communications:BootstrapMailbox:FromAddress"] = BootstrapMailboxAddress,
             ["Communications:BootstrapMailbox:DisplayName"] = "Integration Mailbox",
             ["Outbox:PollSeconds"] = "3600",
         }));
@@ -82,7 +87,41 @@ public sealed class CommunicationsApiFactory : WebApplicationFactory<Program>, I
             services.AddSingleton<CommunicationsTestStartupPreparationMarker>();
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(Sender);
+            services.Configure<HttpClientFactoryOptions>("mailgun", options =>
+                options.HttpMessageHandlerBuilderActions.Add(builder => builder.PrimaryHandler = MailgunHandler));
         });
+    }
+
+    public async Task ResetMailboxStateAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+
+        var bootstrap = await db.SharedMailboxes.SingleAsync(item => item.FromAddress == BootstrapMailboxAddress);
+        var extraMailboxIds = await db.SharedMailboxes
+            .Where(item => item.Id != bootstrap.Id)
+            .Select(item => item.Id)
+            .ToArrayAsync();
+        await db.IdempotencyRecords.ExecuteDeleteAsync();
+        await db.EmailMessages.ExecuteDeleteAsync();
+        if (extraMailboxIds.Length > 0)
+        {
+            await db.MailboxProviderCredentials.Where(item => extraMailboxIds.Contains(item.MailboxId)).ExecuteDeleteAsync();
+            await db.SharedMailboxes.Where(item => extraMailboxIds.Contains(item.Id)).ExecuteDeleteAsync();
+        }
+
+        await db.MailboxProviderCredentials.Where(item => item.MailboxId == bootstrap.Id).ExecuteDeleteAsync();
+        await db.SharedMailboxes
+            .Where(item => item.Id == bootstrap.Id)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.FromAddress, BootstrapMailboxAddress)
+                .SetProperty(item => item.DisplayName, "Integration Mailbox")
+                .SetProperty(item => item.Provider, "smtp")
+                .SetProperty(item => item.IsActive, true)
+                .SetProperty(item => item.IsDefault, true));
+
+        await transaction.CommitAsync();
     }
 
     async Task IAsyncLifetime.DisposeAsync()
@@ -100,12 +139,22 @@ public sealed class CapturingEmailSender : IEmailSender
     public bool ThrowOnSend { get; set; }
     public IReadOnlyList<EmailEnvelope> Envelopes => envelopes;
 
-    public Task SendAsync(EmailEnvelope envelope, CancellationToken cancellationToken)
+    public Task SendAsync(EmailEnvelope envelope, Vantigo.Communications.Api.Database.Communications.SharedMailbox mailbox, CancellationToken cancellationToken)
     {
         if (ThrowOnSend) throw new InvalidOperationException("fake SMTP failure");
         envelopes.Add(envelope);
         return Task.CompletedTask;
     }
+}
+
+public sealed class FailingMailgunHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.BadGateway)
+        {
+            ReasonPhrase = "Deterministic test failure",
+            Content = new StringContent("mailgun verification failed in test"),
+        });
 }
 
 [CollectionDefinition(Name)]

@@ -88,7 +88,13 @@ static void AddApiServices(WebApplicationBuilder builder)
     builder.Services.AddCommunicationsIdentity(builder.Environment);
     builder.Services.AddScoped<OutboxJobProcessor>();
     builder.Services.AddScoped<RetentionCleanupService>();
-    builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+    builder.Services.AddHttpClient("mailgun", client => client.Timeout = TimeSpan.FromSeconds(10));
+    builder.Services.AddSingleton<MailboxCredentialProtector>();
+    builder.Services.AddSingleton<SmtpDeliveryProvider>();
+    builder.Services.AddSingleton<MailgunDeliveryProvider>();
+    builder.Services.AddSingleton<IEmailDeliveryProvider>(provider => provider.GetRequiredService<SmtpDeliveryProvider>());
+    builder.Services.AddSingleton<IEmailDeliveryProvider>(provider => provider.GetRequiredService<MailgunDeliveryProvider>());
+    builder.Services.AddScoped<IEmailSender, ProviderDispatchingEmailSender>();
     builder.Services.AddHostedService<CommunicationsOutboxWorker>();
     builder.Services.AddHostedService<CommunicationsRetentionWorker>();
 }

@@ -5,8 +5,22 @@ public sealed class SharedMailbox
     public Guid Id { get; set; }
     public required string FromAddress { get; set; }
     public string? DisplayName { get; set; }
+    public string Provider { get; set; } = "smtp";
+    public bool IsDefault { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public bool IsActive { get; set; } = true;
+    public MailboxProviderCredential? Credential { get; set; }
+}
+
+public sealed class MailboxProviderCredential
+{
+    public Guid Id { get; set; }
+    public Guid MailboxId { get; set; }
+    public required string Provider { get; set; }
+    public required string SettingsJson { get; set; }
+    public required string SecretCiphertext { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public SharedMailbox? Mailbox { get; set; }
 }
 
 public sealed class EmailMessage

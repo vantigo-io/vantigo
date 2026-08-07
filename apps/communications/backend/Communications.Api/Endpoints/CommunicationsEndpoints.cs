@@ -1,8 +1,10 @@
 using System.Security.Claims;
+using System.Text.Json;
 
 using Asp.Versioning;
 
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Communications.Api.Database.Accounts;
@@ -46,6 +48,7 @@ internal static class CommunicationsEndpoints
         owner.MapGet("/mailboxes/{id:guid}", GetMailbox);
         owner.MapPost("/mailboxes", CreateMailbox).RequireAntiforgery();
         owner.MapPut("/mailboxes/{id:guid}", UpdateMailbox).RequireAntiforgery();
+        owner.MapPost("/mailboxes/{id:guid}/verify", VerifyMailbox).RequireAntiforgery();
         owner.MapGet("/suppressions", ListSuppressions);
         owner.MapGet("/suppressions/{id:guid}", GetSuppression);
         owner.MapPost("/suppressions", CreateSuppression).RequireAntiforgery();
@@ -53,23 +56,24 @@ internal static class CommunicationsEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> ListMessages(int? page, int? pageSize, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> ListMessages(int? page, int? pageSize, Guid? mailboxId, CommunicationsDbContext db, CancellationToken cancellationToken)
     {
         var (currentPage, size) = PageValues(page, pageSize);
-        var query = db.EmailMessages.AsNoTracking();
+        var query = db.EmailMessages.AsNoTracking().Where(message => !mailboxId.HasValue || message.MailboxId == mailboxId.Value);
         var total = await query.CountAsync(cancellationToken);
         var items = await query.OrderByDescending(message => message.CreatedAt)
             .Skip((currentPage - 1) * size).Take(size)
-            .Select(message => new MessageListItem(message.Id, message.Subject, message.CreatedAt,
-                message.Deliveries.Count, message.Deliveries.All(delivery => delivery.Status == "relay_accepted") ? "relay_accepted" :
-                    message.Deliveries.Any(delivery => delivery.Status == "submission_failed") ? "submission_failed" : "queued", message.Source))
+                .Select(message => new MessageListItem(message.Id, message.Subject, message.CreatedAt,
+                    message.Deliveries.Count, message.Deliveries.All(delivery => delivery.Status == "relay_accepted") ? "relay_accepted" :
+                        message.Deliveries.Any(delivery => delivery.Status == "submission_failed") ? "submission_failed" : "queued", message.Source,
+                    new MailboxSummaryResponse(message.Mailbox!.Id, message.Mailbox.FromAddress, message.Mailbox.DisplayName)))
             .ToListAsync(cancellationToken);
         return TypedResults.Ok(PaginatedResponse<MessageListItem>.Create(items, currentPage, size, total));
     }
 
     private static async Task<IResult> GetMessage(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
     {
-        var message = await db.EmailMessages.AsNoTracking().Include(item => item.Deliveries).Include(item => item.ExternalLinks)
+        var message = await db.EmailMessages.AsNoTracking().Include(item => item.Mailbox).Include(item => item.Deliveries).Include(item => item.ExternalLinks)
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         return message is null ? TypedResults.NotFound() : TypedResults.Ok(ToDetail(message));
     }
@@ -155,7 +159,11 @@ internal static class CommunicationsEndpoints
             return TypedResults.Ok(new EmailCreateResponse(existing.MessageId, "queued", key));
         }
 
-        var mailbox = await db.SharedMailboxes.Where(item => item.IsActive).OrderBy(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        var mailbox = request.MailboxId.HasValue
+            ? await db.SharedMailboxes.SingleOrDefaultAsync(item => item.Id == request.MailboxId.Value && item.IsActive, cancellationToken)
+            : await db.SharedMailboxes.Where(item => item.IsActive).OrderByDescending(item => item.IsDefault).ThenBy(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (request.MailboxId.HasValue && mailbox is null)
+            return Error(StatusCodes.Status422UnprocessableEntity, "mailbox_invalid", "The selected mailbox does not exist or is inactive.");
         if (mailbox is null) return Error(StatusCodes.Status503ServiceUnavailable, "mailbox_not_configured", "A shared mailbox has not been configured.");
         var recipients = RecipientRequests(request).ToArray();
         var normalized = recipients.Select(recipient => EmailSuppression.Normalize(recipient.EmailAddress)).ToArray();
@@ -234,39 +242,82 @@ internal static class CommunicationsEndpoints
         return false;
     }
 
-    private static async Task<IResult> ListMailboxes(CommunicationsDbContext db, CancellationToken cancellationToken) =>
-        TypedResults.Ok(await db.SharedMailboxes.AsNoTracking().OrderBy(mailbox => mailbox.CreatedAt)
-            .Select(mailbox => new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive)).ToListAsync(cancellationToken));
+    private static async Task<IResult> ListMailboxes(CommunicationsDbContext db, CancellationToken cancellationToken)
+    {
+        var mailboxes = await db.SharedMailboxes.AsNoTracking().Include(mailbox => mailbox.Credential).OrderBy(mailbox => mailbox.CreatedAt).ToListAsync(cancellationToken);
+        return TypedResults.Ok(mailboxes.Select(ToMailboxResponse).ToArray());
+    }
 
     private static async Task<IResult> GetMailbox(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
     {
-        var mailbox = await db.SharedMailboxes.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        return mailbox is null ? TypedResults.NotFound() : TypedResults.Ok(new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive));
+        var mailbox = await db.SharedMailboxes.AsNoTracking().Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        return mailbox is null ? TypedResults.NotFound() : TypedResults.Ok(ToMailboxResponse(mailbox));
     }
 
-    private static async Task<IResult> CreateMailbox(CreateMailboxRequest? request, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> CreateMailbox(CreateMailboxRequest? request, CommunicationsDbContext db, MailboxCredentialProtector protector, CancellationToken cancellationToken)
     {
         var errors = CommunicationValidation.ValidateMailbox(request);
         if (errors.Count > 0) return ValidationError(errors);
-        if (await db.SharedMailboxes.AnyAsync(cancellationToken))
-            return Error(StatusCodes.Status409Conflict, "mailbox_already_configured", "Only one shared mailbox may be configured.");
         var now = DateTimeOffset.UtcNow;
-        var mailbox = new SharedMailbox { Id = Guid.NewGuid(), FromAddress = request!.FromAddress!, DisplayName = string.IsNullOrEmpty(request.DisplayName) ? null : request.DisplayName, CreatedAt = now };
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var provider = CommunicationValidation.ProviderName(request!.Provider);
+        var mailbox = new SharedMailbox { Id = Guid.NewGuid(), FromAddress = request.FromAddress!, DisplayName = string.IsNullOrEmpty(request.DisplayName) ? null : request.DisplayName, Provider = provider, CreatedAt = now };
+        mailbox.IsDefault = request.IsDefault == true || !await db.SharedMailboxes.AnyAsync(cancellationToken);
+        AddCredential(mailbox, request.Smtp, request.Mailgun, provider, protector, now);
+        if (mailbox.IsDefault) await db.SharedMailboxes.Where(item => item.IsDefault).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false), cancellationToken);
         db.SharedMailboxes.Add(mailbox);
-        await db.SaveChangesAsync(cancellationToken);
-        return TypedResults.Created($"/api/v1/mailboxes/{mailbox.Id}", new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive));
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        { return Error(StatusCodes.Status409Conflict, "mailbox_address_exists", "A mailbox with this FromAddress already exists."); }
+        await transaction.CommitAsync(cancellationToken);
+        return TypedResults.Created($"/api/v1/mailboxes/{mailbox.Id}", ToMailboxResponse(mailbox));
     }
 
-    private static async Task<IResult> UpdateMailbox(Guid id, UpdateMailboxRequest? request, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> UpdateMailbox(Guid id, UpdateMailboxRequest? request, CommunicationsDbContext db, MailboxCredentialProtector protector, CancellationToken cancellationToken)
     {
         var errors = CommunicationValidation.ValidateMailboxUpdate(request);
         if (errors.Count > 0) return ValidationError(errors);
-        var mailbox = await db.SharedMailboxes.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var mailbox = await db.SharedMailboxes.Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (mailbox is null) return TypedResults.NotFound();
-        mailbox.DisplayName = string.IsNullOrEmpty(request!.DisplayName) ? null : request.DisplayName;
+        var activeOtherCount = await db.SharedMailboxes.CountAsync(item => item.Id != id && item.IsActive, cancellationToken);
+        if (request!.IsDefault == false && mailbox.IsDefault)
+            return Error(StatusCodes.Status409Conflict, "mailbox_default_required", "Another mailbox must be promoted before this default mailbox can be demoted.");
+        if (request.IsActive == false && mailbox.IsDefault && activeOtherCount > 0)
+            return Error(StatusCodes.Status409Conflict, "mailbox_default_required", "The default mailbox cannot be deactivated while another mailbox is active.");
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        if (request.DisplayName is not null) mailbox.DisplayName = string.IsNullOrEmpty(request.DisplayName) ? null : request.DisplayName;
         if (request.IsActive is { } isActive) mailbox.IsActive = isActive;
+        if (request.IsDefault == true) mailbox.IsDefault = true;
+        if (request.Provider is not null || request.Smtp is not null || request.Mailgun is not null)
+        {
+            var provider = CommunicationValidation.ProviderName(request.Provider);
+            mailbox.Provider = provider;
+            if (mailbox.Credential is not null) db.MailboxProviderCredentials.Remove(mailbox.Credential);
+            mailbox.Credential = null;
+            AddCredential(mailbox, request.Smtp, request.Mailgun, provider, protector, DateTimeOffset.UtcNow);
+        }
+        if (mailbox.IsDefault) await db.SharedMailboxes.Where(item => item.Id != id && item.IsDefault).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return TypedResults.Ok(new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive));
+        await transaction.CommitAsync(cancellationToken);
+        return TypedResults.Ok(ToMailboxResponse(mailbox));
+    }
+
+    private static async Task<IResult> VerifyMailbox(Guid id, CommunicationsDbContext db,
+        [FromServices] SmtpDeliveryProvider smtp, [FromServices] MailgunDeliveryProvider mailgun, CancellationToken cancellationToken)
+    {
+        var mailbox = await db.SharedMailboxes.Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (mailbox is null) return TypedResults.NotFound();
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            if (mailbox.Provider == "smtp") await smtp.VerifyAsync(mailbox, timeout.Token);
+            else if (mailbox.Provider == "mailgun") await mailgun.VerifyAsync(mailbox, timeout.Token);
+            else throw new InvalidOperationException($"Unknown mailbox provider '{mailbox.Provider}'.");
+            return TypedResults.Ok(new { ok = true });
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        { return Error(StatusCodes.Status422UnprocessableEntity, "verification_failed", exception.Message); }
     }
 
     private static async Task<IResult> ListSuppressions(CommunicationsDbContext db, CancellationToken cancellationToken) =>
@@ -311,7 +362,60 @@ internal static class CommunicationsEndpoints
     private static MessageDetailResponse ToDetail(EmailMessage message) => new(
         message.Id, message.MailboxId, message.Subject, message.TextBody, message.HtmlBody, message.CreatedAt, message.Source,
         message.Deliveries.OrderBy(delivery => delivery.CreatedAt).Select(delivery => new DeliveryResponse(delivery.Id, delivery.EmailAddress, delivery.RecipientType, delivery.Status, delivery.Attempts, delivery.LastError, delivery.AcceptedAt)).ToArray(),
-        message.ExternalLinks.Select(link => new ExternalEntityLinkResponse(link.Id, link.SourceSystem, link.SourceInstance, link.EntityType, link.ExternalEntityId, link.DisplayLabel)).ToArray());
+        message.ExternalLinks.Select(link => new ExternalEntityLinkResponse(link.Id, link.SourceSystem, link.SourceInstance, link.EntityType, link.ExternalEntityId, link.DisplayLabel)).ToArray(),
+        new MailboxSummaryResponse(message.Mailbox!.Id, message.Mailbox.FromAddress, message.Mailbox.DisplayName));
+
+    private static void AddCredential(SharedMailbox mailbox, SmtpMailboxCredentialRequest? smtp, MailgunMailboxCredentialRequest? mailgun,
+        string provider, MailboxCredentialProtector protector, DateTimeOffset now)
+    {
+        if (provider == "smtp" && smtp is not null)
+        {
+            mailbox.Credential = new MailboxProviderCredential
+            {
+                Id = Guid.NewGuid(),
+                MailboxId = mailbox.Id,
+                Provider = provider,
+                SettingsJson = JsonSerializer.Serialize(new SmtpProviderSettings(smtp.Host!.Trim(), smtp.Port!.Value, smtp.UseSsl ?? false, string.IsNullOrWhiteSpace(smtp.Username) ? null : smtp.Username), SmtpDeliveryProvider.JsonOptions),
+                SecretCiphertext = protector.Protect(smtp.Password ?? string.Empty),
+                CreatedAt = now,
+            };
+        }
+        else if (provider == "mailgun" && mailgun is not null)
+        {
+            mailbox.Credential = new MailboxProviderCredential
+            {
+                Id = Guid.NewGuid(),
+                MailboxId = mailbox.Id,
+                Provider = provider,
+                SettingsJson = JsonSerializer.Serialize(new MailgunProviderSettings(mailgun.Domain!.Trim(), mailgun.Region!.Trim().ToLowerInvariant()), SmtpDeliveryProvider.JsonOptions),
+                SecretCiphertext = protector.Protect(mailgun.ApiKey!),
+                CreatedAt = now,
+            };
+        }
+    }
+
+    private static MailboxResponse ToMailboxResponse(SharedMailbox mailbox)
+    {
+        MailboxSettingsSummary? settings = null;
+        if (mailbox.Credential is not null)
+        {
+            if (mailbox.Provider == "smtp")
+            {
+                var smtp = JsonSerializer.Deserialize<SmtpProviderSettings>(mailbox.Credential.SettingsJson, SmtpDeliveryProvider.JsonOptions);
+                settings = smtp is null ? null : new MailboxSettingsSummary(smtp.Host, smtp.Port, smtp.UseSsl, smtp.Username, null, null);
+            }
+            else if (mailbox.Provider == "mailgun")
+            {
+                var mailgun = JsonSerializer.Deserialize<MailgunProviderSettings>(mailbox.Credential.SettingsJson, SmtpDeliveryProvider.JsonOptions);
+                settings = mailgun is null ? null : new MailboxSettingsSummary(null, null, null, null, mailgun.Domain, mailgun.Region);
+            }
+        }
+        return new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive,
+            mailbox.Provider, mailbox.IsDefault, mailbox.Credential is not null, settings);
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException exception) =>
+        exception.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation };
 
     private static (int Page, int PageSize) PageValues(int? page, int? pageSize) =>
         (Math.Max(page ?? 1, 1), Math.Clamp(pageSize ?? 25, 1, 100));

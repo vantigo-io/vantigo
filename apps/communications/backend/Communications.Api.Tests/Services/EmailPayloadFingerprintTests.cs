@@ -14,4 +14,13 @@ public sealed class EmailPayloadFingerprintTests
         Assert.Equal(EmailPayloadFingerprint.Create(first), EmailPayloadFingerprint.Create(same));
         Assert.NotEqual(EmailPayloadFingerprint.Create(first), EmailPayloadFingerprint.Create(changed));
     }
+
+    [Fact]
+    public void Mailbox_id_is_part_of_the_fingerprint()
+    {
+        var first = new { subject = "hello", body = "message", mailboxId = Guid.Parse("11111111-1111-1111-1111-111111111111") };
+        var changedMailbox = new { subject = "hello", body = "message", mailboxId = Guid.Parse("22222222-2222-2222-2222-222222222222") };
+
+        Assert.NotEqual(EmailPayloadFingerprint.Create(first), EmailPayloadFingerprint.Create(changedMailbox));
+    }
 }

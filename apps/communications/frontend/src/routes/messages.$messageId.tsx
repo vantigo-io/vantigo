@@ -41,6 +41,12 @@ function DetailPage() {
           <Text c="dimmed">
             {m.source || "Unknown source"} · {new Date(m.createdAt).toLocaleString()}
           </Text>
+          {m.mailbox && (
+            <Text size="sm" c="dimmed">
+              Sent from{" "}
+              {m.mailbox.displayName ? `${m.mailbox.displayName} <${m.mailbox.fromAddress}>` : m.mailbox.fromAddress}
+            </Text>
+          )}
         </div>
       </Group>
       <Card withBorder radius="lg">

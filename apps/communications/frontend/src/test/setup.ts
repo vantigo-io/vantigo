@@ -20,3 +20,5 @@ class ResizeObserverMock {
   disconnect() {}
 }
 Object.assign(globalThis, { ResizeObserver: ResizeObserverMock });
+
+if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => undefined;

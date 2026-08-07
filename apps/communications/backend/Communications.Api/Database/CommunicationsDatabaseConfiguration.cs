@@ -52,6 +52,8 @@ internal static class CommunicationsDatabaseConfiguration
             Id = Guid.NewGuid(),
             FromAddress = fromAddress,
             DisplayName = mailboxConfiguration["DisplayName"]?.Trim(),
+            Provider = "smtp",
+            IsDefault = true,
             CreatedAt = DateTimeOffset.UtcNow,
             IsActive = true,
         });

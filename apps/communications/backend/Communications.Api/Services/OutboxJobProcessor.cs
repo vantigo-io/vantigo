@@ -61,7 +61,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
             // sending state. Start the send phase from fresh database state so a
             // later completion update cannot be masked by stale EF tracking.
             db.ChangeTracker.Clear();
-            var message = await db.EmailMessages.Include(item => item.Mailbox).Include(item => item.Deliveries)
+            var message = await db.EmailMessages.Include(item => item.Mailbox).ThenInclude(mailbox => mailbox!.Credential).Include(item => item.Deliveries)
                 .SingleAsync(item => item.Id == job.MessageId, cancellationToken);
             if (message.Mailbox is null) throw new InvalidOperationException("The message mailbox no longer exists.");
 
@@ -79,7 +79,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
                 return true;
             }
 
-            await sender.SendAsync(EmailEnvelopeFactory.Create(message, message.Mailbox), cancellationToken);
+            await sender.SendAsync(EmailEnvelopeFactory.Create(message, message.Mailbox), message.Mailbox, cancellationToken);
             var now = DateTimeOffset.UtcNow;
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var current = await db.OutboxJobs.SingleAsync(item => item.Id == job.Id, cancellationToken);

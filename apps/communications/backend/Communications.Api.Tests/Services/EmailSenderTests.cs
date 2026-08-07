@@ -29,10 +29,10 @@ public sealed class EmailSenderTests
             ["Outbox:LeaseSeconds"] = "60",
         }).Build();
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
-        var sender = new SmtpEmailSender(configuration, environment);
+        var provider = new SmtpDeliveryProvider(configuration, environment, new MailboxCredentialProtector(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider()));
         var envelope = new EmailEnvelope(Guid.NewGuid(), "sender@example.test", null, "subject", "body", null, ["recipient@example.test"], [], []);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => sender.SendAsync(envelope, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SendAsync(envelope, null, CancellationToken.None));
     }
 
     private sealed class TestHostEnvironment : IHostEnvironment

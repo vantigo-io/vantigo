@@ -1,17 +1,19 @@
-import { Alert, Button, Card, Group, Stack, TagsInput, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Card, Group, Select, Stack, TagsInput, Text, TextInput, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { RichTextEditor } from "@mantine/tiptap";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useState } from "react";
+import { fetchSession, sessionQueryKey } from "../api/auth";
+import { mailboxesQueryOptions } from "../api/mailboxes";
 import { type CreateMessageRequest, createMessage } from "../api/messages";
 import type { ApiError } from "../api/request";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-type ComposeValues = { subject: string; to: string[]; cc: string[]; bcc: string[] };
+type ComposeValues = { subject: string; to: string[]; cc: string[]; bcc: string[]; mailboxId: string };
 
 const allRecipients = (values: ComposeValues) => [...values.to, ...values.cc, ...values.bcc];
 const duplicateEmails = (values: ComposeValues) => {
@@ -28,12 +30,17 @@ export function ComposePage() {
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [bodyError, setBodyError] = useState<string | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300000 });
+  const isOwner = session.data?.user.roles.includes("Owner") === true;
+  const mailboxes = useQuery({ ...mailboxesQueryOptions(), enabled: isOwner });
+  const activeMailboxes = mailboxes.data?.filter((mailbox) => mailbox.isActive) ?? [];
+  const showMailboxSelector = isOwner && activeMailboxes.length >= 2;
   const editor = useEditor({
     extensions: [StarterKit.configure({ link: { openOnClick: false } })],
     content: "",
   });
   const form = useForm<ComposeValues>({
-    initialValues: { subject: "", to: [], cc: [], bcc: [] },
+    initialValues: { subject: "", to: [], cc: [], bcc: [], mailboxId: "" },
     validate: {
       subject: (value) => (value.trim() ? null : "Subject is required"),
       to: (value, values) => {
@@ -57,7 +64,9 @@ export function ComposePage() {
   const mutation = useMutation({
     mutationFn: (values: ComposeValues) => {
       setBodyError(null);
+      const selectedMailboxId = values.mailboxId || activeMailboxes.find((mailbox) => mailbox.isDefault)?.id;
       const body: CreateMessageRequest = {
+        ...(showMailboxSelector && selectedMailboxId ? { mailboxId: selectedMailboxId } : {}),
         subject: values.subject.trim(),
         textBody: editor?.getText() || "",
         htmlBody: editor?.getHTML() || "",
@@ -105,6 +114,10 @@ export function ComposePage() {
         });
         return;
       }
+      if (error.status === 422 && error.code === "mailbox_invalid") {
+        form.setFieldError("mailboxId", error.message);
+        return;
+      }
       notifications.show({ color: "red", title: "Message not sent", message: error.message });
     },
   });
@@ -125,6 +138,20 @@ export function ComposePage() {
         <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
           <Stack>
             <TextInput label="Subject" placeholder="Subject" required {...form.getInputProps("subject")} />
+            {showMailboxSelector && (
+              <Select
+                label="Send from"
+                placeholder="Select a mailbox"
+                data={activeMailboxes.map((mailbox) => ({
+                  value: mailbox.id,
+                  label: mailbox.displayName ? `${mailbox.displayName} <${mailbox.fromAddress}>` : mailbox.fromAddress,
+                }))}
+                value={form.values.mailboxId || activeMailboxes.find((mailbox) => mailbox.isDefault)?.id || null}
+                onChange={(value) => form.setFieldValue("mailboxId", value || "")}
+                error={form.errors.mailboxId}
+                required
+              />
+            )}
             <TagsInput
               label="To"
               placeholder="Add recipient"

@@ -7,8 +7,40 @@ import { ComposePage } from "./messages.compose";
 
 const navigate = vi.fn();
 const createMessage = vi.fn().mockResolvedValue({ messageId: "m-9", status: "queued", idempotencyKey: "key-9" });
+let mailboxResponse = [
+  {
+    id: "box-default",
+    fromAddress: "default@example.com",
+    displayName: "Default",
+    createdAt: "2026-01-01",
+    isActive: true,
+    provider: "smtp",
+    isDefault: true,
+    hasCredentials: true,
+    settings: { host: "smtp.example.com", port: 587, useSsl: true },
+  },
+  {
+    id: "box-other",
+    fromAddress: "other@example.com",
+    displayName: null,
+    createdAt: "2026-01-02",
+    isActive: true,
+    provider: "mailgun",
+    isDefault: false,
+    hasCredentials: true,
+    settings: { domain: "example.com", region: "us" },
+  },
+];
 
 vi.mock("../api/messages", () => ({ createMessage: (...args: unknown[]) => createMessage(...args) }));
+vi.mock("../api/auth", () => ({
+  fetchSession: () =>
+    Promise.resolve({ user: { id: "user-1", displayName: "Owner", email: "owner@example.com", roles: ["Owner"] } }),
+  sessionQueryKey: ["auth", "session"],
+}));
+vi.mock("../api/mailboxes", () => ({
+  mailboxesQueryOptions: () => ({ queryKey: ["mailboxes"], queryFn: () => Promise.resolve(mailboxResponse) }),
+}));
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: { component: unknown }) => options,
   useNavigate: () => navigate,
@@ -39,7 +71,12 @@ const renderPage = () =>
     </MantineProvider>,
   );
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  mailboxResponse = mailboxResponse.slice(0, 2);
+  createMessage.mockClear();
+  navigate.mockClear();
+});
 
 describe("message compose", () => {
   it("validates an empty subject and recipient list", async () => {
@@ -52,6 +89,7 @@ describe("message compose", () => {
 
   it("submits with an idempotency key and navigates to the message", async () => {
     renderPage();
+    await screen.findByRole("combobox", { name: "Send from" });
     fireEvent.change(screen.getAllByPlaceholderText("Subject")[0], { target: { value: "Hello" } });
     const recipient = screen.getAllByPlaceholderText("Add recipient")[0];
     fireEvent.change(recipient, { target: { value: "person@example.com" } });
@@ -60,6 +98,7 @@ describe("message compose", () => {
     await waitFor(() => expect(createMessage).toHaveBeenCalled());
     expect(createMessage).toHaveBeenCalledWith(
       expect.objectContaining({
+        mailboxId: "box-default",
         subject: "Hello",
         to: [{ email: "person@example.com" }],
         textBody: "Body",
@@ -68,5 +107,17 @@ describe("message compose", () => {
       expect.any(String),
     );
     expect(navigate).toHaveBeenCalledWith({ to: "/messages/$messageId", params: { messageId: "m-9" } });
+  });
+
+  it("shows the mailbox selector for an owner with multiple active mailboxes", async () => {
+    renderPage();
+    const selector = await screen.findByRole("combobox", { name: "Send from" });
+    expect((selector as HTMLInputElement).value).toBe("Default <default@example.com>");
+  });
+
+  it("hides the mailbox selector when there is only one active mailbox", async () => {
+    mailboxResponse = [mailboxResponse[0]];
+    renderPage();
+    await waitFor(() => expect(screen.queryByRole("combobox", { name: "Send from" })).toBeNull());
   });
 });

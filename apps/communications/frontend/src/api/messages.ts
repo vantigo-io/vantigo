@@ -2,6 +2,7 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { request } from "./request";
 export type MessageRecipient = { email: string };
 export interface CreateMessageRequest {
+  mailboxId?: string;
   subject: string;
   textBody?: string;
   htmlBody?: string;
@@ -24,6 +25,12 @@ export interface MessageListItem {
   recipientCount: number;
   status: MessageStatus;
   source: string | null;
+  mailbox: MailboxSummary | null;
+}
+export interface MailboxSummary {
+  id: string;
+  fromAddress: string;
+  displayName: string | null;
 }
 export interface Delivery {
   id: string;
@@ -52,6 +59,7 @@ export interface MessageDetail {
   source: string | null;
   deliveries: Delivery[];
   externalLinks: ExternalLink[];
+  mailbox: MailboxSummary | null;
 }
 export interface MessageEvent {
   id: string;
@@ -72,11 +80,14 @@ export interface Page<T> {
   data: T[];
   pagination: Pagination;
 }
-export const messagesQueryOptions = (page: number, pageSize = 20) =>
+export const messagesQueryOptions = (page: number, pageSize = 20, mailboxId?: string) =>
   queryOptions({
-    queryKey: ["messages", { page, pageSize }],
+    queryKey: ["messages", { page, pageSize, mailboxId }],
     queryFn: ({ signal }) =>
-      request<Page<MessageListItem>>(`/api/v1/messages?page=${page}&pageSize=${pageSize}`, { signal }),
+      request<Page<MessageListItem>>(
+        `/api/v1/messages?page=${page}&pageSize=${pageSize}${mailboxId ? `&mailboxId=${encodeURIComponent(mailboxId)}` : ""}`,
+        { signal },
+      ),
     placeholderData: keepPreviousData,
   });
 export const messageQueryOptions = (id: string) =>

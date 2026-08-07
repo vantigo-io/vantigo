@@ -5,6 +5,7 @@ namespace Vantigo.Communications.Api.Database.Communications;
 public sealed class CommunicationsDbContext(DbContextOptions<CommunicationsDbContext> options) : DbContext(options)
 {
     public DbSet<SharedMailbox> SharedMailboxes => Set<SharedMailbox>();
+    public DbSet<MailboxProviderCredential> MailboxProviderCredentials => Set<MailboxProviderCredential>();
     public DbSet<EmailMessage> EmailMessages => Set<EmailMessage>();
     public DbSet<RecipientDelivery> RecipientDeliveries => Set<RecipientDelivery>();
     public DbSet<MessageEvent> MessageEvents => Set<MessageEvent>();
@@ -22,7 +23,20 @@ public sealed class CommunicationsDbContext(DbContextOptions<CommunicationsDbCon
             entity.HasKey(mailbox => mailbox.Id);
             entity.Property(mailbox => mailbox.FromAddress).HasMaxLength(320).IsRequired();
             entity.Property(mailbox => mailbox.DisplayName).HasMaxLength(200);
+            entity.Property(mailbox => mailbox.Provider).HasMaxLength(20).IsRequired().HasDefaultValue("smtp");
+            entity.Property(mailbox => mailbox.IsDefault).HasDefaultValue(false);
             entity.HasIndex(mailbox => mailbox.FromAddress).IsUnique();
+        });
+        modelBuilder.Entity<MailboxProviderCredential>(entity =>
+        {
+            entity.ToTable("mailbox_provider_credentials");
+            entity.HasKey(credential => credential.Id);
+            entity.Property(credential => credential.Provider).HasMaxLength(20).IsRequired();
+            entity.Property(credential => credential.SettingsJson).HasColumnType("text").IsRequired();
+            entity.Property(credential => credential.SecretCiphertext).HasColumnType("text").IsRequired();
+            entity.HasOne(credential => credential.Mailbox).WithOne(mailbox => mailbox.Credential)
+                .HasForeignKey<MailboxProviderCredential>(credential => credential.MailboxId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(credential => credential.MailboxId).IsUnique();
         });
         modelBuilder.Entity<EmailMessage>(entity =>
         {
