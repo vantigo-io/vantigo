@@ -65,6 +65,16 @@ afterEach(() => {
 });
 
 describe("admin mailboxes", () => {
+  it("keeps the create form in a modal until Add Mailbox is clicked", async () => {
+    renderPage();
+
+    expect(screen.queryByLabelText("From address")).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Add Mailbox" }));
+
+    expect(await screen.findByRole("dialog", { name: "Add mailbox" })).not.toBeNull();
+    expect(await screen.findByRole("textbox", { name: "From address" })).not.toBeNull();
+  });
+
   it("sets a non-default mailbox as the default", async () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: "Set default" }));

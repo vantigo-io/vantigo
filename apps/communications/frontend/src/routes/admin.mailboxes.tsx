@@ -147,6 +147,7 @@ export function MailboxesPage() {
   const credentialsForm = useForm<MailboxFormValues>({ initialValues });
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
   const [credentialMailbox, setCredentialMailbox] = useState<Mailbox | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const refresh = () => void client.invalidateQueries({ queryKey: ["mailboxes"] });
   const create = useMutation({
@@ -161,6 +162,7 @@ export function MailboxesPage() {
     },
     onSuccess: () => {
       form.reset();
+      setCreateModalOpen(false);
       refresh();
       notifications.show({ title: "Mailbox created", message: "The workspace mailbox is ready." });
     },
@@ -197,33 +199,14 @@ export function MailboxesPage() {
   const mailboxes = query.data;
   return (
     <Stack gap="xl">
-      <div>
-        <Text className="eyebrow">Administration</Text>
-        <Title order={2}>Mailboxes</Title>
-        <Text c="dimmed">Configure the workspace sending mailboxes and credentials.</Text>
-      </div>
-      <Card withBorder radius="lg">
-        <form onSubmit={form.onSubmit((values) => create.mutate(values))}>
-          <Stack>
-            <Title order={4}>Add mailbox</Title>
-            <TextInput label="From address" type="email" required {...form.getInputProps("fromAddress")} />
-            <TextInput label="Display name" {...form.getInputProps("displayName")} />
-            <Select
-              label="Provider"
-              data={[
-                { value: "smtp", label: "SMTP" },
-                { value: "mailgun", label: "Mailgun" },
-              ]}
-              required
-              {...form.getInputProps("provider")}
-            />
-            <CredentialFields form={form} passwordRequired />
-            <Button type="submit" loading={create.isPending} w="fit-content">
-              Create mailbox
-            </Button>
-          </Stack>
-        </form>
-      </Card>
+      <Group justify="space-between" align="end">
+        <div>
+          <Text className="eyebrow">Administration</Text>
+          <Title order={2}>Mailboxes</Title>
+          <Text c="dimmed">Configure the workspace sending mailboxes and credentials.</Text>
+        </div>
+        <Button onClick={() => setCreateModalOpen(true)}>Add Mailbox</Button>
+      </Group>
       <Card withBorder radius="lg">
         <Table.ScrollContainer minWidth={950}>
           <Table>
@@ -283,6 +266,27 @@ export function MailboxesPage() {
           </Stack>
         </Card>
       )}
+      <Modal opened={createModalOpen} onClose={() => setCreateModalOpen(false)} title="Add mailbox" centered size="lg">
+        <form onSubmit={form.onSubmit((values) => create.mutate(values))}>
+          <Stack>
+            <TextInput label="From address" type="email" required {...form.getInputProps("fromAddress")} />
+            <TextInput label="Display name" {...form.getInputProps("displayName")} />
+            <Select
+              label="Provider"
+              data={[
+                { value: "smtp", label: "SMTP" },
+                { value: "mailgun", label: "Mailgun" },
+              ]}
+              required
+              {...form.getInputProps("provider")}
+            />
+            <CredentialFields form={form} passwordRequired />
+            <Button type="submit" loading={create.isPending} w="fit-content">
+              Create mailbox
+            </Button>
+          </Stack>
+        </form>
+      </Modal>
       <Modal
         opened={credentialMailbox !== null}
         onClose={() => setCredentialMailbox(null)}
