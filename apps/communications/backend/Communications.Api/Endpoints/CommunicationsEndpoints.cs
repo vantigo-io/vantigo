@@ -292,9 +292,20 @@ internal static class CommunicationsEndpoints
         {
             var provider = CommunicationValidation.ProviderName(request.Provider);
             mailbox.Provider = provider;
-            if (mailbox.Credential is not null) db.MailboxProviderCredentials.Remove(mailbox.Credential);
+            // Replace the whole credential config object. The old row is deleted
+            // immediately so the insert of its successor (same unique MailboxId)
+            // cannot conflict within a single change-tracker save.
+            if (mailbox.Credential is not null)
+            {
+                db.Entry(mailbox.Credential).State = EntityState.Detached;
+                await db.MailboxProviderCredentials.Where(item => item.MailboxId == mailbox.Id).ExecuteDeleteAsync(cancellationToken);
+            }
             mailbox.Credential = null;
             AddCredential(mailbox, request.Smtp, request.Mailgun, provider, protector, DateTimeOffset.UtcNow);
+            // The new credential has a client-generated key, so it must be added
+            // explicitly: navigation fixup on a tracked mailbox would otherwise
+            // mark it Modified and issue an UPDATE for a row that does not exist.
+            if (mailbox.Credential is not null) db.MailboxProviderCredentials.Add(mailbox.Credential);
         }
         if (mailbox.IsDefault) await db.SharedMailboxes.Where(item => item.Id != id && item.IsDefault).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);

@@ -186,6 +186,57 @@ public sealed class MailboxesAndMessagesTests(CommunicationsApiFactory factory)
         return client.SendAsync(request);
     }
 
+    [Fact]
+    public async Task Mailbox_credentials_can_be_added_and_replaced()
+    {
+        await factory.ResetMailboxStateAsync();
+        try
+        {
+            using var owner = await factory.CreateAuthenticatedClientAsync();
+            var created = await owner.PostAsJsonAsync("/api/v1/mailboxes", new
+            {
+                fromAddress = "credential-replace@integration.test",
+                provider = "smtp",
+                smtp = new { host = "smtp.example.test", port = 587, useSsl = false, username = "user", password = "secret" },
+            });
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            var mailbox = (await created.Content.ReadFromJsonAsync<MailboxResponseModel>())!;
+            Assert.True(mailbox.HasCredentials);
+
+            // Replace the whole credential config with a different provider.
+            var replaced = await owner.PutAsJsonAsync("/api/v1/mailboxes/" + mailbox.Id, new
+            {
+                provider = "mailgun",
+                mailgun = new { domain = "mg.example.test", region = "eu", apiKey = "key-123" },
+            });
+            Assert.Equal(HttpStatusCode.OK, replaced.StatusCode);
+            var updated = (await replaced.Content.ReadFromJsonAsync<MailboxResponseModel>())!;
+            Assert.Equal("mailgun", updated.Provider);
+            Assert.True(updated.HasCredentials);
+            Assert.Equal("mg.example.test", updated.Settings!.Domain);
+
+            // Also from credential-less state (bootstrap mailbox) to mailgun.
+            var bootstrap = (await owner.GetFromJsonAsync<IReadOnlyList<MailboxResponseModel>>("/api/v1/mailboxes"))!
+                .Single(item => item.Id != mailbox.Id);
+            Assert.False(bootstrap.HasCredentials);
+            var upgraded = await owner.PutAsJsonAsync("/api/v1/mailboxes/" + bootstrap.Id, new
+            {
+                provider = "mailgun",
+                mailgun = new { domain = "mg2.example.test", region = "us", apiKey = "key-456" },
+            });
+            Assert.Equal(HttpStatusCode.OK, upgraded.StatusCode);
+            Assert.True((await upgraded.Content.ReadFromJsonAsync<MailboxResponseModel>())!.HasCredentials);
+
+            // Restore bootstrap mailbox to credential-less smtp for other tests.
+            var restore = await owner.PutAsJsonAsync("/api/v1/mailboxes/" + bootstrap.Id, new { provider = "smtp" });
+            Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
+        }
+        finally
+        {
+            await factory.ResetMailboxStateAsync();
+        }
+    }
+
     private static object ValidPayload(Guid mailboxId) => new
     {
         subject = "mailbox test",
