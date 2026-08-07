@@ -10,6 +10,16 @@ const htmlAsText = (html: string) => {
   element.innerHTML = html;
   return element.textContent || "";
 };
+const eventDescription = (dataJson: string | null) => {
+  if (!dataJson) return "Status recorded by the service.";
+  try {
+    const parsed = JSON.parse(dataJson) as { error?: string };
+    if (parsed && typeof parsed.error === "string" && parsed.error) return parsed.error;
+  } catch {
+    // Fall through to the raw payload.
+  }
+  return dataJson;
+};
 function DetailPage() {
   const { messageId } = Route.useParams();
   const message = useQuery(messageQueryOptions(messageId));
@@ -70,6 +80,11 @@ function DetailPage() {
                   <Text size="xs" c="dimmed">
                     {delivery.recipientType}
                   </Text>
+                  {delivery.lastError && (
+                    <Text size="xs" c="red">
+                      {delivery.lastError}
+                    </Text>
+                  )}
                 </div>
                 <Badge color={statusColor(delivery.status)} variant="light">
                   {statusLabel(delivery.status)}
@@ -124,7 +139,7 @@ function DetailPage() {
                 }
               >
                 <Text size="sm" c="dimmed">
-                  {e.dataJson || "Status recorded by the service."}
+                  {eventDescription(e.dataJson)}
                 </Text>
               </Timeline.Item>
             ))}

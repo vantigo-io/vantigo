@@ -399,7 +399,7 @@ internal static class CommunicationsEndpoints
                 MailboxId = mailbox.Id,
                 Provider = provider,
                 SettingsJson = JsonSerializer.Serialize(new MailgunProviderSettings(mailgun.Domain!.Trim(), mailgun.Region!.Trim().ToLowerInvariant()), SmtpDeliveryProvider.JsonOptions),
-                SecretCiphertext = protector.Protect(mailgun.ApiKey!),
+                SecretCiphertext = protector.Protect(mailgun.ApiKey!.Trim()),
                 CreatedAt = now,
             };
         }

@@ -79,6 +79,8 @@ public sealed class OutboxWorkerTests(CommunicationsApiFactory factory)
             var saved = await db.RecipientDeliveries.SingleAsync(item => item.MessageId == message.Id);
             Assert.Equal("submission_failed", saved.Status);
             Assert.Equal("failed", await db.OutboxJobs.Where(item => item.MessageId == message.Id).Select(item => item.Status).SingleAsync());
+            var failureEvent = await db.MessageEvents.SingleAsync(item => item.MessageId == message.Id && item.EventType == "submission_failed");
+            Assert.Contains("fake SMTP failure", failureEvent.DataJson);
         }
         finally
         {

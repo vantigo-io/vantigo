@@ -167,6 +167,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
                 DeliveryId = delivery.Id,
                 EventType = terminal ? "submission_failed" : "retrying",
                 OccurredAt = DateTimeOffset.UtcNow,
+                DataJson = System.Text.Json.JsonSerializer.Serialize(new { error = current.LastError }),
             });
         }
         await db.SaveChangesAsync(cancellationToken);
