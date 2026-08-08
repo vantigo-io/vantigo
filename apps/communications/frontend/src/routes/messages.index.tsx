@@ -7,6 +7,7 @@ import {
   Loader,
   Pagination,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
@@ -18,15 +19,20 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { messagesQueryOptions } from "../api/messages";
 import { statusColor, statusLabel } from "../lib/status";
 export const Route = createFileRoute("/messages/")({
-  validateSearch: (s: Record<string, unknown>) => ({ page: Math.max(1, Number(s.page) || 1) }),
+  validateSearch: (s: Record<string, unknown>): { page: number; archived?: boolean } => ({
+    page: Math.max(1, Number(s.page) || 1),
+    archived: s.archived === true || s.archived === "true" || undefined,
+  }),
   loaderDeps: ({ search }) => search,
-  loader: ({ context: { queryClient }, deps: { page } }) => queryClient.ensureQueryData(messagesQueryOptions(page)),
+  loader: ({ context: { queryClient }, deps: { page, archived } }) =>
+    queryClient.ensureQueryData(messagesQueryOptions(page, 20, undefined, archived ?? false)),
   component: MessagesPage,
 });
 export function MessagesPage() {
-  const { page } = Route.useSearch();
+  const { page, archived } = Route.useSearch();
   const navigate = Route.useNavigate();
-  const q = useQuery(messagesQueryOptions(page));
+  const includeArchived = archived ?? false;
+  const q = useQuery(messagesQueryOptions(page, 20, undefined, includeArchived));
   return (
     <Stack gap="xl">
       <Group justify="space-between" align="end">
@@ -42,13 +48,20 @@ export function MessagesPage() {
         )}
       </Group>
       <Card withBorder radius="lg" padding="lg">
-        <TextInput
-          placeholder="Search history"
-          leftSection={<IconSearch size={16} />}
-          mb="lg"
-          disabled
-          aria-label="Search history (coming soon)"
-        />
+        <Group mb="lg" align="center" gap="md">
+          <TextInput
+            placeholder="Search history"
+            leftSection={<IconSearch size={16} />}
+            disabled
+            aria-label="Search history (coming soon)"
+            style={{ flex: 1 }}
+          />
+          <Switch
+            label="Show archived"
+            checked={includeArchived}
+            onChange={(event) => navigate({ search: { page: 1, archived: event.currentTarget.checked || undefined } })}
+          />
+        </Group>
         {q.isError && (
           <Alert color="red" icon={<IconAlertCircle size={16} />} title="Could not load messages">
             {q.error.message}
@@ -85,11 +98,18 @@ export function MessagesPage() {
                   </Table.Thead>
                   <Table.Tbody>
                     {q.data.data.map((m) => (
-                      <Table.Tr key={m.id}>
+                      <Table.Tr key={m.id} opacity={m.archivedAt ? 0.6 : 1}>
                         <Table.Td>
-                          <Link className="message-link" to="/messages/$messageId" params={{ messageId: m.id }}>
-                            {m.subject || `Message ${m.id}`}
-                          </Link>
+                          <Group gap="xs" wrap="nowrap">
+                            <Link className="message-link" to="/messages/$messageId" params={{ messageId: m.id }}>
+                              {m.subject || `Message ${m.id}`}
+                            </Link>
+                            {m.archivedAt && (
+                              <Badge size="xs" color="gray" variant="light">
+                                Archived
+                              </Badge>
+                            )}
+                          </Group>
                         </Table.Td>
                         <Table.Td>{m.recipientCount}</Table.Td>
                         <Table.Td>
@@ -112,7 +132,7 @@ export function MessagesPage() {
                   <Pagination
                     total={q.data.pagination.totalPages}
                     value={page}
-                    onChange={(p) => navigate({ search: { page: p } })}
+                    onChange={(p) => navigate({ search: { page: p, archived: includeArchived || undefined } })}
                   />
                 </Group>
               )}

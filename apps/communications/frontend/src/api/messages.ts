@@ -25,6 +25,7 @@ export interface MessageListItem {
   recipientCount: number;
   status: MessageStatus;
   source: string | null;
+  archivedAt: string | null;
   mailbox: MailboxSummary | null;
 }
 export interface MailboxSummary {
@@ -57,6 +58,7 @@ export interface MessageDetail {
   htmlBody: string | null;
   createdAt: string;
   source: string | null;
+  archivedAt: string | null;
   deliveries: Delivery[];
   externalLinks: ExternalLink[];
   mailbox: MailboxSummary | null;
@@ -80,12 +82,12 @@ export interface Page<T> {
   data: T[];
   pagination: Pagination;
 }
-export const messagesQueryOptions = (page: number, pageSize = 20, mailboxId?: string) =>
+export const messagesQueryOptions = (page: number, pageSize = 20, mailboxId?: string, includeArchived = false) =>
   queryOptions({
-    queryKey: ["messages", { page, pageSize, mailboxId }],
+    queryKey: ["messages", { page, pageSize, mailboxId, includeArchived }],
     queryFn: ({ signal }) =>
       request<Page<MessageListItem>>(
-        `/api/v1/messages?page=${page}&pageSize=${pageSize}${mailboxId ? `&mailboxId=${encodeURIComponent(mailboxId)}` : ""}`,
+        `/api/v1/messages?page=${page}&pageSize=${pageSize}${mailboxId ? `&mailboxId=${encodeURIComponent(mailboxId)}` : ""}${includeArchived ? "&includeArchived=true" : ""}`,
         { signal },
       ),
     placeholderData: keepPreviousData,
@@ -110,3 +112,20 @@ export const createMessage = (body: CreateMessageRequest, idempotencyKey: string
     headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(body),
   });
+export type ResendScope = "failed" | "all";
+export interface ResendMessageResponse {
+  messageId: string;
+  status: MessageStatus;
+  scope: ResendScope;
+  requeuedRecipientCount: number;
+}
+export const resendMessage = (id: string, scope: ResendScope) =>
+  request<ResendMessageResponse>(`/api/v1/messages/${encodeURIComponent(id)}/resend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope }),
+  });
+export const archiveMessage = (id: string) =>
+  request<MessageDetail>(`/api/v1/messages/${encodeURIComponent(id)}/archive`, { method: "POST" });
+export const unarchiveMessage = (id: string) =>
+  request<MessageDetail>(`/api/v1/messages/${encodeURIComponent(id)}/unarchive`, { method: "POST" });

@@ -24,6 +24,14 @@ internal static class CommunicationsEndpoints
         business.MapGet("/messages", ListMessages).WithSummary("List email messages");
         business.MapGet("/messages/{id:guid}", GetMessage).WithSummary("Get an email message");
         business.MapGet("/messages/{id:guid}/events", ListEvents).WithSummary("List append-only message events");
+        business.MapPost("/messages/{id:guid}/resend", ResendMessage).RequireAntiforgery()
+            .WithSummary("Re-queue an email message for sending")
+            .WithDescription("Scope 'failed' re-queues only submission_failed recipients; scope 'all' re-queues every recipient.");
+        business.MapPost("/messages/{id:guid}/archive", ArchiveMessage).RequireAntiforgery()
+            .WithSummary("Archive an email message")
+            .WithDescription("Soft-deletes the message from the default list view and cancels any pending send.");
+        business.MapPost("/messages/{id:guid}/unarchive", UnarchiveMessage).RequireAntiforgery()
+            .WithSummary("Unarchive an email message");
 
         // Creating with a service key is intentionally not protected by the cookie
         // policy. The handler below requires either the key or a Business session.
@@ -56,16 +64,19 @@ internal static class CommunicationsEndpoints
         return endpoints;
     }
 
-    private static async Task<IResult> ListMessages(int? page, int? pageSize, Guid? mailboxId, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> ListMessages(int? page, int? pageSize, Guid? mailboxId, bool? includeArchived, CommunicationsDbContext db, CancellationToken cancellationToken)
     {
         var (currentPage, size) = PageValues(page, pageSize);
-        var query = db.EmailMessages.AsNoTracking().Where(message => !mailboxId.HasValue || message.MailboxId == mailboxId.Value);
+        var query = db.EmailMessages.AsNoTracking()
+            .Where(message => !mailboxId.HasValue || message.MailboxId == mailboxId.Value)
+            .Where(message => includeArchived == true || message.ArchivedAt == null);
         var total = await query.CountAsync(cancellationToken);
         var items = await query.OrderByDescending(message => message.CreatedAt)
             .Skip((currentPage - 1) * size).Take(size)
                 .Select(message => new MessageListItem(message.Id, message.Subject, message.CreatedAt,
                     message.Deliveries.Count, message.Deliveries.All(delivery => delivery.Status == "relay_accepted") ? "relay_accepted" :
                         message.Deliveries.Any(delivery => delivery.Status == "submission_failed") ? "submission_failed" : "queued", message.Source,
+                    message.ArchivedAt,
                     new MailboxSummaryResponse(message.Mailbox!.Id, message.Mailbox.FromAddress, message.Mailbox.DisplayName)))
             .ToListAsync(cancellationToken);
         return TypedResults.Ok(PaginatedResponse<MessageListItem>.Create(items, currentPage, size, total));
@@ -89,6 +100,92 @@ internal static class CommunicationsEndpoints
             .Select(messageEvent => new MessageEventResponse(messageEvent.Id, messageEvent.DeliveryId, messageEvent.EventType, messageEvent.OccurredAt, messageEvent.DataJson))
             .ToListAsync(cancellationToken);
         return TypedResults.Ok(PaginatedResponse<MessageEventResponse>.Create(items, currentPage, size, total));
+    }
+
+    private static async Task<IResult> ResendMessage(Guid id, ResendMessageRequest? request, CommunicationsDbContext db, CancellationToken cancellationToken)
+    {
+        var scope = request?.Scope?.Trim().ToLowerInvariant() ?? "failed";
+        if (scope is not ("failed" or "all"))
+            return Error(StatusCodes.Status400BadRequest, "invalid_scope", "Scope must be 'failed' or 'all'.");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var message = await db.EmailMessages.Include(item => item.Deliveries).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (message is null) return TypedResults.NotFound();
+        if (message.ArchivedAt is not null)
+            return Error(StatusCodes.Status409Conflict, "message_archived", "An archived message cannot be resent. Unarchive it first.");
+        var activeJob = await db.OutboxJobs.AnyAsync(job => job.MessageId == id &&
+            (job.Status == "pending" || job.Status == "retry" || job.Status == "processing"), cancellationToken);
+        if (activeJob)
+            return Error(StatusCodes.Status409Conflict, "resend_in_progress", "A send for this message is already pending or in progress.");
+
+        var targets = scope == "failed"
+            ? message.Deliveries.Where(delivery => delivery.Status == "submission_failed").ToArray()
+            : message.Deliveries.Where(delivery => delivery.Status != "suppressed").ToArray();
+        if (targets.Length == 0)
+            return Error(StatusCodes.Status400BadRequest, "no_deliveries_to_resend",
+                scope == "failed" ? "This message has no failed recipients to resend." : "This message has no recipients to resend.");
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var delivery in targets)
+        {
+            delivery.Status = "queued";
+            delivery.LastError = null;
+            delivery.AcceptedAt = null;
+        }
+        db.MessageEvents.Add(new MessageEvent
+        {
+            Id = Guid.NewGuid(),
+            MessageId = message.Id,
+            EventType = "resend_requested",
+            OccurredAt = now,
+            DataJson = JsonSerializer.Serialize(new { scope, recipientCount = targets.Length }),
+        });
+        db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, NextAttemptAt = now, CreatedAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return TypedResults.Ok(new ResendMessageResponse(message.Id, "queued", scope, targets.Length));
+    }
+
+    private static async Task<IResult> ArchiveMessage(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var message = await db.EmailMessages.Include(item => item.Mailbox).Include(item => item.Deliveries).Include(item => item.ExternalLinks)
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (message is null) return TypedResults.NotFound();
+        if (message.ArchivedAt is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+            return TypedResults.Ok(ToDetail(message));
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        message.ArchivedAt = now;
+        // Cancel sends that have not been claimed yet. Jobs in the processing
+        // state hold a lease and are mid-send, so they are left untouched.
+        await db.OutboxJobs.Where(job => job.MessageId == id && (job.Status == "pending" || job.Status == "retry"))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(job => job.Status, "cancelled")
+                .SetProperty(job => job.CompletedAt, now), cancellationToken);
+        foreach (var delivery in message.Deliveries.Where(delivery => delivery.Status is "queued" or "retrying"))
+            delivery.Status = "cancelled";
+        db.MessageEvents.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, EventType = "archived", OccurredAt = now });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return TypedResults.Ok(ToDetail(message));
+    }
+
+    private static async Task<IResult> UnarchiveMessage(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
+    {
+        var message = await db.EmailMessages.Include(item => item.Mailbox).Include(item => item.Deliveries).Include(item => item.ExternalLinks)
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (message is null) return TypedResults.NotFound();
+        if (message.ArchivedAt is not null)
+        {
+            message.ArchivedAt = null;
+            db.MessageEvents.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, EventType = "unarchived", OccurredAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        return TypedResults.Ok(ToDetail(message));
     }
 
     private static async Task<IResult> CreateMessage(
@@ -371,7 +468,7 @@ internal static class CommunicationsEndpoints
     }
 
     private static MessageDetailResponse ToDetail(EmailMessage message) => new(
-        message.Id, message.MailboxId, message.Subject, message.TextBody, message.HtmlBody, message.CreatedAt, message.Source,
+        message.Id, message.MailboxId, message.Subject, message.TextBody, message.HtmlBody, message.CreatedAt, message.Source, message.ArchivedAt,
         message.Deliveries.OrderBy(delivery => delivery.CreatedAt).Select(delivery => new DeliveryResponse(delivery.Id, delivery.EmailAddress, delivery.RecipientType, delivery.Status, delivery.Attempts, delivery.LastError, delivery.AcceptedAt)).ToArray(),
         message.ExternalLinks.Select(link => new ExternalEntityLinkResponse(link.Id, link.SourceSystem, link.SourceInstance, link.EntityType, link.ExternalEntityId, link.DisplayLabel)).ToArray(),
         new MailboxSummaryResponse(message.Mailbox!.Id, message.Mailbox.FromAddress, message.Mailbox.DisplayName));

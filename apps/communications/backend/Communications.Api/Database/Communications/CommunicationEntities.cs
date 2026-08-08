@@ -33,6 +33,7 @@ public sealed class EmailMessage
     public DateTimeOffset CreatedAt { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public string? Source { get; set; }
+    public DateTimeOffset? ArchivedAt { get; set; }
 
     public SharedMailbox? Mailbox { get; set; }
     public ICollection<RecipientDelivery> Deliveries { get; set; } = [];

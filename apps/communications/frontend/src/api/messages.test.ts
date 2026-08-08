@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMessage, messageEventsQueryOptions, messagesQueryOptions } from "./messages";
+import {
+  archiveMessage,
+  createMessage,
+  messageEventsQueryOptions,
+  messagesQueryOptions,
+  resendMessage,
+  unarchiveMessage,
+} from "./messages";
 import { clearCsrfToken } from "./request";
 
 describe("communications message API mapping", () => {
@@ -57,6 +64,62 @@ describe("communications message API mapping", () => {
     expect(init).toEqual(expect.objectContaining({ method: "POST", credentials: "include" }));
     expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("key-8");
     expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("csrf-token");
+  });
+
+  it("includes archived messages when requested", async () => {
+    const response = {
+      data: [],
+      pagination: { page: 1, pageSize: 20, totalCount: 0, totalPages: 0, hasNextPage: false, hasPreviousPage: false },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 })));
+    const queryFn = messagesQueryOptions(1, 20, undefined, true).queryFn;
+    if (!queryFn) throw new Error("messages query function is required");
+    await queryFn({ signal: new AbortController().signal } as never);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/messages?page=1&pageSize=20&includeArchived=true",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("resends a message with the chosen scope", async () => {
+    clearCsrfToken();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ token: "csrf-token-3" }), { status: 200 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ messageId: "m-10", status: "queued", scope: "failed", requeuedRecipientCount: 2 }),
+            { status: 200 },
+          ),
+        ),
+    );
+    const result = await resendMessage("m-10", "failed");
+    expect(result.requeuedRecipientCount).toBe(2);
+    const call = vi.mocked(fetch).mock.calls.at(-1);
+    expect(call?.[0]).toBe("/api/v1/messages/m-10/resend");
+    expect(call?.[1]).toEqual(expect.objectContaining({ method: "POST", body: JSON.stringify({ scope: "failed" }) }));
+    expect(new Headers(call?.[1]?.headers).get("X-XSRF-TOKEN")).toBe("csrf-token-3");
+  });
+
+  it("archives and unarchives a message", async () => {
+    clearCsrfToken();
+    const detail = { id: "m-11", archivedAt: "2026-01-01T00:00:00Z" };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ token: "csrf-token-4" }), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify(detail), { status: 200 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ...detail, archivedAt: null }), { status: 200 })),
+    );
+    const archived = await archiveMessage("m-11");
+    expect(archived.archivedAt).toBe("2026-01-01T00:00:00Z");
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/v1/messages/m-11/archive");
+    const restored = await unarchiveMessage("m-11");
+    expect(restored.archivedAt).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/v1/messages/m-11/unarchive");
   });
 
   it("maps structured API errors", async () => {

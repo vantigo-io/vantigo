@@ -174,14 +174,16 @@ public sealed class ProviderDispatchingEmailSender(IEnumerable<IEmailDeliveryPro
 
 public static class EmailEnvelopeFactory
 {
-    public static EmailEnvelope Create(EmailMessage message, SharedMailbox mailbox) => new(
+    public static EmailEnvelope Create(EmailMessage message, SharedMailbox mailbox) => Create(message, mailbox, message.Deliveries);
+
+    public static EmailEnvelope Create(EmailMessage message, SharedMailbox mailbox, IEnumerable<RecipientDelivery> deliveries) => new(
         message.Id,
         mailbox.FromAddress,
         mailbox.DisplayName,
         message.Subject,
         message.TextBody,
         message.HtmlBody,
-        message.Deliveries.Where(delivery => delivery.RecipientType == "to").Select(delivery => delivery.EmailAddress).ToArray(),
-        message.Deliveries.Where(delivery => delivery.RecipientType == "cc").Select(delivery => delivery.EmailAddress).ToArray(),
-        message.Deliveries.Where(delivery => delivery.RecipientType == "bcc").Select(delivery => delivery.EmailAddress).ToArray());
+        deliveries.Where(delivery => delivery.RecipientType == "to").Select(delivery => delivery.EmailAddress).ToArray(),
+        deliveries.Where(delivery => delivery.RecipientType == "cc").Select(delivery => delivery.EmailAddress).ToArray(),
+        deliveries.Where(delivery => delivery.RecipientType == "bcc").Select(delivery => delivery.EmailAddress).ToArray());
 }

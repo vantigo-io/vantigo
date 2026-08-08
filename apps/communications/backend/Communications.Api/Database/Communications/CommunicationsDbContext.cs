@@ -48,6 +48,7 @@ public sealed class CommunicationsDbContext(DbContextOptions<CommunicationsDbCon
             entity.Property(message => message.Source).HasMaxLength(100);
             entity.HasOne(message => message.Mailbox).WithMany().HasForeignKey(message => message.MailboxId).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(message => message.CreatedAt);
+            entity.HasIndex(message => message.ArchivedAt);
         });
         modelBuilder.Entity<RecipientDelivery>(entity =>
         {

@@ -57,6 +57,7 @@ public sealed record MessageListItem(
     int RecipientCount,
     string Status,
     string? Source,
+    DateTimeOffset? ArchivedAt,
     MailboxSummaryResponse Mailbox);
 
 public sealed record DeliveryResponse(
@@ -84,6 +85,7 @@ public sealed record MessageDetailResponse(
     string? HtmlBody,
     DateTimeOffset CreatedAt,
     string? Source,
+    DateTimeOffset? ArchivedAt,
     IReadOnlyList<DeliveryResponse> Deliveries,
     IReadOnlyList<ExternalEntityLinkResponse> ExternalLinks,
     MailboxSummaryResponse Mailbox);
@@ -98,6 +100,10 @@ public sealed record MessageEventResponse(
 public sealed record SuppressionResponse(Guid Id, string EmailAddress, string? Reason, DateTimeOffset CreatedAt);
 
 public sealed record EmailCreateResponse(Guid MessageId, string Status, string IdempotencyKey);
+
+public sealed record ResendMessageRequest(string? Scope);
+
+public sealed record ResendMessageResponse(Guid MessageId, string Status, string Scope, int RequeuedRecipientCount);
 
 internal static class CommunicationValidation
 {

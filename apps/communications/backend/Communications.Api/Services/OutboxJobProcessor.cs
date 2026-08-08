@@ -6,6 +6,11 @@ namespace Vantigo.Communications.Api.Services;
 
 public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender sender, IConfiguration configuration)
 {
+    // Deliveries in a terminal or excluded state are never re-sent by a later
+    // job for the same message (e.g. a "failed recipients only" resend).
+    private static bool IsSendable(RecipientDelivery delivery) =>
+        delivery.Status is not ("relay_accepted" or "cancelled" or "suppressed");
+
     public Task<bool> ProcessOneAsync(CancellationToken cancellationToken) => ProcessOneAsync(null, cancellationToken);
 
     public async Task<bool> ProcessOneAsync(Guid? onlyMessageId, CancellationToken cancellationToken)
@@ -43,7 +48,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
                 db.ChangeTracker.Clear();
                 job = await db.OutboxJobs.SingleAsync(item => item.Id == candidate.Id, cancellationToken);
                 var deliveries = await db.RecipientDeliveries.Where(item => item.MessageId == job.MessageId).ToListAsync(cancellationToken);
-                foreach (var delivery in deliveries)
+                foreach (var delivery in deliveries.Where(IsSendable))
                 {
                     delivery.Attempts++;
                     delivery.Status = "sending";
@@ -65,10 +70,17 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
                 .SingleAsync(item => item.Id == job.MessageId, cancellationToken);
             if (message.Mailbox is null) throw new InvalidOperationException("The message mailbox no longer exists.");
 
+            var sendable = message.Deliveries.Where(IsSendable).ToArray();
+            if (sendable.Length == 0)
+            {
+                await CompleteWithoutSendingAsync(job.Id, leaseId, cancellationToken);
+                return true;
+            }
+
             // Suppression is deliberately checked after claiming and immediately
             // before sender invocation. The all-or-nothing policy prevents a mixed
             // recipient submission when a suppression was added while queued.
-            var normalizedAddresses = message.Deliveries.Select(delivery => EmailSuppression.Normalize(delivery.EmailAddress)).ToArray();
+            var normalizedAddresses = sendable.Select(delivery => EmailSuppression.Normalize(delivery.EmailAddress)).ToArray();
             var suppressed = await db.Suppressions.AsNoTracking()
                 .Where(item => normalizedAddresses.Contains(item.NormalizedEmailAddress))
                 .Select(item => item.NormalizedEmailAddress)
@@ -79,7 +91,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
                 return true;
             }
 
-            await sender.SendAsync(EmailEnvelopeFactory.Create(message, message.Mailbox), message.Mailbox, cancellationToken);
+            await sender.SendAsync(EmailEnvelopeFactory.Create(message, message.Mailbox, sendable), message.Mailbox, cancellationToken);
             var now = DateTimeOffset.UtcNow;
             await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
             var current = await db.OutboxJobs.SingleAsync(item => item.Id == job.Id, cancellationToken);
@@ -88,7 +100,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
             current.CompletedAt = now;
             current.LeaseId = null;
             current.LeaseUntil = null;
-            foreach (var delivery in message.Deliveries)
+            foreach (var delivery in sendable)
             {
                 delivery.Status = "relay_accepted";
                 delivery.LastError = null;
@@ -114,6 +126,18 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
         }
     }
 
+    private async Task CompleteWithoutSendingAsync(Guid jobId, string leaseId, CancellationToken cancellationToken)
+    {
+        db.ChangeTracker.Clear();
+        var current = await db.OutboxJobs.SingleOrDefaultAsync(item => item.Id == jobId, cancellationToken);
+        if (current is null || current.LeaseId != leaseId) return;
+        current.Status = "completed";
+        current.CompletedAt = DateTimeOffset.UtcNow;
+        current.LeaseId = null;
+        current.LeaseUntil = null;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task CancelSuppressedAsync(Guid jobId, string leaseId, EmailMessage message, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();
@@ -126,7 +150,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
         current.CompletedAt = now;
         current.LeaseId = null;
         current.LeaseUntil = null;
-        foreach (var delivery in deliveries)
+        foreach (var delivery in deliveries.Where(IsSendable))
         {
             delivery.Status = "suppressed";
             delivery.LastError = null;
@@ -156,7 +180,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
         current.LeaseId = null;
         current.LeaseUntil = null;
         var deliveries = await db.RecipientDeliveries.Where(delivery => delivery.MessageId == current.MessageId).ToListAsync(cancellationToken);
-        foreach (var delivery in deliveries)
+        foreach (var delivery in deliveries.Where(IsSendable))
         {
             delivery.Status = terminal ? "submission_failed" : "retrying";
             delivery.LastError = current.LastError;
