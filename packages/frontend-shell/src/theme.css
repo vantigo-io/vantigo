@@ -1,0 +1,14 @@
+/*
+ * Global Vantigo branding shared by every frontend app.
+ * Import after the Mantine core styles: `import "@vantigo/frontend-shell/theme.css";`
+ */
+:root {
+  --vantigo-body-bg: #f7f8fc;
+  --vantigo-text: #182033;
+}
+
+body {
+  margin: 0;
+  background: var(--vantigo-body-bg);
+  color: var(--vantigo-text);
+}

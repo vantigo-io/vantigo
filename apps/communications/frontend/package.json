@@ -23,6 +23,7 @@
     "@tiptap/pm": "catalog:",
     "@tiptap/react": "catalog:",
     "@tiptap/starter-kit": "catalog:",
+    "@vantigo/frontend-shell": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

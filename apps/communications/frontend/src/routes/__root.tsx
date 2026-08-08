@@ -1,6 +1,5 @@
-import { AppShell, Avatar, Burger, Divider, Group, Menu, NavLink, Text, Title, UnstyledButton } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
-import { IconAdjustments, IconArrowUpRight, IconInbox, IconLogout, IconSelector } from "@tabler/icons-react";
+import { NavLink, Text } from "@mantine/core";
+import { IconAdjustments, IconInbox } from "@tabler/icons-react";
 import type { QueryClient } from "@tanstack/react-query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -11,13 +10,13 @@ import {
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
+import { AppShellLayout } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import { fetchBootstrapStatus, fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { setUnauthorizedHandler } from "../api/request";
+import { shellApps } from "../lib/shell-apps";
 
-const customersUrl = import.meta.env.VITE_CUSTOMERS_URL || "http://localhost:10011";
 function Shell() {
-  const [opened, { toggle, close }] = useDisclosure();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -32,117 +31,70 @@ function Shell() {
   }, [navigate, queryClient]);
   if (pathname === "/sign-in" || pathname === "/setup") return <Outlet />;
   return (
-    <AppShell
-      header={{ height: 72 }}
-      navbar={{ width: 260, breakpoint: "sm", collapsed: { mobile: !opened } }}
-      padding="xl"
+    <AppShellLayout
+      moduleName="Communications"
+      apps={shellApps}
+      user={user}
+      onSignOut={() =>
+        void signOut().then(() => {
+          queryClient.setQueryData(sessionQueryKey, null);
+          void navigate({ to: "/sign-in" });
+        })
+      }
+      nav={(closeMobileNav) => (
+        <>
+          <Text tt="uppercase" size="xs" fw={700} c="dimmed" px="sm" mb="xs">
+            Workspace
+          </Text>
+          <NavLink
+            component={Link}
+            to="/messages"
+            label="Messages"
+            leftSection={<IconInbox size={18} />}
+            active={pathname.startsWith("/messages") && pathname !== "/messages/compose"}
+            onClick={closeMobileNav}
+          />
+          <NavLink
+            component={Link}
+            to="/messages/compose"
+            label="Compose"
+            leftSection={<IconAdjustments size={18} />}
+            active={pathname === "/messages/compose"}
+            onClick={closeMobileNav}
+          />
+          {user?.roles.includes("Owner") && (
+            <>
+              <NavLink
+                component={Link}
+                to="/admin/mailboxes"
+                label="Mailboxes"
+                leftSection={<IconInbox size={18} />}
+                active={pathname.startsWith("/admin/mailboxes")}
+                onClick={closeMobileNav}
+              />
+              <NavLink
+                component={Link}
+                to="/admin/suppressions"
+                label="Suppressions"
+                leftSection={<IconAdjustments size={18} />}
+                active={pathname.startsWith("/admin/suppressions")}
+                onClick={closeMobileNav}
+              />
+            </>
+          )}
+          <NavLink
+            component={Link}
+            to="/settings"
+            label="Service API"
+            leftSection={<IconAdjustments size={18} />}
+            active={pathname.startsWith("/settings")}
+            onClick={closeMobileNav}
+          />
+        </>
+      )}
     >
-      <AppShell.Header>
-        <Group h="100%" px="xl">
-          <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-          <div className="brand-mark">✦</div>
-          <Divider orientation="vertical" my="lg" />
-          <div>
-            <Title order={4}>Communications</Title>
-            <Text size="xs" c="dimmed">
-              Message operations
-            </Text>
-          </div>
-          <div style={{ marginLeft: "auto" }}>
-            <Menu withArrow>
-              <Menu.Target>
-                <UnstyledButton>
-                  <Group gap="xs">
-                    <Avatar size="sm" color="indigo">
-                      {user?.displayName?.slice(0, 1) || "?"}
-                    </Avatar>
-                    <Text visibleFrom="sm" size="sm">
-                      {user?.displayName || "Workspace"}
-                    </Text>
-                    <IconSelector size={15} />
-                  </Group>
-                </UnstyledButton>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item
-                  leftSection={<IconLogout size={15} />}
-                  onClick={() =>
-                    void signOut().then(() => {
-                      queryClient.setQueryData(sessionQueryKey, null);
-                      void navigate({ to: "/sign-in" });
-                    })
-                  }
-                >
-                  Sign out
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          </div>
-        </Group>
-      </AppShell.Header>
-      <AppShell.Navbar p="md">
-        <Text tt="uppercase" size="xs" fw={700} c="dimmed" px="sm" mb="xs">
-          Workspace
-        </Text>
-        <NavLink
-          component={Link}
-          to="/messages"
-          label="Messages"
-          leftSection={<IconInbox size={18} />}
-          active={pathname.startsWith("/messages") && pathname !== "/messages/compose"}
-          onClick={close}
-        />
-        <NavLink
-          component={Link}
-          to="/messages/compose"
-          label="Compose"
-          leftSection={<IconAdjustments size={18} />}
-          active={pathname === "/messages/compose"}
-          onClick={close}
-        />
-        {user?.roles.includes("Owner") && (
-          <>
-            <NavLink
-              component={Link}
-              to="/admin/mailboxes"
-              label="Mailboxes"
-              leftSection={<IconInbox size={18} />}
-              active={pathname.startsWith("/admin/mailboxes")}
-              onClick={close}
-            />
-            <NavLink
-              component={Link}
-              to="/admin/suppressions"
-              label="Suppressions"
-              leftSection={<IconAdjustments size={18} />}
-              active={pathname.startsWith("/admin/suppressions")}
-              onClick={close}
-            />
-          </>
-        )}
-        <NavLink
-          component={Link}
-          to="/settings"
-          label="Service API"
-          leftSection={<IconAdjustments size={18} />}
-          active={pathname.startsWith("/settings")}
-          onClick={close}
-        />
-        <AppShell.Section mt="auto">
-          <Divider mb="md" />
-          <Group p="sm">
-            <div className="app-icon">C</div>
-            <Text size="sm" fw={600}>
-              Communications
-            </Text>
-          </Group>
-          <NavLink component="a" href={customersUrl} label="Customers" rightSection={<IconArrowUpRight size={14} />} />
-        </AppShell.Section>
-      </AppShell.Navbar>
-      <AppShell.Main>
-        <Outlet />
-      </AppShell.Main>
-    </AppShell>
+      <Outlet />
+    </AppShellLayout>
   );
 }
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({

@@ -5,7 +5,8 @@
   "packageManager": "bun@1.3.14",
   "workspaces": {
     "packages": [
-      "apps/*/frontend"
+      "apps/*/frontend",
+      "packages/*"
     ],
     "catalog": {
       "@mantine/charts": "^9.4.2",

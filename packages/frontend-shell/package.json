@@ -1,0 +1,22 @@
+{
+  "name": "@vantigo/frontend-shell",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Shared application shell, theme and branding for Vantigo frontend apps.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme.css": "./src/theme.css"
+  },
+  "peerDependencies": {
+    "@mantine/core": "catalog:",
+    "@mantine/hooks": "catalog:",
+    "@mantine/spotlight": "catalog:",
+    "@tabler/icons-react": "catalog:",
+    "react": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "typescript": "catalog:"
+  }
+}

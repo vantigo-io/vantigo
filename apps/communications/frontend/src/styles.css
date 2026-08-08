@@ -1,49 +1,24 @@
-:root {
-  font-family: Georgia, "Times New Roman", serif;
-  color: #182033;
-  background: #f7f8fc;
-}
-body {
-  margin: 0;
-}
-button,
-input {
-  font-family: inherit;
-}
-.brand-mark,
-.app-icon,
+/* App-specific styles; shared branding lives in @vantigo/frontend-shell/theme.css. */
 .empty-icon {
   display: grid;
   place-items: center;
-  background: #4f46e5;
+  background: var(--mantine-color-vantigo-6);
   color: #fff;
   border-radius: 10px;
-  font-family: system-ui, sans-serif;
-}
-.brand-mark {
-  width: 30px;
-  height: 30px;
-}
-.app-icon {
-  width: 28px;
-  height: 28px;
-}
-.empty-icon {
   width: 44px;
   height: 44px;
   font-size: 22px;
 }
 .eyebrow {
-  font:
-    700 11px system-ui,
-    sans-serif;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6366f1;
+  color: var(--mantine-color-vantigo-5);
 }
 .message-link {
   font-weight: 700;
-  color: #27346b;
+  color: var(--mantine-color-vantigo-8);
   text-decoration: none;
 }
 .message-link:hover {
