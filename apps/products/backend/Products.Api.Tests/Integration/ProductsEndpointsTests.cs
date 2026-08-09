@@ -27,6 +27,7 @@ public sealed class ProductsEndpointsTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
         var created = await response.Content.ReadFromJsonAsync<Product>();
+        Assert.NotNull(created);
         Assert.True(created.Id > 0);
         Assert.Equal("Draft", created.Status);
         Assert.Equal("pcs", created.Unit);
@@ -60,6 +61,7 @@ public sealed class ProductsEndpointsTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<Product>();
 
+        Assert.NotNull(created);
         Assert.Equal(2, created.EffectivePrices.Count);
         Assert.Equal(499m, created.EffectivePrices.Single(price => price.Currency == "NOK").Amount);
         Assert.Equal(649m, created.EffectivePrices.Single(price => price.Currency == "SEK").Amount);
@@ -149,6 +151,7 @@ public sealed class ProductsEndpointsTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var updated = await response.Content.ReadFromJsonAsync<Product>();
+        Assert.NotNull(updated);
         Assert.Equal("Renamed", updated.Name);
         Assert.Equal("Service", updated.Type);
         Assert.Equal("hour", updated.Unit);
@@ -172,6 +175,7 @@ public sealed class ProductsEndpointsTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var updated = await response.Content.ReadFromJsonAsync<Product>();
+        Assert.NotNull(updated);
         Assert.Equal(newSku, updated.Sku);
     }
 
@@ -215,6 +219,7 @@ public sealed class ProductsEndpointsTests
         Assert.Equal(HttpStatusCode.NoContent, archive.StatusCode);
 
         var fetched = await _client.GetFromJsonAsync<Product>($"/api/v1/products/{created.Id}");
+        Assert.NotNull(fetched);
         Assert.Equal("Discontinued", fetched.Status);
 
         // Archiving is idempotent.
@@ -256,6 +261,7 @@ public sealed class ProductsEndpointsTests
         });
         Assert.Equal(HttpStatusCode.Created, add.StatusCode);
         var price = await add.Content.ReadFromJsonAsync<Price>();
+        Assert.NotNull(price);
         Assert.Equal("NOK", price.Currency);
 
         // A second open-ended NOK price would make resolution ambiguous.
@@ -408,7 +414,9 @@ public sealed class ProductsEndpointsTests
             vatRate = 0.25,
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<Product>();
+        var created = await response.Content.ReadFromJsonAsync<Product>();
+        Assert.NotNull(created);
+        return created;
     }
 
     private static object NewProduct(string name, string sku) => new
