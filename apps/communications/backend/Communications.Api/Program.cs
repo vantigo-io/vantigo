@@ -3,7 +3,6 @@ using Vantigo.Communications.Api.Database;
 using Vantigo.Communications.Api.Database.DevelopmentSeed;
 using Vantigo.Communications.Api.Endpoints;
 using Vantigo.Communications.Api.Endpoints.Auth;
-using Vantigo.Communications.Api.Infrastructure;
 using Vantigo.Communications.Api.Services;
 using Vantigo.Hosting;
 
@@ -79,7 +78,7 @@ return 0;
 
 static void AddApiServices(WebApplicationBuilder builder)
 {
-    builder.Services.AddCommunicationsOpenTelemetry();
+    builder.AddVantigoTelemetry("communications");
     builder.Services.AddCommunicationsApiVersioning();
     builder.Services.AddCommunicationsDatabases(builder.Configuration);
     builder.Services.AddSingleton<BootstrapSecretProvider>();

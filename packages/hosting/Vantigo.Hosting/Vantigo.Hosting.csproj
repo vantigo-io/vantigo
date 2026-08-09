@@ -3,11 +3,20 @@
   <PropertyGroup>
     <AssemblyName>Vantigo.Hosting</AssemblyName>
     <RootNamespace>Vantigo.Hosting</RootNamespace>
-    <Description>Shared ASP.NET Core hosting building blocks for Vantigo backends: base-path serving, SPA entry-point templating, and (soon) telemetry.</Description>
+    <Description>Shared ASP.NET Core hosting building blocks for Vantigo backends: base-path serving, SPA entry-point templating, and OpenTelemetry.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Npgsql.OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
   </ItemGroup>
 
 </Project>

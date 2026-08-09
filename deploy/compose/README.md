@@ -138,6 +138,23 @@ The support footer only appears when at least one support setting is
 configured. See the commented examples in `customers.env.example` and
 `communications.env.example`.
 
+## Observability
+
+Both applications ship with OpenTelemetry (traces, metrics and logs) built in.
+Telemetry is off by default; point the standard OTLP variables at your
+collector in `customers.env` / `communications.env` to enable it:
+
+```dotenv
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+# OTEL_EXPORTER_OTLP_PROTOCOL=grpc            # or http/protobuf (port 4318)
+# OTEL_EXPORTER_OTLP_HEADERS=x-api-key=secret # for authenticated collectors
+```
+
+All standard `OTEL_*` environment variables are honored. Services report as
+`vantigo-customers` and `vantigo-communications` with the release version and
+deployment environment attached. When no endpoint is configured, no exporter
+runs and nothing is logged about it.
+
 ## Production notes
 
 - Serve the applications behind a TLS-terminating reverse proxy on a single

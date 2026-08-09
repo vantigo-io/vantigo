@@ -4,7 +4,6 @@ using Vantigo.Customers.Api.Database.DevelopmentSeed;
 using Vantigo.Customers.Api.Endpoints;
 using Vantigo.Customers.Api.Endpoints.Auth;
 using Vantigo.Customers.Api.Endpoints.Lookup;
-using Vantigo.Customers.Api.Infrastructure;
 using Vantigo.Customers.Api.Services;
 using Vantigo.Hosting;
 
@@ -29,7 +28,7 @@ var configuresApi = commandLine.Command is CustomerApiCommand.Api or CustomerApi
 WorkforceOidcOptions? workforceOidc = null;
 if (configuresApi)
 {
-    builder.Services.AddCustomerOpenTelemetry();
+    builder.AddVantigoTelemetry("customers");
     builder.Services.AddCustomerApiVersioning();
     workforceOidc = WorkforceOidcOptions.Load(builder.Configuration, builder.Environment);
 
