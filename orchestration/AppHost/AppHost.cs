@@ -69,6 +69,32 @@ var communicationsFrontend = builder.AddViteApp("communications-frontend", "../.
     .WaitFor(communicationsApi)
     .WaitForCompletion(rootInstaller);
 
+// Products
+var productsDb = postgres.AddDatabase("products-db", "products");
+
+// Products lifecycle: database → migrate → seed → API.
+var productsMigrate = builder
+    .AddProject<Products_Api>("products-migrate", "migrate")
+    .WithReference(productsDb, connectionName: "Postgresql")
+    .WaitFor(productsDb);
+
+var productsSeed = builder
+    .AddProject<Products_Api>("products-seed", "seed")
+    .WithReference(productsDb, connectionName: "Postgresql")
+    .WaitForCompletion(productsMigrate);
+
+var productsApi = builder
+    .AddProject<Products_Api>("products-api", "api")
+    .WithOtlpExporter()
+    .WithReference(productsDb, connectionName: "Postgresql")
+    .WaitForCompletion(productsSeed);
+
+var productsFrontend = builder.AddViteApp("products-frontend", "../../apps/products/frontend")
+    .WithBun(install: false)
+    .WithReference(productsApi)
+    .WaitFor(productsApi)
+    .WaitForCompletion(rootInstaller);
+
 // Prepare Customers' server-side configuration and service discovery for its
 // future Communications client. Neither value is referenced by the Vite app.
 customersApi
@@ -79,6 +105,7 @@ customersApi
 // Scalar
 var scalar = builder.AddScalarApiReference()
     .WithApiReference(customersApi)
-    .WithApiReference(communicationsApi);
+    .WithApiReference(communicationsApi)
+    .WithApiReference(productsApi);
 
 builder.Build().Run();

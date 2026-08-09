@@ -6,7 +6,8 @@ name: vantigo
 #   1. Copy .env.example            -> .env
 #   2. Copy customers.env.example   -> customers.env
 #   3. Copy communications.env.example -> communications.env
-#   4. docker compose up -d
+#   4. Copy products.env.example    -> products.env
+#   5. docker compose up -d
 #
 # See README.md next to this file for details.
 
@@ -79,12 +80,41 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  products-migrate:
+    image: ghcr.io/vantigo-io/products:${VANTIGO_TAG:-latest}
+    command: ["migrate"]
+    env_file: products.env
+    environment:
+      ConnectionStrings__Postgresql: Host=postgres;Database=products;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  products:
+    image: ghcr.io/vantigo-io/products:${VANTIGO_TAG:-latest}
+    command: ["api"]
+    env_file: products.env
+    environment:
+      ConnectionStrings__Postgresql: Host=postgres;Database=products;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
+      DataProtection__KeysPath: /var/lib/vantigo/dataprotection
+    ports:
+      - "${PRODUCTS_PORT:-8082}:8080"
+    volumes:
+      - products-dataprotection:/var/lib/vantigo/dataprotection
+    depends_on:
+      products-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 configs:
   create-databases:
     content: |
       CREATE DATABASE customers;
       CREATE DATABASE communications;
+      CREATE DATABASE products;
 
 volumes:
   postgres-data:
   customers-dataprotection:
+  products-dataprotection:

@@ -12,6 +12,12 @@
     <Project Path="apps/customers/backend/Customers.Api/Customers.Api.csproj" />
   </Folder>
   <Folder Name="/apps/customers/frontend/" />
+  <Folder Name="/apps/products/" />
+  <Folder Name="/apps/products/backend/">
+    <Project Path="apps/products/backend/Products.Api.Tests/Products.Api.Tests.csproj" />
+    <Project Path="apps/products/backend/Products.Api/Products.Api.csproj" />
+  </Folder>
+  <Folder Name="/apps/products/frontend/" />
   <Folder Name="/orchestration/">
     <Project Path="orchestration/AppHost/AppHost.csproj" />
   </Folder>

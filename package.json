@@ -56,9 +56,9 @@
     }
   },
   "scripts": {
-    "frontend:lint": "bun run --cwd apps/communications/frontend lint && bun run --cwd apps/customers/frontend lint",
-    "frontend:test": "bun run --cwd apps/communications/frontend test && bun run --cwd apps/customers/frontend test",
-    "frontend:build": "bun run --cwd apps/communications/frontend build && bun run --cwd apps/customers/frontend build",
+    "frontend:lint": "bun run --cwd apps/communications/frontend lint && bun run --cwd apps/customers/frontend lint && bun run --cwd apps/products/frontend lint",
+    "frontend:test": "bun run --cwd apps/communications/frontend test && bun run --cwd apps/customers/frontend test && bun run --cwd apps/products/frontend test",
+    "frontend:build": "bun run --cwd apps/communications/frontend build && bun run --cwd apps/customers/frontend build && bun run --cwd apps/products/frontend build",
     "prepare": "husky",
     "format:check": "biome check . && dotnet format \"Vantigo.slnx\" --verify-no-changes --no-restore",
     "format:write": "biome check --write . && dotnet format"

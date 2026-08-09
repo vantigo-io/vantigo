@@ -46,6 +46,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | Application   | Description                                                        | Status            |
 | ------------- | ------------------------------------------------------------------ | ----------------- |
 | **Customers** | Manage your customers and their legal identities across countries. | 🚧 In development |
+| **Products**  | The catalog of goods and services the company sells, with prices.   | 🚧 In development |
 
 More applications are on the way — each one lands as a new vertical slice in
 [`apps/`](apps/) and plugs into the same platform conventions.
@@ -63,17 +64,19 @@ curl -fsSLO "$base/compose.yaml"
 curl -fsSLO "$base/.env.example"
 curl -fsSLO "$base/customers.env.example"
 curl -fsSLO "$base/communications.env.example"
+curl -fsSLO "$base/products.env.example"
 
 cp .env.example .env                              # set a database password here
 cp customers.env.example customers.env
 cp communications.env.example communications.env
+cp products.env.example products.env
 
 docker compose up -d
 ```
 
 Compose starts PostgreSQL, applies each application's database migrations, and
-brings up **Customers** on <http://localhost:8080> and **Communications** on
-<http://localhost:8081>. Then visit <http://localhost:8080/setup> to create your
+brings up **Customers** on <http://localhost:8080>, **Communications** on
+<http://localhost:8081>, and **Products** on <http://localhost:8082>. Then visit <http://localhost:8080/setup> to create your
 first Owner account — the one-time bootstrap secret is printed in the Customers
 logs (`docker compose logs customers`) unless you configured one yourself.
 
@@ -93,11 +96,16 @@ vantigo/
 │   │   │   ├── Customers.Api/         # ASP.NET Core minimal API
 │   │   │   └── Customers.Api.Tests/   # Unit + integration tests
 │   │   └── frontend/                  # React SPA (Vite, TanStack Router, Mantine)
-│   └── communications/
+│   ├── communications/
+│   │   ├── backend/
+│   │   │   ├── Communications.Api/       # ASP.NET Core minimal API
+│   │   │   └── Communications.Api.Tests/ # Unit + integration tests
+│   │   └── frontend/                    # React SPA (Vite)
+│   └── products/
 │       ├── backend/
-│       │   ├── Communications.Api/       # ASP.NET Core minimal API
-│       │   └── Communications.Api.Tests/ # Unit + integration tests
-│       └── frontend/                    # React SPA (Vite)
+│       │   ├── Products.Api/          # ASP.NET Core minimal API
+│       │   └── Products.Api.Tests/    # Unit + integration tests
+│       └── frontend/                  # React SPA (Vite)
 ├── orchestration/
 │   └── AppHost/                       # .NET Aspire composition root
 ├── deploy/
@@ -146,6 +154,8 @@ runs the root Bun installer for both frontends, and explicitly selects each API'
 - **customers-frontend** — the Customers SPA served by the Vite dev server
 - **communications-migrate**, **communications-seed**, and **communications-api** — the Communications lifecycle and API
 - **communications-frontend** — the Communications SPA served by the Vite dev server
+- **products-migrate**, **products-seed**, and **products-api** — the Products lifecycle and API
+- **products-frontend** — the Products SPA served by the Vite dev server
 - **scalar** — interactive API reference for every registered API
 
 That's it — no manual database setup, connection strings or environment files needed.
@@ -171,6 +181,7 @@ From the repository root, start either frontend without changing directories:
 ```bash
 bun run --cwd apps/customers/frontend dev
 bun run --cwd apps/communications/frontend dev
+bun run --cwd apps/products/frontend dev
 ```
 
 The root convenience scripts validate both frontends:
@@ -198,6 +209,10 @@ dotnet run --project apps/customers/backend/Customers.Api --launch-profile api
 dotnet run --project apps/communications/backend/Communications.Api --launch-profile migrate
 dotnet run --project apps/communications/backend/Communications.Api --launch-profile seed
 dotnet run --project apps/communications/backend/Communications.Api --launch-profile api
+
+dotnet run --project apps/products/backend/Products.Api --launch-profile migrate
+dotnet run --project apps/products/backend/Products.Api --launch-profile seed
+dotnet run --project apps/products/backend/Products.Api --launch-profile api
 ```
 
 Aspire does not use the no-argument `dev` profile for lifecycle ordering. That profile

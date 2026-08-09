@@ -15,6 +15,7 @@ curl -fsSLO "$base/compose.yaml"
 curl -fsSLO "$base/.env.example"
 curl -fsSLO "$base/customers.env.example"
 curl -fsSLO "$base/communications.env.example"
+curl -fsSLO "$base/products.env.example"
 ```
 
 Create your local configuration from the examples and set a database password:
@@ -23,6 +24,7 @@ Create your local configuration from the examples and set a database password:
 cp .env.example .env
 cp customers.env.example customers.env
 cp communications.env.example communications.env
+cp products.env.example products.env
 ```
 
 Start the stack:
@@ -37,6 +39,7 @@ base path (see below):
 
 - **Customers** — <http://localhost:8080/customers>
 - **Communications** — <http://localhost:8081/communications>
+- **Products** — <http://localhost:8082/products>
 
 ## First sign-in
 
@@ -101,6 +104,13 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    location /products {
+        proxy_pass http://127.0.0.1:8082;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 }
 ```
 
@@ -113,6 +123,9 @@ vantigo.example.com {
     }
     handle /communications* {
         reverse_proxy 127.0.0.1:8081
+    }
+    handle /products* {
+        reverse_proxy 127.0.0.1:8082
     }
 }
 ```
@@ -135,8 +148,8 @@ the API templates the SPA entry document at startup:
 | `App__Support__Url` | unset | "Help center" link in the support footer |
 
 The support footer only appears when at least one support setting is
-configured. See the commented examples in `customers.env.example` and
-`communications.env.example`.
+configured. See the commented examples in `customers.env.example`,
+`communications.env.example` and `products.env.example`.
 
 ## Observability
 

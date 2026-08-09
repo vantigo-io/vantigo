@@ -1,7 +1,8 @@
-import { IconMessage, IconUsers } from "@tabler/icons-react";
+import { IconMessage, IconPackage, IconUsers } from "@tabler/icons-react";
 import type { ShellApp } from "@vantigo/frontend-shell";
 
 const customersUrl = import.meta.env.VITE_CUSTOMERS_URL || "http://localhost:10011/customers";
+const productsUrl = import.meta.env.VITE_PRODUCTS_URL || "http://localhost:10021/products";
 
 /**
  * The apps shown in the shell's application switcher. Sibling apps are enabled
@@ -10,4 +11,5 @@ const customersUrl = import.meta.env.VITE_CUSTOMERS_URL || "http://localhost:100
 export const shellApps: readonly ShellApp[] = [
   ...(customersUrl ? [{ id: "customers", label: "Customers", icon: IconUsers, url: customersUrl }] : []),
   { id: "communications", label: "Communications", icon: IconMessage, current: true },
+  ...(productsUrl ? [{ id: "products", label: "Products", icon: IconPackage, url: productsUrl }] : []),
 ];

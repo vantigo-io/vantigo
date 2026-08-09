@@ -124,6 +124,7 @@ jobs:
           cp .env.example .env
           cp customers.env.example customers.env
           cp communications.env.example communications.env
+          cp products.env.example products.env
           docker compose config -q
 
   build_images:
@@ -201,7 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="v${{ needs.metadata.outputs.majorMinorPatch }}"
-          for image in customers communications; do
+          for image in customers communications products; do
             digest="$(docker buildx imagetools inspect "ghcr.io/vantigo-io/${image}:${tag}" --format '{{.Manifest.Digest}}')"
             if [ -z "$digest" ]; then
               echo "Failed to resolve digest for ghcr.io/vantigo-io/${image}:${tag}" >&2
