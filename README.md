@@ -43,10 +43,11 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 
 ## Applications
 
-| Application   | Description                                                        | Status            |
-| ------------- | ------------------------------------------------------------------ | ----------------- |
-| **Customers** | Manage your customers and their legal identities across countries. | 🚧 In development |
-| **Products**  | The catalog of goods and services the company sells, with prices.   | 🚧 In development |
+| Application        | Description                                                          | Status            |
+| ------------------ | -------------------------------------------------------------------- | ----------------- |
+| **Customers**      | Manage your customers and their legal identities across countries.   | 🚧 In development |
+| **Communications** | Send, receive and archive business email across shared mailboxes.    | 🚧 In development |
+| **Products**       | The catalog of goods and services the company sells, with prices.    | 🚧 In development |
 
 More applications are on the way — each one lands as a new vertical slice in
 [`apps/`](apps/) and plugs into the same platform conventions.
@@ -76,9 +77,10 @@ docker compose up -d
 
 Compose starts PostgreSQL, applies each application's database migrations, and
 brings up **Customers** on <http://localhost:8080>, **Communications** on
-<http://localhost:8081>, and **Products** on <http://localhost:8082>. Then visit <http://localhost:8080/setup> to create your
-first Owner account — the one-time bootstrap secret is printed in the Customers
-logs (`docker compose logs customers`) unless you configured one yourself.
+<http://localhost:8081>, and **Products** on <http://localhost:8082>. Then visit
+<http://localhost:8080/setup> to create your first Owner account — the one-time
+bootstrap secret is printed in the Customers logs (`docker compose logs customers`)
+unless you configured one yourself.
 
 The [compose guide](deploy/compose/README.md) covers configuration, first
 sign-in, production notes and upgrades in more detail.
@@ -145,11 +147,11 @@ dotnet run --project orchestration/AppHost
 
 The Aspire dashboard opens automatically and shows every running resource with logs,
 traces and endpoints. The AppHost provisions PostgreSQL and its application databases,
-runs the root Bun installer for both frontends, and explicitly selects each API's
+runs the root Bun installer for all frontends, and explicitly selects each API's
 `migrate`, `seed`, and `api` profiles in that order:
 
 - **bun-install** — root Bun workspace dependency installation
-- **postgres**, **customers-db**, and **communications-db** — PostgreSQL and application databases
+- **postgres**, **customers-db**, **communications-db**, and **products-db** — PostgreSQL and application databases
 - **customers-migrate**, **customers-seed**, and **customers-api** — the Customers lifecycle and API
 - **customers-frontend** — the Customers SPA served by the Vite dev server
 - **communications-migrate**, **communications-seed**, and **communications-api** — the Communications lifecycle and API
@@ -166,9 +168,9 @@ That's it — no manual database setup, connection strings or environment files 
   `bun --version` to verify that the Bun version pinned in `.bun-version` is
   available, then retry `bun install --frozen-lockfile`. In the Aspire dashboard,
   open the `bun-install` resource and inspect its logs for the installer error.
-- **A Vite frontend fails:** Inspect the logs for the affected `customers-frontend` or
-  `communications-frontend` resource. You can also reproduce it from the repository
-  root with `bun run --cwd apps/<application>/frontend dev`.
+- **A Vite frontend fails:** Inspect the logs for the affected `customers-frontend`,
+  `communications-frontend` or `products-frontend` resource. You can also reproduce it
+  from the repository root with `bun run --cwd apps/<application>/frontend dev`.
 - **An API is not ready:** Aspire runs each API's `migrate`, then `seed`, then `api`
   profile. Check those resource logs and wait for the preceding profile to complete.
 - **Database or container failures:** Check that the Docker-compatible runtime is
@@ -176,7 +178,7 @@ That's it — no manual database setup, connection strings or environment files 
 
 ### Standalone frontend development
 
-From the repository root, start either frontend without changing directories:
+From the repository root, start any frontend without changing directories:
 
 ```bash
 bun run --cwd apps/customers/frontend dev
@@ -184,7 +186,7 @@ bun run --cwd apps/communications/frontend dev
 bun run --cwd apps/products/frontend dev
 ```
 
-The root convenience scripts validate both frontends:
+The root convenience scripts validate all frontends:
 
 ```bash
 bun run frontend:lint
@@ -223,10 +225,10 @@ be used as a production deployment job.
 
 ### Development-only seed data
 
-In `Development`, the `seed` command creates deterministic fixtures for Customers and
-Communications. Aspire runs this command automatically after migrations. Seed data is
-Development-only and includes synthetic data. Use `admin@vantigo.local` / `admin` to
-sign in as `Administrator`.
+In `Development`, the `seed` command creates deterministic fixtures for Customers,
+Communications and Products. Aspire runs this command automatically after migrations.
+Seed data is Development-only and includes synthetic data. Use `admin@vantigo.local`
+/ `admin` to sign in as `Administrator`.
 This deliberately weak password and relaxed password policy are for Development/local use
 only; production retains the normal password requirements. In a real deployment there
 is no seeded account — the first Owner is created through the `/setup` bootstrap flow
@@ -253,13 +255,16 @@ The JSON configuration section is `Development:Seed`:
 `Customers` and `Contacts` (6 each by default); Communications supports `Messages` (2 by
 default). Each count must be between 0 and 100. Higher counts add deterministic data, while
 lowering a value does not delete existing local seed data. Use the matching environment
-variable form, for example `Development__Seed__Data__Customers=12`.
+variable form, for example `Development__Seed__Data__Customers=12`. The Products API seeds
+a small fixed catalog and takes no counts.
 
 To opt out, set `Development__Seed__Enabled=false`. Seeding is never enabled outside
 `Development`.
 
 For self-hosted Customers authentication, deployment configuration, and production
 migration guidance, see [Customers authentication](docs/customers-authentication.md).
+The Products domain model, pricing rules and cross-service contracts are documented
+in [Products](docs/products.md).
 
 Ready to dig into the code? Head over to the
 [contributing guide](CONTRIBUTING.md) for the design principles, API conventions,
@@ -272,10 +277,11 @@ runs the .NET API and serves the production frontend build from the same process
 Images are published to GHCR on every release and signed with
 [Cosign](https://docs.sigstore.dev/cosign/):
 
-| Application    | Image                              |
-| -------------- | ---------------------------------- |
+| Application    | Image                               |
+| -------------- | ----------------------------------- |
 | Customers      | `ghcr.io/vantigo-io/customers`      |
 | Communications | `ghcr.io/vantigo-io/communications` |
+| Products       | `ghcr.io/vantigo-io/products`       |
 
 Available tags: `latest`, `vX`, `vX.Y`, and `vX.Y.Z` — pin `vX.Y.Z` for
 reproducible deployments. Verify a signature with:
@@ -305,10 +311,10 @@ docker run -d \
   ghcr.io/vantigo-io/customers api
 ```
 
-A persistent `DataProtection__KeysPath` volume is required for the Customers app so
-sign-in cookies and account tokens survive restarts. Do not run `seed` in
-production; it is only for Development. Authentication, reverse-proxy and full
-configuration guidance lives in
+A persistent `DataProtection__KeysPath` volume is required for the Customers and
+Products apps so sign-in cookies and account tokens survive restarts. Do not run
+`seed` in production; it is only for Development. Authentication, reverse-proxy and
+full configuration guidance lives in
 [Customers authentication](docs/customers-authentication.md).
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same
