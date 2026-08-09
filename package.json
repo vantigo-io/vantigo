@@ -63,7 +63,7 @@
     "format:write": "biome check --write . && dotnet format"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.5",
+    "@biomejs/biome": "2.5.7",
     "husky": "9.1.7"
   }
 }
