@@ -12,7 +12,7 @@ import { Notifications } from "@mantine/notifications";
 import { NavigationProgress } from "@mantine/nprogress";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
-import { vantigoTheme } from "@vantigo/frontend-shell";
+import { appConfig, appUrl, initAppConfig, runtimeBase, vantigoTheme } from "@vantigo/frontend-shell";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { sessionQueryKey } from "./api/auth";
@@ -22,8 +22,14 @@ import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient();
 
+// Whitelabeling: the backend injects the runtime config (title, logo, support)
+// into index.html; the dev server falls back to these defaults.
+initAppConfig({ title: "Customers" });
+document.title = appConfig().title;
+
 const router = createRouter({
   routeTree,
+  basepath: runtimeBase(),
   context: { queryClient },
 });
 
@@ -34,7 +40,7 @@ setAuthStateClearer(() => {
   queryClient.removeQueries({ queryKey: sessionQueryKey, exact: true });
 });
 setUnauthorizedHandler(() => {
-  if (window.location.pathname !== "/sign-in") void router.navigate({ to: "/sign-in" });
+  if (window.location.pathname !== appUrl("/sign-in")) void router.navigate({ to: "/sign-in" });
 });
 
 wireNavigationProgress(router);

@@ -1,6 +1,7 @@
 import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { appConfig } from "@vantigo/frontend-shell";
 import { bootstrapAccount, fetchBootstrapStatus, sessionQueryKey } from "../api/auth";
 export function SetupPage() {
   const navigate = useNavigate();
@@ -37,7 +38,7 @@ export function SetupPage() {
     <Center mih="100vh" bg="gray.0" p="md">
       <Card withBorder shadow="sm" p="xl" maw={460} w="100%">
         <Stack>
-          <Title order={2}>Set up Communications</Title>
+          <Title order={2}>Set up {appConfig().title}</Title>
           <Text c="dimmed">Create the first Owner account.</Text>
           {mutation.error && <Alert color="red">{mutation.error.message}</Alert>}
           <form

@@ -1,3 +1,5 @@
+import { appUrl } from "@vantigo/frontend-shell";
+
 let csrfToken: string | null = null;
 let csrfTokenRequest: Promise<string> | undefined;
 let csrfGeneration = 0;
@@ -63,7 +65,7 @@ export async function ensureCsrfToken(): Promise<string> {
 
   const generation = csrfGeneration;
   const requestPromise = (async () => {
-    const response = await fetch("/auth/antiforgery", { credentials: "include" });
+    const response = await fetch(appUrl("/auth/antiforgery"), { credentials: "include" });
     if (!response.ok) throw new Error("Could not establish a secure session");
     const token = (await response.json()).token;
     if (typeof token !== "string" || token.length === 0) throw new Error("Could not establish a secure session");
@@ -117,7 +119,13 @@ export async function request<T>(url: string, init: RequestOptions = {}): Promis
   if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
     headers.set("X-XSRF-TOKEN", await ensureCsrfToken());
   }
-  const response = await fetch(url, { ...fetchInit, headers, credentials: "include" });
+  // Root-relative URLs are resolved against the app's base path so the app can
+  // be served under a path prefix (e.g. /customers) on a shared domain.
+  const response = await fetch(url.startsWith("/") ? appUrl(url) : url, {
+    ...fetchInit,
+    headers,
+    credentials: "include",
+  });
   if (response.status === 401 && handleUnauthorized) {
     clearCsrfToken();
     try {

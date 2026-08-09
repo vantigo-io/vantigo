@@ -7,12 +7,17 @@ import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
-import { vantigoTheme } from "@vantigo/frontend-shell";
+import { appConfig, initAppConfig, runtimeBase, vantigoTheme } from "@vantigo/frontend-shell";
 import ReactDOM from "react-dom/client";
 import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient();
-const router = createRouter({ routeTree, context: { queryClient } });
+
+// Whitelabeling: the backend injects the runtime config (title, logo, support)
+// into index.html; the dev server falls back to these defaults.
+initAppConfig({ title: "Communications" });
+document.title = appConfig().title;
+const router = createRouter({ routeTree, basepath: runtimeBase(), context: { queryClient } });
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;

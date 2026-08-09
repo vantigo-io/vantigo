@@ -1,7 +1,7 @@
 import { IconMessage, IconUsers } from "@tabler/icons-react";
 import type { ShellApp } from "@vantigo/frontend-shell";
 
-const communicationsUrl = import.meta.env.VITE_COMMUNICATIONS_URL || "http://localhost:10012";
+const communicationsUrl = import.meta.env.VITE_COMMUNICATIONS_URL || "http://localhost:10012/communications";
 
 /**
  * The apps shown in the shell's application switcher. Sibling apps are enabled

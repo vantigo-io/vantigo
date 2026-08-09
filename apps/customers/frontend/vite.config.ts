@@ -3,7 +3,16 @@ import tanstackRouter from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+// Base path for serving the app on a shared domain (default "/customers").
+// Set VITE_BASE_PATH="" (or "/") to serve from the domain root. Must match the
+// API's App__BasePath setting.
+const rawBasePath = process.env.VITE_BASE_PATH ?? "/customers";
+const basePath = `/${rawBasePath.replace(/^\/+|\/+$/g, "")}`.replace(/^\/$/, "");
+const apiTarget = process.env.services__customers_api__http__0 || "http://localhost:10010";
+
+export default defineConfig(({ mode }) => ({
+  // Unit tests assert on root-relative URLs; only dev/build use the base path.
+  base: mode === "test" ? "/" : `${basePath}/`,
   plugins: [
     tanstackRouter({
       target: "react",
@@ -18,13 +27,13 @@ export default defineConfig({
   server: {
     port: 10011,
     proxy: {
-      "/api": {
-        target: process.env.services__customers_api__http__0 || "http://localhost:10010",
+      [`${basePath}/api`]: {
+        target: apiTarget,
         changeOrigin: true,
         secure: false,
       },
-      "/auth": {
-        target: process.env.services__customers_api__http__0 || "http://localhost:10010",
+      [`${basePath}/auth`]: {
+        target: apiTarget,
         changeOrigin: true,
         secure: false,
       },
@@ -39,4 +48,4 @@ export default defineConfig({
     setupFiles: ["src/test/setup.ts"],
     globals: false,
   },
-});
+}));

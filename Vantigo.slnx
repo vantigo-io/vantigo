@@ -15,4 +15,8 @@
   <Folder Name="/orchestration/">
     <Project Path="orchestration/AppHost/AppHost.csproj" />
   </Folder>
+  <Folder Name="/packages/">
+    <Project Path="packages/hosting/Vantigo.Hosting.Tests/Vantigo.Hosting.Tests.csproj" />
+    <Project Path="packages/hosting/Vantigo.Hosting/Vantigo.Hosting.csproj" />
+  </Folder>
 </Solution>

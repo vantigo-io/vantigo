@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Vantigo.Hosting</AssemblyName>
+    <RootNamespace>Vantigo.Hosting</RootNamespace>
+    <Description>Shared ASP.NET Core hosting building blocks for Vantigo backends: base-path serving, SPA entry-point templating, and (soon) telemetry.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

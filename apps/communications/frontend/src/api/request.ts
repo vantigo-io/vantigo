@@ -1,3 +1,5 @@
+import { appUrl } from "@vantigo/frontend-shell";
+
 let onUnauthorized: (() => void) | undefined;
 let csrfToken: string | null = null;
 let csrfRequest: Promise<string> | undefined;
@@ -17,7 +19,7 @@ export const clearCsrfToken = () => {
 export async function ensureCsrfToken(): Promise<string> {
   if (csrfToken) return csrfToken;
   if (!csrfRequest)
-    csrfRequest = fetch("/auth/antiforgery", { credentials: "include" })
+    csrfRequest = fetch(appUrl("/auth/antiforgery"), { credentials: "include" })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok || typeof body.token !== "string" || !body.token)
@@ -35,7 +37,13 @@ export async function request<T>(url: string, init: RequestOptions = {}): Promis
   const method = (fetchInit.method || "GET").toUpperCase();
   const headers = new Headers(fetchInit.headers);
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-XSRF-TOKEN", await ensureCsrfToken());
-  const response = await fetch(url, { ...fetchInit, headers, credentials: "include" });
+  // Root-relative URLs are resolved against the app's base path so the app can
+  // be served under a path prefix (e.g. /communications) on a shared domain.
+  const response = await fetch(url.startsWith("/") ? appUrl(url) : url, {
+    ...fetchInit,
+    headers,
+    credentials: "include",
+  });
   if (response.status === 401 && handleUnauthorized) {
     clearCsrfToken();
     onUnauthorized?.();

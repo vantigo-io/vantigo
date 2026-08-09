@@ -32,7 +32,6 @@ function Shell() {
   if (pathname === "/sign-in" || pathname === "/setup") return <Outlet />;
   return (
     <AppShellLayout
-      moduleName="Communications"
       apps={shellApps}
       user={user}
       onSignOut={() =>

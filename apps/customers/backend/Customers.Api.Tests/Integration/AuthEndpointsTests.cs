@@ -43,6 +43,23 @@ public sealed class AuthEndpointsTests
     }
 
     [Fact]
+    public async Task BasePathPrefixedRequest_ReachesTheSameEndpoints()
+    {
+        // App:BasePath defaults to /customers; both prefixed and unprefixed
+        // requests must work (UsePathBase passes unmatched paths through).
+        using var client = _factory.CreateClient();
+
+        var prefixed = await client.GetAsync("/customers/auth/antiforgery");
+        var unprefixed = await client.GetAsync("/auth/antiforgery");
+
+        Assert.Equal(HttpStatusCode.OK, prefixed.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, unprefixed.StatusCode);
+
+        var prefixedApi = await client.GetAsync("/customers/api/v1/customers");
+        Assert.Equal(HttpStatusCode.Unauthorized, prefixedApi.StatusCode);
+    }
+
+    [Fact]
     public async Task Bootstrap_WithBadSecret_IsRejectedAndRepeatBootstrapIsRejected()
     {
         using var badSecretClient = await CreateAntiforgeryClient();

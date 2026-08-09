@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 
 using Microsoft.AspNetCore.WebUtilities;
 
+using Vantigo.Hosting;
+
 namespace Vantigo.Customers.Api.Services;
 
 public static class InvitationTokenService
@@ -43,7 +45,10 @@ public static class InvitationTokenService
 
     public static string InvitationUrl(IConfiguration configuration, string rawToken)
     {
+        // Resolution order: explicit template > derived from App:PublicOrigin
+        // and App:BasePath > development fallback.
         var template = configuration["Authentication:Invitations:AcceptUrl"]
+            ?? DerivedUrl(configuration, "/invitations/accept?token={token}")
             ?? "http://localhost:5173/invitations/accept?token={token}";
         return ReplaceRequiredToken(template, rawToken);
     }
@@ -51,6 +56,7 @@ public static class InvitationTokenService
     public static string PasswordResetUrl(IConfiguration configuration, string email, string encodedToken)
     {
         var template = configuration["Authentication:PasswordReset:ResetUrl"]
+            ?? DerivedUrl(configuration, "/password-reset?email={email}&token={token}")
             ?? "http://localhost:5173/password-reset?email={email}&token={token}";
         if (!template.Contains("{email}", StringComparison.Ordinal))
         {
@@ -59,6 +65,9 @@ public static class InvitationTokenService
 
         return ReplaceRequiredToken(template.Replace("{email}", Uri.EscapeDataString(email), StringComparison.Ordinal), encodedToken);
     }
+
+    private static string? DerivedUrl(IConfiguration configuration, string appRelativePathAndQuery) =>
+        new AppPublicUrls(configuration).PublicUrl(appRelativePathAndQuery);
 
     private static string ReplaceRequiredToken(string template, string rawToken)
     {

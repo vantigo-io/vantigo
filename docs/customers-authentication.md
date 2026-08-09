@@ -66,13 +66,29 @@ The current frontend routes are:
 - Password reset: `/password-reset?email=...&token=...` (also supported:
   `/reset-password?email=...&token=...`).
 
-The backend defaults already match the canonical mailed routes. For a deployed public
-origin, set the templates explicitly and retain both placeholders:
+The backend defaults already match the canonical mailed routes. For a deployed
+public origin, set `App__PublicOrigin` (scheme + host only); the mailed links
+are then derived automatically from origin + base path (default `/customers`,
+see `App__BasePath`):
 
 ```text
-Authentication__Invitations__AcceptUrl=https://customers.example.com/invitations/accept?token={token}
-Authentication__PasswordReset__ResetUrl=https://customers.example.com/password-reset?email={email}&token={token}
+App__PublicOrigin=https://vantigo.example.com
+# yields https://vantigo.example.com/customers/invitations/accept?token=...
+# and    https://vantigo.example.com/customers/password-reset?email=...&token=...
 ```
+
+When the mailed links must differ from the derived defaults, set the explicit
+templates instead — they always take precedence and must retain the
+placeholders:
+
+```text
+Authentication__Invitations__AcceptUrl=https://vantigo.example.com/customers/invitations/accept?token={token}
+Authentication__PasswordReset__ResetUrl=https://vantigo.example.com/customers/password-reset?email={email}&token={token}
+```
+
+An invalid `App__PublicOrigin` (path, query, missing scheme) fails startup, and
+a startup warning is logged when explicit templates disagree with the
+configured origin and base path.
 
 Do not put tokens in source control or static configuration. The `{email}` and
 `{token}` values are URL-encoded by the backend.
@@ -157,11 +173,17 @@ is implied by this documentation.
 
 ### Required callback URI
 
-Register the exact public HTTPS callback URI with the provider:
+Register the exact public HTTPS callback URI with the provider. The application is
+served under its base path (default `/customers`, see `App__BasePath`), so the
+public callback URI includes that prefix:
 
 ```text
-https://customers.example.com/auth/oidc/callback
+https://vantigo.example.com/customers/auth/oidc/callback
 ```
+
+When `App__PublicOrigin` is configured, the API logs the exact callback URI to
+register at startup. When `App__BasePath` is set to an empty value (root
+serving), omit the prefix.
 
 If `Authentication__Oidc__CallbackPath` is changed, register the same public origin
 plus that exact path. It must be an absolute path below `/auth/oidc/`, without a
@@ -176,12 +198,14 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
+| `App__BasePath` | Path prefix the app is served under on a shared domain (empty value serves from the root) | `/customers` |
+| `App__PublicOrigin` | Public scheme + host used to derive mailed links and the logged OIDC callback URI (no path; invalid values fail startup) | unset |
 | `Authentication__Bootstrap__Secret` | One-time Owner bootstrap secret | unset; generated once at startup and logged at Warning |
 | `Authentication__Owners__RequireMfa` | Require local MFA for Owner access/management | `false` |
 | `Authentication__Owners__MfaIssuer` | Issuer label in authenticator apps | `Vantigo` |
 | `Authentication__Invitations__Lifetime` | Invitation lifetime as a .NET `TimeSpan` (`1`–`30` days) | `7.00:00:00` |
-| `Authentication__Invitations__AcceptUrl` | Invitation URL template with `{token}` | `http://localhost:5173/invitations/accept?token={token}` |
-| `Authentication__PasswordReset__ResetUrl` | Reset URL template with `{email}` and `{token}` | `http://localhost:5173/password-reset?email={email}&token={token}` |
+| `Authentication__Invitations__AcceptUrl` | Invitation URL template with `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/invitations/accept?token={token}` |
+| `Authentication__PasswordReset__ResetUrl` | Reset URL template with `{email}` and `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/password-reset?email={email}&token={token}` |
 | `Authentication__Oidc__Authority` | OIDC issuer/authority; required to enable OIDC | unset |
 | `Authentication__Oidc__ClientId` | OIDC client ID; required to enable OIDC | unset |
 | `Authentication__Oidc__ClientSecret` | OIDC client secret; required to enable OIDC | unset |

@@ -6,6 +6,7 @@ using Vantigo.Customers.Api.Endpoints.Auth;
 using Vantigo.Customers.Api.Endpoints.Lookup;
 using Vantigo.Customers.Api.Infrastructure;
 using Vantigo.Customers.Api.Services;
+using Vantigo.Hosting;
 
 if (args.Length == 0)
 {
@@ -42,6 +43,7 @@ if (configuresApi)
     builder.Services.AddCustomerAntiforgery(builder.Environment);
     builder.Services.AddAuthenticationRateLimiting();
     builder.Services.AddCustomerTimeline();
+    builder.Services.AddSpaIndexDocument(buildTimeBasePath: "/customers", defaultTitle: "Customers");
 }
 else if (commandLine.Command == CustomerApiCommand.Seed)
 {
@@ -118,12 +120,48 @@ _ = app.Services.GetRequiredService<BootstrapSecretProvider>();
 
 workforceOidc = app.Services.GetRequiredService<WorkforceOidcOptions>();
 
+// Validate App:PublicOrigin at startup (fail fast on invalid values) and surface
+// the URLs it derives: the exact OIDC callback URI to register with the identity
+// provider, and a warning when explicit email-URL templates disagree with it.
+var publicUrls = new AppPublicUrls(app.Configuration);
+if (publicUrls.Origin is not null)
+{
+    if (workforceOidc.Enabled)
+    {
+        app.Logger.LogInformation(
+            "Workforce OIDC public callback URI (register this with the identity provider): {CallbackUri}",
+            publicUrls.PublicUrl(workforceOidc.CallbackPath));
+    }
+
+    foreach (var key in new[] { "Authentication:Invitations:AcceptUrl", "Authentication:PasswordReset:ResetUrl" })
+    {
+        var template = app.Configuration[key];
+        if (template is not null && !template.StartsWith($"{publicUrls.Origin}{publicUrls.BasePath}", StringComparison.OrdinalIgnoreCase))
+        {
+            app.Logger.LogWarning(
+                "{Key} ({Template}) does not start with the configured public origin and base path ({Public}); mailed links may point to the wrong place.",
+                key, template, $"{publicUrls.Origin}{publicUrls.BasePath}");
+        }
+    }
+}
+
 app.MapOpenApi().WithDocumentPerVersion();
 
 // Serve the built SPA (embedded into wwwroot on publish) from "/". In development
 // the frontend runs on the Vite dev server, which proxies /api to this API.
 app.UseForwardedHeaders();
-app.UseDefaultFiles();
+
+// Mount the whole application under a configurable base path (default "/customers")
+// so multiple apps can share one domain. Requests without the prefix pass through
+// untouched, so serving from the root keeps working. Set App__BasePath="" to
+// disable prefix generation entirely.
+app.UseAppBasePath();
+
+// The SPA entry document is templated at runtime with the configured base path
+// (see SpaIndexDocument); never serve the raw file from wwwroot. "/" and
+// "/index.html" both fall through to the SPA fallback endpoint below.
+app.UseSpaIndexRewrite();
+
 app.UseStaticFiles();
 app.UseRouting();
 app.UseRateLimiter();
@@ -140,9 +178,9 @@ app.Map("/api/{**path}", () => Results.NotFound());
 app.Map("/auth", () => Results.NotFound());
 app.Map("/auth/{**path}", () => Results.NotFound());
 
-// Deep links like /customers must fall back to the SPA entry point. API and
-// OpenAPI endpoints match their own routes first and are unaffected.
-app.MapFallbackToFile("index.html");
+// Deep links like /customers must fall back to the templated SPA entry point.
+// API and OpenAPI endpoints match their own routes first and are unaffected.
+app.MapSpaFallback();
 
 app.Run();
 

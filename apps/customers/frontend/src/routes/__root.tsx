@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { AppShellLayout, SpotlightSearchBox } from "@vantigo/frontend-shell";
+import { AppShellLayout, appUrl, SpotlightSearchBox } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
@@ -33,14 +33,14 @@ const RootLayout = () => {
     mutationFn: signOut,
     onSuccess: () => {
       queryClient.setQueryData(sessionQueryKey, null);
-      window.location.assign("/sign-in");
+      window.location.assign(appUrl("/sign-in"));
     },
   });
   const user = session?.user;
   const isOwner = user?.roles.includes("Owner") ?? false;
 
   useEffect(() => {
-    if (!publicRoute && !isPending && !session) window.location.assign("/sign-in");
+    if (!publicRoute && !isPending && !session) window.location.assign(appUrl("/sign-in"));
   }, [isPending, publicRoute, session]);
 
   // The public route deliberately bypasses the authenticated shell entirely.
@@ -55,7 +55,6 @@ const RootLayout = () => {
   return (
     <>
       <AppShellLayout
-        moduleName="Customers"
         apps={shellApps}
         user={user}
         userMenuItems={
