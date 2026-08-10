@@ -20,7 +20,7 @@ describe("contacts api client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("POSTs new contacts to /api/v1/contacts", async () => {
+  it("POSTs new contacts to /api/v1/customers/contacts", async () => {
     const contact = { id: 1001, firstName: "Anders", lastName: "Refsdal" };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, contact));
     stubFetch(fetchMock);
@@ -28,7 +28,7 @@ describe("contacts api client", () => {
     const result = await createContact({ firstName: "Anders", lastName: "Refsdal" });
 
     expect(result).toEqual(contact);
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/contacts", {
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ firstName: "Anders", lastName: "Refsdal" }),
@@ -83,7 +83,7 @@ describe("contacts api client", () => {
     await deleteContact(1001);
     await detachCustomerContact(2002, 1001);
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/contacts/1001", { method: "DELETE" });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/customers/contacts/1001", { method: "DELETE" });
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/customers/2002/contacts/1001", {
       method: "DELETE",
     });

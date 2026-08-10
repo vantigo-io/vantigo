@@ -21,7 +21,15 @@ describe("suppression API mapping", () => {
     );
     await createSuppression({ emailAddress: "blocked@example.com", reason: "bounce" });
     await deleteSuppression("s-1");
-    expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/suppressions", expect.objectContaining({ method: "POST" }));
-    expect(fetch).toHaveBeenNthCalledWith(3, "/api/v1/suppressions/s-1", expect.objectContaining({ method: "DELETE" }));
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/communications/suppressions",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/communications/suppressions/s-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 });

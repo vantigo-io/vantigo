@@ -103,13 +103,13 @@ describe("appUrl", () => {
   };
 
   it("returns root-relative URLs unchanged when serving from the root", () => {
-    expect(appUrl("/auth/session")).toBe("/auth/session");
-    expect(appUrl("auth/session")).toBe("/auth/session");
+    expect(appUrl("/api/v1/identity/session")).toBe("/api/v1/identity/session");
+    expect(appUrl("api/v1/identity/session")).toBe("/api/v1/identity/session");
   });
 
   it("prefixes root-relative URLs with the injected base path", () => {
     setBase("/products/");
-    expect(appUrl("/auth/session")).toBe("/products/auth/session");
+    expect(appUrl("/api/v1/identity/session")).toBe("/products/api/v1/identity/session");
     expect(appUrl("/api/v1/products")).toBe("/products/api/v1/products");
   });
 
@@ -125,6 +125,6 @@ describe("appUrl", () => {
 
   it("supports nested base paths", () => {
     setBase("/apps/products/");
-    expect(appUrl("/auth/antiforgery")).toBe("/apps/products/auth/antiforgery");
+    expect(appUrl("/api/v1/identity/antiforgery")).toBe("/apps/products/api/v1/identity/antiforgery");
   });
 });

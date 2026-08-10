@@ -7,7 +7,7 @@ export interface AppSupport {
 
 /** Runtime application configuration (base path + whitelabeling). */
 export interface AppConfig {
-  /** The base path the app is served under, with a trailing slash (e.g. "/customers/"). */
+  /** The base path the host is served under, with a trailing slash (e.g. "/vantigo/"). */
   basePath: string;
   /** The application title (App__Title, defaults to the app name). */
   title: string;
@@ -81,7 +81,7 @@ export function runtimeBase(): string {
  * fetch/window.location/anchor URLs that bypass the router (the TanStack
  * Router basepath handles router navigation automatically).
  *
- * appUrl("/auth/session") => "/customers/auth/session" when base is "/customers/".
+ * appUrl("/api/v1/identity/session") => "/vantigo/api/v1/identity/session" when base is "/vantigo/".
  */
 export function appUrl(path: string): string {
   const base = runtimeBase();

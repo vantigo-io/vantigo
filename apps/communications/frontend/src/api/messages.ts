@@ -87,7 +87,7 @@ export const messagesQueryOptions = (page: number, pageSize = 20, mailboxId?: st
     queryKey: ["messages", { page, pageSize, mailboxId, includeArchived }],
     queryFn: ({ signal }) =>
       request<Page<MessageListItem>>(
-        `/api/v1/messages?page=${page}&pageSize=${pageSize}${mailboxId ? `&mailboxId=${encodeURIComponent(mailboxId)}` : ""}${includeArchived ? "&includeArchived=true" : ""}`,
+        `/api/v1/communications/messages?page=${page}&pageSize=${pageSize}${mailboxId ? `&mailboxId=${encodeURIComponent(mailboxId)}` : ""}${includeArchived ? "&includeArchived=true" : ""}`,
         { signal },
       ),
     placeholderData: keepPreviousData,
@@ -95,19 +95,20 @@ export const messagesQueryOptions = (page: number, pageSize = 20, mailboxId?: st
 export const messageQueryOptions = (id: string) =>
   queryOptions({
     queryKey: ["message", id],
-    queryFn: ({ signal }) => request<MessageDetail>(`/api/v1/messages/${encodeURIComponent(id)}`, { signal }),
+    queryFn: ({ signal }) =>
+      request<MessageDetail>(`/api/v1/communications/messages/${encodeURIComponent(id)}`, { signal }),
   });
 export const messageEventsQueryOptions = (id: string, page = 1, pageSize = 50) =>
   queryOptions({
     queryKey: ["message-events", id, { page, pageSize }],
     queryFn: ({ signal }) =>
       request<Page<MessageEvent>>(
-        `/api/v1/messages/${encodeURIComponent(id)}/events?page=${page}&pageSize=${pageSize}`,
+        `/api/v1/communications/messages/${encodeURIComponent(id)}/events?page=${page}&pageSize=${pageSize}`,
         { signal },
       ),
   });
 export const createMessage = (body: CreateMessageRequest, idempotencyKey: string) =>
-  request<CreateMessageResponse>("/api/v1/messages", {
+  request<CreateMessageResponse>("/api/v1/communications/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(body),
@@ -120,12 +121,12 @@ export interface ResendMessageResponse {
   requeuedRecipientCount: number;
 }
 export const resendMessage = (id: string, scope: ResendScope) =>
-  request<ResendMessageResponse>(`/api/v1/messages/${encodeURIComponent(id)}/resend`, {
+  request<ResendMessageResponse>(`/api/v1/communications/messages/${encodeURIComponent(id)}/resend`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scope }),
   });
 export const archiveMessage = (id: string) =>
-  request<MessageDetail>(`/api/v1/messages/${encodeURIComponent(id)}/archive`, { method: "POST" });
+  request<MessageDetail>(`/api/v1/communications/messages/${encodeURIComponent(id)}/archive`, { method: "POST" });
 export const unarchiveMessage = (id: string) =>
-  request<MessageDetail>(`/api/v1/messages/${encodeURIComponent(id)}/unarchive`, { method: "POST" });
+  request<MessageDetail>(`/api/v1/communications/messages/${encodeURIComponent(id)}/unarchive`, { method: "POST" });

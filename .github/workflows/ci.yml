@@ -50,9 +50,9 @@ jobs:
       majorMinorPatch: ${{ steps.version.outputs.majorMinorPatch }}
       assemblySemVer: ${{ steps.version.outputs.assemblySemVer }}
 
-  build_and_test_frontends:
+  build_and_test_frontend:
     needs: metadata
-    name: 🏗️ Build and test frontends
+    name: 🏗️ Build and test host frontend
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,18 +73,19 @@ jobs:
       - name: 🔍 Check formatting
         run: bun run format:check
 
-      - name: 🔍 Lint frontends
-        run: bun run frontend:lint
+      - name: 🔍 Lint host frontend
+        run: bun run --cwd apps/host/frontend lint
 
-      - name: 🧪 Test frontends
-        run: bun run frontend:test
+      - name: 🧪 Test host frontend
+        run: bun run --cwd apps/host/frontend test
 
-      - name: 🏗 Build frontends️
-        run: bun run frontend:build
+      - name: 🏗 Build host frontend
+        working-directory: apps/host/frontend
+        run: bun run build
 
-  build_and_test_backends:
+  build_and_test_solution:
     needs: metadata
-    name: 🏗️ Build backends
+    name: 🏗️ Build and test solution
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -122,13 +123,11 @@ jobs:
         working-directory: deploy/compose
         run: |
           cp .env.example .env
-          cp customers.env.example customers.env
-          cp communications.env.example communications.env
-          cp products.env.example products.env
+          cp vantigo.env.example vantigo.env
           docker compose config -q
 
   build_images:
-    needs: [metadata, build_and_test_backends, build_and_test_frontends]
+    needs: [metadata, build_and_test_solution, build_and_test_frontend]
     if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -150,14 +149,18 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      - name: 📦 Package applications locally
+      - name: 🧰 Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: 📦 Package Vantigo locally
         run: |
           dotnet publish \
+            apps/host/backend/Vantigo.Host/Vantigo.Host.csproj \
             --configuration Release \
             -p:ContainerImageFormat=OCI
 
   publish_images:
-    needs: [metadata, build_and_test_frontends, build_and_test_backends]
+    needs: [metadata, build_and_test_frontend, build_and_test_solution]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -181,6 +184,9 @@ jobs:
         with:
           bun-version-file: .bun-version
 
+      - name: 🧰 Install frontend dependencies
+        run: bun install --frozen-lockfile
+
       - name: 🔐 Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -188,9 +194,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📦 Publish applications to GHCR
+      - name: 📦 Publish Vantigo to GHCR
         run: |
           dotnet publish \
+            apps/host/backend/Vantigo.Host/Vantigo.Host.csproj \
             --configuration Release \
             -p:ContainerImageFormat=OCI \
             -p:ContainerRegistry=ghcr.io
@@ -202,14 +209,13 @@ jobs:
         run: |
           set -euo pipefail
           tag="v${{ needs.metadata.outputs.majorMinorPatch }}"
-          for image in customers communications products; do
-            digest="$(docker buildx imagetools inspect "ghcr.io/vantigo-io/${image}:${tag}" --format '{{.Manifest.Digest}}')"
-            if [ -z "$digest" ]; then
-              echo "Failed to resolve digest for ghcr.io/vantigo-io/${image}:${tag}" >&2
-              exit 1
-            fi
-            cosign sign --yes "ghcr.io/vantigo-io/${image}@${digest}"
-          done
+          image="vantigo"
+          digest="$(docker buildx imagetools inspect "ghcr.io/vantigo-io/${image}:${tag}" --format '{{.Manifest.Digest}}')"
+          if [ -z "$digest" ]; then
+            echo "Failed to resolve digest for ghcr.io/vantigo-io/${image}:${tag}" >&2
+            exit 1
+          fi
+          cosign sign --yes "ghcr.io/vantigo-io/${image}@${digest}"
 
   release:
     needs: [metadata, publish_images]

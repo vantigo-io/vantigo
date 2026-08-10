@@ -22,55 +22,61 @@ const json = (method: string, body: unknown) => ({
   body: JSON.stringify(body),
 });
 export const lifecycleRequest = <T>(url: string, init?: RequestInit) => request<T>(url, init);
-export const listInvitations = () => request<Invitation[]>("/auth/owner/invitations");
+export const listInvitations = () => request<Invitation[]>("/api/v1/identity/owner/invitations");
 export const createInvitation = (body: { email: string; displayName?: string; role: "User" | "Owner" }) =>
-  request<Invitation>("/auth/owner/invitations", json("POST", body));
+  request<Invitation>("/api/v1/identity/owner/invitations", json("POST", body));
 export const invitationAction = (id: string, action: "revoke" | "resend") =>
-  request<Invitation>(`/auth/owner/invitations/${id}/${action}`, { method: "POST" });
+  request<Invitation>(`/api/v1/identity/owner/invitations/${id}/${action}`, { method: "POST" });
 export const mfaStatus = () =>
-  request<{ twoFactorEnabled: boolean; mfaEnrollmentRequired: boolean }>("/auth/owner/mfa");
+  request<{ twoFactorEnabled: boolean; mfaEnrollmentRequired: boolean }>("/api/v1/identity/owner/mfa");
 export const mfaSetup = () =>
-  request<{ sharedKey: string | null; authenticatorUri: string | null; initialized: boolean }>("/auth/owner/mfa/setup");
-export const initializeMfa = () => request("/auth/owner/mfa/setup", { method: "POST" });
+  request<{ sharedKey: string | null; authenticatorUri: string | null; initialized: boolean }>(
+    "/api/v1/identity/owner/mfa/setup",
+  );
+export const initializeMfa = () => request("/api/v1/identity/owner/mfa/setup", { method: "POST" });
 export const enableMfa = (code: string) =>
-  request<{ twoFactorEnabled: boolean; recoveryCodes: string[] }>("/auth/owner/mfa/enable", json("POST", { code }));
+  request<{ twoFactorEnabled: boolean; recoveryCodes: string[] }>(
+    "/api/v1/identity/owner/mfa/enable",
+    json("POST", { code }),
+  );
 export const regenerateRecoveryCodes = (code: string) =>
-  request<{ recoveryCodes: string[] }>("/auth/owner/mfa/recovery-codes", json("POST", { code }));
-export const disableMfa = (password: string) => request("/auth/owner/mfa/disable", json("POST", { password }));
+  request<{ recoveryCodes: string[] }>("/api/v1/identity/owner/mfa/recovery-codes", json("POST", { code }));
+export const disableMfa = (password: string) =>
+  request("/api/v1/identity/owner/mfa/disable", json("POST", { password }));
 export const validateInvitation = (token: string) =>
   request<{ valid: boolean; email?: string; role?: string; expiresAt?: string }>(
-    `/auth/invitations/validate?token=${encodeURIComponent(token)}`,
+    `/api/v1/identity/invitations/validate?token=${encodeURIComponent(token)}`,
   );
 export const acceptInvitation = async (body: { token: string; displayName?: string; password: string }) => {
-  const result = await request<LifecycleSession>("/auth/invitations/accept", json("POST", body));
+  const result = await request<LifecycleSession>("/api/v1/identity/invitations/accept", json("POST", body));
   clearCsrfToken();
   await ensureCsrfToken();
   return result;
 };
 export const requestPasswordRecovery = async (email: string) =>
-  request<{ accepted: boolean }>("/auth/password-recovery/request", json("POST", { email }));
+  request<{ accepted: boolean }>("/api/v1/identity/password-recovery/request", json("POST", { email }));
 export const resetPassword = (body: { email: string; token: string; newPassword: string }) =>
-  request<{ success: boolean }>("/auth/password-recovery/reset", json("POST", body));
-export const fetchOidcProvider = () => request<{ oidc: { displayName: string } | null }>("/auth/providers");
+  request<{ success: boolean }>("/api/v1/identity/password-recovery/reset", json("POST", body));
+export const fetchOidcProvider = () => request<{ oidc: { displayName: string } | null }>("/api/v1/identity/providers");
 export const completeTwoFactor = async (code: string, rememberMe = false) => {
   const result = await request<{
     user: LifecycleSession["user"] | null;
     requiresTwoFactor: boolean;
     mfaEnrollmentRequired: boolean;
-  }>("/auth/login/2fa", json("POST", { code, rememberMe }));
+  }>("/api/v1/identity/login/2fa", json("POST", { code, rememberMe }));
   clearCsrfToken();
   await ensureCsrfToken();
   return result;
 };
 export const fetchBootstrapStatus = () =>
-  request<{ available: boolean }>("/auth/bootstrap-status", { handleUnauthorized: false });
+  request<{ available: boolean }>("/api/v1/identity/bootstrap-status", { handleUnauthorized: false });
 export const bootstrapAccount = async (body: {
   secret: string;
   email: string;
   displayName: string;
   password: string;
 }) => {
-  const result = await request<LifecycleSession>("/auth/bootstrap", json("POST", body));
+  const result = await request<LifecycleSession>("/api/v1/identity/bootstrap", json("POST", body));
   clearCsrfToken();
   await ensureCsrfToken();
   return result;

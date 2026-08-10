@@ -1,8 +1,8 @@
 # Run Vantigo with Docker Compose
 
-Run the pre-built Vantigo container images from
-[GHCR](https://github.com/orgs/vantigo-io/packages) — no SDKs or build tools
-required, only Docker (or any Compose-compatible runtime).
+Run the pre-built Vantigo container image from
+[GHCR](https://github.com/orgs/vantigo-io/packages). Only Docker (or a
+Compose-compatible runtime) is required.
 
 ## Quick start
 
@@ -13,18 +13,14 @@ mkdir vantigo && cd vantigo
 base=https://raw.githubusercontent.com/vantigo-io/vantigo/main/deploy/compose
 curl -fsSLO "$base/compose.yaml"
 curl -fsSLO "$base/.env.example"
-curl -fsSLO "$base/customers.env.example"
-curl -fsSLO "$base/communications.env.example"
-curl -fsSLO "$base/products.env.example"
+curl -fsSLO "$base/vantigo.env.example"
 ```
 
-Create your local configuration from the examples and set a database password:
+Create local configuration and set a database password:
 
 ```bash
 cp .env.example .env
-cp customers.env.example customers.env
-cp communications.env.example communications.env
-cp products.env.example products.env
+cp vantigo.env.example vantigo.env
 ```
 
 Start the stack:
@@ -33,153 +29,91 @@ Start the stack:
 docker compose up -d
 ```
 
-Compose starts PostgreSQL, runs each application's database migrations as a
-one-shot job, and then starts the applications. Each app is served under its
-base path (see below):
+Compose starts PostgreSQL, runs the single application's database migrations as
+a one-shot job, and then starts Vantigo:
 
-- **Customers** — <http://localhost:8080/customers>
-- **Communications** — <http://localhost:8081/communications>
-- **Products** — <http://localhost:8082/products>
+- **Vantigo** — <http://localhost:8080>
+- **API reference** — <http://localhost:8080/openapi/v1.json>
+
+The Customers, Communications and Products modules are enabled by default. They
+share one PostgreSQL database named `vantigo`, with independent `identity`,
+`customers`, `communications` and `products` schemas and migration histories.
 
 ## First sign-in
 
-Visit <http://localhost:8080/customers/setup> to create the first Owner
-account. The setup page asks for a one-time bootstrap secret:
+Visit <http://localhost:8080/setup> to create the first Owner account. The setup
+page asks for a one-time bootstrap secret:
 
-- If you set `Authentication__Bootstrap__Secret` in `customers.env`, use that
-  value.
+- If you set `Authentication__Bootstrap__Secret` in `vantigo.env`, use that value.
 - Otherwise a secret is generated at startup and printed once in the logs:
-  `docker compose logs customers | grep -i bootstrap`
+  `docker compose logs vantigo | grep -i bootstrap`
 
-After the Owner account is created, remove or rotate the bootstrap secret.
-Owners can invite further users from `/settings`.
+After the Owner account is created, remove or rotate the bootstrap secret. Owners
+can invite further users from `/settings`.
 
 ## Configuration
 
-| File                 | Purpose                                                       |
-| -------------------- | ------------------------------------------------------------- |
-| `.env`               | Shared: image tag, PostgreSQL credentials, host ports         |
-| `customers.env`      | Customers app: bootstrap secret, public URLs, email, proxy    |
-| `communications.env` | Communications app settings                                   |
+| File | Purpose |
+| --- | --- |
+| `.env` | Image tag, PostgreSQL credentials and host port |
+| `vantigo.env` | Application, identity, email, module and proxy settings |
 
-Pin a specific release by setting `VANTIGO_TAG=v1.2.3` in `.env`. The full
-Customers configuration reference lives in
+The complete configuration reference is in
 [docs/customers-authentication.md](../../docs/customers-authentication.md).
+Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`.
 
-## Single domain and base paths
+## Base path and reverse proxy
 
-Each application is served under a configurable path prefix so every Vantigo
-app can share one public domain:
+The whole application can be served below one configurable path prefix. Set
+`App__BasePath` in `vantigo.env` and set `App__PublicOrigin` to the public
+scheme and host. The API prefixes remain `/api/v1/identity`,
+`/api/v1/customers`, `/api/v1/communications` and `/api/v1/products`.
 
-- Customers defaults to `/customers` (`App__BasePath` in `customers.env`)
-- Communications defaults to `/communications` (`App__BasePath` in
-  `communications.env`)
-
-The base path is a pure runtime setting: at startup each API rewrites the SPA
-entry document (`index.html`) to the configured prefix and injects it for the
-frontend to read, so the pre-built images serve any `App__BasePath` — including
-an empty value for serving from the domain root — without rebuilding.
-
-A reverse proxy only needs to route by path — no rewriting required, because
-each app understands its own prefix. Set `App__PublicOrigin` to the shared
-public origin (e.g. `https://vantigo.example.com`) so generated links (email
-URLs, the OIDC callback to register) are derived automatically from origin +
-base path. Example with nginx:
+For example, with nginx:
 
 ```nginx
 server {
     listen 443 ssl;
     server_name vantigo.example.com;
 
-    location /customers {
+    location /vantigo/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-
-    location /communications {
-        proxy_pass http://127.0.0.1:8081;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /products {
-        proxy_pass http://127.0.0.1:8082;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
 }
 ```
 
-Or with Caddy:
+With `App__BasePath=/vantigo`, generated invitation, password-reset and OIDC
+callback URLs include that prefix. The base path is a runtime setting; the
+single image serves the matching SPA without a rebuild.
 
-```caddy
-vantigo.example.com {
-    handle /customers* {
-        reverse_proxy 127.0.0.1:8080
-    }
-    handle /communications* {
-        reverse_proxy 127.0.0.1:8081
-    }
-    handle /products* {
-        reverse_proxy 127.0.0.1:8082
-    }
-}
-```
+## Email and observability
 
-Requests without the prefix still reach each app's routes directly (the prefix
-is optional on the wire), so health checks against the container root keep
-working.
+Identity invitations and password recovery use the `Email__*` settings. The
+Communications module uses `Smtp__*` for its default mailbox delivery. Mailgun
+mailboxes are configured through the Communications API, where the provider,
+domain, region and API key are stored as protected mailbox credentials; there is
+no service-to-service API-key environment variable.
 
-## Whitelabeling
-
-Each app can be branded through runtime settings — no rebuild required, because
-the API templates the SPA entry document at startup:
-
-| Variable | Default | Effect |
-| --- | --- | --- |
-| `App__Title` | App name (`Customers` / `Communications`) | Header, browser tab, setup/invitation copy |
-| `App__LogoUrl` | Bundled Vantigo logo | Header logo (shown at 32px height, width auto) |
-| `App__Support__Email` | unset | Support footer + sign-in page |
-| `App__Support__Phone` | unset | Support footer + sign-in page |
-| `App__Support__Url` | unset | "Help center" link in the support footer |
-
-The support footer only appears when at least one support setting is
-configured. See the commented examples in `customers.env.example`,
-`communications.env.example` and `products.env.example`.
-
-## Observability
-
-Both applications ship with OpenTelemetry (traces, metrics and logs) built in.
-Telemetry is off by default; point the standard OTLP variables at your
-collector in `customers.env` / `communications.env` to enable it:
+Telemetry is off by default. Standard OTLP variables can be set in `vantigo.env`:
 
 ```dotenv
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
-# OTEL_EXPORTER_OTLP_PROTOCOL=grpc            # or http/protobuf (port 4318)
-# OTEL_EXPORTER_OTLP_HEADERS=x-api-key=secret # for authenticated collectors
+# OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+# OTEL_EXPORTER_OTLP_HEADERS=x-api-key=secret
 ```
-
-All standard `OTEL_*` environment variables are honored. Services report as
-`vantigo-customers` and `vantigo-communications` with the release version and
-deployment environment attached. When no endpoint is configured, no exporter
-runs and nothing is logged about it.
 
 ## Production notes
 
-- Serve the applications behind a TLS-terminating reverse proxy on a single
-  public origin (see "Single domain and base paths" above), and configure the
-  `ForwardedHeaders__*` settings in `customers.env` to trust exactly that
-  proxy.
-- Set `App__PublicOrigin` to your public origin; mailed invitation and
-  password-reset links are derived from it automatically. The explicit
-  `Authentication__*Url` templates remain available as overrides.
-- The `customers-dataprotection` volume persists the keys that keep sign-in
-  cookies and account tokens valid across restarts — keep it.
-- Never run the `seed` command in production; it is Development-only.
+- Put the application behind a TLS-terminating reverse proxy and configure the
+  `ForwardedHeaders__*` settings to trust exactly that proxy.
+- Set `App__PublicOrigin` to the public origin; mailed links and the OIDC
+  callback are derived from it.
+- Keep the `vantigo-dataprotection` volume. It persists the keys required for
+  sign-in cookies and account tokens across restarts.
+- Never run `seed` in production; it is Development-only.
 
 ## Upgrading
 
@@ -188,4 +122,4 @@ docker compose pull
 docker compose up -d
 ```
 
-Migrations run automatically before each application starts.
+The migration job runs automatically before the application starts.

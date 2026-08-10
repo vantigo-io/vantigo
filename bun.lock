@@ -10,7 +10,7 @@
       },
     },
     "apps/communications/frontend": {
-      "name": "communications-frontend",
+      "name": "@vantigo/communications-ui",
       "version": "0.0.0",
       "dependencies": {
         "@mantine/core": "catalog:",
@@ -31,13 +31,11 @@
       },
       "devDependencies": {
         "@eslint/js": "catalog:",
-        "@tanstack/router-plugin": "catalog:",
         "@testing-library/jest-dom": "catalog:",
         "@testing-library/react": "catalog:",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
-        "@vitejs/plugin-react": "catalog:",
         "eslint": "catalog:",
         "eslint-plugin-react-hooks": "catalog:",
         "eslint-plugin-react-refresh": "catalog:",
@@ -50,7 +48,7 @@
       },
     },
     "apps/customers/frontend": {
-      "name": "customers-frontend",
+      "name": "@vantigo/customers-ui",
       "version": "0.0.0",
       "dependencies": {
         "@mantine/charts": "catalog:",
@@ -80,6 +78,55 @@
         "react": "catalog:",
         "react-dom": "catalog:",
         "recharts": "catalog:",
+      },
+      "devDependencies": {
+        "@eslint/js": "catalog:",
+        "@testing-library/jest-dom": "catalog:",
+        "@testing-library/react": "catalog:",
+        "@testing-library/user-event": "catalog:",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "eslint": "catalog:",
+        "eslint-plugin-react-hooks": "catalog:",
+        "eslint-plugin-react-refresh": "catalog:",
+        "globals": "catalog:",
+        "jsdom": "catalog:",
+        "typescript": "catalog:",
+        "typescript-eslint": "catalog:",
+        "vite": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "apps/host/frontend": {
+      "name": "@vantigo/app",
+      "version": "0.0.0",
+      "dependencies": {
+        "@mantine/charts": "catalog:",
+        "@mantine/core": "catalog:",
+        "@mantine/dates": "catalog:",
+        "@mantine/form": "catalog:",
+        "@mantine/hooks": "catalog:",
+        "@mantine/modals": "catalog:",
+        "@mantine/notifications": "catalog:",
+        "@mantine/nprogress": "catalog:",
+        "@mantine/spotlight": "catalog:",
+        "@tabler/icons-react": "catalog:",
+        "@tanstack/react-query": "catalog:",
+        "@tanstack/react-query-devtools": "catalog:",
+        "@tanstack/react-router": "catalog:",
+        "@tanstack/react-router-devtools": "catalog:",
+        "@tiptap/extension-link": "catalog:",
+        "@tiptap/pm": "catalog:",
+        "@tiptap/react": "catalog:",
+        "@tiptap/starter-kit": "catalog:",
+        "@vantigo/communications-ui": "workspace:*",
+        "@vantigo/customers-ui": "workspace:*",
+        "@vantigo/frontend-shell": "workspace:*",
+        "@vantigo/products-ui": "workspace:*",
+        "country-flag-icons": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
       },
       "devDependencies": {
         "@eslint/js": "catalog:",
@@ -103,7 +150,7 @@
       },
     },
     "apps/products/frontend": {
-      "name": "products-frontend",
+      "name": "@vantigo/products-ui",
       "version": "0.0.0",
       "dependencies": {
         "@mantine/charts": "catalog:",
@@ -136,14 +183,12 @@
       },
       "devDependencies": {
         "@eslint/js": "catalog:",
-        "@tanstack/router-plugin": "catalog:",
         "@testing-library/jest-dom": "catalog:",
         "@testing-library/react": "catalog:",
         "@testing-library/user-event": "catalog:",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",
-        "@vitejs/plugin-react": "catalog:",
         "eslint": "catalog:",
         "eslint-plugin-react-hooks": "catalog:",
         "eslint-plugin-react-refresh": "catalog:",
@@ -576,7 +621,15 @@
 
     "@typescript-eslint/visitor-keys": ["@typescript-eslint/visitor-keys@8.65.0", "", { "dependencies": { "@typescript-eslint/types": "8.65.0", "eslint-visitor-keys": "^5.0.0" } }, "sha512-8C71BQkGjiMmXtop7pHVJu1l2NNShFdkCyD6a2ezzs5vU/L3LRtb69EtcteFwz0mYMPzIgOw0n6OV4VBUWZd7A=="],
 
+    "@vantigo/app": ["@vantigo/app@workspace:apps/host/frontend"],
+
+    "@vantigo/communications-ui": ["@vantigo/communications-ui@workspace:apps/communications/frontend"],
+
+    "@vantigo/customers-ui": ["@vantigo/customers-ui@workspace:apps/customers/frontend"],
+
     "@vantigo/frontend-shell": ["@vantigo/frontend-shell@workspace:packages/frontend-shell"],
+
+    "@vantigo/products-ui": ["@vantigo/products-ui@workspace:apps/products/frontend"],
 
     "@vitejs/plugin-react": ["@vitejs/plugin-react@6.0.4", "", { "dependencies": { "@rolldown/pluginutils": "^1.0.1" }, "peerDependencies": { "@rolldown/plugin-babel": "^0.1.7 || ^0.2.0", "babel-plugin-react-compiler": "^1.0.0", "vite": "^8.0.0" }, "optionalPeers": ["@rolldown/plugin-babel", "babel-plugin-react-compiler"] }, "sha512-XcCQz0TBpBgljhj0gMuuDj49i6Ytqh5q1osT/Gp5uAVJUCTWxyskk/l1jwYYiu2xcNHHipdMz40EGfM1VdamVg=="],
 
@@ -634,8 +687,6 @@
 
     "clsx": ["clsx@2.1.1", "", {}, "sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA=="],
 
-    "communications-frontend": ["communications-frontend@workspace:apps/communications/frontend"],
-
     "convert-source-map": ["convert-source-map@2.0.0", "", {}, "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="],
 
     "cookie-es": ["cookie-es@3.1.1", "", {}, "sha512-UaXxwISYJPTr9hwQxMFYZ7kNhSXboMXP+Z3TRX6f1/NyaGPfuNUZOWP1pUEb75B2HjfklIYLVRfWiFZJyC6Npg=="],
@@ -651,8 +702,6 @@
     "cssstyle": ["cssstyle@6.2.0", "", { "dependencies": { "@asamuzakjp/css-color": "^5.0.1", "@csstools/css-syntax-patches-for-csstree": "^1.0.28", "css-tree": "^3.1.0", "lru-cache": "^11.2.6" } }, "sha512-Fm5NvhYathRnXNVndkUsCCuR63DCLVVwGOOwQw782coXFi5HhkXdu289l59HlXZBawsyNccXfWRYvLzcDCdDig=="],
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
-
-    "customers-frontend": ["customers-frontend@workspace:apps/customers/frontend"],
 
     "d3-array": ["d3-array@3.2.4", "", { "dependencies": { "internmap": "1 - 2" } }, "sha512-tdQAmyA18i4J7wprpYq8ClcxZy3SC31QMeByyCFyRt7BVHdREQZ5lpzoe5mFEYZUWe+oq8HBvk9JjpibyEV4Jg=="],
 
@@ -905,8 +954,6 @@
     "prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
 
     "pretty-format": ["pretty-format@27.5.1", "", { "dependencies": { "ansi-regex": "^5.0.1", "ansi-styles": "^5.0.0", "react-is": "^17.0.1" } }, "sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ=="],
-
-    "products-frontend": ["products-frontend@workspace:apps/products/frontend"],
 
     "prop-types": ["prop-types@15.8.1", "", { "dependencies": { "loose-envify": "^1.4.0", "object-assign": "^4.1.1", "react-is": "^16.13.1" } }, "sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg=="],
 

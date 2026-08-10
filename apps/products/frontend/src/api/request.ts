@@ -65,7 +65,7 @@ export async function ensureCsrfToken(): Promise<string> {
 
   const generation = csrfGeneration;
   const requestPromise = (async () => {
-    const response = await fetch(appUrl("/auth/antiforgery"), { credentials: "include" });
+    const response = await fetch(appUrl("/api/v1/identity/antiforgery"), { credentials: "include" });
     if (!response.ok) throw new Error("Could not establish a secure session");
     const token = (await response.json()).token;
     if (typeof token !== "string" || token.length === 0) throw new Error("Could not establish a secure session");
@@ -137,7 +137,7 @@ export async function request<T>(url: string, init: RequestOptions = {}): Promis
   if (response.ok) return response.status === 204 ? (undefined as T) : ((await readJson(response)) as T);
   const problem = await readJson(response).catch(() => null);
   const details = asProblemDetails(problem);
-  if (url === "/auth/session" && response.status === 404) {
+  if (url === "/api/v1/identity/session" && response.status === 404) {
     const error: ApiError = Object.assign(new Error("Your session has expired"), { status: 401 });
     throw error;
   }

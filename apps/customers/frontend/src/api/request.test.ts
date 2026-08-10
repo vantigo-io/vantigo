@@ -63,7 +63,9 @@ describe("request", () => {
     setUnauthorizedHandler(unauthorized);
     stubFetch(() => Promise.resolve(new Response(null, { status: 401 })), { session: "delegate" });
 
-    await expect(request("/auth/login", { method: "POST", handleUnauthorized: false })).rejects.toMatchObject({
+    await expect(
+      request("/api/v1/identity/login", { method: "POST", handleUnauthorized: false }),
+    ).rejects.toMatchObject({
       status: 401,
     });
     expect(unauthorized).not.toHaveBeenCalled();
@@ -74,7 +76,9 @@ describe("request", () => {
     setUnauthorizedHandler(unauthorized);
     stubFetch(() => Promise.resolve(new Response(null, { status: 401 })), { session: "delegate" });
 
-    await expect(request("/auth/session", { handleUnauthorized: false })).rejects.toMatchObject({ status: 401 });
+    await expect(request("/api/v1/identity/session", { handleUnauthorized: false })).rejects.toMatchObject({
+      status: 401,
+    });
 
     expect(unauthorized).not.toHaveBeenCalled();
   });

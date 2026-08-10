@@ -1,0 +1,27 @@
+@import "@vantigo/frontend-shell/theme.css";
+
+.empty-icon {
+  display: grid;
+  place-items: center;
+  background: var(--mantine-color-vantigo-6);
+  color: #fff;
+  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mantine-color-vantigo-5);
+}
+.message-link {
+  font-weight: 700;
+  color: var(--mantine-color-vantigo-8);
+  text-decoration: none;
+}
+.message-link:hover {
+  text-decoration: underline;
+}

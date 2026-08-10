@@ -16,7 +16,7 @@ describe("auth CSRF lifecycle", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await signIn("owner@example.com", "password");
-    await request("/auth/logout", { method: "POST" });
+    await request("/api/v1/identity/logout", { method: "POST" });
 
     expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get("X-XSRF-TOKEN")).toBe("anonymous-token");
     expect(new Headers(fetchMock.mock.calls[3][1]?.headers).get("X-XSRF-TOKEN")).toBe("authenticated-token");
@@ -39,6 +39,6 @@ describe("auth CSRF lifecycle", () => {
     });
     await ensureCsrfToken();
 
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "/auth/antiforgery", { credentials: "include" });
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/v1/identity/antiforgery", { credentials: "include" });
   });
 });

@@ -86,7 +86,7 @@ export const contactsQueryOptions = (params: ContactsQueryParams) =>
       if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
 
       const query = searchParams.size > 0 ? `?${searchParams}` : "";
-      return request<PaginatedResponse<ContactListItem>>(`/api/v1/contacts${query}`, { signal });
+      return request<PaginatedResponse<ContactListItem>>(`/api/v1/customers/contacts${query}`, { signal });
     },
     placeholderData: keepPreviousData,
   });
@@ -105,7 +105,7 @@ export const contactQueryOptions = (id: number) =>
     queryKey: ["contacts", id],
     queryFn: async ({ signal }) => {
       try {
-        return await request<ContactResponse>(`/api/v1/contacts/${id}`, { signal });
+        return await request<ContactResponse>(`/api/v1/customers/contacts/${id}`, { signal });
       } catch (error) {
         if ((error as { status?: number }).status === 404) throw new NotFoundError(`Contact ${id} does not exist`);
         throw error;
@@ -117,18 +117,18 @@ export const contactCustomersQueryOptions = (contactId: number) =>
   queryOptions({
     queryKey: ["contacts", contactId, "customers"],
     queryFn: ({ signal }) =>
-      request<{ data: ContactCustomerResponse[] }>(`/api/v1/contacts/${contactId}/customers`, {
+      request<{ data: ContactCustomerResponse[] }>(`/api/v1/customers/contacts/${contactId}/customers`, {
         signal,
       }),
   });
 
 export const createContact = (input: ContactInput) =>
-  request<ContactResponse>("/api/v1/contacts", jsonBody("POST", input));
+  request<ContactResponse>("/api/v1/customers/contacts", jsonBody("POST", input));
 
 export const updateContact = (id: number, input: ContactInput) =>
-  request<ContactResponse>(`/api/v1/contacts/${id}`, jsonBody("PUT", input));
+  request<ContactResponse>(`/api/v1/customers/contacts/${id}`, jsonBody("PUT", input));
 
-export const deleteContact = (id: number) => request<void>(`/api/v1/contacts/${id}`, { method: "DELETE" });
+export const deleteContact = (id: number) => request<void>(`/api/v1/customers/contacts/${id}`, { method: "DELETE" });
 
 export const attachCustomerContact = (customerId: number, input: CustomerContactInput & { contactId: number }) =>
   request<CustomerContactResponse>(`/api/v1/customers/${customerId}/contacts`, jsonBody("POST", input));

@@ -21,7 +21,10 @@ describe("mailbox API mapping", () => {
     const queryFn = mailboxesQueryOptions().queryFn;
     if (!queryFn) throw new Error("mailbox query function is required");
     await expect(queryFn({ signal: new AbortController().signal } as never)).resolves.toEqual(response);
-    expect(fetch).toHaveBeenCalledWith("/api/v1/mailboxes", expect.objectContaining({ credentials: "include" }));
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/communications/mailboxes",
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 
   it("creates and updates a mailbox", async () => {
@@ -41,11 +44,19 @@ describe("mailbox API mapping", () => {
     });
     await updateMailbox("box-1", { displayName: null, isActive: false });
     await verifyMailbox("box-1");
-    expect(fetch).toHaveBeenNthCalledWith(2, "/api/v1/mailboxes", expect.objectContaining({ method: "POST" }));
-    expect(fetch).toHaveBeenNthCalledWith(3, "/api/v1/mailboxes/box-1", expect.objectContaining({ method: "PUT" }));
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/communications/mailboxes",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/communications/mailboxes/box-1",
+      expect.objectContaining({ method: "PUT" }),
+    );
     expect(fetch).toHaveBeenNthCalledWith(
       4,
-      "/api/v1/mailboxes/box-1/verify",
+      "/api/v1/communications/mailboxes/box-1/verify",
       expect.objectContaining({ method: "POST" }),
     );
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body))).toEqual({

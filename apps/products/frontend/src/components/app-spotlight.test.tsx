@@ -5,8 +5,8 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { routeTree } from "../routeTree.gen";
 import { stubFetch } from "../test/fetch";
+import { routeTree } from "../test/route-tree";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -50,7 +50,7 @@ describe("app spotlight", () => {
 
   it("searches products and navigates to a result", async () => {
     stubFetch((url: RequestInfo | URL) => {
-      if (String(url).startsWith("/api/v1/categories")) return Promise.resolve(jsonResponse(200, []));
+      if (String(url).startsWith("/api/v1/products/categories")) return Promise.resolve(jsonResponse(200, []));
       if (String(url).startsWith("/api/v1/products?"))
         return Promise.resolve(
           jsonResponse(

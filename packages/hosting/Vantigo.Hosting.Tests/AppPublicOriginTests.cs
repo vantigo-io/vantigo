@@ -79,11 +79,11 @@ public sealed class AppPublicUrlsTests
     [Fact]
     public void PublicUrl_WithNestedBasePath_IncludesTheWholePrefix()
     {
-        var urls = Create("https://vantigo.example.com", "/apps/customers/");
+        var urls = Create("https://vantigo.example.com", "/apps/vantigo/");
 
         Assert.Equal(
-            "https://vantigo.example.com/apps/customers/auth/oidc/callback",
-            urls.PublicUrl("/auth/oidc/callback"));
+            "https://vantigo.example.com/apps/vantigo/api/v1/identity/oidc/callback",
+            urls.PublicUrl("/api/v1/identity/oidc/callback"));
     }
 
     [Fact]

@@ -74,10 +74,10 @@ export const stubFetch = (
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       calls.push([input, init]);
-      if (String(input) === "/auth/antiforgery") {
+      if (String(input) === "/api/v1/identity/antiforgery") {
         return Promise.resolve(antiforgeryResponse(csrfTokens.shift() ?? TEST_CSRF_TOKEN));
       }
-      if (String(input) === "/auth/session" && session !== "delegate") {
+      if (String(input) === "/api/v1/identity/session" && session !== "delegate") {
         if (session instanceof Response) return Promise.resolve(session.clone());
         if (session === null) return Promise.resolve(new Response(null, { status: 401 }));
         return Promise.resolve(jsonResponse(session));

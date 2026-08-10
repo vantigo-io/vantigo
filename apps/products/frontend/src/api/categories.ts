@@ -19,24 +19,24 @@ export interface CategoryInput {
 export const categoriesQueryOptions = () =>
   queryOptions({
     queryKey: ["categories"],
-    queryFn: ({ signal }) => request<CategoryResponse[]>("/api/v1/categories", { signal }),
+    queryFn: ({ signal }) => request<CategoryResponse[]>("/api/v1/products/categories", { signal }),
   });
 
 export const createCategory = (input: CategoryInput) =>
-  request<CategoryResponse>("/api/v1/categories", {
+  request<CategoryResponse>("/api/v1/products/categories", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 
 export const updateCategory = (id: number, input: CategoryInput) =>
-  request<CategoryResponse>(`/api/v1/categories/${id}`, {
+  request<CategoryResponse>(`/api/v1/products/categories/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 
-export const deleteCategory = (id: number) => request<void>(`/api/v1/categories/${id}`, { method: "DELETE" });
+export const deleteCategory = (id: number) => request<void>(`/api/v1/products/categories/${id}`, { method: "DELETE" });
 
 export interface CategoryTreeItem {
   category: CategoryResponse;

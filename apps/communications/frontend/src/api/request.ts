@@ -19,7 +19,7 @@ export const clearCsrfToken = () => {
 export async function ensureCsrfToken(): Promise<string> {
   if (csrfToken) return csrfToken;
   if (!csrfRequest)
-    csrfRequest = fetch(appUrl("/auth/antiforgery"), { credentials: "include" })
+    csrfRequest = fetch(appUrl("/api/v1/identity/antiforgery"), { credentials: "include" })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok || typeof body.token !== "string" || !body.token)

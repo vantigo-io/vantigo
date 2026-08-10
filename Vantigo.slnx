@@ -2,26 +2,32 @@
   <Folder Name="/apps/" />
   <Folder Name="/apps/communications/" />
   <Folder Name="/apps/communications/backend/">
-    <Project Path="apps/communications/backend/Communications.Api.Tests/Communications.Api.Tests.csproj" />
-    <Project Path="apps/communications/backend/Communications.Api/Communications.Api.csproj" />
+    <Project Path="apps/communications/backend/Communications.Module.Tests/Communications.Module.Tests.csproj" />
+    <Project Path="apps/communications/backend/Communications.Module/Communications.Module.csproj" />
   </Folder>
   <Folder Name="/apps/communications/frontend/" />
   <Folder Name="/apps/customers/" />
   <Folder Name="/apps/customers/backend/">
-    <Project Path="apps/customers/backend/Customers.Api.Tests/Customers.Api.Tests.csproj" />
-    <Project Path="apps/customers/backend/Customers.Api/Customers.Api.csproj" />
+    <Project Path="apps/customers/backend/Customers.Module.Tests/Customers.Module.Tests.csproj" />
+    <Project Path="apps/customers/backend/Customers.Module/Customers.Module.csproj" />
   </Folder>
   <Folder Name="/apps/customers/frontend/" />
   <Folder Name="/apps/products/" />
   <Folder Name="/apps/products/backend/">
-    <Project Path="apps/products/backend/Products.Api.Tests/Products.Api.Tests.csproj" />
-    <Project Path="apps/products/backend/Products.Api/Products.Api.csproj" />
+    <Project Path="apps/products/backend/Products.Module.Tests/Products.Module.Tests.csproj" />
+    <Project Path="apps/products/backend/Products.Module/Products.Module.csproj" />
   </Folder>
   <Folder Name="/apps/products/frontend/" />
   <Folder Name="/orchestration/">
     <Project Path="orchestration/AppHost/AppHost.csproj" />
   </Folder>
+  <Folder Name="/apps/host/backend/">
+    <Project Path="apps/host/backend/Vantigo.Host/Vantigo.Host.csproj" />
+  </Folder>
   <Folder Name="/packages/">
+    <Project Path="packages/contracts/Vantigo.Contracts/Vantigo.Contracts.csproj" />
+    <Project Path="packages/identity/Vantigo.Identity.Tests/Vantigo.Identity.Tests.csproj" />
+    <Project Path="packages/identity/Vantigo.Identity/Vantigo.Identity.csproj" />
     <Project Path="packages/hosting/Vantigo.Hosting.Tests/Vantigo.Hosting.Tests.csproj" />
     <Project Path="packages/hosting/Vantigo.Hosting/Vantigo.Hosting.csproj" />
   </Folder>

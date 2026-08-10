@@ -5,9 +5,8 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { routeTree } from "../routeTree.gen";
 import { stubFetch } from "../test/fetch";
+import { routeTree } from "../test/route-tree";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -103,7 +102,7 @@ describe("app spotlight", () => {
           ),
         );
       }
-      if (String(url).startsWith("/api/v1/contacts?")) {
+      if (String(url).startsWith("/api/v1/customers/contacts?")) {
         return Promise.resolve(
           jsonResponse(
             200,

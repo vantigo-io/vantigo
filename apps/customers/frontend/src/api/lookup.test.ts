@@ -21,7 +21,7 @@ describe("fetchBrregLookup", () => {
     const result = await fetchBrregLookup({ search: "equinor" });
 
     expect(result).toEqual(body);
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/lookup/brreg?search=equinor", { signal: undefined });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/lookup/brreg?search=equinor", { signal: undefined });
   });
 
   it("queries by exact legal id", async () => {
@@ -30,7 +30,7 @@ describe("fetchBrregLookup", () => {
 
     await fetchBrregLookup({ legalId: "923609016" });
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/lookup/brreg?legalId=923609016", { signal: undefined });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/lookup/brreg?legalId=923609016", { signal: undefined });
   });
 
   it("throws on upstream failure", async () => {

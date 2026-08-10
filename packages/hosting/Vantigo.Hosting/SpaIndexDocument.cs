@@ -83,8 +83,23 @@ public sealed partial class SpaIndexDocument
             },
             JsonOptions);
 
+        if (buildTimeBasePath is "" or "/")
+        {
+            // A root Vite build emits root-relative asset URLs. Rewrite only URL
+            // attributes so the host can mount that build below App:BasePath.
+            if (effectiveBase != "/")
+            {
+                html = html
+                    .Replace("src=\"/", $"src=\"{effectiveBase}", StringComparison.Ordinal)
+                    .Replace("href=\"/", $"href=\"{effectiveBase}", StringComparison.Ordinal);
+            }
+        }
+        else
+        {
+            html = html.Replace($"{buildTimeBasePath}/", effectiveBase, StringComparison.Ordinal);
+        }
+
         html = html
-            .Replace($"{buildTimeBasePath}/", effectiveBase, StringComparison.Ordinal)
             .Replace(
                 "<head>",
                 $"<head><script>window.__VANTIGO_APP__={config};</script>",

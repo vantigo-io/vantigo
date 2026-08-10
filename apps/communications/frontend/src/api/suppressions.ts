@@ -16,15 +16,15 @@ export interface CreateSuppressionRequest {
 export const suppressionsQueryOptions = () =>
   queryOptions({
     queryKey: ["suppressions"],
-    queryFn: ({ signal }) => request<Suppression[]>("/api/v1/suppressions", { signal }),
+    queryFn: ({ signal }) => request<Suppression[]>("/api/v1/communications/suppressions", { signal }),
   });
 
 export const createSuppression = (body: CreateSuppressionRequest) =>
-  request<Suppression>("/api/v1/suppressions", {
+  request<Suppression>("/api/v1/communications/suppressions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
 export const deleteSuppression = (id: string) =>
-  request<void>(`/api/v1/suppressions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  request<void>(`/api/v1/communications/suppressions/${encodeURIComponent(id)}`, { method: "DELETE" });

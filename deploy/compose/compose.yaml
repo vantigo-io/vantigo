@@ -4,10 +4,8 @@ name: vantigo
 #
 # Quick start:
 #   1. Copy .env.example            -> .env
-#   2. Copy customers.env.example   -> customers.env
-#   3. Copy communications.env.example -> communications.env
-#   4. Copy products.env.example    -> products.env
-#   5. docker compose up -d
+#   2. Copy vantigo.env.example     -> vantigo.env
+#   3. docker compose up -d
 #
 # See README.md next to this file for details.
 
@@ -17,104 +15,51 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-vantigo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
     configs:
       - source: create-databases
         target: /docker-entrypoint-initdb.d/create-databases.sql
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vantigo}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vantigo} -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 12
     restart: unless-stopped
 
-  customers-migrate:
-    image: ghcr.io/vantigo-io/customers:${VANTIGO_TAG:-latest}
+  vantigo-migrate:
+    image: ghcr.io/vantigo-io/vantigo:${VANTIGO_TAG:-latest}
     command: ["migrate"]
-    env_file: customers.env
+    env_file: vantigo.env
     environment:
-      ConnectionStrings__Postgresql: Host=postgres;Database=customers;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
-  customers:
-    image: ghcr.io/vantigo-io/customers:${VANTIGO_TAG:-latest}
+  vantigo:
+    image: ghcr.io/vantigo-io/vantigo:${VANTIGO_TAG:-latest}
     command: ["api"]
-    env_file: customers.env
+    env_file: vantigo.env
     environment:
-      ConnectionStrings__Postgresql: Host=postgres;Database=customers;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
       DataProtection__KeysPath: /var/lib/vantigo/dataprotection
     ports:
-      - "${CUSTOMERS_PORT:-8080}:8080"
+      - "${VANTIGO_PORT:-8080}:8080"
     volumes:
-      - customers-dataprotection:/var/lib/vantigo/dataprotection
+      - vantigo-dataprotection:/var/lib/vantigo/dataprotection
     depends_on:
-      customers-migrate:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  communications-migrate:
-    image: ghcr.io/vantigo-io/communications:${VANTIGO_TAG:-latest}
-    command: ["migrate"]
-    env_file: communications.env
-    environment:
-      ConnectionStrings__Postgresql: Host=postgres;Database=communications;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
-  communications:
-    image: ghcr.io/vantigo-io/communications:${VANTIGO_TAG:-latest}
-    command: ["api"]
-    env_file: communications.env
-    environment:
-      ConnectionStrings__Postgresql: Host=postgres;Database=communications;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
-    ports:
-      - "${COMMUNICATIONS_PORT:-8081}:8080"
-    depends_on:
-      communications-migrate:
-        condition: service_completed_successfully
-    restart: unless-stopped
-
-  products-migrate:
-    image: ghcr.io/vantigo-io/products:${VANTIGO_TAG:-latest}
-    command: ["migrate"]
-    env_file: products.env
-    environment:
-      ConnectionStrings__Postgresql: Host=postgres;Database=products;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
-  products:
-    image: ghcr.io/vantigo-io/products:${VANTIGO_TAG:-latest}
-    command: ["api"]
-    env_file: products.env
-    environment:
-      ConnectionStrings__Postgresql: Host=postgres;Database=products;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
-      DataProtection__KeysPath: /var/lib/vantigo/dataprotection
-    ports:
-      - "${PRODUCTS_PORT:-8082}:8080"
-    volumes:
-      - products-dataprotection:/var/lib/vantigo/dataprotection
-    depends_on:
-      products-migrate:
+      vantigo-migrate:
         condition: service_completed_successfully
     restart: unless-stopped
 
 configs:
   create-databases:
     content: |
-      CREATE DATABASE customers;
-      CREATE DATABASE communications;
-      CREATE DATABASE products;
+      CREATE DATABASE vantigo;
 
 volumes:
   postgres-data:
-  customers-dataprotection:
-  products-dataprotection:
+  vantigo-dataprotection:

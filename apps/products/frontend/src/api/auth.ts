@@ -16,7 +16,7 @@ export interface Session {
 export const sessionQueryKey = ["auth", "session"] as const;
 export const fetchSession = async (): Promise<Session | null> => {
   try {
-    const session = await request<Session>("/auth/session", { handleUnauthorized: false });
+    const session = await request<Session>("/api/v1/identity/session", { handleUnauthorized: false });
     return session && typeof session === "object" && "user" in session ? session : null;
   } catch (error) {
     const status = (error as { status?: number }).status;
@@ -26,7 +26,7 @@ export const fetchSession = async (): Promise<Session | null> => {
 };
 export const signIn = async (email: string, password: string) => {
   await ensureCsrfToken();
-  const session = await request<Session>("/auth/login", {
+  const session = await request<Session>("/api/v1/identity/login", {
     method: "POST",
     handleUnauthorized: false,
     headers: { "Content-Type": "application/json" },
@@ -38,7 +38,7 @@ export const signIn = async (email: string, password: string) => {
 };
 export const signOut = async () => {
   try {
-    return await request<{ signedOut: true }>("/auth/logout", { method: "POST" });
+    return await request<{ signedOut: true }>("/api/v1/identity/logout", { method: "POST" });
   } finally {
     clearCsrfToken();
   }

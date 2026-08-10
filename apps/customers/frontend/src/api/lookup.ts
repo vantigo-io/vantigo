@@ -15,7 +15,7 @@ export type BrregLookupParams = { search: string } | { legalId: string };
 export async function fetchBrregLookup(params: BrregLookupParams, signal?: AbortSignal): Promise<LookupResponse> {
   const searchParams = new URLSearchParams(params);
   try {
-    return await request(`/api/v1/lookup/brreg?${searchParams}`, { signal });
+    return await request(`/api/v1/customers/lookup/brreg?${searchParams}`, { signal });
   } catch (error) {
     if ((error as { status?: number }).status) {
       throw new Error(`Lookup failed (HTTP ${(error as { status: number }).status})`, { cause: error });

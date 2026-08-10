@@ -15,9 +15,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\apps\customers\backend\Customers.Api\Customers.Api.csproj" />
-      <ProjectReference Include="..\..\apps\communications\backend\Communications.Api\Communications.Api.csproj" />
-      <ProjectReference Include="..\..\apps\products\backend\Products.Api\Products.Api.csproj" />
+      <ProjectReference Include="..\..\apps\host\backend\Vantigo.Host\Vantigo.Host.csproj" />
     </ItemGroup>
 
 </Project>

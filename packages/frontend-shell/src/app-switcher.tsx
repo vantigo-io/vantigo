@@ -9,6 +9,8 @@ export interface ShellApp {
   label: string;
   /** Absolute URL of the app. Omitted for the current app. */
   url?: string;
+  /** Optional client-side navigation callback for a single-SPA deployment. */
+  onClick?: () => void;
   /** Tabler icon rendered in the app tile. */
   icon: ComponentType<{ size?: number | string; stroke?: number | string }>;
   /** Marks the app the user is currently in; rendered selected and not clickable. */
@@ -37,10 +39,11 @@ export const AppSwitcher = ({ apps }: { apps: readonly ShellApp[] }) => {
           {apps.map((app) => (
             <UnstyledButton
               key={app.id}
-              component={app.current ? undefined : "a"}
+              component={app.current ? undefined : app.onClick ? "button" : "a"}
               href={app.current ? undefined : app.url}
               aria-current={app.current ? "true" : undefined}
               p="xs"
+              onClick={app.current ? undefined : app.onClick}
               style={{
                 display: "flex",
                 flexDirection: "column",

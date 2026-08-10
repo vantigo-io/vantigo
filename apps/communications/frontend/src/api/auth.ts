@@ -5,7 +5,7 @@ export interface Session {
 export const sessionQueryKey = ["auth", "session"] as const;
 export async function fetchSession(): Promise<Session | null> {
   try {
-    const value = await request<Session>("/auth/session");
+    const value = await request<Session>("/api/v1/identity/session");
     return value?.user ? value : null;
   } catch (error) {
     return (error as { status?: number }).status === 401 || (error as { status?: number }).status === 404
@@ -14,9 +14,9 @@ export async function fetchSession(): Promise<Session | null> {
   }
 }
 export const fetchBootstrapStatus = () =>
-  request<{ available: boolean }>("/auth/bootstrap-status", { handleUnauthorized: false });
+  request<{ available: boolean }>("/api/v1/identity/bootstrap-status", { handleUnauthorized: false });
 export const signIn = async (email: string, password: string) => {
-  const session = await request<Session>("/auth/login", {
+  const session = await request<Session>("/api/v1/identity/login", {
     method: "POST",
     handleUnauthorized: false,
     headers: { "Content-Type": "application/json" },
@@ -31,7 +31,7 @@ export const bootstrapAccount = async (values: {
   displayName: string;
   password: string;
 }) => {
-  const session = await request<Session>("/auth/bootstrap", {
+  const session = await request<Session>("/api/v1/identity/bootstrap", {
     method: "POST",
     handleUnauthorized: false,
     headers: { "Content-Type": "application/json" },
@@ -42,7 +42,7 @@ export const bootstrapAccount = async (values: {
 };
 export const signOut = async () => {
   try {
-    return await request("/auth/logout", { method: "POST" });
+    return await request("/api/v1/identity/logout", { method: "POST" });
   } finally {
     clearCsrfToken();
   }

@@ -79,7 +79,7 @@ public class VantigoTelemetryTests
     [Theory]
     [InlineData("/api/v1/businesses")]
     [InlineData("/api/v1/files/report.pdf")]
-    [InlineData("/auth/login")]
+    [InlineData("/api/v1/identity/login")]
     [InlineData("/customers/businesses/42")]
     [InlineData("/some-future-endpoint")]
     public void IsNoiseRequestPath_keeps_api_auth_and_deep_links(string path) =>

@@ -4,9 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { routeTree } from "../routeTree.gen";
 import { stubFetch } from "../test/fetch";
+import { routeTree } from "../test/route-tree";
 import { wireNavigationProgress } from "./navigation-progress";
 
 const { startSpy, completeSpy } = vi.hoisted(() => ({
@@ -62,7 +61,7 @@ describe("wireNavigationProgress", () => {
     const router = createRouter({
       routeTree,
       context: { queryClient },
-      history: createMemoryHistory({ initialEntries: ["/"] }),
+      history: createMemoryHistory({ initialEntries: ["/products"] }),
     });
 
     wireNavigationProgress(router);

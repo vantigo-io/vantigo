@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Vantigo.Contracts</AssemblyName>
+    <RootNamespace>Vantigo.Contracts</RootNamespace>
+  </PropertyGroup>
+
+</Project>
