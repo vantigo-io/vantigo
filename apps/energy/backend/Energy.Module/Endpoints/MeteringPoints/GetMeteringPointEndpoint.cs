@@ -10,7 +10,7 @@ internal static class GetMeteringPointEndpoint
 {
     internal static async Task<Results<Ok<MeteringPointResponse>, NotFound>> Handler(int id, EnergyDbContext db, CancellationToken cancellationToken)
     {
-        var point = await db.MeteringPoints.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        var point = await db.MeteringPoints.AsNoTracking().Include(item => item.Meters).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         return point is null ? TypedResults.NotFound() : TypedResults.Ok(MeteringPointResponse.FromDomain(point));
     }
 }

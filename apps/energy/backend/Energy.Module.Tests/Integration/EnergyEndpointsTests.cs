@@ -18,11 +18,30 @@ public sealed class EnergyEndpointsTests
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var point = await create.Content.ReadFromJsonAsync<MeteringPointResponse>();
         Assert.NotNull(point);
+        var meters = await _client.GetFromJsonAsync<List<MeterResponse>>($"/api/v1/energy/metering-points/{point.Id}/meters");
+        Assert.Single(meters!);
+        Assert.Equal(point.MeterNumber, meters![0].MeterNumber);
         var get = await _client.GetFromJsonAsync<MeteringPointResponse>($"/api/v1/energy/metering-points/{point.Id}");
         Assert.Equal(gsrn, get!.Gsrn);
         var update = await _client.PutAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}", NewMeteringPoint(gsrn, "Updated meter"));
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
-        Assert.Equal("Updated meter", (await update.Content.ReadFromJsonAsync<MeteringPointResponse>())!.MeterNumber);
+        Assert.Equal("Test meter", (await update.Content.ReadFromJsonAsync<MeteringPointResponse>())!.MeterNumber);
+    }
+
+    [Fact]
+    public async Task Meter_swap_closes_old_meter_and_keeps_ordered_history()
+    {
+        var point = await CreatePointAsync();
+        var installedAt = UtcDate().AddDays(1);
+        var swap = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/meters", new { meterNumber = "Replacement", installedAt });
+        Assert.Equal(HttpStatusCode.Created, swap.StatusCode);
+        var meters = await _client.GetFromJsonAsync<List<MeterResponse>>($"/api/v1/energy/metering-points/{point.Id}/meters");
+        Assert.Equal(2, meters!.Count);
+        Assert.True(meters[0].InstalledAt < meters[1].InstalledAt);
+        Assert.Equal(installedAt, meters[0].RemovedAt);
+        Assert.Null(meters[1].RemovedAt);
+        var current = await _client.GetFromJsonAsync<MeteringPointResponse>($"/api/v1/energy/metering-points/{point.Id}");
+        Assert.Equal("Replacement", current!.MeterNumber);
     }
 
     [Fact]
@@ -95,6 +114,7 @@ public sealed class EnergyEndpointsTests
     private static DateTimeOffset UtcDate() => new(DateTime.UtcNow.Date, TimeSpan.Zero);
 
     private sealed record MeteringPointResponse(int Id, string Gsrn, string MeterNumber);
+    private sealed record MeterResponse(int Id, int MeteringPointId, string MeterNumber, DateTimeOffset InstalledAt, DateTimeOffset? RemovedAt);
     private sealed record ConsumptionResponse(long Id, int MeteringPointId, DateTimeOffset Start, DateTimeOffset End, decimal QuantityKwh, string Quality, string Source, DateTimeOffset ReceivedAt);
     private sealed record SupplyPeriodResponse(int Id, int MeteringPointId, int CustomerId, DateTimeOffset Start, DateTimeOffset? End, string Status);
 }

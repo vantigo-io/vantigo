@@ -111,7 +111,7 @@ export const MeteringPointsPage = () => {
                         }
                       >
                         <Table.Td>{point.gsrn}</Table.Td>
-                        <Table.Td>{point.meterNumber}</Table.Td>
+                        <Table.Td>{point.meterNumber ?? "—"}</Table.Td>
                         <Table.Td>
                           {point.address.streetAddress}, {point.address.postalCode} {point.address.city}
                         </Table.Td>

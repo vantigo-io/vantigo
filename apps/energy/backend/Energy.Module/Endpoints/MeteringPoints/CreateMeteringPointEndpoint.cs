@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Energy.Database.Energy;
 using Vantigo.Energy.Domain.MeteringPoints;
+using Vantigo.Energy.Domain.Meters;
 using Vantigo.Energy.Endpoints.MeteringPoints.Dtos;
 
 namespace Vantigo.Energy.Endpoints.MeteringPoints;
@@ -18,6 +19,7 @@ internal static class CreateMeteringPointEndpoint
             return TypedResults.Problem(title: "Duplicate GSRN", detail: "A metering point with that GSRN already exists.", statusCode: 409);
 
         var point = request.ToDomain();
+        point.Meters.Add(new Meter { MeterNumber = request.MeterNumber!.Trim(), InstalledAt = DateTimeOffset.UtcNow });
         db.MeteringPoints.Add(point);
         await db.SaveChangesAsync(cancellationToken);
         return TypedResults.CreatedAtRoute(MeteringPointResponse.FromDomain(point), MeteringPointsEndpoints.GetMeteringPointRouteName, new { id = point.Id });

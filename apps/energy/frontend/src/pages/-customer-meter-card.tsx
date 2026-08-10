@@ -29,7 +29,7 @@ export const CustomerMeterCard = ({ item, customerId }: { item: CustomerMetering
           <Badge>{item.meteringPoint.connectionStatus}</Badge>
         </Group>
         <Text>
-          {item.meteringPoint.meterNumber} · {item.meteringPoint.address.streetAddress},{" "}
+          {item.meteringPoint.meterNumber ?? "—"} · {item.meteringPoint.address.streetAddress},{" "}
           {item.meteringPoint.address.city}
         </Text>
         <Text size="sm" c="dimmed">

@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
-import { assignSupplyPeriod, createMeteringPoint, meteringPointsQueryOptions } from "./energy";
+import {
+  assignSupplyPeriod,
+  createMeteringPoint,
+  meteringPointsQueryOptions,
+  metersQueryOptions,
+  replaceMeter,
+} from "./energy";
 
 const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -36,5 +42,23 @@ describe("energy api", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/energy/metering-points/1/supply-periods");
+  });
+
+  it("lists and replaces meters through the metering point endpoints", async () => {
+    const fetchMock = stubFetch(
+      vi
+        .fn()
+        .mockResolvedValue(response([]))
+        .mockResolvedValueOnce(response([{ id: 1 }])),
+    );
+    const options = metersQueryOptions(4);
+    await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+    expect(options.queryKey).toEqual(["energy", "metering-points", 4, "meters"]);
+    await replaceMeter(4, { meterNumber: "M-2", installedAt: "2026-08-11T00:00:00.000Z" });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/energy/metering-points/4/meters");
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ meterNumber: "M-2", installedAt: "2026-08-11T00:00:00.000Z" }),
+    });
   });
 });

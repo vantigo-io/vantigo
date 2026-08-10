@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Vantigo.Energy.Database.Energy;
 using Vantigo.Energy.Domain.Consumption;
 using Vantigo.Energy.Domain.MeteringPoints;
+using Vantigo.Energy.Domain.Meters;
 using Vantigo.Energy.Domain.SupplyPeriods;
 
 namespace Vantigo.Energy.Database.DevelopmentSeed;
@@ -24,20 +25,36 @@ internal static class DevelopmentDataSeeder
 
         foreach (var (gsrn, meter, area, city, customerId) in definitions)
         {
-            var point = await db.MeteringPoints.Include(item => item.SupplyPeriods)
+            var point = await db.MeteringPoints.Include(item => item.SupplyPeriods).Include(item => item.Meters)
                 .SingleOrDefaultAsync(item => item.Gsrn == new Gsrn(gsrn), cancellationToken);
             if (point is null)
             {
                 point = new MeteringPoint
                 {
                     Gsrn = new Gsrn(gsrn),
-                    MeterNumber = meter,
                     Address = new Address($"{city}veien 1", "0001", city),
                     PriceArea = area,
                     ConnectionStatus = ConnectionStatus.Connected,
                 };
+                point.Meters.Add(new Meter { MeterNumber = meter, InstalledAt = SeedNow.AddDays(-30) });
                 db.MeteringPoints.Add(point);
                 await db.SaveChangesAsync(cancellationToken);
+            }
+
+            if (!point.Meters.Any(meterItem => meterItem.RemovedAt is null))
+            {
+                point.Meters.Add(new Meter { MeterNumber = meter, InstalledAt = point.CreatedAt == default ? SeedNow : point.CreatedAt });
+            }
+
+            if (gsrn == "707057500000000002" && !point.Meters.Any(meterItem => meterItem.MeterNumber == "MTR-FJORD-OLD"))
+            {
+                var activeMeter = point.Meters.Single(meterItem => meterItem.RemovedAt is null);
+                point.Meters.Add(new Meter
+                {
+                    MeterNumber = "MTR-FJORD-OLD",
+                    InstalledAt = activeMeter.InstalledAt.AddDays(-365),
+                    RemovedAt = activeMeter.InstalledAt,
+                });
             }
 
             if (!point.SupplyPeriods.Any())

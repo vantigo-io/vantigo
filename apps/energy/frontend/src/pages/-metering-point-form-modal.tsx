@@ -8,6 +8,7 @@ import {
   createMeteringPoint,
   type MeteringPoint,
   type MeteringPointInput,
+  type MeteringPointUpdateInput,
   updateMeteringPoint,
 } from "../api/energy";
 
@@ -48,7 +49,7 @@ const fromState = (state: MeteringPointModalState): Values => {
   const point = state.meteringPoint;
   return {
     gsrn: point.gsrn,
-    meterNumber: point.meterNumber,
+    meterNumber: point.meterNumber ?? "",
     streetAddress: point.address.streetAddress,
     postalCode: point.address.postalCode,
     city: point.address.city,
@@ -75,7 +76,7 @@ export const MeteringPointFormModal = ({
     initialValues: empty,
     validate: {
       gsrn: (value) => (/^\d{18}$/.test(value.trim()) ? null : "GSRN must contain exactly 18 digits"),
-      meterNumber: (value) => (value.trim() ? null : "Meter number is required"),
+      meterNumber: (value) => (isEdit || value.trim() ? null : "Meter number is required"),
       streetAddress: (value) => (value.trim() ? null : "Street address is required"),
       postalCode: (value) => (value.trim() ? null : "Postal code is required"),
       city: (value) => (value.trim() ? null : "City is required"),
@@ -94,8 +95,10 @@ export const MeteringPointFormModal = ({
   }, [state]);
 
   const mutation = useMutation({
-    mutationFn: (input: MeteringPointInput) =>
-      isEdit ? updateMeteringPoint(state.meteringPoint.id, input) : createMeteringPoint(input),
+    mutationFn: (input: MeteringPointInput | MeteringPointUpdateInput) =>
+      isEdit
+        ? updateMeteringPoint(state.meteringPoint.id, input as MeteringPointUpdateInput)
+        : createMeteringPoint(input as MeteringPointInput),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["energy", "metering-points"] });
       notifications.show({
@@ -111,10 +114,9 @@ export const MeteringPointFormModal = ({
     },
   });
 
-  const submit = form.onSubmit((values) =>
-    mutation.mutate({
+  const submit = form.onSubmit((values) => {
+    const input = {
       gsrn: values.gsrn.trim(),
-      meterNumber: values.meterNumber.trim(),
       address: {
         streetAddress: values.streetAddress.trim(),
         postalCode: values.postalCode.trim(),
@@ -128,8 +130,9 @@ export const MeteringPointFormModal = ({
       latitude: values.latitude === "" ? undefined : Number(values.latitude),
       longitude: values.longitude === "" ? undefined : Number(values.longitude),
       connectionStatus: values.connectionStatus,
-    }),
-  );
+    } satisfies MeteringPointUpdateInput;
+    mutation.mutate(isEdit ? input : { ...input, meterNumber: values.meterNumber.trim() });
+  });
 
   return (
     <Modal
@@ -141,7 +144,7 @@ export const MeteringPointFormModal = ({
       <form onSubmit={submit}>
         <Stack>
           <TextInput label="GSRN" description="18 digits" withAsterisk data-autofocus {...form.getInputProps("gsrn")} />
-          <TextInput label="Meter number" withAsterisk {...form.getInputProps("meterNumber")} />
+          {!isEdit && <TextInput label="Meter number" withAsterisk {...form.getInputProps("meterNumber")} />}
           <TextInput label="Street address" withAsterisk {...form.getInputProps("streetAddress")} />
           <Group grow>
             <TextInput label="Postal code" withAsterisk {...form.getInputProps("postalCode")} />

@@ -17,12 +17,12 @@ internal static class GetMeteringPointsEndpoint
 
         var page = request.Page ?? 1;
         var pageSize = request.PageSize ?? 25;
-        var query = db.MeteringPoints.AsNoTracking();
+        IQueryable<Domain.MeteringPoints.MeteringPoint> query = db.MeteringPoints.AsNoTracking().Include(point => point.Meters);
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var pattern = $"%{EscapeLikePattern(request.Search.Trim())}%";
             query = query.Where(point => EF.Functions.ILike(point.Gsrn.Value, pattern) ||
-                EF.Functions.ILike(point.MeterNumber, pattern) || EF.Functions.ILike(point.Address.City, pattern) ||
+                point.Meters.Any(meter => meter.RemovedAt == null && EF.Functions.ILike(meter.MeterNumber, pattern)) || EF.Functions.ILike(point.Address.City, pattern) ||
                 EF.Functions.ILike(point.Address.StreetAddress, pattern));
         }
 

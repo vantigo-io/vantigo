@@ -18,7 +18,7 @@ internal static class GetCustomerMeteringPointsEndpoint
             .Where(point => point.SupplyPeriods.Any(period => period.CustomerId == customerId && period.Status != SupplyPeriodStatus.Cancelled))
             .OrderBy(point => point.Id).Select(point => new CustomerMeteringPointResponse(
                 new MeteringPointResponse(
-                    point.Id, point.Gsrn.Value, point.MeterNumber,
+                    point.Id, point.Gsrn.Value, point.Meters.Where(meter => meter.RemovedAt == null).Select(meter => meter.MeterNumber).FirstOrDefault(),
                     new AddressResponse(point.Address.StreetAddress, point.Address.PostalCode, point.Address.City, point.Address.CountryCode),
                     point.PriceArea, point.GridArea, point.ExpectedAnnualConsumptionKwh, point.Latitude, point.Longitude,
                     point.ConnectionStatus.ToString(), point.CreatedAt, point.UpdatedAt),

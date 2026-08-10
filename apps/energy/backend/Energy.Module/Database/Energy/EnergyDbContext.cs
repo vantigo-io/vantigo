@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Vantigo.Energy.Database.Energy.Configurations;
 using Vantigo.Energy.Domain.Consumption;
 using Vantigo.Energy.Domain.MeteringPoints;
+using Vantigo.Energy.Domain.Meters;
 using Vantigo.Energy.Domain.SupplyPeriods;
 
 namespace Vantigo.Energy.Database.Energy;
@@ -10,6 +11,7 @@ namespace Vantigo.Energy.Database.Energy;
 public sealed class EnergyDbContext(DbContextOptions<EnergyDbContext> options) : DbContext(options)
 {
     public DbSet<MeteringPoint> MeteringPoints => Set<MeteringPoint>();
+    public DbSet<Meter> Meters => Set<Meter>();
     public DbSet<ConsumptionInterval> ConsumptionIntervals => Set<ConsumptionInterval>();
     public DbSet<SupplyPeriod> SupplyPeriods => Set<SupplyPeriod>();
 
@@ -17,6 +19,7 @@ public sealed class EnergyDbContext(DbContextOptions<EnergyDbContext> options) :
     {
         modelBuilder.HasDefaultSchema("energy");
         modelBuilder.ApplyConfiguration(new MeteringPointEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new MeterEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ConsumptionIntervalEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new SupplyPeriodEntityTypeConfiguration());
     }

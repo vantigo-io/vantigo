@@ -14,7 +14,6 @@ internal sealed class MeteringPointEntityTypeConfiguration : IEntityTypeConfigur
         builder.Property(point => point.Id).HasColumnName("id").IsRequired().HasIdentityOptions(1001, 1);
         builder.Property(point => point.Gsrn).HasColumnName("gsrn")
             .HasConversion(value => value.Value, value => new Gsrn(value)).HasMaxLength(18).IsUnicode(false).IsRequired();
-        builder.Property(point => point.MeterNumber).HasColumnName("meter_number").HasMaxLength(64).IsRequired();
         builder.Property(point => point.PriceArea).HasColumnName("price_area").HasMaxLength(4).IsUnicode(false).IsRequired();
         builder.Property(point => point.GridArea).HasColumnName("grid_area").HasMaxLength(64).IsUnicode(false);
         builder.Property(point => point.ExpectedAnnualConsumptionKwh).HasColumnName("expected_annual_consumption_kwh").HasPrecision(14, 3);

@@ -5,7 +5,7 @@ namespace Vantigo.Energy.Endpoints.MeteringPoints.Dtos;
 internal sealed record MeteringPointResponse(
     int Id,
     string Gsrn,
-    string MeterNumber,
+    string? MeterNumber,
     AddressResponse Address,
     string PriceArea,
     string? GridArea,
@@ -17,7 +17,7 @@ internal sealed record MeteringPointResponse(
     DateTimeOffset UpdatedAt)
 {
     internal static MeteringPointResponse FromDomain(MeteringPoint point) => new(
-        point.Id, point.Gsrn.Value, point.MeterNumber,
+        point.Id, point.Gsrn.Value, point.Meters.FirstOrDefault(meter => meter.RemovedAt is null)?.MeterNumber,
         new AddressResponse(point.Address.StreetAddress, point.Address.PostalCode, point.Address.City, point.Address.CountryCode),
         point.PriceArea, point.GridArea, point.ExpectedAnnualConsumptionKwh, point.Latitude, point.Longitude,
         point.ConnectionStatus.ToString(), point.CreatedAt, point.UpdatedAt);

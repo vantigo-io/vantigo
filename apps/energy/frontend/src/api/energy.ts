@@ -19,7 +19,7 @@ export interface MeteringPointAddress {
 export interface MeteringPoint {
   id: number;
   gsrn: string;
-  meterNumber: string;
+  meterNumber: string | null;
   address: MeteringPointAddress;
   priceArea: PriceArea;
   gridArea?: string;
@@ -41,6 +41,16 @@ export interface MeteringPointInput {
   latitude?: number;
   longitude?: number;
   connectionStatus?: ConnectionStatus;
+}
+
+export type MeteringPointUpdateInput = Omit<MeteringPointInput, "meterNumber">;
+
+export interface Meter {
+  id: number;
+  meteringPointId: number;
+  meterNumber: string;
+  installedAt: string;
+  removedAt?: string | null;
 }
 
 export interface ConsumptionInterval {
@@ -131,9 +141,22 @@ export const createMeteringPoint = (input: MeteringPointInput) =>
     body: JSON.stringify(input),
   });
 
-export const updateMeteringPoint = (id: number, input: MeteringPointInput) =>
+export const updateMeteringPoint = (id: number, input: MeteringPointUpdateInput) =>
   request<MeteringPoint>(`/api/v1/energy/metering-points/${id}`, {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+export const metersQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: ["energy", "metering-points", id, "meters"],
+    queryFn: ({ signal }) => request<Meter[]>(`/api/v1/energy/metering-points/${id}/meters`, { signal }),
+  });
+
+export const replaceMeter = (id: number, input: { meterNumber: string; installedAt: string }) =>
+  request<Meter>(`/api/v1/energy/metering-points/${id}/meters`, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });

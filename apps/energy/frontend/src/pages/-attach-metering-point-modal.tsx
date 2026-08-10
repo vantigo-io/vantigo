@@ -61,7 +61,7 @@ export const AttachMeteringPointModal = ({
             onSearchChange={setSearchInput}
             data={(data?.data ?? []).map((point) => ({
               value: String(point.id),
-              label: `${point.gsrn} · ${point.meterNumber}`,
+              label: `${point.gsrn} · ${point.meterNumber ?? "—"}`,
             }))}
             {...form.getInputProps("meteringPointId")}
           />

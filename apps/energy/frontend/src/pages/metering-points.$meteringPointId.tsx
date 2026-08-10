@@ -11,11 +11,13 @@ import {
   consumptionQueryOptions,
   endSupplyPeriod,
   meteringPointQueryOptions,
+  metersQueryOptions,
   supplyPeriodsQueryOptions,
 } from "../api/energy";
 import { ConsumptionChart } from "./-consumption-chart";
 import { ManualReadingModal } from "./-manual-reading-modal";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
+import { ReplaceMeterModal } from "./-replace-meter-modal";
 import { SupplyPeriodModal } from "./-supply-period-modal";
 
 const dateOnly = (value: string | null | undefined) => (value ? new Date(value).toLocaleDateString() : "Open-ended");
@@ -31,6 +33,7 @@ export const MeteringPointDetailsPage = () => {
   const client = useQueryClient();
   const { data: point } = useSuspenseQuery(meteringPointQueryOptions(meteringPointId));
   const { data: periods } = useQuery(supplyPeriodsQueryOptions(meteringPointId));
+  const { data: meters } = useQuery(metersQueryOptions(meteringPointId));
   const [from, setFrom] = useState(defaultFrom());
   const [to, setTo] = useState(defaultTo());
   const { data: consumption } = useQuery(consumptionQueryOptions(meteringPointId, from, to));
@@ -38,6 +41,7 @@ export const MeteringPointDetailsPage = () => {
   const [editState, setEditState] = useState<MeteringPointModalState | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [readingOpen, setReadingOpen] = useState(false);
+  const [replaceMeterOpen, setReplaceMeterOpen] = useState(false);
   const endMutation = useMutation({
     mutationFn: (periodId: number) => endSupplyPeriod(meteringPointId, periodId, new Date().toISOString()),
     onSuccess: () =>
@@ -78,7 +82,7 @@ export const MeteringPointDetailsPage = () => {
           <Title order={3}>Metering point details</Title>
           <Group>
             <Text>
-              <b>Meter number:</b> {point.meterNumber}
+              <b>Meter number:</b> {point.meterNumber ?? "—"}
             </Text>
             <Text>
               <b>Price area:</b> {point.priceArea}
@@ -94,6 +98,41 @@ export const MeteringPointDetailsPage = () => {
               {point.expectedAnnualConsumptionKwh ? `${point.expectedAnnualConsumptionKwh} kWh` : "—"}
             </Text>
           </Group>
+        </Stack>
+      </Card>
+      <Card withBorder>
+        <Stack>
+          <Group justify="space-between">
+            <Title order={3}>Meter history</Title>
+            <Button onClick={() => setReplaceMeterOpen(true)}>Replace meter</Button>
+          </Group>
+          <ReplaceMeterModal
+            meteringPointId={meteringPointId}
+            opened={replaceMeterOpen}
+            onClose={() => setReplaceMeterOpen(false)}
+          />
+          {meters && meters.length > 0 ? (
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Meter number</Table.Th>
+                  <Table.Th>Installed</Table.Th>
+                  <Table.Th>Removed</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {meters.map((meter) => (
+                  <Table.Tr key={meter.id}>
+                    <Table.Td>{meter.meterNumber}</Table.Td>
+                    <Table.Td>{dateOnly(meter.installedAt)}</Table.Td>
+                    <Table.Td>{dateOnly(meter.removedAt)}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          ) : (
+            <Text c="dimmed">No meter history found.</Text>
+          )}
         </Stack>
       </Card>
       <Card withBorder>
