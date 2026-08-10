@@ -1,7 +1,7 @@
 import { Center, Loader, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Spotlight } from "@mantine/spotlight";
-import { IconAddressBook, IconBuilding, IconSearch, IconUser, IconUsers } from "@tabler/icons-react";
+import { IconAddressBook, IconBolt, IconBuilding, IconSearch, IconUser, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { contactsQueryOptions } from "@vantigo/customers-ui/api/contacts";
@@ -15,6 +15,7 @@ const MAX_RESULTS = 5;
 const navigationActions = [
   { label: "Customers", description: "Browse all customers", to: "/customers", icon: IconUsers },
   { label: "Contacts", description: "Browse all contacts", to: "/contacts", icon: IconAddressBook },
+  { label: "Energy", description: "Browse metering points", to: "/energy/metering-points", icon: IconBolt },
 ] as const;
 
 /**

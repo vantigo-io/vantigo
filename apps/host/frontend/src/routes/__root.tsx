@@ -1,6 +1,7 @@
 import { Center, Loader, Menu, NavLink, Text } from "@mantine/core";
 import {
   IconAddressBook,
+  IconBolt,
   IconCategory,
   IconInbox,
   IconLayoutDashboard,
@@ -76,6 +77,10 @@ const navSections: readonly NavSection[] = [
       { label: "Categories", to: "/products/categories", icon: IconCategory },
     ],
   },
+  {
+    label: "Energy",
+    items: [{ label: "Metering points", to: "/energy/metering-points", icon: IconBolt }],
+  },
 ];
 
 /**
@@ -146,6 +151,13 @@ const RootLayout = () => {
             url: "/products",
             onClick: () =>
               void navigate({ to: "/products", search: { page: 1, search: "", status: "", categoryId: "" } }),
+          },
+          {
+            id: "energy",
+            label: "Energy",
+            icon: IconBolt,
+            url: "/energy/metering-points",
+            onClick: () => void navigate({ to: "/energy/metering-points", search: { page: 1, search: "" } }),
           },
         ]}
         user={session.user}

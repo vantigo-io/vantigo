@@ -3,6 +3,8 @@ using Vantigo.Communications.Endpoints;
 using Vantigo.Customers.Database;
 using Vantigo.Customers.Database.DevelopmentSeed;
 using Vantigo.Customers.Endpoints;
+using Vantigo.Energy.Database;
+using Vantigo.Energy.Endpoints;
 using Vantigo.Host;
 using Vantigo.Hosting;
 using Vantigo.Identity.Endpoints.Auth;
@@ -115,6 +117,7 @@ static void AddEnabledModules(IServiceCollection services, IConfiguration config
     if (configuration.GetValue("Modules:Customers:Enabled", true)) services.AddCustomersModule(configuration);
     if (configuration.GetValue("Modules:Communications:Enabled", true)) services.AddCommunicationsModule(configuration);
     if (configuration.GetValue("Modules:Products:Enabled", true)) services.AddProductsModule(configuration);
+    if (configuration.GetValue("Modules:Energy:Enabled", true)) services.AddEnergyModule(configuration);
 }
 
 static async Task MigrateEnabledModulesAsync(IServiceProvider services, IConfiguration configuration)
@@ -122,6 +125,7 @@ static async Task MigrateEnabledModulesAsync(IServiceProvider services, IConfigu
     if (configuration.GetValue("Modules:Customers:Enabled", true)) await services.MigrateAsync();
     if (configuration.GetValue("Modules:Communications:Enabled", true)) await services.MigrateCommunicationsAsync();
     if (configuration.GetValue("Modules:Products:Enabled", true)) await services.MigrateProductsAsync();
+    if (configuration.GetValue("Modules:Energy:Enabled", true)) await services.MigrateEnergyAsync();
     await services.MigrateIdentityAsync();
 }
 
@@ -131,6 +135,7 @@ static async Task SeedEnabledModulesAsync(IServiceProvider services, IConfigurat
     if (configuration.GetValue("Modules:Customers:Enabled", true)) await services.SeedAsync(configuration);
     if (configuration.GetValue("Modules:Communications:Enabled", true)) await services.SeedCommunicationsAsync(configuration);
     if (configuration.GetValue("Modules:Products:Enabled", true)) await services.SeedProductsAsync(configuration);
+    if (configuration.GetValue("Modules:Energy:Enabled", true)) await services.SeedEnergyAsync(configuration);
 }
 
 static void MapEnabledModules(WebApplication app, IConfiguration configuration)
@@ -138,6 +143,9 @@ static void MapEnabledModules(WebApplication app, IConfiguration configuration)
     if (configuration.GetValue("Modules:Customers:Enabled", true)) app.MapCustomersModule();
     if (configuration.GetValue("Modules:Communications:Enabled", true)) app.MapCommunicationsModule();
     if (configuration.GetValue("Modules:Products:Enabled", true)) app.MapProductsModule();
+    if (configuration.GetValue("Modules:Energy:Enabled", true)) app.MapEnergyModule();
 }
 
-public partial class Program { }
+public partial class Program
+{
+}

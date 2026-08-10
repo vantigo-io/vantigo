@@ -61,6 +61,9 @@ export const CustomerDetailsPage = () => {
               >
                 Edit customer
               </Button>
+              <Button component="a" href={`/customers/${customer.id}/energy`} variant="light">
+                Energy
+              </Button>
             </Group>
           }
         />

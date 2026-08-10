@@ -36,6 +36,7 @@
     <ProjectReference Include="..\..\..\..\apps\customers\backend\Customers.Module\Customers.Module.csproj" />
     <ProjectReference Include="..\..\..\..\apps\communications\backend\Communications.Module\Communications.Module.csproj" />
     <ProjectReference Include="..\..\..\..\apps\products\backend\Products.Module\Products.Module.csproj" />
+    <ProjectReference Include="..\..\..\..\apps\energy\backend\Energy.Module\Energy.Module.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
