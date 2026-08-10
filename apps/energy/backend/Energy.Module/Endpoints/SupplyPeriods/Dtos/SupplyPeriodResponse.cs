@@ -16,3 +16,5 @@ internal sealed record SupplyPeriodResponse(
 
 internal sealed record CreateSupplyPeriodRequest(int CustomerId, DateTimeOffset Start);
 internal sealed record EndSupplyPeriodRequest(DateTimeOffset End);
+internal sealed record SwitchSupplyPeriodRequest(int CustomerId, DateTimeOffset SwitchAt);
+internal sealed record SwitchSupplyPeriodResponse(SupplyPeriodResponse? EndedPeriod, SupplyPeriodResponse NewPeriod);

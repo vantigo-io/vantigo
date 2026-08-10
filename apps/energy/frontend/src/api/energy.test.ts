@@ -8,6 +8,7 @@ import {
   meteringPointsQueryOptions,
   metersQueryOptions,
   replaceMeter,
+  switchSupplyPeriod,
 } from "./energy";
 
 const response = (body: unknown, status = 200) =>
@@ -105,5 +106,19 @@ describe("energy api", () => {
       method: "POST",
       body: JSON.stringify({ meterNumber: "M-2", installedAt: "2026-08-11T00:00:00.000Z" }),
     });
+  });
+
+  it("switches a supply period with the switchAt request field", async () => {
+    const fetchMock = stubFetch(() => Promise.resolve(response({ endedPeriod: null, newPeriod: { id: 2 } })));
+
+    await switchSupplyPeriod(4, { customerId: 1002, start: "2026-08-11" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/energy/metering-points/4/supply-periods/switch",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ customerId: 1002, switchAt: "2026-08-11" }),
+      }),
+    );
   });
 });

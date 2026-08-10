@@ -1,19 +1,20 @@
-import { Button, Group, Modal, Select, Stack, TextInput } from "@mantine/core";
+import { Alert, Button, Group, Modal, Select, Stack, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
-import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { customersQueryOptions } from "../api/customers";
-import { assignSupplyPeriod } from "../api/energy";
+import { ApiValidationError, switchSupplyPeriod } from "../api/energy";
 
 export const SupplyPeriodModal = ({
   meteringPointId,
   opened,
   onClose,
+  hasActivePeriod = false,
 }: {
   meteringPointId: number;
   opened: boolean;
   onClose: () => void;
+  hasActivePeriod?: boolean;
 }) => {
   const client = useQueryClient();
   const [search, setSearch] = useState("");
@@ -26,30 +27,28 @@ export const SupplyPeriodModal = ({
     },
   });
   const mutation = useMutation({
-    mutationFn: (values: { customerId: number; start: string }) => assignSupplyPeriod(meteringPointId, values),
+    mutationFn: (values: { customerId: number; start: string }) => switchSupplyPeriod(meteringPointId, values),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "supply-periods"] });
+      void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "consumption"] });
+      void client.invalidateQueries({ queryKey: ["energy", "customers"] });
       form.reset();
       onClose();
     },
-    onError: (error) =>
-      notifications.show({
-        color: "red",
-        title: "Could not assign customer",
-        message:
-          (error as { status?: number }).status === 409
-            ? "This metering point already has an overlapping supply period."
-            : error.message,
-      }),
+    onError: (error) => {
+      if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
+    },
   });
+  const action = hasActivePeriod ? "Switch customer" : "Assign customer";
   return (
-    <Modal opened={opened} onClose={onClose} title="Assign customer" centered>
+    <Modal opened={opened} onClose={onClose} title={action} centered>
       <form
         onSubmit={form.onSubmit((values) =>
           mutation.mutate({ customerId: Number(values.customerId), start: values.start }),
         )}
       >
         <Stack>
+          {mutation.error && <Alert color="red">{mutation.error.message}</Alert>}
           <Select
             label="Customer"
             withAsterisk
@@ -59,13 +58,13 @@ export const SupplyPeriodModal = ({
             data={(customers?.data ?? []).map((customer) => ({ value: String(customer.id), label: customer.name }))}
             {...form.getInputProps("customerId")}
           />
-          <TextInput label="Start" type="date" withAsterisk {...form.getInputProps("start")} />
+          <TextInput label="Switch date" type="date" withAsterisk {...form.getInputProps("start")} />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              Assign customer
+              {action}
             </Button>
           </Group>
         </Stack>

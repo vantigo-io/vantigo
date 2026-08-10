@@ -22,6 +22,7 @@ internal static class MeteringPointsEndpoints
         group.MapPost("/{id:int}/consumption", AddManualConsumptionEndpoint.Handler).RequireAntiforgery().WithSummary("Add a manual consumption interval");
         group.MapGet("/{id:int}/supply-periods", GetSupplyPeriodsEndpoint.Handler).WithSummary("List supply periods");
         group.MapPost("/{id:int}/supply-periods", CreateSupplyPeriodEndpoint.Handler).RequireAntiforgery().WithSummary("Create a supply period");
+        group.MapPost("/{id:int}/supply-periods/switch", SwitchSupplyPeriodEndpoint.Handler).RequireAntiforgery().WithSummary("Switch supply period customer");
         group.MapPost("/{id:int}/supply-periods/{periodId:int}/end", EndSupplyPeriodEndpoint.Handler).RequireAntiforgery().WithSummary("End a supply period");
         group.MapDelete("/{id:int}/supply-periods/{periodId:int}", CancelSupplyPeriodEndpoint.Handler).RequireAntiforgery().WithSummary("Cancel a supply period");
         return app;

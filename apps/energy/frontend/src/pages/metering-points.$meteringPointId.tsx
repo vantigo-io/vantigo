@@ -56,7 +56,7 @@ export const MeteringPointDetailsPage = () => {
   const { data: aggregates } = useQuery(consumptionAggregateQueryOptions(meteringPointId, { from, to, resolution }));
   const { data: customers } = useQuery(customersQueryOptions());
   const [editState, setEditState] = useState<MeteringPointModalState | null>(null);
-  const [assignOpen, setAssignOpen] = useState(false);
+  const [supplyPeriodModalOpen, setSupplyPeriodModalOpen] = useState(false);
   const [readingOpen, setReadingOpen] = useState(false);
   const [replaceMeterOpen, setReplaceMeterOpen] = useState(false);
   const endMutation = useMutation({
@@ -67,6 +67,7 @@ export const MeteringPointDetailsPage = () => {
   });
   const customerName = (id: number) =>
     customers?.data.find((customer) => customer.id === id)?.name ?? `Customer #${id}`;
+  const hasActivePeriod = periods?.some((period) => period.status === "Active") ?? false;
   return (
     <Stack gap="lg">
       <Breadcrumbs>
@@ -156,14 +157,15 @@ export const MeteringPointDetailsPage = () => {
         <Stack>
           <Group justify="space-between">
             <Title order={3}>Supply periods</Title>
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setAssignOpen(true)}>
-              Assign customer
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setSupplyPeriodModalOpen(true)}>
+              {hasActivePeriod ? "Switch customer" : "Assign customer"}
             </Button>
           </Group>
           <SupplyPeriodModal
             meteringPointId={meteringPointId}
-            opened={assignOpen}
-            onClose={() => setAssignOpen(false)}
+            opened={supplyPeriodModalOpen}
+            onClose={() => setSupplyPeriodModalOpen(false)}
+            hasActivePeriod={hasActivePeriod}
           />
           {periods && periods.length > 0 ? (
             <Table>

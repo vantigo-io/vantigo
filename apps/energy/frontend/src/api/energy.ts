@@ -213,6 +213,18 @@ export const assignSupplyPeriod = (id: number, input: { customerId: number; star
     body: JSON.stringify(input),
   });
 
+export interface SwitchSupplyPeriodResponse {
+  endedPeriod: SupplyPeriod | null;
+  newPeriod: SupplyPeriod;
+}
+
+export const switchSupplyPeriod = (id: number, input: { customerId: number; start: string }) =>
+  request<SwitchSupplyPeriodResponse>(`/api/v1/energy/metering-points/${id}/supply-periods/switch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ customerId: input.customerId, switchAt: input.start }),
+  });
+
 export const endSupplyPeriod = (id: number, periodId: number, end: string) =>
   request<SupplyPeriod>(`/api/v1/energy/metering-points/${id}/supply-periods/${periodId}/end`, {
     method: "POST",

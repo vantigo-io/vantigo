@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Vantigo.Energy.Database.Energy;
 using Vantigo.Energy.Domain.Consumption;
+using Vantigo.Energy.Domain.SupplyPeriods;
 
 namespace Vantigo.Energy.Module.Tests.Integration;
 
@@ -81,6 +82,124 @@ public sealed class EnergyEndpointsTests
         var period = await first.Content.ReadFromJsonAsync<SupplyPeriodResponse>();
         Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/{period!.Id}/end", new { end = start.AddDays(1) })).StatusCode);
         Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods", new { customerId = 1002, start = start.AddDays(1) })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Supply_period_switch_ends_current_period_and_creates_contiguous_period()
+    {
+        var point = await CreatePointAsync();
+        var start = Utc(2026, 4, 1);
+        var switchAt = start.AddDays(3);
+        var first = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods", new { customerId = 1001, start });
+        var firstPeriod = await first.Content.ReadFromJsonAsync<SupplyPeriodResponse>();
+
+        var response = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/switch", new
+        {
+            customerId = 1002,
+            switchAt,
+        });
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.Created, body);
+        var switched = await response.Content.ReadFromJsonAsync<SwitchSupplyPeriodResponse>();
+        Assert.NotNull(switched);
+        Assert.Equal(firstPeriod!.Id, switched!.EndedPeriod!.Id);
+        Assert.Equal(SupplyPeriodStatus.Ended.ToString(), switched.EndedPeriod.Status);
+        Assert.Equal(switchAt, switched.EndedPeriod.End);
+        Assert.Equal(switchAt, switched.NewPeriod.Start);
+        Assert.Null(switched.NewPeriod.End);
+        Assert.Equal(1002, switched.NewPeriod.CustomerId);
+    }
+
+    [Fact]
+    public async Task Supply_period_switch_without_active_period_behaves_as_move_in()
+    {
+        var point = await CreatePointAsync();
+
+        var response = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/switch", new
+        {
+            customerId = 1001,
+            switchAt = Utc(2026, 5, 1),
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var switched = await response.Content.ReadFromJsonAsync<SwitchSupplyPeriodResponse>();
+        Assert.NotNull(switched);
+        Assert.Null(switched!.EndedPeriod);
+        Assert.Equal(1001, switched.NewPeriod.CustomerId);
+    }
+
+    [Fact]
+    public async Task Supply_period_switch_rejects_before_start_and_same_customer()
+    {
+        var point = await CreatePointAsync();
+        var start = Utc(2026, 6, 1);
+        var first = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods", new { customerId = 1001, start });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        var beforeStart = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/switch", new
+        {
+            customerId = 1002,
+            switchAt = start.AddMinutes(-1),
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, beforeStart.StatusCode);
+
+        var sameCustomer = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/switch", new
+        {
+            customerId = 1001,
+            switchAt = start.AddDays(1),
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, sameCustomer.StatusCode);
+    }
+
+    [Fact]
+    public async Task Supply_period_switch_rejects_overlap_with_historical_period()
+    {
+        var point = await CreatePointAsync();
+        var start = Utc(2026, 7, 1);
+        var first = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods", new { customerId = 1001, start });
+        var period = await first.Content.ReadFromJsonAsync<SupplyPeriodResponse>();
+        Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync(
+            $"/api/v1/energy/metering-points/{point.Id}/supply-periods/{period!.Id}/end", new { end = start.AddDays(2) })).StatusCode);
+
+        var response = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/switch", new
+        {
+            customerId = 1002,
+            switchAt = start.AddDays(1),
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Customer_consumption_after_switch_is_private_to_each_period()
+    {
+        var point = await CreatePointAsync();
+        var switchAt = Utc(2026, 8, 1, 12);
+        var first = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods", new
+        {
+            customerId = 1001,
+            start = switchAt.AddHours(-2),
+        });
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        var switched = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/switch", new
+        {
+            customerId = 1002,
+            switchAt,
+        });
+        Assert.Equal(HttpStatusCode.Created, switched.StatusCode);
+
+        await AddConsumptionAsync(point.Id, switchAt.AddHours(-2), switchAt.AddHours(-1), 1m);
+        await AddConsumptionAsync(point.Id, switchAt.AddHours(-1), switchAt, 2m);
+        await AddConsumptionAsync(point.Id, switchAt, switchAt.AddHours(1), 4m);
+        await AddConsumptionAsync(point.Id, switchAt.AddHours(1), switchAt.AddHours(2), 8m);
+
+        var oldCustomer = await _client.GetFromJsonAsync<List<ConsumptionResponse>>(
+            $"/api/v1/energy/customers/1001/consumption?meteringPointId={point.Id}");
+        var newCustomer = await _client.GetFromJsonAsync<List<ConsumptionResponse>>(
+            $"/api/v1/energy/customers/1002/consumption?meteringPointId={point.Id}");
+        Assert.Equal([1m, 2m], oldCustomer!.Select(interval => interval.QuantityKwh));
+        Assert.Equal([4m, 8m], newCustomer!.Select(interval => interval.QuantityKwh));
     }
 
     [Fact]
@@ -218,6 +337,7 @@ public sealed class EnergyEndpointsTests
     private sealed record MeterResponse(int Id, int MeteringPointId, string MeterNumber, DateTimeOffset InstalledAt, DateTimeOffset? RemovedAt);
     private sealed record ConsumptionResponse(long Id, int MeteringPointId, DateTimeOffset Start, DateTimeOffset End, decimal QuantityKwh, string Quality, string Source, DateTimeOffset ReceivedAt);
     private sealed record SupplyPeriodResponse(int Id, int MeteringPointId, int CustomerId, DateTimeOffset Start, DateTimeOffset? End, string Status);
+    private sealed record SwitchSupplyPeriodResponse(SupplyPeriodResponse? EndedPeriod, SupplyPeriodResponse NewPeriod);
     private sealed record AggregateResponse(DateTimeOffset BucketStart, DateTimeOffset BucketEnd, decimal QuantityKwh, long IntervalCount, bool HasEstimated);
     private sealed record CustomerAggregateResponse(int MeteringPointId, DateTimeOffset BucketStart, DateTimeOffset BucketEnd, decimal QuantityKwh, long IntervalCount, bool HasEstimated);
 }
