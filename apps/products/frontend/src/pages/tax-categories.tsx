@@ -11,12 +11,12 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ApiError } from "../api/request";
 import {
@@ -75,12 +75,16 @@ export const TaxCategoriesPage = () => {
   const submit = form.onSubmit((v) => save.mutate({ name: v.name.trim(), kind: v.kind, rate: Number(v.rate) / 100 }));
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
-        <Title order={2}>Tax categories</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => open()}>
-          New tax category
-        </Button>
-      </Group>
+      <PageHeader
+        eyebrow="Products"
+        title="Tax categories"
+        description="Tax rules applied to products at checkout."
+        actions={
+          <Button leftSection={<IconPlus size={16} />} onClick={() => open()}>
+            New tax category
+          </Button>
+        }
+      />
       {error && (
         <Alert color="red" title="Could not complete that action" withCloseButton onClose={() => setError(null)}>
           {error}

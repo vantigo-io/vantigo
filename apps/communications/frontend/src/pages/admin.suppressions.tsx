@@ -1,7 +1,8 @@
-import { Alert, Button, Card, Group, Loader, Modal, Stack, Table, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Card, Group, Loader, Modal, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ApiError } from "../api/request";
 import { createSuppression, deleteSuppression, suppressionsQueryOptions } from "../api/suppressions";
@@ -44,11 +45,11 @@ export function SuppressionsPage() {
   );
   return (
     <Stack gap="xl">
-      <div>
-        <Text className="eyebrow">Administration</Text>
-        <Title order={2}>Suppressions</Title>
-        <Text c="dimmed">Keep unwanted recipients out of future messages.</Text>
-      </div>
+      <PageHeader
+        eyebrow="Communications"
+        title="Suppressions"
+        description="Addresses that are blocked from receiving messages, and why."
+      />
       <Card withBorder radius="lg">
         <form
           onSubmit={form.onSubmit((values) =>

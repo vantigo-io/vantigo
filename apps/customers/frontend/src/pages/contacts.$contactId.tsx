@@ -13,7 +13,6 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
   useCombobox,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
@@ -23,6 +22,7 @@ import { notifications } from "@mantine/notifications";
 import { IconBuildingStore, IconMail, IconPencil, IconPhone, IconPlus, IconUserOff } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import {
@@ -62,21 +62,25 @@ export const ContactDetailsPage = () => {
       </Breadcrumbs>
 
       <Stack gap="xs">
-        <Group justify="space-between">
-          <Group gap="sm">
-            <Title order={2}>{name}</Title>
-            <CopyableBadge variant="light" size="lg" tooltip={tooltips.contactId} copyValue={String(contact.id)}>
-              #{contact.id}
-            </CopyableBadge>
-          </Group>
-          <Button
-            variant="default"
-            leftSection={<IconPencil size={16} />}
-            onClick={() => setModalState({ mode: "edit", contact })}
-          >
-            Edit contact
-          </Button>
-        </Group>
+        <PageHeader
+          eyebrow="Customers"
+          title={name}
+          description="Contact details and the customers this person is linked to."
+          actions={
+            <Group gap="sm">
+              <CopyableBadge variant="light" size="lg" tooltip={tooltips.contactId} copyValue={String(contact.id)}>
+                #{contact.id}
+              </CopyableBadge>
+              <Button
+                variant="default"
+                leftSection={<IconPencil size={16} />}
+                onClick={() => setModalState({ mode: "edit", contact })}
+              >
+                Edit contact
+              </Button>
+            </Group>
+          }
+        />
 
         {(contact.phone || contact.email) && (
           <Group gap="xs">

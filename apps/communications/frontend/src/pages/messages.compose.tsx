@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Group, Select, Stack, TagsInput, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Card, Group, Select, Stack, TagsInput, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { RichTextEditor } from "@mantine/tiptap";
@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { mailboxesQueryOptions } from "../api/mailboxes";
@@ -124,11 +125,11 @@ export function ComposePage() {
 
   return (
     <Stack maw={900} mx="auto" gap="xl">
-      <div>
-        <Text className="eyebrow">New message</Text>
-        <Title order={2}>Compose</Title>
-        <Text c="dimmed">Send a message through the configured workspace mailbox.</Text>
-      </div>
+      <PageHeader
+        eyebrow="Communications"
+        title="New message"
+        description="Write and send a message to one or more recipients."
+      />
       {mutation.error?.status === 503 && (
         <Alert color="red" title="No active mailbox is configured">
           Ask an Owner to configure an active mailbox before sending messages.

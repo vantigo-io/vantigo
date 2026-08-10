@@ -86,7 +86,7 @@ describe("ProductDetailsPage variants", () => {
     stubProductFetch(product([variant(1, "W-SINGLE", {})]));
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Widget" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /Widget/ })).toBeInTheDocument();
     expect(screen.getByText("W-SINGLE")).toBeInTheDocument();
     expect(screen.getByText("Unit:")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Variants" })).not.toBeInTheDocument();

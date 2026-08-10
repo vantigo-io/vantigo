@@ -16,6 +16,7 @@ import {
 import { IconAlertCircle, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { messagesQueryOptions } from "../api/messages";
 import { statusColor, statusLabel } from "../lib/status";
 export function MessagesPage() {
@@ -25,18 +26,18 @@ export function MessagesPage() {
   const q = useQuery(messagesQueryOptions(page, 20, undefined, includeArchived));
   return (
     <Stack gap="xl">
-      <Group justify="space-between" align="end">
-        <div>
-          <Text className="eyebrow">Activity log</Text>
-          <Title order={2}>Message history</Title>
-          <Text c="dimmed">A clear trail from submission to reply.</Text>
-        </div>
-        {q.data && (
-          <Badge size="lg" variant="light">
-            {q.data.pagination.totalCount} messages
-          </Badge>
-        )}
-      </Group>
+      <PageHeader
+        eyebrow="Communications"
+        title="Messages"
+        description="Every message sent through your services, from submission to reply."
+        actions={
+          q.data && (
+            <Badge size="lg" variant="light">
+              {q.data.pagination.totalCount} messages
+            </Badge>
+          )
+        }
+      />
       <Card withBorder radius="lg" padding="lg">
         <Group mb="lg" align="center" gap="md">
           <TextInput

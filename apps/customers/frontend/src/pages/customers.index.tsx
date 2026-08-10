@@ -12,12 +12,12 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 
 import { customersQueryOptions } from "../api/customers";
@@ -58,19 +58,23 @@ export const CustomersPage = () => {
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
-        <Group gap="sm">
-          <Title order={2}>Customers</Title>
-          {data && (
-            <Badge variant="light" size="lg">
-              {data.pagination.totalCount} total
-            </Badge>
-          )}
-        </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-          Create new customer
-        </Button>
-      </Group>
+      <PageHeader
+        eyebrow="Customers"
+        title="Customers"
+        description="The companies and people you do business with."
+        actions={
+          <Group gap="sm">
+            {data && (
+              <Badge variant="light" size="lg">
+                {data.pagination.totalCount} total
+              </Badge>
+            )}
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+              Create new customer
+            </Button>
+          </Group>
+        }
+      />
 
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
 

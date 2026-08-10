@@ -14,13 +14,13 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCategory, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   ApiValidationError,
@@ -156,15 +156,20 @@ export const CategoriesPage = () => {
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
-        <Group gap="sm">
-          <IconCategory size={28} />
-          <Title order={2}>Categories</Title>
-        </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
-          New category
-        </Button>
-      </Group>
+      <PageHeader
+        eyebrow="Products"
+        title={
+          <>
+            <IconCategory size={28} /> Categories
+          </>
+        }
+        description="Organize products into groups for browsing and reporting."
+        actions={
+          <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
+            New category
+          </Button>
+        }
+      />
       {categories && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
           <StatCard label="Total categories" value={categories.length} />

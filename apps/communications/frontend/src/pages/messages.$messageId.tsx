@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import {
   archiveMessage,
   messageEventsQueryOptions,
@@ -99,71 +100,71 @@ export function DetailPage() {
       >
         Back to history
       </Button>
-      <Group justify="space-between" align="start">
-        <div>
-          <Text className="eyebrow">Message detail</Text>
+      <PageHeader
+        eyebrow="Communications"
+        title={m.subject}
+        description={
+          <>
+            {m.source || "Unknown source"} · {new Date(m.createdAt).toLocaleString()}
+            {m.mailbox && (
+              <>
+                {" · Sent from "}
+                {m.mailbox.displayName ? `${m.mailbox.displayName} <${m.mailbox.fromAddress}>` : m.mailbox.fromAddress}
+              </>
+            )}
+          </>
+        }
+        actions={
           <Group gap="sm">
-            <Title order={2}>{m.subject}</Title>
             {isArchived && (
               <Badge color="gray" variant="light">
                 Archived
               </Badge>
             )}
+            {!isArchived && (
+              <Menu position="bottom-end" withinPortal>
+                <Menu.Target>
+                  <Button
+                    variant={hasFailedDeliveries ? "filled" : "light"}
+                    leftSection={<IconSend size={16} />}
+                    rightSection={<IconChevronDown size={16} />}
+                    loading={resend.isPending}
+                    disabled={sendInProgress}
+                    title={sendInProgress ? "A send is already in progress." : undefined}
+                  >
+                    Resend
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item disabled={!hasFailedDeliveries} onClick={() => resend.mutate("failed")}>
+                    Resend failed recipients only
+                  </Menu.Item>
+                  <Menu.Item onClick={() => resend.mutate("all")}>Resend to all recipients</Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            )}
+            {isArchived ? (
+              <Button
+                variant="default"
+                leftSection={<IconArchiveOff size={16} />}
+                loading={unarchive.isPending}
+                onClick={() => unarchive.mutate()}
+              >
+                Unarchive
+              </Button>
+            ) : (
+              <Button
+                variant="default"
+                color="gray"
+                leftSection={<IconArchive size={16} />}
+                onClick={archiveConfirm.open}
+              >
+                Archive
+              </Button>
+            )}
           </Group>
-          <Text c="dimmed">
-            {m.source || "Unknown source"} · {new Date(m.createdAt).toLocaleString()}
-          </Text>
-          {m.mailbox && (
-            <Text size="sm" c="dimmed">
-              Sent from{" "}
-              {m.mailbox.displayName ? `${m.mailbox.displayName} <${m.mailbox.fromAddress}>` : m.mailbox.fromAddress}
-            </Text>
-          )}
-        </div>
-        <Group gap="sm">
-          {!isArchived && (
-            <Menu position="bottom-end" withinPortal>
-              <Menu.Target>
-                <Button
-                  variant={hasFailedDeliveries ? "filled" : "light"}
-                  leftSection={<IconSend size={16} />}
-                  rightSection={<IconChevronDown size={16} />}
-                  loading={resend.isPending}
-                  disabled={sendInProgress}
-                  title={sendInProgress ? "A send is already in progress." : undefined}
-                >
-                  Resend
-                </Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item disabled={!hasFailedDeliveries} onClick={() => resend.mutate("failed")}>
-                  Resend failed recipients only
-                </Menu.Item>
-                <Menu.Item onClick={() => resend.mutate("all")}>Resend to all recipients</Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          )}
-          {isArchived ? (
-            <Button
-              variant="default"
-              leftSection={<IconArchiveOff size={16} />}
-              loading={unarchive.isPending}
-              onClick={() => unarchive.mutate()}
-            >
-              Unarchive
-            </Button>
-          ) : (
-            <Button
-              variant="default"
-              color="gray"
-              leftSection={<IconArchive size={16} />}
-              onClick={archiveConfirm.open}
-            >
-              Archive
-            </Button>
-          )}
-        </Group>
-      </Group>
+        }
+      />
       <Modal opened={archiveConfirmOpened} onClose={archiveConfirm.close} title="Archive message" centered>
         <Stack gap="md">
           <Text>

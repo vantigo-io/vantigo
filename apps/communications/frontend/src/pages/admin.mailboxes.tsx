@@ -14,11 +14,11 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type CreateMailboxRequest,
@@ -197,14 +197,12 @@ export function MailboxesPage() {
   const mailboxes = query.data;
   return (
     <Stack gap="xl">
-      <Group justify="space-between" align="end">
-        <div>
-          <Text className="eyebrow">Administration</Text>
-          <Title order={2}>Mailboxes</Title>
-          <Text c="dimmed">Configure the workspace sending mailboxes and credentials.</Text>
-        </div>
-        <Button onClick={() => setCreateModalOpen(true)}>Add Mailbox</Button>
-      </Group>
+      <PageHeader
+        eyebrow="Communications"
+        title="Mailboxes"
+        description="Configure the mailboxes that send and receive messages."
+        actions={<Button onClick={() => setCreateModalOpen(true)}>Add Mailbox</Button>}
+      />
       <Card withBorder radius="lg">
         <Table.ScrollContainer minWidth={950}>
           <Table>

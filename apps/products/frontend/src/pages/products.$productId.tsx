@@ -21,6 +21,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconArchive, IconPackage, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { categoriesQueryOptions, categoryPath } from "../api/categories";
 import {
@@ -215,27 +216,32 @@ export const ProductDetailsPage = () => {
         </Anchor>
         <Text size="sm">{product.name}</Text>
       </Breadcrumbs>
-      <Group justify="space-between">
-        <Group gap="sm">
-          <IconPackage size={28} />
-          <Title order={2}>{product.name}</Title>
-          <Badge color={statusColor(product.status)}>{product.status}</Badge>
-        </Group>
-        <Group>
-          <Button
-            variant="default"
-            leftSection={<IconPencil size={16} />}
-            onClick={() => setModalState({ mode: "edit", product })}
-          >
-            Edit product
-          </Button>
-          {product.status !== "Discontinued" && (
-            <Button color="red" variant="light" leftSection={<IconArchive size={16} />} onClick={confirmArchive}>
-              Archive
+      <PageHeader
+        eyebrow="Products"
+        title={
+          <>
+            <IconPackage size={28} /> {product.name}
+            <Badge color={statusColor(product.status)}>{product.status}</Badge>
+          </>
+        }
+        description="Details, variants, and pricing for this product."
+        actions={
+          <Group>
+            <Button
+              variant="default"
+              leftSection={<IconPencil size={16} />}
+              onClick={() => setModalState({ mode: "edit", product })}
+            >
+              Edit product
             </Button>
-          )}
-        </Group>
-      </Group>
+            {product.status !== "Discontinued" && (
+              <Button color="red" variant="light" leftSection={<IconArchive size={16} />} onClick={confirmArchive}>
+                Archive
+              </Button>
+            )}
+          </Group>
+        }
+      />
       <ProductFormModal state={modalState} onClose={() => setModalState(null)} />
       <Card withBorder>
         <Stack>

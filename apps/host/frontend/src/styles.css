@@ -10,13 +10,6 @@
   height: 44px;
   font-size: 22px;
 }
-.eyebrow {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--mantine-color-vantigo-5);
-}
 .message-link {
   font-weight: 700;
   color: var(--mantine-color-vantigo-8);

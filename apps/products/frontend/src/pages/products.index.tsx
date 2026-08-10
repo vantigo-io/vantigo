@@ -13,12 +13,12 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import { type ProductResponse, type ProductStatus, productsQueryOptions } from "../api/products";
@@ -69,19 +69,25 @@ export const ProductsPage = () => {
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
-        <Group gap="sm">
-          <Title order={2}>Products</Title>
-          {data && (
-            <Badge variant="light" size="lg">
-              {data.pagination.totalCount} total
-            </Badge>
-          )}
-        </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-          New product
-        </Button>
-      </Group>
+      <PageHeader
+        eyebrow="Products"
+        title={
+          <>
+            Products
+            {data && (
+              <Badge variant="light" size="lg">
+                {data.pagination.totalCount} total
+              </Badge>
+            )}
+          </>
+        }
+        description="Everything you sell, with variants, pricing, and lifecycle status."
+        actions={
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+            New product
+          </Button>
+        }
+      />
       <ProductFormModal state={modalState} onClose={() => setModalState(null)} />
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">

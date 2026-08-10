@@ -13,13 +13,13 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 
 import { type ContactListItem, contactsQueryOptions, deleteContact } from "../api/contacts";
@@ -86,19 +86,23 @@ export const ContactsPage = () => {
 
   return (
     <Stack gap="lg">
-      <Group justify="space-between">
-        <Group gap="sm">
-          <Title order={2}>Contacts</Title>
-          {data && (
-            <Badge variant="light" size="lg">
-              {data.pagination.totalCount} total
-            </Badge>
-          )}
-        </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-          Create new contact
-        </Button>
-      </Group>
+      <PageHeader
+        eyebrow="Customers"
+        title="Contacts"
+        description="People linked to your customers, with their contact details."
+        actions={
+          <Group gap="sm">
+            {data && (
+              <Badge variant="light" size="lg">
+                {data.pagination.totalCount} total
+              </Badge>
+            )}
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+              Create new contact
+            </Button>
+          </Group>
+        }
+      />
 
       <ContactFormModal state={modalState} onClose={() => setModalState(null)} />
 

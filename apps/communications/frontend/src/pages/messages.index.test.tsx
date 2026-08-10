@@ -36,7 +36,7 @@ const renderPage = () =>
     </MantineProvider>,
   );
 
-describe("message history", () => {
+describe("messages", () => {
   it("shows the intentional empty state", async () => {
     document.body.innerHTML = "";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(page([])), { status: 200 })));

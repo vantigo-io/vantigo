@@ -1,7 +1,8 @@
-import { Anchor, Breadcrumbs, Button, Group, Stack, Text, Title } from "@mantine/core";
+import { Anchor, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
+import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import { customerQueryOptions } from "../api/customers";
@@ -44,21 +45,25 @@ export const CustomerDetailsPage = () => {
       </Breadcrumbs>
 
       <Stack gap="xs">
-        <Group justify="space-between">
-          <Group gap="sm">
-            <Title order={2}>{customer.name}</Title>
-            <CopyableBadge variant="light" size="lg" tooltip={tooltips.customerId} copyValue={String(customer.id)}>
-              #{customer.id}
-            </CopyableBadge>
-          </Group>
-          <Button
-            variant="default"
-            leftSection={<IconPencil size={16} />}
-            onClick={() => setModalState({ mode: "edit", customer })}
-          >
-            Edit customer
-          </Button>
-        </Group>
+        <PageHeader
+          eyebrow="Customers"
+          title={customer.name}
+          description="Contacts, details, and activity for this customer."
+          actions={
+            <Group gap="sm">
+              <CopyableBadge variant="light" size="lg" tooltip={tooltips.customerId} copyValue={String(customer.id)}>
+                #{customer.id}
+              </CopyableBadge>
+              <Button
+                variant="default"
+                leftSection={<IconPencil size={16} />}
+                onClick={() => setModalState({ mode: "edit", customer })}
+              >
+                Edit customer
+              </Button>
+            </Group>
+          }
+        />
 
         {identity && (
           <Group gap="xs">
