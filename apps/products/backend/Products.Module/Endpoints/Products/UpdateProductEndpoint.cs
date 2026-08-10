@@ -7,11 +7,7 @@ using Vantigo.Products.Endpoints.Products.Dtos;
 
 namespace Vantigo.Products.Endpoints.Products;
 
-/// <summary>
-/// Updates a product. The SKU is immutable once the product has been activated,
-/// because downstream services key on it. Prices are managed through the price
-/// sub-resource and are not affected by this endpoint.
-/// </summary>
+/// <summary>Updates only the shared product identity.</summary>
 internal static class UpdateProductEndpoint
 {
     internal static async Task<Results<Ok<ProductResponse>, NotFound, ValidationProblem, ProblemHttpResult>> Handler(
@@ -20,51 +16,21 @@ internal static class UpdateProductEndpoint
         ProductsDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        var errors = request.Validate();
+        var errors = request.Validate(requireVariants: false, validateVariants: false);
         if (errors.Count > 0)
         {
             return TypedResults.ValidationProblem(errors, title: "Invalid product");
         }
 
         var product = await dbContext.Products
-            .Include(p => p.Prices)
+            .Include(p => p.Variants)
+                .ThenInclude(variant => variant.Prices)
+            .Include(p => p.Category)
+            .Include(p => p.TaxCategory)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
-
         if (product is null)
         {
             return TypedResults.NotFound();
-        }
-
-        var sku = request.Sku.Trim();
-        if (!string.Equals(product.Sku, sku, StringComparison.Ordinal))
-        {
-            if (product.Status != ProductStatus.Draft)
-            {
-                return TypedResults.Problem(
-                    title: "SKU is immutable",
-                    detail: "The SKU cannot be changed after the product has been activated, because other services reference it.",
-                    statusCode: StatusCodes.Status409Conflict);
-            }
-
-            if (await dbContext.Products.AnyAsync(p => p.Sku == sku && p.Id != id, cancellationToken))
-            {
-                return TypedResults.Problem(
-                    title: "Duplicate SKU",
-                    detail: $"A product with SKU '{sku}' already exists.",
-                    statusCode: StatusCodes.Status409Conflict);
-            }
-
-            product.Sku = sku;
-        }
-
-        var barcode = NormalizeOptional(request.Barcode);
-        if (barcode is not null &&
-            await dbContext.Products.AnyAsync(p => p.Barcode == barcode && p.Id != id, cancellationToken))
-        {
-            return TypedResults.Problem(
-                title: "Duplicate barcode",
-                detail: $"A product with barcode '{barcode}' already exists.",
-                statusCode: StatusCodes.Status409Conflict);
         }
 
         if (request.CategoryId is { } categoryId &&
@@ -75,6 +41,15 @@ internal static class UpdateProductEndpoint
                 title: "Invalid product");
         }
 
+        var taxCategory = await dbContext.TaxCategories
+            .FirstOrDefaultAsync(category => category.Id == request.TaxCategoryId, cancellationToken);
+        if (taxCategory is null)
+        {
+            return TypedResults.ValidationProblem(
+                new Dictionary<string, string[]> { ["taxCategoryId"] = [$"Tax category {request.TaxCategoryId} does not exist."] },
+                title: "Invalid product");
+        }
+
         product.Name = request.Name.Trim();
         product.Type = Enum.Parse<ProductType>(request.Type, ignoreCase: true);
         if (request.Status is { } status)
@@ -82,23 +57,11 @@ internal static class UpdateProductEndpoint
             product.Status = Enum.Parse<ProductStatus>(status, ignoreCase: true);
         }
 
-        product.Unit = request.Unit?.Trim() ?? product.Unit;
-        product.StandardCost = request.StandardCost;
-        product.VatRate = request.VatRate;
+        product.TaxCategoryId = request.TaxCategoryId;
+        product.TaxCategory = taxCategory;
         product.Description = NormalizeOptional(request.Description);
         product.CategoryId = request.CategoryId;
-        product.Barcode = barcode;
-        product.WeightKg = request.WeightKg;
-        product.LengthCm = request.LengthCm;
-        product.WidthCm = request.WidthCm;
-        product.HeightCm = request.HeightCm;
-
         await dbContext.SaveChangesAsync(cancellationToken);
-
-        if (product.CategoryId is not null)
-        {
-            await dbContext.Entry(product).Reference(p => p.Category).LoadAsync(cancellationToken);
-        }
 
         return TypedResults.Ok(ProductResponse.FromDomain(product, DateTimeOffset.UtcNow));
     }

@@ -43,6 +43,8 @@ const stubFetch = () =>
                 unit: "pcs",
                 category: { id: 11, name: "Desks" },
                 effectivePrices: [{ currency: "NOK", amount: 12.5 }],
+                taxCategory: { id: 1, name: "Standard", kind: "Standard", rate: 0.25 },
+                variants: [{ id: 1, sku: "W-1", unit: "pcs", standardCost: 1, optionValues: {}, effectivePrices: [] }],
               },
             ],
             pagination: { totalCount: 1, totalPages: 1 },

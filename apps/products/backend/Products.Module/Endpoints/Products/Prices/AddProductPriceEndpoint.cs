@@ -16,6 +16,7 @@ internal static class AddProductPriceEndpoint
 {
     internal static async Task<Results<Created<ProductPriceResponse>, NotFound, ValidationProblem, ProblemHttpResult>> Handler(
         int id,
+        int variantId,
         ProductPriceRequest request,
         ProductsDbContext dbContext,
         CancellationToken cancellationToken)
@@ -27,17 +28,17 @@ internal static class AddProductPriceEndpoint
             return TypedResults.ValidationProblem(errors, title: "Invalid price");
         }
 
-        var product = await dbContext.Products
-            .Include(p => p.Prices)
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        var variant = await dbContext.ProductVariants
+            .Include(item => item.Prices)
+            .FirstOrDefaultAsync(item => item.Id == variantId && item.ProductId == id, cancellationToken);
 
-        if (product is null)
+        if (variant is null)
         {
             return TypedResults.NotFound();
         }
 
         var price = request.ToDomain();
-        if (product.Prices.Any(existing => ProductPricing.Conflicts(price, existing)))
+        if (variant.Prices.Any(existing => ProductPricing.Conflicts(price, existing)))
         {
             return TypedResults.Problem(
                 title: "Overlapping price",
@@ -45,11 +46,11 @@ internal static class AddProductPriceEndpoint
                 statusCode: StatusCodes.Status409Conflict);
         }
 
-        product.Prices.Add(price);
+        variant.Prices.Add(price);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Created(
-            $"/api/v1/products/{id}/prices",
+            $"/api/v1/products/{id}/variants/{variantId}/prices",
             ProductPriceResponse.FromDomain(price));
     }
 }

@@ -1,6 +1,6 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { ProductDetailsPage } from "@vantigo/products-ui";
-import { productPricesQueryOptions, productQueryOptions } from "@vantigo/products-ui/api/products";
+import { productQueryOptions } from "@vantigo/products-ui/api/products";
 import { NotFoundError } from "@vantigo/products-ui/api/request";
 export const Route = createFileRoute("/products/$productId")({
   params: {
@@ -9,10 +9,7 @@ export const Route = createFileRoute("/products/$productId")({
   },
   loader: async ({ context: { queryClient }, params }) => {
     try {
-      await Promise.all([
-        queryClient.ensureQueryData(productQueryOptions(params.productId)),
-        queryClient.ensureQueryData(productPricesQueryOptions(params.productId)),
-      ]);
+      await queryClient.ensureQueryData(productQueryOptions(params.productId));
     } catch (error) {
       if (error instanceof NotFoundError) throw notFound();
       throw error;

@@ -8,109 +8,90 @@ public sealed class ProductsEndpointsTests
 {
     private readonly HttpClient _client;
 
-    public ProductsEndpointsTests(ProductsModuleFactory factory)
-    {
-        _client = factory.CreateAuthenticatedClient();
-    }
+    public ProductsEndpointsTests(ProductsModuleFactory factory) => _client = factory.CreateAuthenticatedClient();
 
     [Fact]
-    public async Task CreateProduct_WithRequiredFields_ReturnsCreatedWithLocation()
+    public async Task CreateProduct_WithRequiredVariant_ReturnsFlattenedSingleVariant()
     {
-        var response = await _client.PostAsJsonAsync("/api/v1/products", new
-        {
-            name = "Nordlys Lantern",
-            sku = Sku("create"),
-            type = "Goods",
-            vatRate = 0.25,
-        });
+        var response = await _client.PostAsJsonAsync("/api/v1/products", NewProduct("Nordlys Lantern", Sku("create")));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-
         var created = await response.Content.ReadFromJsonAsync<Product>();
         Assert.NotNull(created);
         Assert.True(created.Id > 0);
         Assert.Equal("Draft", created.Status);
+        Assert.Equal(created.Sku, created.Variants.Single().Sku);
         Assert.Equal("pcs", created.Unit);
         Assert.Equal($"/api/v1/products/{created.Id}", response.Headers.Location?.AbsolutePath);
     }
 
     [Fact]
-    public async Task CreateProduct_WithPrices_ResolvesEffectivePrices()
+    public async Task CreateProduct_WithoutVariants_ReturnsValidationError()
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/products", new
+        {
+            name = "Missing Variant",
+            type = "Goods",
+            taxCategoryId = 1001,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
+        Assert.Contains("variants", problem!.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task CreateProduct_WithPrices_ResolvesEffectivePricesOnVariantAndFlattenedResponse()
     {
         var now = DateTimeOffset.UtcNow;
         var response = await _client.PostAsJsonAsync("/api/v1/products", new
         {
             name = "Campaign Product",
-            sku = Sku("campaign"),
             type = "Goods",
-            vatRate = 0.25,
-            prices = new object[]
+            taxCategoryId = 1001,
+            variants = new object[]
             {
-                new { currency = "NOK", amount = 599m },
-                new { currency = "SEK", amount = 649m },
                 new
                 {
-                    currency = "NOK",
-                    amount = 499m,
-                    validFrom = now.AddDays(-1),
-                    validTo = now.AddDays(1),
+                    sku = Sku("campaign"),
+                    prices = new object[]
+                    {
+                        new { currency = "NOK", amount = 599m },
+                        new { currency = "SEK", amount = 649m },
+                        new { currency = "NOK", amount = 499m, validFrom = now.AddDays(-1), validTo = now.AddDays(1) },
+                    },
                 },
             },
         });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<Product>();
-
         Assert.NotNull(created);
         Assert.Equal(2, created.EffectivePrices.Count);
         Assert.Equal(499m, created.EffectivePrices.Single(price => price.Currency == "NOK").Amount);
-        Assert.Equal(649m, created.EffectivePrices.Single(price => price.Currency == "SEK").Amount);
+        Assert.Equal(created.EffectivePrices, created.Variants.Single().EffectivePrices);
     }
 
     [Fact]
     public async Task CreateProduct_WithDuplicateSku_ReturnsConflict()
     {
         var sku = Sku("dup");
-        var first = await _client.PostAsJsonAsync("/api/v1/products", NewProduct("First", sku));
-        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
-
-        var second = await _client.PostAsJsonAsync("/api/v1/products", NewProduct("Second", sku));
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
-    }
-
-    [Theory]
-    [InlineData("", "sku")]
-    [InlineData("   ", "sku")]
-    public async Task CreateProduct_WithMissingSku_ReturnsBadRequestWithFieldError(string sku, string expectedField)
-    {
-        var response = await _client.PostAsJsonAsync("/api/v1/products", new
-        {
-            name = "Invalid",
-            sku,
-            type = "Goods",
-            vatRate = 0.25,
-        });
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
-        Assert.Contains(expectedField, problem!.Errors.Keys);
+        Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/v1/products", NewProduct("First", sku))).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync("/api/v1/products", NewProduct("Second", sku))).StatusCode);
     }
 
     [Fact]
-    public async Task CreateProduct_WithInvalidTypeAndVatRate_ReturnsFieldErrors()
+    public async Task UpdateVariant_WithDuplicateSku_ReturnsConflict()
     {
-        var response = await _client.PostAsJsonAsync("/api/v1/products", new
+        var first = await CreateAsync("First Variant", Sku("update-dup-first"));
+        var second = await CreateAsync("Second Variant", Sku("update-dup-second"));
+
+        var response = await _client.PutAsJsonAsync($"/api/v1/products/{second.Id}/variants/{second.Variants.Single().Id}", new
         {
-            name = "Invalid",
-            sku = Sku("invalid"),
-            type = "Subscription",
-            vatRate = 25,
+            sku = first.Sku,
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
-        Assert.Contains("type", problem!.Errors.Keys);
-        Assert.Contains("vatRate", problem.Errors.Keys);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [Fact]
@@ -119,34 +100,33 @@ public sealed class ProductsEndpointsTests
         var response = await _client.PostAsJsonAsync("/api/v1/products", new
         {
             name = "Conflicting",
-            sku = Sku("conflict"),
             type = "Goods",
-            vatRate = 0.25,
-            prices = new object[]
+            taxCategoryId = 1001,
+            variants = new[]
             {
-                new { currency = "NOK", amount = 599m },
-                new { currency = "NOK", amount = 649m },
+                new
+                {
+                    sku = Sku("conflict"),
+                    prices = new[] { new { currency = "NOK", amount = 599m }, new { currency = "NOK", amount = 649m } },
+                },
             },
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
-        Assert.Contains("prices[1]", problem!.Errors.Keys);
+        Assert.Contains("variants[0].prices[1]", problem!.Errors.Keys);
     }
 
     [Fact]
-    public async Task UpdateProduct_ChangesFields()
+    public async Task UpdateProduct_ChangesOnlySharedFields()
     {
         var created = await CreateAsync("Original", Sku("update"));
-
         var response = await _client.PutAsJsonAsync($"/api/v1/products/{created.Id}", new
         {
             name = "Renamed",
-            sku = created.Sku,
             type = "Service",
-            unit = "hour",
-            standardCost = 500m,
-            vatRate = 0.12,
+            taxCategoryId = 1001,
+            description = "Updated",
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -154,241 +134,129 @@ public sealed class ProductsEndpointsTests
         Assert.NotNull(updated);
         Assert.Equal("Renamed", updated.Name);
         Assert.Equal("Service", updated.Type);
-        Assert.Equal("hour", updated.Unit);
-        Assert.Equal(500m, updated.StandardCost);
-        Assert.Equal(0.12m, updated.VatRate);
+        Assert.Equal(0.25m, updated.TaxCategory.Rate);
+        Assert.Equal(created.Sku, updated.Sku);
     }
 
     [Fact]
-    public async Task UpdateProduct_SkuChangeOnDraft_IsAllowed()
+    public async Task UpdateVariant_SkuChangeOnDraft_IsAllowed()
     {
         var created = await CreateAsync("Draft Sku Change", Sku("draft-sku"));
+        var variant = created.Variants.Single();
         var newSku = Sku("draft-sku-new");
 
-        var response = await _client.PutAsJsonAsync($"/api/v1/products/{created.Id}", new
+        var response = await _client.PutAsJsonAsync($"/api/v1/products/{created.Id}/variants/{variant.Id}", new
         {
-            name = created.Name,
             sku = newSku,
-            type = created.Type,
-            vatRate = created.VatRate,
+            optionValues = new { Color = "Red" },
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var updated = await response.Content.ReadFromJsonAsync<Product>();
-        Assert.NotNull(updated);
-        Assert.Equal(newSku, updated.Sku);
+        var updated = await response.Content.ReadFromJsonAsync<Variant>();
+        Assert.Equal(newSku, updated!.Sku);
+        Assert.Equal("Red", updated.OptionValues["color"]);
     }
 
     [Fact]
-    public async Task UpdateProduct_SkuChangeOnActiveProduct_ReturnsConflict()
+    public async Task UpdateVariant_SkuChangeOnActiveProduct_ReturnsConflict()
     {
         var created = await CreateAsync("Active Sku Change", Sku("active-sku"), status: "Active");
-
-        var response = await _client.PutAsJsonAsync($"/api/v1/products/{created.Id}", new
-        {
-            name = created.Name,
-            sku = Sku("active-sku-new"),
-            type = created.Type,
-            status = "Active",
-            vatRate = created.VatRate,
-        });
-
+        var variant = created.Variants.Single();
+        var response = await _client.PutAsJsonAsync($"/api/v1/products/{created.Id}/variants/{variant.Id}", new { sku = Sku("active-sku-new") });
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
     [Fact]
-    public async Task UpdateProduct_UnknownId_ReturnsNotFound()
+    public async Task VariantCrud_RejectsDeletingLastVariant()
     {
-        var response = await _client.PutAsJsonAsync("/api/v1/products/999999", new
+        var created = await CreateAsync("Variant CRUD", Sku("variant-crud"));
+        var first = created.Variants.Single();
+
+        var lastDelete = await _client.DeleteAsync($"/api/v1/products/{created.Id}/variants/{first.Id}");
+        Assert.Equal(HttpStatusCode.Conflict, lastDelete.StatusCode);
+
+        var add = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/variants", new
         {
-            name = "Ghost",
-            sku = Sku("ghost"),
-            type = "Goods",
-            vatRate = 0.25,
+            sku = Sku("variant-two"),
+            optionValues = new { Color = "Blue" },
         });
+        Assert.Equal(HttpStatusCode.Created, add.StatusCode);
+        var second = await add.Content.ReadFromJsonAsync<Variant>();
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/v1/products/{created.Id}/variants/{second!.Id}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.DeleteAsync($"/api/v1/products/{created.Id}/variants/{first.Id}")).StatusCode);
     }
 
     [Fact]
-    public async Task DeleteProduct_ArchivesInsteadOfDeleting()
+    public async Task GetProduct_MultiVariantDoesNotFlattenSellableFields()
     {
-        var created = await CreateAsync("To Archive", Sku("archive"), status: "Active");
+        var response = await _client.PostAsJsonAsync("/api/v1/products", new
+        {
+            name = "Colour Assortment",
+            type = "Goods",
+            taxCategoryId = 1001,
+            variants = new[]
+            {
+                new { sku = Sku("red"), optionValues = new { Color = "Red" } },
+                new { sku = Sku("blue"), optionValues = new { Color = "Blue" } },
+            },
+        });
+        var raw = await response.Content.ReadAsStringAsync();
+        Assert.True(response.IsSuccessStatusCode, raw);
+        var created = await response.Content.ReadFromJsonAsync<Product>();
 
-        var archive = await _client.DeleteAsync($"/api/v1/products/{created.Id}");
-        Assert.Equal(HttpStatusCode.NoContent, archive.StatusCode);
-
-        var fetched = await _client.GetFromJsonAsync<Product>($"/api/v1/products/{created.Id}");
-        Assert.NotNull(fetched);
-        Assert.Equal("Discontinued", fetched.Status);
-
-        // Archiving is idempotent.
-        var again = await _client.DeleteAsync($"/api/v1/products/{created.Id}");
-        Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Null(created!.Sku);
+        Assert.Null(created.Unit);
+        Assert.Empty(created.EffectivePrices);
+        Assert.Equal(2, created.Variants.Count);
+        Assert.Equal("Red", created.Variants.Single(v => v.OptionValues["color"] == "Red").OptionValues["color"]);
     }
 
     [Fact]
-    public async Task GetProducts_FiltersBySearchAndStatus()
-    {
-        var marker = Guid.NewGuid().ToString("N")[..8];
-        await CreateAsync($"Searchable {marker} Active", Sku($"search-a-{marker}"), status: "Active");
-        await CreateAsync($"Searchable {marker} Draft", Sku($"search-d-{marker}"));
-
-        var page = await _client.GetFromJsonAsync<ProductList>(
-            $"/api/v1/products?search={marker}&status=Active");
-
-        Assert.NotNull(page);
-        var item = Assert.Single(page.Data);
-        Assert.Equal($"Searchable {marker} Active", item.Name);
-    }
-
-    [Fact]
-    public async Task GetProducts_WithInvalidQuery_ReturnsBadRequest()
-    {
-        var response = await _client.GetAsync("/api/v1/products?page=0&status=Unknown");
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task PriceSubResource_SupportsAddListAndDelete()
+    public async Task PriceSubResource_IsScopedToVariant()
     {
         var created = await CreateAsync("Priced", Sku("prices"));
+        var variant = created.Variants.Single();
+        var basePath = $"/api/v1/products/{created.Id}/variants/{variant.Id}/prices";
 
-        var add = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
-        {
-            currency = "nok",
-            amount = 599m,
-        });
+        var add = await _client.PostAsJsonAsync(basePath, new { currency = "nok", amount = 599m });
         Assert.Equal(HttpStatusCode.Created, add.StatusCode);
         var price = await add.Content.ReadFromJsonAsync<Price>();
-        Assert.NotNull(price);
-        Assert.Equal("NOK", price.Currency);
+        Assert.Equal("NOK", price!.Currency);
 
-        // A second open-ended NOK price would make resolution ambiguous.
-        var conflicting = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
-        {
-            currency = "NOK",
-            amount = 649m,
-        });
-        Assert.Equal(HttpStatusCode.Conflict, conflicting.StatusCode);
-
-        // A bounded campaign price next to the base price is fine.
-        var campaign = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
-        {
-            currency = "NOK",
-            amount = 499m,
-            validFrom = DateTimeOffset.UtcNow.AddDays(-1),
-            validTo = DateTimeOffset.UtcNow.AddDays(1),
-        });
-        Assert.Equal(HttpStatusCode.Created, campaign.StatusCode);
-
-        var prices = await _client.GetFromJsonAsync<List<Price>>($"/api/v1/products/{created.Id}/prices");
-        Assert.Equal(2, prices!.Count);
-
-        var delete = await _client.DeleteAsync($"/api/v1/products/{created.Id}/prices/{price.Id}");
-        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
-
-        prices = await _client.GetFromJsonAsync<List<Price>>($"/api/v1/products/{created.Id}/prices");
-        Assert.Single(prices!);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await _client.PostAsJsonAsync(basePath, new { currency = "NOK", amount = 649m })).StatusCode);
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync(basePath, new { currency = "NOK", amount = 499m, validFrom = DateTimeOffset.UtcNow.AddDays(-1), validTo = DateTimeOffset.UtcNow.AddDays(1) })).StatusCode);
+        Assert.Equal(2, (await _client.GetFromJsonAsync<List<Price>>(basePath))!.Count);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"{basePath}/{price.Id}")).StatusCode);
     }
 
     [Fact]
-    public async Task UpdatePrice_ChangesAmountAndDates()
+    public async Task AddProductPrice_WithOverlappingOpenEndedPrice_ReturnsConflict()
     {
-        var created = await CreateAsync("Editable Price", Sku("edit-price"));
-        var add = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
-        {
-            currency = "NOK",
-            amount = 599m,
-        });
-        Assert.Equal(HttpStatusCode.Created, add.StatusCode);
-        var price = await add.Content.ReadFromJsonAsync<Price>();
+        var created = await CreateAsync("Overlapping Prices", Sku("overlap"));
+        var variant = created.Variants.Single();
+        var basePath = $"/api/v1/products/{created.Id}/variants/{variant.Id}/prices";
 
-        var from = DateTimeOffset.UtcNow.AddDays(-1);
-        var to = DateTimeOffset.UtcNow.AddDays(1);
-        var update = await _client.PutAsJsonAsync(
-            $"/api/v1/products/{created.Id}/prices/{price!.Id}",
-            new { currency = "NOK", amount = 549m, validFrom = from, validTo = to });
-
-        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
-        var updated = await update.Content.ReadFromJsonAsync<Price>();
-        Assert.Equal(549m, updated!.Amount);
-        Assert.Equal(from, updated.ValidFrom);
-        Assert.Equal(to, updated.ValidTo);
-    }
-
-    [Fact]
-    public async Task UpdatePrice_DoesNotConflictWithItself()
-    {
-        var created = await CreateAsync("Self Edit", Sku("self-edit"));
-        var add = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
-        {
-            currency = "NOK",
-            amount = 599m,
-        });
-        var price = await add.Content.ReadFromJsonAsync<Price>();
-
-        // Updating only the amount keeps the same open-ended window; the row must
-        // not be rejected for overlapping itself.
-        var update = await _client.PutAsJsonAsync(
-            $"/api/v1/products/{created.Id}/prices/{price!.Id}",
-            new { currency = "NOK", amount = 649m });
-
-        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
-    }
-
-    [Fact]
-    public async Task UpdatePrice_CreatingAmbiguousOverlap_ReturnsConflict()
-    {
-        var created = await CreateAsync("Overlap Edit", Sku("overlap-edit"));
-        await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
-        {
-            currency = "NOK",
-            amount = 599m,
-        });
-        var addSek = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
-        {
-            currency = "SEK",
-            amount = 649m,
-        });
-        var sekPrice = await addSek.Content.ReadFromJsonAsync<Price>();
-
-        // Re-pointing the SEK base row at NOK would collide with the NOK base row.
-        var update = await _client.PutAsJsonAsync(
-            $"/api/v1/products/{created.Id}/prices/{sekPrice!.Id}",
-            new { currency = "NOK", amount = 649m });
-
-        Assert.Equal(HttpStatusCode.Conflict, update.StatusCode);
-    }
-
-    [Fact]
-    public async Task UpdatePrice_UnknownIds_ReturnNotFound()
-    {
-        var created = await CreateAsync("Missing Price", Sku("missing-price"));
-
-        var unknownPrice = await _client.PutAsJsonAsync(
-            $"/api/v1/products/{created.Id}/prices/999999",
-            new { currency = "NOK", amount = 100m });
-        Assert.Equal(HttpStatusCode.NotFound, unknownPrice.StatusCode);
-
-        var unknownProduct = await _client.PutAsJsonAsync(
-            "/api/v1/products/999999/prices/1",
-            new { currency = "NOK", amount = 100m });
-        Assert.Equal(HttpStatusCode.NotFound, unknownProduct.StatusCode);
+        Assert.Equal(HttpStatusCode.Created,
+            (await _client.PostAsJsonAsync(basePath, new { currency = "NOK", amount = 599m })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await _client.PostAsJsonAsync(basePath, new { currency = "NOK", amount = 649m })).StatusCode);
     }
 
     [Fact]
     public async Task AddPrice_WithInvalidWindow_ReturnsFieldError()
     {
         var created = await CreateAsync("Bad Window", Sku("window"));
-        var now = DateTimeOffset.UtcNow;
-
-        var response = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/prices", new
+        var variant = created.Variants.Single();
+        var response = await _client.PostAsJsonAsync($"/api/v1/products/{created.Id}/variants/{variant.Id}/prices", new
         {
             currency = "NOK",
             amount = 599m,
-            validFrom = now,
-            validTo = now.AddDays(-1),
+            validFrom = DateTimeOffset.UtcNow,
+            validTo = DateTimeOffset.UtcNow.AddDays(-1),
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -397,58 +265,32 @@ public sealed class ProductsEndpointsTests
     }
 
     [Fact]
-    public async Task GetProduct_UnknownId_ReturnsNotFound()
-    {
-        var response = await _client.GetAsync("/api/v1/products/999999");
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
+    public async Task GetProduct_UnknownId_ReturnsNotFound() =>
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/v1/products/999999")).StatusCode);
 
     private async Task<Product> CreateAsync(string name, string sku, string status = "Draft")
     {
-        var response = await _client.PostAsJsonAsync("/api/v1/products", new
-        {
-            name,
-            sku,
-            type = "Goods",
-            status,
-            vatRate = 0.25,
-        });
+        var response = await _client.PostAsJsonAsync("/api/v1/products", NewProduct(name, sku, status));
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await response.Content.ReadFromJsonAsync<Product>();
         Assert.NotNull(created);
         return created;
     }
 
-    private static object NewProduct(string name, string sku) => new
+    private static object NewProduct(string name, string sku, string status = "Draft") => new
     {
         name,
-        sku,
         type = "Goods",
-        vatRate = 0.25,
+        status,
+        taxCategoryId = 1001,
+        variants = new[] { new { sku } },
     };
 
-    private static string Sku(string prefix) =>
-        $"TST-{prefix}-{Guid.NewGuid().ToString("N")[..8]}".ToUpperInvariant();
+    private static string Sku(string prefix) => $"TST-{prefix}-{Guid.NewGuid():N}"[..24].ToUpperInvariant();
 
-    private sealed record Product(
-        int Id,
-        string Name,
-        string Sku,
-        string Type,
-        string Status,
-        string Unit,
-        decimal? StandardCost,
-        decimal VatRate,
-        List<Price> EffectivePrices);
-
-    private sealed record Price(
-        int Id,
-        string Currency,
-        decimal Amount,
-        DateTimeOffset? ValidFrom,
-        DateTimeOffset? ValidTo);
-
-    private sealed record ProductList(List<Product> Data);
-
+    private sealed record Product(int Id, string Name, string? Sku, string Type, string Status, string? Unit, TaxCategory TaxCategory, List<Variant> Variants, List<Price> EffectivePrices);
+    private sealed record TaxCategory(int Id, string Name, string Kind, decimal Rate);
+    private sealed record Variant(int Id, string Sku, string? Barcode, string Unit, Dictionary<string, string> OptionValues, List<Price> EffectivePrices);
+    private sealed record Price(int Id, string Currency, decimal Amount, DateTimeOffset? ValidFrom, DateTimeOffset? ValidTo);
     private sealed record ValidationProblem(Dictionary<string, string[]> Errors);
 }

@@ -8,8 +8,10 @@ namespace Vantigo.Products.Database.Products;
 public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> options) : DbContext(options)
 {
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductPrice> ProductPrices => Set<ProductPrice>();
     public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
+    public DbSet<TaxCategory> TaxCategories => Set<TaxCategory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -17,8 +19,10 @@ public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> option
         // Configurations are applied explicitly (rather than scanned from the assembly)
         // to stay trimming- and NativeAOT-friendly.
         modelBuilder.ApplyConfiguration(new ProductEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductVariantEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ProductPriceEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ProductCategoryEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxCategoryEntityTypeConfiguration());
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -39,6 +43,32 @@ public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> option
     {
         var now = DateTimeOffset.UtcNow;
         foreach (var entry in ChangeTracker.Entries<Product>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                entry.Entity.CreatedAt = now;
+                entry.Entity.UpdatedAt = now;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<ProductVariant>())
+        {
+            if (entry.State == EntityState.Added)
+            {
+                entry.Entity.CreatedAt = now;
+                entry.Entity.UpdatedAt = now;
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TaxCategory>())
         {
             if (entry.State == EntityState.Added)
             {

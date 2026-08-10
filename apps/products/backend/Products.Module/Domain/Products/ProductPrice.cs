@@ -9,11 +9,14 @@ namespace Vantigo.Products.Domain.Products;
 /// </summary>
 public sealed class ProductPrice
 {
+    /// <summary>The length of an ISO 4217 currency code.</summary>
     public const int CurrencyLength = 3;
 
+    /// <summary>The auto-generated identity of the price row.</summary>
     public int Id { get; set; }
 
-    public int ProductId { get; set; }
+    /// <summary>The variant that owns this price row.</summary>
+    public int VariantId { get; set; }
 
     /// <summary>The ISO 4217 currency code, for instance "NOK".</summary>
     public string Currency { get; set; } = string.Empty;

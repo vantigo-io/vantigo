@@ -34,13 +34,6 @@ namespace Vantigo.Products.Database.Products.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
                     NpgsqlPropertyBuilderExtensions.HasIdentityOptions(b.Property<int>("Id"), 1001L, null, null, null, null, null);
 
-                    b.Property<string>("Barcode")
-                        .HasMaxLength(14)
-                        .IsUnicode(false)
-                        .HasColumnType("character varying(14)")
-                        .HasColumnName("barcode")
-                        .HasComment("The GTIN barcode (GTIN-8/12/13/14) of the product, unique when set");
-
                     b.Property<int?>("CategoryId")
                         .HasColumnType("integer")
                         .HasColumnName("category_id")
@@ -58,18 +51,6 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("description")
                         .HasComment("A free-form plain-text description of the product");
 
-                    b.Property<decimal?>("HeightCm")
-                        .HasPrecision(10, 1)
-                        .HasColumnType("numeric(10,1)")
-                        .HasColumnName("height_cm")
-                        .HasComment("The height of one unit in centimetres");
-
-                    b.Property<decimal?>("LengthCm")
-                        .HasPrecision(10, 1)
-                        .HasColumnType("numeric(10,1)")
-                        .HasColumnName("length_cm")
-                        .HasComment("The length of one unit in centimetres");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -77,20 +58,6 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name")
                         .HasComment("The display name of the product");
-
-                    b.Property<string>("Sku")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .IsUnicode(false)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("sku")
-                        .HasComment("The stock keeping unit uniquely identifying this sellable unit");
-
-                    b.Property<decimal?>("StandardCost")
-                        .HasPrecision(12, 2)
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("standard_cost")
-                        .HasComment("An indicative cost in the company base currency excluding VAT, used for margin estimates");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -100,6 +67,11 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("status")
                         .HasComment("The lifecycle status of the product");
 
+                    b.Property<int>("TaxCategoryId")
+                        .HasColumnType("integer")
+                        .HasColumnName("tax_category_id")
+                        .HasComment("The tax category applied when the product is sold");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -108,47 +80,16 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("type")
                         .HasComment("Whether the product is a physical good or a performed service");
 
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .IsUnicode(false)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("unit")
-                        .HasComment("The unit the product is sold in, for instance pcs or hour");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at")
                         .HasComment("When the product was last updated");
 
-                    b.Property<decimal>("VatRate")
-                        .HasPrecision(5, 4)
-                        .HasColumnType("numeric(5,4)")
-                        .HasColumnName("vat_rate")
-                        .HasComment("The VAT rate applied when the product is sold, for instance 0.25 for 25%");
-
-                    b.Property<decimal?>("WeightKg")
-                        .HasPrecision(10, 3)
-                        .HasColumnType("numeric(10,3)")
-                        .HasColumnName("weight_kg")
-                        .HasComment("The gross weight of one unit in kilograms");
-
-                    b.Property<decimal?>("WidthCm")
-                        .HasPrecision(10, 1)
-                        .HasColumnType("numeric(10,1)")
-                        .HasColumnName("width_cm")
-                        .HasComment("The width of one unit in centimetres");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("Barcode")
-                        .IsUnique()
-                        .HasFilter("barcode IS NOT NULL");
 
                     b.HasIndex("CategoryId");
 
-                    b.HasIndex("Sku")
-                        .IsUnique();
+                    b.HasIndex("TaxCategoryId");
 
                     b.ToTable("products", "products");
                 });
@@ -213,11 +154,6 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .IsFixedLength()
                         .HasComment("The ISO 4217 currency code of the price");
 
-                    b.Property<int>("ProductId")
-                        .HasColumnType("integer")
-                        .HasColumnName("product_id")
-                        .HasComment("The product the price belongs to");
-
                     b.Property<DateTimeOffset?>("ValidFrom")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("valid_from")
@@ -228,11 +164,166 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("valid_to")
                         .HasComment("When the price stops being valid (exclusive); null means open-ended");
 
+                    b.Property<int>("VariantId")
+                        .HasColumnType("integer")
+                        .HasColumnName("variant_id")
+                        .HasComment("The product variant the price belongs to");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("ProductId", "Currency");
+                    b.HasIndex("VariantId", "Currency");
 
                     b.ToTable("product_prices", "products");
+                });
+
+            modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductVariant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id")
+                        .HasComment("The unique identifier of the product variant");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    NpgsqlPropertyBuilderExtensions.HasIdentityOptions(b.Property<int>("Id"), 1001L, null, null, null, null, null);
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(14)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(14)")
+                        .HasColumnName("barcode")
+                        .HasComment("The GTIN barcode of the variant, unique when set");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasComment("When the variant was created");
+
+                    b.Property<decimal?>("HeightCm")
+                        .HasPrecision(10, 1)
+                        .HasColumnType("numeric(10,1)")
+                        .HasColumnName("height_cm")
+                        .HasComment("The height of one unit in centimetres");
+
+                    b.Property<decimal?>("LengthCm")
+                        .HasPrecision(10, 1)
+                        .HasColumnType("numeric(10,1)")
+                        .HasColumnName("length_cm")
+                        .HasComment("The length of one unit in centimetres");
+
+                    b.Property<string>("OptionValues")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("option_values")
+                        .HasComment("The option values distinguishing this variant");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer")
+                        .HasColumnName("product_id")
+                        .HasComment("The product that owns the variant");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sku")
+                        .HasComment("The stock keeping unit uniquely identifying this sellable variant");
+
+                    b.Property<decimal?>("StandardCost")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("standard_cost")
+                        .HasComment("An indicative cost in the company base currency excluding VAT");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("unit")
+                        .HasComment("The unit the variant is sold in, for instance pcs or hour");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasComment("When the variant was last updated");
+
+                    b.Property<decimal?>("WeightKg")
+                        .HasPrecision(10, 3)
+                        .HasColumnType("numeric(10,3)")
+                        .HasColumnName("weight_kg")
+                        .HasComment("The gross weight of one unit in kilograms");
+
+                    b.Property<decimal?>("WidthCm")
+                        .HasPrecision(10, 1)
+                        .HasColumnType("numeric(10,1)")
+                        .HasColumnName("width_cm")
+                        .HasComment("The width of one unit in centimetres");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Barcode")
+                        .IsUnique()
+                        .HasFilter("barcode IS NOT NULL");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("Sku")
+                        .IsUnique();
+
+                    b.ToTable("product_variants", "products");
+                });
+
+            modelBuilder.Entity("Vantigo.Products.Domain.Products.TaxCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id")
+                        .HasComment("The unique identifier of the tax category");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    NpgsqlPropertyBuilderExtensions.HasIdentityOptions(b.Property<int>("Id"), 1001L, null, null, null, null, null);
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasComment("When the tax category was created");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind")
+                        .HasComment("The tax treatment kind");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .IsUnicode(true)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name")
+                        .HasComment("The unique display name of the tax category");
+
+                    b.Property<decimal>("Rate")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasColumnName("rate")
+                        .HasComment("The tax rate as a fraction, for example 0.25 for 25%");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasComment("When the tax category was last updated");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("tax_categories", "products");
                 });
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.Product", b =>
@@ -242,7 +333,15 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Vantigo.Products.Domain.Products.TaxCategory", "TaxCategory")
+                        .WithMany()
+                        .HasForeignKey("TaxCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Category");
+
+                    b.Navigation("TaxCategory");
                 });
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductCategory", b =>
@@ -255,14 +354,28 @@ namespace Vantigo.Products.Database.Products.Migrations
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductPrice", b =>
                 {
-                    b.HasOne("Vantigo.Products.Domain.Products.Product", null)
+                    b.HasOne("Vantigo.Products.Domain.Products.ProductVariant", null)
                         .WithMany("Prices")
+                        .HasForeignKey("VariantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductVariant", b =>
+                {
+                    b.HasOne("Vantigo.Products.Domain.Products.Product", null)
+                        .WithMany("Variants")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.Product", b =>
+                {
+                    b.Navigation("Variants");
+                });
+
+            modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductVariant", b =>
                 {
                     b.Navigation("Prices");
                 });

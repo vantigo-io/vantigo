@@ -13,17 +13,18 @@ internal static class GetProductPricesEndpoint
 {
     internal static async Task<Results<Ok<IReadOnlyList<ProductPriceResponse>>, NotFound>> Handler(
         int id,
+        int variantId,
         ProductsDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        if (!await dbContext.Products.AnyAsync(p => p.Id == id, cancellationToken))
+        if (!await dbContext.ProductVariants.AnyAsync(p => p.Id == variantId && p.ProductId == id, cancellationToken))
         {
             return TypedResults.NotFound();
         }
 
         var prices = await dbContext.ProductPrices
             .AsNoTracking()
-            .Where(price => price.ProductId == id)
+            .Where(price => price.VariantId == variantId)
             .OrderBy(price => price.Currency)
             .ThenBy(price => price.ValidFrom)
             .ThenBy(price => price.Id)

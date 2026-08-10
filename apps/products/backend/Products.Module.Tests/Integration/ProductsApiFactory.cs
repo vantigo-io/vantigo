@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -10,6 +11,8 @@ using Microsoft.Extensions.Hosting;
 using Testcontainers.PostgreSql;
 
 using Vantigo.Host;
+using Vantigo.Products.Database.Products;
+using Vantigo.Products.Domain.Products;
 
 namespace Vantigo.Products.Module.Tests.Integration;
 
@@ -44,6 +47,19 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
         if (bootstrap.StatusCode != System.Net.HttpStatusCode.Created)
         {
             throw new InvalidOperationException($"Fresh integration bootstrap failed: {bootstrap.StatusCode}");
+        }
+
+        await using var scope = Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ProductsDbContext>();
+        if (!await dbContext.TaxCategories.AnyAsync())
+        {
+            dbContext.TaxCategories.Add(new TaxCategory
+            {
+                Name = "Integration Standard 25%",
+                Kind = TaxCategoryKind.Standard,
+                Rate = 0.25m,
+            });
+            await dbContext.SaveChangesAsync();
         }
     }
 

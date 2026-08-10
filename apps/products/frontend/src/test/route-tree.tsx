@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- test-only route tree, fast refresh does not apply */
 import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import type { QueryClient } from "@tanstack/react-query";

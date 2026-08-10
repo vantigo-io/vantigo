@@ -68,13 +68,14 @@ describe("app spotlight", () => {
             status: "Active",
             unit: "pcs",
             standardCost: null,
-            vatRate: 0.25,
+            taxCategory: { id: 1, name: "Standard", kind: "Standard", rate: 0.25 },
+            variants: [{ id: 1, sku: "W-12", unit: "pcs", standardCost: null, optionValues: {}, effectivePrices: [] }],
             effectivePrices: [],
             createdAt: "",
             updatedAt: "",
           }),
         );
-      if (String(url) === "/api/v1/products/12/prices") return Promise.resolve(jsonResponse(200, []));
+      if (String(url) === "/api/v1/products/12/variants/1/prices") return Promise.resolve(jsonResponse(200, []));
       return Promise.resolve(jsonResponse(200, paginated([])));
     });
     const router = await renderApp();

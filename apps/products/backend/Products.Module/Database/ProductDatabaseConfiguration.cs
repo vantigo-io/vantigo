@@ -26,7 +26,9 @@ public static class ProductDatabaseConfiguration
 
             // One application-level data source gives both EF contexts the same ADO.NET
             // pool while retaining separate DbContext lifetimes and migration histories.
-            return NpgsqlDataSource.Create(connectionString);
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+            dataSourceBuilder.EnableDynamicJson();
+            return dataSourceBuilder.Build();
         });
         services.AddDbContext<ProductsDbContext>((serviceProvider, options) =>
             options.UseNpgsql(serviceProvider.GetRequiredService<NpgsqlDataSource>(),

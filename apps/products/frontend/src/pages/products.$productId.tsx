@@ -25,14 +25,18 @@ import { useState } from "react";
 import { categoriesQueryOptions, categoryPath } from "../api/categories";
 import {
   addProductPrice,
+  addProductVariant,
   archiveProduct,
   deleteProductPrice,
+  deleteProductVariant,
   type PriceInput,
   type PriceRow,
   type ProductStatus,
-  productPricesQueryOptions,
   productQueryOptions,
   updateProductPrice,
+  updateProductVariant,
+  type VariantInput,
+  type VariantResponse,
 } from "../api/products";
 import { toIsoTimestamp, toPickerValue } from "../lib/dates";
 import { ProductFormModal, type ProductModalState } from "./-product-form-modal";
@@ -43,6 +47,7 @@ const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal",
 const formatPrice = (price: { amount: number; currency: string }) => `${price.amount.toFixed(2)} ${price.currency}`;
 
 type PriceModalState = { mode: "add" } | { mode: "edit"; price: PriceRow };
+type VariantModalState = { mode: "add" } | { mode: "edit"; variant: VariantResponse };
 
 interface PriceFormValues {
   currency: string;
@@ -55,10 +60,15 @@ export const ProductDetailsPage = () => {
   const { productId } = useParams({ strict: false }) as { productId: number };
   const queryClient = useQueryClient();
   const { data: product } = useSuspenseQuery(productQueryOptions(productId));
-  const { data: prices } = useSuspenseQuery(productPricesQueryOptions(productId));
+  const variant = product.variants?.[0];
+  const prices = variant?.effectivePrices ?? product.effectivePrices;
   const { data: categories } = useQuery({ ...categoriesQueryOptions(), enabled: product.category !== null });
   const [modalState, setModalState] = useState<ProductModalState | null>(null);
   const [priceModal, setPriceModal] = useState<PriceModalState | null>(null);
+  const [variantModal, setVariantModal] = useState<VariantModalState | null>(null);
+  const variantForm = useForm<{ sku: string; unit: string; standardCost: number | string; optionValues: string }>({
+    initialValues: { sku: "", unit: "pcs", standardCost: "", optionValues: "" },
+  });
   const priceForm = useForm<PriceFormValues>({
     initialValues: { currency: "NOK", amount: "", validFrom: null, validTo: null },
     validate: {
@@ -82,8 +92,8 @@ export const ProductDetailsPage = () => {
   const priceMutation = useMutation({
     mutationFn: (input: PriceInput) =>
       priceModal?.mode === "edit"
-        ? updateProductPrice(product.id, priceModal.price.id, input)
-        : addProductPrice(product.id, input),
+        ? updateProductPrice(product.id, variant.id, priceModal.price.id, input)
+        : addProductPrice(product.id, variant.id, input),
     onSuccess: () => {
       invalidatePrices();
       setPriceModal(null);
@@ -92,14 +102,64 @@ export const ProductDetailsPage = () => {
     onError: (error) => notifications.show({ color: "red", title: "Failed to save price", message: error.message }),
   });
   const removal = useMutation({
-    mutationFn: (priceId: number) => deleteProductPrice(product.id, priceId),
+    mutationFn: (priceId: number) => deleteProductPrice(product.id, variant.id, priceId),
     onSuccess: invalidatePrices,
+  });
+  const variantMutation = useMutation({
+    mutationFn: (input: VariantInput) =>
+      variantModal?.mode === "edit"
+        ? updateProductVariant(product.id, variantModal.variant.id, input)
+        : addProductVariant(product.id, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["products", product.id] });
+      setVariantModal(null);
+    },
+    onError: (error) => notifications.show({ color: "red", title: "Could not save variant", message: error.message }),
+  });
+  const variantRemoval = useMutation({
+    mutationFn: (id: number) => deleteProductVariant(product.id, id),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["products", product.id] }),
+    onError: (error) =>
+      notifications.show({
+        color: "red",
+        title: "Could not delete variant",
+        message:
+          (error as { status?: number }).status === 409 ? "A product must keep at least one variant." : error.message,
+      }),
   });
 
   const openAddPrice = () => {
     priceForm.setValues({ currency: "NOK", amount: "", validFrom: null, validTo: null });
     setPriceModal({ mode: "add" });
   };
+  const openVariant = (item?: VariantResponse) => {
+    variantForm.setValues(
+      item
+        ? {
+            sku: item.sku,
+            unit: item.unit,
+            standardCost: item.standardCost ?? "",
+            optionValues: Object.entries(item.optionValues)
+              .map(([key, value]) => `${key}=${value}`)
+              .join(", "),
+          }
+        : { sku: "", unit: "pcs", standardCost: "", optionValues: "" },
+    );
+    setVariantModal(item ? { mode: "edit", variant: item } : { mode: "add" });
+  };
+  const submitVariant = variantForm.onSubmit((values) =>
+    variantMutation.mutate({
+      sku: values.sku.trim(),
+      unit: values.unit.trim(),
+      standardCost: values.standardCost === "" ? undefined : Number(values.standardCost),
+      optionValues: Object.fromEntries(
+        values.optionValues
+          .split(",")
+          .map((entry) => entry.split("=").map((part) => part.trim()))
+          .filter(([key, value]) => key && value),
+      ),
+    }),
+  );
 
   const openEditPrice = (price: PriceRow) => {
     priceForm.setValues({
@@ -203,7 +263,7 @@ export const ProductDetailsPage = () => {
               <b>Standard cost:</b> {product.standardCost ?? "—"}
             </Text>
             <Text>
-              <b>VAT:</b> {product.vatRate * 100}%
+              <b>Tax category:</b> {product.taxCategory.name} ({product.taxCategory.rate * 100}%)
             </Text>
             <Text>
               <b>Current price:</b>{" "}
@@ -232,6 +292,68 @@ export const ProductDetailsPage = () => {
           )}
         </Stack>
       </Card>
+      {product.variants.length > 1 && (
+        <Card withBorder>
+          <Stack>
+            <Group justify="space-between">
+              <Title order={3}>Variants</Title>
+              <Button leftSection={<IconPlus size={16} />} onClick={() => openVariant()}>
+                Add variant
+              </Button>
+            </Group>
+            <Table.ScrollContainer minWidth={720}>
+              <Table striped>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>SKU</Table.Th>
+                    <Table.Th>Option values</Table.Th>
+                    <Table.Th>Unit</Table.Th>
+                    <Table.Th>Cost</Table.Th>
+                    <Table.Th>Prices</Table.Th>
+                    <Table.Th />
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {product.variants.map((item) => (
+                    <Table.Tr key={item.id}>
+                      <Table.Td>{item.sku}</Table.Td>
+                      <Table.Td>
+                        {Object.entries(item.optionValues)
+                          .map(([key, value]) => `${key}: ${value}`)
+                          .join(" · ") || "—"}
+                      </Table.Td>
+                      <Table.Td>{item.unit || "—"}</Table.Td>
+                      <Table.Td>{item.standardCost ?? "—"}</Table.Td>
+                      <Table.Td>{item.effectivePrices.map(formatPrice).join(" · ") || "—"}</Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          <Button
+                            size="compact-sm"
+                            variant="subtle"
+                            aria-label={`Edit ${item.sku}`}
+                            onClick={() => openVariant(item)}
+                          >
+                            <IconPencil size={16} />
+                          </Button>
+                          <Button
+                            size="compact-sm"
+                            variant="subtle"
+                            color="red"
+                            aria-label={`Delete ${item.sku}`}
+                            onClick={() => variantRemoval.mutate(item.id)}
+                          >
+                            <IconTrash size={16} />
+                          </Button>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Stack>
+        </Card>
+      )}
       <Card withBorder>
         <Stack>
           <Group justify="space-between">
@@ -348,6 +470,33 @@ export const ProductDetailsPage = () => {
               </Button>
               <Button type="submit" loading={priceMutation.isPending}>
                 {priceModal?.mode === "edit" ? "Save price" : "Add price"}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+      <Modal
+        opened={variantModal !== null}
+        onClose={() => setVariantModal(null)}
+        title={variantModal?.mode === "edit" ? "Edit variant" : "Add variant"}
+        centered
+      >
+        <form onSubmit={submitVariant}>
+          <Stack>
+            <TextInput label="SKU" withAsterisk {...variantForm.getInputProps("sku")} />
+            <TextInput
+              label="Option values"
+              description="Color=Blue, Size=M"
+              {...variantForm.getInputProps("optionValues")}
+            />
+            <TextInput label="Unit" {...variantForm.getInputProps("unit")} />
+            <NumberInput label="Unit cost" min={0} decimalScale={2} {...variantForm.getInputProps("standardCost")} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setVariantModal(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={variantMutation.isPending}>
+                Save variant
               </Button>
             </Group>
           </Stack>

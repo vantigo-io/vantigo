@@ -32,27 +32,28 @@ validation and uniqueness, and logistics fields (weight and dimensions).
 *Unblocks:* a usable catalog UI, category-based navigation and reporting, barcode
 lookup, and shipping-cost estimation groundwork for Orders/Warehouse.
 
-### Phase 2 — Variants
+### Phase 2 — Variants (done)
 
 Split the model into **Product** (shared identity: name, description, category,
-type, status, VAT) and **ProductVariant** (sellable identity: SKU, barcode, unit,
-standard cost, prices, weight/dimensions, and option values such as `Color=Red`).
-Every product has at least one variant; single-variant products keep an inline UX.
-Migration: each existing product becomes a product with one default variant;
-`ProductPrice.ProductId` moves to `VariantId`.
+type, status, tax category) and **ProductVariant** (sellable identity: SKU, barcode,
+unit, standard cost, prices, weight/dimensions, and option values such as
+`Color=Red`, stored as a JSONB map). Every product has at least one variant;
+single-variant products keep an inline UX (flattened API responses).
+Migration: each existing product became a product with one default variant;
+`ProductPrice.ProductId` moved to `VariantId`.
 
-*Unblocks:* selling size/colour assortments without SKU duplication.
-**Hard constraint:** must be complete before the Orders service starts — order
-lines will reference variants, and retrofitting the split after orders exist would
-be a breaking data migration across services.
+*Unblocks:* selling size/colour assortments without SKU duplication. Order lines
+in the future Orders service reference variants.
 
-### Phase 3 — Tax categories
+### Phase 3 — Tax categories (done)
 
-Replace the per-product `VatRate` value with a reference to a **TaxCategory**
-(Standard/Reduced/Zero/Exempt) whose rates are configured centrally.
+Replaced the per-product `VatRate` value with a reference to a **TaxCategory**
+(Standard/Reduced/Zero/Exempt) whose rates are configured centrally in the
+Products module. Migration seeded categories from the distinct existing rates.
 
 *Unblocks:* rate changes without touching every product, differentiated goods vs.
-food vs. exempt handling, and correct tax snapshots for Orders.
+food vs. exempt handling, and correct tax snapshots for Orders (responses embed
+the resolved rate for snapshotting).
 
 ### Phase 4 — Pricing depth (align with Orders)
 

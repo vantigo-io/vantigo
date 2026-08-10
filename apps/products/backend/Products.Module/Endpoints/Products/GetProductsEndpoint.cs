@@ -38,9 +38,8 @@ internal static class GetProductsEndpoint
 
             query = query.Where(p =>
                 EF.Functions.ILike(p.Name, pattern) ||
-                EF.Functions.ILike(p.Sku, pattern) ||
                 (p.Description != null && EF.Functions.ILike(p.Description, pattern)) ||
-                p.Barcode == search);
+                p.Variants.Any(variant => EF.Functions.ILike(variant.Sku, pattern) || variant.Barcode == search));
         }
 
         if (!string.IsNullOrWhiteSpace(request.Status) &&
@@ -68,8 +67,10 @@ internal static class GetProductsEndpoint
         var totalCount = await query.CountAsync(cancellationToken);
 
         var products = await ApplySorting(query, request)
-            .Include(p => p.Prices)
+            .Include(p => p.Variants)
+                .ThenInclude(variant => variant.Prices)
             .Include(p => p.Category)
+            .Include(p => p.TaxCategory)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -140,8 +141,8 @@ internal static class GetProductsEndpoint
         {
             (SortFields.Name, false) => query.OrderBy(p => p.Name).ThenBy(p => p.Id),
             (SortFields.Name, true) => query.OrderByDescending(p => p.Name).ThenByDescending(p => p.Id),
-            (SortFields.Sku, false) => query.OrderBy(p => p.Sku).ThenBy(p => p.Id),
-            (SortFields.Sku, true) => query.OrderByDescending(p => p.Sku).ThenByDescending(p => p.Id),
+            (SortFields.Sku, false) => query.OrderBy(p => p.Variants.Min(variant => variant.Sku)).ThenBy(p => p.Id),
+            (SortFields.Sku, true) => query.OrderByDescending(p => p.Variants.Max(variant => variant.Sku)).ThenByDescending(p => p.Id),
             (_, true) => query.OrderByDescending(p => p.Id),
             _ => query.OrderBy(p => p.Id),
         };

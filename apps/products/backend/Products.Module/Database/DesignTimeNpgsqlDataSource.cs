@@ -14,6 +14,8 @@ internal static class DesignTimeNpgsqlDataSource
     {
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__vantigo") ??
             $"Host=127.0.0.1;Port=1;Database={database};Timeout=1";
-        return NpgsqlDataSource.Create(connectionString);
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson();
+        return dataSourceBuilder.Build();
     }
 }

@@ -170,10 +170,10 @@ public sealed class CategoriesEndpointsTests
         var create = await _client.PostAsJsonAsync("/api/v1/products", new
         {
             name = "Categorised Product",
-            sku = $"TST-CAT-{Guid.NewGuid().ToString("N")[..8]}".ToUpperInvariant(),
             type = "Goods",
-            vatRate = 0.25,
+            taxCategoryId = 1001,
             categoryId = category.Id,
+            variants = new[] { new { sku = $"TST-CAT-{Guid.NewGuid().ToString("N")[..8]}".ToUpperInvariant() } },
         });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
 
@@ -215,10 +215,10 @@ public sealed class CategoriesEndpointsTests
         var response = await _client.PostAsJsonAsync("/api/v1/products", new
         {
             name,
-            sku = $"TST-CNT-{Guid.NewGuid().ToString("N")[..8]}".ToUpperInvariant(),
             type = "Goods",
-            vatRate = 0.25,
+            taxCategoryId = 1001,
             categoryId,
+            variants = new[] { new { sku = $"TST-CNT-{Guid.NewGuid().ToString("N")[..8]}".ToUpperInvariant() } },
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }

@@ -141,11 +141,12 @@ export const ProductsPage = () => {
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Name</Table.Th>
-                      <Table.Th>SKU</Table.Th>
+                      <Table.Th>SKU / variants</Table.Th>
                       <Table.Th>Type</Table.Th>
                       <Table.Th>Category</Table.Th>
                       <Table.Th>Status</Table.Th>
                       <Table.Th>Unit</Table.Th>
+                      <Table.Th>Tax category</Table.Th>
                       <Table.Th>Current NOK price</Table.Th>
                       <Table.Th w={48} aria-label="Actions" />
                     </Table.Tr>
@@ -158,13 +159,22 @@ export const ProductsPage = () => {
                         onClick={() => void navigate({ to: "/products/$productId", params: { productId: product.id } })}
                       >
                         <Table.Td>{product.name}</Table.Td>
-                        <Table.Td>{product.sku}</Table.Td>
+                        <Table.Td>
+                          {(product.variants ?? []).length > 1
+                            ? `${product.variants.length} variants`
+                            : (product.variants?.[0]?.sku ?? product.sku ?? "—")}
+                        </Table.Td>
                         <Table.Td>{product.type}</Table.Td>
                         <Table.Td>{product.category?.name ?? "—"}</Table.Td>
                         <Table.Td>
                           <Badge color={statusColor(product.status)}>{product.status}</Badge>
                         </Table.Td>
                         <Table.Td>{product.unit || "—"}</Table.Td>
+                        <Table.Td>
+                          {product.taxCategory
+                            ? `${product.taxCategory.name} (${(product.taxCategory.rate * 100).toFixed(2)}%)`
+                            : "—"}
+                        </Table.Td>
                         <Table.Td>{formatPrice(nokPrice(product)?.amount)}</Table.Td>
                         <Table.Td onClick={(event) => event.stopPropagation()}>
                           <ActionIcon

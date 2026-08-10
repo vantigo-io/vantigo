@@ -15,6 +15,7 @@ internal static class VersionedBusinessEndpointExtensions
 
         api.MapProductsEndpoints();
         api.MapCategoriesEndpoints();
+        api.MapTaxCategoriesEndpoints();
 
         return endpoints;
     }

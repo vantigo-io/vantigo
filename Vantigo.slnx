@@ -25,6 +25,7 @@
     <Project Path="apps/host/backend/Vantigo.Host/Vantigo.Host.csproj" />
   </Folder>
   <Folder Name="/packages/">
+    <Project Path="packages/architecture/Vantigo.Architecture.Tests/Vantigo.Architecture.Tests.csproj" />
     <Project Path="packages/contracts/Vantigo.Contracts/Vantigo.Contracts.csproj" />
     <Project Path="packages/identity/Vantigo.Identity.Tests/Vantigo.Identity.Tests.csproj" />
     <Project Path="packages/identity/Vantigo.Identity/Vantigo.Identity.csproj" />

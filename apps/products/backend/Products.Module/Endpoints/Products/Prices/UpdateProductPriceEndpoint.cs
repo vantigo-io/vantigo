@@ -18,6 +18,7 @@ internal static class UpdateProductPriceEndpoint
 {
     internal static async Task<Results<Ok<ProductPriceResponse>, NotFound, ValidationProblem, ProblemHttpResult>> Handler(
         int id,
+        int variantId,
         int priceId,
         ProductPriceRequest request,
         ProductsDbContext dbContext,
@@ -30,18 +31,18 @@ internal static class UpdateProductPriceEndpoint
             return TypedResults.ValidationProblem(errors, title: "Invalid price");
         }
 
-        var product = await dbContext.Products
-            .Include(p => p.Prices)
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        var variant = await dbContext.ProductVariants
+            .Include(item => item.Prices)
+            .FirstOrDefaultAsync(item => item.Id == variantId && item.ProductId == id, cancellationToken);
 
-        var price = product?.Prices.FirstOrDefault(p => p.Id == priceId);
-        if (product is null || price is null)
+        var price = variant?.Prices.FirstOrDefault(p => p.Id == priceId);
+        if (variant is null || price is null)
         {
             return TypedResults.NotFound();
         }
 
         var candidate = request.ToDomain();
-        if (product.Prices.Any(existing =>
+        if (variant.Prices.Any(existing =>
                 existing.Id != priceId && ProductPricing.Conflicts(candidate, existing)))
         {
             return TypedResults.Problem(

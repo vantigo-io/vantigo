@@ -19,9 +19,9 @@ internal sealed class ProductPriceEntityTypeConfiguration : IEntityTypeConfigura
             .IsRequired()
             .HasIdentityOptions(1001, 1);
 
-        builder.Property(p => p.ProductId)
-            .HasColumnName("product_id")
-            .HasComment("The product the price belongs to")
+        builder.Property(p => p.VariantId)
+            .HasColumnName("variant_id")
+            .HasComment("The product variant the price belongs to")
             .IsRequired();
 
         builder.Property(p => p.Currency)
@@ -46,7 +46,7 @@ internal sealed class ProductPriceEntityTypeConfiguration : IEntityTypeConfigura
             .HasColumnName("valid_to")
             .HasComment("When the price stops being valid (exclusive); null means open-ended");
 
-        builder.HasIndex(p => new { p.ProductId, p.Currency });
+        builder.HasIndex(p => new { p.VariantId, p.Currency });
 
         builder.Ignore(p => p.IsBounded);
     }

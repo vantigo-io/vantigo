@@ -5,6 +5,18 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+const forbiddenModuleImports = [
+  "@vantigo/products-ui",
+  "@vantigo/products-ui/**",
+  "@vantigo/communications-ui",
+  "@vantigo/communications-ui/**",
+  "@vantigo/app",
+  "@vantigo/app/**",
+  "../../../products/**",
+  "../../../communications/**",
+  "../../../host/**",
+];
+
 export default defineConfig([
   globalIgnores(["dist"]),
   {
@@ -17,6 +29,19 @@ export default defineConfig([
     ],
     languageOptions: {
       globals: globals.browser,
+    },
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: forbiddenModuleImports,
+              message: "Module frontends must not import other module frontends or the host app.",
+            },
+          ],
+        },
+      ],
     },
   },
   {

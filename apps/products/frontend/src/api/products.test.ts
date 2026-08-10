@@ -13,7 +13,7 @@ import {
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-const input = { name: "Widget", sku: "W-1", type: "Goods" as const, vatRate: 0.25 };
+const input = { name: "Widget", type: "Goods" as const, taxCategoryId: 1 };
 
 describe("products api", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -40,12 +40,12 @@ describe("products api", () => {
     await createProduct(input);
     await updateProduct(1, input);
     await archiveProduct(1);
-    await addProductPrice(1, { currency: "NOK", amount: 10 });
+    await addProductPrice(1, 1, { currency: "NOK", amount: 10 });
     expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
       ["/api/v1/products", "POST"],
       ["/api/v1/products/1", "PUT"],
       ["/api/v1/products/1", "DELETE"],
-      ["/api/v1/products/1/prices", "POST"],
+      ["/api/v1/products/1/variants/1/prices", "POST"],
     ]);
   });
 
@@ -57,8 +57,8 @@ describe("products api", () => {
       .mockResolvedValueOnce(jsonResponse(200, []));
     stubFetch(fetchMock);
     await (productQueryOptions(1).queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
-    await (productPricesQueryOptions(1).queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+    await (productPricesQueryOptions(1, 1).queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
     expect(productQueryOptions(1).queryKey).toEqual(["products", 1]);
-    expect(productPricesQueryOptions(1).queryKey).toEqual(["products", 1, "prices"]);
+    expect(productPricesQueryOptions(1, 1).queryKey).toEqual(["products", 1, "variants", 1, "prices"]);
   });
 });
