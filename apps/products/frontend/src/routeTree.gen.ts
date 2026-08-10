@@ -20,6 +20,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations.accept'
 import { Route as ProductsIndexRouteImport } from './routes/products.index'
 import { Route as ProductsProductIdRouteImport } from './routes/products.$productId'
+import { Route as ProductsCategoriesRouteImport } from './routes/products.categories'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -76,6 +77,11 @@ const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
   path: '/products/$productId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProductsCategoriesRoute = ProductsCategoriesRouteImport.update({
+  id: '/products/categories',
+  path: '/products/categories',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/products/categories': typeof ProductsCategoriesRoute
   '/products/': typeof ProductsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/products/categories': typeof ProductsCategoriesRoute
   '/products': typeof ProductsIndexRoute
 }
 export interface FileRoutesById {
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/products/categories': typeof ProductsCategoriesRoute
   '/products/': typeof ProductsIndexRoute
 }
 export interface FileRouteTypes {
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/invitations/accept'
     | '/products/$productId'
+    | '/products/categories'
     | '/products/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/invitations/accept'
     | '/products/$productId'
+    | '/products/categories'
     | '/products'
   id:
     | '__root__'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/invitations/accept'
     | '/products/$productId'
+    | '/products/categories'
     | '/products/'
   fileRoutesById: FileRoutesById
 }
@@ -170,6 +182,7 @@ export interface RootRouteChildren {
   SignInRoute: typeof SignInRoute
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   ProductsProductIdRoute: typeof ProductsProductIdRoute
+  ProductsCategoriesRoute: typeof ProductsCategoriesRoute
   ProductsIndexRoute: typeof ProductsIndexRoute
 }
 
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsProductIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/products/categories': {
+      id: '/products/categories'
+      path: '/products/categories'
+      fullPath: '/products/categories'
+      preLoaderRoute: typeof ProductsCategoriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -266,6 +286,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignInRoute: SignInRoute,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
   ProductsProductIdRoute: ProductsProductIdRoute,
+  ProductsCategoriesRoute: ProductsCategoriesRoute,
   ProductsIndexRoute: ProductsIndexRoute,
 }
 export const routeTree = rootRouteImport

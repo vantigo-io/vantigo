@@ -129,6 +129,23 @@ public sealed class DevelopmentSeedIntegrationTests
         Assert.Equal(3, auroraPrices.Count);
         Assert.Contains(auroraPrices, price => price.Currency == "SEK");
         Assert.Contains(auroraPrices, price => price.Currency == "NOK" && price.ValidFrom != null);
+
+        // The seeded category tree has two roots (Furniture, Services) with
+        // Desks/Lighting as subcategories, and every product is categorised.
+        var categories = await products.ProductCategories.ToListAsync();
+        Assert.Equal(4, categories.Count);
+        var furniture = Assert.Single(categories, category => category.Name == "Furniture");
+        Assert.Null(furniture.ParentId);
+        Assert.Single(categories, category => category.Name == "Desks" && category.ParentId == furniture.Id);
+        Assert.Single(categories, category => category.Name == "Lighting" && category.ParentId == furniture.Id);
+        Assert.Single(categories, category => category.Name == "Services" && category.ParentId == null);
+        Assert.False(await products.Products.AnyAsync(product => product.CategoryId == null));
+
+        // Physical goods carry barcodes and weights; services do not.
+        Assert.False(await products.Products.AnyAsync(
+            product => product.Type == ProductType.Goods && product.Barcode == null));
+        Assert.False(await products.Products.AnyAsync(
+            product => product.Type == ProductType.Service && product.Barcode != null));
     }
 
     private sealed class DevelopmentSeedApiFactory(string connectionString) : WebApplicationFactory<Program>

@@ -14,6 +14,7 @@ internal static class VersionedBusinessEndpointExtensions
             .RequireAuthorization(AuthPolicies.Business);
 
         api.MapProductsEndpoints();
+        api.MapCategoriesEndpoints();
 
         return endpoints;
     }

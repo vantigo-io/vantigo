@@ -11,6 +11,7 @@ public sealed class Product
     public const int NameMaxLength = 200;
     public const int SkuMaxLength = 64;
     public const int UnitMaxLength = 20;
+    public const int DescriptionMaxLength = 4000;
     public const string DefaultUnit = "pcs";
 
     /// <summary>
@@ -29,6 +30,24 @@ public sealed class Product
     /// services key on it.
     /// </summary>
     public string Sku { get; set; } = string.Empty;
+
+    /// <summary>A free-form plain-text description of the product.</summary>
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// The category the product belongs to; null means uncategorised. A product has at
+    /// most one category — cross-cutting grouping is a future tags/collections concern.
+    /// </summary>
+    public int? CategoryId { get; set; }
+
+    /// <summary>The category the product belongs to, loaded on demand.</summary>
+    public ProductCategory? Category { get; set; }
+
+    /// <summary>
+    /// The GTIN barcode (GTIN-8/12/13/14) identifying the same sellable unit as the
+    /// SKU, unique across all products when set.
+    /// </summary>
+    public string? Barcode { get; set; }
 
     /// <summary>Whether the product is a physical good or a performed service.</summary>
     public ProductType Type { get; set; }
@@ -51,6 +70,18 @@ public sealed class Product
 
     /// <summary>The VAT rate applied when the product is sold, for instance 0.25 for 25%.</summary>
     public decimal VatRate { get; set; }
+
+    /// <summary>The gross weight of one unit in kilograms, used for logistics.</summary>
+    public decimal? WeightKg { get; set; }
+
+    /// <summary>The length of one unit in centimetres, used for logistics.</summary>
+    public decimal? LengthCm { get; set; }
+
+    /// <summary>The width of one unit in centimetres, used for logistics.</summary>
+    public decimal? WidthCm { get; set; }
+
+    /// <summary>The height of one unit in centimetres, used for logistics.</summary>
+    public decimal? HeightCm { get; set; }
 
     /// <summary>The sales prices of the product, excluding VAT.</summary>
     public List<ProductPrice> Prices { get; set; } = [];

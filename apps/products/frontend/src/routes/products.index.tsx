@@ -16,10 +16,11 @@ import {
   Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
+import { IconAlertCircle, IconCategory, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import { type ProductResponse, type ProductStatus, productsQueryOptions } from "../api/products";
 import { ProductFormModal, type ProductModalState } from "./-product-form-modal";
 
@@ -28,6 +29,7 @@ interface ProductsSearch {
   page: number;
   search: string;
   status: ProductStatus | "";
+  categoryId: number | "";
 }
 
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
@@ -36,18 +38,29 @@ const formatPrice = (amount: number | undefined) =>
   amount === undefined ? "—" : new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK" }).format(amount);
 
 export const ProductsPage = () => {
-  const { page, search, status } = Route.useSearch();
+  const { page, search, status, categoryId } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [searchInput, setSearchInput] = useState(search);
   const [debouncedSearch] = useDebouncedValue(searchInput, 300);
   const [modalState, setModalState] = useState<ProductModalState | null>(null);
   useEffect(() => {
     if (debouncedSearch !== search)
-      void navigate({ search: { page: 1, search: debouncedSearch, status }, replace: true });
-  }, [debouncedSearch, search, status, navigate]);
+      void navigate({ search: { page: 1, search: debouncedSearch, status, categoryId }, replace: true });
+  }, [debouncedSearch, search, status, categoryId, navigate]);
   const { data, isPending, isError, error } = useQuery(
-    productsQueryOptions({ page, pageSize: PAGE_SIZE, search: search || undefined, status: status || undefined }),
+    productsQueryOptions({
+      page,
+      pageSize: PAGE_SIZE,
+      search: search || undefined,
+      status: status || undefined,
+      categoryId: categoryId || undefined,
+    }),
   );
+  const { data: categories } = useQuery(categoriesQueryOptions());
+  const categoryOptions = buildCategoryTree(categories ?? []).map(({ category, depth }) => ({
+    value: String(category.id),
+    label: `${"\u00A0".repeat(depth * 3)}${category.name}`,
+  }));
 
   return (
     <Stack gap="lg">
@@ -60,9 +73,14 @@ export const ProductsPage = () => {
             </Badge>
           )}
         </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-          New product
-        </Button>
+        <Group>
+          <Button component={Link} to="/products/categories" variant="default" leftSection={<IconCategory size={16} />}>
+            Categories
+          </Button>
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+            New product
+          </Button>
+        </Group>
       </Group>
       <ProductFormModal state={modalState} onClose={() => setModalState(null)} />
       <Card withBorder padding="lg" radius="md">
@@ -82,7 +100,20 @@ export const ProductsPage = () => {
               data={["Draft", "Active", "Discontinued"]}
               value={status || null}
               onChange={(value) =>
-                void navigate({ search: { page: 1, search, status: (value as ProductStatus | null) ?? "" } })
+                void navigate({
+                  search: { page: 1, search, status: (value as ProductStatus | null) ?? "", categoryId },
+                })
+              }
+            />
+            <Select
+              label="Category"
+              placeholder="All categories"
+              clearable
+              searchable
+              data={categoryOptions}
+              value={categoryId ? String(categoryId) : null}
+              onChange={(value) =>
+                void navigate({ search: { page: 1, search, status, categoryId: value ? Number(value) : "" } })
               }
             />
           </Group>
@@ -105,6 +136,7 @@ export const ProductsPage = () => {
                       <Table.Th>Name</Table.Th>
                       <Table.Th>SKU</Table.Th>
                       <Table.Th>Type</Table.Th>
+                      <Table.Th>Category</Table.Th>
                       <Table.Th>Status</Table.Th>
                       <Table.Th>Unit</Table.Th>
                       <Table.Th>Current NOK price</Table.Th>
@@ -121,6 +153,7 @@ export const ProductsPage = () => {
                         <Table.Td>{product.name}</Table.Td>
                         <Table.Td>{product.sku}</Table.Td>
                         <Table.Td>{product.type}</Table.Td>
+                        <Table.Td>{product.category?.name ?? "—"}</Table.Td>
                         <Table.Td>
                           <Badge color={statusColor(product.status)}>{product.status}</Badge>
                         </Table.Td>
@@ -151,7 +184,7 @@ export const ProductsPage = () => {
                   <Pagination
                     total={data.pagination.totalPages}
                     value={page}
-                    onChange={(newPage) => void navigate({ search: { page: newPage, search, status } })}
+                    onChange={(newPage) => void navigate({ search: { page: newPage, search, status, categoryId } })}
                   />
                 </Group>
               )}
@@ -170,11 +203,19 @@ export const Route = createFileRoute("/products/")({
     status: ["Draft", "Active", "Discontinued"].includes(String(search.status))
       ? (String(search.status) as ProductStatus)
       : "",
+    categoryId:
+      Number.isInteger(Number(search.categoryId)) && Number(search.categoryId) > 0 ? Number(search.categoryId) : "",
   }),
   loaderDeps: ({ search }) => search,
-  loader: ({ context: { queryClient }, deps: { page, search, status } }) =>
+  loader: ({ context: { queryClient }, deps: { page, search, status, categoryId } }) =>
     queryClient.ensureQueryData(
-      productsQueryOptions({ page, pageSize: PAGE_SIZE, search: search || undefined, status: status || undefined }),
+      productsQueryOptions({
+        page,
+        pageSize: PAGE_SIZE,
+        search: search || undefined,
+        status: status || undefined,
+        categoryId: categoryId || undefined,
+      }),
     ),
   component: ProductsPage,
 });

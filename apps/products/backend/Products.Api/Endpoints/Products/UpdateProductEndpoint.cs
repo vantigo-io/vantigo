@@ -57,6 +57,24 @@ internal static class UpdateProductEndpoint
             product.Sku = sku;
         }
 
+        var barcode = NormalizeOptional(request.Barcode);
+        if (barcode is not null &&
+            await dbContext.Products.AnyAsync(p => p.Barcode == barcode && p.Id != id, cancellationToken))
+        {
+            return TypedResults.Problem(
+                title: "Duplicate barcode",
+                detail: $"A product with barcode '{barcode}' already exists.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
+
+        if (request.CategoryId is { } categoryId &&
+            !await dbContext.ProductCategories.AnyAsync(c => c.Id == categoryId, cancellationToken))
+        {
+            return TypedResults.ValidationProblem(
+                new Dictionary<string, string[]> { ["categoryId"] = [$"Category {categoryId} does not exist."] },
+                title: "Invalid product");
+        }
+
         product.Name = request.Name.Trim();
         product.Type = Enum.Parse<ProductType>(request.Type, ignoreCase: true);
         if (request.Status is { } status)
@@ -67,9 +85,24 @@ internal static class UpdateProductEndpoint
         product.Unit = request.Unit?.Trim() ?? product.Unit;
         product.StandardCost = request.StandardCost;
         product.VatRate = request.VatRate;
+        product.Description = NormalizeOptional(request.Description);
+        product.CategoryId = request.CategoryId;
+        product.Barcode = barcode;
+        product.WeightKg = request.WeightKg;
+        product.LengthCm = request.LengthCm;
+        product.WidthCm = request.WidthCm;
+        product.HeightCm = request.HeightCm;
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        if (product.CategoryId is not null)
+        {
+            await dbContext.Entry(product).Reference(p => p.Category).LoadAsync(cancellationToken);
+        }
+
         return TypedResults.Ok(ProductResponse.FromDomain(product, DateTimeOffset.UtcNow));
     }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

@@ -36,6 +36,31 @@ internal sealed class ProductEntityTypeConfiguration : IEntityTypeConfiguration<
         builder.HasIndex(p => p.Sku)
             .IsUnique();
 
+        builder.Property(p => p.Description)
+            .HasColumnName("description")
+            .HasComment("A free-form plain-text description of the product")
+            .HasMaxLength(Product.DescriptionMaxLength)
+            .IsUnicode(true);
+
+        builder.Property(p => p.CategoryId)
+            .HasColumnName("category_id")
+            .HasComment("The category the product belongs to; null means uncategorised");
+
+        builder.HasOne(p => p.Category)
+            .WithMany()
+            .HasForeignKey(p => p.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property(p => p.Barcode)
+            .HasColumnName("barcode")
+            .HasComment("The GTIN barcode (GTIN-8/12/13/14) of the product, unique when set")
+            .HasMaxLength(Gtin.MaxLength)
+            .IsUnicode(false);
+
+        builder.HasIndex(p => p.Barcode)
+            .IsUnique()
+            .HasFilter("barcode IS NOT NULL");
+
         builder.Property(p => p.Type)
             .HasColumnName("type")
             .HasComment("Whether the product is a physical good or a performed service")
@@ -69,6 +94,26 @@ internal sealed class ProductEntityTypeConfiguration : IEntityTypeConfiguration<
             .HasComment("The VAT rate applied when the product is sold, for instance 0.25 for 25%")
             .HasPrecision(5, 4)
             .IsRequired();
+
+        builder.Property(p => p.WeightKg)
+            .HasColumnName("weight_kg")
+            .HasComment("The gross weight of one unit in kilograms")
+            .HasPrecision(10, 3);
+
+        builder.Property(p => p.LengthCm)
+            .HasColumnName("length_cm")
+            .HasComment("The length of one unit in centimetres")
+            .HasPrecision(10, 1);
+
+        builder.Property(p => p.WidthCm)
+            .HasColumnName("width_cm")
+            .HasComment("The width of one unit in centimetres")
+            .HasPrecision(10, 1);
+
+        builder.Property(p => p.HeightCm)
+            .HasColumnName("height_cm")
+            .HasComment("The height of one unit in centimetres")
+            .HasPrecision(10, 1);
 
         builder.Property(p => p.CreatedAt)
             .HasColumnName("created_at")

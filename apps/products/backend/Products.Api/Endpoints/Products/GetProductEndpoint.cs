@@ -19,6 +19,7 @@ internal static class GetProductEndpoint
         var product = await dbContext.Products
             .AsNoTracking()
             .Include(p => p.Prices)
+            .Include(p => p.Category)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
 
         if (product is null)

@@ -9,6 +9,7 @@ public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> option
 {
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductPrice> ProductPrices => Set<ProductPrice>();
+    public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -16,6 +17,7 @@ public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> option
         // to stay trimming- and NativeAOT-friendly.
         modelBuilder.ApplyConfiguration(new ProductEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ProductPriceEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new ProductCategoryEntityTypeConfiguration());
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

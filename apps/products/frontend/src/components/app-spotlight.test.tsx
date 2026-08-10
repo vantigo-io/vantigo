@@ -50,6 +50,7 @@ describe("app spotlight", () => {
 
   it("searches products and navigates to a result", async () => {
     stubFetch((url: RequestInfo | URL) => {
+      if (String(url).startsWith("/api/v1/categories")) return Promise.resolve(jsonResponse(200, []));
       if (String(url).startsWith("/api/v1/products?"))
         return Promise.resolve(
           jsonResponse(

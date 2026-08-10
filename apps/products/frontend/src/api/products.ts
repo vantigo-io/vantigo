@@ -14,6 +14,11 @@ export interface PriceRow {
   validTo: string | null;
 }
 
+export interface ProductCategoryRef {
+  id: number;
+  name: string;
+}
+
 export interface ProductResponse {
   id: number;
   name: string;
@@ -23,6 +28,13 @@ export interface ProductResponse {
   unit: string;
   standardCost: number | null;
   vatRate: number;
+  description: string | null;
+  category: ProductCategoryRef | null;
+  barcode: string | null;
+  weightKg: number | null;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
   effectivePrices: PriceRow[];
   createdAt: string;
   updatedAt: string;
@@ -49,6 +61,7 @@ export interface ProductsQueryParams {
   sortBy?: "id" | "name" | "sku";
   sortDirection?: "asc" | "desc";
   status?: ProductStatus;
+  categoryId?: number;
 }
 
 export interface ProductInput {
@@ -59,6 +72,13 @@ export interface ProductInput {
   unit?: string;
   standardCost?: number;
   vatRate: number;
+  description?: string;
+  categoryId?: number;
+  barcode?: string;
+  weightKg?: number;
+  lengthCm?: number;
+  widthCm?: number;
+  heightCm?: number;
   prices?: PriceInput[];
 }
 
@@ -77,6 +97,7 @@ const queryString = (params: ProductsQueryParams) => {
   if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
   if (params.search) searchParams.set("search", params.search);
   if (params.status) searchParams.set("status", params.status);
+  if (params.categoryId) searchParams.set("categoryId", String(params.categoryId));
   return searchParams.size > 0 ? `?${searchParams}` : "";
 };
 

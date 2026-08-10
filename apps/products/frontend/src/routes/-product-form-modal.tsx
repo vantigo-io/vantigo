@@ -1,8 +1,21 @@
-import { Button, Divider, Group, Modal, NumberInput, Select, Stack, TextInput, Tooltip } from "@mantine/core";
+import {
+  Button,
+  Divider,
+  Group,
+  Modal,
+  NumberInput,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import {
   ApiValidationError,
   createProduct,
@@ -21,6 +34,13 @@ interface ProductFormValues {
   unit: string;
   standardCost: number | string;
   vatRate: number | string;
+  description: string;
+  categoryId: string | null;
+  barcode: string;
+  weightKg: number | string;
+  lengthCm: number | string;
+  widthCm: number | string;
+  heightCm: number | string;
 }
 
 const emptyValues: ProductFormValues = {
@@ -31,6 +51,13 @@ const emptyValues: ProductFormValues = {
   unit: "",
   standardCost: "",
   vatRate: 0.25,
+  description: "",
+  categoryId: null,
+  barcode: "",
+  weightKg: "",
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
 };
 
 const valuesFromState = (state: ProductModalState): ProductFormValues =>
@@ -44,6 +71,13 @@ const valuesFromState = (state: ProductModalState): ProductFormValues =>
         unit: state.product.unit,
         standardCost: state.product.standardCost ?? "",
         vatRate: state.product.vatRate,
+        description: state.product.description ?? "",
+        categoryId: state.product.category ? String(state.product.category.id) : null,
+        barcode: state.product.barcode ?? "",
+        weightKg: state.product.weightKg ?? "",
+        lengthCm: state.product.lengthCm ?? "",
+        widthCm: state.product.widthCm ?? "",
+        heightCm: state.product.heightCm ?? "",
       };
 
 interface ProductFormModalProps {
@@ -55,6 +89,11 @@ export const ProductFormModal = ({ state, onClose }: ProductFormModalProps) => {
   const queryClient = useQueryClient();
   const isEdit = state?.mode === "edit";
   const skuLocked = isEdit && state.product.status !== "Draft";
+  const { data: categories } = useQuery({ ...categoriesQueryOptions(), enabled: state !== null });
+  const categoryOptions = buildCategoryTree(categories ?? []).map(({ category, depth }) => ({
+    value: String(category.id),
+    label: `${"\u00A0".repeat(depth * 3)}${category.name}`,
+  }));
   const form = useForm<ProductFormValues>({
     initialValues: emptyValues,
     validate: {
@@ -62,6 +101,10 @@ export const ProductFormModal = ({ state, onClose }: ProductFormModalProps) => {
       sku: (value) => (value.trim() ? null : "SKU is required"),
       vatRate: (value) => (Number(value) >= 0 && Number(value) <= 1 ? null : "VAT rate must be between 0 and 1"),
       standardCost: (value) => (value === "" || Number(value) >= 0 ? null : "Standard cost must be zero or greater"),
+      barcode: (value) =>
+        value.trim() === "" || /^\d{8}$|^\d{12,14}$/.test(value.trim())
+          ? null
+          : "Barcode must be a GTIN of 8, 12, 13 or 14 digits",
     },
   });
 
@@ -107,6 +150,13 @@ export const ProductFormModal = ({ state, onClose }: ProductFormModalProps) => {
       unit: values.unit.trim() || undefined,
       standardCost: values.standardCost === "" ? undefined : Number(values.standardCost),
       vatRate: Number(values.vatRate),
+      description: values.description.trim() || undefined,
+      categoryId: values.categoryId ? Number(values.categoryId) : undefined,
+      barcode: values.barcode.trim() || undefined,
+      weightKg: values.weightKg === "" ? undefined : Number(values.weightKg),
+      lengthCm: values.lengthCm === "" ? undefined : Number(values.lengthCm),
+      widthCm: values.widthCm === "" ? undefined : Number(values.widthCm),
+      heightCm: values.heightCm === "" ? undefined : Number(values.heightCm),
     });
   });
 
@@ -130,6 +180,26 @@ export const ProductFormModal = ({ state, onClose }: ProductFormModalProps) => {
               {...form.getInputProps("sku")}
             />
           </Tooltip>
+          <Textarea
+            label="Description"
+            placeholder="Optional plain-text description"
+            rows={3}
+            {...form.getInputProps("description")}
+          />
+          <Select
+            label="Category"
+            placeholder="Uncategorised"
+            clearable
+            searchable
+            data={categoryOptions}
+            {...form.getInputProps("categoryId")}
+          />
+          <TextInput
+            label="Barcode"
+            description="GTIN-8, GTIN-12, GTIN-13 or GTIN-14"
+            placeholder="e.g. 7350053850019"
+            {...form.getInputProps("barcode")}
+          />
           <Group grow>
             <Select label="Type" data={["Goods", "Service"]} allowDeselect={false} {...form.getInputProps("type")} />
             <Select
@@ -152,6 +222,16 @@ export const ProductFormModal = ({ state, onClose }: ProductFormModalProps) => {
             withAsterisk
             {...form.getInputProps("vatRate")}
           />
+          <Divider label="Logistics" labelPosition="left" />
+          <Text size="xs" c="dimmed">
+            Optional weight and dimensions for shipping and warehouse planning.
+          </Text>
+          <Group grow>
+            <NumberInput label="Weight (kg)" min={0} decimalScale={3} {...form.getInputProps("weightKg")} />
+            <NumberInput label="Length (cm)" min={0} decimalScale={1} {...form.getInputProps("lengthCm")} />
+            <NumberInput label="Width (cm)" min={0} decimalScale={1} {...form.getInputProps("widthCm")} />
+            <NumberInput label="Height (cm)" min={0} decimalScale={1} {...form.getInputProps("heightCm")} />
+          </Group>
           <Divider />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>

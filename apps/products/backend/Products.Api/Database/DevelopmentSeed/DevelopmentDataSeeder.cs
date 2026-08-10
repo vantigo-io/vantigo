@@ -145,7 +145,9 @@ internal static class DevelopmentDataSeeder
         ProductsDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        foreach (var seed in CreateProductSeeds())
+        var categoryIdsByName = await SeedCategoriesAsync(dbContext, cancellationToken);
+
+        foreach (var seed in CreateProductSeeds(categoryIdsByName))
         {
             var product = await dbContext.Products
                 .Include(item => item.Prices)
@@ -162,7 +164,42 @@ internal static class DevelopmentDataSeeder
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private static IReadOnlyList<Product> CreateProductSeeds() =>
+    private static async Task<IReadOnlyDictionary<string, int>> SeedCategoriesAsync(
+        ProductsDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        // (name, parent name) pairs; parents must precede their children.
+        (string Name, string? ParentName)[] seeds =
+        [
+            ("Furniture", null),
+            ("Desks", "Furniture"),
+            ("Lighting", "Furniture"),
+            ("Services", null),
+        ];
+
+        var idsByName = new Dictionary<string, int>();
+        foreach (var (name, parentName) in seeds)
+        {
+            int? parentId = parentName is null ? null : idsByName[parentName];
+            var category = await dbContext.ProductCategories.FirstOrDefaultAsync(
+                c => c.Name == name && c.ParentId == parentId,
+                cancellationToken);
+
+            if (category is null)
+            {
+                category = new ProductCategory { Name = name, ParentId = parentId };
+                dbContext.ProductCategories.Add(category);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            idsByName[name] = category.Id;
+        }
+
+        return idsByName;
+    }
+
+    private static IReadOnlyList<Product> CreateProductSeeds(
+        IReadOnlyDictionary<string, int> categoryIdsByName) =>
     [
         new Product
         {
@@ -173,6 +210,13 @@ internal static class DevelopmentDataSeeder
             Unit = "pcs",
             StandardCost = 240m,
             VatRate = 0.25m,
+            Description = "A warm-white LED desk lamp with a weighted base and stepless dimming.",
+            CategoryId = categoryIdsByName["Lighting"],
+            Barcode = "7350053850019",
+            WeightKg = 1.2m,
+            LengthCm = 18m,
+            WidthCm = 18m,
+            HeightCm = 45m,
             Prices =
             [
                 new ProductPrice { Currency = "NOK", Amount = 599m },
@@ -196,6 +240,13 @@ internal static class DevelopmentDataSeeder
             Unit = "pcs",
             StandardCost = 2200m,
             VatRate = 0.25m,
+            Description = "Ten Aurora desk lamps in a single carton for office rollouts.",
+            CategoryId = categoryIdsByName["Lighting"],
+            Barcode = "7350053850026",
+            WeightKg = 13.5m,
+            LengthCm = 60m,
+            WidthCm = 40m,
+            HeightCm = 50m,
             Prices = [new ProductPrice { Currency = "NOK", Amount = 5290m }],
         },
         new Product
@@ -207,6 +258,13 @@ internal static class DevelopmentDataSeeder
             Unit = "pcs",
             StandardCost = 3100m,
             VatRate = 0.25m,
+            Description = "An electric sit-stand desk with an oak veneer top and dual motors.",
+            CategoryId = categoryIdsByName["Desks"],
+            Barcode = "7350053850033",
+            WeightKg = 38m,
+            LengthCm = 160m,
+            WidthCm = 80m,
+            HeightCm = 12m,
             Prices = [new ProductPrice { Currency = "NOK", Amount = 7990m }],
         },
         new Product
@@ -218,6 +276,8 @@ internal static class DevelopmentDataSeeder
             Unit = "hour",
             StandardCost = 650m,
             VatRate = 0.25m,
+            Description = "Assembly and installation of purchased furniture at the customer site.",
+            CategoryId = categoryIdsByName["Services"],
             Prices = [new ProductPrice { Currency = "NOK", Amount = 1290m }],
         },
         new Product
@@ -228,6 +288,7 @@ internal static class DevelopmentDataSeeder
             Status = ProductStatus.Draft,
             Unit = "hour",
             VatRate = 0.25m,
+            CategoryId = categoryIdsByName["Services"],
             Prices = [new ProductPrice { Currency = "NOK", Amount = 1590m }],
         },
         new Product
@@ -239,6 +300,9 @@ internal static class DevelopmentDataSeeder
             Unit = "pcs",
             StandardCost = 900m,
             VatRate = 0.25m,
+            CategoryId = categoryIdsByName["Furniture"],
+            Barcode = "7350053850040",
+            WeightKg = 14m,
             Prices = [new ProductPrice { Currency = "NOK", Amount = 2490m }],
         },
     ];

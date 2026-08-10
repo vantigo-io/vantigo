@@ -16,6 +16,13 @@ internal readonly record struct ProductRequest
     public string? Unit { get; init; }
     public decimal? StandardCost { get; init; }
     public required decimal VatRate { get; init; }
+    public string? Description { get; init; }
+    public int? CategoryId { get; init; }
+    public string? Barcode { get; init; }
+    public decimal? WeightKg { get; init; }
+    public decimal? LengthCm { get; init; }
+    public decimal? WidthCm { get; init; }
+    public decimal? HeightCm { get; init; }
     public IReadOnlyList<ProductPriceRequest>? Prices { get; init; }
 
     internal Dictionary<string, string[]> Validate()
@@ -66,6 +73,37 @@ internal readonly record struct ProductRequest
         {
             errors["vatRate"] =
                 [$"'vatRate' must be between 0 and 1, but was {VatRate.ToString(CultureInfo.InvariantCulture)}."];
+        }
+
+        if (Description is { } description && description.Trim().Length > Product.DescriptionMaxLength)
+        {
+            errors["description"] = [$"'description' must be at most {Product.DescriptionMaxLength} characters."];
+        }
+
+        if (Barcode is { } barcode && barcode.Trim().Length > 0 && !Gtin.IsValid(barcode.Trim()))
+        {
+            errors["barcode"] =
+                ["'barcode' must be a valid GTIN-8, GTIN-12, GTIN-13 or GTIN-14: digits only with a correct check digit."];
+        }
+
+        if (WeightKg is < 0)
+        {
+            errors["weightKg"] = ["'weightKg' must be zero or greater."];
+        }
+
+        if (LengthCm is < 0)
+        {
+            errors["lengthCm"] = ["'lengthCm' must be zero or greater."];
+        }
+
+        if (WidthCm is < 0)
+        {
+            errors["widthCm"] = ["'widthCm' must be zero or greater."];
+        }
+
+        if (HeightCm is < 0)
+        {
+            errors["heightCm"] = ["'heightCm' must be zero or greater."];
         }
 
         if (Prices is { } prices)

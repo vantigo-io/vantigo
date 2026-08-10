@@ -33,11 +33,14 @@ internal static class GetProductsEndpoint
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
-            var pattern = $"%{EscapeLikePattern(request.Search.Trim())}%";
+            var search = request.Search.Trim();
+            var pattern = $"%{EscapeLikePattern(search)}%";
 
             query = query.Where(p =>
                 EF.Functions.ILike(p.Name, pattern) ||
-                EF.Functions.ILike(p.Sku, pattern));
+                EF.Functions.ILike(p.Sku, pattern) ||
+                (p.Description != null && EF.Functions.ILike(p.Description, pattern)) ||
+                p.Barcode == search);
         }
 
         if (!string.IsNullOrWhiteSpace(request.Status) &&
@@ -46,10 +49,23 @@ internal static class GetProductsEndpoint
             query = query.Where(p => p.Status == status);
         }
 
+        if (request.CategoryId is { } categoryId)
+        {
+            // Filter by the category or any of its descendants; the hierarchy is
+            // resolved server-side from the full (small) category list.
+            var parentByCategoryId = await dbContext.ProductCategories
+                .AsNoTracking()
+                .ToDictionaryAsync(c => c.Id, c => c.ParentId, cancellationToken);
+
+            var categoryIds = ProductCategoryHierarchy.GetSelfAndDescendantIds(categoryId, parentByCategoryId);
+            query = query.Where(p => p.CategoryId != null && categoryIds.Contains(p.CategoryId.Value));
+        }
+
         var totalCount = await query.CountAsync(cancellationToken);
 
         var products = await ApplySorting(query, request)
             .Include(p => p.Prices)
+            .Include(p => p.Category)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
@@ -89,6 +105,11 @@ internal static class GetProductsEndpoint
         if (request.Status is not null && !Enum.TryParse<ProductStatus>(request.Status, ignoreCase: true, out _))
         {
             errors.Add($"'status' must be one of 'Draft', 'Active' or 'Discontinued', but was '{request.Status}'.");
+        }
+
+        if (request.CategoryId is < 1)
+        {
+            errors.Add($"'categoryId' must be 1 or greater, but was {request.CategoryId}.");
         }
 
         if (errors.Count == 0)
@@ -136,11 +157,14 @@ internal static class GetProductsEndpoint
         /// <summary>The sort direction, either "asc" or "desc". Defaults to "asc".</summary>
         public string? SortDirection { get; init; }
 
-        /// <summary>Case-insensitive free-text search matching the product name and SKU.</summary>
+        /// <summary>Case-insensitive free-text search matching the product name, SKU and description, or an exact barcode.</summary>
         public string? Search { get; init; }
 
         /// <summary>Filter by lifecycle status: "Draft", "Active" or "Discontinued".</summary>
         public string? Status { get; init; }
+
+        /// <summary>Filter by category id, matching the category itself or any of its descendants.</summary>
+        public int? CategoryId { get; init; }
     }
 
     internal static class SortFields

@@ -9,11 +9,26 @@ Warehouse and Booking — will read product data from.
 - **Product** — a distinct sellable unit with an auto-generated integer `id` and a
   company-wide unique `sku`. Fields: `name`, `type` (`Goods` or `Service`), `status`
   (`Draft`, `Active`, `Discontinued`), `unit` (for instance `pcs` or `hour`),
-  `standardCost` (optional), and `vatRate`.
+  `standardCost` (optional), and `vatRate`. Catalog enrichment fields:
+  `description` (plain text), `categoryId` (optional), `barcode` (optional GTIN),
+  and optional logistics fields `weightKg`, `lengthCm`, `widthCm`, `heightCm`.
+- **ProductCategory** — a named grouping in a multi-level hierarchy (adjacency list
+  via `parentId`; a category with a parent is a subcategory). Each product belongs
+  to **at most one** category; cross-cutting grouping (e.g. "Summer sale") is a
+  future tags/collections concern, not multi-categorization. Category names are
+  unique among siblings. Categories cannot be deleted while they have subcategories
+  or assigned products, and moves that would create a cycle are rejected.
 - **ProductPrice** — a sales price in one ISO 4217 currency, excluding VAT, with an
   optional validity window (`validFrom`/`validTo`). The everyday base price is
   open-ended; campaign and sale prices are added as bounded rows next to it, which
   also preserves price history.
+
+### Barcode (GTIN)
+
+The `barcode` field holds a GTIN-8/12/13/14: digits only, validated with the GTIN
+check digit, and unique across products when set. The barcode identifies the same
+sellable unit as the SKU — when Phase 2 splits products into product + variants,
+both SKU and barcode move to the variant.
 
 ### Effective price resolution
 
@@ -56,7 +71,7 @@ Identity/cookie + antiforgery model as the Customers app:
 
 | Endpoint | Description |
 | --- | --- |
-| `GET /products` | List with pagination, search (`name`/`sku`), status filter and sorting |
+| `GET /products` | List with pagination, search (`name`/`sku`/`description`, exact `barcode`), status and category filters (category filter includes descendants) and sorting |
 | `POST /products` | Create, optionally with initial prices |
 | `GET /products/{id}` | Get one product with resolved effective prices |
 | `PUT /products/{id}` | Update fields (SKU immutable once active) |
@@ -64,6 +79,10 @@ Identity/cookie + antiforgery model as the Customers app:
 | `GET /products/{id}/prices` | All price rows, including expired and future ones |
 | `POST /products/{id}/prices` | Add a base or campaign price row |
 | `DELETE /products/{id}/prices/{priceId}` | Remove a price row |
+| `GET /categories` | Flat adjacency list (`id`, `name`, `parentId`); clients build the tree |
+| `POST /categories` | Create a root category or subcategory |
+| `PUT /categories/{id}` | Rename/re-parent (cycle-creating moves are rejected with 409) |
+| `DELETE /categories/{id}` | Delete; 409 while subcategories or products remain |
 
 The OpenAPI document is exposed at `/openapi/v1.json` and in the Aspire Scalar
 reference during development.

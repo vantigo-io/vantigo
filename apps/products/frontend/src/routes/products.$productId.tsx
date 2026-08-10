@@ -20,9 +20,10 @@ import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconArchive, IconPackage, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useState } from "react";
+import { categoriesQueryOptions, categoryPath } from "../api/categories";
 import {
   addProductPrice,
   archiveProduct,
@@ -57,6 +58,7 @@ const ProductDetailsPage = () => {
   const queryClient = useQueryClient();
   const { data: product } = useSuspenseQuery(productQueryOptions(productId));
   const { data: prices } = useSuspenseQuery(productPricesQueryOptions(productId));
+  const { data: categories } = useQuery({ ...categoriesQueryOptions(), enabled: product.category !== null });
   const [modalState, setModalState] = useState<ProductModalState | null>(null);
   const [priceModal, setPriceModal] = useState<PriceModalState | null>(null);
   const priceForm = useForm<PriceFormValues>({
@@ -188,6 +190,15 @@ const ProductDetailsPage = () => {
               <b>Type:</b> {product.type}
             </Text>
             <Text>
+              <b>Category:</b>{" "}
+              {product.category
+                ? (categories && categoryPath(categories, product.category.id)) || product.category.name
+                : "—"}
+            </Text>
+            <Text>
+              <b>Barcode:</b> {product.barcode ?? "—"}
+            </Text>
+            <Text>
               <b>Unit:</b> {product.unit || "—"}
             </Text>
             <Text>
@@ -201,6 +212,26 @@ const ProductDetailsPage = () => {
               {product.effectivePrices.length > 0 ? product.effectivePrices.map(formatPrice).join(" · ") : "—"}
             </Text>
           </Group>
+          {product.description && <Text style={{ whiteSpace: "pre-wrap" }}>{product.description}</Text>}
+          {(product.weightKg !== null ||
+            product.lengthCm !== null ||
+            product.widthCm !== null ||
+            product.heightCm !== null) && (
+            <Stack gap={4}>
+              <Title order={4}>Logistics</Title>
+              <Group>
+                <Text>
+                  <b>Weight:</b> {product.weightKg !== null ? `${product.weightKg} kg` : "—"}
+                </Text>
+                <Text>
+                  <b>Dimensions (L×W×H):</b>{" "}
+                  {[product.lengthCm, product.widthCm, product.heightCm]
+                    .map((value) => (value !== null ? `${value} cm` : "—"))
+                    .join(" × ")}
+                </Text>
+              </Group>
+            </Stack>
+          )}
         </Stack>
       </Card>
       <Card withBorder>
