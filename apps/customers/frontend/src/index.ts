@@ -6,5 +6,5 @@ export * from "./api/lookup";
 export * from "./api/timeline";
 export { ContactDetailsPage } from "./pages/contacts.$contactId";
 export { ContactsPage } from "./pages/contacts.index";
-export { CustomerDetailsPage } from "./pages/customers.$customerId";
+export { CustomerDetailHeader, CustomerOverview } from "./pages/customers.$customerId";
 export { CustomersPage } from "./pages/customers.index";

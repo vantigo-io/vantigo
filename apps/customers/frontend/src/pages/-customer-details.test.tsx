@@ -2,6 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { routeTree } from "../test/route-tree";
@@ -67,6 +68,9 @@ describe("customer details page", () => {
       "https://virksomhet.brreg.no/nb/oppslag/enheter/923609016",
     );
     expect(screen.getByRole("button", { name: /edit customer/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /edit customer/i }));
+    expect(await screen.findByLabelText(/^name/i)).toHaveValue("Equinor");
   });
 
   it("shows no legal identity row when the customer has none", async () => {

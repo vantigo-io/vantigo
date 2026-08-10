@@ -31,6 +31,7 @@ import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
 import { Route as ProductsTaxCategoriesRouteImport } from './routes/products/tax-categories'
+import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
 import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
 import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
@@ -146,6 +147,12 @@ const ProductsTaxCategoriesRoute = ProductsTaxCategoriesRouteImport.update({
   path: '/products/tax-categories',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CustomersCustomerIdIndexRoute =
+  CustomersCustomerIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => CustomersCustomerIdRoute,
+  } as any)
 const CustomersCustomerIdEnergyRoute =
   CustomersCustomerIdEnergyRouteImport.update({
     id: '/energy',
@@ -190,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/products/': typeof ProductsIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
+  '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -204,7 +212,6 @@ export interface FileRoutesByTo {
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/contacts/$contactId': typeof ContactsContactIdRoute
-  '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/messages/$messageId': typeof MessagesMessageIdRoute
   '/messages/compose': typeof MessagesComposeRoute
@@ -217,6 +224,7 @@ export interface FileRoutesByTo {
   '/products': typeof ProductsIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
+  '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
 }
 export interface FileRoutesById {
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/products/': typeof ProductsIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
+  '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
 }
 export interface FileRouteTypes {
@@ -274,6 +283,7 @@ export interface FileRouteTypes {
     | '/products/'
     | '/customers/$customerId/energy'
     | '/energy/metering-points/$meteringPointId'
+    | '/customers/$customerId/'
     | '/energy/metering-points/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -288,7 +298,6 @@ export interface FileRouteTypes {
     | '/communications/mailboxes'
     | '/communications/suppressions'
     | '/contacts/$contactId'
-    | '/customers/$customerId'
     | '/invitations/accept'
     | '/messages/$messageId'
     | '/messages/compose'
@@ -301,6 +310,7 @@ export interface FileRouteTypes {
     | '/products'
     | '/customers/$customerId/energy'
     | '/energy/metering-points/$meteringPointId'
+    | '/customers/$customerId'
     | '/energy/metering-points'
   id:
     | '__root__'
@@ -328,6 +338,7 @@ export interface FileRouteTypes {
     | '/products/'
     | '/customers/$customerId/energy'
     | '/energy/metering-points/$meteringPointId'
+    | '/customers/$customerId/'
     | '/energy/metering-points/'
   fileRoutesById: FileRoutesById
 }
@@ -514,6 +525,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsTaxCategoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/customers/$customerId/': {
+      id: '/customers/$customerId/'
+      path: '/'
+      fullPath: '/customers/$customerId/'
+      preLoaderRoute: typeof CustomersCustomerIdIndexRouteImport
+      parentRoute: typeof CustomersCustomerIdRoute
+    }
     '/customers/$customerId/energy': {
       id: '/customers/$customerId/energy'
       path: '/energy'
@@ -540,10 +558,12 @@ declare module '@tanstack/react-router' {
 
 interface CustomersCustomerIdRouteChildren {
   CustomersCustomerIdEnergyRoute: typeof CustomersCustomerIdEnergyRoute
+  CustomersCustomerIdIndexRoute: typeof CustomersCustomerIdIndexRoute
 }
 
 const CustomersCustomerIdRouteChildren: CustomersCustomerIdRouteChildren = {
   CustomersCustomerIdEnergyRoute: CustomersCustomerIdEnergyRoute,
+  CustomersCustomerIdIndexRoute: CustomersCustomerIdIndexRoute,
 }
 
 const CustomersCustomerIdRouteWithChildren =

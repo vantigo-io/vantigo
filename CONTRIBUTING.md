@@ -116,6 +116,11 @@ that lazy-import module pages, so each module becomes its own code-split chunk.
 Module packages never import from each other; shared UI lives in
 `@vantigo/frontend-shell`.
 
+Frontend app packages never import each other. Composition happens only in host routes,
+and each package's exported surface (`src/index.ts` and subpath exports) is its contract —
+the frontend parallel of `packages/contracts`. Host-owned composition points, such as the
+customer detail tab list, are extended by adding entries in the host.
+
 SPA URL convention — *flat primary resources, module-qualified secondary ones*:
 primary business nouns users work with daily are top-level (`/customers`,
 `/contacts`, `/messages`, `/products`), while supporting or admin concepts stay

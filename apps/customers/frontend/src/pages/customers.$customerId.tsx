@@ -1,7 +1,7 @@
 import { Anchor, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
@@ -28,8 +28,7 @@ const tooltips = {
   customerId: "The unique id identifying the customer within Vantigo.",
 };
 
-export const CustomerDetailsPage = () => {
-  const { customerId } = useParams({ strict: false }) as { customerId: number };
+export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => {
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
 
@@ -61,9 +60,6 @@ export const CustomerDetailsPage = () => {
               >
                 Edit customer
               </Button>
-              <Button component="a" href={`/customers/${customer.id}/energy`} variant="light">
-                Energy
-              </Button>
             </Group>
           }
         />
@@ -88,9 +84,13 @@ export const CustomerDetailsPage = () => {
       </Stack>
 
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
-
-      <CustomerContactsCard customerId={customer.id} />
-      <CustomerTimeline customerId={customer.id} />
     </Stack>
   );
 };
+
+export const CustomerOverview = ({ customerId }: { customerId: number }) => (
+  <Stack gap="lg">
+    <CustomerContactsCard customerId={customerId} />
+    <CustomerTimeline customerId={customerId} />
+  </Stack>
+);

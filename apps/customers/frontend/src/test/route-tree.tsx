@@ -3,7 +3,7 @@ import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Tit
 import { useForm } from "@mantine/form";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, createRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { createRootRouteWithContext, createRoute, Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { AppShellLayout, SpotlightSearchBox } from "@vantigo/frontend-shell";
 import type { ReactElement } from "react";
 import { bootstrapAccount, createInvitation, fetchBootstrapStatus, mfaStatus } from "../api/account-lifecycle";
@@ -13,10 +13,20 @@ import { showLifecycleFormError } from "../lib/lifecycle-form-errors";
 import { shellApps } from "../lib/shell-apps";
 import { ContactDetailsPage } from "../pages/contacts.$contactId";
 import { ContactsPage } from "../pages/contacts.index";
-import { CustomerDetailsPage } from "../pages/customers.$customerId";
+import { CustomerDetailHeader, CustomerOverview } from "../pages/customers.$customerId";
 import { CustomersPage } from "../pages/customers.index";
 
 const Dashboard = () => <Title order={2}>Dashboard</Title>;
+
+const CustomerDetailsTestPage = () => {
+  const { customerId } = useParams({ strict: false }) as { customerId: number };
+  return (
+    <>
+      <CustomerDetailHeader customerId={customerId} />
+      <CustomerOverview customerId={customerId} />
+    </>
+  );
+};
 
 const Setup = () => {
   const navigate = useNavigate();
@@ -107,7 +117,7 @@ const route = (path: string, component: () => ReactElement, errorComponent?: () 
 export const routeTree = rootRoute.addChildren([
   route("/", Dashboard),
   route("/customers", CustomersPage),
-  route("/customers/$customerId", CustomerDetailsPage, () => (
+  route("/customers/$customerId", CustomerDetailsTestPage, () => (
     <Stack align="center">
       <Title order={3}>Customer not found</Title>
       <Button component={Link} to="/customers">
