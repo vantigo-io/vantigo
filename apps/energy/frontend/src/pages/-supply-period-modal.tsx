@@ -44,7 +44,8 @@ export const SupplyPeriodModal = ({
     <Modal opened={opened} onClose={onClose} title={action} centered>
       <form
         onSubmit={form.onSubmit((values) =>
-          mutation.mutate({ customerId: Number(values.customerId), start: values.start }),
+          // The date input yields "YYYY-MM-DD"; the backend requires UTC.
+          mutation.mutate({ customerId: Number(values.customerId), start: new Date(values.start).toISOString() }),
         )}
       >
         <Stack>

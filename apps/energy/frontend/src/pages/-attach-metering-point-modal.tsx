@@ -48,7 +48,12 @@ export const AttachMeteringPointModal = ({
     <Modal opened={opened} onClose={onClose} title="Attach metering point" centered>
       <form
         onSubmit={form.onSubmit((values) =>
-          mutation.mutate({ meteringPointId: Number(values.meteringPointId), start: values.start }),
+          mutation.mutate({
+            meteringPointId: Number(values.meteringPointId),
+            // The date input yields a plain "YYYY-MM-DD"; the backend requires
+            // an explicit UTC timestamp, so send UTC midnight of that day.
+            start: new Date(values.start).toISOString(),
+          }),
         )}
       >
         <Stack>

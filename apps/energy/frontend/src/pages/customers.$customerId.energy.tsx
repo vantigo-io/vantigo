@@ -10,9 +10,8 @@ export const CustomerEnergyPanel = ({ customerId }: { customerId: number }) => {
   const { data: meters, isPending } = useQuery(customerMeteringPointsQueryOptions(customerId));
   const [attachOpen, setAttachOpen] = useState(false);
   return (
-    <Stack gap="lg">
-      <Group justify="space-between">
-        <Title order={3}>Energy</Title>
+    <Stack gap="lg" mt="md">
+      <Group justify="flex-end">
         <Button leftSection={<IconPlus size={16} />} onClick={() => setAttachOpen(true)}>
           Attach metering point
         </Button>
