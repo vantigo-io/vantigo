@@ -1,5 +1,5 @@
 import { Center, Loader, Menu, NavLink } from "@mantine/core";
-import { IconLayoutDashboard, IconPackage, IconSettings } from "@tabler/icons-react";
+import { IconCategory, IconLayoutDashboard, IconPackage, IconSettings } from "@tabler/icons-react";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
@@ -16,6 +16,7 @@ import { shellApps } from "../lib/shell-apps";
 const navItems = [
   { label: "Dashboard", to: "/", icon: IconLayoutDashboard },
   { label: "Products", to: "/products", icon: IconPackage },
+  { label: "Categories", to: "/categories", icon: IconCategory },
 ] as const;
 
 const RootLayout = () => {

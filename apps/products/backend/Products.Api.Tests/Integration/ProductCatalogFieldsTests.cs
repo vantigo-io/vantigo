@@ -228,6 +228,29 @@ public sealed class ProductCatalogFieldsTests
         Assert.Equal(created!.Id, match.Id);
     }
 
+    [Fact]
+    public async Task GetProducts_FilteredByUncategorized_ReturnsOnlyProductsWithoutCategory()
+    {
+        var category = await CreateCategoryAsync(Name("uncat"));
+        var categorised = await CreateProductAsync("Categorised", Sku("uncat-in"), category.Id);
+        var uncategorised = await CreateProductAsync("Uncategorised", Sku("uncat-out"));
+
+        var result = await _client.GetFromJsonAsync<ProductList>("/api/v1/products?uncategorized=true&pageSize=100");
+
+        Assert.NotNull(result);
+        Assert.Contains(result.Data, p => p.Id == uncategorised.Id);
+        Assert.DoesNotContain(result.Data, p => p.Id == categorised.Id);
+        Assert.All(result.Data, p => Assert.Null(p.Category));
+    }
+
+    [Fact]
+    public async Task GetProducts_CombiningCategoryIdAndUncategorized_ReturnsBadRequest()
+    {
+        var response = await _client.GetAsync("/api/v1/products?categoryId=1&uncategorized=true");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private async Task<Category> CreateCategoryAsync(string name, int? parentId = null)
     {
         var response = await _client.PostAsJsonAsync("/api/v1/categories", new { name, parentId });

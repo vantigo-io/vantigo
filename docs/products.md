@@ -71,7 +71,7 @@ Identity/cookie + antiforgery model as the Customers app:
 
 | Endpoint | Description |
 | --- | --- |
-| `GET /products` | List with pagination, search (`name`/`sku`/`description`, exact `barcode`), status and category filters (category filter includes descendants) and sorting |
+| `GET /products` | List with pagination, search (`name`/`sku`/`description`, exact `barcode`), status and category filters (category filter includes descendants; `uncategorized=true` for products without a category) and sorting |
 | `POST /products` | Create, optionally with initial prices |
 | `GET /products/{id}` | Get one product with resolved effective prices |
 | `PUT /products/{id}` | Update fields (SKU immutable once active) |
@@ -79,7 +79,7 @@ Identity/cookie + antiforgery model as the Customers app:
 | `GET /products/{id}/prices` | All price rows, including expired and future ones |
 | `POST /products/{id}/prices` | Add a base or campaign price row |
 | `DELETE /products/{id}/prices/{priceId}` | Remove a price row |
-| `GET /categories` | Flat adjacency list (`id`, `name`, `parentId`); clients build the tree |
+| `GET /categories` | Flat adjacency list (`id`, `name`, `parentId`, `productCount` of directly assigned products); clients build the tree |
 | `POST /categories` | Create a root category or subcategory |
 | `PUT /categories/{id}` | Rename/re-parent (cycle-creating moves are rejected with 409) |
 | `DELETE /categories/{id}` | Delete; 409 while subcategories or products remain |

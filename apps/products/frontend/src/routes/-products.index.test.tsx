@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProductsPage } from "./products.index";
 
@@ -10,7 +10,6 @@ vi.mock("@tanstack/react-router", () => ({
     useSearch: () => ({ page: 1, search: "", status: "", categoryId: "" }),
     useNavigate: () => vi.fn(),
   }),
-  Link: ({ children }: { children: React.ReactNode }) => <a href="/products/categories">{children}</a>,
 }));
 
 const stubFetch = () =>
@@ -22,8 +21,8 @@ const stubFetch = () =>
         return Promise.resolve(
           new Response(
             JSON.stringify([
-              { id: 10, name: "Furniture", parentId: null },
-              { id: 11, name: "Desks", parentId: 10 },
+              { id: 10, name: "Furniture", parentId: null, productCount: 0 },
+              { id: 11, name: "Desks", parentId: 10, productCount: 1 },
             ]),
             { status: 200 },
           ),
@@ -81,6 +80,15 @@ describe("ProductsPage", () => {
     expect(await screen.findByText("Widget")).toBeInTheDocument();
     expect(screen.getAllByText("Desks").length).toBeGreaterThan(0);
     expect(screen.getByPlaceholderText("All categories")).toBeInTheDocument();
-    expect(screen.getByText("Categories")).toBeInTheDocument();
+  });
+
+  it("offers an Uncategorised option in the category filter", async () => {
+    stubFetch();
+    renderPage();
+    await screen.findByText("Widget");
+
+    fireEvent.click(screen.getByPlaceholderText("All categories"));
+
+    expect(await screen.findByText("Uncategorised")).toBeInTheDocument();
   });
 });

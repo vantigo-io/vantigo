@@ -7,9 +7,9 @@ using Vantigo.Products.Api.Endpoints.Categories.Dtos;
 namespace Vantigo.Products.Api.Endpoints.Categories;
 
 /// <summary>
-/// Lists all categories as a flat adjacency list ordered by name. Clients build the
-/// tree from the parentId references; the catalog is small enough that pagination
-/// is unnecessary.
+/// Lists all categories as a flat adjacency list ordered by name, each with the
+/// number of directly assigned products. Clients build the tree from the parentId
+/// references; the catalog is small enough that pagination is unnecessary.
 /// </summary>
 internal static class GetCategoriesEndpoint
 {
@@ -23,8 +23,16 @@ internal static class GetCategoriesEndpoint
             .ThenBy(c => c.Id)
             .ToListAsync(cancellationToken);
 
+        var productCounts = await dbContext.Products
+            .Where(p => p.CategoryId != null)
+            .GroupBy(p => p.CategoryId!.Value)
+            .Select(group => new { CategoryId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.CategoryId, item => item.Count, cancellationToken);
+
         IReadOnlyList<CategoryResponse> response = categories
-            .Select(CategoryResponse.FromDomain)
+            .Select(category => CategoryResponse.FromDomain(
+                category,
+                productCounts.GetValueOrDefault(category.Id)))
             .ToArray();
 
         return TypedResults.Ok(response);

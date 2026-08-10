@@ -1,8 +1,7 @@
 import {
   ActionIcon,
   Alert,
-  Anchor,
-  Breadcrumbs,
+  Badge,
   Button,
   Card,
   Center,
@@ -10,6 +9,7 @@ import {
   Loader,
   Modal,
   Select,
+  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -21,7 +21,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCategory, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   ApiValidationError,
@@ -31,8 +31,11 @@ import {
   categoriesQueryOptions,
   createCategory,
   deleteCategory,
+  maxDepth,
+  subtreeProductCounts,
   updateCategory,
 } from "../api/categories";
+import { productsQueryOptions } from "../api/products";
 
 type CategoryModalState = { mode: "create" } | { mode: "edit"; category: CategoryResponse };
 
@@ -41,9 +44,26 @@ interface CategoryFormValues {
   parentId: string | null;
 }
 
+const StatCard = ({ label, value, hint }: { label: string; value: string | number; hint?: string }) => (
+  <Card withBorder padding="md" radius="md">
+    <Text size="sm" c="dimmed">
+      {label}
+    </Text>
+    <Text size="xl" fw={700}>
+      {value}
+    </Text>
+    {hint && (
+      <Text size="xs" c="dimmed">
+        {hint}
+      </Text>
+    )}
+  </Card>
+);
+
 export const CategoriesPage = () => {
   const queryClient = useQueryClient();
   const { data: categories, isPending, isError, error } = useQuery(categoriesQueryOptions());
+  const { data: uncategorizedPage } = useQuery(productsQueryOptions({ pageSize: 1, uncategorized: true }));
   const [modalState, setModalState] = useState<CategoryModalState | null>(null);
   const form = useForm<CategoryFormValues>({
     initialValues: { name: "", parentId: null },
@@ -51,6 +71,11 @@ export const CategoriesPage = () => {
   });
 
   const tree = buildCategoryTree(categories ?? []);
+  const subtreeCounts = subtreeProductCounts(categories ?? []);
+  const emptyCount = (categories ?? []).filter(({ id }) => (subtreeCounts.get(id) ?? 0) === 0).length;
+  const rootCount = (categories ?? []).filter(({ parentId }) => parentId === null).length;
+  const uncategorizedCount = uncategorizedPage?.pagination.totalCount;
+
   const isEdit = modalState?.mode === "edit";
   const parentOptions = tree
     // A category cannot become its own parent; deeper cycles are rejected server-side.
@@ -132,12 +157,6 @@ export const CategoriesPage = () => {
 
   return (
     <Stack gap="lg">
-      <Breadcrumbs>
-        <Anchor component={Link} to="/products" size="sm">
-          Products
-        </Anchor>
-        <Text size="sm">Categories</Text>
-      </Breadcrumbs>
       <Group justify="space-between">
         <Group gap="sm">
           <IconCategory size={28} />
@@ -147,6 +166,15 @@ export const CategoriesPage = () => {
           New category
         </Button>
       </Group>
+      {categories && (
+        <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
+          <StatCard label="Total categories" value={categories.length} />
+          <StatCard label="Root categories" value={rootCount} />
+          <StatCard label="Max depth" value={maxDepth(categories)} hint="Nesting levels" />
+          <StatCard label="Empty categories" value={emptyCount} hint="No products in subtree" />
+          <StatCard label="Uncategorised products" value={uncategorizedCount ?? "…"} hint="Without any category" />
+        </SimpleGrid>
+      )}
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <Text size="sm" c="dimmed">
@@ -169,36 +197,60 @@ export const CategoriesPage = () => {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Name</Table.Th>
+                    <Table.Th>Products</Table.Th>
                     <Table.Th w={96} aria-label="Actions" />
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {tree.map(({ category, depth }) => (
-                    <Table.Tr key={category.id}>
-                      <Table.Td style={{ paddingLeft: 12 + depth * 24 }}>{category.name}</Table.Td>
-                      <Table.Td>
-                        <Group gap={4} wrap="nowrap" justify="flex-end">
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label={`Edit ${category.name}`}
-                            onClick={() => openEdit(category)}
-                          >
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            aria-label={`Delete ${category.name}`}
-                            loading={removal.isPending && removal.variables === category.id}
-                            onClick={() => confirmDelete(category)}
-                          >
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
+                  {tree.map(({ category, depth }) => {
+                    const subtreeCount = subtreeCounts.get(category.id) ?? 0;
+                    return (
+                      <Table.Tr key={category.id}>
+                        <Table.Td style={{ paddingLeft: 12 + depth * 24 }}>
+                          <Group gap="xs" wrap="nowrap">
+                            {category.name}
+                            {subtreeCount === 0 && (
+                              <Badge size="sm" color="gray" variant="light">
+                                Empty
+                              </Badge>
+                            )}
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm">
+                            {category.productCount}
+                            {subtreeCount !== category.productCount && (
+                              <Text span size="sm" c="dimmed">
+                                {" "}
+                                · {subtreeCount} in subtree
+                              </Text>
+                            )}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={4} wrap="nowrap" justify="flex-end">
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              aria-label={`Edit ${category.name}`}
+                              onClick={() => openEdit(category)}
+                            >
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              aria-label={`Delete ${category.name}`}
+                              loading={removal.isPending && removal.variables === category.id}
+                              onClick={() => confirmDelete(category)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
                 </Table.Tbody>
               </Table>
               {categories.length === 0 && (
@@ -248,7 +300,7 @@ export const CategoriesPage = () => {
   );
 };
 
-export const Route = createFileRoute("/products/categories")({
+export const Route = createFileRoute("/categories")({
   loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(categoriesQueryOptions()),
   component: CategoriesPage,
 });

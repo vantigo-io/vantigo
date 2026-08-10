@@ -16,20 +16,21 @@ import {
   Title,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { IconAlertCircle, IconCategory, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
+import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import { type ProductResponse, type ProductStatus, productsQueryOptions } from "../api/products";
 import { ProductFormModal, type ProductModalState } from "./-product-form-modal";
 
 const PAGE_SIZE = 25;
+const UNCATEGORIZED = "uncategorized";
 interface ProductsSearch {
   page: number;
   search: string;
   status: ProductStatus | "";
-  categoryId: number | "";
+  categoryId: number | typeof UNCATEGORIZED | "";
 }
 
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
@@ -53,14 +54,18 @@ export const ProductsPage = () => {
       pageSize: PAGE_SIZE,
       search: search || undefined,
       status: status || undefined,
-      categoryId: categoryId || undefined,
+      categoryId: typeof categoryId === "number" ? categoryId : undefined,
+      uncategorized: categoryId === UNCATEGORIZED || undefined,
     }),
   );
   const { data: categories } = useQuery(categoriesQueryOptions());
-  const categoryOptions = buildCategoryTree(categories ?? []).map(({ category, depth }) => ({
-    value: String(category.id),
-    label: `${"\u00A0".repeat(depth * 3)}${category.name}`,
-  }));
+  const categoryOptions = [
+    { value: UNCATEGORIZED, label: "Uncategorised" },
+    ...buildCategoryTree(categories ?? []).map(({ category, depth }) => ({
+      value: String(category.id),
+      label: `${"\u00A0".repeat(depth * 3)}${category.name}`,
+    })),
+  ];
 
   return (
     <Stack gap="lg">
@@ -73,14 +78,9 @@ export const ProductsPage = () => {
             </Badge>
           )}
         </Group>
-        <Group>
-          <Button component={Link} to="/products/categories" variant="default" leftSection={<IconCategory size={16} />}>
-            Categories
-          </Button>
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-            New product
-          </Button>
-        </Group>
+        <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
+          New product
+        </Button>
       </Group>
       <ProductFormModal state={modalState} onClose={() => setModalState(null)} />
       <Card withBorder padding="lg" radius="md">
@@ -113,7 +113,14 @@ export const ProductsPage = () => {
               data={categoryOptions}
               value={categoryId ? String(categoryId) : null}
               onChange={(value) =>
-                void navigate({ search: { page: 1, search, status, categoryId: value ? Number(value) : "" } })
+                void navigate({
+                  search: {
+                    page: 1,
+                    search,
+                    status,
+                    categoryId: value === UNCATEGORIZED ? UNCATEGORIZED : value ? Number(value) : "",
+                  },
+                })
               }
             />
           </Group>
@@ -204,7 +211,11 @@ export const Route = createFileRoute("/products/")({
       ? (String(search.status) as ProductStatus)
       : "",
     categoryId:
-      Number.isInteger(Number(search.categoryId)) && Number(search.categoryId) > 0 ? Number(search.categoryId) : "",
+      search.categoryId === UNCATEGORIZED
+        ? UNCATEGORIZED
+        : Number.isInteger(Number(search.categoryId)) && Number(search.categoryId) > 0
+          ? Number(search.categoryId)
+          : "",
   }),
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, deps: { page, search, status, categoryId } }) =>
@@ -214,7 +225,8 @@ export const Route = createFileRoute("/products/")({
         pageSize: PAGE_SIZE,
         search: search || undefined,
         status: status || undefined,
-        categoryId: categoryId || undefined,
+        categoryId: typeof categoryId === "number" ? categoryId : undefined,
+        uncategorized: categoryId === UNCATEGORIZED || undefined,
       }),
     ),
   component: ProductsPage,

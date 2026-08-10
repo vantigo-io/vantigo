@@ -7,6 +7,8 @@ export interface CategoryResponse {
   id: number;
   name: string;
   parentId: number | null;
+  /** Products directly assigned to this category; subtree totals are derived client-side. */
+  productCount: number;
 }
 
 export interface CategoryInput {
@@ -77,3 +79,22 @@ export const categoryPath = (categories: CategoryResponse[], id: number): string
   }
   return names.join(" / ");
 };
+
+/**
+ * Returns the total number of products per category including all descendants,
+ * keyed by category id. Computed bottom-up from the direct counts in the flat list.
+ */
+export const subtreeProductCounts = (categories: CategoryResponse[]): Map<number, number> => {
+  const totals = new Map(categories.map((category) => [category.id, category.productCount]));
+  // Deepest-first order guarantees children are folded into parents exactly once.
+  for (const { category } of buildCategoryTree(categories).reverse()) {
+    if (category.parentId !== null) {
+      totals.set(category.parentId, (totals.get(category.parentId) ?? 0) + (totals.get(category.id) ?? 0));
+    }
+  }
+  return totals;
+};
+
+/** Returns the deepest nesting level, where a single flat level counts as 1. */
+export const maxDepth = (categories: CategoryResponse[]): number =>
+  buildCategoryTree(categories).reduce((deepest, { depth }) => Math.max(deepest, depth + 1), 0);

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
+import { Route as CategoriesRouteImport } from './routes/categories'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -20,7 +21,6 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations.accept'
 import { Route as ProductsIndexRouteImport } from './routes/products.index'
 import { Route as ProductsProductIdRouteImport } from './routes/products.$productId'
-import { Route as ProductsCategoriesRouteImport } from './routes/products.categories'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
   id: '/accept-invitation',
   path: '/accept-invitation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CategoriesRoute = CategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
@@ -77,15 +82,11 @@ const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
   path: '/products/$productId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProductsCategoriesRoute = ProductsCategoriesRouteImport.update({
-  id: '/products/categories',
-  path: '/products/categories',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/categories': typeof CategoriesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -94,12 +95,12 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
-  '/products/categories': typeof ProductsCategoriesRoute
   '/products/': typeof ProductsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/categories': typeof CategoriesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -108,13 +109,13 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
-  '/products/categories': typeof ProductsCategoriesRoute
   '/products': typeof ProductsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/categories': typeof CategoriesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -123,7 +124,6 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
-  '/products/categories': typeof ProductsCategoriesRoute
   '/products/': typeof ProductsIndexRoute
 }
 export interface FileRouteTypes {
@@ -131,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accept-invitation'
+    | '/categories'
     | '/forgot-password'
     | '/password-reset'
     | '/reset-password'
@@ -139,12 +140,12 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/invitations/accept'
     | '/products/$productId'
-    | '/products/categories'
     | '/products/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/accept-invitation'
+    | '/categories'
     | '/forgot-password'
     | '/password-reset'
     | '/reset-password'
@@ -153,12 +154,12 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/invitations/accept'
     | '/products/$productId'
-    | '/products/categories'
     | '/products'
   id:
     | '__root__'
     | '/'
     | '/accept-invitation'
+    | '/categories'
     | '/forgot-password'
     | '/password-reset'
     | '/reset-password'
@@ -167,13 +168,13 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/invitations/accept'
     | '/products/$productId'
-    | '/products/categories'
     | '/products/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcceptInvitationRoute: typeof AcceptInvitationRoute
+  CategoriesRoute: typeof CategoriesRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   PasswordResetRoute: typeof PasswordResetRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -182,7 +183,6 @@ export interface RootRouteChildren {
   SignInRoute: typeof SignInRoute
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   ProductsProductIdRoute: typeof ProductsProductIdRoute
-  ProductsCategoriesRoute: typeof ProductsCategoriesRoute
   ProductsIndexRoute: typeof ProductsIndexRoute
 }
 
@@ -200,6 +200,13 @@ declare module '@tanstack/react-router' {
       path: '/accept-invitation'
       fullPath: '/accept-invitation'
       preLoaderRoute: typeof AcceptInvitationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/categories': {
+      id: '/categories'
+      path: '/categories'
+      fullPath: '/categories'
+      preLoaderRoute: typeof CategoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forgot-password': {
@@ -265,19 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsProductIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/products/categories': {
-      id: '/products/categories'
-      path: '/products/categories'
-      fullPath: '/products/categories'
-      preLoaderRoute: typeof ProductsCategoriesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcceptInvitationRoute: AcceptInvitationRoute,
+  CategoriesRoute: CategoriesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   PasswordResetRoute: PasswordResetRoute,
   ResetPasswordRoute: ResetPasswordRoute,
@@ -286,7 +287,6 @@ const rootRouteChildren: RootRouteChildren = {
   SignInRoute: SignInRoute,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
   ProductsProductIdRoute: ProductsProductIdRoute,
-  ProductsCategoriesRoute: ProductsCategoriesRoute,
   ProductsIndexRoute: ProductsIndexRoute,
 }
 export const routeTree = rootRouteImport

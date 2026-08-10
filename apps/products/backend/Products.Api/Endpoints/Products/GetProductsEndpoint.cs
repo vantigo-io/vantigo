@@ -60,6 +60,10 @@ internal static class GetProductsEndpoint
             var categoryIds = ProductCategoryHierarchy.GetSelfAndDescendantIds(categoryId, parentByCategoryId);
             query = query.Where(p => p.CategoryId != null && categoryIds.Contains(p.CategoryId.Value));
         }
+        else if (request.Uncategorized is true)
+        {
+            query = query.Where(p => p.CategoryId == null);
+        }
 
         var totalCount = await query.CountAsync(cancellationToken);
 
@@ -110,6 +114,11 @@ internal static class GetProductsEndpoint
         if (request.CategoryId is < 1)
         {
             errors.Add($"'categoryId' must be 1 or greater, but was {request.CategoryId}.");
+        }
+
+        if (request.CategoryId is not null && request.Uncategorized is true)
+        {
+            errors.Add("'categoryId' and 'uncategorized' cannot be combined.");
         }
 
         if (errors.Count == 0)
@@ -165,6 +174,9 @@ internal static class GetProductsEndpoint
 
         /// <summary>Filter by category id, matching the category itself or any of its descendants.</summary>
         public int? CategoryId { get; init; }
+
+        /// <summary>When true, only products without a category are returned. Cannot be combined with categoryId.</summary>
+        public bool? Uncategorized { get; init; }
     }
 
     internal static class SortFields

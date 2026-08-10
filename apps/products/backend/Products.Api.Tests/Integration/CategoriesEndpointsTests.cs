@@ -47,6 +47,24 @@ public sealed class CategoriesEndpointsTests
     }
 
     [Fact]
+    public async Task GetCategories_ReportsDirectProductCounts()
+    {
+        var root = await CreateAsync(Name("count-root"));
+        var child = await CreateAsync(Name("count-child"), root.Id);
+
+        // Two products directly on the child, none on the root: the counts are
+        // direct assignments only, subtree totals are a client concern.
+        await CreateProductAsync("Counted One", child.Id);
+        await CreateProductAsync("Counted Two", child.Id);
+
+        var categories = await _client.GetFromJsonAsync<List<Category>>("/api/v1/categories");
+
+        Assert.NotNull(categories);
+        Assert.Equal(2, categories.Single(c => c.Id == child.Id).ProductCount);
+        Assert.Equal(0, categories.Single(c => c.Id == root.Id).ProductCount);
+    }
+
+    [Fact]
     public async Task CreateCategory_WithMissingName_ReturnsFieldError()
     {
         var response = await _client.PostAsJsonAsync("/api/v1/categories", new { name = "  " });
@@ -192,10 +210,23 @@ public sealed class CategoriesEndpointsTests
         return created;
     }
 
+    private async Task CreateProductAsync(string name, int categoryId)
+    {
+        var response = await _client.PostAsJsonAsync("/api/v1/products", new
+        {
+            name,
+            sku = $"TST-CNT-{Guid.NewGuid().ToString("N")[..8]}".ToUpperInvariant(),
+            type = "Goods",
+            vatRate = 0.25,
+            categoryId,
+        });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
     private static string Name(string prefix) =>
         $"Category {prefix} {Guid.NewGuid().ToString("N")[..8]}";
 
-    private sealed record Category(int Id, string Name, int? ParentId);
+    private sealed record Category(int Id, string Name, int? ParentId, int ProductCount);
 
     private sealed record ValidationProblem(Dictionary<string, string[]> Errors);
 }

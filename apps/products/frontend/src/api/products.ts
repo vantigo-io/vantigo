@@ -62,6 +62,8 @@ export interface ProductsQueryParams {
   sortDirection?: "asc" | "desc";
   status?: ProductStatus;
   categoryId?: number;
+  /** Only products without a category. Cannot be combined with categoryId. */
+  uncategorized?: boolean;
 }
 
 export interface ProductInput {
@@ -98,6 +100,7 @@ const queryString = (params: ProductsQueryParams) => {
   if (params.search) searchParams.set("search", params.search);
   if (params.status) searchParams.set("status", params.status);
   if (params.categoryId) searchParams.set("categoryId", String(params.categoryId));
+  if (params.uncategorized) searchParams.set("uncategorized", "true");
   return searchParams.size > 0 ? `?${searchParams}` : "";
 };
 
