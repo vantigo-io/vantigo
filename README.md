@@ -34,23 +34,23 @@
 ## About
 
 Vantigo is an **all-in-one solution for running a business**. It bundles the essential
-applications a company needs — and, crucially, they are **deeply integrated with each
+modules a company needs — and, crucially, they are **deeply integrated with each
 other**. When you run your business on Vantigo, you are not stitching together a dozen
 disconnected systems: everything speaks the same language out of the box.
 
 The entire stack is **open source and free to run yourself**. If self-hosting isn't
 your thing, a managed **SaaS offering** is available where we run the platform for you.
 
-## Applications
+## Modules
 
-| Application        | Description                                                          | Status            |
+| Module             | Description                                                          | Status            |
 | ------------------ | -------------------------------------------------------------------- | ----------------- |
 | **Customers**      | Manage your customers and their legal identities across countries.   | 🚧 In development |
 | **Communications** | Send, receive and archive business email across shared mailboxes.    | 🚧 In development |
 | **Products**       | The catalog of goods and services the company sells, with prices.    | 🚧 In development |
 
-More applications are on the way — each one lands as a new vertical slice in
-[`apps/`](apps/) and plugs into the same platform conventions.
+More modules are on the way — each one lands as a new vertical slice in
+[`apps/`](apps/) and plugs into the same host application and platform conventions.
 
 ## Quick start with Docker
 
@@ -63,23 +63,19 @@ mkdir vantigo && cd vantigo
 base=https://raw.githubusercontent.com/vantigo-io/vantigo/main/deploy/compose
 curl -fsSLO "$base/compose.yaml"
 curl -fsSLO "$base/.env.example"
-curl -fsSLO "$base/customers.env.example"
-curl -fsSLO "$base/communications.env.example"
-curl -fsSLO "$base/products.env.example"
+curl -fsSLO "$base/vantigo.env.example"
 
 cp .env.example .env                              # set a database password here
-cp customers.env.example customers.env
-cp communications.env.example communications.env
-cp products.env.example products.env
+cp vantigo.env.example vantigo.env
 
 docker compose up -d
 ```
 
-Compose starts PostgreSQL, applies each application's database migrations, and
-brings up **Customers** on <http://localhost:8080>, **Communications** on
-<http://localhost:8081>, and **Products** on <http://localhost:8082>. Then visit
+Compose starts PostgreSQL, applies the shared database migrations, and brings up
+the single Vantigo application on <http://localhost:8080>. Customers,
+Communications and Products are modules in that application. Visit
 <http://localhost:8080/setup> to create your first Owner account — the one-time
-bootstrap secret is printed in the Customers logs (`docker compose logs customers`)
+bootstrap secret is printed in the Vantigo logs (`docker compose logs vantigo`)
 unless you configured one yourself.
 
 The [compose guide](deploy/compose/README.md) covers configuration, first
@@ -87,27 +83,29 @@ sign-in, production notes and upgrades in more detail.
 
 ## Architecture
 
-Vantigo is a monorepo of independently packaged applications, composed locally by a
-single [.NET Aspire](https://learn.microsoft.com/dotnet/aspire/) AppHost:
+Vantigo is a modular monolith: one host application contains the Customers,
+Communications and Products modules, with shared Identity and contracts. A single
+[.NET Aspire](https://learn.microsoft.com/dotnet/aspire/) AppHost composes the local
+development environment:
 
 ```
 vantigo/
 ├── apps/
-│   ├── customers/
-│   │   ├── backend/
-│   │   │   ├── Customers.Api/         # ASP.NET Core minimal API
-│   │   │   └── Customers.Api.Tests/   # Unit + integration tests
-│   │   └── frontend/                  # React SPA (Vite, TanStack Router, Mantine)
-│   ├── communications/
-│   │   ├── backend/
-│   │   │   ├── Communications.Api/       # ASP.NET Core minimal API
-│   │   │   └── Communications.Api.Tests/ # Unit + integration tests
-│   │   └── frontend/                    # React SPA (Vite)
-│   └── products/
-│       ├── backend/
-│       │   ├── Products.Api/          # ASP.NET Core minimal API
-│       │   └── Products.Api.Tests/    # Unit + integration tests
-│       └── frontend/                  # React SPA (Vite)
+│   ├── host/
+│   │   ├── backend/Vantigo.Host/      # ASP.NET Core host and API
+│   │   └── frontend/                  # Single React SPA (Vite)
+│   ├── customers/backend/
+│   │   ├── Customers.Module/          # Customers vertical slice
+│   │   └── Customers.Module.Tests/
+│   ├── communications/backend/
+│   │   ├── Communications.Module/     # Communications vertical slice
+│   │   └── Communications.Module.Tests/
+│   └── products/backend/
+│       ├── Products.Module/           # Products vertical slice
+│       └── Products.Module.Tests/
+├── packages/
+│   ├── contracts/Vantigo.Contracts/   # In-process module contracts
+│   └── identity/Vantigo.Identity/     # Shared authentication and Identity
 ├── orchestration/
 │   └── AppHost/                       # .NET Aspire composition root
 ├── deploy/
@@ -115,10 +113,11 @@ vantigo/
 └── assets/                            # Shared branding assets
 ```
 
-Each application ships as a single container image in production, where the .NET API
-also serves the built frontend. In development, .NET Aspire runs everything side by
-side with one command. Curious about the design principles and API conventions behind
-the codebase? They're covered in the [contributing guide](CONTRIBUTING.md).
+The host ships as one container image in production, where ASP.NET Core serves the
+built frontend and all enabled modules. One PostgreSQL database is split into the
+`identity`, `customers`, `communications` and `products` schemas. Curious about the
+design principles and API conventions behind the codebase? They're covered in the
+[contributing guide](CONTRIBUTING.md).
 
 ## Developing from source
 
@@ -141,23 +140,19 @@ bun install --frozen-lockfile
 # Restore pinned local tools (dotnet-ef)
 dotnet tool restore
 
-# Start everything: PostgreSQL, APIs, frontends and the Scalar API reference
+# Start everything: PostgreSQL, the host, frontend and Scalar API reference
 dotnet run --project orchestration/AppHost
 ```
 
 The Aspire dashboard opens automatically and shows every running resource with logs,
-traces and endpoints. The AppHost provisions PostgreSQL and its application databases,
-runs the root Bun installer for all frontends, and explicitly selects each API's
-`migrate`, `seed`, and `api` profiles in that order:
+traces and endpoints. The AppHost provisions PostgreSQL and the shared `vantigo`
+database, runs the root Bun installer, and explicitly selects the host's `migrate`,
+`seed`, and `api` profiles in that order:
 
 - **bun-install** — root Bun workspace dependency installation
-- **postgres**, **customers-db**, **communications-db**, and **products-db** — PostgreSQL and application databases
-- **customers-migrate**, **customers-seed**, and **customers-api** — the Customers lifecycle and API
-- **customers-frontend** — the Customers SPA served by the Vite dev server
-- **communications-migrate**, **communications-seed**, and **communications-api** — the Communications lifecycle and API
-- **communications-frontend** — the Communications SPA served by the Vite dev server
-- **products-migrate**, **products-seed**, and **products-api** — the Products lifecycle and API
-- **products-frontend** — the Products SPA served by the Vite dev server
+- **postgres** and **vantigo-db** — PostgreSQL and the shared application database
+- **vantigo-migrate**, **vantigo-seed**, and **vantigo-api** — the host lifecycle and API
+- **vantigo-frontend** — the single SPA served by the Vite dev server
 - **scalar** — interactive API reference for every registered API
 
 That's it — no manual database setup, connection strings or environment files needed.
@@ -168,22 +163,19 @@ That's it — no manual database setup, connection strings or environment files 
   `bun --version` to verify that the Bun version pinned in `.bun-version` is
   available, then retry `bun install --frozen-lockfile`. In the Aspire dashboard,
   open the `bun-install` resource and inspect its logs for the installer error.
-- **A Vite frontend fails:** Inspect the logs for the affected `customers-frontend`,
-  `communications-frontend` or `products-frontend` resource. You can also reproduce it
-  from the repository root with `bun run --cwd apps/<application>/frontend dev`.
-- **An API is not ready:** Aspire runs each API's `migrate`, then `seed`, then `api`
-  profile. Check those resource logs and wait for the preceding profile to complete.
+- **The Vite frontend fails:** Inspect the `vantigo-frontend` logs. You can also
+  reproduce it from the repository root with `bun run --cwd apps/host/frontend dev`.
+- **The host is not ready:** Aspire runs `migrate`, then `seed`, then `api`. Check
+  those resource logs and wait for the preceding profile to complete.
 - **Database or container failures:** Check that the Docker-compatible runtime is
   running and inspect the `postgres` resource logs in the Aspire dashboard.
 
-### Standalone frontend development
+### Frontend development
 
 From the repository root, start any frontend without changing directories:
 
 ```bash
-bun run --cwd apps/customers/frontend dev
-bun run --cwd apps/communications/frontend dev
-bun run --cwd apps/products/frontend dev
+bun run --cwd apps/host/frontend dev
 ```
 
 The root convenience scripts validate all frontends:
@@ -196,25 +188,18 @@ bun run frontend:build
 
 ### Direct API commands
 
-Each API executable requires exactly one command: `api`, `migrate`, or `seed`. Running
-the executable without a command prints usage and exits nonzero. `migrate` applies the
-database migrations and exits; `seed` runs the deterministic Development-only seed and
-exits; `api` only hosts the API and does not automatically migrate or seed the database.
+The host executable requires exactly one command: `api`, `migrate`, or `seed`. Running
+it without a command prints usage and exits nonzero. `migrate` applies all enabled
+module and Identity migrations and exits; `seed` runs the deterministic
+Development-only seed and exits; `api` hosts the application and does not
+automatically migrate or seed the database.
 
 For example:
 
 ```bash
-dotnet run --project apps/customers/backend/Customers.Api --launch-profile migrate
-dotnet run --project apps/customers/backend/Customers.Api --launch-profile seed
-dotnet run --project apps/customers/backend/Customers.Api --launch-profile api
-
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile migrate
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile seed
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile api
-
-dotnet run --project apps/products/backend/Products.Api --launch-profile migrate
-dotnet run --project apps/products/backend/Products.Api --launch-profile seed
-dotnet run --project apps/products/backend/Products.Api --launch-profile api
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile migrate
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile seed
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile api
 ```
 
 Aspire does not use the no-argument `dev` profile for lifecycle ordering. That profile
@@ -225,8 +210,8 @@ be used as a production deployment job.
 
 ### Development-only seed data
 
-In `Development`, the `seed` command creates deterministic fixtures for Customers,
-Communications and Products. Aspire runs this command automatically after migrations.
+In `Development`, the `seed` command creates deterministic fixtures for the enabled
+Customers, Communications and Products modules. Aspire runs it after migrations.
 Seed data is Development-only and includes synthetic data. Use `admin@vantigo.local`
 / `admin` to sign in as `Administrator`.
 This deliberately weak password and relaxed password policy are for Development/local use
@@ -261,8 +246,8 @@ a small fixed catalog and takes no counts.
 To opt out, set `Development__Seed__Enabled=false`. Seeding is never enabled outside
 `Development`.
 
-For self-hosted Customers authentication, deployment configuration, and production
-migration guidance, see [Customers authentication](docs/customers-authentication.md).
+For self-hosted Vantigo authentication, deployment configuration, and production
+migration guidance, see [Vantigo identity](docs/customers-authentication.md).
 The Products domain model, pricing rules and cross-service contracts are documented
 in [Products](docs/products.md).
 
@@ -272,50 +257,48 @@ testing and database migrations.
 
 ## Self-hosting
 
-Each Vantigo application ships as a single, multi-architecture container image that
-runs the .NET API and serves the production frontend build from the same process.
-Images are published to GHCR on every release and signed with
+Vantigo ships as one multi-architecture container image that runs the host API and
+serves the production frontend and all enabled modules from the same process. The
+image is published to GHCR on every release and signed with
 [Cosign](https://docs.sigstore.dev/cosign/):
 
-| Application    | Image                               |
-| -------------- | ----------------------------------- |
-| Customers      | `ghcr.io/vantigo-io/customers`      |
-| Communications | `ghcr.io/vantigo-io/communications` |
-| Products       | `ghcr.io/vantigo-io/products`       |
+| Application | Image |
+| --- | --- |
+| Vantigo | `ghcr.io/vantigo-io/vantigo` |
 
 Available tags: `latest`, `vX`, `vX.Y`, and `vX.Y.Z` — pin `vX.Y.Z` for
 reproducible deployments. Verify a signature with:
 
 ```bash
-cosign verify ghcr.io/vantigo-io/customers:latest \
+cosign verify ghcr.io/vantigo-io/vantigo:latest \
   --certificate-identity-regexp 'https://github.com/vantigo-io/vantigo' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 The easiest deployment is the [Docker Compose stack](deploy/compose/) from the
 quick start. To integrate with your own infrastructure instead, bring your own
-PostgreSQL and run each image with the terminating `migrate` command first, then
-the long-running `api` command:
+PostgreSQL database and run the image with the terminating `migrate` command first,
+then the long-running `api` command:
 
 ```bash
 docker run --rm \
-  -e ConnectionStrings__Postgresql="Host=your-postgres;Database=customers;Username=...;Password=..." \
-  ghcr.io/vantigo-io/customers migrate
+  -e ConnectionStrings__vantigo="Host=your-postgres;Database=vantigo;Username=...;Password=..." \
+  ghcr.io/vantigo-io/vantigo migrate
 
 docker run -d \
-  --name vantigo-customers \
+  --name vantigo \
   -p 8080:8080 \
-  -e ConnectionStrings__Postgresql="Host=your-postgres;Database=customers;Username=...;Password=..." \
+  -e ConnectionStrings__vantigo="Host=your-postgres;Database=vantigo;Username=...;Password=..." \
   -e DataProtection__KeysPath=/var/lib/vantigo/dataprotection \
-  -v vantigo-customers-dataprotection:/var/lib/vantigo/dataprotection \
-  ghcr.io/vantigo-io/customers api
+  -v vantigo-dataprotection:/var/lib/vantigo/dataprotection \
+  ghcr.io/vantigo-io/vantigo api
 ```
 
-A persistent `DataProtection__KeysPath` volume is required for the Customers and
-Products apps so sign-in cookies and account tokens survive restarts. Do not run
+A persistent `DataProtection__KeysPath` volume is required so sign-in cookies and
+account tokens survive restarts. Do not run
 `seed` in production; it is only for Development. Authentication, reverse-proxy and
 full configuration guidance lives in
-[Customers authentication](docs/customers-authentication.md).
+[Vantigo identity](docs/customers-authentication.md).
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same
 open-source stack for you.

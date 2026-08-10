@@ -1,9 +1,9 @@
-# Customers authentication and deployment
+# Vantigo identity, authentication and deployment
 
-The Customers application uses ASP.NET Core Identity with an application cookie for
-the browser SPA and same-origin API. The API returns JSON `401`/`403` responses rather
-than login redirects. Mutating browser requests use antiforgery protection: obtain a
-token from `GET /auth/antiforgery` and send it in `X-XSRF-TOKEN`.
+Vantigo uses ASP.NET Core Identity with an application cookie for the browser SPA and
+same-origin API. The API returns JSON `401`/`403` responses rather than login
+redirects. Mutating browser requests use antiforgery protection: obtain a token from
+`GET /api/v1/identity/antiforgery` and send it in `X-XSRF-TOKEN`.
 
 The application cookie and antiforgery cookie are `HttpOnly` and `SameSite=Strict`, and
 are Secure outside Development. Run the SPA and API under one public origin in
@@ -26,11 +26,11 @@ There is one deliberate, one-time bootstrap path:
    automatically; it is submitted only when the operator completes setup.
 3. Remove or rotate the bootstrap secret after the Owner account is created.
 
-`GET /auth/bootstrap-status` is anonymous and returns `{ "available": true|false }`.
+`GET /api/v1/identity/bootstrap-status` is anonymous and returns `{ "available": true|false }`.
 Signed-out visitors are directed to `/setup` only while bootstrap is available. The
 generated or configured secret is sensitive and must be treated like any other
 bootstrap credential. Setup and bootstrap become unavailable after the first local
-Owner is created. The direct `POST /auth/bootstrap` endpoint remains available for an
+Owner is created. The direct `POST /api/v1/identity/bootstrap` endpoint remains available for an
 explicitly orchestrated flow; send the secret, Owner details, and password over the
 protected deployment path. The operation is transactionally guarded against concurrent
 bootstrap requests. It creates the local `Owner` and `User` roles; the bootstrap
@@ -68,13 +68,13 @@ The current frontend routes are:
 
 The backend defaults already match the canonical mailed routes. For a deployed
 public origin, set `App__PublicOrigin` (scheme + host only); the mailed links
-are then derived automatically from origin + base path (default `/customers`,
-see `App__BasePath`):
+are then derived automatically from origin + base path (the host defaults to the
+root; see `App__BasePath`):
 
 ```text
 App__PublicOrigin=https://vantigo.example.com
-# yields https://vantigo.example.com/customers/invitations/accept?token=...
-# and    https://vantigo.example.com/customers/password-reset?email=...&token=...
+# yields https://vantigo.example.com/invitations/accept?token=...
+# and    https://vantigo.example.com/password-reset?email=...&token=...
 ```
 
 When the mailed links must differ from the derived defaults, set the explicit
@@ -82,8 +82,8 @@ templates instead — they always take precedence and must retain the
 placeholders:
 
 ```text
-Authentication__Invitations__AcceptUrl=https://vantigo.example.com/customers/invitations/accept?token={token}
-Authentication__PasswordReset__ResetUrl=https://vantigo.example.com/customers/password-reset?email={email}&token={token}
+Authentication__Invitations__AcceptUrl=https://vantigo.example.com/invitations/accept?token={token}
+Authentication__PasswordReset__ResetUrl=https://vantigo.example.com/password-reset?email={email}&token={token}
 ```
 
 An invalid `App__PublicOrigin` (path, query, missing scheme) fails startup, and
@@ -104,7 +104,7 @@ For production, use the direct SMTP sender:
 
 ```text
 Email__Provider=Smtp
-Email__From=no-reply@customers.example.com
+Email__From=no-reply@vantigo.example.com
 Email__Smtp__Host=smtp.example.com
 Email__Smtp__Port=587
 Email__Smtp__UserName=<smtp-user-from-secret-store>
@@ -123,13 +123,13 @@ At most one workforce OpenID Connect provider can be configured. OIDC is disable
 when all three required values are absent. Once any required value is supplied,
 `Authority`, `ClientId`, and `ClientSecret` are all required and invalid partial
 configuration fails startup. The optional display name defaults to `Workforce SSO`;
-the callback path defaults to `/auth/oidc/callback`.
+the callback path defaults to `/api/v1/identity/oidc/callback`.
 
 The flow is authorization code plus PKCE. ASP.NET Core's built-in handler validates
 provider metadata, issuer, audience, signature, state, nonce, and correlation. The
 validated principal is held in Identity's temporary external cookie and consumed by
-the fixed local completion route `/auth/oidc/complete`; provider tokens are not saved.
-The browser starts the flow at `/auth/oidc/challenge`.
+the fixed local completion route `/api/v1/identity/oidc/complete`; provider tokens are not saved.
+The browser starts the flow at `/api/v1/identity/oidc/challenge`.
 
 New OIDC identities are provisioned just in time as local `User` accounts, keyed by
 the validated issuer and case-sensitive `sub`. Provider email is informational: it
@@ -147,7 +147,7 @@ Authentication__Oidc__Authority=https://issuer.example.com
 Authentication__Oidc__ClientId=<client-id>
 Authentication__Oidc__ClientSecret=<client-secret-from-secret-store>
 Authentication__Oidc__DisplayName=Workforce SSO
-Authentication__Oidc__CallbackPath=/auth/oidc/callback
+Authentication__Oidc__CallbackPath=/api/v1/identity/oidc/callback
 ```
 
 Minimal configuration shapes (not provider test claims):
@@ -174,11 +174,11 @@ is implied by this documentation.
 ### Required callback URI
 
 Register the exact public HTTPS callback URI with the provider. The application is
-served under its base path (default `/customers`, see `App__BasePath`), so the
+served under its base path (the host defaults to the root; see `App__BasePath`), so the
 public callback URI includes that prefix:
 
 ```text
-https://vantigo.example.com/customers/auth/oidc/callback
+https://vantigo.example.com/api/v1/identity/oidc/callback
 ```
 
 When `App__PublicOrigin` is configured, the API logs the exact callback URI to
@@ -186,9 +186,9 @@ register at startup. When `App__BasePath` is set to an empty value (root
 serving), omit the prefix.
 
 If `Authentication__Oidc__CallbackPath` is changed, register the same public origin
-plus that exact path. It must be an absolute path below `/auth/oidc/`, without a
+plus that exact path. It must be an absolute path below `/api/v1/identity/oidc/`, without a
 query, fragment, traversal, or trailing slash, and it must not be
-`/auth/oidc/challenge` or `/auth/oidc/complete`. The public origin, forwarded scheme,
+`/api/v1/identity/oidc/challenge` or `/api/v1/identity/oidc/complete`. The public origin, forwarded scheme,
 and provider registration must agree; the application does not accept a browser-
 supplied return URL.
 
@@ -198,7 +198,7 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `App__BasePath` | Path prefix the app is served under on a shared domain (empty value serves from the root) | `/customers` |
+| `App__BasePath` | Path prefix the app is served under on a shared domain (empty value serves from the root) | empty |
 | `App__PublicOrigin` | Public scheme + host used to derive mailed links and the logged OIDC callback URI (no path; invalid values fail startup) | unset |
 | `Authentication__Bootstrap__Secret` | One-time Owner bootstrap secret | unset; generated once at startup and logged at Warning |
 | `Authentication__Owners__RequireMfa` | Require local MFA for Owner access/management | `false` |
@@ -210,7 +210,7 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 | `Authentication__Oidc__ClientId` | OIDC client ID; required to enable OIDC | unset |
 | `Authentication__Oidc__ClientSecret` | OIDC client secret; required to enable OIDC | unset |
 | `Authentication__Oidc__DisplayName` | Sign-in button/provider label | `Workforce SSO` |
-| `Authentication__Oidc__CallbackPath` | OIDC callback path | `/auth/oidc/callback` |
+| `Authentication__Oidc__CallbackPath` | OIDC callback path | `/api/v1/identity/oidc/callback` |
 | `DataProtection__KeysPath` | Persistent Data Protection key directory; relative paths are under the content root | unset |
 | `DataProtection__ApplicationName` | Shared Data Protection application discriminator | framework default |
 | `ForwardedHeaders__KnownProxies` | Trusted proxy IP(s), comma-separated or indexed | ASP.NET Core safe defaults |
@@ -252,16 +252,16 @@ and OIDC callback on that HTTPS origin.
 
 ### Database migrations
 
-The Customers API keeps `CustomersDbContext` and `AccountsDbContext` in the same
-assembly and PostgreSQL database. Customers tables and configurations live under
-`Database/Customers/`, with the default `public.__EFMigrationsHistory`. Identity and
-account entities live under `Database/Accounts/`, with the separate
-`accounts.__EFMigrationsHistory`. The contexts share the NpgsqlDataSource's ADO.NET
+The host keeps the Identity, Customers, Communications and Products contexts in one
+PostgreSQL database. Their tables live in the `identity`, `customers`,
+`communications` and `products` schemas, each with its own
+`__EFMigrationsHistory`. The contexts share the NpgsqlDataSource's ADO.NET
 connection pool, not EF DbContext pooling; they do not share tracking or transactions.
 See the [contributor migration commands](../CONTRIBUTING.md#database-migrations) for
 context-specific add, list, script, update, and pending-model checks.
 
-Migrations run only through the `migrate` command, which applies both contexts and exits.
+Migrations run only through the host's `migrate` command, which applies all enabled
+module and Identity contexts and exits.
 In production, run it as a terminating job, wait for it to succeed, and then start the
 API with the explicit `api` command. The API does not apply migrations at startup. The
 platform must not start the API until the migration job has completed successfully.

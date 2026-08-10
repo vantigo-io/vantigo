@@ -5,29 +5,25 @@ to get productive in the codebase.
 
 ## Getting the stack running
 
-Follow the [Getting started](README.md#getting-started) section in the README —
-`bun install --frozen-lockfile`, `dotnet tool restore`, plus
-`dotnet run --project orchestration/AppHost` gives you the full environment: PostgreSQL,
-the APIs, the frontends and the Scalar API reference.
-Aspire starts the database and explicitly selects the `migrate`, `seed`, and `api`
-profiles for each API in that order. In production, `migrate` is a terminating job:
-wait for it to succeed before starting the API with the explicit `api` command. Do not
-run `seed` in production; it is Development-only.
-
-Each API executable requires one of `api`, `migrate`, or `seed`; no command prints usage
-and exits nonzero. `migrate` applies migrations and exits, `seed` runs deterministic
-Development-only fixtures and exits, and `api` only hosts the API. The `api` command
-does not automatically migrate or seed. To run a command directly, use the matching
-Development launch profile, for example:
+From the repository root:
 
 ```bash
-dotnet run --project apps/customers/backend/Customers.Api --launch-profile migrate
-dotnet run --project apps/customers/backend/Customers.Api --launch-profile seed
-dotnet run --project apps/customers/backend/Customers.Api --launch-profile api
+bun install --frozen-lockfile
+dotnet tool restore
+dotnet run --project orchestration/AppHost
+```
 
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile migrate
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile seed
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile api
+Aspire starts PostgreSQL and the shared `vantigo` database, then runs the host's
+`migrate`, Development-only `seed`, and long-running `api` profiles. The host serves
+the single Vite frontend and all enabled modules. In production, wait for the
+terminating `migrate` job before starting `api`; never run `seed` in production.
+
+The host executable accepts one command: `api`, `migrate`, or `seed`:
+
+```bash
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile migrate
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile seed
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile api
 ```
 
 ## Project layout
@@ -35,56 +31,123 @@ dotnet run --project apps/communications/backend/Communications.Api --launch-pro
 ```
 vantigo/
 ├── apps/
+│   ├── host/
+│   │   ├── backend/Vantigo.Host/      # Modular monolith host and API
+│   │   └── frontend/                  # Single React SPA (Vite), owns all routes
 │   ├── customers/
 │   │   ├── backend/
-│   │   │   ├── Customers.Api/         # ASP.NET Core minimal API
-│   │   │   └── Customers.Api.Tests/   # Unit + integration tests
-│   │   └── frontend/                  # React SPA (Vite, TanStack Router, Mantine)
-│   └── communications/
+│   │   │   ├── Customers.Module/      # Customers vertical slice
+│   │   │   └── Customers.Module.Tests/
+│   │   └── frontend/                  # @vantigo/customers-ui (pages, api clients)
+│   ├── communications/
+│   │   ├── backend/
+│   │   │   ├── Communications.Module/ # Communications vertical slice
+│   │   │   └── Communications.Module.Tests/
+│   │   └── frontend/                  # @vantigo/communications-ui
+│   └── products/
 │       ├── backend/
-│       │   ├── Communications.Api/       # ASP.NET Core minimal API
-│       │   └── Communications.Api.Tests/ # Unit + integration tests
-│       └── frontend/                    # React SPA (Vite)
-├── orchestration/
-│   └── AppHost/                       # .NET Aspire composition root
+│       │   ├── Products.Module/       # Products vertical slice
+│       │   └── Products.Module.Tests/
+│       └── frontend/                  # @vantigo/products-ui
+├── packages/
+│   ├── contracts/Vantigo.Contracts/   # In-process module contracts
+│   ├── identity/Vantigo.Identity/     # Shared authentication and Identity
+│   │   └── Vantigo.Identity.Tests/
+│   ├── hosting/Vantigo.Hosting/       # Shared host infrastructure
+│   └── frontend-shell/                # Shared app shell, theme and branding
+├── orchestration/AppHost/             # .NET Aspire composition root
 └── assets/                            # Shared branding assets
 ```
 
-Each application is a vertical slice with its own backend and frontend. New endpoints
-are expected to follow the design principles and API conventions below.
+Vantigo is a modular monolith: Customers, Communications and Products are modules
+loaded by `Vantigo.Host`, and the host publishes as one container with the API and
+the built frontend. The next section describes the architecture in detail.
+
+## Architecture
+
+Vantigo is a **modular monolith**: one process, one container, one PostgreSQL
+database — with strict module boundaries so any module can later be extracted
+into its own deployable without a rewrite.
+
+### Module boundaries
+
+- A module is a class library (`*.Module`) exposing exactly three integration
+  points to the host: `Add<Name>Module(IServiceCollection, IConfiguration)`,
+  `Map<Name>Module(IEndpointRouteBuilder)`, and migrate/seed helpers.
+- Modules **never reference each other's projects**. The only shared code paths
+  are `Vantigo.Contracts` (cross-module interfaces and DTOs), `Vantigo.Identity`
+  (authentication) and `Vantigo.Hosting` (infrastructure).
+- Every module can be turned off per deployment with
+  `Modules:<Name>:Enabled` — code consuming another module's contract must
+  tolerate the implementation being absent.
+
+### Cross-module communication
+
+- **Synchronous queries** use contract interfaces from `Vantigo.Contracts`
+  (e.g. `ICustomerDirectory`): DTOs only, never EF entities, implemented by the
+  owning module and consumed through DI. If a module is extracted later, the
+  interface gets an HTTP client implementation and consumers stay unchanged.
+- **Asynchronous notifications** ("something happened, others may care") should
+  use in-process domain events dispatched through a transactional outbox — the
+  publishing module stores the event in the same transaction as its state
+  change, and a hosted worker dispatches it to handlers with retries.
+  This is not built yet; build it together with the first real consumer
+  (see ROADMAP). Do not introduce a message broker: Postgres is the queue, and
+  every infrastructure piece is multiplied per dedicated customer deployment.
+- Never call another module's HTTP endpoints from inside the process, and never
+  reach into another module's database schema.
+
+### Database
+
+One PostgreSQL database, one schema per module: `identity`, `customers`,
+`communications` and `products`. Schemas are hard boundaries:
+
+- **No cross-schema foreign keys or joins.** Reference other modules' data by
+  opaque ID only. This is what keeps a future "move this schema to its own
+  server" a connection-string change instead of a data migration.
+- Each context has its own `__EFMigrationsHistory` inside its schema.
+
+### Frontend
+
+The host SPA (`@vantigo/app`) owns routing, auth, navigation and the shell;
+module packages (`@vantigo/customers-ui`, …) export pages, API clients and
+components. Route files in `apps/host/frontend/src/routes/` are thin wrappers
+that lazy-import module pages, so each module becomes its own code-split chunk.
+Module packages never import from each other; shared UI lives in
+`@vantigo/frontend-shell`.
+
+SPA URL convention — *flat primary resources, module-qualified secondary ones*:
+primary business nouns users work with daily are top-level (`/customers`,
+`/contacts`, `/messages`, `/products`), while supporting or admin concepts stay
+qualified by their module (`/products/categories`, `/communications/mailboxes`,
+`/communications/suppressions`). Nesting in URLs means *belonging*
+(`/customers/:id`), not module bundling. Backend API routes always keep the
+module prefix (`/api/v1/customers/contacts`) — that symmetry is what matters
+for extraction, not the SPA paths.
 
 ## Design principles
 
-- **Vertical-slice endpoints** — every endpoint is a self-contained static class
-  (request, handler, response in one file), grouped per feature under
-  `Endpoints/<Feature>/`. Shared response DTOs live in `Endpoints/<Feature>/Dtos/`
-  (feature-scoped) or `Endpoints/Dtos/` (cross-feature, e.g. `PaginatedResponse<T>`).
-- **A rich domain model** — values like `CountryCode`, `LegalId`, and `FriendlyName`
-  are validated value objects that own their validation in one place. The constructor
-  throws `DomainException` as an invariant guard, while the non-throwing
-  `TryCreate(...)` overload powers request validation — so handlers only ever work
-  with provably valid data and never need try/catch.
-- **Versioned APIs** — all endpoints live under a URL version prefix (`/api/v1/...`)
-  backed by [Asp.Versioning](https://github.com/dotnet/aspnet-api-versioning), with a
-  separate OpenAPI document generated per version.
-- **Form-friendly errors** — collect all validation errors and return
-  `TypedResults.ValidationProblem` with keys matching the request's camelCase JSON
-  paths (`name`, `identity.country`, ...), so frontends can map them directly onto
-  form libraries like TanStack Form and Mantine Form.
-- **AOT-friendly by default** — no assembly scanning or reflection-based registration.
-  Entity configurations are applied explicitly in `CustomersDbContext.OnModelCreating`,
-  and sorting/filtering uses whitelisted switch expressions rather than dynamic LINQ.
-- **One container per app** — in production, each application ships as a single
-  container image in which the .NET API also serves the built frontend. In
-  development, Aspire runs the API and the Vite dev server side by side.
+- **Vertical-slice modules** — endpoints remain self-contained static classes under
+  each module's `Endpoints/<Feature>/` directory.
+- **A rich domain model** — value objects own validation and request handlers only
+  work with valid domain values.
+- **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
+  `/api/v1/customers`, `/api/v1/communications` and `/api/v1/products`.
+- **In-process contracts** — module collaboration uses contracts such as
+  `ICustomerDirectory` from `Vantigo.Contracts`, not service-to-service API keys.
+- **Form-friendly errors** — validation errors use camelCase JSON field paths.
+- **AOT-friendly by default** — registration and entity configuration are explicit.
+- **One container** — the host serves every enabled module and the Vite production
+  build from one process.
 
 ## API conventions
 
-All APIs are versioned by URL segment and documented per version at
-`/openapi/v1.json` (browsable through Scalar when running the AppHost).
+All endpoints are versioned by URL segment and documented per version at
+`/openapi/v1.json` (browsable through Scalar when running AppHost). Module prefixes
+are `/api/v1/identity`, `/api/v1/customers`, `/api/v1/communications` and
+`/api/v1/products`.
 
-**Validation errors** are returned as RFC 9457 problem details with errors keyed by
-the JSON field path of the offending request field:
+Validation errors use RFC 9457 problem details with keys matching the JSON field path:
 
 ```json
 {
@@ -97,175 +160,88 @@ the JSON field path of the offending request field:
 }
 ```
 
-**List endpoints** share a single pagination envelope, with `page`, `pageSize`,
-`sortBy`, `sortDirection` and `search` query parameters:
-
-```json
-{
-  "data": [{ "id": 1001, "name": "Acme", "identity": null }],
-  "pagination": {
-    "page": 1,
-    "pageSize": 25,
-    "totalCount": 137,
-    "totalPages": 6,
-    "hasNextPage": true,
-    "hasPreviousPage": false
-  }
-}
-```
-
 ## Running tests
 
 ```bash
-dotnet test
+dotnet build Vantigo.slnx
+dotnet test Vantigo.slnx
 ```
 
-Unit tests run in-process. Integration tests boot the real API against a real
-PostgreSQL instance using [Testcontainers](https://dotnet.testcontainers.org/) and
-`WebApplicationFactory`, so a container runtime must be running.
-
-<details>
-<summary>Using Colima instead of Docker Desktop?</summary>
-
-Testcontainers' resource reaper needs the Docker socket at its in-VM path. Either run
-tests with:
-
-```bash
-TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock dotnet test
-```
-
-or make it permanent by adding this line to `~/.testcontainers.properties`:
-
-```properties
-docker.socket.override=/var/run/docker.sock
-```
-
-</details>
-
-New endpoints should come with both unit tests (for any new domain logic) and
-integration tests that exercise the endpoint over HTTP.
+Unit tests run in-process. Integration tests boot the host against PostgreSQL using
+[Testcontainers](https://dotnet.testcontainers.org/) and `WebApplicationFactory`,
+so a container runtime must be running.
 
 ## Database migrations
 
-The Customers API keeps two EF Core contexts in the same assembly and PostgreSQL
-database:
+Each module owns its schema and migration history in the shared database:
 
 ```
-Customers.Api/Database/
-├── Customers/
-│   ├── CustomersDbContext.cs
-│   ├── Configurations/
-│   └── Migrations/
-└── Accounts/
-    ├── AccountsDbContext.cs
-    ├── ApplicationUser.cs, BootstrapState.cs, Invitation.cs
-    └── Migrations/
+apps/customers/backend/Customers.Module/Database/Customers/
+apps/communications/backend/Communications.Module/Database/Communications/
+apps/products/backend/Products.Module/Database/Products/
+packages/identity/Vantigo.Identity/Database/Accounts/
 ```
 
-`CustomersDbContext` owns the customer, contact, relationship, and timeline tables
-in the default `public` schema. Its migration history is the default
-`public.__EFMigrationsHistory`. `AccountsDbContext` owns Identity and account
-entities in the `accounts` schema, with its separate
-`accounts.__EFMigrationsHistory`. The histories must never be mixed: always select
-the context explicitly when using `dotnet ef`.
+The host registers one Npgsql data source. EF contexts use the `customers`,
+`communications`, `products` and `identity` schemas, each with its own
+`__EFMigrationsHistory`. Never mix histories or change a module's schema from
+another module.
 
-Both contexts use the same `NpgsqlDataSource`, and therefore the same underlying
-ADO.NET physical connection pool. This is not EF `DbContext` pooling. Context
-instances still have independent lifetimes, change tracking, and transactions; they
-do not share tracked entities or a transaction automatically.
-
-The `dotnet-ef` tool is pinned in the repo's tool manifest, so everyone uses the same
-version:
+Use the pinned `dotnet-ef` tool from the repository root. For example, from a module
+project directory:
 
 ```bash
 dotnet tool restore
-
-cd apps/customers/backend/Customers.Api
-```
-
-Run each command with the context and output directory that own the change.
-
-### Customers context
-
-```bash
 dotnet ef migrations add <MigrationName> --context CustomersDbContext --output-dir Database/Customers/Migrations
 dotnet ef migrations list --context CustomersDbContext
-dotnet ef migrations script --context CustomersDbContext
-dotnet ef database update --context CustomersDbContext
 dotnet ef migrations has-pending-model-changes --context CustomersDbContext
 ```
 
-### Accounts context
-
-```bash
-dotnet ef migrations add <MigrationName> --context AccountsDbContext --output-dir Database/Accounts/Migrations
-dotnet ef migrations list --context AccountsDbContext
-dotnet ef migrations script --context AccountsDbContext
-dotnet ef database update --context AccountsDbContext
-dotnet ef migrations has-pending-model-changes --context AccountsDbContext
-```
-
-Use the `migrate` command to apply both contexts; it exits when complete. The `api`
-command does not run migrations. Migrations run only through `migrate`: in production,
-wait for that terminating job to succeed before starting `api`. Development Aspire
-also runs `seed` after `migrate` and before `api`; `seed` must not be used in production.
-If you change either EF model, run that context's pending-model check:
-
-```bash
-dotnet ef migrations has-pending-model-changes --context CustomersDbContext
-dotnet ef migrations has-pending-model-changes --context AccountsDbContext
-```
+Use the host's `migrate` command to apply all enabled module and Identity migrations.
+The `api` command does not migrate automatically. AppHost runs `seed` after migration
+only in Development.
 
 ## Development seed data
 
-Deterministic seed code lives under each API's `Database/DevelopmentSeed/` and uses the
-local Bogus `UseSeed`. Changes to seed data or behavior must include coverage for
-determinism and restart idempotency.
-
-The seeded `admin` password and relaxed password policy are deliberately weak and apply
-only to Development/local use; production retains the normal password requirements.
-
-The `seed` command is only available in Development and exits after seeding. Aspire
-explicitly selects `migrate`, then `seed`, then `api` automatically. In production, use
-only the terminating `migrate` job followed by `api`; `seed` must not be run. Development
-fixture counts are configured under
-`Development:Seed:Data`: `Customers` and `Contacts` default to 6 each, and `Messages`
-defaults to 2. Counts range from 0 to 100; higher values add deterministic data, while
-lowering a value does not delete existing local seed data. Environment variables use the
-matching form, such as `Development__Seed__Data__Customers=12`.
+Deterministic seed code lives under each module's `Database/DevelopmentSeed/`. Changes
+to seed data or behavior must include coverage for determinism and restart idempotency.
+The seeded `admin@vantigo.local` / `admin` account and relaxed password policy are
+Development-only.
 
 ## Frontend development
 
-Aspire runs the frontend for you, but it can also be run standalone. Dependencies are
-managed with [Bun](https://bun.sh) workspaces from the repository root:
+The single frontend is managed with Bun from the repository root:
 
 ```bash
 bun install --frozen-lockfile
+bun run --cwd apps/host/frontend dev
 
-# Run either frontend from the repository root
-bun run --cwd apps/customers/frontend dev
-bun run --cwd apps/communications/frontend dev
-
-# Validate both frontends from the repository root
-bun run frontend:lint
-bun run frontend:test
-bun run frontend:build
+bun run --cwd apps/host/frontend lint
+bun run --cwd apps/host/frontend test
+bun run --cwd apps/host/frontend build
 ```
 
-The SPA is built and embedded into the API's `wwwroot` **only on `dotnet publish`**
-(see the `BuildFrontend` target in `Customers.Api.csproj`). Plain `dotnet build` and
-`dotnet run` never touch the frontend — in development the Vite dev server serves the
-SPA and proxies `/api` to the API.
+The SPA is embedded into the host's `wwwroot` on `dotnet publish` through the
+`BuildFrontend` target in `Vantigo.Host.csproj`. Plain `dotnet build` and `dotnet run`
+leave frontend development to Vite.
+
+Module UI packages have their own Vitest suites, run from their directories:
+
+```bash
+bun run --cwd apps/customers/frontend test
+bun run --cwd apps/communications/frontend test
+bun run --cwd apps/products/frontend test
+```
 
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to
-the affected application where applicable:
+the affected module where applicable:
 
 ```
 feat(customers): add customer create, get and list endpoints
 chore(init): add biome config and run on solution
 ```
 
-Pre-commit hooks (Husky + lint-staged) automatically run Biome on frontend files and
-`dotnet format` on C# files, so formatting takes care of itself.
+Pre-commit hooks (Husky + lint-staged) run Biome on frontend files and `dotnet format`
+on C# files.

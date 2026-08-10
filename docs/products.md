@@ -1,98 +1,57 @@
-# Products
+# Products module
 
-The Products app is the catalog of everything the company sells: physical goods and
-performed services alike. It is the system of record that future services — Orders,
-Warehouse and Booking — will read product data from.
+The Products module is the catalog of everything the company sells: physical goods
+and performed services alike. It runs in `Vantigo.Host`, owns the `products` schema
+in the shared PostgreSQL database, and is the system of record that future Orders,
+Warehouse and Booking modules will read product data from.
 
 ## Domain model
 
 - **Product** — a distinct sellable unit with an auto-generated integer `id` and a
   company-wide unique `sku`. Fields: `name`, `type` (`Goods` or `Service`), `status`
-  (`Draft`, `Active`, `Discontinued`), `unit` (for instance `pcs` or `hour`),
-  `standardCost` (optional), and `vatRate`. Catalog enrichment fields:
-  `description` (plain text), `categoryId` (optional), `barcode` (optional GTIN),
-  and optional logistics fields `weightKg`, `lengthCm`, `widthCm`, `heightCm`.
-- **ProductCategory** — a named grouping in a multi-level hierarchy (adjacency list
-  via `parentId`; a category with a parent is a subcategory). Each product belongs
-  to **at most one** category; cross-cutting grouping (e.g. "Summer sale") is a
-  future tags/collections concern, not multi-categorization. Category names are
-  unique among siblings. Categories cannot be deleted while they have subcategories
-  or assigned products, and moves that would create a cycle are rejected.
+  (`Draft`, `Active`, `Discontinued`), `unit`, `standardCost`, and `vatRate`.
+- **ProductCategory** — a named grouping in a multi-level hierarchy. Each product
+  belongs to at most one category; cross-cutting grouping is a future tags concern.
 - **ProductPrice** — a sales price in one ISO 4217 currency, excluding VAT, with an
-  optional validity window (`validFrom`/`validTo`). The everyday base price is
-  open-ended; campaign and sale prices are added as bounded rows next to it, which
-  also preserves price history.
+  optional validity window. A bounded campaign row beats the open-ended base row.
 
-### Barcode (GTIN)
+Catalog enrichment includes plain-text `description`, optional `categoryId`, GTIN
+`barcode`, and optional logistics fields `weightKg`, `lengthCm`, `widthCm` and
+`heightCm`. Barcodes are digits-only GTIN-8/12/13/14 values with a valid check digit
+and are unique when set.
 
-The `barcode` field holds a GTIN-8/12/13/14: digits only, validated with the GTIN
-check digit, and unique across products when set. The barcode identifies the same
-sellable unit as the SKU — when Phase 2 splits products into product + variants,
-both SKU and barcode move to the variant.
+## Contracts for other modules
 
-### Effective price resolution
-
-The applicable price in a currency at a moment is the row whose validity window
-contains that moment. A bounded (campaign) row beats the open-ended base row, and the
-latest starting window wins ties. Combinations the rules cannot resolve
-deterministically — two open-ended base prices in the same currency, or two
-overlapping campaign windows of the same currency — are rejected by the API.
-
-### Lifecycle
-
-Products are never hard-deleted, because other services reference them. `DELETE
-/api/v1/products/{id}` archives the product by marking it `Discontinued`. The SKU is
-immutable once a product leaves `Draft`.
-
-## Contracts for other services
-
-These rules exist so future integrations do not corrupt historical data:
-
-- **SKU is the stable business key.** Internal integer ids are per-database details.
-  Services that reference products (order lines, stock records, bookings) should
-  store both the product id *and* a snapshot of the SKU.
-- **Snapshot prices at transaction time.** The Orders service must copy the effective
-  price (and VAT rate) onto its order lines when an order is placed, never join back
-  to the price table afterwards. Prices change; transactions must not.
-- **A different pack size is a different product.** A 10-pack of an item is its own
-  product with its own SKU and price, not a quantity of the single-unit product.
-  Bundle/kit composition may become an explicit relationship later.
-- **`standardCost` is indicative.** It is a manually maintained number for margin
-  estimates in the company base currency. Actual cost valuation (moving average,
-  FIFO, supplier prices) belongs to the future Warehouse/procurement domain.
-- **`vatRate` is the current rate.** If differentiated tax categories become
-  necessary, the field will migrate to a tax-category reference; consumers should
-  compute VAT amounts at transaction time from the snapshot they take.
+SKU is the stable business key. Consumers should store the product id together with
+a snapshot of the SKU. Prices and VAT must be snapshotted at transaction time;
+consumers must not join historical transactions back to mutable catalog prices.
 
 ## API
 
-Versioned REST endpoints under `/api/v1`, authenticated with the same
-Identity/cookie + antiforgery model as the Customers app:
+Versioned REST endpoints are under `/api/v1/products`, authenticated with the shared
+Identity cookie and antiforgery model:
 
 | Endpoint | Description |
 | --- | --- |
-| `GET /products` | List with pagination, search (`name`/`sku`/`description`, exact `barcode`), status and category filters (category filter includes descendants; `uncategorized=true` for products without a category) and sorting |
-| `POST /products` | Create, optionally with initial prices |
-| `GET /products/{id}` | Get one product with resolved effective prices |
-| `PUT /products/{id}` | Update fields (SKU immutable once active) |
-| `DELETE /products/{id}` | Archive (mark `Discontinued`), idempotent |
-| `GET /products/{id}/prices` | All price rows, including expired and future ones |
-| `POST /products/{id}/prices` | Add a base or campaign price row |
-| `DELETE /products/{id}/prices/{priceId}` | Remove a price row |
-| `GET /categories` | Flat adjacency list (`id`, `name`, `parentId`, `productCount` of directly assigned products); clients build the tree |
-| `POST /categories` | Create a root category or subcategory |
-| `PUT /categories/{id}` | Rename/re-parent (cycle-creating moves are rejected with 409) |
-| `DELETE /categories/{id}` | Delete; 409 while subcategories or products remain |
+| `GET /api/v1/products` | List products with pagination, search, filters and sorting |
+| `POST /api/v1/products` | Create, optionally with initial prices |
+| `GET /api/v1/products/{id}` | Get one product with effective prices |
+| `PUT /api/v1/products/{id}` | Update fields |
+| `DELETE /api/v1/products/{id}` | Archive by marking `Discontinued` |
+| `GET /api/v1/products/{id}/prices` | List price rows |
+| `POST /api/v1/products/{id}/prices` | Add a price row |
+| `GET /api/v1/products/categories` | List categories |
+| `POST /api/v1/products/categories` | Create a category |
+| `PUT /api/v1/products/categories/{id}` | Rename or re-parent a category |
+| `DELETE /api/v1/products/categories/{id}` | Delete an unused category |
 
-The OpenAPI document is exposed at `/openapi/v1.json` and in the Aspire Scalar
-reference during development.
+The OpenAPI document is exposed at `/openapi/v1.json` and through Scalar during
+development. Disable the module with `Modules__Products__Enabled=false`.
 
 ## Development
 
-The app follows the standard Vantigo vertical slice: `Products.Api` (ASP.NET Core
-minimal API, EF Core, PostgreSQL) with explicit `api`, `migrate` and `seed` commands,
-a React/Vite frontend served under `/products`, Aspire orchestration and Docker
-Compose deployment. Development seeding creates a small fixed catalog covering both
-product types, all lifecycle statuses, multi-currency prices and a campaign price.
-
-Local ports: API `http://localhost:10020`, frontend `http://localhost:10021`.
+Products is a vertical-slice module under
+`apps/products/backend/Products.Module`, with explicit host `api`, `migrate` and
+`seed` commands and UI routes in the single `apps/host/frontend` Vite application.
+The host serves the module from the same origin; there is no standalone Products
+frontend or API port.

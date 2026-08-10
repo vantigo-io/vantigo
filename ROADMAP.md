@@ -1,7 +1,24 @@
 # Roadmap
 
-Planned evolution per app. Each phase notes why it exists and what it unblocks.
-Other apps add their own sections as their roadmaps solidify.
+Planned evolution per module. Each phase notes why it exists and what it unblocks.
+Other modules add their own sections as their roadmaps solidify.
+
+## Platform
+
+### Cross-module domain events (deferred until Orders)
+
+Synchronous cross-module queries use in-process contracts from
+`Vantigo.Contracts` (e.g. `ICustomerDirectory`) and need nothing more. For
+asynchronous "something happened" notifications the decided pattern is
+**in-process domain events dispatched through a transactional outbox**: the
+publishing module writes the event in the same transaction as its state change,
+and a hosted worker dispatches to handlers with retries (the Communications
+outbox worker already proves the pattern). **No message broker** — Postgres is
+the queue, and every infrastructure piece multiplies per dedicated customer
+deployment. Build the event bus together with its first real consumer, most
+likely Orders (`OrderPlaced` → Communications sends confirmation, Warehouse
+reserves stock). If a module is ever extracted, the outbox dispatcher targets a
+transport instead of in-process handlers; event contracts stay unchanged.
 
 ## Products
 

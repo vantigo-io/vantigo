@@ -1,72 +1,60 @@
-# Communications deployment and integration
+# Communications module deployment and integration
 
-Communications can be deployed independently of the Aspire AppHost. Run its API
-against a PostgreSQL database dedicated to Communications and deploy its Vite
-frontend through the hosting path used for that deployment. Aspire is the local
-composition that wires the `communications` logical PostgreSQL database, API, and
-frontend together; it is not a requirement for a standalone deployment.
+Communications is a module loaded by `Vantigo.Host`, not a separately deployed
+service. It runs in the same process as Identity, Customers and Products and uses
+the shared PostgreSQL database's `communications` schema. The production artifact
+is the single `ghcr.io/vantigo-io/vantigo` image.
 
-## Running the service
+## Running the host
 
-The Communications executable requires one command: `api`, `migrate`, or `seed`.
-Without a command it prints usage and exits nonzero. `migrate` applies database
-migrations and exits. `seed` runs the deterministic Development-only seed and exits;
-`api` only hosts the service and does not automatically migrate or seed it.
-
-Run the commands directly with the Development launch profiles:
+The host requires one command: `api`, `migrate`, or `seed`.
 
 ```bash
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile migrate
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile seed
-dotnet run --project apps/communications/backend/Communications.Api --launch-profile api
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile migrate
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile seed
+dotnet run --project apps/host/backend/Vantigo.Host --launch-profile api
 ```
 
-Aspire explicitly selects the `migrate`, `seed`, and `api` profiles in that order; it
-does not use `dev` for lifecycle selection. The `dev` profile remains a no-args
-Development convenience profile. In production, use the same image for a terminating
-`migrate` job, wait for it to succeed, and then run the image with the explicit `api`
-command. `seed` is Development-only and must not be used as a production job.
+`migrate` applies all enabled module migrations and exits. `seed` is
+Development-only. `api` hosts the application and does not migrate or seed.
+Enable or disable the module with `Modules__Communications__Enabled`.
 
-## Customers service integration
+## In-process customer integration
 
-Configure the Customers integration in Communications as `Customers:Enabled` and
-`Customers:ApiKey` (or `Customers__Enabled` and `Customers__ApiKey`). The key is
-ignored unless `Enabled` is true, and the service-key authentication path fails
-closed when the integration is disabled or the key is absent. Customers should
-receive its future client configuration as `Communications:Enabled` and
-`Communications:ApiKey` (or `Communications__Enabled` and `Communications__ApiKey`).
-These settings group integrations by remote application; they do not create a
-runtime dependency between standalone deployments. The future Customers service
-client sends the key to Communications only as the `X-Vantigo-Api-Key` request
-header. This key is a server-side secret: do not place it in frontend code, browser
-storage, URLs, logs, or client-visible configuration, and do not commit it to source
-control.
+Communications accesses customer data through the in-process
+`Vantigo.Contracts.ICustomerDirectory` contract. There is no Customers service URL,
+S2S API key or `X-Vantigo-Api-Key` environment variable. The host registers the
+Customers module and its contract implementation when
+`Modules__Customers__Enabled=true`.
 
-### Customer and Contact links
+Customer and Contact link values remain opaque domain values. Preserve them exactly;
+do not derive meaning from them or use them as authorization credentials. The
+in-process contract is responsible for authorized lookup and display of details.
 
-Customer and Contact links use an opaque link protocol. Treat each link value as an
-uninterpreted value supplied by the Customers integration: preserve it exactly, do
-not derive or expose meaning from it, and do not substitute a locally invented
-identifier. Any lookup or display of Customer or Contact details must use the
-authorized service integration rather than relying on the opaque value alone.
+## SMTP and Mailgun
 
-## SMTP
+The default Communications mailbox delivery uses the host's `Smtp:*` configuration:
 
-Provide the SMTP host, port, sender, and any required username/password through the
-Communications deployment's supported configuration mechanism. Keep SMTP credentials
-in a secret store and use the transport-security settings required by the provider.
-SMTP is for outbound mail; this integration does not document inbound mail handling,
-delivery guarantees, provider-specific retry behavior, or mailbox synchronization.
-IMAP support is planned, but is not implemented.
+```text
+Smtp__Host=smtp.example.com
+Smtp__Port=587
+Smtp__Username=<smtp-user-from-secret-store>
+Smtp__Password=<smtp-password-from-secret-store>
+Smtp__UseSsl=false
+Smtp__TimeoutSeconds=20
+```
 
-## Retention and service security
+Mailgun is configured per mailbox through the Communications API with provider,
+domain, region and API key fields. The API key is protected at rest; it is never
+placed in frontend code, browser storage, URLs, logs or deployment environment
+files. Mailgun credentials are not a service-to-service integration.
 
-Use a conservative 12-month retention period for Communications data unless a
-shorter period is required by the operator's policy. Retention and deletion jobs
-must be configured and operated without weakening access controls or audit needs.
+SMTP credentials must be kept in a secret store. SMTP is for outbound mail;
+inbound mail synchronization and IMAP support are not implemented.
 
-Keep service-to-service traffic on private or otherwise authenticated paths, send
-the Customers API key only over protected transport, scope credentials to the
-minimum required service access, and rotate/revoke them through the deployment's
-secret-management process. Do not treat the opaque Customer or Contact link as an
-authorization credential; authorize every service operation independently.
+## Retention and module security
+
+Use a conservative 12-month retention period unless the operator's policy requires
+less. Configure `Communications__Retention__Days`, `BatchSize` and `PollMinutes`
+as needed. Access controls and audit requirements must remain in force while data
+is deleted.
