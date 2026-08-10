@@ -8,6 +8,7 @@ export type ConnectionStatus = "New" | "Connected" | "Disconnected";
 export type ConsumptionQuality = "Measured" | "Estimated" | "Corrected" | "Manual";
 export type ConsumptionSource = "Elhub" | "Manual";
 export type SupplyPeriodStatus = "Active" | "Ended" | "Cancelled";
+export type ConsumptionResolution = "hour" | "day" | "month";
 
 export interface MeteringPointAddress {
   streetAddress: string;
@@ -68,6 +69,15 @@ export interface ConsumptionInput {
   start: string;
   end: string;
   quantityKwh: number;
+}
+
+export interface ConsumptionAggregate {
+  bucketStart: string;
+  bucketEnd: string;
+  quantityKwh: number;
+  intervalCount: number;
+  hasEstimated: boolean;
+  meteringPointId?: number;
 }
 
 export interface SupplyPeriod {
@@ -170,6 +180,19 @@ export const consumptionQueryOptions = (id: number, from: string, to: string) =>
       }),
   });
 
+export const consumptionAggregateQueryOptions = (
+  id: number,
+  params: { from: string; to: string; resolution: ConsumptionResolution },
+) =>
+  queryOptions({
+    queryKey: ["energy", "metering-points", id, "consumption", "aggregate", params],
+    queryFn: ({ signal }) =>
+      request<ConsumptionAggregate[]>(
+        `/api/v1/energy/metering-points/${id}/consumption/aggregate${queryString(params)}`,
+        { signal },
+      ),
+  });
+
 export const addConsumption = (id: number, input: ConsumptionInput) =>
   request<ConsumptionInterval>(`/api/v1/energy/metering-points/${id}/consumption`, {
     method: "POST",
@@ -215,6 +238,19 @@ export const customerConsumptionQueryOptions = (
     queryFn: ({ signal }) =>
       request<ConsumptionInterval[]>(
         `/api/v1/energy/customers/${customerId}/consumption${queryString({ meteringPointId, from, to })}`,
+        { signal },
+      ),
+  });
+
+export const customerConsumptionAggregateQueryOptions = (
+  customerId: number,
+  params: { meteringPointId?: number; from: string; to: string; resolution: ConsumptionResolution },
+) =>
+  queryOptions({
+    queryKey: ["energy", "customers", customerId, "consumption", "aggregate", params],
+    queryFn: ({ signal }) =>
+      request<ConsumptionAggregate[]>(
+        `/api/v1/energy/customers/${customerId}/consumption/aggregate${queryString(params)}`,
         { signal },
       ),
   });

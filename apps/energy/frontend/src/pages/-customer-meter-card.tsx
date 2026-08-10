@@ -1,7 +1,14 @@
-import { AreaChart } from "@mantine/charts";
-import { Badge, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { type CustomerMeteringPoint, customerConsumptionQueryOptions, type SupplyPeriod } from "../api/energy";
+import { useState } from "react";
+import {
+  type ConsumptionResolution,
+  type CustomerMeteringPoint,
+  customerConsumptionAggregateQueryOptions,
+  customerConsumptionQueryOptions,
+  type SupplyPeriod,
+} from "../api/energy";
+import { ConsumptionChart } from "./-consumption-chart";
 
 const formatDate = (value: string | null | undefined) => (value ? new Date(value).toLocaleDateString() : "Open-ended");
 const startOfPeriod = (periods: SupplyPeriod[]) =>
@@ -16,11 +23,16 @@ export const CustomerMeterCard = ({ item, customerId }: { item: CustomerMetering
   const from =
     startOfPeriod(item.supplyPeriods) ?? new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString();
   const to = endOfPeriod(item.supplyPeriods);
+  const [resolution, setResolution] = useState<ConsumptionResolution>("day");
   const { data: consumption } = useQuery(customerConsumptionQueryOptions(customerId, item.meteringPoint.id, from, to));
-  const chartData = (consumption ?? []).map((interval) => ({
-    date: formatDate(interval.start),
-    quantityKwh: interval.quantityKwh,
-  }));
+  const { data: aggregates } = useQuery(
+    customerConsumptionAggregateQueryOptions(customerId, {
+      meteringPointId: item.meteringPoint.id,
+      from,
+      to,
+      resolution,
+    }),
+  );
   return (
     <Card withBorder>
       <Stack>
@@ -35,18 +47,17 @@ export const CustomerMeterCard = ({ item, customerId }: { item: CustomerMetering
         <Text size="sm" c="dimmed">
           Supply period: {formatDate(from)} – {formatDate(to)}
         </Text>
-        {chartData.length > 0 ? (
-          <AreaChart
-            h={220}
-            data={chartData}
-            dataKey="date"
-            series={[{ name: "quantityKwh", label: "kWh", color: "blue.6" }]}
-            curveType="natural"
-            withDots
-          />
-        ) : (
-          <Text c="dimmed">No consumption readings in this supply period.</Text>
-        )}
+        <SegmentedControl
+          aria-label="Consumption resolution"
+          value={resolution}
+          onChange={(value) => setResolution(value as ConsumptionResolution)}
+          data={[
+            { label: "Hour", value: "hour" },
+            { label: "Day", value: "day" },
+            { label: "Month", value: "month" },
+          ]}
+        />
+        <ConsumptionChart aggregates={aggregates ?? []} resolution={resolution} color="blue.6" />
         {consumption && consumption.length > 0 && (
           <Table>
             <Table.Thead>

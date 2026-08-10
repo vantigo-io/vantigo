@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import {
   assignSupplyPeriod,
+  consumptionAggregateQueryOptions,
   createMeteringPoint,
+  customerConsumptionAggregateQueryOptions,
   meteringPointsQueryOptions,
   metersQueryOptions,
   replaceMeter,
@@ -12,6 +14,49 @@ const response = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 describe("energy api", () => {
+  it("gets metering point consumption aggregates with resolution in the query key and URL", async () => {
+    const fetchMock = stubFetch(() => Promise.resolve(response([])));
+    const options = consumptionAggregateQueryOptions(4, {
+      from: "2026-01-01T00:00:00.000Z",
+      to: "2026-02-01T00:00:00.000Z",
+      resolution: "day",
+    });
+    await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+    expect(options.queryKey).toEqual([
+      "energy",
+      "metering-points",
+      4,
+      "consumption",
+      "aggregate",
+      { from: "2026-01-01T00:00:00.000Z", to: "2026-02-01T00:00:00.000Z", resolution: "day" },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/v1/energy/metering-points/4/consumption/aggregate?from=2026-01-01T00%3A00%3A00.000Z&to=2026-02-01T00%3A00%3A00.000Z&resolution=day",
+    );
+  });
+
+  it("gets customer consumption aggregates with an optional metering point", async () => {
+    const fetchMock = stubFetch(() => Promise.resolve(response([])));
+    const options = customerConsumptionAggregateQueryOptions(1001, {
+      meteringPointId: 4,
+      from: "2026-01-01",
+      to: "2026-02-01",
+      resolution: "month",
+    });
+    await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+    expect(options.queryKey).toEqual([
+      "energy",
+      "customers",
+      1001,
+      "consumption",
+      "aggregate",
+      { meteringPointId: 4, from: "2026-01-01", to: "2026-02-01", resolution: "month" },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/v1/energy/customers/1001/consumption/aggregate?meteringPointId=4&from=2026-01-01&to=2026-02-01&resolution=month",
+    );
+  });
+
   it("lists metering points using the energy endpoint and preserves query keys", async () => {
     const fetchMock = stubFetch(() => Promise.resolve(response({ data: [], pagination: { totalPages: 1 } })));
     const options = meteringPointsQueryOptions({ page: 2, pageSize: 10, search: "123" });

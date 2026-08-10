@@ -9,6 +9,7 @@ internal static class CustomerEnergyEndpoints
         var group = app.MapGroup("/customers").WithTags("Customer energy");
         group.MapGet("/{customerId:int}/metering-points", GetCustomerMeteringPointsEndpoint.Handler).WithSummary("List a customer's metering points");
         group.MapGet("/{customerId:int}/consumption", GetCustomerConsumptionEndpoint.Handler).WithSummary("List a customer's consumption");
+        group.MapGet("/{customerId:int}/consumption/aggregate", GetCustomerConsumptionAggregateEndpoint.Handler).WithSummary("Aggregate a customer's consumption");
         return app;
     }
 }

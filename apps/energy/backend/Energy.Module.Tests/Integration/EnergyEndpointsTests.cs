@@ -1,14 +1,25 @@
 using System.Net;
 using System.Net.Http.Json;
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+using Vantigo.Energy.Database.Energy;
+using Vantigo.Energy.Domain.Consumption;
+
 namespace Vantigo.Energy.Module.Tests.Integration;
 
 [Collection(EnergyModuleCollection.Name)]
 public sealed class EnergyEndpointsTests
 {
     private readonly HttpClient _client;
+    private readonly EnergyApiFactory _factory;
 
-    public EnergyEndpointsTests(EnergyApiFactory factory) => _client = factory.CreateAuthenticatedClient();
+    public EnergyEndpointsTests(EnergyApiFactory factory)
+    {
+        _factory = factory;
+        _client = factory.CreateAuthenticatedClient();
+    }
 
     [Fact]
     public async Task Metering_point_crud_round_trip()
@@ -87,10 +98,81 @@ public sealed class EnergyEndpointsTests
         await AddConsumptionAsync(point.Id, handover.AddHours(1), handover.AddHours(2), 2m);
         await AddConsumptionAsync(point.Id, handover.AddHours(-1), handover.AddHours(1), 3m);
 
-        var firstRows = await _client.GetFromJsonAsync<List<ConsumptionResponse>>("/api/v1/energy/customers/1001/consumption");
-        var secondRows = await _client.GetFromJsonAsync<List<ConsumptionResponse>>("/api/v1/energy/customers/1002/consumption");
+        var firstRows = await _client.GetFromJsonAsync<List<ConsumptionResponse>>($"/api/v1/energy/customers/1001/consumption?meteringPointId={point.Id}");
+        var secondRows = await _client.GetFromJsonAsync<List<ConsumptionResponse>>($"/api/v1/energy/customers/1002/consumption?meteringPointId={point.Id}");
         Assert.Equal([1m], firstRows!.Select(row => row.QuantityKwh));
         Assert.Equal([2m], secondRows!.Select(row => row.QuantityKwh));
+    }
+
+    [Fact]
+    public async Task Consumption_aggregate_uses_oslo_day_and_month_boundaries()
+    {
+        var point = await CreatePointAsync();
+        await AddConsumptionAsync(point.Id, Utc(2026, 1, 5, 23, 30), Utc(2026, 1, 6, 0, 30), 1m);
+        await AddConsumptionAsync(point.Id, Utc(2026, 1, 6, 23, 30), Utc(2026, 1, 7, 0, 30), 2m);
+        await AddConsumptionAsync(point.Id, Utc(2026, 2, 1), Utc(2026, 2, 1, 1), 4m);
+
+        var daily = await _client.GetFromJsonAsync<List<AggregateResponse>>(
+            $"/api/v1/energy/metering-points/{point.Id}/consumption/aggregate?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z&resolution=day");
+        Assert.Equal(3, daily!.Count);
+        Assert.Equal(1m, daily[0].QuantityKwh);
+        Assert.Equal(new DateTimeOffset(2026, 1, 5, 23, 0, 0, TimeSpan.Zero), daily[0].BucketStart);
+        Assert.Equal(2m, daily[1].QuantityKwh);
+
+        var monthly = await _client.GetFromJsonAsync<List<AggregateResponse>>(
+            $"/api/v1/energy/metering-points/{point.Id}/consumption/aggregate?from=2026-01-01T00:00:00Z&to=2026-03-01T00:00:00Z&resolution=month");
+        Assert.Equal(2, monthly!.Count);
+        Assert.Equal([3m, 4m], monthly.Select(item => item.QuantityKwh));
+    }
+
+    [Fact]
+    public async Task Consumption_aggregate_marks_estimated_and_handles_oslo_dst_day()
+    {
+        var point = await CreatePointAsync();
+        for (var hour = 0; hour < 23; hour++)
+            await AddElhubConsumptionAsync(point.Id, Utc(2026, 3, 28, 23).AddHours(hour), Utc(2026, 3, 28, 23).AddHours(hour + 1), 1m);
+
+        var rows = await _client.GetFromJsonAsync<List<AggregateResponse>>(
+            $"/api/v1/energy/metering-points/{point.Id}/consumption/aggregate?from=2026-03-28T23:00:00Z&to=2026-03-29T22:00:00Z&resolution=day");
+        var row = Assert.Single(rows!);
+        Assert.Equal(23m, row.QuantityKwh);
+        Assert.Equal(23, row.IntervalCount);
+        Assert.True(row.HasEstimated);
+        Assert.Equal(new DateTimeOffset(2026, 3, 28, 23, 0, 0, TimeSpan.Zero), row.BucketStart);
+        Assert.Equal(new DateTimeOffset(2026, 3, 29, 22, 0, 0, TimeSpan.Zero), row.BucketEnd);
+    }
+
+    [Fact]
+    public async Task Customer_consumption_aggregate_excludes_intervals_outside_supply_period()
+    {
+        var point = await CreatePointAsync();
+        var start = Utc(2026, 1, 1);
+        var end = Utc(2026, 1, 3);
+        var period = await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods", new
+        {
+            customerId = 1001,
+            start,
+        });
+        var periodResponse = await period.Content.ReadFromJsonAsync<SupplyPeriodResponse>();
+        await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods/{periodResponse!.Id}/end", new { end });
+        await AddConsumptionAsync(point.Id, start.AddHours(-1), start, 1m);
+        await AddConsumptionAsync(point.Id, start.AddHours(1), start.AddHours(2), 2m);
+        await AddConsumptionAsync(point.Id, end, end.AddHours(1), 4m);
+
+        var rows = await _client.GetFromJsonAsync<List<CustomerAggregateResponse>>(
+            $"/api/v1/energy/customers/1001/consumption/aggregate?meteringPointId={point.Id}&from=2026-01-01T00:00:00Z&to=2026-01-04T00:00:00Z&resolution=day");
+        var row = Assert.Single(rows!);
+        Assert.Equal(point.Id, row.MeteringPointId);
+        Assert.Equal(2m, row.QuantityKwh);
+    }
+
+    [Fact]
+    public async Task Consumption_aggregate_rejects_invalid_resolution()
+    {
+        var point = await CreatePointAsync();
+        var response = await _client.GetAsync(
+            $"/api/v1/energy/metering-points/{point.Id}/consumption/aggregate?from=2026-01-01&to=2026-01-02&resolution=week");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     private async Task<MeteringPointResponse> CreatePointAsync()
@@ -103,6 +185,23 @@ public sealed class EnergyEndpointsTests
     private async Task AddConsumptionAsync(int pointId, DateTimeOffset start, DateTimeOffset end, decimal quantity) =>
         Assert.Equal(HttpStatusCode.OK, (await _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{pointId}/consumption", new { start, end, quantityKwh = quantity })).StatusCode);
 
+    private async Task AddElhubConsumptionAsync(int pointId, DateTimeOffset start, DateTimeOffset end, decimal quantity)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<EnergyDbContext>();
+        db.ConsumptionIntervals.Add(new ConsumptionInterval
+        {
+            MeteringPointId = pointId,
+            Start = start,
+            End = end,
+            QuantityKwh = quantity,
+            Quality = ConsumptionQuality.Estimated,
+            Source = ConsumptionSource.Elhub,
+            ReceivedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+
     private static object NewMeteringPoint(string gsrn, string meterNumber = "Test meter") => new
     {
         gsrn, meterNumber,
@@ -112,9 +211,13 @@ public sealed class EnergyEndpointsTests
 
     private static string Gsrn() => $"7070575{Random.Shared.NextInt64(10000000000, 99999999999)}"[..18];
     private static DateTimeOffset UtcDate() => new(DateTime.UtcNow.Date, TimeSpan.Zero);
+    private static DateTimeOffset Utc(int year, int month, int day, int hour = 0, int minute = 0) =>
+        new(year, month, day, hour, minute, 0, TimeSpan.Zero);
 
     private sealed record MeteringPointResponse(int Id, string Gsrn, string MeterNumber);
     private sealed record MeterResponse(int Id, int MeteringPointId, string MeterNumber, DateTimeOffset InstalledAt, DateTimeOffset? RemovedAt);
     private sealed record ConsumptionResponse(long Id, int MeteringPointId, DateTimeOffset Start, DateTimeOffset End, decimal QuantityKwh, string Quality, string Source, DateTimeOffset ReceivedAt);
     private sealed record SupplyPeriodResponse(int Id, int MeteringPointId, int CustomerId, DateTimeOffset Start, DateTimeOffset? End, string Status);
+    private sealed record AggregateResponse(DateTimeOffset BucketStart, DateTimeOffset BucketEnd, decimal QuantityKwh, long IntervalCount, bool HasEstimated);
+    private sealed record CustomerAggregateResponse(int MeteringPointId, DateTimeOffset BucketStart, DateTimeOffset BucketEnd, decimal QuantityKwh, long IntervalCount, bool HasEstimated);
 }

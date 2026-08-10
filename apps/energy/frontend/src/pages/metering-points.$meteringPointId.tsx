@@ -1,4 +1,17 @@
-import { Alert, Anchor, Badge, Breadcrumbs, Button, Card, Group, Stack, Table, Text, Title } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Breadcrumbs,
+  Button,
+  Card,
+  Group,
+  SegmentedControl,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconBolt, IconCalendar, IconPencil, IconPlus } from "@tabler/icons-react";
@@ -8,6 +21,8 @@ import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { customersQueryOptions } from "../api/customers";
 import {
+  type ConsumptionResolution,
+  consumptionAggregateQueryOptions,
   consumptionQueryOptions,
   endSupplyPeriod,
   meteringPointQueryOptions,
@@ -36,7 +51,9 @@ export const MeteringPointDetailsPage = () => {
   const { data: meters } = useQuery(metersQueryOptions(meteringPointId));
   const [from, setFrom] = useState(defaultFrom());
   const [to, setTo] = useState(defaultTo());
+  const [resolution, setResolution] = useState<ConsumptionResolution>("day");
   const { data: consumption } = useQuery(consumptionQueryOptions(meteringPointId, from, to));
+  const { data: aggregates } = useQuery(consumptionAggregateQueryOptions(meteringPointId, { from, to, resolution }));
   const { data: customers } = useQuery(customersQueryOptions());
   const [editState, setEditState] = useState<MeteringPointModalState | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
@@ -208,7 +225,17 @@ export const MeteringPointDetailsPage = () => {
               leftSection={<IconCalendar size={16} />}
             />
           </Group>
-          <ConsumptionChart intervals={consumption ?? []} />
+          <SegmentedControl
+            aria-label="Consumption resolution"
+            value={resolution}
+            onChange={(value) => setResolution(value as ConsumptionResolution)}
+            data={[
+              { label: "Hour", value: "hour" },
+              { label: "Day", value: "day" },
+              { label: "Month", value: "month" },
+            ]}
+          />
+          <ConsumptionChart aggregates={aggregates ?? []} resolution={resolution} />
           {consumption && consumption.length > 0 ? (
             <Table>
               <Table.Thead>

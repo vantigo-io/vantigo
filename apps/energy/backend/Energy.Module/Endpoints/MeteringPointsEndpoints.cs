@@ -18,6 +18,7 @@ internal static class MeteringPointsEndpoints
         group.MapGet("/{id:int}/meters", GetMetersEndpoint.Handler).WithSummary("List meter history");
         group.MapPost("/{id:int}/meters", ReplaceMeterEndpoint.Handler).RequireAntiforgery().WithSummary("Replace a meter");
         group.MapGet("/{id:int}/consumption", GetConsumptionEndpoint.Handler).WithSummary("List current consumption intervals");
+        group.MapGet("/{id:int}/consumption/aggregate", GetConsumptionAggregateEndpoint.Handler).WithSummary("Aggregate consumption");
         group.MapPost("/{id:int}/consumption", AddManualConsumptionEndpoint.Handler).RequireAntiforgery().WithSummary("Add a manual consumption interval");
         group.MapGet("/{id:int}/supply-periods", GetSupplyPeriodsEndpoint.Handler).WithSummary("List supply periods");
         group.MapPost("/{id:int}/supply-periods", CreateSupplyPeriodEndpoint.Handler).RequireAntiforgery().WithSummary("Create a supply period");
