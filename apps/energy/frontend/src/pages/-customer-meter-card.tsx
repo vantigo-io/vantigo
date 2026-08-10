@@ -14,15 +14,18 @@ const formatDate = (value: string | null | undefined) => (value ? new Date(value
 const startOfPeriod = (periods: SupplyPeriod[]) =>
   periods.filter((period) => period.status === "Active").sort((a, b) => a.start.localeCompare(b.start))[0]?.start ??
   periods[0]?.start;
-const endOfPeriod = (periods: SupplyPeriod[]) =>
+const endOfPeriod = (periods: SupplyPeriod[], fallback: string) =>
   periods
     .filter((period) => period.status === "Active")
-    .sort((a, b) => (a.end ?? "9999").localeCompare(b.end ?? "9999"))[0]?.end ?? new Date().toISOString();
+    .sort((a, b) => (a.end ?? "9999").localeCompare(b.end ?? "9999"))[0]?.end ?? fallback;
 
 export const CustomerMeterCard = ({ item, customerId }: { item: CustomerMeteringPoint; customerId: number }) => {
+  // A stable per-mount "now": recomputing it on every render would change the
+  // query keys each render and refetch the consumption endpoints in a loop.
+  const [now] = useState(() => new Date().toISOString());
   const from =
-    startOfPeriod(item.supplyPeriods) ?? new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString();
-  const to = endOfPeriod(item.supplyPeriods);
+    startOfPeriod(item.supplyPeriods) ?? new Date(new Date(now).setMonth(new Date(now).getMonth() - 1)).toISOString();
+  const to = endOfPeriod(item.supplyPeriods, now);
   const [resolution, setResolution] = useState<ConsumptionResolution>("day");
   const { data: consumption } = useQuery(customerConsumptionQueryOptions(customerId, item.meteringPoint.id, from, to));
   const { data: aggregates } = useQuery(
