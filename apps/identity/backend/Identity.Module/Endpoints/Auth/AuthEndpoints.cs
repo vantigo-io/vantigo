@@ -43,23 +43,23 @@ public static class AuthEndpoints
 
         group.MapPost("/bootstrap", Bootstrap)
             .WithSummary("Create the single local Owner account")
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Bootstrap);
 
         group.MapPost("/login", Login)
             .WithSummary("Sign in with the application cookie")
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Login);
 
         group.MapPost("/login/2fa", CompleteTwoFactorLogin)
             .WithSummary("Complete an Owner authenticator or recovery-code login")
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
 
         group.MapPost("/logout", Logout)
             .WithSummary("Sign out of the application cookie")
             .RequireAuthorization()
-            .RequireAntiforgery();
+            ;
 
         group.MapGet("/session", Session)
             .WithSummary("Get the authenticated browser session")

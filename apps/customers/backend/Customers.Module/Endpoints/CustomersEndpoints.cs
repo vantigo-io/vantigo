@@ -1,6 +1,6 @@
+using Vantigo.Contracts.Identity;
 using Vantigo.Customers.Endpoints.Customers;
 using Vantigo.Customers.Endpoints.Customers.Contacts;
-using Vantigo.Identity.Endpoints.Auth;
 
 namespace Vantigo.Customers.Endpoints;
 
@@ -17,7 +17,7 @@ internal static class CustomersEndpoints
             .WithSummary("List all customers");
 
         group.MapPost("/", CreateCustomerEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Create a new customer");
 
         group.MapGet("/{id:int}", GetCustomerEndpoint.Handler)
@@ -25,22 +25,22 @@ internal static class CustomersEndpoints
             .WithSummary("Get a customer by id");
 
         group.MapPut("/{id:int}", UpdateCustomerEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Update a customer");
 
         group.MapGet("/{id:int}/contacts", GetCustomerContactsEndpoint.Handler)
             .WithSummary("List the contacts associated with a customer");
 
         group.MapPost("/{id:int}/contacts", AttachCustomerContactEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Associate a contact with a customer");
 
         group.MapPut("/{id:int}/contacts/{contactId:int}", UpdateCustomerContactEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Update a customer's contact association");
 
         group.MapDelete("/{id:int}/contacts/{contactId:int}", DetachCustomerContactEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Remove a contact association from a customer");
 
         group.MapGet("/{id:int}/timeline", TimelineEndpoints.List)
@@ -51,7 +51,7 @@ internal static class CustomersEndpoints
             .Produces(StatusCodes.Status404NotFound);
 
         group.MapPost("/{id:int}/timeline", TimelineEndpoints.Create)
-            .RequireAntiforgery()
+
             .WithSummary("Create a manual customer timeline entry")
             .Produces<TimelineResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -63,7 +63,7 @@ internal static class CustomersEndpoints
             .Produces(StatusCodes.Status404NotFound);
 
         group.MapPut("/{id:int}/timeline/{entryId:int}", TimelineEndpoints.Update)
-            .RequireAntiforgery()
+
             .WithSummary("Update a manual customer timeline entry")
             .Produces<TimelineResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -71,7 +71,7 @@ internal static class CustomersEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapDelete("/{id:int}/timeline/{entryId:int}", TimelineEndpoints.Delete)
-            .RequireAntiforgery()
+
             .WithSummary("Delete a manual customer timeline entry")
             .Produces(StatusCodes.Status204NoContent)
             .Produces(StatusCodes.Status404NotFound)

@@ -3,8 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using Vantigo.Configuration;
+using Vantigo.Contracts.Identity;
 using Vantigo.Identity.Database.Accounts;
-using Vantigo.Identity.Endpoints.Auth;
 
 namespace Vantigo.Host;
 

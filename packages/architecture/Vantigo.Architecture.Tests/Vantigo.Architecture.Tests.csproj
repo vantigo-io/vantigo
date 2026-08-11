@@ -21,7 +21,7 @@
     <ProjectReference Include="..\..\..\apps\communications\backend\Communications.Module\Communications.Module.csproj" />
     <ProjectReference Include="..\..\..\packages\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
     <ProjectReference Include="..\..\..\packages\contracts\Vantigo.Contracts\Vantigo.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\packages\identity\Vantigo.Identity\Vantigo.Identity.csproj" />
+    <ProjectReference Include="..\..\..\apps\identity\backend\Identity.Module\Identity.Module.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -84,7 +84,7 @@ sign-in, production notes and upgrades in more detail.
 ## Architecture
 
 Vantigo is a modular monolith: one host application contains the Customers,
-Communications and Products modules, with shared Identity and contracts. A single
+Communications, Products and Identity modules, with shared contracts. A single
 [.NET Aspire](https://learn.microsoft.com/dotnet/aspire/) AppHost composes the local
 development environment:
 
@@ -94,6 +94,9 @@ vantigo/
 │   ├── host/
 │   │   ├── backend/Vantigo.Host/      # ASP.NET Core host and API
 │   │   └── frontend/                  # Single React SPA (Vite)
+│   ├── identity/backend/
+│   │   ├── Identity.Module/           # Authentication and Identity module
+│   │   └── Identity.Module.Tests/
 │   ├── customers/backend/
 │   │   ├── Customers.Module/          # Customers vertical slice
 │   │   └── Customers.Module.Tests/
@@ -105,7 +108,8 @@ vantigo/
 │       └── Products.Module.Tests/
 ├── packages/
 │   ├── contracts/Vantigo.Contracts/   # In-process module contracts
-│   └── identity/Vantigo.Identity/     # Shared authentication and Identity
+│   ├── configuration/Vantigo.Configuration/ # Shared configuration options
+│   └── dataprotection-postgresql/Vantigo.DataProtection.PostgreSql/
 ├── orchestration/
 │   └── AppHost/                       # .NET Aspire composition root
 ├── deploy/

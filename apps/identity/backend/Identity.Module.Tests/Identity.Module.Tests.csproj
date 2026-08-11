@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Vantigo.Identity\Vantigo.Identity.csproj" />
+    <ProjectReference Include="..\Identity.Module\Identity.Module.csproj" />
   </ItemGroup>
 
   <ItemGroup>

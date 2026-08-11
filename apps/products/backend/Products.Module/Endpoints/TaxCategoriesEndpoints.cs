@@ -15,7 +15,7 @@ internal static class TaxCategoriesEndpoints
             .WithSummary("List all tax categories");
 
         group.MapPost("/", CreateTaxCategoryEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Create a tax category");
 
         group.MapGet("/{id:int}", GetTaxCategoryEndpoint.Handler)
@@ -23,11 +23,11 @@ internal static class TaxCategoriesEndpoints
             .WithSummary("Get a tax category by id");
 
         group.MapPut("/{id:int}", UpdateTaxCategoryEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Update a tax category");
 
         group.MapDelete("/{id:int}", DeleteTaxCategoryEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Delete a tax category")
             .WithDescription("Restricted while products reference the tax category.");
 

@@ -1,6 +1,6 @@
 using Asp.Versioning;
 
-using Vantigo.Identity.Endpoints.Auth;
+using Vantigo.Contracts.Identity;
 
 namespace Vantigo.Products.Endpoints;
 

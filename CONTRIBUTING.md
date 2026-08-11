@@ -34,6 +34,10 @@ vantigo/
 │   ├── host/
 │   │   ├── backend/Vantigo.Host/      # Modular monolith host and API
 │   │   └── frontend/                  # Single React SPA (Vite), owns all routes
+│   ├── identity/
+│   │   └── backend/
+│   │       ├── Identity.Module/       # Authentication and Identity module
+│   │       └── Identity.Module.Tests/
 │   ├── customers/
 │   │   ├── backend/
 │   │   │   ├── Customers.Module/      # Customers vertical slice
@@ -44,17 +48,17 @@ vantigo/
 │   │   │   ├── Communications.Module/ # Communications vertical slice
 │   │   │   └── Communications.Module.Tests/
 │   │   └── frontend/                  # @vantigo/communications-ui
-│   └── products/
-│       ├── backend/
-│       │   ├── Products.Module/       # Products vertical slice
-│       │   └── Products.Module.Tests/
-│       └── frontend/                  # @vantigo/products-ui
+│   ├── products/
+│   │   ├── backend/
+│   │   │   ├── Products.Module/       # Products vertical slice
+│   │   │   └── Products.Module.Tests/
+│   │   └── frontend/                  # @vantigo/products-ui
+│   └── frontend-shell/                # Shared app shell, theme and branding
 ├── packages/
+│   ├── architecture/Vantigo.Architecture.Tests/ # Module boundary tests
 │   ├── configuration/Vantigo.Configuration/ # Shared configuration options
 │   ├── contracts/Vantigo.Contracts/   # In-process module contracts
-│   ├── identity/Vantigo.Identity/     # Shared authentication and Identity
-│   │   └── Vantigo.Identity.Tests/
-│   └── frontend-shell/                # Shared app shell, theme and branding
+│   └── dataprotection-postgresql/Vantigo.DataProtection.PostgreSql/
 ├── orchestration/AppHost/             # .NET Aspire composition root
 └── assets/                            # Shared branding assets
 ```
@@ -75,8 +79,9 @@ into its own deployable without a rewrite.
   points to the host: `Add<Name>Module(IServiceCollection, IConfiguration)`,
   `Map<Name>Module(IEndpointRouteBuilder)`, and migrate/seed helpers.
 - Modules **never reference each other's projects**. The only shared code paths
-  are `Vantigo.Contracts` (cross-module interfaces and DTOs), `Vantigo.Identity`
-  (authentication) and `Vantigo.Configuration` (shared options). Hosting
+  are `Vantigo.Contracts` (cross-module interfaces, DTOs, authorization policy
+  names and email contracts) and `Vantigo.Configuration` (shared options). The
+  `Identity` app module owns the authentication implementation; hosting
   infrastructure (telemetry, SPA serving, command-line parsing) lives in
   `Vantigo.Host`.
 - Every module can be turned off per deployment with
@@ -186,7 +191,7 @@ Each module owns its schema and migration history in the shared database:
 apps/customers/backend/Customers.Module/Database/Customers/
 apps/communications/backend/Communications.Module/Database/Communications/
 apps/products/backend/Products.Module/Database/Products/
-packages/identity/Vantigo.Identity/Database/Accounts/
+apps/identity/backend/Identity.Module/Database/Accounts/
 ```
 
 The host registers one Npgsql data source. EF contexts use the `customers`,

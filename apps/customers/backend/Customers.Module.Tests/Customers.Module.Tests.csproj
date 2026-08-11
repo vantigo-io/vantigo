@@ -21,7 +21,6 @@
     <ItemGroup>
         <ProjectReference Include="..\..\..\host\backend\Vantigo.Host\Vantigo.Host.csproj"/>
         <ProjectReference Include="..\Customers.Module\Customers.Module.csproj"/>
-        <ProjectReference Include="..\..\..\..\packages\identity\Vantigo.Identity\Vantigo.Identity.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

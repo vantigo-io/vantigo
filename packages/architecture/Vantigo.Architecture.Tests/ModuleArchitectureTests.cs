@@ -21,7 +21,6 @@ public sealed class ModuleArchitectureTests
         {
             "Vantigo.Configuration",
             "Vantigo.Contracts",
-            "Vantigo.Identity",
         };
 
     public static IEnumerable<object[]> ModulePairs =>

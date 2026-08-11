@@ -5,13 +5,6 @@ using Vantigo.Configuration;
 
 namespace Vantigo.Identity.Endpoints.Auth;
 
-public static class AuthPolicies
-{
-    public const string Owner = "Owner";
-    public const string OwnerManagement = "OwnerManagement";
-    public const string Business = "Business";
-}
-
 internal sealed class BusinessAccessRequirement : IAuthorizationRequirement;
 
 internal sealed class MfaAuthenticatedRequirement : IAuthorizationRequirement;

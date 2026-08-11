@@ -26,15 +26,15 @@ internal static class AuthAccountEndpoints
             .RequireAuthorization(AuthPolicies.OwnerManagement);
 
         ownerManagement.MapPost("/invitations", CreateInvitation)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Invitations);
         ownerManagement.MapGet("/invitations", ListInvitations)
             .RequireRateLimiting(AuthRateLimitPolicies.Invitations);
         ownerManagement.MapPost("/invitations/{id:guid}/revoke", RevokeInvitation)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Invitations);
         ownerManagement.MapPost("/invitations/{id:guid}/resend", ResendInvitation)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Invitations);
 
         owner.MapGet("/mfa", MfaStatus)
@@ -42,31 +42,31 @@ internal static class AuthAccountEndpoints
         owner.MapGet("/mfa/setup", MfaSetup)
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         owner.MapPost("/mfa/setup", InitializeMfa)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         owner.MapPost("/mfa/enable", EnableMfa)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         owner.MapPost("/mfa/disable", DisableMfa)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         owner.MapPost("/mfa/recovery-codes", RegenerateRecoveryCodes)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         ownerManagement.MapPost("/mfa/reset/{userId:guid}", ResetOwnerMfa)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
 
         app.MapGet("/api/v1/identity/invitations/validate", ValidateInvitation)
             .RequireRateLimiting(AuthRateLimitPolicies.InvitationAcceptance);
         app.MapPost("/api/v1/identity/invitations/accept", AcceptInvitation)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.InvitationAcceptance);
         app.MapPost("/api/v1/identity/password-recovery/request", RequestPasswordRecovery)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.PasswordRecovery);
         app.MapPost("/api/v1/identity/password-recovery/reset", ResetPassword)
-            .RequireAntiforgery()
+
             .RequireRateLimiting(AuthRateLimitPolicies.PasswordRecovery);
 
         return app;

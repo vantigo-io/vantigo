@@ -9,18 +9,6 @@ using Vantigo.Configuration;
 
 namespace Vantigo.Identity.Services;
 
-/// <summary>
-/// The application-owned mail seam. Invitation and recovery workflows depend on
-/// this abstraction so a future central mail API can replace the sender without
-/// changing account security code.
-/// </summary>
-public interface IApplicationEmailSender
-{
-    Task SendAsync(ApplicationEmail email, CancellationToken cancellationToken = default);
-}
-
-public sealed record ApplicationEmail(string To, string Subject, string TextBody);
-
 public sealed class EmailOptions
 {
     public string Provider { get; set; } = "Logging";

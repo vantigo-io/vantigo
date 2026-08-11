@@ -1,5 +1,5 @@
+using Vantigo.Contracts.Identity;
 using Vantigo.Customers.Endpoints.Contacts;
-using Vantigo.Identity.Endpoints.Auth;
 
 namespace Vantigo.Customers.Endpoints;
 
@@ -16,7 +16,7 @@ internal static class ContactsEndpoints
             .WithSummary("List all contacts");
 
         group.MapPost("/", CreateContactEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Create a new contact");
 
         group.MapGet("/{id:int}", GetContactEndpoint.Handler)
@@ -24,14 +24,14 @@ internal static class ContactsEndpoints
             .WithSummary("Get a contact by id");
 
         group.MapPut("/{id:int}", UpdateContactEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Update a contact");
 
         group.MapGet("/{id:int}/customers", GetContactCustomersEndpoint.Handler)
             .WithSummary("List the customers a contact is associated with");
 
         group.MapDelete("/{id:int}", DeleteContactEndpoint.Handler)
-            .RequireAntiforgery()
+
             .WithSummary("Delete a contact");
 
         return app;

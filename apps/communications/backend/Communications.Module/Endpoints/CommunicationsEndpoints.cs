@@ -11,7 +11,7 @@ using Vantigo.Communications.Database.Communications;
 using Vantigo.Communications.Endpoints.Dtos;
 using Vantigo.Communications.Services;
 using Vantigo.Contracts;
-using Vantigo.Identity.Endpoints.Auth;
+using Vantigo.Contracts.Identity;
 
 namespace Vantigo.Communications.Endpoints;
 
@@ -24,18 +24,18 @@ internal static class CommunicationsEndpoints
         business.MapGet("/messages", ListMessages).WithSummary("List email messages");
         business.MapGet("/messages/{id:guid}", GetMessage).WithSummary("Get an email message");
         business.MapGet("/messages/{id:guid}/events", ListEvents).WithSummary("List append-only message events");
-        business.MapPost("/messages/{id:guid}/resend", ResendMessage).RequireAntiforgery()
+        business.MapPost("/messages/{id:guid}/resend", ResendMessage)
             .WithSummary("Re-queue an email message for sending")
             .WithDescription("Scope 'failed' re-queues only submission_failed recipients; scope 'all' re-queues every recipient.");
-        business.MapPost("/messages/{id:guid}/archive", ArchiveMessage).RequireAntiforgery()
+        business.MapPost("/messages/{id:guid}/archive", ArchiveMessage)
             .WithSummary("Archive an email message")
             .WithDescription("Soft-deletes the message from the default list view and cancels any pending send.");
-        business.MapPost("/messages/{id:guid}/unarchive", UnarchiveMessage).RequireAntiforgery()
+        business.MapPost("/messages/{id:guid}/unarchive", UnarchiveMessage)
             .WithSummary("Unarchive an email message");
 
         api.MapPost("/messages", CreateMessage)
             .RequireAuthorization(AuthPolicies.Business)
-            .RequireAntiforgery()
+
             .WithSummary("Queue an email message")
             .WithDescription("Requires a Business session with same-origin antiforgery protection. Idempotency-Key is required. SMTP is queued durably and delivery is at-least-once.")
             .Produces<EmailCreateResponse>(StatusCodes.Status201Created)
@@ -49,13 +49,13 @@ internal static class CommunicationsEndpoints
         var owner = api.MapGroup("").RequireAuthorization(AuthPolicies.Owner);
         owner.MapGet("/mailboxes", ListMailboxes);
         owner.MapGet("/mailboxes/{id:guid}", GetMailbox);
-        owner.MapPost("/mailboxes", CreateMailbox).RequireAntiforgery();
-        owner.MapPut("/mailboxes/{id:guid}", UpdateMailbox).RequireAntiforgery();
-        owner.MapPost("/mailboxes/{id:guid}/verify", VerifyMailbox).RequireAntiforgery();
+        owner.MapPost("/mailboxes", CreateMailbox);
+        owner.MapPut("/mailboxes/{id:guid}", UpdateMailbox);
+        owner.MapPost("/mailboxes/{id:guid}/verify", VerifyMailbox);
         owner.MapGet("/suppressions", ListSuppressions);
         owner.MapGet("/suppressions/{id:guid}", GetSuppression);
-        owner.MapPost("/suppressions", CreateSuppression).RequireAntiforgery();
-        owner.MapDelete("/suppressions/{id:guid}", DeleteSuppression).RequireAntiforgery();
+        owner.MapPost("/suppressions", CreateSuppression);
+        owner.MapDelete("/suppressions/{id:guid}", DeleteSuppression);
         return endpoints;
     }
 

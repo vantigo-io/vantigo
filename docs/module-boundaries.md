@@ -9,10 +9,11 @@ use the transactional-outbox event pattern described in `ROADMAP.md`.
 ## The rules
 
 1. **No module→module dependencies.** A module project references only
-   `Vantigo.Contracts`, `Vantigo.Identity` and `Vantigo.Configuration` (plus
-   BCL, ASP.NET Core and EF Core). Only the host references the modules. Hosting
-   runtime concerns (telemetry, SPA serving, command-line parsing) live in
-   `Vantigo.Host`.
+   `Vantigo.Contracts` and `Vantigo.Configuration` (plus BCL, ASP.NET Core and
+   EF Core). Only the host references the modules. Shared authorization policy
+   names and email contracts live in `Vantigo.Contracts`; their implementations
+   live in the `Identity` app module. Hosting runtime concerns (telemetry, SPA
+   serving, command-line parsing) live in `Vantigo.Host`.
 2. **Contracts stay pure.** `Vantigo.Contracts` depends on no module types, no
    EF Core and no ASP.NET Core, so any module (or a future extracted service)
    can implement or consume them.

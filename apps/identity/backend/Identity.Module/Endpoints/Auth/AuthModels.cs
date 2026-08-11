@@ -2,12 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace Vantigo.Identity.Endpoints.Auth;
 
-public static class AuthRoles
-{
-    public const string Owner = "Owner";
-    public const string User = "User";
-}
-
 internal static class AuthRateLimitPolicies
 {
     internal const string Login = "auth-login";
@@ -63,13 +57,6 @@ internal sealed record AuthSuccessResponse(
 internal sealed record LogoutResponse(bool Success);
 
 internal sealed record AntiforgeryResponse([property: JsonPropertyName("token")] string Token);
-
-internal sealed record AuthErrorResponse(AuthError Error);
-
-internal sealed record AuthError(
-    string Code,
-    string Message,
-    IReadOnlyDictionary<string, string[]>? Fields = null);
 
 internal sealed record OidcProvidersResponse(OidcProviderResponse? Oidc);
 
