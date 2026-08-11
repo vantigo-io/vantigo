@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Services;
 
 namespace Vantigo.Identity.Tests.Services;
@@ -11,7 +13,7 @@ public sealed class BootstrapSecretProviderTests
     public void MissingSecret_GeneratesUrlSafeHighEntropySecretAndLogsWarning()
     {
         var logger = new RecordingLogger();
-        var provider = new BootstrapSecretProvider(new ConfigurationBuilder().Build(), logger);
+        var provider = new BootstrapSecretProvider(Options.Create(new VantigoAuthenticationOptions()), logger);
 
         Assert.True(provider.Secret.Length >= 43);
         Assert.DoesNotContain(provider.Secret, "+/=");
@@ -25,15 +27,13 @@ public sealed class BootstrapSecretProviderTests
     public void ConfiguredSecret_IsUsedExactlyAndNeverLogged()
     {
         const string configuredSecret = " configured-secret-with-preserved-space ";
+        var options = new VantigoAuthenticationOptions
+        {
+            Bootstrap = new BootstrapSecretOptions { Secret = configuredSecret },
+        };
         var logger = new RecordingLogger();
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Authentication:Bootstrap:Secret"] = configuredSecret,
-            })
-            .Build();
 
-        var provider = new BootstrapSecretProvider(configuration, logger);
+        var provider = new BootstrapSecretProvider(Options.Create(options), logger);
 
         Assert.Equal(configuredSecret, provider.Secret);
         Assert.Empty(logger.Entries);

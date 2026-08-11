@@ -1,10 +1,10 @@
-using System.Globalization;
-
 using Bogus;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Vantigo.Communications.Database.Communications;
+using Vantigo.Configuration;
 
 namespace Vantigo.Communications.Database.DevelopmentSeed;
 
@@ -52,38 +52,20 @@ internal static class DevelopmentDataSeeder
     ];
 
     internal static async Task SeedDevelopmentDataAsync(this WebApplication app)
-        => await app.Services.SeedDevelopmentDataAsync(app.Configuration, app.Lifetime.ApplicationStopping);
+        => await app.Services.SeedDevelopmentDataAsync(app.Lifetime.ApplicationStopping);
 
     internal static async Task SeedDevelopmentDataAsync(
         this IServiceProvider services,
-        IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         await using var scope = services.CreateAsyncScope();
-        var messageCount = ReadMessageCount(configuration);
+        var seedData = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value.Data;
+        var messageCount = seedData.Messages;
 
         await SeedCommunicationsAsync(
             scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>(),
             messageCount,
             cancellationToken);
-    }
-
-    private static int ReadMessageCount(IConfiguration configuration)
-    {
-        var configuredCount = configuration["Development:Seed:Data:Messages"];
-        if (configuredCount is null)
-        {
-            return DefaultMessageCount;
-        }
-
-        if (!int.TryParse(configuredCount, NumberStyles.Integer, CultureInfo.InvariantCulture, out var messageCount) ||
-            messageCount is < 0 or > 100)
-        {
-            throw new InvalidOperationException(
-                "Development:Seed:Data:Messages must be an integer between 0 and 100.");
-        }
-
-        return messageCount;
     }
 
     private static async Task SeedCommunicationsAsync(

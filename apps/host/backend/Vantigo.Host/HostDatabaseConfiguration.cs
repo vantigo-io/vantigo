@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database;
 using Vantigo.Identity.Database.Accounts;
 
@@ -9,19 +11,15 @@ namespace Vantigo.Host;
 
 internal static class HostDatabaseConfiguration
 {
-    internal static IServiceCollection AddHostDatabases(this IServiceCollection services, IConfiguration configuration)
+    internal static IServiceCollection AddHostDatabases(this IServiceCollection services)
     {
-        services.AddSingleton<NpgsqlDataSource>(_ =>
+        services.AddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
-            var connectionString = configuration.GetConnectionString("vantigo");
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException("ConnectionStrings:vantigo is required.");
-            }
-
+            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+            var connectionString = connectionStrings.Resolve();
             return NpgsqlDataSource.Create(connectionString);
         });
-        services.AddVantigoIdentityDatabase(configuration);
+        services.AddVantigoIdentityDatabase();
         return services;
     }
 

@@ -1,30 +1,29 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
 using Vantigo.Communications.Database.Communications;
 using Vantigo.Communications.Endpoints;
 using Vantigo.Communications.Services;
+using Vantigo.Configuration;
 
 namespace Vantigo.Communications.Database;
 
 public static class CommunicationsDatabaseConfiguration
 {
-    public static IServiceCollection AddCommunicationsModule(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddCommunicationsModule(this IServiceCollection services)
     {
-        services.TryAddSingleton<NpgsqlDataSource>(_ =>
+        services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
-            var connectionString = configuration.GetConnectionString("vantigo") ??
-                configuration.GetConnectionString("communications") ??
-                configuration.GetConnectionString("Postgresql");
-            if (string.IsNullOrWhiteSpace(connectionString)) throw new InvalidOperationException("ConnectionStrings:vantigo is required.");
+            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+            var connectionString = connectionStrings.Resolve("communications");
             return NpgsqlDataSource.Create(connectionString);
         });
         services.AddDbContext<CommunicationsDbContext>((provider, options) => options.UseNpgsql(
             provider.GetRequiredService<NpgsqlDataSource>(), npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "communications")));
         services.AddCommunicationsModuleVersioning();
-        services.AddDataProtection();
         services.AddHttpClient("mailgun", client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<MailboxCredentialProtector>();
         services.AddSingleton<SmtpDeliveryProvider>();
@@ -45,14 +44,14 @@ public static class CommunicationsDatabaseConfiguration
         await scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>().Database.MigrateAsync();
     }
 
-    public static async Task SeedCommunicationsAsync(this IServiceProvider services, IConfiguration configuration, CancellationToken cancellationToken = default)
+    public static async Task SeedCommunicationsAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
-        var mailboxConfiguration = configuration.GetSection("Communications:BootstrapMailbox");
         await using var scope = services.CreateAsyncScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<CommunicationsOptions>>().Value;
         var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>();
-        if (mailboxConfiguration.GetValue<bool>("Enabled"))
+        if (options.BootstrapMailbox.Enabled)
         {
-            var fromAddress = mailboxConfiguration["FromAddress"]?.Trim();
+            var fromAddress = options.BootstrapMailbox.FromAddress?.Trim();
             if (string.IsNullOrWhiteSpace(fromAddress))
                 throw new InvalidOperationException("Communications:BootstrapMailbox:FromAddress is required when mailbox bootstrap is enabled.");
             if (!await db.SharedMailboxes.AnyAsync(cancellationToken))
@@ -61,7 +60,7 @@ public static class CommunicationsDatabaseConfiguration
                 {
                     Id = Guid.NewGuid(),
                     FromAddress = fromAddress,
-                    DisplayName = mailboxConfiguration["DisplayName"]?.Trim(),
+                    DisplayName = options.BootstrapMailbox.DisplayName?.Trim(),
                     Provider = "smtp",
                     IsDefault = true,
                     CreatedAt = DateTimeOffset.UtcNow,
@@ -70,7 +69,9 @@ public static class CommunicationsDatabaseConfiguration
                 await db.SaveChangesAsync(cancellationToken);
             }
         }
-        if (configuration.GetValue("Development:Seed:Enabled", true))
-            await DevelopmentSeed.DevelopmentDataSeeder.SeedDevelopmentDataAsync(services, configuration, cancellationToken);
+
+        var seedOptions = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value;
+        if (seedOptions.Enabled)
+            await DevelopmentSeed.DevelopmentDataSeeder.SeedDevelopmentDataAsync(services, cancellationToken);
     }
 }

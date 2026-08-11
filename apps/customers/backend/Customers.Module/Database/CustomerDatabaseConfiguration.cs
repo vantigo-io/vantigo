@@ -1,28 +1,24 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
+using Vantigo.Configuration;
 using Vantigo.Customers.Database.Customers;
 using Vantigo.Customers.Endpoints;
 using Vantigo.Customers.Services;
+
 namespace Vantigo.Customers.Database;
 
 public static class CustomerDatabaseConfiguration
 {
-    public static IServiceCollection AddCustomersModule(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddCustomersModule(this IServiceCollection services)
     {
-        services.TryAddSingleton<NpgsqlDataSource>(_ =>
+        services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
-            var connectionString = configuration.GetConnectionString("vantigo") ??
-                configuration.GetConnectionString("customers") ??
-                configuration.GetConnectionString("Postgresql");
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException("ConnectionStrings:vantigo is required.");
-            }
+            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+            var connectionString = connectionStrings.Resolve("customers");
 
             // One application-level data source gives both EF contexts the same ADO.NET
             // pool while retaining separate DbContext lifetimes and migration histories.
@@ -34,9 +30,10 @@ public static class CustomerDatabaseConfiguration
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "customers")));
         services.AddCustomerApiVersioning();
         services.AddCustomerTimeline();
-        services.AddHttpClient(Vantigo.Customers.Endpoints.Lookup.BrregLookupEndpoint.HttpClientName, client =>
+        services.AddHttpClient(Vantigo.Customers.Endpoints.Lookup.BrregLookupEndpoint.HttpClientName, (serviceProvider, client) =>
         {
-            client.BaseAddress = new Uri(configuration["Brreg:BaseUrl"] ?? "https://data.brreg.no");
+            var brreg = serviceProvider.GetRequiredService<IOptions<BrregLookupOptions>>().Value;
+            client.BaseAddress = new Uri(brreg.BaseUrl);
             client.Timeout = TimeSpan.FromSeconds(5);
         });
 

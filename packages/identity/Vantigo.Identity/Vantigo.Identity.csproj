@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\hosting\Vantigo.Hosting\Vantigo.Hosting.csproj" />
+    <ProjectReference Include="..\..\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
   </ItemGroup>
 
 </Project>

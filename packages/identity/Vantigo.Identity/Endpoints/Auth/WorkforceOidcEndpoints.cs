@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Npgsql;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Identity.Endpoints.Auth;

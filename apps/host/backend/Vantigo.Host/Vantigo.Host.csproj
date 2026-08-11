@@ -27,11 +27,18 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Npgsql.OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
     <PackageReference Include="MailKit" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\packages\hosting\Vantigo.Hosting\Vantigo.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\dataprotection-postgresql\Vantigo.DataProtection.PostgreSql\Vantigo.DataProtection.PostgreSql.csproj" />
     <ProjectReference Include="..\..\..\..\packages\identity\Vantigo.Identity\Vantigo.Identity.csproj" />
     <ProjectReference Include="..\..\..\..\apps\customers\backend\Customers.Module\Customers.Module.csproj" />
     <ProjectReference Include="..\..\..\..\apps\communications\backend\Communications.Module\Communications.Module.csproj" />

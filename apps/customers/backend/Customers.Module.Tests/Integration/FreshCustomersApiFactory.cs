@@ -14,6 +14,7 @@ using Microsoft.Extensions.Hosting;
 
 using Testcontainers.PostgreSql;
 
+using Vantigo.Configuration;
 using Vantigo.Host;
 using Vantigo.Identity.Endpoints.Auth;
 using Vantigo.Identity.Services;

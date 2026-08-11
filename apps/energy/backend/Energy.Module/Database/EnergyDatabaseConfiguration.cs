@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
+using Vantigo.Configuration;
 using Vantigo.Energy.Database.Energy;
 using Vantigo.Energy.Endpoints;
 
@@ -10,14 +12,12 @@ namespace Vantigo.Energy.Database;
 
 public static class EnergyDatabaseConfiguration
 {
-    public static IServiceCollection AddEnergyModule(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddEnergyModule(this IServiceCollection services)
     {
-        services.TryAddSingleton<NpgsqlDataSource>(_ =>
+        services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
-            var connectionString = configuration.GetConnectionString("vantigo") ??
-                configuration.GetConnectionString("energy") ?? configuration.GetConnectionString("Postgresql");
-            if (string.IsNullOrWhiteSpace(connectionString))
-                throw new InvalidOperationException("ConnectionStrings:vantigo is required.");
+            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+            var connectionString = connectionStrings.Resolve("energy");
             var builder = new NpgsqlDataSourceBuilder(connectionString);
             builder.EnableDynamicJson();
             return builder.Build();
@@ -35,9 +35,11 @@ public static class EnergyDatabaseConfiguration
         await scope.ServiceProvider.GetRequiredService<EnergyDbContext>().Database.MigrateAsync();
     }
 
-    public static async Task SeedEnergyAsync(this IServiceProvider services, IConfiguration configuration, CancellationToken cancellationToken = default)
+    public static async Task SeedEnergyAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
-        if (configuration.GetValue("Development:Seed:Enabled", true))
+        await using var scope = services.CreateAsyncScope();
+        var seedOptions = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value;
+        if (seedOptions.Enabled)
             await DevelopmentSeed.DevelopmentDataSeeder.SeedEnergyAsync(services, cancellationToken);
     }
 }

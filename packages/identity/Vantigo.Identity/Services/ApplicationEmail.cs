@@ -5,6 +5,8 @@ using Microsoft.Extensions.Options;
 
 using MimeKit;
 
+using Vantigo.Configuration;
+
 namespace Vantigo.Identity.Services;
 
 /// <summary>

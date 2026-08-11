@@ -7,10 +7,12 @@ using MailKit.Security;
 
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 using MimeKit;
 
 using Vantigo.Communications.Database.Communications;
+using Vantigo.Configuration;
 
 namespace Vantigo.Communications.Services;
 
@@ -47,8 +49,11 @@ public sealed class MailboxCredentialProtector(IDataProtectionProvider provider)
 public sealed record SmtpProviderSettings(string Host, int Port, bool UseSsl, string? Username);
 public sealed record MailgunProviderSettings(string Domain, string Region);
 
-public sealed class SmtpDeliveryProvider(IConfiguration configuration, IHostEnvironment environment, MailboxCredentialProtector protector) : IEmailDeliveryProvider
+public sealed class SmtpDeliveryProvider(IOptions<SmtpOptions> options, IOptions<OutboxOptions> outboxOptions, IHostEnvironment environment, MailboxCredentialProtector protector) : IEmailDeliveryProvider
 {
+    private readonly SmtpOptions smtp = options.Value;
+    private readonly OutboxOptions outbox = outboxOptions.Value;
+
     public string ProviderName => "smtp";
 
     public async Task SendAsync(EmailEnvelope envelope, MailboxProviderCredential? credential, CancellationToken cancellationToken)
@@ -68,20 +73,20 @@ public sealed class SmtpDeliveryProvider(IConfiguration configuration, IHostEnvi
     private async Task ExecuteAsync(MailboxProviderCredential? credential, Func<SmtpClient, CancellationToken, Task> operation, CancellationToken cancellationToken)
     {
         var settings = credential is null ? new SmtpProviderSettings(
-            configuration["Smtp:Host"] ?? string.Empty,
-            configuration.GetValue("Smtp:Port", 587),
-            configuration.GetValue("Smtp:UseSsl", false),
-            configuration["Smtp:Username"])
+            smtp.Host ?? string.Empty,
+            smtp.Port,
+            smtp.UseSsl,
+            smtp.Username)
             : JsonSerializer.Deserialize<SmtpProviderSettings>(credential.SettingsJson, JsonOptions) ?? throw new InvalidOperationException("SMTP settings are invalid.");
         if (string.IsNullOrWhiteSpace(settings.Host)) throw new InvalidOperationException("Smtp:Host is required.");
-        var leaseSeconds = Math.Max(1, configuration.GetValue("Outbox:LeaseSeconds", 60));
-        var timeoutSeconds = configuration.GetValue("Smtp:TimeoutSeconds", Math.Max(1, leaseSeconds / 2));
+        var leaseSeconds = Math.Max(1, outbox.LeaseSeconds);
+        var timeoutSeconds = smtp.TimeoutSeconds > 0 ? smtp.TimeoutSeconds : Math.Max(1, leaseSeconds / 2);
         if (timeoutSeconds <= 0 || timeoutSeconds >= leaseSeconds)
             throw new InvalidOperationException("Smtp:TimeoutSeconds must be positive and less than Outbox:LeaseSeconds.");
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         using var client = new SmtpClient { Timeout = checked(timeoutSeconds * 1000) };
-        var allowPlaintext = configuration.GetValue("Smtp:AllowInsecurePlaintext", false);
+        var allowPlaintext = smtp.AllowInsecurePlaintext;
         SecureSocketOptions socketOptions;
         if (allowPlaintext && environment.IsDevelopment()) socketOptions = SecureSocketOptions.None;
         else if (settings.UseSsl) socketOptions = SecureSocketOptions.SslOnConnect;
@@ -89,7 +94,7 @@ public sealed class SmtpDeliveryProvider(IConfiguration configuration, IHostEnvi
         else
             throw new InvalidOperationException("SMTP TLS is required. Use Smtp:UseSsl for implicit TLS or Smtp:AllowInsecurePlaintext only in Development.");
         await client.ConnectAsync(settings.Host, settings.Port, socketOptions, timeoutCts.Token);
-        var password = credential is null ? configuration["Smtp:Password"] ?? string.Empty : protector.Unprotect(credential.SecretCiphertext);
+        var password = credential is null ? smtp.Password ?? string.Empty : protector.Unprotect(credential.SecretCiphertext);
         if (!string.IsNullOrWhiteSpace(settings.Username)) await client.AuthenticateAsync(settings.Username, password, timeoutCts.Token);
         await operation(client, timeoutCts.Token);
     }

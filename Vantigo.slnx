@@ -23,13 +23,15 @@
   </Folder>
   <Folder Name="/apps/host/backend/">
     <Project Path="apps/host/backend/Vantigo.Host/Vantigo.Host.csproj" />
+    <Project Path="apps/host/backend/Vantigo.Host.Tests/Vantigo.Host.Tests.csproj" />
   </Folder>
   <Folder Name="/packages/">
     <Project Path="packages/architecture/Vantigo.Architecture.Tests/Vantigo.Architecture.Tests.csproj" />
+    <Project Path="packages/configuration/Vantigo.Configuration.Tests/Vantigo.Configuration.Tests.csproj" />
+    <Project Path="packages/configuration/Vantigo.Configuration/Vantigo.Configuration.csproj" />
     <Project Path="packages/contracts/Vantigo.Contracts/Vantigo.Contracts.csproj" />
+    <Project Path="packages/dataprotection-postgresql/Vantigo.DataProtection.PostgreSql/Vantigo.DataProtection.PostgreSql.csproj" />
     <Project Path="packages/identity/Vantigo.Identity.Tests/Vantigo.Identity.Tests.csproj" />
     <Project Path="packages/identity/Vantigo.Identity/Vantigo.Identity.csproj" />
-    <Project Path="packages/hosting/Vantigo.Hosting.Tests/Vantigo.Hosting.Tests.csproj" />
-    <Project Path="packages/hosting/Vantigo.Hosting/Vantigo.Hosting.csproj" />
   </Folder>
 </Solution>

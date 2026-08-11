@@ -21,7 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\packages\hosting\Vantigo.Hosting\Vantigo.Hosting.csproj" />
     <ProjectReference Include="..\..\..\..\packages\contracts\Vantigo.Contracts\Vantigo.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\packages\identity\Vantigo.Identity\Vantigo.Identity.csproj" />
   </ItemGroup>

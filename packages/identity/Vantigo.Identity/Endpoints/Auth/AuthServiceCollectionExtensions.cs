@@ -3,7 +3,9 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Identity.Endpoints.Auth;
@@ -71,10 +73,9 @@ public static class AuthServiceCollectionExtensions
 
     public static IServiceCollection AddWorkforceOidc(
         this IServiceCollection services,
-        WorkforceOidcOptions workforceOidc,
+        IConfiguration configuration,
         IHostEnvironment environment)
     {
-        services.AddSingleton(workforceOidc);
         services.Configure<CookieAuthenticationOptions>(IdentityConstants.ExternalScheme, options =>
         {
             // The external cookie must survive the provider's top-level callback but is
@@ -87,70 +88,90 @@ public static class AuthServiceCollectionExtensions
                 ? CookieSecurePolicy.SameAsRequest
                 : CookieSecurePolicy.Always;
         });
+
+        var workforceOidc = WorkforceOidcOptionsExtensions.Load(configuration, environment);
         if (workforceOidc.Enabled)
         {
-            services.AddAuthentication()
-                .AddOpenIdConnect(WorkforceOidcOptions.Scheme, options =>
-                {
-                    options.Authority = workforceOidc.Authority;
-                    options.ClientId = workforceOidc.ClientId;
-                    options.ClientSecret = workforceOidc.ClientSecret;
-                    options.SignInScheme = IdentityConstants.ExternalScheme;
-                    options.CallbackPath = workforceOidc.CallbackPath;
-                    options.ResponseType = "code";
-                    options.UsePkce = true;
-                    options.RequireHttpsMetadata = !environment.IsDevelopment();
-                    options.SaveTokens = false;
-                    options.GetClaimsFromUserInfoEndpoint = false;
-                    options.MapInboundClaims = false;
-                    options.Scope.Clear();
-                    options.Scope.Add("openid");
-                    options.Scope.Add("profile");
-                    options.Scope.Add("email");
-                    options.Events.OnRemoteFailure = context =>
-                    {
-                        context.HandleResponse();
-                        context.Response.Redirect("/sign-in?error=oidc_remote_failure");
-                        return Task.CompletedTask;
-                    };
-                    options.Events.OnAuthenticationFailed = context =>
-                    {
-                        context.HandleResponse();
-                        context.Response.Redirect("/sign-in?error=oidc_authentication_failed");
-                        return Task.CompletedTask;
-                    };
-                    options.Events.OnTokenValidated = context =>
-                    {
-                        // SecurityToken is the issuer value after the built-in OIDC
-                        // handler has validated signature, metadata issuer, audience,
-                        // nonce, state, and correlation. Do not parse JWT text or trust a
-                        // raw iss claim that claim actions may remove or remap.
-                        var tokenIssuer = context.SecurityToken?.Issuer;
-                        if (!WorkforceOidcOptions.TryNormalizeIssuer(tokenIssuer, out var normalizedIssuer) ||
-                            !WorkforceOidcOptions.TryNormalizeIssuer(workforceOidc.Authority, out var configuredIssuer) ||
-                            !string.Equals(normalizedIssuer, configuredIssuer, StringComparison.Ordinal))
-                        {
-                            context.Fail("The validated OIDC issuer does not match the configured authority.");
-                            return Task.CompletedTask;
-                        }
-
-                        var identity = context.Principal?.Identities.FirstOrDefault();
-                        if (identity is null)
-                        {
-                            context.Fail("The validated OIDC principal is missing.");
-                            return Task.CompletedTask;
-                        }
-
-                        foreach (var claim in identity.FindAll(WorkforceOidcOptions.ValidatedIssuerClaim).ToArray())
-                        {
-                            identity.RemoveClaim(claim);
-                        }
-
-                        identity.AddClaim(new Claim(WorkforceOidcOptions.ValidatedIssuerClaim, normalizedIssuer!));
-                        return Task.CompletedTask;
-                    };
-                });
+            services.AddOpenIdConnectAuthentication(environment);
         }
+
+        return services;
+    }
+
+    private static IServiceCollection AddOpenIdConnectAuthentication(
+        this IServiceCollection services,
+        IHostEnvironment environment)
+    {
+        services.AddAuthentication()
+            .AddOpenIdConnect(WorkforceOidcOptions.Scheme, options =>
+            {
+                options.SignInScheme = IdentityConstants.ExternalScheme;
+                options.ResponseType = "code";
+                options.UsePkce = true;
+                options.RequireHttpsMetadata = !environment.IsDevelopment();
+                options.SaveTokens = false;
+                options.GetClaimsFromUserInfoEndpoint = false;
+                options.MapInboundClaims = false;
+                options.Scope.Clear();
+                options.Scope.Add("openid");
+                options.Scope.Add("profile");
+                options.Scope.Add("email");
+            });
+        services.AddOptions<OpenIdConnectOptions>(WorkforceOidcOptions.Scheme)
+            .Configure<WorkforceOidcOptions>((options, workforceOidc) =>
+            {
+                if (!workforceOidc.Enabled)
+                {
+                    return;
+                }
+
+                options.Authority = workforceOidc.Authority;
+                options.ClientId = workforceOidc.ClientId;
+                options.ClientSecret = workforceOidc.ClientSecret;
+                options.CallbackPath = workforceOidc.CallbackPath;
+                options.Events.OnRemoteFailure = context =>
+                {
+                    context.HandleResponse();
+                    context.Response.Redirect("/sign-in?error=oidc_remote_failure");
+                    return Task.CompletedTask;
+                };
+                options.Events.OnAuthenticationFailed = context =>
+                {
+                    context.HandleResponse();
+                    context.Response.Redirect("/sign-in?error=oidc_authentication_failed");
+                    return Task.CompletedTask;
+                };
+                options.Events.OnTokenValidated = context =>
+                {
+                    // SecurityToken is the issuer value after the built-in OIDC
+                    // handler has validated signature, metadata issuer, audience,
+                    // nonce, state, and correlation. Do not parse JWT text or trust a
+                    // raw iss claim that claim actions may remove or remap.
+                    var tokenIssuer = context.SecurityToken?.Issuer;
+                    if (!WorkforceOidcOptions.TryNormalizeIssuer(tokenIssuer, out var normalizedIssuer) ||
+                        !WorkforceOidcOptions.TryNormalizeIssuer(workforceOidc.Authority, out var configuredIssuer) ||
+                        !string.Equals(normalizedIssuer, configuredIssuer, StringComparison.Ordinal))
+                    {
+                        context.Fail("The validated OIDC issuer does not match the configured authority.");
+                        return Task.CompletedTask;
+                    }
+
+                    var identity = context.Principal?.Identities.FirstOrDefault();
+                    if (identity is null)
+                    {
+                        context.Fail("The validated OIDC principal is missing.");
+                        return Task.CompletedTask;
+                    }
+
+                    foreach (var claim in identity.FindAll(WorkforceOidcOptions.ValidatedIssuerClaim).ToArray())
+                    {
+                        identity.RemoveClaim(claim);
+                    }
+
+                    identity.AddClaim(new Claim(WorkforceOidcOptions.ValidatedIssuerClaim, normalizedIssuer!));
+                    return Task.CompletedTask;
+                };
+            });
 
         return services;
     }

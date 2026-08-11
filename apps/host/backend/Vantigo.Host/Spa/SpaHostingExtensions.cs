@@ -1,21 +1,21 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
-namespace Vantigo.Hosting;
+using Vantigo.Configuration;
+
+namespace Vantigo.Host;
 
 /// <summary>
-/// Wires up base-path serving and the runtime-templated SPA entry point for a
-/// Vantigo backend that hosts its frontend from wwwroot.
+/// Wires up base-path serving and the runtime-templated SPA entry point for the
+/// Vantigo host.
 /// </summary>
 public static class SpaHostingExtensions
 {
     /// <summary>
-    /// Registers the templated SPA entry document.
-    /// <paramref name="buildTimeBasePath"/> is the prefix the frontend build
-    /// embeds in its asset URLs (the app's VITE_BASE_PATH default) and
-    /// <paramref name="defaultTitle"/> the application title used when
-    /// <c>App:Title</c> is not configured.
+    /// Registers the templated SPA entry document and Vantigo configuration
+    /// options required to render it.
     /// </summary>
     public static IServiceCollection AddSpaIndexDocument(
         this IServiceCollection services,
@@ -35,7 +35,7 @@ public static class SpaHostingExtensions
     /// </summary>
     public static string? UseAppBasePath(this WebApplication app)
     {
-        var basePath = AppBasePath.Normalize(app.Configuration[AppBasePath.ConfigurationKey]);
+        var basePath = app.Services.GetRequiredService<IOptions<AppBasePathOptions>>().Value.Normalized;
         if (basePath is not null)
         {
             app.UsePathBase(basePath);
@@ -45,9 +45,9 @@ public static class SpaHostingExtensions
     }
 
     /// <summary>
-    /// Prevents the raw wwwroot/index.html (with stale build-time URLs) from ever
-    /// being served by the static-file middleware; the request falls through to
-    /// the templated SPA fallback instead. Place before <c>UseStaticFiles</c>.
+    /// Prevents the raw wwwroot/index.html from being served by the static-file
+    /// middleware; the request falls through to the templated SPA fallback. Place
+    /// before <c>UseStaticFiles</c>.
     /// </summary>
     public static IApplicationBuilder UseSpaIndexRewrite(this IApplicationBuilder app) =>
         app.Use((context, next) =>
@@ -61,7 +61,7 @@ public static class SpaHostingExtensions
 
     /// <summary>
     /// Serves the templated SPA entry document for any request no other endpoint
-    /// matched (deep links, "/"). Responds 404 when no frontend is published.
+    /// matched. Responds 404 when no frontend is published.
     /// </summary>
     public static IEndpointConventionBuilder MapSpaFallback(this WebApplication app) =>
         app.MapFallback((HttpContext context, SpaIndexDocument index) =>

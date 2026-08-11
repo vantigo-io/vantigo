@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Vantigo.DataProtection.PostgreSql</AssemblyName>
+    <RootNamespace>Vantigo.DataProtection.PostgreSql</RootNamespace>
+    <Description>PostgreSQL-backed ASP.NET Core Data Protection key persistence for Vantigo.</Description>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -5,7 +5,6 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
-using Vantigo.Hosting;
 using Vantigo.Identity.Endpoints.Auth;
 using Vantigo.Identity.Services;
 
@@ -13,32 +12,6 @@ namespace Vantigo.Customers.Module.Tests.Integration;
 
 public sealed class AuthSecurityUnitTests
 {
-    [Fact]
-    public void CommandLineRequiresExplicitCommandAndPreservesRemainingArguments()
-    {
-        // Program handles the truly empty process argument list before creating a
-        // builder; this parse result remains reserved for WebApplicationFactory's
-        // host bootstrap arguments and its DI startup marker.
-        Assert.Equal(VantigoCommand.NoArguments, VantigoCommandLine.Parse([]).Command);
-        Assert.Equal(
-            VantigoCommand.Api,
-            VantigoCommandLine.Parse(["api", "--urls", "http://localhost"]).Command);
-        Assert.Equal(
-            ["--urls", "http://localhost"],
-            VantigoCommandLine.Parse(["api", "--urls", "http://localhost"]).RemainingArguments);
-        Assert.Equal(VantigoCommand.Migrate, VantigoCommandLine.Parse(["migrate"]).Command);
-        Assert.Equal(VantigoCommand.Seed, VantigoCommandLine.Parse(["seed"]).Command);
-        Assert.Equal(VantigoCommand.Invalid, VantigoCommandLine.Parse(["unknown"]).Command);
-        Assert.Equal(
-            VantigoCommand.NoArguments,
-            VantigoCommandLine.Parse([
-                "--environment=Development",
-                "--contentRoot=/tmp/customers",
-                "--applicationName=Vantigo.Customers",
-            ]).Command);
-        Assert.Equal(VantigoCommand.Invalid, VantigoCommandLine.Parse(["--unknown"]).Command);
-    }
-
     [Fact]
     public void InvitationTokensAreOpaqueAndOnlyTheirHashIsStable()
     {

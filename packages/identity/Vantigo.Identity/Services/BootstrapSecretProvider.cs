@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
+
+using Vantigo.Configuration;
 
 namespace Vantigo.Identity.Services;
 
@@ -11,9 +14,9 @@ namespace Vantigo.Identity.Services;
 /// </summary>
 public sealed class BootstrapSecretProvider
 {
-    public BootstrapSecretProvider(IConfiguration configuration, ILogger<BootstrapSecretProvider> logger)
+    public BootstrapSecretProvider(IOptions<VantigoAuthenticationOptions> options, ILogger<BootstrapSecretProvider> logger)
     {
-        var configuredSecret = configuration["Authentication:Bootstrap:Secret"];
+        var configuredSecret = options.Value.Bootstrap.Secret;
         if (!string.IsNullOrWhiteSpace(configuredSecret))
         {
             Secret = configuredSecret;

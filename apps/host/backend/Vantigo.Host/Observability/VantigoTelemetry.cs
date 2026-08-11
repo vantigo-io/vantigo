@@ -2,8 +2,8 @@ using System.Reflection;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
@@ -12,35 +12,36 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-namespace Vantigo.Hosting;
+using Vantigo.Configuration;
+
+namespace Vantigo.Host;
 
 /// <summary>
-/// Shared OpenTelemetry setup for all Vantigo backends: traces, metrics and
-/// logs with ASP.NET Core, HttpClient, runtime and Npgsql instrumentation.
-/// The OTLP exporter is driven entirely by the standard
-/// <c>OTEL_EXPORTER_OTLP_*</c> environment variables (set automatically by
-/// Aspire's <c>WithOtlpExporter()</c> in development); when no endpoint is
-/// configured, no exporter is registered and telemetry is a silent no-op.
+/// Shared OpenTelemetry setup for the Vantigo host: traces, metrics and logs
+/// with ASP.NET Core, HttpClient, runtime and Npgsql instrumentation. The OTLP
+/// exporter is driven entirely by the standard <c>OTEL_EXPORTER_OTLP_*</c>
+/// environment variables; when no endpoint is configured, no exporter is
+/// registered and telemetry is a silent no-op.
 /// </summary>
 public static class VantigoTelemetry
 {
     /// <summary>
     /// Adds the shared telemetry pipeline. <paramref name="serviceName"/> is the
-    /// short application name (e.g. <c>"customers"</c>), reported as
-    /// <c>vantigo-customers</c>; names already starting with <c>vantigo-</c> are
-    /// used as-is. Extra app-specific <see cref="System.Diagnostics.ActivitySource"/>
-    /// or <see cref="System.Diagnostics.Metrics.Meter"/> names can be passed via
-    /// the optional parameters.
+    /// short application name (e.g. <c>"vantigo"</c>), reported as
+    /// <c>vantigo-vantigo</c>; names already starting with <c>vantigo-</c> are
+    /// used as-is.
     /// </summary>
     public static WebApplicationBuilder AddVantigoTelemetry(
         this WebApplicationBuilder builder,
-        string serviceName,
-        string[]? additionalActivitySources = null,
-        string[]? additionalMeters = null)
+        string serviceName)
     {
         var resolvedServiceName = ResolveServiceName(serviceName);
         var serviceVersion = ResolveServiceVersion(Assembly.GetEntryAssembly());
-        var exporterConfigured = HasOtlpExporterEndpoint(builder.Configuration);
+        var observabilityOptions = builder.Services
+            .BuildServiceProvider()
+            .GetRequiredService<IOptions<ObservabilityOptions>>()
+            .Value;
+        var exporterConfigured = observabilityOptions.HasAnyOtlpEndpoint;
 
         builder.Services
             .AddOpenTelemetry()
@@ -58,11 +59,6 @@ public static class VantigoTelemetry
                     .AddHttpClientInstrumentation()
                     .AddNpgsql();
 
-                if (additionalActivitySources is { Length: > 0 })
-                {
-                    tracing.AddSource(additionalActivitySources);
-                }
-
                 if (exporterConfigured)
                 {
                     tracing.AddOtlpExporter();
@@ -75,11 +71,6 @@ public static class VantigoTelemetry
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
                     .AddNpgsqlInstrumentation();
-
-                if (additionalMeters is { Length: > 0 })
-                {
-                    metrics.AddMeter(additionalMeters);
-                }
 
                 if (exporterConfigured)
                 {
@@ -104,9 +95,7 @@ public static class VantigoTelemetry
     }
 
     /// <summary>
-    /// Normalizes the short application name to the reported service name:
-    /// <c>"customers"</c> becomes <c>vantigo-customers</c>, while names already
-    /// prefixed with <c>vantigo-</c> pass through unchanged.
+    /// Normalizes the short application name to the reported service name.
     /// </summary>
     public static string ResolveServiceName(string serviceName)
     {
@@ -116,8 +105,7 @@ public static class VantigoTelemetry
     }
 
     /// <summary>
-    /// Resolves the reported service version: the assembly informational version
-    /// (produced by GitVersion) when present, otherwise the plain assembly version.
+    /// Resolves the reported service version.
     /// </summary>
     public static string? ResolveServiceVersion(Assembly? assembly)
     {
@@ -131,10 +119,9 @@ public static class VantigoTelemetry
     }
 
     /// <summary>
-    /// True when any standard OTLP endpoint variable is configured
-    /// (<c>OTEL_EXPORTER_OTLP_ENDPOINT</c> or a signal-specific variant). Without
-    /// one, no exporter is registered, keeping telemetry a warning-free no-op.
+    /// True when any standard OTLP endpoint variable is configured.
     /// </summary>
+    [Obsolete("Use IOptions<ObservabilityOptions>.Value.HasAnyOtlpEndpoint instead.")]
     public static bool HasOtlpExporterEndpoint(IConfiguration configuration) =>
         !string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_ENDPOINT"])
         || !string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
@@ -143,8 +130,7 @@ public static class VantigoTelemetry
 
     /// <summary>
     /// Filters low-value server spans: OpenAPI documents, the SPA entry point
-    /// ("/", "/index.html") and static assets (any path with a file extension,
-    /// e.g. .js/.css/.svg) outside /api and /auth, which are always traced.
+    /// and static assets outside /api and /auth, which are always traced.
     /// </summary>
     public static bool IsNoiseRequestPath(PathString path)
     {
@@ -165,9 +151,7 @@ public static class VantigoTelemetry
             return true;
         }
 
-        // Static assets carry a file extension in the last segment (e.g. .js,
-        // .css, .svg, .woff2). Extensionless paths are SPA deep links or future
-        // endpoints and stay traced.
+        // Static assets carry a file extension in the last segment.
         var lastSlash = value.LastIndexOf('/');
         return value.IndexOf('.', lastSlash + 1) >= 0;
     }

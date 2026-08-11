@@ -4,9 +4,11 @@ using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
 
@@ -73,7 +75,7 @@ internal static class AuthAccountEndpoints
     private static async Task<IResult> MfaStatus(
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
         SignInManager<ApplicationUser> signInManager)
     {
         var user = await userManager.GetUserAsync(principal);
@@ -84,13 +86,13 @@ internal static class AuthAccountEndpoints
 
         return TypedResults.Ok(new MfaStatusResponse(
             user.TwoFactorEnabled,
-            configuration.GetValue<bool>("Authentication:Owners:RequireMfa") && !user.TwoFactorEnabled));
+            options.Value.Owners.RequireMfa && !user.TwoFactorEnabled));
     }
 
     private static async Task<IResult> MfaSetup(
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration)
+        IOptions<VantigoAuthenticationOptions> options)
     {
         var user = await userManager.GetUserAsync(principal);
         if (user is null)
@@ -104,7 +106,7 @@ internal static class AuthAccountEndpoints
             return TypedResults.Ok(new MfaSetupResponse(null, null, false));
         }
 
-        var issuer = Uri.EscapeDataString(configuration["Authentication:Owners:MfaIssuer"] ?? "Vantigo");
+        var issuer = Uri.EscapeDataString(options.Value.Owners.MfaIssuer);
         var account = Uri.EscapeDataString(user.Email ?? user.UserName ?? user.Id.ToString());
         var uri = $"otpauth://totp/{issuer}:{account}?secret={key}&issuer={issuer}&digits=6";
         return TypedResults.Ok(new MfaSetupResponse(key, uri, true));
@@ -114,7 +116,7 @@ internal static class AuthAccountEndpoints
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
-        IConfiguration configuration)
+        IOptions<VantigoAuthenticationOptions> options)
     {
         var user = await userManager.GetUserAsync(principal);
         if (user is null)
@@ -142,7 +144,7 @@ internal static class AuthAccountEndpoints
             new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = false },
             principal.Claims.Where(claim => claim.Type is "amr" or ClaimTypes.AuthenticationMethod).ToArray());
 
-        var issuer = Uri.EscapeDataString(configuration["Authentication:Owners:MfaIssuer"] ?? "Vantigo");
+        var issuer = Uri.EscapeDataString(options.Value.Owners.MfaIssuer);
         var account = Uri.EscapeDataString(user.Email ?? user.UserName ?? user.Id.ToString());
         var uri = $"otpauth://totp/{issuer}:{account}?secret={key}&issuer={issuer}&digits=6";
         return TypedResults.Ok(new MfaSetupResponse(key, uri, true));
@@ -195,10 +197,10 @@ internal static class AuthAccountEndpoints
         MfaCodeRequest? request,
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
         SignInManager<ApplicationUser> signInManager)
     {
-        if (configuration.GetValue<bool>("Authentication:Owners:RequireMfa"))
+        if (options.Value.Owners.RequireMfa)
         {
             return Error(StatusCodes.Status403Forbidden, "mfa_required", "Owner MFA cannot be disabled while MFA is required.");
         }
@@ -263,7 +265,7 @@ internal static class AuthAccountEndpoints
         Guid userId,
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration)
+        IOptions<VantigoAuthenticationOptions> options)
     {
         var caller = await userManager.GetUserAsync(principal);
         if (caller is null || !await userManager.IsInRoleAsync(caller, AuthRoles.Owner) || !HasMfaClaim(principal))
@@ -328,7 +330,8 @@ internal static class AuthAccountEndpoints
         ClaimsPrincipal principal,
         AccountsDbContext dbContext,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
+        AppPublicUrls appPublicUrls,
         IApplicationEmailSender emailSender,
         CancellationToken cancellationToken)
     {
@@ -352,7 +355,7 @@ internal static class AuthAccountEndpoints
         }
 
         var now = DateTimeOffset.UtcNow;
-        var expiration = InvitationTokenService.GetLifetime(configuration);
+        var expiration = InvitationTokenService.GetLifetime(options.Value.Invitations);
 
         var (rawToken, tokenHash) = InvitationTokenService.Create();
         var invitation = new Invitation
@@ -380,7 +383,7 @@ internal static class AuthAccountEndpoints
 
         try
         {
-            await SendInvitation(emailSender, configuration, invitation, rawToken, cancellationToken);
+            await SendInvitation(emailSender, options, appPublicUrls, invitation, rawToken, cancellationToken);
         }
         catch
         {
@@ -452,7 +455,8 @@ internal static class AuthAccountEndpoints
         ClaimsPrincipal principal,
         AccountsDbContext dbContext,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
+        AppPublicUrls appPublicUrls,
         IApplicationEmailSender emailSender,
         CancellationToken cancellationToken)
     {
@@ -482,7 +486,7 @@ internal static class AuthAccountEndpoints
             DisplayName = invitation.DisplayName,
             TokenHash = tokenHash,
             CreatedAt = now,
-            ExpiresAt = now.Add(InvitationTokenService.GetLifetime(configuration)),
+            ExpiresAt = now.Add(InvitationTokenService.GetLifetime(options.Value.Invitations)),
             InvitedByUserId = invitation.InvitedByUserId,
         };
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(
@@ -498,7 +502,7 @@ internal static class AuthAccountEndpoints
 
         try
         {
-            await SendInvitation(emailSender, configuration, replacement, rawToken, cancellationToken);
+            await SendInvitation(emailSender, options, appPublicUrls, replacement, rawToken, cancellationToken);
         }
         catch
         {
@@ -597,7 +601,8 @@ internal static class AuthAccountEndpoints
     private static async Task<IResult> RequestPasswordRecovery(
         PasswordRecoveryRequest? request,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
+        AppPublicUrls appPublicUrls,
         IApplicationEmailSender emailSender,
         CancellationToken cancellationToken)
     {
@@ -609,7 +614,7 @@ internal static class AuthAccountEndpoints
             {
                 var token = await userManager.GeneratePasswordResetTokenAsync(user);
                 var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-                var url = InvitationTokenService.PasswordResetUrl(configuration, user.Email!, encodedToken);
+                var url = InvitationTokenService.PasswordResetUrl(options.Value.PasswordReset, appPublicUrls, user.Email!, encodedToken);
                 try
                 {
                     await emailSender.SendAsync(new ApplicationEmail(
@@ -679,12 +684,13 @@ internal static class AuthAccountEndpoints
 
     private static async Task SendInvitation(
         IApplicationEmailSender emailSender,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
+        AppPublicUrls appPublicUrls,
         Invitation invitation,
         string rawToken,
         CancellationToken cancellationToken)
     {
-        var url = InvitationTokenService.InvitationUrl(configuration, rawToken);
+        var url = InvitationTokenService.InvitationUrl(options.Value.Invitations, appPublicUrls, rawToken);
         await emailSender.SendAsync(new ApplicationEmail(
             invitation.Email,
             "You are invited to Vantigo",

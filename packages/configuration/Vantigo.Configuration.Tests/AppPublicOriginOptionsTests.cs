@@ -1,10 +1,9 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
-using Vantigo.Hosting;
+namespace Vantigo.Configuration.Tests;
 
-namespace Vantigo.Hosting.Tests;
-
-public sealed class AppPublicOriginTests
+public sealed class AppPublicOriginOptionsTests
 {
     [Theory]
     [InlineData(null, null)]
@@ -15,9 +14,10 @@ public sealed class AppPublicOriginTests
     [InlineData("  https://vantigo.example.com/  ", "https://vantigo.example.com")]
     [InlineData("http://localhost:8080", "http://localhost:8080")]
     [InlineData("https://vantigo.example.com:8443", "https://vantigo.example.com:8443")]
-    public void Normalize_AcceptsValidOrigins(string? configured, string? expected)
+    public void Normalized_AcceptsValidOrigins(string? configured, string? expected)
     {
-        Assert.Equal(expected, AppPublicOrigin.Normalize(configured));
+        var options = new AppPublicOriginOptions { PublicOrigin = configured };
+        Assert.Equal(expected, options.Normalized);
     }
 
     [Theory]
@@ -27,9 +27,10 @@ public sealed class AppPublicOriginTests
     [InlineData("https://vantigo.example.com/?tenant=1")] // query
     [InlineData("https://vantigo.example.com/#section")] // fragment
     [InlineData("https://user:secret@vantigo.example.com")] // user info
-    public void Normalize_FailsFastOnInvalidValues(string configured)
+    public void Normalized_FailsFastOnInvalidValues(string configured)
     {
-        var exception = Assert.Throws<InvalidOperationException>(() => AppPublicOrigin.Normalize(configured));
+        var options = new AppPublicOriginOptions { PublicOrigin = configured };
+        var exception = Assert.Throws<InvalidOperationException>(() => options.Normalized);
         Assert.Contains("App:PublicOrigin", exception.Message);
     }
 }
@@ -38,16 +39,11 @@ public sealed class AppPublicUrlsTests
 {
     private static AppPublicUrls Create(string? origin, string? basePath = null)
     {
-        var values = new Dictionary<string, string?>();
-        if (origin is not null)
-        {
-            values["App:PublicOrigin"] = origin;
-        }
-        if (basePath is not null)
-        {
-            values["App:BasePath"] = basePath;
-        }
-        return new AppPublicUrls(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
+        var originOptions = new OptionsWrapper<AppPublicOriginOptions>(
+            new AppPublicOriginOptions { PublicOrigin = origin });
+        var basePathOptions = new OptionsWrapper<AppBasePathOptions>(
+            new AppBasePathOptions { BasePath = basePath });
+        return new AppPublicUrls(originOptions, basePathOptions);
     }
 
     [Fact]
@@ -104,11 +100,5 @@ public sealed class AppPublicUrlsTests
         Assert.Equal(
             "https://vantigo.example.com/customers/invitations/accept?token={token}",
             urls.PublicUrl("/invitations/accept?token={token}"));
-    }
-
-    [Fact]
-    public void Constructor_FailsFastOnAnInvalidOrigin()
-    {
-        Assert.Throws<InvalidOperationException>(() => Create("https://vantigo.example.com/customers"));
     }
 }

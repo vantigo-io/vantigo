@@ -1,4 +1,4 @@
-namespace Vantigo.Hosting;
+namespace Vantigo.Host;
 
 public enum VantigoCommand
 {

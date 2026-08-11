@@ -1,13 +1,21 @@
-using Vantigo.Hosting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 
-namespace Vantigo.Hosting.Tests;
+using Vantigo.Configuration;
+
+namespace Vantigo.Host.Tests.Spa;
 
 public sealed class SpaIndexDocumentTests
 {
     private const string BuildTimeBasePath = "/customers";
 
-    private static readonly AppBranding DefaultBranding = new(
-        Title: "Customers", LogoUrl: null, SupportEmail: null, SupportPhone: null, SupportUrl: null);
+    private static readonly AppBrandingOptions DefaultBranding = new()
+    {
+        Title = "Customers",
+    };
+
+    private static readonly AppSupportOptions EmptySupport = new();
 
     private const string BuiltIndexHtml = """
         <!doctype html>
@@ -25,8 +33,8 @@ public sealed class SpaIndexDocumentTests
         </html>
         """;
 
-    private static string Render(string? basePath, AppBranding? branding = null, string html = BuiltIndexHtml) =>
-        SpaIndexDocument.Render(html, basePath, BuildTimeBasePath, branding ?? DefaultBranding);
+    private static string Render(string? basePath, AppBrandingOptions? branding = null, string html = BuiltIndexHtml) =>
+        SpaIndexDocument.Render(html, basePath, BuildTimeBasePath, branding ?? DefaultBranding, "Customers");
 
     // --- Base path -----------------------------------------------------------
 
@@ -70,7 +78,8 @@ public sealed class SpaIndexDocumentTests
             """<script src="/communications/assets/a.js"></script>""",
             "/comms",
             "/communications",
-            DefaultBranding);
+            DefaultBranding,
+            "Customers");
 
         Assert.Contains("/comms/assets/a.js", html);
         Assert.DoesNotContain("/communications/", html);
@@ -103,12 +112,17 @@ public sealed class SpaIndexDocumentTests
     [Fact]
     public void Render_WithFullBranding_InjectsEveryValue()
     {
-        var branding = new AppBranding(
-            Title: "Acme CRM",
-            LogoUrl: "https://cdn.acme.test/logo.svg",
-            SupportEmail: "help@acme.test",
-            SupportPhone: "+47 123 45 678",
-            SupportUrl: "https://support.acme.test");
+        var branding = new AppBrandingOptions
+        {
+            Title = "Acme CRM",
+            LogoUrl = "https://cdn.acme.test/logo.svg",
+            Support = new AppSupportOptions
+            {
+                Email = "help@acme.test",
+                Phone = "+47 123 45 678",
+                Url = "https://support.acme.test",
+            },
+        };
 
         var html = Render("/customers", branding);
 
@@ -125,7 +139,7 @@ public sealed class SpaIndexDocumentTests
     [Fact]
     public void Render_ReplacesTheDocumentTitle()
     {
-        var branding = DefaultBranding with { Title = "Acme CRM" };
+        var branding = new AppBrandingOptions { Title = "Acme CRM" };
 
         var html = Render("/customers", branding);
 
@@ -149,7 +163,7 @@ public sealed class SpaIndexDocumentTests
     [Fact]
     public void Render_WithHostileTitle_CannotBreakOutOfTheScriptOrTitleElements()
     {
-        var branding = DefaultBranding with { Title = """</script><script>alert(1)</script>""" };
+        var branding = new AppBrandingOptions { Title = """</script><script>alert(1)</script>""" };
 
         var html = Render("/customers", branding);
 
@@ -163,7 +177,7 @@ public sealed class SpaIndexDocumentTests
     [Fact]
     public void Render_WithQuotesAndUnicodeInTitle_ProducesValidJsonAndHtml()
     {
-        var branding = DefaultBranding with { Title = """Møller "Bil" & Co""" };
+        var branding = new AppBrandingOptions { Title = """Møller "Bil" & Co""" };
 
         var html = Render("/customers", branding);
 
@@ -174,7 +188,7 @@ public sealed class SpaIndexDocumentTests
     [Fact]
     public void Render_WithHostileLogoUrl_CannotBreakOutOfTheScriptElement()
     {
-        var branding = DefaultBranding with { LogoUrl = """x"};</script><script>alert(1)//""" };
+        var branding = new AppBrandingOptions { LogoUrl = """x"};</script><script>alert(1)//""" };
 
         var html = Render("/customers", branding);
 

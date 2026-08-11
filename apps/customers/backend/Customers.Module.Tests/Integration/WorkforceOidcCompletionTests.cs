@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Endpoints.Auth;
 

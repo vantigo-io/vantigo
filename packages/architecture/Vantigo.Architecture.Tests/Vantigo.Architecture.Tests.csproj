@@ -19,9 +19,9 @@
     <ProjectReference Include="..\..\..\apps\products\backend\Products.Module\Products.Module.csproj" />
     <ProjectReference Include="..\..\..\apps\customers\backend\Customers.Module\Customers.Module.csproj" />
     <ProjectReference Include="..\..\..\apps\communications\backend\Communications.Module\Communications.Module.csproj" />
+    <ProjectReference Include="..\..\..\packages\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
     <ProjectReference Include="..\..\..\packages\contracts\Vantigo.Contracts\Vantigo.Contracts.csproj" />
     <ProjectReference Include="..\..\..\packages\identity\Vantigo.Identity\Vantigo.Identity.csproj" />
-    <ProjectReference Include="..\..\..\packages\hosting\Vantigo.Hosting\Vantigo.Hosting.csproj" />
   </ItemGroup>
 
   <ItemGroup>

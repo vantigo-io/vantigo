@@ -50,10 +50,10 @@ vantigo/
 │       │   └── Products.Module.Tests/
 │       └── frontend/                  # @vantigo/products-ui
 ├── packages/
+│   ├── configuration/Vantigo.Configuration/ # Shared configuration options
 │   ├── contracts/Vantigo.Contracts/   # In-process module contracts
 │   ├── identity/Vantigo.Identity/     # Shared authentication and Identity
 │   │   └── Vantigo.Identity.Tests/
-│   ├── hosting/Vantigo.Hosting/       # Shared host infrastructure
 │   └── frontend-shell/                # Shared app shell, theme and branding
 ├── orchestration/AppHost/             # .NET Aspire composition root
 └── assets/                            # Shared branding assets
@@ -76,7 +76,9 @@ into its own deployable without a rewrite.
   `Map<Name>Module(IEndpointRouteBuilder)`, and migrate/seed helpers.
 - Modules **never reference each other's projects**. The only shared code paths
   are `Vantigo.Contracts` (cross-module interfaces and DTOs), `Vantigo.Identity`
-  (authentication) and `Vantigo.Hosting` (infrastructure).
+  (authentication) and `Vantigo.Configuration` (shared options). Hosting
+  infrastructure (telemetry, SPA serving, command-line parsing) lives in
+  `Vantigo.Host`.
 - Every module can be turned off per deployment with
   `Modules:<Name>:Enabled` — code consuming another module's contract must
   tolerate the implementation being absent.

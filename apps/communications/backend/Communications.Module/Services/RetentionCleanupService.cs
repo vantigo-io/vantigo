@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Vantigo.Communications.Database.Communications;
+using Vantigo.Configuration;
 
 namespace Vantigo.Communications.Services;
 
@@ -8,12 +10,14 @@ namespace Vantigo.Communications.Services;
 /// Deletes only terminal communication history. Queued and retryable work is
 /// intentionally excluded so retention cannot interrupt delivery.
 /// </summary>
-public sealed class RetentionCleanupService(CommunicationsDbContext db, IConfiguration configuration)
+public sealed class RetentionCleanupService(CommunicationsDbContext db, IOptions<CommunicationsOptions> options)
 {
+    private readonly CommunicationsOptions communications = options.Value;
+
     public async Task<int> CleanupBatchAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var days = Math.Max(1, configuration.GetValue("Communications:Retention:Days", 365));
-        var batchSize = Math.Clamp(configuration.GetValue("Communications:Retention:BatchSize", 100), 1, 1000);
+        var days = Math.Max(1, communications.Retention.Days);
+        var batchSize = Math.Clamp(communications.Retention.BatchSize, 1, 1000);
         var cutoff = now.AddDays(-days);
         var messageIds = await db.EmailMessages.AsNoTracking()
             .Where(message => message.CreatedAt < cutoff &&
@@ -41,11 +45,13 @@ public sealed class RetentionCleanupService(CommunicationsDbContext db, IConfigu
 public sealed class CommunicationsRetentionWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<CommunicationsRetentionWorker> logger,
-    IConfiguration configuration) : BackgroundService
+    IOptions<CommunicationsOptions> options) : BackgroundService
 {
+    private readonly CommunicationsOptions communications = options.Value;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var minutes = Math.Max(1, configuration.GetValue("Communications:Retention:PollMinutes", 60));
+        var minutes = Math.Max(1, communications.Retention.PollMinutes);
         var delay = TimeSpan.FromMinutes(minutes);
         while (!stoppingToken.IsCancellationRequested)
         {

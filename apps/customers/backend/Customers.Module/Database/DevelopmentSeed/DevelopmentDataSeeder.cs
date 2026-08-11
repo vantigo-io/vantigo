@@ -1,14 +1,15 @@
-using System.Globalization;
-
 using Bogus;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
+using Vantigo.Configuration;
 using Vantigo.Customers.Database.Customers;
 using Vantigo.Customers.Domain.Contacts;
 using Vantigo.Customers.Domain.Customers;
 using Vantigo.Customers.Domain.Customers.Common;
 using Vantigo.Customers.Domain.Customers.ValueObjects;
+
 namespace Vantigo.Customers.Database.DevelopmentSeed;
 
 /// <summary>
@@ -42,23 +43,26 @@ public static class DevelopmentDataSeeder
         new("frank", ["aurora", "summit"], "Board Chair"),
     ];
 
-    public static async Task SeedAsync(this IServiceProvider services, IConfiguration configuration, CancellationToken cancellationToken = default)
+    public static async Task SeedAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
         await using var scope = services.CreateAsyncScope();
+        var seedData = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value.Data;
 
         await SeedCustomersAsync(
             scope.ServiceProvider.GetRequiredService<CustomersDbContext>(),
-            configuration,
+            seedData.Customers,
+            seedData.Contacts,
             cancellationToken);
     }
 
     private static async Task SeedCustomersAsync(
         CustomersDbContext dbContext,
-        IConfiguration configuration,
+        int customerCount,
+        int contactCount,
         CancellationToken cancellationToken)
     {
-        var customerCount = ReadSeedCount(configuration, "Customers", DefaultCustomerCount);
-        var contactCount = ReadSeedCount(configuration, "Contacts", DefaultContactCount);
+        customerCount = ClampSeedCount(customerCount, DefaultCustomerCount);
+        contactCount = ClampSeedCount(contactCount, DefaultContactCount);
         var customerSeeds = CreateCustomerSeeds(customerCount);
         var customersByKey = new Dictionary<string, Customer>(StringComparer.Ordinal);
 
@@ -192,7 +196,7 @@ public static class DevelopmentDataSeeder
             var number = index + 1;
             definitions.Add(new(
                 $"synthetic-customer-{number}",
-                (990000000 + number).ToString(CultureInfo.InvariantCulture)));
+                (990000000 + number).ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }
 
         return definitions;
@@ -216,28 +220,15 @@ public static class DevelopmentDataSeeder
         return definitions;
     }
 
-    private static int ReadSeedCount(IConfiguration configuration, string name, int defaultValue)
+    private static int ClampSeedCount(int value, int defaultValue)
     {
-        var key = $"Development:Seed:Data:{name}";
-        var configuredValue = configuration[key];
-        if (configuredValue is null)
-        {
-            return defaultValue;
-        }
-
-        if (!int.TryParse(
-                configuredValue.Trim(),
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var count) ||
-            count < 0 ||
-            count > MaximumSeedCount)
+        if (value < 0 || value > MaximumSeedCount)
         {
             throw new InvalidOperationException(
-                $"{key} must be an integer from 0 through {MaximumSeedCount}; received '{configuredValue}'.");
+                $"Development seed count must be an integer from 0 through {MaximumSeedCount}; received '{value}'.");
         }
 
-        return count;
+        return value == 0 ? defaultValue : value;
     }
 
     private sealed class CustomerSeed

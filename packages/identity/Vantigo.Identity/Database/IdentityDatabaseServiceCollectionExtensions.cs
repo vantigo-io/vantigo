@@ -1,17 +1,17 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Identity.Database;
 
 public static class IdentityDatabaseServiceCollectionExtensions
 {
-    public static IServiceCollection AddVantigoIdentityDatabase(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddVantigoIdentityDatabase(this IServiceCollection services)
     {
         services.AddDbContext<AccountsDbContext>((serviceProvider, options) =>
         {
@@ -22,15 +22,8 @@ public static class IdentityDatabaseServiceCollectionExtensions
                 return;
             }
 
-            var connectionString = configuration.GetConnectionString("vantigo") ??
-                configuration.GetConnectionString("customers") ??
-                configuration.GetConnectionString("Postgresql");
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException(
-                    "ConnectionStrings:vantigo (or the transitional customers/Postgresql connection string) is required.");
-            }
-
+            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+            var connectionString = connectionStrings.Resolve();
             options.UseNpgsql(connectionString, ConfigureNpgsql);
         });
 

@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Options;
+
+using Vantigo.Configuration;
 
 namespace Vantigo.Identity.Endpoints.Auth;
 
@@ -13,9 +16,11 @@ internal sealed class BusinessAccessRequirement : IAuthorizationRequirement;
 
 internal sealed class MfaAuthenticatedRequirement : IAuthorizationRequirement;
 
-internal sealed class BusinessAccessHandler(IConfiguration configuration)
+internal sealed class BusinessAccessHandler(IOptions<VantigoAuthenticationOptions> options)
     : AuthorizationHandler<BusinessAccessRequirement>
 {
+    private readonly VantigoAuthenticationOptions authentication = options.Value;
+
     protected override Task HandleRequirementAsync(
         AuthorizationHandlerContext context,
         BusinessAccessRequirement requirement)
@@ -26,7 +31,7 @@ internal sealed class BusinessAccessHandler(IConfiguration configuration)
         }
 
         if (!context.User.IsInRole(AuthRoles.Owner) ||
-            !configuration.GetValue<bool>("Authentication:Owners:RequireMfa"))
+            !authentication.Owners.RequireMfa)
         {
             context.Succeed(requirement);
         }
@@ -43,14 +48,16 @@ internal sealed class BusinessAccessHandler(IConfiguration configuration)
         string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
 }
 
-internal sealed class MfaAuthenticatedHandler(IConfiguration configuration)
+internal sealed class MfaAuthenticatedHandler(IOptions<VantigoAuthenticationOptions> options)
     : AuthorizationHandler<MfaAuthenticatedRequirement>
 {
+    private readonly VantigoAuthenticationOptions authentication = options.Value;
+
     protected override Task HandleRequirementAsync(
         AuthorizationHandlerContext context,
         MfaAuthenticatedRequirement requirement)
     {
-        if (!configuration.GetValue<bool>("Authentication:Owners:RequireMfa") ||
+        if (!authentication.Owners.RequireMfa ||
             context.User.Claims.Any(IsMfaClaim))
         {
             context.Succeed(requirement);

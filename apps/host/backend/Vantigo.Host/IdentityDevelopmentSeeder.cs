@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Endpoints.Auth;
 
@@ -14,14 +16,14 @@ internal static class IdentityDevelopmentSeeder
     private static readonly DateTimeOffset DevelopmentBootstrapCompletedAt =
         new(2026, 8, 4, 0, 0, 0, TimeSpan.Zero);
 
-    internal static async Task SeedAsync(IServiceProvider services, IConfiguration configuration, CancellationToken cancellationToken = default)
+    internal static async Task SeedAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
         await using var scope = services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
-        var adminConfiguration = configuration.GetSection("Development:Seed:Admin");
-        var email = adminConfiguration["Email"]?.Trim();
-        var displayName = adminConfiguration["DisplayName"]?.Trim();
-        var password = adminConfiguration["Password"];
+        var adminConfiguration = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value.Admin;
+        var email = adminConfiguration.Email?.Trim();
+        var displayName = adminConfiguration.DisplayName?.Trim();
+        var password = adminConfiguration.Password;
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(password))
         {
             throw new InvalidOperationException(

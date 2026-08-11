@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
+using Vantigo.Configuration;
 using Vantigo.Products.Database.Products;
 using Vantigo.Products.Endpoints;
 
@@ -10,19 +12,12 @@ namespace Vantigo.Products.Database;
 
 public static class ProductDatabaseConfiguration
 {
-    public static IServiceCollection AddProductsModule(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    public static IServiceCollection AddProductsModule(this IServiceCollection services)
     {
-        services.TryAddSingleton<NpgsqlDataSource>(_ =>
+        services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
-            var connectionString = configuration.GetConnectionString("vantigo") ??
-                configuration.GetConnectionString("products") ??
-                configuration.GetConnectionString("Postgresql");
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException("ConnectionStrings:vantigo is required.");
-            }
+            var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+            var connectionString = connectionStrings.Resolve("products");
 
             // One application-level data source gives both EF contexts the same ADO.NET
             // pool while retaining separate DbContext lifetimes and migration histories.
@@ -45,9 +40,11 @@ public static class ProductDatabaseConfiguration
         await dbContext.Database.MigrateAsync();
     }
 
-    public static async Task SeedProductsAsync(this IServiceProvider services, IConfiguration configuration, CancellationToken cancellationToken = default)
+    public static async Task SeedProductsAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
-        if (configuration.GetValue("Development:Seed:Enabled", true))
+        await using var scope = services.CreateAsyncScope();
+        var seedOptions = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value;
+        if (seedOptions.Enabled)
             await DevelopmentSeed.DevelopmentDataSeeder.SeedProductsAsync(services, cancellationToken);
     }
 }

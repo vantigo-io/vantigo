@@ -1,8 +1,8 @@
-using Vantigo.Hosting;
+using Microsoft.Extensions.Configuration;
 
-namespace Vantigo.Hosting.Tests;
+namespace Vantigo.Configuration.Tests;
 
-public sealed class AppBasePathTests
+public sealed class AppBasePathOptionsTests
 {
     [Theory]
     [InlineData(null, null)]
@@ -15,8 +15,9 @@ public sealed class AppBasePathTests
     [InlineData("/customers/", "/customers")]
     [InlineData(" /crm ", "/crm")]
     [InlineData("/nested/prefix/", "/nested/prefix")]
-    public void Normalize_ProducesLeadingSlashWithoutTrailingSlash(string? configured, string? expected)
+    public void Normalized_ProducesLeadingSlashWithoutTrailingSlash(string? configured, string? expected)
     {
-        Assert.Equal(expected, AppBasePath.Normalize(configured));
+        var options = new AppBasePathOptions { BasePath = configured };
+        Assert.Equal(expected, options.Normalized);
     }
 }

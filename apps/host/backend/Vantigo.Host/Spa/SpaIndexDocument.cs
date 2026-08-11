@@ -3,8 +3,11 @@ using System.Text.RegularExpressions;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
-namespace Vantigo.Hosting;
+using Vantigo.Configuration;
+
+namespace Vantigo.Host;
 
 /// <summary>
 /// The SPA entry point (wwwroot/index.html), templated once at startup with the
@@ -12,9 +15,7 @@ namespace Vantigo.Hosting;
 /// path prefix in its asset URLs; this rewrites those URLs, replaces the
 /// document title, and injects the runtime configuration
 /// (<c>window.__VANTIGO_APP__</c>) so a single published image can serve any
-/// <c>App:*</c> configuration without rebuilding the frontend. Hashed assets
-/// under wwwroot/assets are served verbatim by the static-file middleware; only
-/// the entry document is templated.
+/// <c>App:*</c> configuration without rebuilding the frontend.
 /// </summary>
 public sealed partial class SpaIndexDocument
 {
@@ -37,7 +38,8 @@ public sealed partial class SpaIndexDocument
     public SpaIndexDocument(
         SpaIndexDocumentOptions options,
         IWebHostEnvironment environment,
-        IConfiguration configuration)
+        IOptions<AppBasePathOptions> basePathOptions,
+        IOptions<AppBrandingOptions> brandingOptions)
     {
         BuildTimeBasePath = options.BuildTimeBasePath;
 
@@ -50,9 +52,10 @@ public sealed partial class SpaIndexDocument
         using var reader = new StreamReader(file.CreateReadStream());
         Html = Render(
             reader.ReadToEnd(),
-            AppBasePath.Normalize(configuration[AppBasePath.ConfigurationKey]),
+            basePathOptions.Value.Normalized,
             BuildTimeBasePath,
-            AppBranding.Load(configuration, options.DefaultTitle));
+            brandingOptions.Value,
+            options.DefaultTitle);
     }
 
     /// <summary>
@@ -65,28 +68,28 @@ public sealed partial class SpaIndexDocument
         string html,
         string? basePath,
         string buildTimeBasePath,
-        AppBranding branding)
+        AppBrandingOptions brandingOptions,
+        string defaultTitle)
     {
+        var title = brandingOptions.GetTitle(defaultTitle);
         var effectiveBase = $"{basePath ?? string.Empty}/";
         var config = JsonSerializer.Serialize(
             new
             {
                 BasePath = effectiveBase,
-                branding.Title,
-                branding.LogoUrl,
+                title,
+                brandingOptions.LogoUrl,
                 Support = new
                 {
-                    Email = branding.SupportEmail,
-                    Phone = branding.SupportPhone,
-                    Url = branding.SupportUrl,
+                    Email = brandingOptions.Support.Email,
+                    Phone = brandingOptions.Support.Phone,
+                    Url = brandingOptions.Support.Url,
                 },
             },
             JsonOptions);
 
         if (buildTimeBasePath is "" or "/")
         {
-            // A root Vite build emits root-relative asset URLs. Rewrite only URL
-            // attributes so the host can mount that build below App:BasePath.
             if (effectiveBase != "/")
             {
                 html = html
@@ -107,7 +110,7 @@ public sealed partial class SpaIndexDocument
 
         return TitleElement().Replace(
             html,
-            $"<title>{System.Net.WebUtility.HtmlEncode(branding.Title)}</title>",
+            $"<title>{System.Net.WebUtility.HtmlEncode(title)}</title>",
             count: 1);
     }
 
@@ -116,12 +119,4 @@ public sealed partial class SpaIndexDocument
 }
 
 /// <summary>Options for <see cref="SpaIndexDocument"/>.</summary>
-/// <param name="BuildTimeBasePath">
-/// The base path the frontend build embeds in its asset URLs (the app's
-/// VITE_BASE_PATH default, e.g. <c>/customers</c>).
-/// </param>
-/// <param name="DefaultTitle">
-/// The application title used when <c>App:Title</c> is not configured
-/// (e.g. <c>Customers</c>).
-/// </param>
 public sealed record SpaIndexDocumentOptions(string BuildTimeBasePath, string DefaultTitle);

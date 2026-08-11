@@ -1,12 +1,16 @@
+using Microsoft.Extensions.Options;
+
 using Vantigo.Communications.Database;
 using Vantigo.Communications.Endpoints;
+using Vantigo.Configuration;
 using Vantigo.Customers.Database;
 using Vantigo.Customers.Database.DevelopmentSeed;
 using Vantigo.Customers.Endpoints;
+using Vantigo.DataProtection.PostgreSql;
 using Vantigo.Energy.Database;
 using Vantigo.Energy.Endpoints;
 using Vantigo.Host;
-using Vantigo.Hosting;
+using Vantigo.Identity.Database;
 using Vantigo.Identity.Endpoints.Auth;
 using Vantigo.Identity.Services;
 using Vantigo.Products.Database;
@@ -27,33 +31,29 @@ if (commandLine.Command == VantigoCommand.NoArguments && args.Length == 0)
 
 var builder = WebApplication.CreateBuilder(commandLine.RemainingArguments);
 var configuresApi = commandLine.Command is VantigoCommand.Api or VantigoCommand.NoArguments;
-builder.Services.AddHostDatabases(builder.Configuration);
+builder.Services.AddVantigoConfiguration(builder.Configuration);
+builder.Services.AddHostDatabases();
+builder.Services.AddVantigoDataProtection(builder.Configuration, builder.Environment);
 
 if (configuresApi)
 {
     builder.AddVantigoTelemetry("vantigo");
     builder.Services.AddSingleton<BootstrapSecretProvider>();
-    InfrastructureConfiguration.AddConfiguredDataProtection(builder.Services, builder.Configuration, builder.Environment);
-    InfrastructureConfiguration.ConfigureForwardedHeaders(builder.Services, builder.Configuration);
+    builder.Services.AddVantigoForwardedHeaders();
     builder.Services.AddVantigoIdentity(builder.Environment);
-    var oidc = WorkforceOidcOptions.Load(builder.Configuration, builder.Environment);
-    builder.Services.AddWorkforceOidc(oidc, builder.Environment);
-    builder.Services.AddApplicationEmail(builder.Configuration);
+    builder.Services.AddWorkforceOidc(builder.Configuration, builder.Environment);
     builder.Services.AddVantigoAuthorization();
     builder.Services.AddVantigoAntiforgery(builder.Environment);
     builder.Services.AddVantigoAuthenticationRateLimiting();
+    builder.Services.AddApplicationEmail();
     builder.Services.AddSpaIndexDocument(buildTimeBasePath: "/", defaultTitle: "Vantigo");
-    AddEnabledModules(builder.Services, builder.Configuration);
 }
 else if (commandLine.Command == VantigoCommand.Seed)
 {
     builder.Services.AddVantigoIdentity(builder.Environment);
-    AddEnabledModules(builder.Services, builder.Configuration);
 }
-else if (commandLine.Command == VantigoCommand.Migrate)
-{
-    AddEnabledModules(builder.Services, builder.Configuration);
-}
+
+AddEnabledModules(builder.Services);
 
 var app = builder.Build();
 var testPreparation = app.Services.GetService<HostTestStartupPreparation>();
@@ -65,7 +65,8 @@ if (commandLine.Command == VantigoCommand.NoArguments && testPreparation is null
 
 if (commandLine.Command == VantigoCommand.Migrate)
 {
-    await MigrateEnabledModulesAsync(app.Services, builder.Configuration);
+    await app.Services.MigrateDataProtectionAsync();
+    await MigrateEnabledModulesAsync(app.Services);
     return;
 }
 
@@ -76,25 +77,27 @@ if (commandLine.Command == VantigoCommand.Seed)
         VantigoCommandLine.WriteUsageError("The seed command is only available in Development.");
         return;
     }
-    if (builder.Configuration.GetValue("Development:Seed:Enabled", true))
-        await SeedEnabledModulesAsync(app.Services, builder.Configuration);
+
+    if (app.Services.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value.Enabled)
+        await SeedEnabledModulesAsync(app.Services);
     return;
 }
 
 if (testPreparation is not null)
 {
-    if (testPreparation.ApplyMigrations) await MigrateEnabledModulesAsync(app.Services, builder.Configuration);
-    if (testPreparation.ApplyMigrations && builder.Configuration.GetValue("Modules:Communications:Enabled", true))
-        await app.Services.SeedCommunicationsAsync(builder.Configuration);
+    if (testPreparation.ApplyMigrations) await app.Services.MigrateDataProtectionAsync();
+    if (testPreparation.ApplyMigrations) await MigrateEnabledModulesAsync(app.Services);
+    if (testPreparation.ApplyMigrations && app.Services.GetRequiredService<IOptions<ModuleHostingOptions>>().Value.Communications.Enabled)
+        await app.Services.SeedCommunicationsAsync();
     if (testPreparation.SeedDevelopmentData && !app.Environment.IsDevelopment())
         throw new InvalidOperationException("Test seed preparation requires the Development environment.");
-    if (testPreparation.SeedDevelopmentData && builder.Configuration.GetValue("Development:Seed:Enabled", true))
-        await SeedEnabledModulesAsync(app.Services, builder.Configuration);
+    if (testPreparation.SeedDevelopmentData && app.Services.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value.Enabled)
+        await SeedEnabledModulesAsync(app.Services);
 }
 
 _ = app.Services.GetRequiredService<BootstrapSecretProvider>();
-var workforceOidc = app.Services.GetRequiredService<WorkforceOidcOptions>();
-_ = new AppPublicUrls(app.Configuration);
+_ = app.Services.GetRequiredService<WorkforceOidcOptions>();
+_ = app.Services.GetRequiredService<AppPublicUrls>();
 app.MapOpenApi().WithDocumentPerVersion();
 app.UseForwardedHeaders();
 app.UseAppBasePath();
@@ -105,45 +108,47 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
-app.MapVantigoIdentityEndpoints(workforceOidc);
-MapEnabledModules(app, builder.Configuration);
+app.MapVantigoIdentityEndpoints();
+MapEnabledModules(app);
 app.Map("/api", () => Results.NotFound());
 app.Map("/api/{**path}", () => Results.NotFound());
 app.MapSpaFallback();
 app.Run();
 
-static void AddEnabledModules(IServiceCollection services, IConfiguration configuration)
+static void AddEnabledModules(IServiceCollection services)
 {
-    if (configuration.GetValue("Modules:Customers:Enabled", true)) services.AddCustomersModule(configuration);
-    if (configuration.GetValue("Modules:Communications:Enabled", true)) services.AddCommunicationsModule(configuration);
-    if (configuration.GetValue("Modules:Products:Enabled", true)) services.AddProductsModule(configuration);
-    if (configuration.GetValue("Modules:Energy:Enabled", true)) services.AddEnergyModule(configuration);
+    services.AddCustomersModule();
+    services.AddCommunicationsModule();
+    services.AddProductsModule();
+    services.AddEnergyModule();
 }
 
-static async Task MigrateEnabledModulesAsync(IServiceProvider services, IConfiguration configuration)
+static async Task MigrateEnabledModulesAsync(IServiceProvider services)
 {
-    if (configuration.GetValue("Modules:Customers:Enabled", true)) await services.MigrateAsync();
-    if (configuration.GetValue("Modules:Communications:Enabled", true)) await services.MigrateCommunicationsAsync();
-    if (configuration.GetValue("Modules:Products:Enabled", true)) await services.MigrateProductsAsync();
-    if (configuration.GetValue("Modules:Energy:Enabled", true)) await services.MigrateEnergyAsync();
+    var modules = services.GetRequiredService<IOptions<ModuleHostingOptions>>().Value;
+    if (modules.Customers.Enabled) await services.MigrateAsync();
+    if (modules.Communications.Enabled) await services.MigrateCommunicationsAsync();
+    if (modules.Products.Enabled) await services.MigrateProductsAsync();
+    if (modules.Energy.Enabled) await services.MigrateEnergyAsync();
     await services.MigrateIdentityAsync();
 }
 
-static async Task SeedEnabledModulesAsync(IServiceProvider services, IConfiguration configuration)
+static async Task SeedEnabledModulesAsync(IServiceProvider services, CancellationToken cancellationToken = default)
 {
-    await IdentityDevelopmentSeeder.SeedAsync(services, configuration);
-    if (configuration.GetValue("Modules:Customers:Enabled", true)) await services.SeedAsync(configuration);
-    if (configuration.GetValue("Modules:Communications:Enabled", true)) await services.SeedCommunicationsAsync(configuration);
-    if (configuration.GetValue("Modules:Products:Enabled", true)) await services.SeedProductsAsync(configuration);
-    if (configuration.GetValue("Modules:Energy:Enabled", true)) await services.SeedEnergyAsync(configuration);
+    var modules = services.GetRequiredService<IOptions<ModuleHostingOptions>>().Value;
+    await IdentityDevelopmentSeeder.SeedAsync(services, cancellationToken);
+    if (modules.Customers.Enabled) await services.SeedAsync();
+    if (modules.Communications.Enabled) await services.SeedCommunicationsAsync();
+    if (modules.Products.Enabled) await services.SeedProductsAsync();
+    if (modules.Energy.Enabled) await services.SeedEnergyAsync(cancellationToken);
 }
 
-static void MapEnabledModules(WebApplication app, IConfiguration configuration)
+static void MapEnabledModules(WebApplication app)
 {
-    if (configuration.GetValue("Modules:Customers:Enabled", true)) app.MapCustomersModule();
-    if (configuration.GetValue("Modules:Communications:Enabled", true)) app.MapCommunicationsModule();
-    if (configuration.GetValue("Modules:Products:Enabled", true)) app.MapProductsModule();
-    if (configuration.GetValue("Modules:Energy:Enabled", true)) app.MapEnergyModule();
+    app.MapCustomersModule();
+    app.MapCommunicationsModule();
+    app.MapProductsModule();
+    app.MapEnergyModule();
 }
 
 public partial class Program

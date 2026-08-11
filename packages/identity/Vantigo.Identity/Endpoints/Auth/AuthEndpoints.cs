@@ -6,9 +6,11 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Npgsql;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
 
@@ -16,11 +18,10 @@ namespace Vantigo.Identity.Endpoints.Auth;
 
 public static class AuthEndpoints
 {
-    public static IEndpointRouteBuilder MapVantigoIdentityEndpoints(
-        this IEndpointRouteBuilder app,
-        WorkforceOidcOptions workforceOidc)
+    public static IEndpointRouteBuilder MapVantigoIdentityEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/identity").WithTags("Authentication");
+        var workforceOidc = app.ServiceProvider.GetRequiredService<WorkforceOidcOptions>();
 
         group.MapGet("/antiforgery", AntiforgeryToken)
             .WithSummary("Get the CSRF token for same-origin state-changing requests");
@@ -188,7 +189,7 @@ public static class AuthEndpoints
         HttpContext httpContext,
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
         CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string[]>();
@@ -241,14 +242,14 @@ public static class AuthEndpoints
             false,
             user.TwoFactorEnabled,
             roles.Contains(AuthRoles.Owner, StringComparer.Ordinal) &&
-                configuration.GetValue<bool>("Authentication:Owners:RequireMfa") && !user.TwoFactorEnabled));
+                options.Value.Owners.RequireMfa && !user.TwoFactorEnabled));
     }
 
     private static async Task<IResult> CompleteTwoFactorLogin(
         TwoFactorRequest? request,
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration,
+        IOptions<VantigoAuthenticationOptions> options,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request?.Code))
@@ -295,7 +296,7 @@ public static class AuthEndpoints
         var roles = await userManager.GetRolesAsync(user);
         var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), roles.ToArray());
         var requiresEnrollment = userManager.IsInRoleAsync(user, AuthRoles.Owner).Result &&
-            configuration.GetValue<bool>("Authentication:Owners:RequireMfa") && !user.TwoFactorEnabled;
+            options.Value.Owners.RequireMfa && !user.TwoFactorEnabled;
         return TypedResults.Ok(new AuthSuccessResponse(response, false, true, requiresEnrollment));
     }
 
@@ -308,7 +309,7 @@ public static class AuthEndpoints
     private static async Task<IResult> Session(
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IConfiguration configuration)
+        IOptions<VantigoAuthenticationOptions> options)
     {
         var user = await userManager.GetUserAsync(principal);
         if (user is null)
@@ -324,7 +325,7 @@ public static class AuthEndpoints
         return TypedResults.Ok(new AuthSessionResponse(
             new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), roles.ToArray()),
             user.TwoFactorEnabled,
-            owner && configuration.GetValue<bool>("Authentication:Owners:RequireMfa") && !user.TwoFactorEnabled,
+            owner && options.Value.Owners.RequireMfa && !user.TwoFactorEnabled,
             mfaAuthenticated));
     }
 

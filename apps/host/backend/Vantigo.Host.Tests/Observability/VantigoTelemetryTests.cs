@@ -2,9 +2,7 @@ using System.Reflection;
 
 using Microsoft.Extensions.Configuration;
 
-using Vantigo.Hosting;
-
-namespace Vantigo.Hosting.Tests;
+namespace Vantigo.Host.Tests.Observability;
 
 public class VantigoTelemetryTests
 {
@@ -29,7 +27,6 @@ public class VantigoTelemetryTests
     [Fact]
     public void ResolveServiceVersion_prefers_informational_version()
     {
-        // The test assembly carries an informational version (SDK default or GitVersion).
         var assembly = typeof(VantigoTelemetryTests).Assembly;
         var expected = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
 

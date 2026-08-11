@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 using Vantigo.Communications.Database.Communications;
 using Vantigo.Communications.Services;
+using Vantigo.Configuration;
 
 namespace Vantigo.Communications.Module.Tests.Services;
 
@@ -29,7 +31,9 @@ public sealed class EmailSenderTests
             ["Outbox:LeaseSeconds"] = "60",
         }).Build();
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
-        var provider = new SmtpDeliveryProvider(configuration, environment, new MailboxCredentialProtector(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider()));
+        var smtpOptions = Options.Create(configuration.GetSection("Smtp").Get<SmtpOptions>() ?? new());
+        var outboxOptions = Options.Create(configuration.GetSection("Outbox").Get<OutboxOptions>() ?? new());
+        var provider = new SmtpDeliveryProvider(smtpOptions, outboxOptions, environment, new MailboxCredentialProtector(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider()));
         var envelope = new EmailEnvelope(Guid.NewGuid(), "sender@example.test", null, "subject", "body", null, ["recipient@example.test"], [], []);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SendAsync(envelope, null, CancellationToken.None));

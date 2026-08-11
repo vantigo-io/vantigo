@@ -1,11 +1,15 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Vantigo.Communications.Database.Communications;
+using Vantigo.Configuration;
 
 namespace Vantigo.Communications.Services;
 
-public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender sender, IConfiguration configuration)
+public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender sender, IOptions<OutboxOptions> options)
 {
+    private readonly OutboxOptions outbox = options.Value;
+
     // Deliveries in a terminal or excluded state are never re-sent by a later
     // job for the same message (e.g. a "failed recipients only" resend).
     private static bool IsSendable(RecipientDelivery delivery) =>
@@ -20,8 +24,8 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
         await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
             var now = DateTimeOffset.UtcNow;
-            var leaseUntil = now.AddSeconds(configuration.GetValue("Outbox:LeaseSeconds", 60));
-            var maximumClaimAttempts = Math.Max(3, configuration.GetValue("Outbox:ClaimAttempts", 10));
+            var leaseUntil = now.AddSeconds(outbox.LeaseSeconds);
+            var maximumClaimAttempts = Math.Max(3, outbox.ClaimAttempts);
             for (var claimAttempt = 0; claimAttempt < maximumClaimAttempts && job is null; claimAttempt++)
             {
                 var candidate = await db.OutboxJobs.AsNoTracking()
@@ -172,7 +176,7 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
         db.ChangeTracker.Clear();
         var current = await db.OutboxJobs.SingleOrDefaultAsync(item => item.Id == jobId, cancellationToken);
         if (current is null || current.LeaseId != leaseId) return;
-        var maxAttempts = Math.Max(1, configuration.GetValue("Outbox:MaxAttempts", 8));
+        var maxAttempts = Math.Max(1, outbox.MaxAttempts);
         var terminal = current.Attempts >= maxAttempts;
         current.Status = terminal ? "failed" : "retry";
         current.LastError = error.Length > 4000 ? error[..4000] : error;
@@ -198,11 +202,13 @@ public sealed class OutboxJobProcessor(CommunicationsDbContext db, IEmailSender 
     }
 }
 
-public sealed class CommunicationsOutboxWorker(IServiceScopeFactory scopeFactory, ILogger<CommunicationsOutboxWorker> logger, IConfiguration configuration) : BackgroundService
+public sealed class CommunicationsOutboxWorker(IServiceScopeFactory scopeFactory, ILogger<CommunicationsOutboxWorker> logger, IOptions<OutboxOptions> options) : BackgroundService
 {
+    private readonly OutboxOptions outbox = options.Value;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var delay = TimeSpan.FromSeconds(Math.Max(1, configuration.GetValue("Outbox:PollSeconds", 5)));
+        var delay = TimeSpan.FromSeconds(Math.Max(1, outbox.PollSeconds));
         while (!stoppingToken.IsCancellationRequested)
         {
             try

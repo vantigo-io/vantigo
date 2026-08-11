@@ -19,9 +19,9 @@ public sealed class ModuleArchitectureTests
     private static readonly IReadOnlySet<string> AllowedVantigoDependencies =
         new HashSet<string>(StringComparer.Ordinal)
         {
+            "Vantigo.Configuration",
             "Vantigo.Contracts",
             "Vantigo.Identity",
-            "Vantigo.Hosting",
         };
 
     public static IEnumerable<object[]> ModulePairs =>

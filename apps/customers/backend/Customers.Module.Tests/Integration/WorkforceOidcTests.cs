@@ -6,9 +6,16 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+using Vantigo.Configuration;
 using Vantigo.Identity.Endpoints.Auth;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
+
+public static class WorkforceOidcOptionsTestLoader
+{
+    public static WorkforceOidcOptions Load(IConfiguration configuration, IHostEnvironment environment) =>
+        WorkforceOidcOptionsExtensions.Load(configuration, environment);
+}
 
 public sealed class WorkforceOidcOptionsTests
 {
@@ -23,7 +30,7 @@ public sealed class WorkforceOidcOptionsTests
             })
             .Build();
 
-        var options = WorkforceOidcOptions.Load(configuration, new HostEnvironment
+        var options = WorkforceOidcOptionsTestLoader.Load(configuration, new HostEnvironment
         {
             EnvironmentName = Environments.Production,
         });
@@ -44,7 +51,7 @@ public sealed class WorkforceOidcOptionsTests
             })
             .Build();
 
-        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptions.Load(
+        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptionsTestLoader.Load(
             configuration,
             new HostEnvironment { EnvironmentName = Environments.Production }));
 
@@ -63,7 +70,7 @@ public sealed class WorkforceOidcOptionsTests
             })
             .Build();
 
-        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptions.Load(
+        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptionsTestLoader.Load(
             configuration,
             new HostEnvironment { EnvironmentName = Environments.Production }));
 
@@ -86,7 +93,7 @@ public sealed class WorkforceOidcOptionsTests
             })
             .Build();
 
-        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptions.Load(
+        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptionsTestLoader.Load(
             configuration,
             new HostEnvironment { EnvironmentName = Environments.Production }));
 
@@ -106,7 +113,7 @@ public sealed class WorkforceOidcOptionsTests
             })
             .Build();
 
-        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptions.Load(
+        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptionsTestLoader.Load(
             configuration,
             new HostEnvironment { EnvironmentName = Environments.Production }));
 
