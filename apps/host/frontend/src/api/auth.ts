@@ -36,6 +36,24 @@ export const signIn = async (email: string, password: string) => {
   await ensureCsrfToken();
   return session;
 };
+export const beginPasskeyLogin = (email: string) =>
+  request<{ ceremonyId: string; options: unknown }>("/api/v1/identity/passkeys/login/begin", {
+    method: "POST",
+    handleUnauthorized: false,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+export const completePasskeyLogin = async (ceremonyId: string, credentialJson: string) => {
+  const session = await request<Session>("/api/v1/identity/passkeys/login/complete", {
+    method: "POST",
+    handleUnauthorized: false,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ceremonyId, credentialJson }),
+  });
+  clearCsrfToken();
+  await ensureCsrfToken();
+  return session;
+};
 export const signOut = async () => {
   try {
     return await request<{ signedOut: true }>("/api/v1/identity/logout", { method: "POST" });

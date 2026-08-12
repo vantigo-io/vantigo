@@ -53,13 +53,21 @@ internal static class AuthAccountEndpoints
         // These are self-service endpoints. Keep the established URL contract,
         // but do not inherit the Owner group policy used by the surrounding
         // account-management endpoints.
-        var selfMfa = app.MapGroup("/api/v1/identity/owner/mfa").RequireAuthorization();
+        var selfMfa = app.MapGroup("/api/v1/identity/owner/mfa").RequireAuthorization("ActiveAccount");
         selfMfa.MapGet("", MfaStatus).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         selfMfa.MapGet("/setup", MfaSetup).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         selfMfa.MapPost("/setup", InitializeMfa).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         selfMfa.MapPost("/enable", EnableMfa).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         selfMfa.MapPost("/disable", DisableMfa).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         selfMfa.MapPost("/recovery-codes", RegenerateRecoveryCodes).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
+
+        var accountMfa = app.MapGroup("/api/v1/identity/account/mfa").RequireAuthorization("ActiveAccount");
+        accountMfa.MapGet("", MfaStatus).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
+        accountMfa.MapGet("/setup", MfaSetup).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
+        accountMfa.MapPost("/setup", InitializeMfa).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
+        accountMfa.MapPost("/enable", EnableMfa).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
+        accountMfa.MapPost("/disable", DisableMfa).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
+        accountMfa.MapPost("/recovery-codes", RegenerateRecoveryCodes).RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         ownerManagement.MapPost("/mfa/reset/{userId:guid}", ResetOwnerMfa)
 
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
@@ -124,28 +132,29 @@ internal static class AuthAccountEndpoints
             return Error(StatusCodes.Status401Unauthorized, "unauthenticated", "Authentication is required.");
         }
 
-        var key = await userManager.GetAuthenticatorKeyAsync(user);
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            return TypedResults.Ok(new MfaSetupResponse(null, null, false));
-        }
-
-        var issuer = Uri.EscapeDataString(options.Value.Owners.MfaIssuer);
-        var account = Uri.EscapeDataString(user.Email ?? user.UserName ?? user.Id.ToString());
-        var uri = $"otpauth://totp/{issuer}:{account}?secret={key}&issuer={issuer}&digits=6";
-        return TypedResults.Ok(new MfaSetupResponse(key, uri, true));
+        var initialized = !string.IsNullOrWhiteSpace(await userManager.GetAuthenticatorKeyAsync(user));
+        // The setup secret is only returned by the authenticated POST that
+        // initializes enrollment. Never replay it from a GET endpoint.
+        return TypedResults.Ok(new MfaSetupResponse(null, null, initialized));
     }
 
     private static async Task<IResult> InitializeMfa(
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
-        IOptions<VantigoAuthenticationOptions> options)
+        IOptions<VantigoAuthenticationOptions> options,
+        MfaCodeRequest? request)
     {
         var user = await userManager.GetUserAsync(principal);
         if (user is null)
         {
             return Error(StatusCodes.Status401Unauthorized, "unauthenticated", "Authentication is required.");
+        }
+
+        var reauthentication = await RequireLocalPassword(user, request?.Password, userManager);
+        if (reauthentication is not null)
+        {
+            return reauthentication;
         }
 
         var result = await userManager.ResetAuthenticatorKeyAsync(user);
@@ -166,7 +175,8 @@ internal static class AuthAccountEndpoints
         await signInManager.SignInWithClaimsAsync(
             user,
             new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = false },
-            principal.Claims.Where(claim => claim.Type is "amr" or ClaimTypes.AuthenticationMethod).ToArray());
+            principal.Claims.Where(claim => claim.Type is "amr" or ClaimTypes.AuthenticationMethod)
+                .Where(claim => !IsMfaClaim(claim)).ToArray());
 
         var issuer = Uri.EscapeDataString(options.Value.Owners.MfaIssuer);
         var account = Uri.EscapeDataString(user.Email ?? user.UserName ?? user.Id.ToString());
@@ -187,6 +197,12 @@ internal static class AuthAccountEndpoints
             return Error(StatusCodes.Status401Unauthorized, "unauthenticated", "Authentication is required.");
         }
 
+        var reauthentication = await RequireLocalPassword(user, request?.Password, userManager);
+        if (reauthentication is not null)
+        {
+            return reauthentication;
+        }
+
         if (string.IsNullOrWhiteSpace(request?.Code) ||
             !await userManager.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, request.Code.Replace(" ", string.Empty, StringComparison.Ordinal)))
         {
@@ -200,13 +216,13 @@ internal static class AuthAccountEndpoints
         }
 
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
-        var existingClaims = await userManager.GetClaimsAsync(user);
-        if (!existingClaims.Any(IsMfaClaim))
+        var historicalMfaClaims = (await userManager.GetClaimsAsync(user)).Where(IsMfaClaim).ToArray();
+        if (historicalMfaClaims.Length > 0)
         {
-            var claimResult = await userManager.AddClaimAsync(user, new Claim("amr", "mfa"));
-            if (!claimResult.Succeeded)
+            var cleanup = await userManager.RemoveClaimsAsync(user, historicalMfaClaims);
+            if (!cleanup.Succeeded)
             {
-                return IdentityFailure(claimResult, "MFA could not be enabled.");
+                return IdentityFailure(cleanup, "MFA could not be enabled.");
             }
         }
 
@@ -244,10 +260,10 @@ internal static class AuthAccountEndpoints
                 "MFA cannot be disabled while privileged management access requires it.");
         }
 
-        if (string.IsNullOrWhiteSpace(request?.Password) ||
-            !await userManager.CheckPasswordAsync(user, request.Password))
+        var reauthentication = await RequireLocalPassword(user, request?.Password, userManager);
+        if (reauthentication is not null)
         {
-            return Error(StatusCodes.Status401Unauthorized, "reauthentication_required", "Current password is required.");
+            return reauthentication;
         }
 
         var result = await userManager.SetTwoFactorEnabledAsync(user, false);
@@ -288,6 +304,12 @@ internal static class AuthAccountEndpoints
         if (user is null)
         {
             return Error(StatusCodes.Status401Unauthorized, "unauthenticated", "Authentication is required.");
+        }
+
+        var reauthentication = await RequireLocalPassword(user, request?.Password, userManager);
+        if (reauthentication is not null)
+        {
+            return reauthentication;
         }
 
         if (!user.TwoFactorEnabled || string.IsNullOrWhiteSpace(request?.Code) ||
@@ -363,6 +385,22 @@ internal static class AuthAccountEndpoints
     private static bool IsMfaClaim(Claim claim) =>
         (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
         string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<IResult?> RequireLocalPassword(
+        ApplicationUser user,
+        string? password,
+        UserManager<ApplicationUser> userManager)
+    {
+        if (user.PasswordHash is null)
+        {
+            return Error(StatusCodes.Status409Conflict, "local_password_unavailable",
+                "This OIDC-only account does not have a local password.");
+        }
+
+        return string.IsNullOrEmpty(password) || !await userManager.CheckPasswordAsync(user, password)
+            ? Error(StatusCodes.Status400BadRequest, "reauthentication_required", "The current password is invalid.")
+            : null;
+    }
 
     private static async Task<IResult> ListUsers(
         AccountsDbContext dbContext,

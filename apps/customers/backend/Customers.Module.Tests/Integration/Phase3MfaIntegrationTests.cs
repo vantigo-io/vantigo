@@ -24,7 +24,7 @@ public sealed class Phase3MfaIntegrationTests
         var initialSetup = await client.GetFromJsonAsync<MfaSetupDto>("/api/v1/identity/owner/mfa/setup");
         Assert.False(initialSetup!.Initialized);
 
-        var setup = await PostJson(client, "/api/v1/identity/owner/mfa/setup", new { });
+        var setup = await PostJson(client, "/api/v1/identity/owner/mfa/setup", new { password = "MfaOwnerPassword123" });
         Assert.True(setup.StatusCode == HttpStatusCode.OK,
             $"MFA setup failed: {setup.StatusCode} {await setup.Content.ReadAsStringAsync()}");
         var setupDto = await setup.Content.ReadFromJsonAsync<MfaSetupDto>();
@@ -33,7 +33,7 @@ public sealed class Phase3MfaIntegrationTests
 
         // ResetAuthenticatorKeyAsync changes the security stamp. The setup response
         // must have replaced the cookie, so immediate code verification succeeds.
-        var enable = await PostJson(client, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto.SharedKey!) });
+        var enable = await PostJson(client, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto.SharedKey!), password = "MfaOwnerPassword123" });
         Assert.Equal(HttpStatusCode.OK, enable.StatusCode);
         var enabled = await enable.Content.ReadFromJsonAsync<MfaEnableDto>();
         Assert.True(enabled!.TwoFactorEnabled);
@@ -64,9 +64,9 @@ public sealed class Phase3MfaIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/v1/identity/owner/invitations")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/v1/identity/owner/mfa")).StatusCode);
 
-        var setup = await PostJson(client, "/api/v1/identity/owner/mfa/setup", new { });
+        var setup = await PostJson(client, "/api/v1/identity/owner/mfa/setup", new { password = "MfaOwnerPassword123" });
         var setupDto = await setup.Content.ReadFromJsonAsync<MfaSetupDto>();
-        var enable = await PostJson(client, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto!.SharedKey!) });
+        var enable = await PostJson(client, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto!.SharedKey!), password = "MfaOwnerPassword123" });
         var recovery = (await enable.Content.ReadFromJsonAsync<MfaEnableDto>())!.RecoveryCodes[0];
 
         await PostJson(client, "/api/v1/identity/logout", null);
@@ -85,9 +85,9 @@ public sealed class Phase3MfaIntegrationTests
         await using var factory = new FreshCustomersApiFactory { RequireOwnerMfa = true };
         await factory.StartAsync();
         using var client = await BootstrapAndLogin(factory);
-        var setup = await PostJson(client, "/api/v1/identity/owner/mfa/setup", new { });
+        var setup = await PostJson(client, "/api/v1/identity/owner/mfa/setup", new { password = "MfaOwnerPassword123" });
         var setupDto = await setup.Content.ReadFromJsonAsync<MfaSetupDto>();
-        Assert.Equal(HttpStatusCode.OK, (await PostJson(client, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto!.SharedKey!) })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await PostJson(client, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto!.SharedKey!), password = "MfaOwnerPassword123" })).StatusCode);
 
         await PostJson(client, "/api/v1/identity/logout", null);
         Assert.True((await Login(client)).RequiresTwoFactor);
@@ -106,10 +106,10 @@ public sealed class Phase3MfaIntegrationTests
         await using var factory = new FreshCustomersApiFactory { RequireOwnerMfa = true };
         await factory.StartAsync();
         using var mfaOwner = await BootstrapAndLogin(factory);
-        var setup = await PostJson(mfaOwner, "/api/v1/identity/owner/mfa/setup", new { });
+        var setup = await PostJson(mfaOwner, "/api/v1/identity/owner/mfa/setup", new { password = "MfaOwnerPassword123" });
         var setupDto = await setup.Content.ReadFromJsonAsync<MfaSetupDto>();
         Assert.Equal(HttpStatusCode.OK,
-            (await PostJson(mfaOwner, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto!.SharedKey!) })).StatusCode);
+            (await PostJson(mfaOwner, "/api/v1/identity/owner/mfa/enable", new { code = Totp(setupDto!.SharedKey!), password = "MfaOwnerPassword123" })).StatusCode);
 
         var targetEmail = $"target-owner-{Guid.NewGuid():N}@integration.test";
         var targetPassword = "TargetOwnerPassword123";

@@ -238,11 +238,9 @@ const RootLayout = () => {
         ).filter((app) => hasPermissions(permissions, app.requiredPermissions))}
         user={session.user}
         userMenuItems={
-          isOwner && (
-            <Menu.Item component={Link} to="/settings" leftSection={<IconSettings size={14} />}>
-              Settings
-            </Menu.Item>
-          )
+          <Menu.Item component={Link} to="/settings" leftSection={<IconSettings size={14} />}>
+            Settings
+          </Menu.Item>
         }
         onSignOut={() => logout.mutate()}
         signOutDisabled={logout.isPending}

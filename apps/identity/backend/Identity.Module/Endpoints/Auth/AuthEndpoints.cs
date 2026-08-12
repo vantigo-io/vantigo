@@ -69,6 +69,7 @@ public static class AuthEndpoints
             .RequireAuthorization();
 
         app.MapAccountAuthEndpoints();
+        app.MapAccountSettingsEndpoints();
         AuthorizationManagementEndpoints.MapAuthorizationManagementEndpoints(app);
 
         return app;
@@ -244,6 +245,12 @@ public static class AuthEndpoints
             return TypedResults.Ok(new AuthSuccessResponse(null, true, true, false));
         }
 
+        var cleanupResult = await RemoveHistoricalMfaClaims(user, userManager);
+        if (!cleanupResult.Succeeded)
+        {
+            return IdentityFailure(cleanupResult, "The sign-in could not be completed.");
+        }
+
         await signInManager.SignInAsync(user, isPersistent: false);
         var roles = await userManager.GetRolesAsync(user);
         var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles));
@@ -297,15 +304,10 @@ public static class AuthEndpoints
                 result.IsLockedOut ? "The account is temporarily locked. Please try again later." : "The two-factor code is invalid.");
         }
 
-        var existingClaims = await userManager.GetClaimsAsync(user);
-        if (!existingClaims.Any(claim => claim.Type == "amr" &&
-            string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase)))
+        var cleanupResult = await RemoveHistoricalMfaClaims(user, userManager);
+        if (!cleanupResult.Succeeded)
         {
-            var claimResult = await userManager.AddClaimAsync(user, new Claim("amr", "mfa"));
-            if (!claimResult.Succeeded)
-            {
-                return IdentityFailure(claimResult, "The two-factor sign-in could not be completed.");
-            }
+            return IdentityFailure(cleanupResult, "The two-factor sign-in could not be completed.");
         }
 
         await signInManager.SignOutAsync();
@@ -425,6 +427,21 @@ public static class AuthEndpoints
 
     private static IEnumerable<Claim> MfaClaims() =>
         [new Claim("amr", "mfa"), new Claim(ClaimTypes.AuthenticationMethod, "mfa")];
+
+    private static async Task<IdentityResult> RemoveHistoricalMfaClaims(
+        ApplicationUser user,
+        UserManager<ApplicationUser> userManager)
+    {
+        var claims = (await userManager.GetClaimsAsync(user)).Where(claim =>
+            (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
+            string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (claims.Length > 0)
+        {
+            return await userManager.RemoveClaimsAsync(user, claims);
+        }
+
+        return IdentityResult.Success;
+    }
 
     private static IResult Error(
         int statusCode,

@@ -36,6 +36,29 @@ public static class AuthServiceCollectionExtensions
             })
             .AddEntityFrameworkStores<AccountsDbContext>()
             .AddDefaultTokenProviders();
+        services.AddOptions<IdentityPasskeyOptions>().Configure<IOptions<AppPublicOriginOptions>>((options, originOptions) =>
+        {
+            // Never derive RP identity from Host: forwarded/misconfigured Host
+            // headers must not be able to retarget a ceremony.
+            var trustedOrigin = originOptions.Value.Normalized;
+            if (trustedOrigin is null)
+            {
+                if (!environment.IsDevelopment())
+                {
+                    throw new InvalidOperationException(
+                        $"{AppPublicOriginOptions.ConfigurationKey} must be configured before passkey sign-in can be used.");
+                }
+
+                trustedOrigin = "http://localhost";
+            }
+            options.ServerDomain = new Uri(trustedOrigin).Host;
+            options.UserVerificationRequirement = "required";
+            options.ResidentKeyRequirement = "required";
+            options.AuthenticatorTimeout = TimeSpan.FromMinutes(5);
+            options.ValidateOrigin = context => new ValueTask<bool>(
+                string.Equals(context.Origin, trustedOrigin, StringComparison.OrdinalIgnoreCase));
+        });
+        services.AddScoped<IPasskeyHandler<ApplicationUser>, PasskeyHandler<ApplicationUser>>();
         services.Configure<IdentityOptions>(options =>
         {
             options.Tokens.AuthenticatorTokenProvider = TokenOptions.DefaultAuthenticatorProvider;
@@ -47,6 +70,27 @@ public static class AuthServiceCollectionExtensions
         services.Configure<SecurityStampValidatorOptions>(options =>
         {
             options.ValidationInterval = TimeSpan.Zero;
+            options.OnRefreshingPrincipal = context =>
+            {
+                var currentMfa = context.CurrentPrincipal?.Claims.Where(IsMfaClaim).ToArray() ?? [];
+                if (currentMfa.Length == 0)
+                {
+                    return Task.CompletedTask;
+                }
+
+                var identity = context.NewPrincipal?.Identity as ClaimsIdentity;
+                if (identity is null)
+                {
+                    return Task.CompletedTask;
+                }
+
+                foreach (var claim in currentMfa)
+                {
+                    identity.AddClaim(claim);
+                }
+
+                return Task.CompletedTask;
+            };
         });
         services.ConfigureApplicationCookie(options =>
         {
@@ -185,6 +229,7 @@ public static class AuthServiceCollectionExtensions
     {
         services.AddAuthorization(options =>
         {
+            options.AddPolicy("ActiveAccount", policy => policy.AddRequirements(new ActiveAccountRequirement()));
             options.AddPolicy(AuthPolicies.Owner, policy => policy.RequireRole(AuthRoles.Owner)
                 .AddRequirements(new ActiveAccountRequirement()));
             options.AddPolicy(AuthPolicies.OwnerManagement, policy =>
@@ -253,6 +298,10 @@ public static class AuthServiceCollectionExtensions
             };
         }
     }
+
+    private static bool IsMfaClaim(Claim claim) =>
+        (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
+        string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
 
     public static IServiceCollection AddVantigoAntiforgery(
         this IServiceCollection services,

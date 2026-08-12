@@ -10,6 +10,7 @@ internal static class AuthRateLimitPolicies
     internal const string InvitationAcceptance = "auth-invitation-acceptance";
     internal const string PasswordRecovery = "auth-password-recovery";
     internal const string Mfa = "auth-mfa";
+    internal const string PasskeyLogin = "auth-passkey-login";
     internal const string UserManagement = "auth-user-management";
 }
 

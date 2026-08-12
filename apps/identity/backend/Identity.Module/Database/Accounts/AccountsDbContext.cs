@@ -7,7 +7,9 @@ using Vantigo.Identity.Database.Accounts.Configurations;
 namespace Vantigo.Identity.Database.Accounts;
 
 public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> options)
-    : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
+    : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid,
+        IdentityUserClaim<Guid>, IdentityUserRole<Guid>, IdentityUserLogin<Guid>,
+        IdentityRoleClaim<Guid>, IdentityUserToken<Guid>, IdentityUserPasskey<Guid>>(options)
 {
     public DbSet<BootstrapState> BootstrapStates => Set<BootstrapState>();
 
@@ -24,6 +26,10 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
     public DbSet<AuthorizationDelegationRole> AuthorizationDelegationRoles => Set<AuthorizationDelegationRole>();
 
     public DbSet<AuthorizationAuditEvent> AuthorizationAuditEvents => Set<AuthorizationAuditEvent>();
+
+    public DbSet<PasskeyCeremony> PasskeyCeremonies => Set<PasskeyCeremony>();
+
+    public DbSet<ProfileAvatar> ProfileAvatars => Set<ProfileAvatar>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,5 +51,8 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
         modelBuilder.ApplyConfiguration(new AuthorizationDelegationPermissionEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AuthorizationDelegationRoleEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AuthorizationAuditEventEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new IdentityUserPasskeyEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new PasskeyCeremonyEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new ProfileAvatarEntityTypeConfiguration());
     }
 }

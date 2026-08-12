@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Vantigo.Identity.Database.Accounts;
@@ -11,9 +12,11 @@ using Vantigo.Identity.Database.Accounts;
 namespace Vantigo.Identity.Database.Accounts.Migrations
 {
     [DbContext(typeof(AccountsDbContext))]
-    partial class AccountsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260812134115_AccountSettingsAndPasskeys")]
+    partial class AccountSettingsAndPasskeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -220,6 +223,15 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer")
                         .HasColumnName("access_failed_count");
+
+                    b.Property<string>("AvatarContentType")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("avatar_content_type");
+
+                    b.Property<byte[]>("AvatarData")
+                        .HasColumnType("bytea")
+                        .HasColumnName("avatar_data");
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
@@ -550,11 +562,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("ClientAddress")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("client_address");
-
                     b.Property<bool>("Consumed")
                         .HasColumnType("boolean")
                         .HasColumnName("consumed");
@@ -580,7 +587,7 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("character varying(20000)")
                         .HasColumnName("state");
 
-                    b.Property<Guid?>("UserId")
+                    b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
@@ -593,37 +600,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasDatabaseName("ix_passkey_ceremonies_expiration");
 
                     b.ToTable("passkey_ceremonies", "identity");
-                });
-
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ProfileAvatar", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("content_type");
-
-                    b.Property<byte[]>("Data")
-                        .IsRequired()
-                        .HasColumnType("bytea")
-                        .HasColumnName("data");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long>("Version")
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("UserId")
-                        .HasName("pk_profile_avatars");
-
-                    b.ToTable("profile_avatars", "identity");
                 });
 
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.RoleMetadata", b =>
@@ -808,17 +784,8 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_passkey_ceremonies_users_user_id");
-                });
-
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ProfileAvatar", b =>
-                {
-                    b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
-                        .WithOne()
-                        .HasForeignKey("Vantigo.Identity.Database.Accounts.ProfileAvatar", "UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_profile_avatars_users_user_id");
+                        .HasConstraintName("fk_passkey_ceremonies_users_user_id");
                 });
 
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.RoleMetadata", b =>

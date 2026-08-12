@@ -22,4 +22,11 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     /// transient failed-sign-in lockout state.
     /// </summary>
     public bool IsDisabled { get; set; }
+
+    /// <summary>
+    /// The user's preferred UI language. Null means Automatic; this slice only
+    /// supports English explicitly.
+    /// </summary>
+    public string? PreferredLanguage { get; set; }
+
 }

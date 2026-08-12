@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
 using Microsoft.EntityFrameworkCore;
@@ -185,6 +186,106 @@ public sealed class IdentityAccountEndpointsTests(IdentityApiFactory factory)
                 (!item.user.LockoutEnd.HasValue || item.user.LockoutEnd <= DateTimeOffset.UtcNow));
         Assert.Equal(1, activeOwners);
     }
+
+    [Fact]
+    public async Task AccountProfile_IsolatedAndRejectsInvalidLanguageWithoutMutation()
+    {
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        var other = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        using var client = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+
+        var before = await client.GetFromJsonAsync<AccountResponse>("/api/v1/identity/account");
+        var invalid = await client.PutAsJsonAsync("/api/v1/identity/account/profile", new
+        {
+            displayName = "Changed",
+            preferredLanguage = "fr",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("invalid_request", (await invalid.Content.ReadFromJsonAsync<ErrorResponse>())!.Error.Code);
+        var after = await client.GetFromJsonAsync<AccountResponse>("/api/v1/identity/account");
+        Assert.Equal(before!.DisplayName, after!.DisplayName);
+
+        var foreign = await client.GetAsync($"/api/v1/identity/account/{other.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+    }
+
+    [Fact]
+    public async Task PasswordChange_InvalidPasswordDoesNotMutateAndReturnsValidation()
+    {
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        using var client = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+
+        var invalid = await client.PostAsJsonAsync("/api/v1/identity/account/password", new
+        {
+            currentPassword = "wrong-current-password",
+            newPassword = "NewIntegrationPassword123",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("reauthentication_required", (await invalid.Content.ReadFromJsonAsync<ErrorResponse>())!.Error.Code);
+
+        using var login = await factory.CreateAntiforgeryClientAsync();
+        var stillWorks = await login.PostAsJsonAsync("/api/v1/identity/login", new
+        {
+            email = credentials.Email,
+            password = credentials.Password,
+        });
+        Assert.Equal(HttpStatusCode.OK, stillWorks.StatusCode);
+    }
+
+    [Fact]
+    public async Task Avatar_IsPrivateValidatedAndDeletedWithoutCrossUserAccess()
+    {
+        var first = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        var second = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        using var firstClient = await factory.CreateAuthenticatedClientAsync(first.Email, first.Password);
+        using var secondClient = await factory.CreateAuthenticatedClientAsync(second.Email, second.Password);
+
+        using var upload = new MultipartFormDataContent();
+        var image = new ByteArrayContent(Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+        image.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        upload.Add(image, "avatar", "avatar.png");
+        var uploaded = await firstClient.PutAsync("/api/v1/identity/account/avatar", upload);
+        Assert.Equal(HttpStatusCode.OK, uploaded.StatusCode);
+
+        var profile = await firstClient.GetFromJsonAsync<AccountResponse>("/api/v1/identity/account");
+        Assert.Equal("/api/v1/identity/account/avatar", profile!.AvatarUrl);
+        var avatar = await firstClient.GetAsync(profile.AvatarUrl);
+        Assert.Equal(HttpStatusCode.OK, avatar.StatusCode);
+        Assert.Contains("no-store", avatar.Headers.CacheControl?.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("nosniff", avatar.Headers.GetValues("X-Content-Type-Options").Single());
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await secondClient.GetAsync("/api/v1/identity/account/avatar")).StatusCode);
+
+        using var malformed = new MultipartFormDataContent();
+        var malformedImage = new ByteArrayContent("not-an-image"u8.ToArray());
+        malformedImage.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        malformed.Add(malformedImage, "avatar", "avatar.png");
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await firstClient.PutAsync("/api/v1/identity/account/avatar", malformed)).StatusCode);
+
+        using var svg = new MultipartFormDataContent();
+        var svgImage = new ByteArrayContent("<svg xmlns='http://www.w3.org/2000/svg'></svg>"u8.ToArray());
+        svgImage.Headers.ContentType = new MediaTypeHeaderValue("image/svg+xml");
+        svg.Add(svgImage, "avatar", "avatar.svg");
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await firstClient.PutAsync("/api/v1/identity/account/avatar", svg)).StatusCode);
+
+        using var oversized = new MultipartFormDataContent();
+        var oversizedImage = new ByteArrayContent(new byte[(5 * 1024 * 1024) + 1]);
+        oversizedImage.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        oversized.Add(oversizedImage, "avatar", "avatar.png");
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await firstClient.PutAsync("/api/v1/identity/account/avatar", oversized)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await firstClient.DeleteAsync("/api/v1/identity/account/avatar")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await firstClient.GetAsync("/api/v1/identity/account/avatar")).StatusCode);
+    }
+
+    private sealed record AccountResponse(Guid Id, string DisplayName, string? Email, string? PreferredLanguage, string? AvatarUrl);
 
     private sealed record ErrorResponse(Error Error);
     private sealed record Error(string Code, string Message, Dictionary<string, string[]>? Fields = null);

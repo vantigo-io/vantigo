@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Vantigo.Identity.Database.Accounts;
@@ -11,9 +12,11 @@ using Vantigo.Identity.Database.Accounts;
 namespace Vantigo.Identity.Database.Accounts.Migrations
 {
     [DbContext(typeof(AccountsDbContext))]
-    partial class AccountsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260812140455_ProfileAvatarsAndMfaSecurity")]
+    partial class ProfileAvatarsAndMfaSecurity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -550,11 +553,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("ClientAddress")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("client_address");
-
                     b.Property<bool>("Consumed")
                         .HasColumnType("boolean")
                         .HasColumnName("consumed");
@@ -580,7 +578,7 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("character varying(20000)")
                         .HasColumnName("state");
 
-                    b.Property<Guid?>("UserId")
+                    b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
@@ -808,6 +806,7 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
                         .HasConstraintName("fk_passkey_ceremonies_users_user_id");
                 });
 

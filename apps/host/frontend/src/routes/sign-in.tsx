@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { appConfig, appUrl, SupportContactLine } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
+import { loginWithPasskey } from "../api/account";
 import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signIn } from "../api/auth";
 
@@ -43,6 +44,15 @@ const SignInPage = () => {
       }
     },
   });
+  const passkeyLogin = useMutation({
+    mutationFn: () => loginWithPasskey(form.values.email.trim()),
+    onSuccess: async (data) => {
+      queryClient.setQueryData(sessionQueryKey, data);
+      await queryClient.refetchQueries({ queryKey: sessionQueryKey });
+      if (data.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
+      else void navigate({ to: "/" });
+    },
+  });
   const verify = useMutation({
     mutationFn: () => completeTwoFactor(code),
     onSuccess: (data) => {
@@ -60,9 +70,9 @@ const SignInPage = () => {
             <Text c="dimmed">
               {mfa ? "Enter your authenticator or recovery code." : `Sign in to continue to ${appConfig().title}.`}
             </Text>
-            {(login.error || verify.error) && (
+            {(login.error || verify.error || passkeyLogin.error) && (
               <Alert icon={<IconAlertCircle size={18} />} color="red">
-                {(login.error || verify.error)?.message}
+                {(login.error || verify.error || passkeyLogin.error)?.message}
               </Alert>
             )}
             {mfa ? (
@@ -90,6 +100,16 @@ const SignInPage = () => {
                   <PasswordInput label="Password" autoComplete="current-password" {...form.getInputProps("password")} />
                   <Button type="submit" fullWidth loading={login.isPending}>
                     Sign in
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="default"
+                    fullWidth
+                    loading={passkeyLogin.isPending}
+                    disabled={!form.values.email.trim()}
+                    onClick={() => passkeyLogin.mutate()}
+                  >
+                    Sign in with a passkey
                   </Button>
                   <Anchor component="a" href={appUrl("/forgot-password")} size="sm">
                     Forgot your password?
