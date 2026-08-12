@@ -1,6 +1,10 @@
+using System.Security.Claims;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
+using Vantigo.Customers.Authorization;
 using Vantigo.Customers.Database.Customers;
 using Vantigo.Customers.Domain.Customers.Common;
 using Vantigo.Customers.Domain.Customers.ValueObjects;
@@ -16,42 +20,26 @@ namespace Vantigo.Customers.Endpoints.Customers;
 /// </summary>
 internal static class UpdateCustomerEndpoint
 {
-    internal static async Task<Results<Ok<CustomerResponse>, NotFound, ValidationProblem>> Handler(
+    internal static async Task<IResult> Handler(
         int id,
         Request request,
+        ClaimsPrincipal principal,
+        IAuthorizationService authorization,
         CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
     {
         var errors = new Dictionary<string, string[]>();
 
+        if (request.Identity is not null && !await CustomerAuthorization.HasPermissionAsync(
+                authorization, principal, CustomerPermissions.LegalIdentityManage))
+        {
+            return TypedResults.Forbid();
+        }
+
         if (!FriendlyName.TryCreate(request.Name, out var name, out var nameError))
         {
             errors["name"] = [nameError!];
-        }
-
-        LegalIdentity? customerIdentity = null;
-
-        if (request.Identity is { } identity)
-        {
-            if (LegalIdentity.TryCreate(
-                    identity.Country,
-                    identity.Type,
-                    identity.Id,
-                    identity.Name,
-                    identity.Source,
-                    out var legalIdentity,
-                    out var identityErrors))
-            {
-                customerIdentity = legalIdentity;
-            }
-            else
-            {
-                foreach (var (field, fieldErrors) in identityErrors)
-                {
-                    errors[$"identity.{field}"] = fieldErrors;
-                }
-            }
         }
 
         if (errors.Count > 0)
@@ -67,6 +55,24 @@ internal static class UpdateCustomerEndpoint
             return TypedResults.NotFound();
         }
 
+        LegalIdentity? customerIdentity = customer.Identity;
+        if (request.Identity is { } identity)
+        {
+            if (LegalIdentity.TryCreate(identity.Country, identity.Type, identity.Id, identity.Name, identity.Source,
+                    out var parsedIdentity, out var identityErrors))
+            {
+                customerIdentity = parsedIdentity;
+            }
+            else
+            {
+                foreach (var (field, fieldErrors) in identityErrors)
+                {
+                    errors[$"identity.{field}"] = fieldErrors;
+                }
+                return TypedResults.ValidationProblem(errors, title: "Invalid customer");
+            }
+        }
+
         var before = CustomerSnapshot.From(customer);
         var changed = customer.Name != name || customer.Identity != customerIdentity;
         customer.Name = name;
@@ -77,7 +83,12 @@ internal static class UpdateCustomerEndpoint
         }
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return TypedResults.Ok(CustomerResponse.FromDomain(customer));
+        return TypedResults.Ok(new SafeCustomerResponse
+        {
+            Id = customer.Id,
+            Name = customer.Name,
+            TimelineSummary = await SafeCustomerProjection.TimelineSummaryAsync(dbContext, customer.Id, cancellationToken),
+        });
     }
 
     internal readonly record struct Request

@@ -41,23 +41,28 @@ describe("customer details page", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the customer and its legal identity", async () => {
+  it("shows basic customer data and separately fetched legal identity", async () => {
     stubFetch((url: RequestInfo | URL) => {
       if (String(url) === "/api/v1/customers/1001") {
         return Promise.resolve(
           jsonResponse(200, {
             id: 1001,
             name: "Equinor",
-            identity: { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA", source: "brreg" },
+            timelineSummary: { entryCount: 0, latestOccurredOn: null },
           }),
         );
       }
+      if (String(url) === "/api/v1/customers/1001/legal-identity")
+        return Promise.resolve(
+          jsonResponse(200, { country: "no", type: "business", id: "923609016", name: "EQUINOR ASA", source: "brreg" }),
+        );
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
     await renderRoute("/customers/1001", "Equinor");
 
     expect(await screen.findByRole("heading", { name: "Equinor" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Legal identity" })).toBeInTheDocument();
     expect(screen.getByText("#1001")).toBeInTheDocument();
     expect(screen.getByText("EQUINOR ASA")).toBeInTheDocument();
     expect(screen.getByText("923609016")).toBeInTheDocument();
@@ -73,20 +78,24 @@ describe("customer details page", () => {
     expect(await screen.findByLabelText(/^name/i)).toHaveValue("Equinor");
   });
 
-  it("shows no legal identity row when the customer has none", async () => {
+  it("clearly explains when legal identity is unavailable", async () => {
     stubFetch((url: RequestInfo | URL) =>
       String(url) === "/api/v1/customers/1002"
-        ? Promise.resolve(jsonResponse(200, { id: 1002, name: "Acme", identity: null }))
-        : String(url).includes("/timeline")
-          ? Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }))
-          : Promise.resolve(new Response(null, { status: 404 })),
+        ? Promise.resolve(
+            jsonResponse(200, { id: 1002, name: "Acme", timelineSummary: { entryCount: 0, latestOccurredOn: null } }),
+          )
+        : String(url) === "/api/v1/customers/1002/legal-identity"
+          ? Promise.resolve(new Response(null, { status: 403 }))
+          : String(url).includes("/timeline")
+            ? Promise.resolve(jsonResponse(200, { data: [], nextCursor: null }))
+            : Promise.resolve(new Response(null, { status: 404 })),
     );
 
     await renderRoute("/customers/1002", "Acme");
 
     expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument();
     expect(screen.getByText("#1002")).toBeInTheDocument();
-    expect(screen.queryByText(/legal/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/legal identity is not available/i)).toBeInTheDocument();
   });
 
   it("shows a not-found state for unknown customers", async () => {

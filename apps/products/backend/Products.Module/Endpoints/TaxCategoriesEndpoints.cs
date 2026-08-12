@@ -1,3 +1,4 @@
+using Vantigo.Contracts.AspNetCore.Authorization;
 using Vantigo.Products.Endpoints.TaxCategories;
 
 namespace Vantigo.Products.Endpoints;
@@ -12,24 +13,31 @@ internal static class TaxCategoriesEndpoints
             .WithTags("Tax categories");
 
         group.MapGet("/", GetTaxCategoriesEndpoint.Handler)
-            .WithSummary("List all tax categories");
+            .WithSummary("List all tax categories")
+            .RequirePermission("products:tax-categories-view");
 
         group.MapPost("/", CreateTaxCategoryEndpoint.Handler)
 
-            .WithSummary("Create a tax category");
+            .WithSummary("Create a tax category")
+            .RequirePermission("products:tax-categories-manage")
+            .RequirePermission("products:tax-categories-view");
 
         group.MapGet("/{id:int}", GetTaxCategoryEndpoint.Handler)
             .WithName(GetTaxCategoryRouteName)
-            .WithSummary("Get a tax category by id");
+            .WithSummary("Get a tax category by id")
+            .RequirePermission("products:tax-categories-view");
 
         group.MapPut("/{id:int}", UpdateTaxCategoryEndpoint.Handler)
 
-            .WithSummary("Update a tax category");
+            .WithSummary("Update a tax category")
+            .RequirePermission("products:tax-categories-manage")
+            .RequirePermission("products:tax-categories-view");
 
         group.MapDelete("/{id:int}", DeleteTaxCategoryEndpoint.Handler)
 
             .WithSummary("Delete a tax category")
-            .WithDescription("Restricted while products reference the tax category.");
+            .WithDescription("Restricted while products reference the tax category.")
+            .RequirePermission("products:tax-categories-manage");
 
         return app;
     }

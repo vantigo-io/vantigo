@@ -11,20 +11,31 @@ namespace Vantigo.Customers.Endpoints.Customers;
 /// </summary>
 internal static class GetCustomerEndpoint
 {
-    internal static async Task<Results<Ok<CustomerResponse>, NotFound>> Handler(
+    internal static async Task<IResult> Handler(
         int id,
         CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var customer = await dbContext.Customers
             .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+            .Where(c => c.Id == id)
+            .Select(customer => (SafeCustomerResponse?)new SafeCustomerResponse
+            {
+                Id = customer.Id,
+                Name = customer.Name,
+                TimelineSummary = new SafeTimelineSummary
+                {
+                    EntryCount = dbContext.CustomerTimelineEntries.Count(entry =>
+                        entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active),
+                    LatestOccurredOn = dbContext.CustomerTimelineEntries
+                        .Where(entry => entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active)
+                        .OrderByDescending(entry => entry.OccurredOn)
+                        .Select(entry => (DateOnly?)entry.OccurredOn)
+                        .FirstOrDefault(),
+                },
+            })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (customer is null)
-        {
-            return TypedResults.NotFound();
-        }
-
-        return TypedResults.Ok(CustomerResponse.FromDomain(customer));
+        return customer is null ? TypedResults.NotFound() : TypedResults.Ok(customer);
     }
 }

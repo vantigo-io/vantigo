@@ -5,6 +5,8 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 
 using Vantigo.Configuration;
+using Vantigo.Contracts.Authorization;
+using Vantigo.Products.Authorization;
 using Vantigo.Products.Database.Products;
 using Vantigo.Products.Endpoints;
 
@@ -14,6 +16,7 @@ public static class ProductDatabaseConfiguration
 {
     public static IServiceCollection AddProductsModule(this IServiceCollection services)
     {
+        services.AddSingleton<IPermissionCatalogContributor, ProductsPermissionCatalogContributor>();
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;

@@ -1,6 +1,10 @@
+using System.Security.Claims;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
+using Vantigo.Products.Authorization;
 using Vantigo.Products.Database.Products;
 using Vantigo.Products.Domain.Products;
 using Vantigo.Products.Endpoints.Products.Dtos;
@@ -10,11 +14,28 @@ namespace Vantigo.Products.Endpoints.Products;
 /// <summary>Creates a new product with at least one sellable variant.</summary>
 internal static class CreateProductEndpoint
 {
-    internal static async Task<Results<CreatedAtRoute<ProductResponse>, ValidationProblem, ProblemHttpResult>> Handler(
+    internal static async Task<IResult> Handler(
         ProductRequest request,
+        ClaimsPrincipal principal,
+        IAuthorizationService authorization,
         ProductsDbContext dbContext,
         CancellationToken cancellationToken)
     {
+        if (!await ProductsAuthorization.HasPermissionAsync(
+                authorization, principal, "products:variants-view"))
+        {
+            return TypedResults.Forbid();
+        }
+
+        if (request.ContainsPricingData() &&
+            (!await ProductsAuthorization.HasPermissionAsync(
+                 authorization, principal, "products:pricing-view") ||
+             !await ProductsAuthorization.HasPermissionAsync(
+                 authorization, principal, "products:pricing-manage")))
+        {
+            return TypedResults.Forbid();
+        }
+
         var errors = request.Validate(requireVariants: true);
         if (errors.Count > 0)
         {

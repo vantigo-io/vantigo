@@ -10,6 +10,7 @@ internal static class AuthRateLimitPolicies
     internal const string InvitationAcceptance = "auth-invitation-acceptance";
     internal const string PasswordRecovery = "auth-password-recovery";
     internal const string Mfa = "auth-mfa";
+    internal const string UserManagement = "auth-user-management";
 }
 
 internal sealed record BootstrapRequest(
@@ -25,6 +26,17 @@ internal sealed record LoginRequest(string? Email, string? Password);
 internal sealed record TwoFactorRequest(string? Code, bool RememberMe = false);
 
 internal sealed record InvitationRequest(string? Email, string? DisplayName, string? Role);
+
+internal sealed record OwnerUserCreateRequest(
+    string? DisplayName,
+    string? Email,
+    string? Role,
+    string? Password,
+    string? TemporaryPassword = null);
+
+internal sealed record OwnerUserUpdateRequest(string? DisplayName, string? Email, string? Role);
+
+internal sealed record OwnerUserPasswordRequest(string? Password);
 
 internal sealed record InvitationAcceptanceRequest(string? Token, string? DisplayName, string? Password);
 
@@ -64,6 +76,9 @@ internal sealed record OidcProviderResponse(string DisplayName);
 
 internal sealed record InvitationResponse(Guid Id, string Email, string Role, string? DisplayName,
     DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? RevokedAt, DateTimeOffset? AcceptedAt);
+
+internal sealed record OwnerUserResponse(Guid Id, string DisplayName, string? Email, string Role, bool Active,
+    bool Disabled, bool LockedOut, DateTimeOffset? LockoutEnd, bool TwoFactorEnabled);
 
 internal sealed record InvitationAcceptanceResponse(bool Valid, string? Email = null, string? Role = null, DateTimeOffset? ExpiresAt = null);
 

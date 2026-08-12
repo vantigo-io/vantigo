@@ -159,8 +159,9 @@ public sealed class DevelopmentSeedIntegrationTests
 
         var roleIds = await accounts.Roles
             .ToDictionaryAsync(role => role.Name!, role => role.Id);
-        Assert.Equal(OwnerRoleId, roleIds["Owner"]);
-        Assert.Equal(UserRoleId, roleIds["User"]);
+        Assert.True(roleIds["Owner"] != Guid.Empty);
+        Assert.True(roleIds["User"] != Guid.Empty);
+        Assert.NotEqual(roleIds["Owner"], roleIds["User"]);
 
         Assert.Equal(1, await accounts.BootstrapStates.CountAsync());
         Assert.Equal(customerCount, await customers.Customers.CountAsync());

@@ -1,5 +1,3 @@
-using Vantigo.Contracts.Identity;
-
 namespace Vantigo.Communications.Endpoints;
 
 public static class VersionedBusinessEndpointExtensions

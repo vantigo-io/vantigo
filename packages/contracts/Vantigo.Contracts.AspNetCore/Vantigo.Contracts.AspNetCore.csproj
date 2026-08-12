@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Vantigo.Contracts.AspNetCore</AssemblyName>
+    <RootNamespace>Vantigo.Contracts.AspNetCore</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Vantigo.Contracts\Vantigo.Contracts.csproj" />
+  </ItemGroup>
+</Project>

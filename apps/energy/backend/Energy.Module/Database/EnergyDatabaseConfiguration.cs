@@ -5,6 +5,8 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 
 using Vantigo.Configuration;
+using Vantigo.Contracts.Authorization;
+using Vantigo.Energy.Authorization;
 using Vantigo.Energy.Database.Energy;
 using Vantigo.Energy.Endpoints;
 
@@ -14,6 +16,7 @@ public static class EnergyDatabaseConfiguration
 {
     public static IServiceCollection AddEnergyModule(this IServiceCollection services)
     {
+        services.AddSingleton<IPermissionCatalogContributor, EnergyPermissionCatalogContributor>();
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;

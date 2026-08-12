@@ -16,6 +16,8 @@ internal readonly record struct ProductRequest
     public int? CategoryId { get; init; }
     public IReadOnlyList<VariantRequest>? Variants { get; init; }
 
+    internal bool ContainsPricingData() => Variants?.Any(variant => variant.ContainsPricingData()) == true;
+
     internal Dictionary<string, string[]> Validate(bool requireVariants, bool validateVariants = true)
     {
         var errors = new Dictionary<string, string[]>();
@@ -80,6 +82,8 @@ internal readonly record struct VariantRequest
     public decimal? HeightCm { get; init; }
     public Dictionary<string, string>? OptionValues { get; init; }
     public IReadOnlyList<ProductPriceRequest>? Prices { get; init; }
+
+    internal bool ContainsPricingData() => StandardCost is not null || Prices is { Count: > 0 };
 
     internal void Validate(string prefix, Dictionary<string, string[]> errors)
     {

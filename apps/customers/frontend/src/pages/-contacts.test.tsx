@@ -127,7 +127,7 @@ describe("customer contacts card", () => {
   const customer = {
     id: 2002,
     name: "Refsdal Holding",
-    identity: null,
+    timelineSummary: { entryCount: 0, latestOccurredOn: null },
   };
 
   const stubFetch = (handlers: Record<string, (init?: RequestInit) => Response | Promise<Response>>) =>

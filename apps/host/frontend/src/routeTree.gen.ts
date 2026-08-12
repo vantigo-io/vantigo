@@ -17,6 +17,8 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as AdminRolesRouteImport } from './routes/admin/roles'
+import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as CommunicationsMailboxesRouteImport } from './routes/communications/mailboxes'
 import { Route as CommunicationsSuppressionsRouteImport } from './routes/communications/suppressions'
 import { Route as ContactsIndexRouteImport } from './routes/contacts/index'
@@ -74,6 +76,16 @@ const SetupRoute = SetupRouteImport.update({
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRolesRoute = AdminRolesRouteImport.update({
+  id: '/admin/roles',
+  path: '/admin/roles',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CommunicationsMailboxesRoute = CommunicationsMailboxesRouteImport.update({
@@ -181,6 +193,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/contacts/$contactId': typeof ContactsContactIdRoute
@@ -209,6 +223,8 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/contacts/$contactId': typeof ContactsContactIdRoute
@@ -237,6 +253,8 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
   '/contacts/$contactId': typeof ContactsContactIdRoute
@@ -267,6 +285,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/roles'
+    | '/admin/users'
     | '/communications/mailboxes'
     | '/communications/suppressions'
     | '/contacts/$contactId'
@@ -295,6 +315,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/roles'
+    | '/admin/users'
     | '/communications/mailboxes'
     | '/communications/suppressions'
     | '/contacts/$contactId'
@@ -322,6 +344,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/roles'
+    | '/admin/users'
     | '/communications/mailboxes'
     | '/communications/suppressions'
     | '/contacts/$contactId'
@@ -351,6 +375,8 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
+  AdminRolesRoute: typeof AdminRolesRoute
+  AdminUsersRoute: typeof AdminUsersRoute
   CommunicationsMailboxesRoute: typeof CommunicationsMailboxesRoute
   CommunicationsSuppressionsRoute: typeof CommunicationsSuppressionsRoute
   ContactsContactIdRoute: typeof ContactsContactIdRoute
@@ -425,6 +451,20 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/roles': {
+      id: '/admin/roles'
+      path: '/admin/roles'
+      fullPath: '/admin/roles'
+      preLoaderRoute: typeof AdminRolesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/communications/mailboxes': {
@@ -578,6 +618,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
+  AdminRolesRoute: AdminRolesRoute,
+  AdminUsersRoute: AdminUsersRoute,
   CommunicationsMailboxesRoute: CommunicationsMailboxesRoute,
   CommunicationsSuppressionsRoute: CommunicationsSuppressionsRoute,
   ContactsContactIdRoute: ContactsContactIdRoute,

@@ -26,6 +26,7 @@ internal static class HostDatabaseConfiguration
     internal static async Task MigrateIdentityAsync(this IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<AccountsDbContext>().Database.MigrateAsync();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        await dbContext.Database.MigrateAsync();
     }
 }

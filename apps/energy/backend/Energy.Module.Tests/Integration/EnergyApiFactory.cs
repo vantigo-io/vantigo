@@ -55,6 +55,20 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
         return client;
     }
 
+    public async Task<HttpClient> CreateAuthenticatedClientAsync(string email, string password)
+    {
+        var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
+        var login = await client.PostAsJsonAsync("/api/v1/identity/login", new { email, password });
+        if (!login.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Integration login failed: {login.StatusCode}");
+        client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+        var refreshedToken = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", refreshedToken!.Token);
+        return client;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);

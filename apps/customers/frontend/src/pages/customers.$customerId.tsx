@@ -1,11 +1,11 @@
-import { Anchor, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
+import { Anchor, Breadcrumbs, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { PageHeader } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
-import { customerQueryOptions } from "../api/customers";
+import { customerQueryOptions, legalIdentityQueryOptions } from "../api/customers";
 import {
   CopyableBadge,
   LegalCountryBadge,
@@ -32,7 +32,7 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
 
-  const identity = customer.identity;
+  const { data: identity } = useSuspenseQuery(legalIdentityQueryOptions(customerId));
 
   return (
     <Stack gap="lg">
@@ -64,22 +64,31 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
           }
         />
 
-        {identity && (
-          <Group gap="xs">
-            <LegalValueBadge type={identity.type} tooltip={tooltips.legalName} copyable>
-              {identity.name}
-            </LegalValueBadge>
-            <LegalValueBadge type={identity.type} tooltip={tooltips.legalId} copyable>
-              {identity.id}
-            </LegalValueBadge>
-            <LegalCountryBadge country={identity.country} tooltip={tooltips.country} copyable />
-            <LegalTypeBadge type={identity.type} tooltip={tooltips.type} copyable />
-            <LegalSourceBadge
-              source={identity.source}
-              legalId={identity.id}
-              tooltip={getLegalSource(identity.source).logo ? undefined : tooltips.manualSource}
-            />
-          </Group>
+        {identity ? (
+          <Stack gap="xs">
+            <Title order={3}>Legal identity</Title>
+            <Group gap="xs">
+              <LegalValueBadge type={identity.type} tooltip={tooltips.legalName} copyable>
+                {identity.name}
+              </LegalValueBadge>
+              <LegalValueBadge type={identity.type} tooltip={tooltips.legalId} copyable>
+                {identity.id}
+              </LegalValueBadge>
+              <LegalCountryBadge country={identity.country} tooltip={tooltips.country} copyable />
+              <LegalTypeBadge type={identity.type} tooltip={tooltips.type} copyable />
+              <LegalSourceBadge
+                source={identity.source}
+                legalId={identity.id}
+                tooltip={getLegalSource(identity.source).logo ? undefined : tooltips.manualSource}
+              />
+            </Group>
+          </Stack>
+        ) : (
+          <Card withBorder padding="sm">
+            <Text size="sm" c="dimmed">
+              Legal identity is not available to this account.
+            </Text>
+          </Card>
         )}
       </Stack>
 

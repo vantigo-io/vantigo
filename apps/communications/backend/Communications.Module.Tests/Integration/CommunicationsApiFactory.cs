@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -13,7 +14,9 @@ using Testcontainers.PostgreSql;
 
 using Vantigo.Communications.Database.Communications;
 using Vantigo.Communications.Services;
+using Vantigo.Contracts.Identity;
 using Vantigo.Host;
+using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Communications.Module.Tests.Integration;
 
@@ -44,19 +47,64 @@ public sealed class CommunicationsModuleFactory : WebApplicationFactory<global::
     }
 
     public async Task<HttpClient> CreateAuthenticatedClientAsync()
+        => await CreateAuthenticatedClientAsync("owner@integration.test", "IntegrationPassword123");
+
+    public async Task<HttpClient> CreateAuthenticatedClientAsync(string email, string password)
     {
         var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
         var token = await GetAntiforgeryToken(client);
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token);
         var response = await client.PostAsJsonAsync("/api/v1/identity/login", new
         {
-            email = "owner@integration.test",
-            password = "IntegrationPassword123",
+            email,
+            password,
         });
         response.EnsureSuccessStatusCode();
         client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", await GetAntiforgeryToken(client));
         return client;
+    }
+
+    public async Task<CommunicationsTestUser> CreateUserAsync(string? permissionKey = null)
+    {
+        var email = $"user-{Guid.NewGuid():N}@integration.test";
+        const string password = "IntegrationUserPassword123";
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            DisplayName = "Communications Test User",
+        };
+        var create = await users.CreateAsync(user, password);
+        if (!create.Succeeded || !(await users.AddToRoleAsync(user, AuthRoles.User)).Succeeded)
+            throw new InvalidOperationException("Could not create a communications integration user.");
+
+        if (permissionKey is not null)
+        {
+            var role = new IdentityRole<Guid>($"communications-test-{Guid.NewGuid():N}");
+            var roleResult = await roleManager.CreateAsync(role);
+            if (!roleResult.Succeeded)
+                throw new InvalidOperationException("Could not create a communications integration permission role.");
+            db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionKey = permissionKey });
+            await db.SaveChangesAsync();
+            if (!(await users.AddToRoleAsync(user, role.Name!)).Succeeded)
+                throw new InvalidOperationException("Could not assign a communications integration permission role.");
+        }
+
+        return new CommunicationsTestUser(user.Id, email, password);
+    }
+
+    public async Task DisableUserAsync(Guid userId)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        await db.Users.Where(user => user.Id == userId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.IsDisabled, true));
     }
 
     public async Task<string> GetAntiforgeryToken(HttpClient client)
@@ -129,6 +177,8 @@ public sealed class CommunicationsModuleFactory : WebApplicationFactory<global::
         await postgres.DisposeAsync();
     }
 }
+
+public sealed record CommunicationsTestUser(Guid Id, string Email, string Password);
 
 public sealed record AntiforgeryToken(string Token);
 

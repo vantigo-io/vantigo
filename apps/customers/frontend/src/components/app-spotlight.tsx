@@ -76,9 +76,7 @@ export const AppSpotlight = () => {
               <Spotlight.Action
                 key={customer.id}
                 label={customer.name}
-                description={
-                  customer.identity ? `${customer.identity.name} · ${customer.identity.id}` : "No legal identity"
-                }
+                description={"Customer"}
                 leftSection={<IconBuilding size={20} stroke={1.5} />}
                 onClick={() => navigate({ to: "/customers/$customerId", params: { customerId: customer.id } })}
               />

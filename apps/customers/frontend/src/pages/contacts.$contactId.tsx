@@ -412,7 +412,7 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
                           <div>
                             <Text size="sm">{customer.name}</Text>
                             <Text size="xs" c="dimmed">
-                              {customer.identity?.name ?? "No legal identity"}
+                              "Customer details"
                             </Text>
                           </div>
                           {alreadyAttached && (
@@ -436,7 +436,7 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
                 <div>
                   <Text fw={500}>{selected.name}</Text>
                   <Text size="xs" c="dimmed">
-                    {selected.identity?.name ?? "No legal identity"}
+                    "Customer"
                   </Text>
                 </div>
                 <Button variant="subtle" size="compact-sm" onClick={reset}>

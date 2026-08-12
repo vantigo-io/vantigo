@@ -216,6 +216,10 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("email_confirmed");
 
+                    b.Property<bool>("IsDisabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_disabled");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean")
                         .HasColumnName("lockout_enabled");
@@ -270,6 +274,153 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasDatabaseName("ux_users_normalized_user_name");
 
                     b.ToTable("users", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationAuditEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<string>("AfterJson")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)")
+                        .HasColumnName("after_json");
+
+                    b.Property<string>("BeforeJson")
+                        .IsRequired()
+                        .HasMaxLength(10000)
+                        .HasColumnType("character varying(10000)")
+                        .HasColumnName("before_json");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("details");
+
+                    b.Property<bool>("MfaAuthenticated")
+                        .HasColumnType("boolean")
+                        .HasColumnName("mfa_authenticated");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid?>("TargetRoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_role_id");
+
+                    b.Property<Guid?>("TargetUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_authorization_audit_events");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("ix_authorization_audit_events_occurred_at");
+
+                    b.ToTable("authorization_audit_events", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationDelegation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("CanCreateRoles")
+                        .HasColumnType("boolean")
+                        .HasColumnName("can_create_roles");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("concurrency_stamp");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("GranteeUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grantee_user_id");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revoked_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_authorization_delegations");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("GranteeUserId")
+                        .HasDatabaseName("ix_authorization_delegations_grantee_user_id");
+
+                    b.ToTable("authorization_delegations", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationDelegationPermission", b =>
+                {
+                    b.Property<Guid>("DelegationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delegation_id");
+
+                    b.Property<string>("PermissionKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("permission_key");
+
+                    b.HasKey("DelegationId", "PermissionKey")
+                        .HasName("pk_authorization_delegation_permissions");
+
+                    b.ToTable("authorization_delegation_permissions", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationDelegationRole", b =>
+                {
+                    b.Property<Guid>("DelegationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delegation_id");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.HasKey("DelegationId", "RoleId")
+                        .HasName("pk_authorization_delegation_roles");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("authorization_delegation_roles", "identity");
                 });
 
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.BootstrapState", b =>
@@ -362,6 +513,71 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.ToTable("invitations", "identity");
                 });
 
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.RoleMetadata", b =>
+                {
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("concurrency_stamp");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
+                    b.Property<bool>("IsBuiltIn")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_built_in");
+
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_system");
+
+                    b.Property<Guid?>("StewardUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("steward_user_id");
+
+                    b.HasKey("RoleId")
+                        .HasName("pk_role_metadata");
+
+                    b.HasIndex("StewardUserId")
+                        .HasDatabaseName("ix_role_metadata_steward_user_id");
+
+                    b.ToTable("role_metadata", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.RolePermission", b =>
+                {
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<string>("PermissionKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("permission_key");
+
+                    b.HasKey("RoleId", "PermissionKey")
+                        .HasName("pk_role_permissions");
+
+                    b.HasIndex("PermissionKey")
+                        .HasDatabaseName("ix_role_permissions_permission_key");
+
+                    b.ToTable("role_permissions", "identity");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -417,6 +633,70 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationDelegation", b =>
+                {
+                    b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_authorization_delegations_created_by_user_id");
+
+                    b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("GranteeUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_authorization_delegations_grantee_user_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationDelegationPermission", b =>
+                {
+                    b.HasOne("Vantigo.Identity.Database.Accounts.AuthorizationDelegation", null)
+                        .WithMany()
+                        .HasForeignKey("DelegationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_authorization_delegation_permissions_delegation_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationDelegationRole", b =>
+                {
+                    b.HasOne("Vantigo.Identity.Database.Accounts.AuthorizationDelegation", null)
+                        .WithMany()
+                        .HasForeignKey("DelegationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_authorization_delegation_roles_delegation_id");
+
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_authorization_delegation_roles_role_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.RoleMetadata", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
+                        .WithOne()
+                        .HasForeignKey("Vantigo.Identity.Database.Accounts.RoleMetadata", "RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_role_metadata_roles_role_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.RolePermission", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_role_permissions_roles_role_id");
                 });
 #pragma warning restore 612, 618
         }

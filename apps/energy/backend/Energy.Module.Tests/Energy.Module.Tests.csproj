@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Energy.Module\Energy.Module.csproj" />
     <ProjectReference Include="..\..\..\host\backend\Vantigo.Host\Vantigo.Host.csproj" />
+    <ProjectReference Include="..\..\..\identity\backend\Identity.Module\Identity.Module.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

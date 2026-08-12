@@ -21,7 +21,6 @@ import { PageHeader } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 
 import { customersQueryOptions } from "../api/customers";
-import { LegalCountryBadge, LegalValueBadge, NoValue } from "../components/legal-badges";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
 const PAGE_SIZE = 25;
@@ -81,7 +80,7 @@ export const CustomersPage = () => {
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <TextInput
-            placeholder="Search by name, legal name or legal id..."
+            placeholder="Search by customer name..."
             leftSection={<IconSearch size={16} />}
             value={searchInput}
             onChange={(event) => setSearchInput(event.currentTarget.value)}
@@ -108,9 +107,6 @@ export const CustomersPage = () => {
                     <Table.Tr>
                       <Table.Th>Id</Table.Th>
                       <Table.Th>Name</Table.Th>
-                      <Table.Th>Legal name</Table.Th>
-                      <Table.Th>Legal id</Table.Th>
-                      <Table.Th>Country</Table.Th>
                       <Table.Th w={48} aria-label="Actions" />
                     </Table.Tr>
                   </Table.Thead>
@@ -128,23 +124,6 @@ export const CustomersPage = () => {
                       >
                         <Table.Td>{customer.id}</Table.Td>
                         <Table.Td>{customer.name}</Table.Td>
-                        <Table.Td>
-                          {customer.identity ? (
-                            <LegalValueBadge type={customer.identity.type}>{customer.identity.name}</LegalValueBadge>
-                          ) : (
-                            <NoValue />
-                          )}
-                        </Table.Td>
-                        <Table.Td>
-                          {customer.identity ? (
-                            <LegalValueBadge type={customer.identity.type}>{customer.identity.id}</LegalValueBadge>
-                          ) : (
-                            <NoValue />
-                          )}
-                        </Table.Td>
-                        <Table.Td>
-                          {customer.identity ? <LegalCountryBadge country={customer.identity.country} /> : <NoValue />}
-                        </Table.Td>
                         <Table.Td onClick={(event) => event.stopPropagation()}>
                           <ActionIcon
                             variant="subtle"

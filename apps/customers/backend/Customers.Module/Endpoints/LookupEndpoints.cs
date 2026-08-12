@@ -1,3 +1,5 @@
+using Vantigo.Contracts.AspNetCore.Authorization;
+using Vantigo.Customers.Authorization;
 using Vantigo.Customers.Endpoints.Lookup;
 
 namespace Vantigo.Customers.Endpoints;
@@ -10,7 +12,8 @@ internal static class LookupEndpoints
             .WithTags("Lookup");
 
         group.MapGet("/brreg", BrregLookupEndpoint.Handler)
-            .WithSummary("Look up business entities in Brønnøysundregisteret");
+            .WithSummary("Look up business entities in Brønnøysundregisteret")
+            .RequirePermission(CustomerPermissions.LookupView);
 
         return app;
     }

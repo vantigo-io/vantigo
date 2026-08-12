@@ -5,4 +5,5 @@ public static class AuthPolicies
     public const string Owner = "Owner";
     public const string OwnerManagement = "OwnerManagement";
     public const string Business = "Business";
+    public const string AuthorizationManagement = "AuthorizationManagement";
 }

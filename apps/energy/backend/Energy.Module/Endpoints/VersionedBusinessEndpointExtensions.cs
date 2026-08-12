@@ -1,7 +1,5 @@
 using Asp.Versioning;
 
-using Vantigo.Contracts.Identity;
-
 namespace Vantigo.Energy.Endpoints;
 
 internal static class VersionedBusinessEndpointExtensions
@@ -10,8 +8,7 @@ internal static class VersionedBusinessEndpointExtensions
     {
         var api = endpoints.NewVersionedApi()
             .MapGroup("/api/v{version:apiVersion}/energy")
-            .HasApiVersion(new ApiVersion(1))
-            .RequireAuthorization(AuthPolicies.Business);
+            .HasApiVersion(new ApiVersion(1));
         api.MapMeteringPointEndpoints();
         api.MapCustomerEnergyEndpoints();
         return endpoints;

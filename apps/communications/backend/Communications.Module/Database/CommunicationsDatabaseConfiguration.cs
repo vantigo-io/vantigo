@@ -4,10 +4,12 @@ using Microsoft.Extensions.Options;
 
 using Npgsql;
 
+using Vantigo.Communications.Authorization;
 using Vantigo.Communications.Database.Communications;
 using Vantigo.Communications.Endpoints;
 using Vantigo.Communications.Services;
 using Vantigo.Configuration;
+using Vantigo.Contracts.Authorization;
 
 namespace Vantigo.Communications.Database;
 
@@ -15,6 +17,7 @@ public static class CommunicationsDatabaseConfiguration
 {
     public static IServiceCollection AddCommunicationsModule(this IServiceCollection services)
     {
+        services.AddSingleton<IPermissionCatalogContributor, CommunicationsPermissionCatalogContributor>();
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;

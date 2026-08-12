@@ -1,5 +1,9 @@
+using System.Security.Claims;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 
+using Vantigo.Customers.Authorization;
 using Vantigo.Customers.Database.Customers;
 using Vantigo.Customers.Domain.Customers;
 using Vantigo.Customers.Domain.Customers.Common;
@@ -16,8 +20,10 @@ namespace Vantigo.Customers.Endpoints.Customers;
 /// </summary>
 internal static class CreateCustomerEndpoint
 {
-    internal static async Task<Results<CreatedAtRoute<Response>, ValidationProblem>> Handler(
+    internal static async Task<IResult> Handler(
         Request request,
+        ClaimsPrincipal principal,
+        IAuthorizationService authorization,
         CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
         CancellationToken cancellationToken)
@@ -27,25 +33,19 @@ internal static class CreateCustomerEndpoint
         // form fields.
         var errors = new Dictionary<string, string[]>();
 
-        if (!FriendlyName.TryCreate(request.Name, out var name, out var nameError))
+        if (request.Identity is not null && !await CustomerAuthorization.HasPermissionAsync(
+                authorization, principal, CustomerPermissions.LegalIdentityManage))
         {
-            errors["name"] = [nameError!];
+            return TypedResults.Forbid();
         }
 
         LegalIdentity? customerIdentity = null;
-
         if (request.Identity is { } identity)
         {
-            if (LegalIdentity.TryCreate(
-                    identity.Country,
-                    identity.Type,
-                    identity.Id,
-                    identity.Name,
-                    identity.Source,
-                    out var legalIdentity,
-                    out var identityErrors))
+            if (LegalIdentity.TryCreate(identity.Country, identity.Type, identity.Id, identity.Name, identity.Source,
+                    out var parsedIdentity, out var identityErrors))
             {
-                customerIdentity = legalIdentity;
+                customerIdentity = parsedIdentity;
             }
             else
             {
@@ -54,6 +54,11 @@ internal static class CreateCustomerEndpoint
                     errors[$"identity.{field}"] = fieldErrors;
                 }
             }
+        }
+
+        if (!FriendlyName.TryCreate(request.Name, out var name, out var nameError))
+        {
+            errors["name"] = [nameError!];
         }
 
         if (errors.Count > 0)

@@ -5,6 +5,8 @@ using Microsoft.Extensions.Options;
 using Npgsql;
 
 using Vantigo.Configuration;
+using Vantigo.Contracts.Authorization;
+using Vantigo.Customers.Authorization;
 using Vantigo.Customers.Database.Customers;
 using Vantigo.Customers.Endpoints;
 using Vantigo.Customers.Services;
@@ -30,6 +32,7 @@ public static class CustomerDatabaseConfiguration
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "customers")));
         services.AddCustomerApiVersioning();
         services.AddCustomerTimeline();
+        services.AddSingleton<IPermissionCatalogContributor, CustomerPermissionCatalogContributor>();
         services.AddHttpClient(Vantigo.Customers.Endpoints.Lookup.BrregLookupEndpoint.HttpClientName, (serviceProvider, client) =>
         {
             var brreg = serviceProvider.GetRequiredService<IOptions<BrregLookupOptions>>().Value;

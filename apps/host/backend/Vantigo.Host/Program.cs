@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using Vantigo.Communications.Database;
 using Vantigo.Communications.Endpoints;
 using Vantigo.Configuration;
+using Vantigo.Contracts.AspNetCore.Authorization;
+using Vantigo.Contracts.Authorization;
 using Vantigo.Contracts.Web;
 using Vantigo.Customers.Database;
 using Vantigo.Customers.Database.DevelopmentSeed;
@@ -12,6 +14,7 @@ using Vantigo.Energy.Database;
 using Vantigo.Energy.Endpoints;
 using Vantigo.Host;
 using Vantigo.Host.Antiforgery;
+using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database;
 using Vantigo.Identity.Endpoints.Auth;
 using Vantigo.Identity.Services;
@@ -56,6 +59,16 @@ else if (commandLine.Command == VantigoCommand.Seed)
 }
 
 AddEnabledModules(builder.Services);
+
+// Resolve the catalog only after every enabled module has registered its
+// contributor. AddPermissionCatalog intentionally creates a deferred singleton;
+// this composition point also makes the boot-order contract explicit.
+builder.Services.AddPermissionCatalog(catalog =>
+{
+    catalog.Add(new PermissionDescriptor(
+        "identity:manage", "Manage identity", "Manage accounts, roles, and access.",
+        "identity", "Administration", Sensitive: true, Delegable: false));
+});
 
 var app = builder.Build();
 var testPreparation = app.Services.GetService<HostTestStartupPreparation>();
@@ -112,6 +125,7 @@ app.UseAuthorization();
 app.UseVantigoAntiforgery();
 app.MapVantigoIdentityEndpoints();
 MapEnabledModules(app);
+app.ValidatePermissionCatalog(app.Services.GetRequiredService<IPermissionCatalog>());
 app.Map("/api", () => Results.NotFound());
 app.Map("/api/{**path}", () => Results.NotFound());
 app.MapSpaFallback();

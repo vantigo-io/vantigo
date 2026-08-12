@@ -16,7 +16,7 @@ internal static class GetCustomersEndpoint
     private const int DefaultPageSize = 25;
     private const int MaxPageSize = 100;
 
-    internal static async Task<Results<Ok<PaginatedResponse<CustomerResponse>>, ProblemHttpResult>> Handler(
+    internal static async Task<Results<Ok<PaginatedResponse<SafeCustomerResponse>>, ProblemHttpResult>> Handler(
         [AsParameters] Request request,
         CustomersDbContext dbContext,
         CancellationToken cancellationToken)
@@ -35,11 +35,7 @@ internal static class GetCustomersEndpoint
         {
             var pattern = $"%{EscapeLikePattern(request.Search.Trim())}%";
 
-            query = query.Where(c =>
-                EF.Functions.ILike(c.Name, pattern) ||
-                (c.Identity != null && (
-                    EF.Functions.ILike((string)c.Identity.Value.Name, pattern) ||
-                    EF.Functions.ILike((string)c.Identity.Value.Id, pattern))));
+            query = query.Where(c => EF.Functions.ILike(c.Name, pattern));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
@@ -47,10 +43,25 @@ internal static class GetCustomersEndpoint
         var customers = await ApplySorting(query, request)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(customer => new SafeCustomerResponse
+            {
+                Id = customer.Id,
+                Name = customer.Name,
+                TimelineSummary = new SafeTimelineSummary
+                {
+                    EntryCount = dbContext.CustomerTimelineEntries.Count(entry =>
+                        entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active),
+                    LatestOccurredOn = dbContext.CustomerTimelineEntries
+                        .Where(entry => entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active)
+                        .OrderByDescending(entry => entry.OccurredOn)
+                        .Select(entry => (DateOnly?)entry.OccurredOn)
+                        .FirstOrDefault(),
+                },
+            })
             .ToListAsync(cancellationToken);
 
-        return TypedResults.Ok(PaginatedResponse<CustomerResponse>.Create(
-            customers.Select(CustomerResponse.FromDomain).ToList(),
+        return TypedResults.Ok(PaginatedResponse<SafeCustomerResponse>.Create(
+            customers,
             page,
             pageSize,
             totalCount));

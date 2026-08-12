@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using Vantigo.Configuration;
+using Vantigo.Contracts.Authorization;
 using Vantigo.Contracts.Identity;
+using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Host;
@@ -34,8 +36,9 @@ internal static class IdentityDevelopmentSeeder
             System.Data.IsolationLevel.Serializable, cancellationToken);
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        await EnsureRoleAsync(roleManager, AuthRoles.Owner, cancellationToken);
-        await EnsureRoleAsync(roleManager, AuthRoles.User, cancellationToken);
+        await dbContext.EnsureBuiltInRolesAsync(
+            roleManager,
+            scope.ServiceProvider.GetRequiredService<IPermissionCatalog>(), cancellationToken);
 
         var user = await userManager.FindByEmailAsync(email);
         if (user is null)

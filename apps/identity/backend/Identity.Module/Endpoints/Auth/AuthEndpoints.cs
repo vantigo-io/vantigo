@@ -6,11 +6,14 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Options;
 
 using Npgsql;
 
 using Vantigo.Configuration;
+using Vantigo.Contracts.Authorization;
+using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
 
@@ -66,6 +69,7 @@ public static class AuthEndpoints
             .RequireAuthorization();
 
         app.MapAccountAuthEndpoints();
+        AuthorizationManagementEndpoints.MapAuthorizationManagementEndpoints(app);
 
         return app;
     }
@@ -80,6 +84,7 @@ public static class AuthEndpoints
         BootstrapSecretProvider bootstrapSecret,
         AccountsDbContext dbContext,
         RoleManager<IdentityRole<Guid>> roleManager,
+        IPermissionCatalog permissionCatalog,
         CancellationToken cancellationToken)
     {
         // This endpoint is an anonymous UI hint only. The POST endpoint remains
@@ -96,7 +101,10 @@ public static class AuthEndpoints
         AccountsDbContext dbContext,
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole<Guid>> roleManager,
+        IPermissionCatalog permissionCatalog,
         SignInManager<ApplicationUser> signInManager,
+        AuthorizationAuditWriter auditWriter,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var errors = ValidateBootstrapRequest(request);
@@ -114,31 +122,17 @@ public static class AuthEndpoints
         {
             await using var transaction = await dbContext.Database.BeginTransactionAsync(
                 System.Data.IsolationLevel.Serializable, cancellationToken);
+            await AuthAccountState.AcquireOwnerMutationLock(dbContext, cancellationToken);
 
             if (await IsBootstrapConsumed(dbContext, roleManager, cancellationToken))
             {
                 return Error(StatusCodes.Status409Conflict, "bootstrap_unavailable", "The local Owner has already been created.");
             }
 
+            await dbContext.EnsureBuiltInRolesAsync(roleManager, permissionCatalog, cancellationToken);
             var ownerRole = await roleManager.FindByNameAsync(AuthRoles.Owner);
             if (ownerRole is null)
-            {
-                ownerRole = new IdentityRole<Guid>(AuthRoles.Owner);
-                var roleResult = await roleManager.CreateAsync(ownerRole);
-                if (!roleResult.Succeeded)
-                {
-                    return IdentityFailure(roleResult, "Unable to create the Owner role.");
-                }
-            }
-
-            if (await roleManager.FindByNameAsync(AuthRoles.User) is null)
-            {
-                var standardRoleResult = await roleManager.CreateAsync(new IdentityRole<Guid>(AuthRoles.User));
-                if (!standardRoleResult.Succeeded)
-                {
-                    return IdentityFailure(standardRoleResult, "Unable to create the User role.");
-                }
-            }
+                return Error(StatusCodes.Status500InternalServerError, "identity_configuration", "Protected roles could not be initialized.");
 
             var user = new ApplicationUser
             {
@@ -163,7 +157,18 @@ public static class AuthEndpoints
                 Id = 1,
                 CompletedAt = DateTimeOffset.UtcNow,
             });
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await auditWriter.WriteAsync(dbContext, httpContext, null, user.Id, ownerRole.Id,
+                "bootstrap.owner-created", new
+                {
+                    UserId = (Guid?)null,
+                    Roles = Array.Empty<string>(),
+                    PermissionKeys = Array.Empty<string>(),
+                }, new
+                {
+                    UserId = user.Id,
+                    Roles = new[] { AuthRoles.Owner },
+                    PermissionKeys = new[] { "*" },
+                }, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
             // The database is authoritative: only issue the application cookie
@@ -209,6 +214,11 @@ public static class AuthEndpoints
         }
 
         var user = await userManager.FindByEmailAsync(request!.Email!.Trim());
+        if (user?.IsDisabled == true)
+        {
+            return Error(StatusCodes.Status429TooManyRequests, "account_locked", "The account is temporarily unavailable. Please try again later.");
+        }
+
         var passwordResult = user is null
             ? SignInResult.Failed
             : await signInManager.CheckPasswordSignInAsync(user, request.Password!, lockoutOnFailure: true);
@@ -236,7 +246,7 @@ public static class AuthEndpoints
 
         await signInManager.SignInAsync(user, isPersistent: false);
         var roles = await userManager.GetRolesAsync(user);
-        var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), roles.ToArray());
+        var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles));
         return TypedResults.Ok(new AuthSuccessResponse(
             response,
             false,
@@ -247,6 +257,7 @@ public static class AuthEndpoints
 
     private static async Task<IResult> CompleteTwoFactorLogin(
         TwoFactorRequest? request,
+        HttpContext httpContext,
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
         IOptions<VantigoAuthenticationOptions> options,
@@ -261,6 +272,13 @@ public static class AuthEndpoints
         if (user is null)
         {
             return Error(StatusCodes.Status401Unauthorized, "two_factor_session_expired", "The two-factor sign-in session has expired.");
+        }
+
+        if (user.IsDisabled || AuthAccountState.IsLockedOut(user.LockoutEnd, DateTimeOffset.UtcNow))
+        {
+            await signInManager.SignOutAsync();
+            await httpContext.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+            return Error(StatusCodes.Status429TooManyRequests, "account_locked", "The account is temporarily unavailable. Please try again later.");
         }
 
         var code = request.Code.Replace(" ", string.Empty, StringComparison.Ordinal);
@@ -294,8 +312,8 @@ public static class AuthEndpoints
         await signInManager.SignInWithClaimsAsync(user, new AuthenticationProperties { IsPersistent = request.RememberMe },
             MfaClaims());
         var roles = await userManager.GetRolesAsync(user);
-        var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), roles.ToArray());
-        var requiresEnrollment = userManager.IsInRoleAsync(user, AuthRoles.Owner).Result &&
+        var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles));
+        var requiresEnrollment = await userManager.IsInRoleAsync(user, AuthRoles.Owner) &&
             options.Value.Owners.RequireMfa && !user.TwoFactorEnabled;
         return TypedResults.Ok(new AuthSuccessResponse(response, false, true, requiresEnrollment));
     }
@@ -323,7 +341,7 @@ public static class AuthEndpoints
             string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
         var owner = roles.Contains(AuthRoles.Owner, StringComparer.Ordinal);
         return TypedResults.Ok(new AuthSessionResponse(
-            new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), roles.ToArray()),
+            new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles)),
             user.TwoFactorEnabled,
             owner && options.Value.Owners.RequireMfa && !user.TwoFactorEnabled,
             mfaAuthenticated));

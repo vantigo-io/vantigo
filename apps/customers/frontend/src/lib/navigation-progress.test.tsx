@@ -28,10 +28,13 @@ describe("wireNavigationProgress", () => {
   it("starts the progress bar when a navigation loads and completes it when resolved", async () => {
     stubFetch(() =>
       Promise.resolve(
-        new Response(JSON.stringify({ id: 1001, name: "Acme", identity: null }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({ id: 1001, name: "Acme", timelineSummary: { entryCount: 0, latestOccurredOn: null } }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
       ),
     );
 

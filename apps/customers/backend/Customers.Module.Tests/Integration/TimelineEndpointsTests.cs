@@ -197,12 +197,14 @@ public sealed class TimelineEndpointsTests
         await UpdateCustomer(customerId, new { country = "no", type = "business", id = "123456789", name = "Legal AS", source = "manual" });
         await UpdateCustomer(customerId, new { country = "no", type = "business", id = "987654321", name = "New Legal AS", source = "brreg" });
         await _client.PutAsJsonAsync($"/api/v1/customers/{customerId}", new { name = "Timeline final" });
+        await _client.DeleteAsync($"/api/v1/customers/{customerId}/legal-identity");
 
         var feed = await _client.GetFromJsonAsync<TimelineList>($"/api/v1/customers/{customerId}/timeline?eventType=customer.updated&limit=100");
         Assert.Contains(feed.Data, entry => entry.Summary!.Contains("legal identity added"));
         Assert.Contains(feed.Data, entry => entry.Summary!.Contains("legal identity updated"));
         Assert.Contains(feed.Data, entry => entry.Summary!.Contains("legal identity removed"));
-        Assert.All(feed.Data, entry => Assert.Contains("legalIdentity", entry.Payload.GetRawText()));
+        Assert.All(feed.Data.Where(entry => entry.Summary!.Contains("legal identity")),
+            entry => Assert.Contains("legalIdentity", entry.Payload.GetRawText()));
     }
 
     [Fact]

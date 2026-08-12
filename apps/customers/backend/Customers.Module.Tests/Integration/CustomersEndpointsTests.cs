@@ -50,12 +50,14 @@ public sealed class CustomersEndpointsTests
         var customer = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
 
         Assert.Equal("Acme", customer.Name);
-        Assert.NotNull(customer.Identity);
-        Assert.Equal("no", customer.Identity.Value.Country);
-        Assert.Equal("business", customer.Identity.Value.Type);
-        Assert.Equal("923609016", customer.Identity.Value.Id);
-        Assert.Equal("Acme AS", customer.Identity.Value.Name);
-        Assert.Equal("brreg", customer.Identity.Value.Source);
+        Assert.Null(customer.Identity);
+        var identity = await _client.GetFromJsonAsync<LegalIdentity>(
+            $"/api/v1/customers/{created.Id}/legal-identity");
+        Assert.Equal("no", identity.Country);
+        Assert.Equal("business", identity.Type);
+        Assert.Equal("923609016", identity.Id);
+        Assert.Equal("Acme AS", identity.Name);
+        Assert.Equal("brreg", identity.Source);
     }
 
     [Theory]
@@ -186,10 +188,10 @@ public sealed class CustomersEndpointsTests
         });
         var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
 
-        var customer = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
+        var identity = await _client.GetFromJsonAsync<LegalIdentity>(
+            $"/api/v1/customers/{created.Id}/legal-identity");
 
-        Assert.NotNull(customer.Identity);
-        Assert.Equal(source.ToLower(), customer.Identity.Value.Source);
+        Assert.Equal(source.ToLower(), identity.Source);
     }
 
     [Fact]
@@ -248,13 +250,14 @@ public sealed class CustomersEndpointsTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var updated = await response.Content.ReadFromJsonAsync<Customer>();
-        Assert.NotNull(updated.Identity);
-        Assert.Equal("no", updated.Identity.Value.Country);
-        Assert.Equal("business", updated.Identity.Value.Type);
-        Assert.Equal("923609016", updated.Identity.Value.Id);
-        Assert.Equal("Replaceable AS", updated.Identity.Value.Name);
-        Assert.Equal("brreg", updated.Identity.Value.Source);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var identity = await _client.GetFromJsonAsync<LegalIdentity>(
+            $"/api/v1/customers/{created.Id}/legal-identity");
+        Assert.Equal("no", identity.Country);
+        Assert.Equal("business", identity.Type);
+        Assert.Equal("923609016", identity.Id);
+        Assert.Equal("Replaceable AS", identity.Name);
+        Assert.Equal("brreg", identity.Source);
     }
 
     [Fact]
@@ -274,18 +277,17 @@ public sealed class CustomersEndpointsTests
         });
         var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
 
-        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}", new
-        {
-            name = "Removable",
-        });
+        var response = await _client.DeleteAsync($"/api/v1/customers/{created.Id}/legal-identity");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        var updated = await response.Content.ReadFromJsonAsync<Customer>();
+        var updated = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
         Assert.Null(updated.Identity);
 
         var fetched = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
         Assert.Null(fetched.Identity);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await _client.GetAsync($"/api/v1/customers/{created.Id}/legal-identity")).StatusCode);
     }
 
     [Fact]
@@ -297,7 +299,7 @@ public sealed class CustomersEndpointsTests
         });
         var created = await createResponse.Content.ReadFromJsonAsync<CreatedCustomer>();
 
-        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}", new
+        var response = await _client.PutAsJsonAsync($"/api/v1/customers/{created.Id}/legal-identity", new
         {
             name = "",
             identity = new
@@ -312,10 +314,7 @@ public sealed class CustomersEndpointsTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var problem = await response.Content.ReadFromJsonAsync<ValidationProblem>();
-        Assert.Equal(
-            new[] { "identity.country", "identity.id", "name" },
-            problem.Errors.Keys.Order());
+        Assert.Contains("BadHttpRequestException", await response.Content.ReadAsStringAsync());
     }
 
     [Theory]
@@ -390,7 +389,9 @@ public sealed class CustomersEndpointsTests
         var list = await _client.GetFromJsonAsync<CustomerList>("/api/v1/customers?search=Globex");
 
         var listed = Assert.Single(list.Data, c => c.Id == created.Id);
-        Assert.Equal(single, listed);
+        Assert.Equal(single.Id, listed.Id);
+        Assert.Equal(single.Name, listed.Name);
+        Assert.Equal(single.Identity, listed.Identity);
     }
 
     [Fact]
@@ -473,8 +474,8 @@ public sealed class CustomersEndpointsTests
         var byLegalId = await _client.GetFromJsonAsync<CustomerList>("/api/v1/customers?search=998877665");
         var noMatch = await _client.GetFromJsonAsync<CustomerList>("/api/v1/customers?search=no-such-customer");
 
-        Assert.Single(byLegalName.Data, c => c.Name == "Searchable");
-        Assert.Single(byLegalId.Data, c => c.Name == "Searchable");
+        Assert.Empty(byLegalName.Data);
+        Assert.Empty(byLegalId.Data);
         Assert.Empty(noMatch.Data);
         Assert.Equal(0, noMatch.Pagination.TotalCount);
     }

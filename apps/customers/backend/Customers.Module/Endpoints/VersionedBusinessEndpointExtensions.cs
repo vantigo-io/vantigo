@@ -1,6 +1,6 @@
 using Asp.Versioning;
 
-using Vantigo.Contracts.Identity;
+using Vantigo.Contracts.AspNetCore.Authorization;
 
 namespace Vantigo.Customers.Endpoints;
 
@@ -10,8 +10,7 @@ public static class VersionedBusinessEndpointExtensions
     {
         var api = endpoints.NewVersionedApi()
             .MapGroup("/api/v{version:apiVersion}/customers")
-            .HasApiVersion(new ApiVersion(1))
-            .RequireAuthorization(AuthPolicies.Business);
+            .HasApiVersion(new ApiVersion(1));
 
         api.MapCustomersEndpoints();
         api.MapContactsEndpoints();

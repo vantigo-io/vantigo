@@ -13,6 +13,18 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
 
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
+    public DbSet<RoleMetadata> RoleMetadata => Set<RoleMetadata>();
+
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+
+    public DbSet<AuthorizationDelegation> AuthorizationDelegations => Set<AuthorizationDelegation>();
+
+    public DbSet<AuthorizationDelegationPermission> AuthorizationDelegationPermissions => Set<AuthorizationDelegationPermission>();
+
+    public DbSet<AuthorizationDelegationRole> AuthorizationDelegationRoles => Set<AuthorizationDelegationRole>();
+
+    public DbSet<AuthorizationAuditEvent> AuthorizationAuditEvents => Set<AuthorizationAuditEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -27,5 +39,11 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
         modelBuilder.ApplyConfiguration(new IdentityRoleClaimEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new BootstrapStateEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new InvitationEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new RoleMetadataEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new RolePermissionEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new AuthorizationDelegationEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new AuthorizationDelegationPermissionEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new AuthorizationDelegationRoleEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new AuthorizationAuditEventEntityTypeConfiguration());
     }
 }

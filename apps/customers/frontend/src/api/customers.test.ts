@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
-import { ApiValidationError, createCustomer, customerQueryOptions, NotFoundError, updateCustomer } from "./customers";
+import {
+  ApiValidationError,
+  createCustomer,
+  customerQueryOptions,
+  legalIdentityQueryOptions,
+  NotFoundError,
+  updateCustomer,
+} from "./customers";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -59,7 +66,7 @@ describe("updateCustomer", () => {
   });
 
   it("PUTs the name to /api/v1/customers/{id} and returns the updated customer", async () => {
-    const updated = { id: 1001, name: "Initrode", identity: null };
+    const updated = { id: 1001, name: "Initrode", timelineSummary: { entryCount: 0, latestOccurredOn: null } };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, updated));
     stubFetch(fetchMock);
 
@@ -86,7 +93,7 @@ describe("customerQueryOptions", () => {
   });
 
   it("fetches a single customer by id", async () => {
-    const customer = { id: 1001, name: "Acme", identity: null };
+    const customer = { id: 1001, name: "Acme", timelineSummary: { entryCount: 0, latestOccurredOn: null } };
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, customer));
     stubFetch(fetchMock);
 
@@ -109,5 +116,17 @@ describe("customerQueryOptions", () => {
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe("legalIdentityQueryOptions", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("uses the dedicated legal identity endpoint", async () => {
+    const identity = { country: "no", type: "business", id: "1", name: "Acme", source: "brreg" };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, identity));
+    stubFetch(fetchMock);
+    const options = legalIdentityQueryOptions(1001);
+    await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/legal-identity", { signal: undefined });
   });
 });

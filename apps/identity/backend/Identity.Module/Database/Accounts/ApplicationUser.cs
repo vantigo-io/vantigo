@@ -15,4 +15,11 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     }
 
     public required string DisplayName { get; set; }
+
+    /// <summary>
+    /// Persistent administrator-controlled disable state. This is deliberately
+    /// separate from <see cref="IdentityUser{TKey}.LockoutEnd"/>, which is the
+    /// transient failed-sign-in lockout state.
+    /// </summary>
+    public bool IsDisabled { get; set; }
 }

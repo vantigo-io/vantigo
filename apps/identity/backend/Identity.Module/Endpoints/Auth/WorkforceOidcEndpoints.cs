@@ -72,6 +72,11 @@ internal static class WorkforceOidcEndpoints
             var existingUser = await userManager.FindByLoginAsync(identity.LoginProvider, identity.Subject);
             if (existingUser is not null)
             {
+                if (AuthAccountState.IsUnavailable(existingUser, DateTimeOffset.UtcNow))
+                {
+                    return await Failure(httpContext, "account_locked");
+                }
+
                 // External claims never become local roles or MFA proof. Identity's
                 // normal external-login path checks lockout/status and, when enabled,
                 // starts its local two-factor continuation rather than bypassing it.
@@ -94,9 +99,15 @@ internal static class WorkforceOidcEndpoints
 
             // Email is informational for a new JIT account only. It is never used
             // to attach a provider identity to an existing local account.
-            if (identity.Email is not null && await userManager.FindByEmailAsync(identity.Email) is not null)
+            var existingEmailUser = identity.Email is null
+                ? null
+                : await userManager.FindByEmailAsync(identity.Email);
+            if (existingEmailUser is not null)
             {
-                return await Failure(httpContext, "oidc_email_conflict");
+                return await Failure(httpContext,
+                    AuthAccountState.IsUnavailable(existingEmailUser, DateTimeOffset.UtcNow)
+                        ? "account_locked"
+                        : "oidc_email_conflict");
             }
 
             var created = await ProvisionNewUser(
@@ -115,6 +126,11 @@ internal static class WorkforceOidcEndpoints
                 if (racedUser is null)
                 {
                     return await Failure(httpContext, "oidc_sign_in_unavailable");
+                }
+
+                if (AuthAccountState.IsUnavailable(racedUser, DateTimeOffset.UtcNow))
+                {
+                    return await Failure(httpContext, "account_locked");
                 }
 
                 var racedSignIn = await signInManager.ExternalLoginSignInAsync(

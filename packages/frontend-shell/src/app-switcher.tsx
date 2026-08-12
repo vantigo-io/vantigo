@@ -15,6 +15,7 @@ export interface ShellApp {
   icon: ComponentType<{ size?: number | string; stroke?: number | string }>;
   /** Marks the app the user is currently in; rendered selected and not clickable. */
   current?: boolean;
+  requiredPermissions?: readonly string[];
 }
 
 /**

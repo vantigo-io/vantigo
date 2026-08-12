@@ -14,7 +14,7 @@ export interface LegalIdentityResponse {
 export interface CustomerResponse {
   id: number;
   name: string;
-  identity: LegalIdentityResponse | null;
+  timelineSummary: { entryCount: number; latestOccurredOn: string | null };
 }
 
 export interface PaginationMetadata {
@@ -91,7 +91,6 @@ export interface LegalIdentityInput {
 
 export interface CustomerInput {
   name: string;
-  identity?: LegalIdentityInput | null;
 }
 
 export async function createCustomer(input: CustomerInput): Promise<{ id: number }> {
@@ -109,3 +108,24 @@ export async function updateCustomer(id: number, input: CustomerInput): Promise<
     body: JSON.stringify(input),
   });
 }
+
+export const legalIdentityQueryOptions = (id: number) =>
+  queryOptions({
+    queryKey: ["customers", id, "legal-identity"],
+    queryFn: async ({ signal }) => {
+      try {
+        return await request<LegalIdentityResponse>(`/api/v1/customers/${id}/legal-identity`, { signal });
+      } catch (error) {
+        if ([403, 404].includes((error as { status?: number }).status ?? 0)) return null;
+        throw error;
+      }
+    },
+  });
+export const upsertLegalIdentity = (id: number, input: LegalIdentityInput) =>
+  request<LegalIdentityResponse>(`/api/v1/customers/${id}/legal-identity`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+export const deleteLegalIdentity = (id: number) =>
+  request<void>(`/api/v1/customers/${id}/legal-identity`, { method: "DELETE" });

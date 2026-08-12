@@ -7,11 +7,12 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using Vantigo.Communications.Authorization;
 using Vantigo.Communications.Database.Communications;
 using Vantigo.Communications.Endpoints.Dtos;
 using Vantigo.Communications.Services;
 using Vantigo.Contracts;
-using Vantigo.Contracts.Identity;
+using Vantigo.Contracts.AspNetCore.Authorization;
 
 namespace Vantigo.Communications.Endpoints;
 
@@ -20,24 +21,37 @@ internal static class CommunicationsEndpoints
     public static IEndpointRouteBuilder MapVersionedBusinessEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.NewVersionedApi().MapGroup("/api/v{version:apiVersion}/communications").HasApiVersion(new ApiVersion(1));
-        var business = api.MapGroup("").RequireAuthorization(AuthPolicies.Business);
-        business.MapGet("/messages", ListMessages).WithSummary("List email messages");
-        business.MapGet("/messages/{id:guid}", GetMessage).WithSummary("Get an email message");
-        business.MapGet("/messages/{id:guid}/events", ListEvents).WithSummary("List append-only message events");
-        business.MapPost("/messages/{id:guid}/resend", ResendMessage)
+        api.MapGet("/messages", ListMessages)
+            .RequirePermission(CommunicationsPermissions.MessagesView)
+            .WithSummary("List email messages");
+        api.MapGet("/messages/{id:guid}", GetMessage)
+            .RequirePermission(CommunicationsPermissions.MessagesView)
+            .WithSummary("Get an email message");
+        api.MapGet("/messages/{id:guid}/events", ListEvents)
+            .RequirePermission(CommunicationsPermissions.MessagesView)
+            .WithSummary("List append-only message events");
+        api.MapPost("/messages/{id:guid}/resend", ResendMessage)
+            .RequirePermission(CommunicationsPermissions.MessagesManage)
             .WithSummary("Re-queue an email message for sending")
             .WithDescription("Scope 'failed' re-queues only submission_failed recipients; scope 'all' re-queues every recipient.");
-        business.MapPost("/messages/{id:guid}/archive", ArchiveMessage)
+        api.MapPost("/messages/{id:guid}/archive", ArchiveMessage)
+            .RequirePermission(CommunicationsPermissions.MessagesManage)
+            // The mutation result is the complete message detail, including
+            // bodies and recipients, so message-management alone must not
+            // disclose it.
+            .RequirePermission(CommunicationsPermissions.MessagesView)
             .WithSummary("Archive an email message")
             .WithDescription("Soft-deletes the message from the default list view and cancels any pending send.");
-        business.MapPost("/messages/{id:guid}/unarchive", UnarchiveMessage)
+        api.MapPost("/messages/{id:guid}/unarchive", UnarchiveMessage)
+            .RequirePermission(CommunicationsPermissions.MessagesManage)
+            .RequirePermission(CommunicationsPermissions.MessagesView)
             .WithSummary("Unarchive an email message");
 
         api.MapPost("/messages", CreateMessage)
-            .RequireAuthorization(AuthPolicies.Business)
+            .RequirePermission(CommunicationsPermissions.MessagesSend)
 
             .WithSummary("Queue an email message")
-            .WithDescription("Requires a Business session with same-origin antiforgery protection. Idempotency-Key is required. SMTP is queued durably and delivery is at-least-once.")
+            .WithDescription("Requires an authenticated session with same-origin antiforgery protection. Idempotency-Key is required. SMTP is queued durably and delivery is at-least-once.")
             .Produces<EmailCreateResponse>(StatusCodes.Status201Created)
             .Produces<EmailCreateResponse>(StatusCodes.Status200OK)
             .Produces<CommunicationErrorResponse>(StatusCodes.Status400BadRequest)
@@ -46,16 +60,27 @@ internal static class CommunicationsEndpoints
             .Produces<CommunicationErrorResponse>(StatusCodes.Status422UnprocessableEntity)
             .Produces<CommunicationErrorResponse>(StatusCodes.Status503ServiceUnavailable);
 
-        var owner = api.MapGroup("").RequireAuthorization(AuthPolicies.Owner);
-        owner.MapGet("/mailboxes", ListMailboxes);
-        owner.MapGet("/mailboxes/{id:guid}", GetMailbox);
-        owner.MapPost("/mailboxes", CreateMailbox);
-        owner.MapPut("/mailboxes/{id:guid}", UpdateMailbox);
-        owner.MapPost("/mailboxes/{id:guid}/verify", VerifyMailbox);
-        owner.MapGet("/suppressions", ListSuppressions);
-        owner.MapGet("/suppressions/{id:guid}", GetSuppression);
-        owner.MapPost("/suppressions", CreateSuppression);
-        owner.MapDelete("/suppressions/{id:guid}", DeleteSuppression);
+        api.MapGet("/mailboxes", ListMailboxes)
+            .RequirePermission(CommunicationsPermissions.MailboxesView);
+        api.MapGet("/mailboxes/{id:guid}", GetMailbox)
+            .RequirePermission(CommunicationsPermissions.MailboxesView);
+        api.MapPost("/mailboxes", CreateMailbox)
+            .RequirePermission(CommunicationsPermissions.MailboxesManage)
+            .RequirePermission(CommunicationsPermissions.MailboxesView);
+        api.MapPut("/mailboxes/{id:guid}", UpdateMailbox)
+            .RequirePermission(CommunicationsPermissions.MailboxesManage)
+            .RequirePermission(CommunicationsPermissions.MailboxesView);
+        api.MapPost("/mailboxes/{id:guid}/verify", VerifyMailbox)
+            .RequirePermission(CommunicationsPermissions.MailboxesManage);
+        api.MapGet("/suppressions", ListSuppressions)
+            .RequirePermission(CommunicationsPermissions.SuppressionsView);
+        api.MapGet("/suppressions/{id:guid}", GetSuppression)
+            .RequirePermission(CommunicationsPermissions.SuppressionsView);
+        api.MapPost("/suppressions", CreateSuppression)
+            .RequirePermission(CommunicationsPermissions.SuppressionsManage)
+            .RequirePermission(CommunicationsPermissions.SuppressionsView);
+        api.MapDelete("/suppressions/{id:guid}", DeleteSuppression)
+            .RequirePermission(CommunicationsPermissions.SuppressionsManage);
         return endpoints;
     }
 

@@ -90,13 +90,7 @@ describe("app spotlight", () => {
               {
                 id: 2002,
                 name: "Refsdal Holding",
-                identity: {
-                  country: "no",
-                  type: "business",
-                  id: "923609016",
-                  name: "REFSDAL HOLDING AS",
-                  source: "brreg",
-                },
+                timelineSummary: { entryCount: 0, latestOccurredOn: null },
               },
             ]),
           ),
@@ -126,7 +120,13 @@ describe("app spotlight", () => {
         );
       }
       if (url === "/api/v1/customers/2002") {
-        return Promise.resolve(jsonResponse(200, { id: 2002, name: "Refsdal Holding", identity: null }));
+        return Promise.resolve(
+          jsonResponse(200, {
+            id: 2002,
+            name: "Refsdal Holding",
+            timelineSummary: { entryCount: 0, latestOccurredOn: null },
+          }),
+        );
       }
       return Promise.resolve(jsonResponse(200, { data: [] }));
     });
@@ -137,7 +137,7 @@ describe("app spotlight", () => {
     await userEvent.type(await screen.findByPlaceholderText(/search customers, contacts/i), "refsdal");
 
     expect(await screen.findByText("Refsdal Holding")).toBeInTheDocument();
-    expect(screen.getByText("REFSDAL HOLDING AS · 923609016")).toBeInTheDocument();
+    expect(screen.getByText("Customer")).toBeInTheDocument();
     expect(screen.getByText("Anders Refsdal")).toBeInTheDocument();
     expect(screen.getByText("anders@refsdal.no")).toBeInTheDocument();
 

@@ -127,7 +127,12 @@ describe("contact details page", () => {
       "GET /api/v1/customers/contacts/1001": () => jsonResponse(200, anders),
       "GET /api/v1/customers/contacts/1001/customers": () => jsonResponse(200, { data: [] }),
       "GET /api/v1/customers": () =>
-        jsonResponse(200, paginated([{ id: 2002, name: "Refsdal Holding", identity: null }])),
+        jsonResponse(
+          200,
+          paginated([
+            { id: 2002, name: "Refsdal Holding", timelineSummary: { entryCount: 0, latestOccurredOn: null } },
+          ]),
+        ),
       "POST /api/v1/customers/2002/contacts": attachSpy,
     });
 

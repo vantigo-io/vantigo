@@ -14,6 +14,7 @@ public sealed class ModuleArchitectureTests
         new("Products", "Vantigo.Products", typeof(Vantigo.Products.Endpoints.ProductsModuleEndpointExtensions).Assembly),
         new("Customers", "Vantigo.Customers", typeof(Vantigo.Customers.Endpoints.VersionedBusinessEndpointExtensions).Assembly),
         new("Communications", "Vantigo.Communications", typeof(Vantigo.Communications.Endpoints.VersionedBusinessEndpointExtensions).Assembly),
+        new("Energy", "Vantigo.Energy", typeof(Vantigo.Energy.Endpoints.EnergyModuleEndpointExtensions).Assembly),
     ];
 
     private static readonly IReadOnlySet<string> AllowedVantigoDependencies =
@@ -21,6 +22,7 @@ public sealed class ModuleArchitectureTests
         {
             "Vantigo.Configuration",
             "Vantigo.Contracts",
+            "Vantigo.Contracts.AspNetCore",
         };
 
     public static IEnumerable<object[]> ModulePairs =>
@@ -189,6 +191,12 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Communications.Endpoints.SmtpMailboxCredentialRequest",
             "Vantigo.Communications.Endpoints.SuppressionResponse",
             "Vantigo.Communications.Endpoints.UpdateMailboxRequest",
+            "Vantigo.Energy.Database.Energy.EnergyDbContext",
+            "Vantigo.Energy.Database.Energy.EnergyDbContextFactory",
+            "Vantigo.Energy.Database.Energy.Migrations.InitialEnergySchema",
+            "Vantigo.Energy.Database.Energy.Migrations.IntroduceMeters",
+            "Vantigo.Energy.Database.EnergyDatabaseConfiguration",
+            "Vantigo.Energy.Endpoints.EnergyModuleEndpointExtensions",
         };
 
     private static string RegexEscape(string value) =>

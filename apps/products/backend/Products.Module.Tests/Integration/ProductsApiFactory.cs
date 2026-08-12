@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -10,7 +11,9 @@ using Microsoft.Extensions.Hosting;
 
 using Testcontainers.PostgreSql;
 
+using Vantigo.Contracts.Identity;
 using Vantigo.Host;
+using Vantigo.Identity.Database.Accounts;
 using Vantigo.Products.Database.Products;
 using Vantigo.Products.Domain.Products;
 
@@ -82,6 +85,50 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
         var refreshedToken = client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery").GetAwaiter().GetResult();
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", refreshedToken!.Token);
 
+        return client;
+    }
+
+    public async Task<(Guid Id, string Email, string Password)> CreateUserWithCredentialsAsync(
+        string role = AuthRoles.User)
+    {
+        var email = $"user-{Guid.NewGuid():N}@integration.test";
+        const string password = "IntegrationUserPassword123";
+        await using var scope = Services.CreateAsyncScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            DisplayName = $"Test {role}",
+        };
+        var create = await users.CreateAsync(user, password);
+        if (!create.Succeeded || !(await users.AddToRoleAsync(user, role)).Succeeded)
+            throw new InvalidOperationException($"Could not create integration {role} user {email}.");
+
+        return (user.Id, email, password);
+    }
+
+    public async Task<string> UserConcurrencyStampAsync(Guid userId)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await users.FindByIdAsync(userId.ToString());
+        return user?.ConcurrencyStamp ?? throw new InvalidOperationException($"User {userId} was not found.");
+    }
+
+    public async Task<HttpClient> CreateAuthenticatedClientAsync(string email, string password)
+    {
+        var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
+        var login = await client.PostAsJsonAsync("/api/v1/identity/login", new { email, password });
+        if (!login.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Integration login failed: {login.StatusCode}");
+
+        client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
+        var refreshedToken = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", refreshedToken!.Token);
         return client;
     }
 

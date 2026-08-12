@@ -1,11 +1,15 @@
 using System.Security.Claims;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
 using Vantigo.Configuration;
+using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Identity.Endpoints.Auth;
@@ -67,6 +71,7 @@ public static class AuthServiceCollectionExtensions
                     new AuthErrorResponse(new AuthError("forbidden", "You do not have permission to access this resource.")));
             };
         });
+        services.AddSingleton<IPostConfigureOptions<CookieAuthenticationOptions>, DisabledAccountCookiePostConfigure>();
 
         return services;
     }
@@ -180,15 +185,73 @@ public static class AuthServiceCollectionExtensions
     {
         services.AddAuthorization(options =>
         {
-            options.AddPolicy(AuthPolicies.Owner, policy => policy.RequireRole(AuthRoles.Owner));
+            options.AddPolicy(AuthPolicies.Owner, policy => policy.RequireRole(AuthRoles.Owner)
+                .AddRequirements(new ActiveAccountRequirement()));
             options.AddPolicy(AuthPolicies.OwnerManagement, policy =>
-                policy.RequireRole(AuthRoles.Owner).AddRequirements(new MfaAuthenticatedRequirement()));
-            options.AddPolicy(AuthPolicies.Business, policy => policy.AddRequirements(new BusinessAccessRequirement()));
+                policy.RequireRole(AuthRoles.Owner)
+                    .AddRequirements(new ActiveAccountRequirement(), new MfaAuthenticatedRequirement()));
+            options.AddPolicy(AuthPolicies.Business, policy => policy.AddRequirements(
+                new ActiveAccountRequirement(), new BusinessAccessRequirement()));
+            options.AddPolicy(AuthPolicies.AuthorizationManagement, policy => policy
+                .AddRequirements(new ActiveAccountRequirement(), new MfaAuthenticatedRequirement(),
+                    new AuthorizationManagementRequirement()));
         });
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, ActiveAccountHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, BusinessAccessHandler>();
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, MfaAuthenticatedHandler>();
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, PermissionAuthorizationHandler>();
+        services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AuthorizationManagementHandler>();
+        services.AddScoped<AuthorizationMutationService>();
+        services.AddScoped<AuthorizationAuditWriter>();
+        services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
         return services;
+    }
+
+    private sealed class DisabledAccountCookiePostConfigure(
+        IServiceScopeFactory scopeFactory) : IPostConfigureOptions<CookieAuthenticationOptions>
+    {
+        public void PostConfigure(string? name, CookieAuthenticationOptions options)
+        {
+            if (!string.Equals(name, IdentityConstants.ApplicationScheme, StringComparison.Ordinal) ||
+                options.Events is null)
+            {
+                return;
+            }
+
+            var priorValidation = options.Events.OnValidatePrincipal;
+            options.Events.OnValidatePrincipal = async context =>
+            {
+                if (priorValidation is not null)
+                {
+                    await priorValidation(context);
+                }
+
+                if (context.Principal?.Identity?.IsAuthenticated != true)
+                {
+                    return;
+                }
+
+                var userIdValue = context.Principal.FindFirst(
+                    System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(userIdValue, out var userId))
+                {
+                    context.RejectPrincipal();
+                    return;
+                }
+
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+                var accountIsActive = await dbContext.Users.AsNoTracking()
+                    .AnyAsync(user => user.Id == userId && !user.IsDisabled,
+                        context.HttpContext.RequestAborted);
+                if (!accountIsActive)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+                }
+            };
+        }
     }
 
     public static IServiceCollection AddVantigoAntiforgery(

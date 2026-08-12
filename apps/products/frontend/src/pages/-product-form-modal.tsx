@@ -52,15 +52,15 @@ export const ProductFormModal = ({ state, onClose }: { state: ProductModalState 
       taxCategoryId: (v) => (v ? null : "Tax category is required"),
     },
   });
-  // Sync form values when the modal opens; `form` is intentionally omitted from deps.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const { setValues, resetDirty, clearErrors } = form;
+  // Sync form values when the modal opens.
   useEffect(() => {
     if (state) {
-      form.setValues(fromState(state));
-      form.resetDirty();
-      form.clearErrors();
+      setValues(fromState(state));
+      resetDirty();
+      clearErrors();
     }
-  }, [state]);
+  }, [clearErrors, resetDirty, setValues, state]);
   const mutation = useMutation({
     mutationFn: (input: ProductInput) => (isEdit ? updateProduct(state.product.id, input) : createProduct(input)),
     onSuccess: (product) => {
