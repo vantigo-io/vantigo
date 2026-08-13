@@ -10,6 +10,7 @@ using Npgsql;
 
 using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
+using Vantigo.Identity.Services;
 
 namespace Vantigo.Identity.Endpoints.Auth;
 
@@ -48,6 +49,7 @@ internal static class WorkforceOidcEndpoints
         RoleManager<IdentityRole<Guid>> roleManager,
         SignInManager<ApplicationUser> signInManager,
         AccountsDbContext dbContext,
+        OperationalEventService operationalEventService,
         CancellationToken cancellationToken)
     {
         if (!options.Enabled)
@@ -59,6 +61,12 @@ internal static class WorkforceOidcEndpoints
         if (!external.Succeeded || external.Principal is null)
         {
             return await Failure(httpContext, "oidc_external_identity_missing");
+        }
+
+        var claimValidation = StaticOidcClaimValidation.Validate(external.Principal, options);
+        if (!claimValidation.Succeeded)
+        {
+            return await Failure(httpContext, "oidc_identity_invalid");
         }
 
         var identity = ReadIdentity(external.Principal, options.Authority);
@@ -87,6 +95,7 @@ internal static class WorkforceOidcEndpoints
                     bypassTwoFactor: false);
                 if (signInResult.Succeeded)
                 {
+                    await RecordSuccessfulUseAsync(operationalEventService, cancellationToken);
                     return await Success(httpContext);
                 }
 
@@ -139,7 +148,7 @@ internal static class WorkforceOidcEndpoints
                     isPersistent: false,
                     bypassTwoFactor: false);
                 return racedSignIn.Succeeded
-                    ? await Success(httpContext)
+                    ? await SuccessfulResultAsync(httpContext, operationalEventService, cancellationToken)
                     : await Failure(httpContext, racedSignIn.IsLockedOut
                         ? "account_locked"
                         : racedSignIn.RequiresTwoFactor
@@ -148,7 +157,7 @@ internal static class WorkforceOidcEndpoints
             }
 
             await signInManager.SignInAsync(created, isPersistent: false);
-            return await Success(httpContext);
+            return await SuccessfulResultAsync(httpContext, operationalEventService, cancellationToken);
         }
         catch (Exception exception) when (IsSafeProvisioningConflict(exception))
         {
@@ -312,6 +321,30 @@ internal static class WorkforceOidcEndpoints
     {
         await context.SignOutAsync(IdentityConstants.ExternalScheme);
         return TypedResults.Redirect("/");
+    }
+
+    private static async Task<IResult> SuccessfulResultAsync(
+        HttpContext context,
+        OperationalEventService operationalEventService,
+        CancellationToken cancellationToken)
+    {
+        await RecordSuccessfulUseAsync(operationalEventService, cancellationToken);
+        return await Success(context);
+    }
+
+    private static async Task RecordSuccessfulUseAsync(
+        OperationalEventService operationalEventService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await operationalEventService.RecordAsync(OperationalEventKinds.StaticOidcSignInSucceeded,
+                DateTimeOffset.UtcNow, CancellationToken.None);
+        }
+        catch
+        {
+            // Operational status is best effort and never changes sign-in outcome.
+        }
     }
 
     private static async Task<IResult> Failure(HttpContext context, string code)

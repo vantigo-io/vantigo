@@ -112,7 +112,14 @@ if (testPreparation is not null)
 
 _ = app.Services.GetRequiredService<BootstrapSecretProvider>();
 _ = app.Services.GetRequiredService<WorkforceOidcOptions>();
+_ = app.Services.GetRequiredService<StaticScimOptions>();
 _ = app.Services.GetRequiredService<AppPublicUrls>();
+if (configuresApi)
+{
+    await using var startupScope = app.Services.CreateAsyncScope();
+    await startupScope.ServiceProvider.GetRequiredService<StaticScimStateInitializer>()
+        .EnsureAsync();
+}
 app.MapOpenApi().WithDocumentPerVersion();
 app.UseForwardedHeaders();
 app.UseAppBasePath();

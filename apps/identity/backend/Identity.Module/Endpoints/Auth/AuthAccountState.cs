@@ -65,8 +65,7 @@ internal static class AuthAccountState
         AccountsDbContext dbContext,
         Guid userId,
         CancellationToken cancellationToken) =>
-        await dbContext.ScimUserMappings.AnyAsync(mapping => mapping.UserId == userId, cancellationToken) ||
-        await dbContext.FederatedIdentities.AnyAsync(identity => identity.UserId == userId, cancellationToken);
+        await dbContext.ScimUserMappings.AnyAsync(mapping => mapping.UserId == userId, cancellationToken);
 
     internal static bool IsProvenanceDeletionConflict(Exception exception)
     {

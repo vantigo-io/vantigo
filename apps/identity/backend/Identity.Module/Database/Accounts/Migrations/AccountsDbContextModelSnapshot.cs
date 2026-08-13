@@ -600,238 +600,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.ToTable("bootstrap_states", "identity");
                 });
 
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.FederatedIdentity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ConnectionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("connection_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid?>("DirectoryObjectId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("directory_object_id");
-
-                    b.Property<string>("DirectoryTenantId")
-                        .HasMaxLength(128)
-                        .HasColumnType("character varying(128)")
-                        .HasColumnName("directory_tenant_id");
-
-                    b.Property<string>("Issuer")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("issuer");
-
-                    b.Property<string>("Subject")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
-                        .HasColumnName("subject");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_federated_identities");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_federated_identities_user_id");
-
-                    b.HasIndex("ConnectionId", "DirectoryTenantId", "DirectoryObjectId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_federated_identities_connection_directory_identity")
-                        .HasFilter("directory_tenant_id IS NOT NULL AND directory_object_id IS NOT NULL");
-
-                    b.HasIndex("ConnectionId", "Issuer", "Subject")
-                        .IsUnique()
-                        .HasDatabaseName("ux_federated_identities_connection_issuer_subject");
-
-                    b.ToTable("federated_identities", "identity");
-                });
-
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.FederationConnection", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.PrimitiveCollection<string[]>("AllowedDomains")
-                        .IsRequired()
-                        .HasColumnType("text[]")
-                        .HasColumnName("allowed_domains");
-
-                    b.Property<string>("Authority")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("authority");
-
-                    b.Property<string>("ClientId")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("character varying(256)")
-                        .HasColumnName("client_id");
-
-                    b.Property<string>("ClientSecretReference")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("client_secret_reference");
-
-                    b.Property<string>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("concurrency_stamp");
-
-                    b.Property<int>("ConfigurationVersion")
-                        .HasColumnType("integer")
-                        .HasColumnName("configuration_version");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("display_name");
-
-                    b.Property<bool>("IsDefault")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_default");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_enabled");
-
-                    b.Property<string>("JitCreationMode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("jit_creation_mode");
-
-                    b.Property<string>("ProviderKind")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("provider_kind");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<string>("ValidatedAuthorizationEndpoint")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("validated_authorization_endpoint");
-
-                    b.Property<int?>("ValidatedConfigurationVersion")
-                        .HasColumnType("integer")
-                        .HasColumnName("validated_configuration_version");
-
-                    b.Property<string>("ValidatedDiscoveryEndpoint")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("validated_discovery_endpoint");
-
-                    b.Property<string>("ValidatedIssuer")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("validated_issuer");
-
-                    b.Property<string>("ValidatedJwksUri")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("validated_jwks_uri");
-
-                    b.Property<string>("ValidatedTokenEndpoint")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)")
-                        .HasColumnName("validated_token_endpoint");
-
-                    b.Property<DateTimeOffset?>("ValidationCompletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("validation_completed_at");
-
-                    b.Property<string>("ValidationErrorCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("validation_error_code");
-
-                    b.Property<string>("ValidationState")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("validation_state");
-
-                    b.HasKey("Id")
-                        .HasName("pk_federation_connections");
-
-                    b.HasIndex("DisplayName")
-                        .IsUnique()
-                        .HasDatabaseName("ux_federation_connections_display_name");
-
-                    b.HasIndex("IsDefault")
-                        .IsUnique()
-                        .HasDatabaseName("ux_federation_connections_default")
-                        .HasFilter("is_default = TRUE");
-
-                    b.ToTable("federation_connections", "identity");
-                });
-
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.FederationOidcState", b =>
-                {
-                    b.Property<Guid>("StateId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("state_id");
-
-                    b.Property<DateTimeOffset?>("ConsumedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("consumed_at");
-
-                    b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
-                    b.Property<DateTimeOffset>("IssuedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("issued_at");
-
-                    b.Property<string>("StateHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("state_hash");
-
-                    b.HasKey("StateId")
-                        .HasName("pk_federation_oidc_states");
-
-                    b.HasIndex("ExpiresAt")
-                        .HasDatabaseName("ix_federation_oidc_states_expires_at");
-
-                    b.HasIndex("StateHash")
-                        .IsUnique()
-                        .HasDatabaseName("ux_federation_oidc_states_hash");
-
-                    b.ToTable("federation_oidc_states", "identity");
-                });
-
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -901,6 +669,35 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasDatabaseName("ux_invitations_token_hash");
 
                     b.ToTable("invitations", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.OperationalEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_operational_events");
+
+                    b.HasIndex("Kind")
+                        .IsUnique()
+                        .HasDatabaseName("ux_operational_events_kind");
+
+                    b.ToTable("operational_events", "identity");
                 });
 
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.PasskeyCeremony", b =>
@@ -1051,57 +848,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.ToTable("role_permissions", "identity");
                 });
 
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ScimBearerToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
-                    b.Property<bool>("IsCurrent")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_current");
-
-                    b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("revoked_at");
-
-                    b.Property<Guid>("ScimConnectionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("scim_connection_id");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("token_hash");
-
-                    b.Property<int>("Version")
-                        .HasColumnType("integer")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id")
-                        .HasName("pk_scim_bearer_tokens");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique()
-                        .HasDatabaseName("ux_scim_bearer_tokens_hash");
-
-                    b.HasIndex("ScimConnectionId", "Version")
-                        .IsUnique()
-                        .HasDatabaseName("ux_scim_bearer_tokens_connection_version");
-
-                    b.ToTable("scim_bearer_tokens", "identity");
-                });
-
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ScimConnection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1109,41 +855,9 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("ConcurrencyStamp")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("concurrency_stamp");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<Guid>("FederationConnectionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("federation_connection_id");
-
-                    b.Property<bool>("IsEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_enabled");
-
-                    b.Property<DateTimeOffset?>("LastRevokedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_revoked_at");
-
-                    b.Property<DateTimeOffset?>("LastRotatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_rotated_at");
-
-                    b.Property<string>("Mode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("mode");
-
-                    b.Property<int>("TokenVersion")
-                        .HasColumnType("integer")
-                        .HasColumnName("token_version");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1151,10 +865,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_scim_connections");
-
-                    b.HasIndex("FederationConnectionId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_scim_connections_federation_connection_id");
 
                     b.ToTable("scim_connections", "identity");
                 });
@@ -1186,16 +896,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.Property<DateTimeOffset>("LastSynchronizedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_synchronized_at");
-
-                    b.Property<string>("LifecycleOverride")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("lifecycle_override");
-
-                    b.Property<string>("LifecycleOverrideReason")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("lifecycle_override_reason");
 
                     b.Property<string>("ResourceId")
                         .IsRequired()
@@ -1408,23 +1108,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasConstraintName("fk_authorization_delegation_roles_role_id");
                 });
 
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.FederatedIdentity", b =>
-                {
-                    b.HasOne("Vantigo.Identity.Database.Accounts.FederationConnection", null)
-                        .WithMany()
-                        .HasForeignKey("ConnectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_federated_identities_connections_connection_id");
-
-                    b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_federated_identities_users_user_id");
-                });
-
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.PasskeyCeremony", b =>
                 {
                     b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
@@ -1462,26 +1145,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_role_permissions_roles_role_id");
-                });
-
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ScimBearerToken", b =>
-                {
-                    b.HasOne("Vantigo.Identity.Database.Accounts.ScimConnection", null)
-                        .WithMany()
-                        .HasForeignKey("ScimConnectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_scim_bearer_tokens_connections_id");
-                });
-
-            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ScimConnection", b =>
-                {
-                    b.HasOne("Vantigo.Identity.Database.Accounts.FederationConnection", null)
-                        .WithMany()
-                        .HasForeignKey("FederationConnectionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_scim_connections_federation_connections_id");
                 });
 
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ScimUserMapping", b =>

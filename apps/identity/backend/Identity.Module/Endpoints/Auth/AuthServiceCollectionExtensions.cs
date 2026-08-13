@@ -139,11 +139,6 @@ public static class AuthServiceCollectionExtensions
                 : CookieSecurePolicy.Always;
         });
 
-        services.AddScoped<DynamicFederationOidcService>();
-        services.AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, DynamicFederationOidcAuthenticationHandler>(
-                DynamicFederationAuthentication.Scheme, _ => { });
-
         var workforceOidc = WorkforceOidcOptionsExtensions.Load(configuration, environment);
         if (workforceOidc.Enabled)
         {
@@ -167,6 +162,7 @@ public static class AuthServiceCollectionExtensions
                 options.SaveTokens = false;
                 options.GetClaimsFromUserInfoEndpoint = false;
                 options.MapInboundClaims = false;
+                options.PushedAuthorizationBehavior = PushedAuthorizationBehavior.Disable;
                 options.Scope.Clear();
                 options.Scope.Add("openid");
                 options.Scope.Add("profile");
@@ -196,6 +192,33 @@ public static class AuthServiceCollectionExtensions
                     context.Response.Redirect("/sign-in?error=oidc_authentication_failed");
                     return Task.CompletedTask;
                 };
+                options.Events.OnAuthorizationCodeReceived = context =>
+                {
+                    if (!string.Equals(workforceOidc.ClientAuthentication,
+                            WorkforceOidcOptions.WorkloadIdentityAuthentication, StringComparison.Ordinal))
+                    {
+                        return Task.CompletedTask;
+                    }
+
+                    try
+                    {
+                        if (context.TokenEndpointRequest is null)
+                        {
+                            context.Fail("The OIDC token request could not be prepared.");
+                            return Task.CompletedTask;
+                        }
+
+                        // Read the projected token for every redemption. Never
+                        // cache it and never configure a client secret in this mode.
+                        WorkforceOidcClientAssertion.Apply(context.TokenEndpointRequest, workforceOidc);
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        context.Fail(exception.Message);
+                    }
+
+                    return Task.CompletedTask;
+                };
                 options.Events.OnTokenValidated = context =>
                 {
                     // SecurityToken is the issuer value after the built-in OIDC
@@ -215,6 +238,19 @@ public static class AuthServiceCollectionExtensions
                     if (identity is null)
                     {
                         context.Fail("The validated OIDC principal is missing.");
+                        return Task.CompletedTask;
+                    }
+
+                    if (context.Principal is null)
+                    {
+                        context.Fail("The validated OIDC principal is missing.");
+                        return Task.CompletedTask;
+                    }
+
+                    var claimValidation = StaticOidcClaimValidation.Validate(context.Principal, workforceOidc);
+                    if (!claimValidation.Succeeded)
+                    {
+                        context.Fail(claimValidation.Error ?? "The OIDC claims are invalid.");
                         return Task.CompletedTask;
                     }
 
@@ -255,22 +291,14 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<AuthorizationMutationService>();
         services.AddScoped<AuthorizationAuditWriter>();
         services.AddHttpContextAccessor();
-        services.AddSingleton<IFederationClientSecretResolver, ConfigurationFederationClientSecretResolver>();
-        services.AddHttpClient(OidcFederationDiscoveryValidator.HttpClientName, client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(10);
-        }).ConfigurePrimaryHttpMessageHandler(() => new FederationDiscoveryHttpMessageHandler());
-        services.AddSingleton<IFederationHostAddressResolver, DnsFederationHostAddressResolver>();
-        services.AddScoped<IFederationDiscoveryValidator, OidcFederationDiscoveryValidator>();
-        services.AddScoped<FederationConnectionManagementService>();
-        services.AddScoped<AccessGroupManagementService>();
-        services.AddScoped<ScimControlPlaneService>();
         services.AddScoped<ScimProtocolService>();
         services.AddScoped<ScimIngressEndpointFilter>();
         services.AddSingleton<ScimIngressRateLimiter>();
         services.AddScoped<ScimLifecycleService>();
         services.AddScoped<ScimTokenService>();
-        services.AddSingleton<IScimTokenPepper, EnvironmentScimTokenPepper>();
+        services.AddScoped<AccessGroupManagementService>();
+        services.AddScoped<OperationalEventService>();
+        services.AddScoped<StaticScimStateInitializer>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
         return services;

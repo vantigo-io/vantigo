@@ -17,8 +17,8 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
 import { Route as AdminRolesRouteImport } from './routes/admin/roles'
-import { Route as AdminSsoRouteImport } from './routes/admin/sso'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as CommunicationsMailboxesRouteImport } from './routes/communications/mailboxes'
 import { Route as CommunicationsSuppressionsRouteImport } from './routes/communications/suppressions'
@@ -79,14 +79,14 @@ const SignInRoute = SignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminDashboardRoute = AdminDashboardRouteImport.update({
+  id: '/admin/dashboard',
+  path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRolesRoute = AdminRolesRouteImport.update({
   id: '/admin/roles',
   path: '/admin/roles',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminSsoRoute = AdminSsoRouteImport.update({
-  id: '/admin/sso',
-  path: '/admin/sso',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -199,8 +199,8 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/roles': typeof AdminRolesRoute
-  '/admin/sso': typeof AdminSsoRoute
   '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
@@ -230,8 +230,8 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/roles': typeof AdminRolesRoute
-  '/admin/sso': typeof AdminSsoRoute
   '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
@@ -261,8 +261,8 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/roles': typeof AdminRolesRoute
-  '/admin/sso': typeof AdminSsoRoute
   '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
@@ -294,8 +294,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/dashboard'
     | '/admin/roles'
-    | '/admin/sso'
     | '/admin/users'
     | '/communications/mailboxes'
     | '/communications/suppressions'
@@ -325,8 +325,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/dashboard'
     | '/admin/roles'
-    | '/admin/sso'
     | '/admin/users'
     | '/communications/mailboxes'
     | '/communications/suppressions'
@@ -355,8 +355,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/admin/dashboard'
     | '/admin/roles'
-    | '/admin/sso'
     | '/admin/users'
     | '/communications/mailboxes'
     | '/communications/suppressions'
@@ -387,8 +387,8 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
+  AdminDashboardRoute: typeof AdminDashboardRoute
   AdminRolesRoute: typeof AdminRolesRoute
-  AdminSsoRoute: typeof AdminSsoRoute
   AdminUsersRoute: typeof AdminUsersRoute
   CommunicationsMailboxesRoute: typeof CommunicationsMailboxesRoute
   CommunicationsSuppressionsRoute: typeof CommunicationsSuppressionsRoute
@@ -466,18 +466,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/dashboard': {
+      id: '/admin/dashboard'
+      path: '/admin/dashboard'
+      fullPath: '/admin/dashboard'
+      preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/roles': {
       id: '/admin/roles'
       path: '/admin/roles'
       fullPath: '/admin/roles'
       preLoaderRoute: typeof AdminRolesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/sso': {
-      id: '/admin/sso'
-      path: '/admin/sso'
-      fullPath: '/admin/sso'
-      preLoaderRoute: typeof AdminSsoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -638,8 +638,8 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
+  AdminDashboardRoute: AdminDashboardRoute,
   AdminRolesRoute: AdminRolesRoute,
-  AdminSsoRoute: AdminSsoRoute,
   AdminUsersRoute: AdminUsersRoute,
   CommunicationsMailboxesRoute: CommunicationsMailboxesRoute,
   CommunicationsSuppressionsRoute: CommunicationsSuppressionsRoute,

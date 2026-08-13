@@ -12,7 +12,6 @@ internal static class AuthRateLimitPolicies
     internal const string Mfa = "auth-mfa";
     internal const string PasskeyLogin = "auth-passkey-login";
     internal const string UserManagement = "auth-user-management";
-    internal const string Federation = "auth-federation";
 }
 
 internal sealed record BootstrapRequest(
@@ -89,6 +88,17 @@ internal sealed record PasswordRecoveryResponse(bool Accepted);
 internal sealed record PasswordResetResponse(bool Success);
 
 internal sealed record MfaStatusResponse(bool TwoFactorEnabled, bool MfaEnrollmentRequired);
+
+internal sealed record IdentitySystemStatusResponse(
+    int Total,
+    int Active,
+    int Disabled,
+    int PendingInvitations,
+    bool StaticOidcEnabled,
+    string? StaticOidcProvider,
+    bool StaticScimEnabled,
+    DateTimeOffset? LastStaticOidcSignInAtUtc,
+    DateTimeOffset? LastAuthenticatedScimRequestAtUtc);
 
 internal sealed record MfaSetupResponse(string? SharedKey, string? AuthenticatorUri, bool Initialized);
 

@@ -25,8 +25,8 @@ public sealed class WorkforceOidcOptionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["Authentication:Oidc:Enabled"] = "false",
                 ["Authentication:Oidc:DisplayName"] = "Company SSO",
-                ["Authentication:Oidc:CallbackPath"] = "/api/v1/identity/oidc/company-callback",
             })
             .Build();
 
@@ -46,8 +46,11 @@ public sealed class WorkforceOidcOptionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Oidc:Authority"] = "https://issuer.integration.test",
-                ["Authentication:Oidc:ClientId"] = "client",
+                ["Authentication:Oidc:Enabled"] = "true",
+                ["Authentication:Oidc:Provider"] = "Entra",
+                ["Authentication:Oidc:Authority"] = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+                ["Authentication:Oidc:ClientId"] = "11111111-1111-1111-1111-111111111111",
+                ["Authentication:Oidc:ClientAuthentication"] = "ClientSecret",
             })
             .Build();
 
@@ -64,8 +67,11 @@ public sealed class WorkforceOidcOptionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Oidc:Authority"] = "http://issuer.integration.test",
-                ["Authentication:Oidc:ClientId"] = "client",
+                ["Authentication:Oidc:Enabled"] = "true",
+                ["Authentication:Oidc:Provider"] = "Entra",
+                ["Authentication:Oidc:Authority"] = "http://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+                ["Authentication:Oidc:ClientId"] = "11111111-1111-1111-1111-111111111111",
+                ["Authentication:Oidc:ClientAuthentication"] = "ClientSecret",
                 ["Authentication:Oidc:ClientSecret"] = "secret",
             })
             .Build();
@@ -74,7 +80,7 @@ public sealed class WorkforceOidcOptionsTests
             configuration,
             new HostEnvironment { EnvironmentName = Environments.Production }));
 
-        Assert.Contains("HTTPS outside Development", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Entra Authority", exception.Message, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -86,8 +92,11 @@ public sealed class WorkforceOidcOptionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Oidc:Authority"] = "https://issuer.integration.test",
-                ["Authentication:Oidc:ClientId"] = "client",
+                ["Authentication:Oidc:Enabled"] = "true",
+                ["Authentication:Oidc:Provider"] = "Entra",
+                ["Authentication:Oidc:Authority"] = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+                ["Authentication:Oidc:ClientId"] = "11111111-1111-1111-1111-111111111111",
+                ["Authentication:Oidc:ClientAuthentication"] = "ClientSecret",
                 ["Authentication:Oidc:ClientSecret"] = "secret",
                 ["Authentication:Oidc:CallbackPath"] = callbackPath,
             })
@@ -97,7 +106,7 @@ public sealed class WorkforceOidcOptionsTests
             configuration,
             new HostEnvironment { EnvironmentName = Environments.Production }));
 
-        Assert.Contains("cannot collide", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("CallbackPath", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -106,8 +115,11 @@ public sealed class WorkforceOidcOptionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Authentication:Oidc:Authority"] = "https://issuer.integration.test",
-                ["Authentication:Oidc:ClientId"] = "client",
+                ["Authentication:Oidc:Enabled"] = "true",
+                ["Authentication:Oidc:Provider"] = "Entra",
+                ["Authentication:Oidc:Authority"] = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+                ["Authentication:Oidc:ClientId"] = "11111111-1111-1111-1111-111111111111",
+                ["Authentication:Oidc:ClientAuthentication"] = "ClientSecret",
                 ["Authentication:Oidc:ClientSecret"] = "secret",
                 ["Authentication:Oidc:CallbackPath"] = "https://issuer.integration.test/callback",
             })
@@ -141,7 +153,7 @@ public sealed class WorkforceOidcRoutingTests
 
         var options = factory.Services.GetRequiredService<WorkforceOidcOptions>();
         var configuration = factory.Services.GetRequiredService<IConfiguration>();
-        Assert.Equal("https://issuer.integration.test", configuration["Authentication:Oidc:Authority"]);
+        Assert.Equal("https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0", configuration["Authentication:Oidc:Authority"]);
         Assert.True(options.Enabled);
         var schemeProvider = factory.Services.GetRequiredService<IAuthenticationSchemeProvider>();
         var schemes = await schemeProvider.GetAllSchemesAsync();

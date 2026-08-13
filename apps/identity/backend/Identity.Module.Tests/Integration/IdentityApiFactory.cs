@@ -1,206 +1,76 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Http;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 using Testcontainers.PostgreSql;
 
 using Vantigo.Configuration;
-using Vantigo.Contracts.Identity;
 using Vantigo.Host;
 using Vantigo.Identity.Database.Accounts;
-using Vantigo.Identity.Endpoints.Auth;
 using Vantigo.Identity.Services;
 
 namespace Vantigo.Identity.Tests.Integration;
 
-/// <summary>
-/// Boots the real host, identity module, and Customers business API against
-/// PostgreSQL. The collection fixture keeps the container shared while each test
-/// uses unique accounts for stateful endpoint coverage.
-/// </summary>
 public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    internal const string OidcAuthority = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0";
+    internal const string OidcClientId = "11111111-1111-1111-1111-111111111111";
+    internal const string OidcTenantId = "00000000-0000-0000-0000-000000000000";
     public const string BootstrapSecret = "identity-integration-bootstrap-secret";
     public const string OwnerEmail = "identity-owner@integration.test";
     public const string OwnerPassword = "IdentityOwnerPassword123";
-    public const string ScimTokenPepperReference = "VANTIGO_SCIM_INTEGRATION_TOKEN_PEPPER";
-    private static readonly object ScimPepperLock = new();
-    private static string? originalScimTokenPepper;
-    private static int scimPepperUsers;
-    private bool ownsScimPepper;
-
-    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:17-alpine")
-        .WithDatabase("vantigo")
-        .Build();
-
-    public IdentityApiFactory()
-    {
-        // EnvironmentScimTokenPepper intentionally resolves the secret from
-        // the process environment, not from test configuration. Set it before
-        // the WebApplicationFactory can initialize the host and restore it
-        // after the host is disposed.
-        lock (ScimPepperLock)
-        {
-            if (scimPepperUsers++ == 0)
-            {
-                originalScimTokenPepper = Environment.GetEnvironmentVariable(ScimTokenPepperReference);
-            }
-            Environment.SetEnvironmentVariable(ScimTokenPepperReference, "integration-scim-token-pepper");
-            ownsScimPepper = true;
-        }
-    }
-
+    public const string StaticScimToken = "static-scim-current-token-for-integration-tests";
+    private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:17-alpine").WithDatabase("vantigo").Build();
+    protected bool EnableStaticScim { get; set; }
     protected bool RequireOwnerMfa { get; set; }
     protected bool EnableWorkforceOidc { get; set; }
-
     public Guid OwnerId { get; private set; }
-
-    public static string CreateTotpCode(string base32Secret, DateTimeOffset? timestamp = null)
-    {
-        var normalized = base32Secret.TrimEnd('=').ToUpperInvariant();
-        var bytes = Base32Decode(normalized);
-        var counter = (timestamp ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds() / 30;
-        Span<byte> challenge = stackalloc byte[8];
-        System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(challenge, counter);
-        using var hmac = new HMACSHA1(bytes);
-        var hash = hmac.ComputeHash(challenge.ToArray());
-        var offset = hash[^1] & 0x0F;
-        var code = ((hash[offset] & 0x7F) << 24) |
-            (hash[offset + 1] << 16) |
-            (hash[offset + 2] << 8) |
-            hash[offset + 3];
-        return (code % 1_000_000).ToString("D6");
-    }
-
-    private static byte[] Base32Decode(string value)
-    {
-        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-        var buffer = 0;
-        var bits = 0;
-        var bytes = new List<byte>();
-        foreach (var character in value)
-        {
-            buffer = (buffer << 5) | alphabet.IndexOf(character);
-            bits += 5;
-            if (bits < 8) continue;
-            bits -= 8;
-            bytes.Add((byte)(buffer >> bits));
-            buffer &= (1 << bits) - 1;
-        }
-        return bytes.ToArray();
-    }
 
     public async Task InitializeAsync()
     {
         await postgres.StartAsync();
-
         using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
         var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
-        var bootstrap = await client.PostAsJsonAsync("/api/v1/identity/bootstrap", new
-        {
-            secret = BootstrapSecret,
-            email = OwnerEmail,
-            displayName = "Integration Owner",
-            password = OwnerPassword,
-        });
-        if (bootstrap.StatusCode != System.Net.HttpStatusCode.Created)
-        {
-            throw new InvalidOperationException(
-                $"Identity integration bootstrap failed: {bootstrap.StatusCode} {await bootstrap.Content.ReadAsStringAsync()}");
-        }
-
+        var bootstrap = await client.PostAsJsonAsync("/api/v1/identity/bootstrap", new { secret = BootstrapSecret, email = OwnerEmail, displayName = "Integration Owner", password = OwnerPassword });
+        if (!bootstrap.IsSuccessStatusCode) throw new InvalidOperationException(await bootstrap.Content.ReadAsStringAsync());
         await using var scope = Services.CreateAsyncScope();
-        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        OwnerId = (await users.FindByEmailAsync(OwnerEmail))!.Id;
+        OwnerId = (await scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>().FindByEmailAsync(OwnerEmail))!.Id;
     }
 
-    public HttpClient CreateCookieClient() =>
-        CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
-
+    public HttpClient CreateCookieClient() => CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
     public async Task<HttpClient> CreateAntiforgeryClientAsync()
     {
         var client = CreateCookieClient();
         await RefreshAntiforgeryAsync(client);
         return client;
     }
-
     public async Task<HttpClient> CreateOwnerClientAsync()
     {
-        var client = await CreateAntiforgeryClientAsync();
-        var login = await client.PostAsJsonAsync("/api/v1/identity/login", new
-        {
-            email = OwnerEmail,
-            password = OwnerPassword,
-        });
-        if (login.StatusCode != System.Net.HttpStatusCode.OK)
-        {
-            throw new InvalidOperationException(
-                $"Identity owner login failed: {login.StatusCode} {await login.Content.ReadAsStringAsync()}");
-        }
-
+        var client = CreateCookieClient();
+        await RefreshAntiforgeryAsync(client);
+        var login = await client.PostAsJsonAsync("/api/v1/identity/login", new { email = OwnerEmail, password = OwnerPassword });
+        if (!login.IsSuccessStatusCode) throw new InvalidOperationException(await login.Content.ReadAsStringAsync());
         await RefreshAntiforgeryAsync(client);
         return client;
-    }
-
-    public async Task<HttpClient> CreateAuthenticatedClientAsync(string email, string password)
-    {
-        var client = await CreateAntiforgeryClientAsync();
-        var login = await client.PostAsJsonAsync("/api/v1/identity/login", new { email, password });
-        if (login.StatusCode != System.Net.HttpStatusCode.OK)
-        {
-            throw new InvalidOperationException(
-                $"Identity test-user login failed: {login.StatusCode} {await login.Content.ReadAsStringAsync()}");
-        }
-
-        await RefreshAntiforgeryAsync(client);
-        return client;
-    }
-
-    public async Task<Guid> CreateUserAsync(string role, string? email = null, string? password = null)
-    {
-        email ??= $"user-{Guid.NewGuid():N}@integration.test";
-        password ??= "IntegrationUserPassword123";
-        await using var scope = Services.CreateAsyncScope();
-        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-        if (await roleManager.FindByNameAsync(role) is null)
-        {
-            var roleResult = await roleManager.CreateAsync(new IdentityRole<Guid>
-            {
-                Name = role,
-                NormalizedName = role.ToUpperInvariant(),
-            });
-            if (!roleResult.Succeeded)
-                throw new InvalidOperationException($"Could not create integration role {role}.");
-        }
-        var user = new ApplicationUser
-        {
-            UserName = email,
-            Email = email,
-            EmailConfirmed = true,
-            DisplayName = $"Test {role}",
-        };
-        var create = await users.CreateAsync(user, password);
-        if (!create.Succeeded || !(await users.AddToRoleAsync(user, role)).Succeeded)
-        {
-            throw new InvalidOperationException($"Could not create integration {role} user {email}.");
-        }
-
-        return user.Id;
     }
 
     public async Task<(Guid Id, string Email, string Password)> CreateUserWithCredentialsAsync(string role)
@@ -211,6 +81,83 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         return (id, email, password);
     }
 
+    public async Task<HttpClient> CreateAuthenticatedClientAsync(string email, string password)
+    {
+        var client = await CreateAntiforgeryClientAsync();
+        var response = await client.PostAsJsonAsync("/api/v1/identity/login", new { email, password });
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(await response.Content.ReadAsStringAsync());
+        await RefreshAntiforgeryAsync(client);
+        return client;
+    }
+
+    public async Task ResetIdentityStateAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS identity CASCADE");
+        await db.Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<StaticScimStateInitializer>().EnsureAsync();
+        using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
+        client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
+        await client.PostAsJsonAsync("/api/v1/identity/bootstrap", new { secret = BootstrapSecret, email = OwnerEmail, displayName = "Integration Owner", password = OwnerPassword });
+    }
+
+    public async Task<Guid> CreateUserAsync(string role, string? email = null, string? password = null)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
+        if (await roles.FindByNameAsync(role) is null)
+        {
+            var roleResult = await roles.CreateAsync(new IdentityRole<Guid>(role));
+            if (!roleResult.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"Could not create integration role '{role}': {FormatIdentityErrors(roleResult)}");
+            }
+        }
+        email ??= $"user-{Guid.NewGuid():N}@integration.test";
+        password ??= "IntegrationUserPassword123";
+        var user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true, DisplayName = "Test User" };
+        var userResult = await users.CreateAsync(user, password);
+        if (!userResult.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"Could not create integration user '{email}': {FormatIdentityErrors(userResult)}");
+        }
+
+        var roleAssignmentResult = await users.AddToRoleAsync(user, role);
+        if (!roleAssignmentResult.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"Could not assign integration role '{role}' to '{email}': {FormatIdentityErrors(roleAssignmentResult)}");
+        }
+
+        return user.Id;
+    }
+
+    private static string FormatIdentityErrors(IdentityResult result) =>
+        string.Join("; ", result.Errors.Select(error => $"{error.Code}: {error.Description}"));
+
+    public static string CreateTotpCode(string base32Secret, DateTimeOffset? timestamp = null)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var buffer = 0; var bits = 0; var bytes = new List<byte>();
+        foreach (var character in base32Secret.TrimEnd('=').ToUpperInvariant())
+        {
+            buffer = (buffer << 5) | alphabet.IndexOf(character); bits += 5;
+            if (bits < 8) continue; bits -= 8; bytes.Add((byte)(buffer >> bits)); buffer &= (1 << bits) - 1;
+        }
+        var counter = (timestamp ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds() / 30;
+        Span<byte> challenge = stackalloc byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(challenge, counter);
+        using var hmac = new System.Security.Cryptography.HMACSHA1(bytes.ToArray());
+        var hash = hmac.ComputeHash(challenge.ToArray()); var offset = hash[^1] & 0x0F;
+        var code = ((hash[offset] & 0x7F) << 24) | (hash[offset + 1] << 16) | (hash[offset + 2] << 8) | hash[offset + 3];
+        return (code % 1_000_000).ToString("D6");
+    }
+
     public static async Task RefreshAntiforgeryAsync(HttpClient client)
     {
         client.DefaultRequestHeaders.Remove("X-XSRF-TOKEN");
@@ -218,134 +165,147 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
     }
 
+    internal TestEmailSender EmailSender => Services.GetRequiredService<TestEmailSender>();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
-        builder.ConfigureAppConfiguration((_, configuration) =>
+        if (EnableWorkforceOidc)
+        {
+            builder.UseSetting("Authentication:Oidc:Enabled", "true");
+            builder.UseSetting("Authentication:Oidc:Provider", "Entra");
+            builder.UseSetting("Authentication:Oidc:Authority", OidcAuthority);
+            builder.UseSetting("Authentication:Oidc:ClientId", OidcClientId);
+            builder.UseSetting("Authentication:Oidc:ClientAuthentication", "ClientSecret");
+            builder.UseSetting("Authentication:Oidc:ClientSecret", "identity-integration-secret");
+        }
+        builder.ConfigureAppConfiguration((_, config) =>
         {
             var values = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:vantigo"] = postgres.GetConnectionString(),
                 ["Modules:Customers:Enabled"] = "true",
-                ["Modules:Communications:Enabled"] = "true",
+                ["Modules:Communications:Enabled"] = "false",
                 ["Modules:Products:Enabled"] = "false",
                 ["Modules:Energy:Enabled"] = "false",
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
                 ["Authentication:Owners:RequireMfa"] = RequireOwnerMfa.ToString(),
-                ["Authentication:Invitations:AcceptUrl"] = "http://test.local/invitations?token={token}",
-                ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",
-                ["VANTIGO_SSO_ENTRA_CLIENT_SECRET"] = "integration-entra-secret",
-                ["VANTIGO_SSO_GOOGLE_CLIENT_SECRET"] = "integration-google-secret",
-                ["Authentication:Scim:TokenPepperReference"] = ScimTokenPepperReference,
+                ["Authentication:Scim:Enabled"] = EnableStaticScim.ToString(),
             };
+            if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;
             if (EnableWorkforceOidc)
             {
-                values["Authentication:Oidc:Authority"] = "https://issuer.integration.test";
-                values["Authentication:Oidc:ClientId"] = "identity-integration-client";
+                values["Authentication:Oidc:Enabled"] = "true";
+                values["Authentication:Oidc:Provider"] = "Entra";
+                values["Authentication:Oidc:Authority"] = OidcAuthority;
+                values["Authentication:Oidc:ClientId"] = OidcClientId;
+                values["Authentication:Oidc:ClientAuthentication"] = "ClientSecret";
                 values["Authentication:Oidc:ClientSecret"] = "identity-integration-secret";
             }
-
-            configuration.AddInMemoryCollection(values);
+            config.AddInMemoryCollection(values);
         });
-
         builder.ConfigureServices(services =>
         {
-            services.AddSingleton(new HostTestStartupPreparation(
-                ApplyMigrations: true,
-                SeedDevelopmentData: false));
+            services.AddSingleton(new HostTestStartupPreparation(true, false));
             services.RemoveAll<IApplicationEmailSender>();
-            services.AddSingleton<IApplicationEmailSender, TestEmailSender>();
-            services.RemoveAll<IFederationDiscoveryValidator>();
-            services.AddScoped<IFederationDiscoveryValidator, TestFederationDiscoveryValidator>();
-            services.RemoveAll<IFederationHostAddressResolver>();
-            services.AddSingleton<IFederationHostAddressResolver, TestFederationHostAddressResolver>();
-            services.Configure<HttpClientFactoryOptions>(OidcFederationDiscoveryValidator.HttpClientName,
-                options => options.HttpMessageHandlerBuilderActions.Add(builder =>
-                    builder.PrimaryHandler = new DynamicFederationTestHttpMessageHandler()));
-            Environment.SetEnvironmentVariable("VANTIGO_SSO_INTEGRATION_CLIENT_SECRET", "integration-federation-secret");
-        });
-
-        if (EnableWorkforceOidc)
-        {
-            builder.ConfigureServices(services =>
-                services.AddTransient<IStartupFilter, ControlledExternalCookieStartupFilter>());
-        }
-    }
-
-    async Task IAsyncLifetime.DisposeAsync()
-    {
-        await base.DisposeAsync();
-        await postgres.DisposeAsync();
-        if (!ownsScimPepper) return;
-        lock (ScimPepperLock)
-        {
-            if (--scimPepperUsers == 0)
+            services.AddSingleton<TestEmailSender>();
+            services.AddSingleton<IApplicationEmailSender>(serviceProvider =>
+                serviceProvider.GetRequiredService<TestEmailSender>());
+            if (EnableWorkforceOidc)
             {
-                Environment.SetEnvironmentVariable(ScimTokenPepperReference, originalScimTokenPepper);
-                originalScimTokenPepper = null;
+                services.AddTransient<IStartupFilter, ControlledExternalCookieStartupFilter>();
+                services.PostConfigure<OpenIdConnectOptions>(WorkforceOidcOptions.Scheme, options =>
+                {
+                    var configuredAuthority = options.Authority?.Trim();
+                    if (string.IsNullOrWhiteSpace(configuredAuthority) ||
+                        !Uri.TryCreate(configuredAuthority, UriKind.Absolute, out var authorityUri) ||
+                        authorityUri.Scheme is not ("http" or "https") ||
+                        !string.IsNullOrEmpty(authorityUri.UserInfo) ||
+                        !string.IsNullOrEmpty(authorityUri.Query) ||
+                        !string.IsNullOrEmpty(authorityUri.Fragment))
+                    {
+                        throw new InvalidOperationException(
+                            "The production OIDC options did not provide a usable Authority for the deterministic integration backchannel.");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(options.ClientId) || string.IsNullOrWhiteSpace(options.ClientSecret))
+                    {
+                        throw new InvalidOperationException(
+                            "The production OIDC options did not provide the client credentials for the deterministic integration backchannel.");
+                    }
+
+                    var handler = new DeterministicOidcBackchannelHandler(
+                        configuredAuthority, options.ClientId, options.ClientSecret, OidcTenantId);
+                    options.Backchannel = new HttpClient(handler)
+                    {
+                        BaseAddress = new Uri("http://deterministic.test"),
+                    };
+                    options.ConfigurationManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                        $"{configuredAuthority.TrimEnd('/')}/.well-known/openid-configuration",
+                        new OpenIdConnectConfigurationRetriever(),
+                        options.Backchannel);
+                    options.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+                });
             }
-            ownsScimPepper = false;
-        }
+        });
     }
+
+    async Task IAsyncLifetime.DisposeAsync() { await base.DisposeAsync(); await postgres.DisposeAsync(); }
 }
 
-public sealed class MfaIdentityApiFactory : IdentityApiFactory
+public sealed class StaticScimIdentityApiFactory : IdentityApiFactory
 {
-    public MfaIdentityApiFactory() => RequireOwnerMfa = true;
+    public StaticScimIdentityApiFactory() => EnableStaticScim = true;
 }
 
-public sealed class OidcIdentityApiFactory : IdentityApiFactory
-{
-    public OidcIdentityApiFactory() => EnableWorkforceOidc = true;
-}
+public sealed class OidcIdentityApiFactory : IdentityApiFactory { public OidcIdentityApiFactory() => EnableWorkforceOidc = true; }
+public sealed class MfaIdentityApiFactory : IdentityApiFactory { public MfaIdentityApiFactory() => RequireOwnerMfa = true; }
 
 internal sealed record AntiforgeryToken(string Token);
-
 internal sealed class TestEmailSender : IApplicationEmailSender
 {
-    public Task SendAsync(ApplicationEmail email, CancellationToken cancellationToken = default) =>
-        Task.CompletedTask;
-}
+    private readonly object gate = new();
+    private readonly List<ApplicationEmail> messages = [];
 
-internal sealed class TestFederationDiscoveryValidator : IFederationDiscoveryValidator
-{
-    public Task<FederationDiscoveryValidationResult> ValidateAsync(
-        FederationProviderKind providerKind,
-        string normalizedAuthority,
-        CancellationToken cancellationToken) =>
-        Task.FromResult(new FederationDiscoveryValidationResult(
-            true,
-            "validated",
-            "The OIDC discovery document was validated.",
-            normalizedAuthority,
-            normalizedAuthority + "/.well-known/openid-configuration",
-            normalizedAuthority + "/authorize",
-            normalizedAuthority + "/token",
-            normalizedAuthority + "/keys"));
-}
-
-internal sealed class TestFederationHostAddressResolver : IFederationHostAddressResolver
-{
-    public Task<System.Net.IPAddress[]> ResolveAsync(string host, CancellationToken cancellationToken) =>
-        Task.FromResult(new[] { System.Net.IPAddress.Parse("1.2.3.4") });
-}
-
-internal static class DynamicFederationTestTransport
-{
-    public static Func<HttpRequestMessage, HttpResponseMessage>? Responder { get; set; }
-    public static List<Uri> Requests { get; } = [];
-    public static List<string> RequestBodies { get; } = [];
-}
-
-internal sealed class DynamicFederationTestHttpMessageHandler : HttpMessageHandler
-{
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    public IReadOnlyCollection<ApplicationEmail> Messages
     {
-        DynamicFederationTestTransport.Requests.Add(request.RequestUri!);
-        DynamicFederationTestTransport.RequestBodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
-        return Task.FromResult(DynamicFederationTestTransport.Responder?.Invoke(request) ??
-            new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        get
+        {
+            lock (gate)
+            {
+                return messages.ToArray();
+            }
+        }
+    }
+
+    public Task SendAsync(ApplicationEmail email, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (gate)
+        {
+            messages.Add(email);
+        }
+        return Task.CompletedTask;
+    }
+
+    public IReadOnlyCollection<ApplicationEmail> ReadFor(string recipient)
+    {
+        lock (gate)
+        {
+            return messages.Where(message =>
+                string.Equals(message.To, recipient, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+    }
+
+    public void ClearFor(string recipient)
+    {
+        lock (gate)
+        {
+            messages.RemoveAll(message =>
+                string.Equals(message.To, recipient, StringComparison.OrdinalIgnoreCase));
+        }
     }
 }
 
@@ -353,52 +313,179 @@ internal sealed class ControlledExternalCookieStartupFilter : IStartupFilter
 {
     public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
     {
-        app.Use(async (HttpContext context, RequestDelegate continuation) =>
+        app.Use(async (context, continuation) =>
         {
-            if (!context.Request.Path.Equals("/test/oidc-external", StringComparison.Ordinal))
-            {
-                await continuation(context);
-                return;
-            }
-
+            if (!context.Request.Path.Equals("/test/oidc-external", StringComparison.Ordinal)) { await continuation(context); return; }
             var claims = new List<Claim>
             {
-                new(WorkforceOidcOptions.ValidatedIssuerClaim,
-                    context.Request.Query["issuer"].FirstOrDefault() ?? "https://issuer.integration.test"),
-                new("sub", context.Request.Query.ContainsKey("sub")
-                    ? context.Request.Query["sub"].ToString()
-                    : "test-subject"),
-                new("name", context.Request.Query["name"].FirstOrDefault() ?? "Workforce User"),
+                new(WorkforceOidcOptions.ValidatedIssuerClaim, "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0"),
+                new("sub", context.Request.Query["sub"].FirstOrDefault() ?? "test-subject"),
+                new("name", "Workforce User"),
+                new("tid", "00000000-0000-0000-0000-000000000000"),
+                new("oid", "22222222-2222-2222-2222-222222222222"),
+                new("azp", "11111111-1111-1111-1111-111111111111"),
             };
-            if (context.Request.Query.TryGetValue("email", out var email) && !string.IsNullOrWhiteSpace(email))
+            if (context.Request.Query.TryGetValue("email", out var email))
             {
                 claims.Add(new Claim("email", email.ToString()));
                 claims.Add(new Claim("email_verified", "true"));
             }
-
-            await context.SignInAsync(
-                IdentityConstants.ExternalScheme,
-                new ClaimsPrincipal(new ClaimsIdentity(claims, "controlled-external")));
+            await context.SignInAsync(IdentityConstants.ExternalScheme, new ClaimsPrincipal(new ClaimsIdentity(claims, "controlled-external")));
             context.Response.Redirect(WorkforceOidcOptions.CompletionPath);
         });
         next(app);
     };
 }
 
-[CollectionDefinition(Name)]
-public sealed class IdentityApiCollection : ICollectionFixture<IdentityApiFactory>
+internal sealed class DeterministicOidcBackchannelHandler(
+    string authority,
+    string clientId,
+    string clientSecret,
+    string tenantId) : HttpMessageHandler
 {
-    public const string Name = "IdentityApi";
+    private const string SigningKeyId = "identity-integration-rsa";
+    private readonly RSA signingKey = RSA.Create(2048);
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Method == HttpMethod.Get &&
+            string.Equals(request.RequestUri?.AbsoluteUri,
+                $"{authority}/.well-known/openid-configuration", StringComparison.Ordinal))
+        {
+            return JsonResponse(new
+            {
+                issuer = authority,
+                authorization_endpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize",
+                token_endpoint = $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token",
+                jwks_uri = $"https://login.microsoftonline.com/{tenantId}/discovery/v2.0/keys",
+                response_types_supported = new[] { "code" },
+                subject_types_supported = new[] { "public" },
+                id_token_signing_alg_values_supported = new[] { "RS256" },
+                scopes_supported = new[] { "openid", "profile", "email" },
+                token_endpoint_auth_methods_supported = new[] { "client_secret_post" },
+            });
+        }
+
+        if (request.Method == HttpMethod.Get &&
+            string.Equals(request.RequestUri?.AbsoluteUri,
+                $"https://login.microsoftonline.com/{tenantId}/discovery/v2.0/keys", StringComparison.Ordinal))
+        {
+            var parameters = signingKey.ExportParameters(false);
+            return JsonResponse(new
+            {
+                keys = new[]
+                {
+                    new
+                    {
+                        kty = "RSA",
+                        use = "sig",
+                        alg = "RS256",
+                        kid = SigningKeyId,
+                        n = Base64Url(parameters.Modulus!),
+                        e = Base64Url(parameters.Exponent!),
+                    },
+                },
+            });
+        }
+
+        if (request.Method == HttpMethod.Post &&
+            string.Equals(request.RequestUri?.AbsoluteUri,
+                $"https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token", StringComparison.Ordinal))
+        {
+            var form = ParseForm(await request.Content!.ReadAsStringAsync(cancellationToken));
+            var codeParts = form.GetValueOrDefault("code", string.Empty).Split(':');
+            if (codeParts.Length > 0 && string.Equals(codeParts[0], "invalid_grant", StringComparison.Ordinal))
+            {
+                return JsonResponse(new
+                {
+                    error = "invalid_grant",
+                    error_description = "The deterministic test authorization code is invalid.",
+                }, HttpStatusCode.BadRequest);
+            }
+
+            var expectedRedirectUri = $"http://localhost{WorkforceOidcOptions.DefaultCallbackPath}";
+            var codeVerifier = form.GetValueOrDefault("code_verifier", string.Empty);
+            if (!string.Equals(form.GetValueOrDefault("grant_type"), "authorization_code", StringComparison.Ordinal) ||
+                !string.Equals(form.GetValueOrDefault("client_id"), clientId, StringComparison.Ordinal) ||
+                !string.Equals(form.GetValueOrDefault("client_secret"), clientSecret, StringComparison.Ordinal) ||
+                !string.Equals(form.GetValueOrDefault("redirect_uri"), expectedRedirectUri, StringComparison.Ordinal) ||
+                codeParts.Length != 4 || !string.Equals(codeParts[0], "oidc-test", StringComparison.Ordinal) ||
+                string.IsNullOrEmpty(codeVerifier) ||
+                !string.Equals(codeParts[3], CreateCodeChallenge(codeVerifier), StringComparison.Ordinal))
+            {
+                return JsonResponse(new { error = "invalid_request" }, HttpStatusCode.BadRequest);
+            }
+
+            return JsonResponse(new
+            {
+                token_type = "Bearer",
+                access_token = "deterministic-access-token",
+                id_token = CreateIdToken(codeParts[1], $"{codeParts[1]}@integration.test", codeParts[2]),
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected OIDC backchannel request: {request.Method} {request.RequestUri}");
+    }
+
+    private string CreateIdToken(string subject, string email, string nonce)
+    {
+        var header = Base64Url(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            alg = "RS256",
+            typ = "JWT",
+            kid = SigningKeyId,
+        }));
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var payload = Base64Url(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            iss = authority,
+            aud = clientId,
+            iat = now,
+            nbf = now,
+            exp = now + 600,
+            nonce,
+            tid = tenantId,
+            oid = "22222222-2222-2222-2222-222222222222",
+            azp = clientId,
+            sub = subject,
+            name = "Workforce User",
+            email,
+            email_verified = true,
+        }));
+        var unsigned = $"{header}.{payload}";
+        var signature = signingKey.SignData(
+            Encoding.ASCII.GetBytes(unsigned), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        return $"{unsigned}.{Base64Url(signature)}";
+    }
+
+    private static string CreateCodeChallenge(string codeVerifier) =>
+        Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(codeVerifier)));
+
+    private static Dictionary<string, string> ParseForm(string value) =>
+        value.Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(item => item.Split('=', 2))
+            .ToDictionary(item => Uri.UnescapeDataString(item[0].Replace('+', ' ')),
+                item => Uri.UnescapeDataString((item.Length == 2 ? item[1] : string.Empty).Replace('+', ' ')));
+
+    private static HttpResponseMessage JsonResponse(object value, HttpStatusCode statusCode = HttpStatusCode.OK) =>
+        new(statusCode)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json"),
+        };
+
+    private static string Base64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) signingKey.Dispose();
+        base.Dispose(disposing);
+    }
 }
 
-[CollectionDefinition(Name)]
-public sealed class IdentityMfaApiCollection : ICollectionFixture<MfaIdentityApiFactory>
-{
-    public const string Name = "IdentityMfaApi";
-}
-
-[CollectionDefinition(Name)]
-public sealed class IdentityOidcApiCollection : ICollectionFixture<OidcIdentityApiFactory>
-{
-    public const string Name = "IdentityOidcApi";
-}
+[CollectionDefinition(Name)] public sealed class IdentityApiCollection : ICollectionFixture<IdentityApiFactory> { public const string Name = "IdentityApi"; }
+[CollectionDefinition(Name)] public sealed class StaticScimApiCollection : ICollectionFixture<StaticScimIdentityApiFactory> { public const string Name = "StaticScimApi"; }
+[CollectionDefinition(Name)] public sealed class IdentityOidcApiCollection : ICollectionFixture<OidcIdentityApiFactory> { public const string Name = "IdentityOidcApi"; }
+[CollectionDefinition(Name)] public sealed class IdentityMfaApiCollection : ICollectionFixture<MfaIdentityApiFactory> { public const string Name = "IdentityMfaApi"; }

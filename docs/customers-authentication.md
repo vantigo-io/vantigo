@@ -5,7 +5,7 @@ same-origin API. The API returns JSON `401`/`403` responses rather than login
 redirects. Mutating browser requests use antiforgery protection: obtain a token from
 `GET /api/v1/identity/antiforgery` and send it in `X-XSRF-TOKEN`.
 
-For persisted multi-provider SSO, SCIM 2.0, group mappings, provider setup, and the
+For static workforce OIDC, SCIM 2.0, group mappings, provider setup, and the
 operator recovery runbook, see [SSO and SCIM operations](sso-scim-operations.md).
 
 The application cookie and antiforgery cookie are `HttpOnly` and `SameSite=Strict`, and
@@ -120,27 +120,22 @@ Email__Smtp__TimeoutSeconds=30
 the username is optional for servers that do not require authentication. Do not use
 real credentials in configuration examples.
 
-## Legacy optional workforce OIDC
+## Optional static workforce OIDC
 
-This is the legacy, startup-configured OIDC path. At most one workforce OpenID
+This is the startup-configured OIDC path. At most one workforce OpenID
 Connect provider can be configured, and its settings are not persisted in the
 accounts database. OIDC is disabled
-when all three required values are absent. Once any required value is supplied,
-`Authority`, `ClientId`, and `ClientSecret` are all required and invalid partial
-configuration fails startup. The optional display name defaults to `Workforce SSO`;
-the callback path defaults to `/api/v1/identity/oidc/callback`.
+unless `Authentication__Oidc__Enabled=true`. The supported providers are Entra
+and Google. `Authority`, `ClientId`, and the selected client-authentication
+settings are required and invalid partial configuration fails startup. The
+optional display name defaults to `Workforce SSO`; the callback path is fixed at
+`/api/v1/identity/oidc/callback`.
 
-This path is distinct from persisted multi-provider SSO. Persisted connections are
-owner-managed, use `clientSecretReference` values in the dedicated
-`VANTIGO_SSO_*_CLIENT_SECRET` environment namespace, and use the dynamic routes
-`/api/v1/identity/federation/providers`,
-`/api/v1/identity/federation/{connectionId}/challenge`, and
-`/api/v1/identity/federation/callback`. Do not configure a persisted connection by
-putting its secret or reference in `Authentication__Oidc__ClientSecret`. For this
-legacy path only, `Authentication__Oidc__ClientSecret` is the actual direct runtime
-secret injected into the process, not a `VANTIGO_SSO_*_CLIENT_SECRET` reference.
-Never mix this direct legacy secret with persisted connection setup; use the
-[SSO and SCIM operations guide](sso-scim-operations.md).
+`Authentication__Oidc__ClientSecret` is the direct runtime secret injected into the
+process for client-secret authentication. Entra may instead use
+`ClientAuthentication=WorkloadIdentity`, which reads the projected assertion
+fresh for each authorization-code redemption. Use the [static identity operations
+guide](sso-scim-operations.md) for deployment-bound SCIM configuration.
 
 The flow is authorization code plus PKCE. ASP.NET Core's built-in handler validates
 provider metadata, issuer, audience, signature, state, nonce, and correlation. The
@@ -157,36 +152,41 @@ MFA; an existing local account's local MFA policy still applies. Keep the local 
 bootstrap account as the break-glass path.
 
 All OIDC settings use the same neutral environment-variable names regardless of
-provider:
-
-```text
-Authentication__Oidc__Authority=https://issuer.example.com
-Authentication__Oidc__ClientId=<client-id>
-Authentication__Oidc__ClientSecret=<client-secret-from-secret-store>
-Authentication__Oidc__DisplayName=Workforce SSO
-Authentication__Oidc__CallbackPath=/api/v1/identity/oidc/callback
-```
-
-Minimal configuration shapes (not provider test claims):
+provider. Use one of these supported provider-specific shapes; the examples are
+placeholders, not credentials:
 
 **Microsoft Entra ID**
 
 ```text
+Authentication__Oidc__Enabled=true
+Authentication__Oidc__Provider=Entra
 Authentication__Oidc__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0
 Authentication__Oidc__ClientId=<application-client-id>
+Authentication__Oidc__ClientAuthentication=ClientSecret
 Authentication__Oidc__ClientSecret=<client-secret-from-secret-store>
 ```
 
-**Okta**
+**Google Workspace**
 
 ```text
-Authentication__Oidc__Authority=https://<okta-org>.okta.com/oauth2/default
-Authentication__Oidc__ClientId=<application-client-id>
+Authentication__Oidc__Enabled=true
+Authentication__Oidc__Provider=Google
+Authentication__Oidc__Authority=https://accounts.google.com
+Authentication__Oidc__ClientId=<client-id>.apps.googleusercontent.com
+Authentication__Oidc__ClientAuthentication=ClientSecret
 Authentication__Oidc__ClientSecret=<client-secret-from-secret-store>
+Authentication__Oidc__AllowedDomains__0=example.com
 ```
 
-These are generic configuration examples only; no real provider has been tested or
-is implied by this documentation.
+For Entra WorkloadIdentity, replace `ClientAuthentication=ClientSecret` with
+`ClientAuthentication=WorkloadIdentity`, omit `ClientSecret`, and configure an
+absolute `Authentication__Oidc__WorkloadIdentityTokenFile` or provide
+`AZURE_FEDERATED_TOKEN_FILE`. See the [static identity operations guide](sso-scim-operations.md)
+for the required Azure Workload Identity federation setup. WorkloadIdentity is
+Entra-only; Google is client-secret-only.
+
+These examples describe the supported static provider shapes; use test tenants and
+secret stores appropriate to the deployment.
 
 ### Required callback URI
 
@@ -202,36 +202,9 @@ When `App__PublicOrigin` is configured, the API logs the exact callback URI to
 register at startup. When `App__BasePath` is set to an empty value (root
 serving), omit the prefix.
 
-If `Authentication__Oidc__CallbackPath` is changed, register the same public origin
-plus that exact path. It must be an absolute path below `/api/v1/identity/oidc/`, without a
-query, fragment, traversal, or trailing slash, and it must not be
-`/api/v1/identity/oidc/challenge` or `/api/v1/identity/oidc/complete`. The public origin, forwarded scheme,
-and provider registration must agree; the application does not accept a browser-
-supplied return URL.
-
-## Deployment configuration reference
-
-Persisted enterprise federation connections store only a client-secret reference,
-never the secret itself. Set the referenced key in the identity container's
-environment (Docker/Kubernetes secret injection is recommended), for example:
-
-```text
-VANTIGO_SSO_ENTRA_CLIENT_SECRET=<secret-from-your-secret-store>
-```
-
-When creating a connection, set `clientSecretReference` to a name in the dedicated
-`VANTIGO_SSO_*_CLIENT_SECRET` namespace, such as
-`VANTIGO_SSO_ENTRA_CLIENT_SECRET`. The API never returns or logs the resolved
-secret. The resolver reads only that exact process environment variable; it does
-not resolve arbitrary configuration hierarchy keys or application aliases. The
-runtime resolver distinguishes an unset key from a configured key internally. A
-connection must pass owner-only OIDC discovery validation before it can be enabled.
-
-For generic providers, production deployments must also enforce outbound egress
-controls or configure an approved issuer-host allowlist at the network/platform
-boundary. Application-level DNS preflight rejects private, loopback, link-local,
-and other non-public targets, but cannot by itself guarantee safety against DNS
-rebinding between validation and a later metadata/token/JWKS request.
+The callback path is fixed at `/api/v1/identity/oidc/callback`; it is not a
+deployment setting. The public origin, forwarded scheme, and provider registration
+must agree; the application does not accept a browser-supplied return URL.
 
 Environment variables use ASP.NET Core's standard double-underscore mapping:
 
@@ -245,12 +218,22 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 | `Authentication__Invitations__Lifetime` | Invitation lifetime as a .NET `TimeSpan` (`1`–`30` days) | `7.00:00:00` |
 | `Authentication__Invitations__AcceptUrl` | Invitation URL template with `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/invitations/accept?token={token}` |
 | `Authentication__PasswordReset__ResetUrl` | Reset URL template with `{email}` and `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/password-reset?email={email}&token={token}` |
-| `Authentication__Oidc__Authority` | Legacy static OIDC issuer/authority; required to enable the single startup-configured provider | unset |
-| `Authentication__Oidc__ClientId` | Legacy static OIDC client ID; required to enable the single startup-configured provider | unset |
-| `Authentication__Oidc__ClientSecret` | Legacy static OIDC client secret; required to enable the single startup-configured provider | unset |
+| `Authentication__Oidc__Enabled` | Enable the one startup-configured OIDC provider | `false` |
+| `Authentication__Oidc__Provider` | Supported provider: `Entra` or `Google` | unset |
+| `Authentication__Oidc__Authority` | Static OIDC issuer/authority | unset |
+| `Authentication__Oidc__ClientId` | Static OIDC client ID | unset |
+| `Authentication__Oidc__ClientAuthentication` | `ClientSecret` or Entra-only `WorkloadIdentity` | unset |
+| `Authentication__Oidc__ClientSecret` | OIDC client secret when using `ClientSecret` | unset |
+| `Authentication__Oidc__WorkloadIdentityTokenFile` | Absolute projected Entra assertion file for `WorkloadIdentity` | unset |
+| `Authentication__Oidc__AllowedDomains__0` | Allowed Google Workspace hosted domain | unset |
 | `Authentication__Oidc__DisplayName` | Sign-in button/provider label | `Workforce SSO` |
-| `Authentication__Oidc__CallbackPath` | OIDC callback path | `/api/v1/identity/oidc/callback` |
-| `Authentication__Scim__TokenPepperReference` | Exact environment-variable name containing the SCIM token pepper; see the SSO/SCIM guide | unset |
+| `Authentication__Oidc__CallbackPath` | Retained only to reject non-fixed callback configuration; do not set it | `/api/v1/identity/oidc/callback` |
+| `Authentication__Scim__Enabled` | Enable the fixed static SCIM protocol | `false` |
+| `Authentication__Scim__BearerToken` | Static SCIM bearer token; configure this or `BearerTokenFile`, not both | unset |
+| `Authentication__Scim__BearerTokenFile` | Absolute readable file containing the current static SCIM token | unset |
+| `Authentication__Scim__PreviousBearerToken` | Optional prior token during rotation; requires a bounded expiry | unset |
+| `Authentication__Scim__PreviousBearerTokenFile` | Optional absolute file containing the prior token; mutually exclusive with the direct value | unset |
+| `Authentication__Scim__PreviousBearerTokenExpiresAtUtc` | Future UTC expiry for the prior token, no more than 24 hours after startup | unset |
 | `DataProtection__PostgreSql__ConnectionString` | Optional override for the PostgreSQL connection used for Data Protection keys | `ConnectionStrings__Vantigo` |
 | `DataProtection__PostgreSql__ConnectionStringName` | Named connection-string lookup used when the override is unset | `Vantigo` |
 | `DataProtection__PostgreSql__Schema` | PostgreSQL schema for the Data Protection key table | `dataprotection` |

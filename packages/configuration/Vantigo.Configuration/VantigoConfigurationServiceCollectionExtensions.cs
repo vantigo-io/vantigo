@@ -29,6 +29,7 @@ public static class VantigoConfigurationServiceCollectionExtensions
         services.AddObservabilityOptions(configuration);
         services.AddModuleHostingOptions(configuration);
         services.AddWorkforceOidcOptions();
+        services.AddScimOptions();
         services.AddSingleton<AppPublicUrls>();
         return services;
     }

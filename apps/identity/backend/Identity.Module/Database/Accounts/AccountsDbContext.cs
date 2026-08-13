@@ -31,15 +31,7 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
 
     public DbSet<ProfileAvatar> ProfileAvatars => Set<ProfileAvatar>();
 
-    public DbSet<FederationConnection> FederationConnections => Set<FederationConnection>();
-
-    public DbSet<FederatedIdentity> FederatedIdentities => Set<FederatedIdentity>();
-
-    public DbSet<FederationOidcState> FederationOidcStates => Set<FederationOidcState>();
-
     public DbSet<ScimConnection> ScimConnections => Set<ScimConnection>();
-
-    public DbSet<ScimBearerToken> ScimBearerTokens => Set<ScimBearerToken>();
 
     public DbSet<ScimUserMapping> ScimUserMappings => Set<ScimUserMapping>();
 
@@ -48,6 +40,8 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
     public DbSet<AccessGroupMembership> AccessGroupMemberships => Set<AccessGroupMembership>();
 
     public DbSet<AccessGroupRoleMapping> AccessGroupRoleMappings => Set<AccessGroupRoleMapping>();
+
+    public DbSet<OperationalEvent> OperationalEvents => Set<OperationalEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -72,11 +66,8 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
         modelBuilder.ApplyConfiguration(new IdentityUserPasskeyEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new PasskeyCeremonyEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ProfileAvatarEntityTypeConfiguration());
-        modelBuilder.ApplyConfiguration(new FederationConnectionEntityTypeConfiguration());
-        modelBuilder.ApplyConfiguration(new FederatedIdentityEntityTypeConfiguration());
-        modelBuilder.ApplyConfiguration(new FederationOidcStateEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new OperationalEventEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ScimConnectionEntityTypeConfiguration());
-        modelBuilder.ApplyConfiguration(new ScimBearerTokenEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ScimUserMappingEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AccessGroupEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AccessGroupMembershipEntityTypeConfiguration());

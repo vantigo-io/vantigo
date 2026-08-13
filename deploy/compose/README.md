@@ -60,7 +60,7 @@ can invite further users from `/settings`.
 
 The complete configuration reference is in
 [docs/customers-authentication.md](../../docs/customers-authentication.md).
-For persisted multi-provider SSO, SCIM provisioning, and recovery procedures, see
+For startup-configured workforce OIDC, static SCIM provisioning, and recovery procedures, see
 the [SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
 Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`.
 
@@ -111,22 +111,31 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 
 - Put the application behind a TLS-terminating reverse proxy and configure the
   `ForwardedHeaders__*` settings to trust exactly that proxy.
-- Set `App__PublicOrigin` to the public origin; mailed links and the OIDC
-  callbacks are derived from it. Persisted SSO uses
-  `/api/v1/identity/federation/callback`; the legacy static OIDC path defaults to
+- Set `App__PublicOrigin` to the public origin; mailed links and the static OIDC
+  callback are derived from it. The callback is fixed at
   `/api/v1/identity/oidc/callback`.
-- The `vantigo.env.example` file documents the legacy static OIDC settings. For
-  persisted SSO, inject client secrets as exact `VANTIGO_SSO_*_CLIENT_SECRET`
-  environment variables and configure the reference through the owner control
-  plane. Do not put provider secrets in source-controlled files.
+- The `vantigo.env.example` file documents the static OIDC and SCIM settings.
+  Configuration is deployment-bound and changes require a restart. Do not put
+  provider or SCIM secrets in source-controlled files.
 - SCIM uses `/api/v1/identity/scim/v2`, bearer tokens, and
-  `application/scim+json`. Set
-  `Authentication__Scim__TokenPepperReference` to a matching
-  `VANTIGO_SCIM_*_TOKEN_PEPPER` environment variable before creating tokens.
+  `application/scim+json`. Set `Authentication__Scim__Enabled=true` and either
+  `Authentication__Scim__BearerToken` or
+  `Authentication__Scim__BearerTokenFile`. During rotation, optionally set
+  `Authentication__Scim__PreviousBearerToken` or
+  `Authentication__Scim__PreviousBearerTokenFile` together with
+  `Authentication__Scim__PreviousBearerTokenExpiresAtUtc` (future and no more
+  than 24 hours after startup).
 - The Compose `postgres-data` volume contains the PostgreSQL-backed Data Protection
   keys as well as application data. Back up the database before upgrades and keep
   one migration job only; do not run `seed` in production.
 - Never run `seed` in production; it is Development-only.
+
+The static identity cleanup migration is intentionally destructive for old
+database-managed federation/SCIM configuration and non-static connection data.
+Before deploying a release that contains it, confirm that the database has no
+real use of that removed configuration/data, take and verify a PostgreSQL backup,
+then let the one-shot `vantigo-migrate` service complete before starting the API.
+The migration is forward-only; do not plan an application rollback across it.
 
 ## Upgrading
 
@@ -135,7 +144,9 @@ docker compose pull
 docker compose up -d
 ```
 
-The migration job runs automatically before the application starts.
+The migration job runs before the application starts. For a controlled release,
+run exactly one migration job, wait for successful completion, and then start the
+API. The API does not apply migrations at startup.
 
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
 see [SSO and SCIM operations](../../docs/sso-scim-operations.md).

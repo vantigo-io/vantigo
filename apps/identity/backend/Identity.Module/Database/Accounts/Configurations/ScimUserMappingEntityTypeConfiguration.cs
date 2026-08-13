@@ -16,8 +16,6 @@ internal sealed class ScimUserMappingEntityTypeConfiguration : IEntityTypeConfig
         builder.Property(item => item.ExternalId).HasColumnName("external_id").HasMaxLength(512).IsRequired();
         builder.Property(item => item.UserName).HasColumnName("user_name").HasMaxLength(512).IsRequired();
         builder.Property(item => item.UpstreamActive).HasColumnName("upstream_active").IsRequired();
-        builder.Property(item => item.LifecycleOverride).HasColumnName("lifecycle_override").HasConversion<string>().HasMaxLength(32);
-        builder.Property(item => item.LifecycleOverrideReason).HasColumnName("lifecycle_override_reason").HasMaxLength(2000);
         builder.Property(item => item.SourceProfileJson).HasColumnName("source_profile_json").HasMaxLength(20000);
         builder.Property(item => item.LastSynchronizedAt).HasColumnName("last_synchronized_at").IsRequired();
         builder.Property(item => item.Version).HasColumnName("version").IsRequired();

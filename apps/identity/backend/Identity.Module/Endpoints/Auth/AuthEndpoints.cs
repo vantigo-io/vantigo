@@ -24,38 +24,21 @@ public static class AuthEndpoints
     public static IEndpointRouteBuilder MapVantigoIdentityEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/identity").WithTags("Authentication");
-        var workforceOidc = app.ServiceProvider.GetRequiredService<WorkforceOidcOptions>();
-
         group.MapGet("/antiforgery", AntiforgeryToken)
             .WithSummary("Get the CSRF token for same-origin state-changing requests");
 
         group.MapGet("/bootstrap-status", BootstrapStatus)
             .WithSummary("Get whether one-time local Owner bootstrap is available");
 
+        group.MapGet("/owner/system-status", SystemStatus)
+            .WithSummary("Get non-sensitive static identity and account status")
+            .RequireAuthorization(AuthPolicies.Owner);
+
         group.MapGet("/providers", WorkforceOidcEndpoints.Providers)
             .WithSummary("Get the configured workforce sign-in providers");
 
-        group.MapGet("/federation/providers", DynamicFederationProviders)
-            .WithSummary("Get enabled persisted federation sign-in providers")
-            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
-
-        group.MapGet("/federation/{connectionId:guid}/challenge", DynamicFederationChallenge)
-            .WithSummary("Start a persisted federation OpenID Connect sign-in")
-            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
-
-        group.MapGet("/federation/callback", DynamicFederationCallback)
-            .WithSummary("Complete a persisted federation OpenID Connect sign-in")
-            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
-
-        group.MapPost("/federation/callback", DynamicFederationCallback)
-            .ExcludeFromDescription()
-            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
-
-        if (workforceOidc.Enabled)
-        {
-            group.MapGet("/oidc/challenge", WorkforceOidcEndpoints.Challenge)
-                .WithSummary("Start workforce OpenID Connect sign-in");
-        }
+        group.MapGet("/oidc/challenge", WorkforceOidcEndpoints.Challenge)
+            .WithSummary("Start workforce OpenID Connect sign-in");
 
         group.MapGet("/oidc/complete", WorkforceOidcEndpoints.Complete)
             .WithSummary("Complete workforce OpenID Connect sign-in");
@@ -92,46 +75,6 @@ public static class AuthEndpoints
         return app;
     }
 
-    private static async Task<IResult> DynamicFederationProviders(
-        DynamicFederationOidcService federation,
-        CancellationToken cancellationToken) =>
-        TypedResults.Ok(await federation.ListProvidersAsync(cancellationToken));
-
-    private static async Task<IResult> DynamicFederationChallenge(
-        Guid connectionId,
-        string? returnPath,
-        HttpContext httpContext,
-        CancellationToken cancellationToken)
-    {
-        var properties = new AuthenticationProperties();
-        properties.Items[DynamicFederationAuthentication.ConnectionIdItem] = connectionId.ToString("D");
-        properties.Items[DynamicFederationAuthentication.ConfigurationVersionItem] = "0";
-        properties.Items[DynamicFederationAuthentication.ReturnPathItem] = returnPath ?? "/";
-
-        // The handler re-reads the connection and version. The placeholder is
-        // replaced by the current version only after the same request has
-        // accepted the connection; this prevents callers from supplying a
-        // version or any provider endpoint.
-        await using var scope = httpContext.RequestServices.CreateAsyncScope();
-        var federation = scope.ServiceProvider.GetRequiredService<DynamicFederationOidcService>();
-        var connection = await federation.GetCurrentConnectionAsync(connectionId, cancellationToken);
-        if (connection is null)
-        {
-            return TypedResults.NotFound();
-        }
-
-        properties.Items[DynamicFederationAuthentication.ConfigurationVersionItem] =
-            connection.ConfigurationVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        await httpContext.ChallengeAsync(DynamicFederationAuthentication.Scheme, properties);
-        return TypedResults.Empty;
-    }
-
-    private static Task<IResult> DynamicFederationCallback(
-        HttpContext httpContext,
-        DynamicFederationOidcService federation,
-        CancellationToken cancellationToken) =>
-        federation.CompleteAsync(httpContext, cancellationToken);
-
     private static IResult AntiforgeryToken(HttpContext httpContext, IAntiforgery antiforgery)
     {
         var tokens = antiforgery.GetAndStoreTokens(httpContext);
@@ -151,6 +94,55 @@ public static class AuthEndpoints
         var available = !string.IsNullOrEmpty(bootstrapSecret.Secret) &&
             !await IsBootstrapConsumed(dbContext, roleManager, cancellationToken);
         return TypedResults.Ok(new BootstrapStatusResponse(available));
+    }
+
+    private static async Task<IResult> SystemStatus(
+        AccountsDbContext dbContext,
+        WorkforceOidcOptions oidc,
+        StaticScimOptions scim,
+        OperationalEventService operationalEvents,
+        CancellationToken cancellationToken)
+    {
+        // Status counts are aggregate-only and contain no account or invitation
+        // projections. Total is every persisted local account; disabled is the
+        // explicit persistent IsDisabled flag; active is the currently available
+        // account count, excluding explicit disablement, current lockout, and
+        // static-SCIM upstream inactivity. A static-SCIM inactive Owner remains
+        // available as the break-glass account, matching ScimLifecycleService.
+        var now = DateTimeOffset.UtcNow;
+        var total = await dbContext.Users.CountAsync(cancellationToken);
+        var disabled = await dbContext.Users.CountAsync(user => user.IsDisabled, cancellationToken);
+        var ownerRoleId = await dbContext.Roles.AsNoTracking()
+            .Where(role => role.Name == AuthRoles.Owner)
+            .Select(role => (Guid?)role.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        var activeQuery = dbContext.Users.AsNoTracking()
+            .Where(user => !user.IsDisabled &&
+                (!user.LockoutEnd.HasValue || user.LockoutEnd <= now));
+        if (scim.Enabled)
+        {
+            activeQuery = activeQuery.Where(user => !dbContext.ScimUserMappings.Any(mapping =>
+                mapping.UserId == user.Id &&
+                mapping.ScimConnectionId == ScimConnection.StaticId &&
+                !mapping.UpstreamActive &&
+                (!ownerRoleId.HasValue || !dbContext.UserRoles.Any(assignment =>
+                    assignment.UserId == user.Id && assignment.RoleId == ownerRoleId.Value))));
+        }
+
+        var active = await activeQuery.CountAsync(cancellationToken);
+        var pendingInvitations = await dbContext.Invitations.AsNoTracking().CountAsync(invitation =>
+            invitation.AcceptedAt == null && invitation.RevokedAt == null && invitation.ExpiresAt > now,
+            cancellationToken);
+        return TypedResults.Ok(new IdentitySystemStatusResponse(
+            total,
+            active,
+            disabled,
+            pendingInvitations,
+            oidc.Enabled,
+            oidc.Enabled ? oidc.Provider : null,
+            scim.Enabled,
+            await operationalEvents.LastAsync(OperationalEventKinds.StaticOidcSignInSucceeded, cancellationToken),
+            await operationalEvents.LastAsync(OperationalEventKinds.AuthenticatedScimRequest, cancellationToken)));
     }
 
     private static async Task<IResult> Bootstrap(

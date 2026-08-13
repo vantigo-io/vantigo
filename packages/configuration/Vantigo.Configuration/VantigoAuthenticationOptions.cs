@@ -17,6 +17,8 @@ public sealed class VantigoAuthenticationOptions
     public PasswordResetOptions PasswordReset { get; set; } = new();
 
     public OidcOptions Oidc { get; set; } = new();
+
+    public ScimOptions Scim { get; set; } = new();
 }
 
 public sealed class OwnerAuthenticationOptions
@@ -44,11 +46,42 @@ public sealed class PasswordResetOptions
 public sealed class OidcOptions
 {
     public bool Enabled { get; set; }
+
+    public string? Provider { get; set; }
+
     public string? Authority { get; set; }
+
     public string? ClientId { get; set; }
+
+    public string? ClientAuthentication { get; set; }
+
     public string? ClientSecret { get; set; }
+
+    public string? WorkloadIdentityTokenFile { get; set; }
+
+    public string[]? AllowedDomains { get; set; }
+
     public string? DisplayName { get; set; }
+
+    // Retained only to reject old/custom callback configuration explicitly. The
+    // effective callback is always WorkforceOidcOptions.DefaultCallbackPath.
     public string? CallbackPath { get; set; }
+}
+
+public sealed class ScimOptions
+{
+    public bool Enabled { get; set; }
+
+    public string? BearerToken { get; set; }
+
+    public string? BearerTokenFile { get; set; }
+
+    public string? PreviousBearerToken { get; set; }
+
+    public string? PreviousBearerTokenFile { get; set; }
+
+    public DateTimeOffset? PreviousBearerTokenExpiresAtUtc { get; set; }
+
 }
 
 public static class VantigoAuthenticationConfigurationExtensions

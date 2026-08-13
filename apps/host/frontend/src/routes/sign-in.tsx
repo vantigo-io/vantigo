@@ -1,16 +1,4 @@
-import {
-  Alert,
-  Anchor,
-  Button,
-  Card,
-  Center,
-  Divider,
-  PasswordInput,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Alert, Anchor, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,33 +6,26 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { appConfig, appUrl, SupportContactLine } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { loginWithPasskey } from "../api/account";
-import { completeTwoFactor } from "../api/account-lifecycle";
+import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signIn } from "../api/auth";
-import {
-  type FederationProviderDiscovery,
-  federationChallengeUrl,
-  fetchPublicSignInProviders,
-} from "../api/federation";
 
 const SignInPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const search = Route.useSearch();
-  const federationMfa = search.mfa === "federation" || search.mfa === "required";
-  const federationFailed = search.error === "federation_sign_in_failed";
   const [mfa, setMfa] = useState(false);
-  const showingMfa = mfa || federationMfa;
+  const showingMfa = mfa;
   const [code, setCode] = useState("");
-  const [providers, setProviders] = useState<FederationProviderDiscovery[]>([]);
-  const [providerLoading, setProviderLoading] = useState(true);
-  const [providerError, setProviderError] = useState<string | null>(null);
+  const [oidcProvider, setOidcProvider] = useState<{ displayName: string } | null>(null);
+  const [oidcProviderLoading, setOidcProviderLoading] = useState(true);
+  const [oidcProviderError, setOidcProviderError] = useState<string | null>(null);
   useEffect(() => {
-    fetchPublicSignInProviders()
-      .then(setProviders)
+    fetchOidcProvider()
+      .then((result) => setOidcProvider(result.oidc))
       .catch((error: unknown) =>
-        setProviderError(error instanceof Error ? error.message : "Sign-in providers are unavailable."),
+        setOidcProviderError(error instanceof Error ? error.message : "OIDC sign-in is unavailable."),
       )
-      .finally(() => setProviderLoading(false));
+      .finally(() => setOidcProviderLoading(false));
   }, []);
   const form = useForm({ initialValues: { email: "", password: "" } });
   const login = useMutation({
@@ -86,9 +67,9 @@ const SignInPage = () => {
                 ? "Enter your authenticator or recovery code."
                 : `Sign in to continue to ${appConfig().title}.`}
             </Text>
-            {(login.error || verify.error || passkeyLogin.error || federationFailed) && (
+            {(login.error || verify.error || passkeyLogin.error || search.error) && (
               <Alert icon={<IconAlertCircle size={18} />} color="red">
-                {federationFailed
+                {search.error
                   ? "Your identity provider could not complete sign-in. Try again or use another sign-in method."
                   : (login.error || verify.error || passkeyLogin.error)?.message}
               </Alert>
@@ -115,7 +96,7 @@ const SignInPage = () => {
                     onClick={() => {
                       setMfa(false);
                       setCode("");
-                      void navigate({ to: "/sign-in", search: { mfa: undefined, error: undefined }, replace: true });
+                      void navigate({ to: "/sign-in", search: { error: undefined }, replace: true });
                     }}
                   >
                     Use another sign-in method
@@ -143,25 +124,19 @@ const SignInPage = () => {
                   <Anchor component="a" href={appUrl("/forgot-password")} size="sm">
                     Forgot your password?
                   </Anchor>
-                  {providerLoading && (
+                  {oidcProviderLoading && (
                     <Text size="sm" c="dimmed" ta="center">
-                      Checking available sign-in providers…
+                      Checking available sign-in methods…
                     </Text>
                   )}
-                  {providers.length > 0 && <Divider label="or" />}
-                  {providers.map((provider) => (
-                    <Button
-                      key={provider.id}
-                      variant="default"
-                      component="a"
-                      href={federationChallengeUrl(provider.id)}
-                    >
-                      Continue with {provider.displayName}
+                  {oidcProvider && (
+                    <Button variant="default" component="a" href={appUrl("/api/v1/identity/oidc/challenge")}>
+                      Continue with {oidcProvider.displayName}
                     </Button>
-                  ))}
-                  {providerError && (
+                  )}
+                  {oidcProviderError && (
                     <Text size="sm" c="dimmed" ta="center">
-                      {providerError}
+                      {oidcProviderError}
                     </Text>
                   )}
                 </Stack>
@@ -176,9 +151,22 @@ const SignInPage = () => {
 };
 export const Route = createFileRoute("/sign-in")({
   validateSearch: (search: Record<string, unknown>) => ({
-    // Only these server-issued markers may enter the MFA continuation UI.
-    mfa: search.mfa === "federation" || search.mfa === "required" ? search.mfa : undefined,
-    error: search.error === "federation_sign_in_failed" ? search.error : undefined,
+    // Only server-issued OIDC errors are accepted by the sign-in route.
+    error:
+      typeof search.error === "string" &&
+      [
+        "account_locked",
+        "local_mfa_required",
+        "oidc_authentication_failed",
+        "oidc_email_conflict",
+        "oidc_external_identity_missing",
+        "oidc_identity_invalid",
+        "oidc_local_sign_in_failed",
+        "oidc_remote_failure",
+        "oidc_sign_in_unavailable",
+      ].includes(search.error)
+        ? search.error
+        : undefined,
   }),
   beforeLoad: async () => {
     const session = await fetchSession();

@@ -61,8 +61,11 @@ public sealed class FreshCustomersApiFactory : WebApplicationFactory<Program>, I
         builder.UseEnvironment(Environments.Development);
         if (EnableWorkforceOidc)
         {
-            builder.UseSetting("Authentication:Oidc:Authority", "https://issuer.integration.test");
-            builder.UseSetting("Authentication:Oidc:ClientId", "integration-client");
+            builder.UseSetting("Authentication:Oidc:Enabled", "true");
+            builder.UseSetting("Authentication:Oidc:Provider", "Entra");
+            builder.UseSetting("Authentication:Oidc:Authority", "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0");
+            builder.UseSetting("Authentication:Oidc:ClientId", "11111111-1111-1111-1111-111111111111");
+            builder.UseSetting("Authentication:Oidc:ClientAuthentication", "ClientSecret");
             builder.UseSetting("Authentication:Oidc:ClientSecret", "integration-client-secret");
         }
         builder.ConfigureAppConfiguration((_, configuration) =>
@@ -84,8 +87,11 @@ public sealed class FreshCustomersApiFactory : WebApplicationFactory<Program>, I
             }
             if (EnableWorkforceOidc)
             {
-                values["Authentication:Oidc:Authority"] = "https://issuer.integration.test";
-                values["Authentication:Oidc:ClientId"] = "integration-client";
+                values["Authentication:Oidc:Enabled"] = "true";
+                values["Authentication:Oidc:Provider"] = "Entra";
+                values["Authentication:Oidc:Authority"] = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0";
+                values["Authentication:Oidc:ClientId"] = "11111111-1111-1111-1111-111111111111";
+                values["Authentication:Oidc:ClientAuthentication"] = "ClientSecret";
                 values["Authentication:Oidc:ClientSecret"] = "integration-client-secret";
             }
 
@@ -132,9 +138,12 @@ internal sealed class ControlledExternalCookieStartupFilter : Microsoft.AspNetCo
 
             var claims = new List<Claim>
             {
-                new(WorkforceOidcOptions.ValidatedIssuerClaim, context.Request.Query["issuer"].FirstOrDefault() ?? "https://issuer.integration.test"),
+                new(WorkforceOidcOptions.ValidatedIssuerClaim, context.Request.Query["issuer"].FirstOrDefault() ?? "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0"),
                 new("sub", context.Request.Query.ContainsKey("sub") ? context.Request.Query["sub"].ToString() : "test-subject"),
                 new("name", context.Request.Query["name"].FirstOrDefault() ?? "Workforce User"),
+                new("tid", "00000000-0000-0000-0000-000000000000"),
+                new("oid", context.Request.Query["oid"].FirstOrDefault() ?? "22222222-2222-2222-2222-222222222222"),
+                new("azp", "11111111-1111-1111-1111-111111111111"),
             };
             if (context.Request.Query.TryGetValue("email", out var email) && !string.IsNullOrWhiteSpace(email))
             {

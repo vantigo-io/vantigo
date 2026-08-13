@@ -12,7 +12,6 @@ const renderShell = () =>
   render(
     <MantineProvider>
       <AppShellLayout
-        apps={[]}
         user={{ displayName: "Test User", email: "user@test.local" }}
         onSignOut={() => {}}
         nav={() => null}

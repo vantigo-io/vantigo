@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
+using System.Text;
+using System.Text.RegularExpressions;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -7,54 +8,37 @@ using Microsoft.Extensions.Options;
 namespace Vantigo.Configuration;
 
 /// <summary>
-/// The one optional workforce OpenID Connect provider supported by the host. It
-/// is deliberately configuration-only: no provider settings are persisted in the
-/// accounts database and no external provider claims are copied to local accounts.
+/// The one startup-bound workforce OpenID Connect provider supported by the host.
 /// </summary>
 public sealed record WorkforceOidcOptions(
     bool Enabled,
+    string Provider,
     string Authority,
     string ClientId,
-    string ClientSecret,
+    string ClientAuthentication,
+    string? ClientSecret,
+    string? WorkloadIdentityTokenFile,
+    string[] AllowedDomains,
     string DisplayName,
-    string CallbackPath)
+    string CallbackPath,
+    string? TenantId)
 {
     public const string Scheme = "VantigoWorkforceOidc";
-
-    // The OIDC handler's default claim actions may remove protocol claims such as
-    // iss. This private claim is populated only after the handler validates the
-    // token and is the sole issuer value consumed by completion.
     public const string ValidatedIssuerClaim = "vantigo:oidc:validated-issuer";
-
     public const string CompletionPath = "/api/v1/identity/oidc/complete";
-
     public const string DefaultCallbackPath = "/api/v1/identity/oidc/callback";
+    public const string EntraProvider = "Entra";
+    public const string GoogleProvider = "Google";
+    public const string ClientSecretAuthentication = "ClientSecret";
+    public const string WorkloadIdentityAuthentication = "WorkloadIdentity";
 
     private const string OpaqueEmailPrefix = "oidc-";
     private const string OpaqueEmailDomain = "sso.invalid";
 
-    private static readonly string[] ReservedCallbackPaths =
-    [
-        "/api/v1/identity/providers",
-        "/api/v1/identity/oidc/challenge",
-        CompletionPath,
-    ];
-
     public static WorkforceOidcOptions Disabled { get; } = new(
-        false,
-        string.Empty,
-        string.Empty,
-        string.Empty,
-        "Workforce SSO",
-        DefaultCallbackPath);
+        false, string.Empty, string.Empty, string.Empty, string.Empty, null, null, [],
+        "Workforce SSO", DefaultCallbackPath, null);
 
-    /// <summary>
-    /// Validates the raw <see cref="VantigoAuthenticationOptions.Oidc"/> values
-    /// and returns either an enabled provider or <see cref="Disabled"/>.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// Partial OIDC configuration is supplied and fails validation.
-    /// </exception>
     public static WorkforceOidcOptions FromAuthenticationOptions(
         VantigoAuthenticationOptions options,
         IHostEnvironment environment)
@@ -62,167 +46,169 @@ public sealed record WorkforceOidcOptions(
         var oidc = options.Oidc;
         var authority = oidc.Authority?.Trim() ?? string.Empty;
         var clientId = oidc.ClientId?.Trim() ?? string.Empty;
-        var clientSecret = oidc.ClientSecret?.Trim() ?? string.Empty;
+        var provider = oidc.Provider?.Trim() ?? string.Empty;
+        var clientAuthentication = oidc.ClientAuthentication?.Trim() ?? string.Empty;
         var displayName = oidc.DisplayName?.Trim() ?? string.Empty;
         var callbackPath = oidc.CallbackPath?.Trim() ?? string.Empty;
 
-        // If every required value is absent, the optional display/callback values
-        // cannot enable a provider on their own and OIDC remains disabled. Once any
-        // required value is supplied, all required values and optional values are
-        // validated strictly; partial configuration must never weaken authentication.
-        if (string.IsNullOrWhiteSpace(authority) &&
-            string.IsNullOrWhiteSpace(clientId) &&
-            string.IsNullOrWhiteSpace(clientSecret))
+        if (!oidc.Enabled)
         {
+            if (!string.IsNullOrEmpty(callbackPath) && !string.Equals(callbackPath, DefaultCallbackPath, StringComparison.Ordinal))
+                throw new InvalidOperationException($"Invalid Authentication:Oidc configuration: CallbackPath is fixed at {DefaultCallbackPath}");
+            if (!string.IsNullOrEmpty(provider) || !string.IsNullOrEmpty(authority) ||
+                !string.IsNullOrEmpty(clientId) || !string.IsNullOrEmpty(clientAuthentication) ||
+                !string.IsNullOrEmpty(oidc.ClientSecret) || !string.IsNullOrEmpty(oidc.WorkloadIdentityTokenFile) ||
+                oidc.AllowedDomains is { Length: > 0 })
+                throw new InvalidOperationException("Authentication:Oidc contains provider settings but Enabled is false.");
             return Disabled;
         }
 
         var errors = new List<string>();
+        if (!provider.Equals(EntraProvider, StringComparison.OrdinalIgnoreCase) &&
+            !provider.Equals(GoogleProvider, StringComparison.OrdinalIgnoreCase))
+            errors.Add("Provider must be Entra or Google");
+        else
+            provider = provider.Equals(EntraProvider, StringComparison.OrdinalIgnoreCase) ? EntraProvider : GoogleProvider;
+
+        string? tenantId = null;
         if (string.IsNullOrWhiteSpace(authority))
-        {
             errors.Add("Authority is required");
-        }
-        else if (!TryValidateAuthority(authority, environment, out var authorityError))
+        else if (provider == EntraProvider)
         {
-            errors.Add(authorityError!);
+            if (!TryValidateEntraAuthority(authority, out tenantId))
+                errors.Add("Entra Authority must be exactly https://login.microsoftonline.com/<tenant-guid>/v2.0");
         }
+        else if (!string.Equals(authority, "https://accounts.google.com", StringComparison.Ordinal))
+            errors.Add("Google Authority must be exactly https://accounts.google.com");
 
         if (string.IsNullOrWhiteSpace(clientId))
-        {
             errors.Add("ClientId is required");
+        else if (clientId.Length > 256 || clientId.Any(char.IsControl) || clientId.Any(char.IsWhiteSpace))
+            errors.Add("ClientId must be a safe value");
+        else if (provider == EntraProvider && !Guid.TryParse(clientId, out _))
+            errors.Add("Entra ClientId must be a GUID");
+        else if (provider == GoogleProvider && !clientId.EndsWith(".apps.googleusercontent.com", StringComparison.Ordinal))
+            errors.Add("Google ClientId must end with .apps.googleusercontent.com");
+
+        if (!clientAuthentication.Equals(ClientSecretAuthentication, StringComparison.OrdinalIgnoreCase) &&
+            !clientAuthentication.Equals(WorkloadIdentityAuthentication, StringComparison.OrdinalIgnoreCase))
+            errors.Add("ClientAuthentication must be ClientSecret or WorkloadIdentity");
+        else
+            clientAuthentication = clientAuthentication.Equals(ClientSecretAuthentication, StringComparison.OrdinalIgnoreCase)
+                ? ClientSecretAuthentication : WorkloadIdentityAuthentication;
+
+        var secret = oidc.ClientSecret;
+        var tokenFile = oidc.WorkloadIdentityTokenFile;
+        if (clientAuthentication == ClientSecretAuthentication)
+        {
+            if (string.IsNullOrEmpty(secret)) errors.Add("ClientSecret is required for ClientSecret authentication");
+            if (!string.IsNullOrEmpty(tokenFile)) errors.Add("WorkloadIdentityTokenFile is not allowed for ClientSecret authentication");
+        }
+        else
+        {
+            if (provider != EntraProvider) errors.Add("WorkloadIdentity authentication is supported only for Entra");
+            if (!string.IsNullOrEmpty(secret)) errors.Add("ClientSecret is not allowed for WorkloadIdentity authentication");
+            tokenFile = string.IsNullOrWhiteSpace(tokenFile)
+                ? Environment.GetEnvironmentVariable("AZURE_FEDERATED_TOKEN_FILE")
+                : tokenFile;
+            if (string.IsNullOrWhiteSpace(tokenFile) || !Path.IsPathRooted(tokenFile) || !File.Exists(tokenFile))
+                errors.Add("WorkloadIdentityTokenFile must be an absolute readable file");
+            else
+            {
+                try
+                {
+                    using var stream = new FileStream(tokenFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    errors.Add("WorkloadIdentityTokenFile must be an absolute readable file");
+                }
+            }
         }
 
-        if (string.IsNullOrWhiteSpace(clientSecret))
-        {
-            errors.Add("ClientSecret is required");
-        }
+        var domains = NormalizeDomains(oidc.AllowedDomains, errors);
+        if (provider == EntraProvider && domains.Length > 0)
+            errors.Add("AllowedDomains is only valid for Google");
+        if (provider == GoogleProvider && domains.Length == 0)
+            errors.Add("Google requires at least one AllowedDomains value");
 
         if (displayName.Length > 100 || displayName.Any(char.IsControl))
-        {
             errors.Add("DisplayName must be at most 100 characters and contain no control characters");
-        }
-
         displayName = string.IsNullOrWhiteSpace(displayName) ? "Workforce SSO" : displayName;
-        callbackPath = string.IsNullOrWhiteSpace(callbackPath) ? DefaultCallbackPath : callbackPath;
-        if (ReservedCallbackPaths.Contains(callbackPath, StringComparer.OrdinalIgnoreCase))
-        {
-            errors.Add($"CallbackPath cannot collide with a local authentication route ({callbackPath})");
-        }
-        else if (!IsSafeCallbackPath(callbackPath))
-        {
-            errors.Add("CallbackPath must be an absolute path below /api/v1/identity/oidc/, without a query, fragment, slash traversal, or duplicate slash");
-        }
+
+        if (!string.IsNullOrEmpty(callbackPath) && !string.Equals(callbackPath, DefaultCallbackPath, StringComparison.Ordinal))
+            errors.Add($"CallbackPath is fixed at {DefaultCallbackPath}");
 
         if (errors.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"Invalid Authentication:Oidc configuration: {string.Join("; ", errors)}.");
-        }
+            throw new InvalidOperationException($"Invalid Authentication:Oidc configuration: {string.Join("; ", errors)}.");
 
-        return new WorkforceOidcOptions(true, authority, clientId, clientSecret, displayName, callbackPath);
+        return new(true, provider, authority, clientId, clientAuthentication,
+            clientAuthentication == ClientSecretAuthentication ? secret : null,
+            clientAuthentication == WorkloadIdentityAuthentication ? tokenFile : null,
+            domains, displayName, DefaultCallbackPath, tenantId);
+    }
+
+    public static bool TryValidateEntraAuthority(string value, out string? tenantId)
+    {
+        tenantId = null;
+        var match = Regex.Match(value, "^https://login\\.microsoftonline\\.com/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/v2\\.0$", RegexOptions.CultureInvariant);
+        if (!match.Success || !Guid.TryParse(match.Groups[1].Value, out var parsed)) return false;
+        tenantId = parsed.ToString("D");
+        return true;
     }
 
     public static bool TryNormalizeIssuer(string? value, out string? normalized)
     {
         normalized = null;
-        if (string.IsNullOrWhiteSpace(value) ||
-            !Uri.TryCreate(value, UriKind.Absolute, out var issuer) ||
-            issuer.Scheme is not ("http" or "https") ||
-            string.IsNullOrEmpty(issuer.Host) ||
-            !string.IsNullOrEmpty(issuer.UserInfo) ||
-            !string.IsNullOrEmpty(issuer.Query) ||
-            !string.IsNullOrEmpty(issuer.Fragment))
-        {
-            return false;
-        }
-
-        // OIDC issuer comparison is case-insensitive for scheme/host, while the
-        // issuer path remains case-sensitive. This is the logical provider key
-        // used with the case-sensitive subject in Identity UserLogins.
-        var scheme = issuer.Scheme.ToLowerInvariant();
-        var host = issuer.Host.ToLowerInvariant();
-        var port = issuer.IsDefaultPort ? string.Empty : $":" + issuer.Port;
-        var path = issuer.AbsolutePath.TrimEnd('/');
-        normalized = $"{scheme}://{host}{port}{path}";
+        if (string.IsNullOrWhiteSpace(value) || !Uri.TryCreate(value, UriKind.Absolute, out var issuer) ||
+            issuer.Scheme is not ("http" or "https") || string.IsNullOrEmpty(issuer.Host) ||
+            !string.IsNullOrEmpty(issuer.UserInfo) || !string.IsNullOrEmpty(issuer.Query) ||
+            !string.IsNullOrEmpty(issuer.Fragment)) return false;
+        normalized = $"{issuer.Scheme.ToLowerInvariant()}://{issuer.Host.ToLowerInvariant()}" +
+            $"{(issuer.IsDefaultPort ? string.Empty : ":" + issuer.Port)}{issuer.AbsolutePath.TrimEnd('/')}";
         return normalized.Length <= 2048;
     }
 
     public static string CreateOpaqueEmail(string issuer, string subject)
     {
-        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{issuer}\0{subject}"));
+        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes($"{issuer}\0{subject}"));
         return $"{OpaqueEmailPrefix}{Convert.ToHexString(bytes).ToLowerInvariant()}@{OpaqueEmailDomain}";
     }
 
-    public static bool IsOpaqueEmail(string? email) =>
-        email is not null &&
+    public static bool IsOpaqueEmail(string? email) => email is not null &&
         email.StartsWith(OpaqueEmailPrefix, StringComparison.Ordinal) &&
         email.EndsWith($"@{OpaqueEmailDomain}", StringComparison.Ordinal) &&
         email.Length == OpaqueEmailPrefix.Length + 64 + 1 + OpaqueEmailDomain.Length;
 
-    private static bool TryValidateAuthority(string value, IHostEnvironment environment, out string? error)
+    private static string[] NormalizeDomains(IEnumerable<string>? values, List<string> errors)
     {
-        error = null;
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var authority) ||
-            authority.Scheme is not ("http" or "https") ||
-            !string.IsNullOrEmpty(authority.UserInfo) ||
-            !string.IsNullOrEmpty(authority.Query) ||
-            !string.IsNullOrEmpty(authority.Fragment) ||
-            string.IsNullOrEmpty(authority.Host))
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var value in values ?? [])
         {
-            error = "Authority must be an absolute HTTP(S) issuer URL without user info, query, or fragment";
-            return false;
+            var domain = value.Trim().TrimEnd('.').ToLowerInvariant();
+            if (domain.Length is 0 or > 253 || domain.Contains('/') || domain.Contains('@') ||
+                domain.Contains(':') || domain.Any(char.IsWhiteSpace) ||
+                !Regex.IsMatch(domain, @"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$", RegexOptions.CultureInvariant))
+            {
+                errors.Add("AllowedDomains must contain bare DNS names");
+                continue;
+            }
+            result.Add(domain);
         }
-
-        if (!environment.IsDevelopment() && !string.Equals(authority.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-        {
-            error = "Authority must use HTTPS outside Development";
-            return false;
-        }
-
-        return true;
-    }
-
-    private static bool IsSafeCallbackPath(string path)
-    {
-        if (path.Length is 0 or > 200 ||
-            !path.StartsWith("/api/v1/identity/oidc/", StringComparison.Ordinal) ||
-            path.Contains("//", StringComparison.Ordinal) ||
-            path.Contains('\\') ||
-            path.Contains('?') ||
-            path.Contains('#') ||
-            path.EndsWith("/", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        return segments.All(segment => segment is not "." and not ".." &&
-            segment.All(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.' or '~'));
+        return result.Order(StringComparer.Ordinal).ToArray();
     }
 }
 
-/// <summary>
-/// Resolves the effective <see cref="WorkforceOidcOptions"/> from the configured
-/// Vantigo authentication options at startup. This validates configuration eagerly
-/// so misconfiguration surfaces immediately.
-/// </summary>
 public sealed class WorkforceOidcOptionsResolver
 {
-    public WorkforceOidcOptionsResolver(IOptions<VantigoAuthenticationOptions> options, IHostEnvironment environment)
-    {
+    public WorkforceOidcOptionsResolver(IOptions<VantigoAuthenticationOptions> options, IHostEnvironment environment) =>
         Value = WorkforceOidcOptions.FromAuthenticationOptions(options.Value, environment);
-    }
 
     public WorkforceOidcOptions Value { get; }
 }
 
 public static class WorkforceOidcConfigurationExtensions
 {
-    /// <summary>
-    /// Registers a startup-resolved <see cref="WorkforceOidcOptions"/> singleton
-    /// from <see cref="VantigoAuthenticationOptions"/> and the current hosting
-    /// environment.
-    /// </summary>
     public static IServiceCollection AddWorkforceOidcOptions(this IServiceCollection services)
     {
         services.AddSingleton<WorkforceOidcOptionsResolver>();

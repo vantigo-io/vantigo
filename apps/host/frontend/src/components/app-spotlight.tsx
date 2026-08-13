@@ -1,49 +1,63 @@
 import { Center, Loader, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Spotlight } from "@mantine/spotlight";
-import { IconAddressBook, IconBolt, IconBuilding, IconSearch, IconUser, IconUsers } from "@tabler/icons-react";
+import { IconBuilding, IconSearch, IconUser } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { contactsQueryOptions } from "@vantigo/customers-ui/api/contacts";
 import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
 import { useState } from "react";
+import { hasPermissions, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
 
-const navigationActions = [
-  { label: "Customers", description: "Browse all customers", to: "/customers", icon: IconUsers },
-  { label: "Contacts", description: "Browse all contacts", to: "/contacts", icon: IconAddressBook },
-  { label: "Energy", description: "Browse metering points", to: "/energy/metering-points", icon: IconBolt },
-] as const;
+interface AppSpotlightProps {
+  permissions: string[] | undefined;
+  isOwner: boolean;
+  canManageAuthorization: boolean;
+  onNavigate?: () => void;
+}
 
 /**
  * The global search (opened with mod+K or the sidebar search box): quick navigation
  * to the app sections plus live search across customers and contacts.
  */
-export const AppSpotlight = () => {
+export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onNavigate }: AppSpotlightProps) => {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebouncedValue(query, 300);
 
   const search = debouncedQuery.trim();
   const searchEnabled = search.length >= MIN_SEARCH_LENGTH;
+  const navigationActions = visibleNavSections(permissions, isOwner, canManageAuthorization).flatMap((section) =>
+    section.items.map((item) => ({
+      ...item,
+      description: `Open ${item.label.toLowerCase()}`,
+    })),
+  );
+  const canSearchCustomers = hasPermissions(permissions, ["customers:view"]);
+  const canSearchContacts = hasPermissions(permissions, ["customers:contacts-view", "customers:associations-view"]);
+  const handleNavigate = (action: () => void) => {
+    onNavigate?.();
+    action();
+  };
 
   const customers = useQuery({
     ...customersQueryOptions({ search, pageSize: MAX_RESULTS }),
-    enabled: searchEnabled,
+    enabled: searchEnabled && canSearchCustomers,
   });
   const contacts = useQuery({
     ...contactsQueryOptions({ search, pageSize: MAX_RESULTS }),
-    enabled: searchEnabled,
+    enabled: searchEnabled && canSearchContacts,
   });
 
   const matchingNavigation = navigationActions.filter((action) =>
     action.label.toLowerCase().includes(query.trim().toLowerCase()),
   );
-  const customerResults = searchEnabled ? (customers.data?.data ?? []) : [];
-  const contactResults = searchEnabled ? (contacts.data?.data ?? []) : [];
+  const customerResults = searchEnabled && canSearchCustomers ? (customers.data?.data ?? []) : [];
+  const contactResults = searchEnabled && canSearchContacts ? (contacts.data?.data ?? []) : [];
 
   const isSearching = searchEnabled && (customers.isFetching || contacts.isFetching);
   const isEmpty = matchingNavigation.length === 0 && customerResults.length === 0 && contactResults.length === 0;
@@ -64,7 +78,14 @@ export const AppSpotlight = () => {
                 label={action.label}
                 description={action.description}
                 leftSection={<action.icon size={20} stroke={1.5} />}
-                onClick={() => navigate({ to: action.to, search: { page: 1, search: "" } })}
+                onClick={() =>
+                  handleNavigate(() =>
+                    navigate({
+                      to: action.to as never,
+                      search: navSearchFor(action.searchStrategy) as never,
+                    }),
+                  )
+                }
               />
             ))}
           </Spotlight.ActionsGroup>
@@ -78,7 +99,9 @@ export const AppSpotlight = () => {
                 label={customer.name}
                 description={"Customer"}
                 leftSection={<IconBuilding size={20} stroke={1.5} />}
-                onClick={() => navigate({ to: "/customers/$customerId", params: { customerId: customer.id } })}
+                onClick={() =>
+                  handleNavigate(() => navigate({ to: "/customers/$customerId", params: { customerId: customer.id } }))
+                }
               />
             ))}
           </Spotlight.ActionsGroup>
@@ -94,7 +117,9 @@ export const AppSpotlight = () => {
                   [item.contact.email, item.contact.phone].filter(Boolean).join(" · ") || "No contact details"
                 }
                 leftSection={<IconUser size={20} stroke={1.5} />}
-                onClick={() => navigate({ to: "/contacts/$contactId", params: { contactId: item.contact.id } })}
+                onClick={() =>
+                  handleNavigate(() => navigate({ to: "/contacts/$contactId", params: { contactId: item.contact.id } }))
+                }
               />
             ))}
           </Spotlight.ActionsGroup>

@@ -136,7 +136,7 @@ public sealed class WorkforceOidcCompletionTests
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
-        Assert.Equal(2, await db.UserLogins.CountAsync(login => login.LoginProvider == "https://issuer.integration.test"));
+        Assert.Equal(2, await db.UserLogins.CountAsync(login => login.LoginProvider == "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0"));
         Assert.Equal(2, await db.Users.CountAsync(user => user.UserName!.StartsWith("oidc-")));
     }
 

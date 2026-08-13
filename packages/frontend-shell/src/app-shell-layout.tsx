@@ -15,7 +15,6 @@ import { useDisclosure } from "@mantine/hooks";
 import { IconChevronRight, IconLogout } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { appConfig, hasSupportContact } from "./app-config";
-import { AppSwitcher, type ShellApp } from "./app-switcher";
 import { vantigoLogo } from "./logo";
 
 export interface ShellUser {
@@ -26,8 +25,6 @@ export interface ShellUser {
 export interface AppShellLayoutProps {
   /** The module name displayed next to the logo. Defaults to the runtime app title. */
   moduleName?: string;
-  /** The apps shown in the top-right application switcher (including the current one). */
-  apps: readonly ShellApp[];
   /** The signed-in user shown in the sidebar user menu. */
   user: ShellUser | undefined;
   /** Extra items rendered in the user menu above the sign-out entry. */
@@ -38,6 +35,10 @@ export interface AppShellLayoutProps {
   navbarTop?: ReactNode;
   /** The sidebar navigation. Call `closeMobileNav` when a nav item is clicked. */
   nav: (closeMobileNav: () => void) => ReactNode;
+  /** Optional lower-pinned navigation, kept outside the primary scroll region. */
+  navLower?: (closeMobileNav: () => void) => ReactNode;
+  /** Optional overlay rendered with access to the mobile-nav close callback. */
+  overlay?: (closeMobileNav: () => void) => ReactNode;
   children: ReactNode;
 }
 
@@ -93,19 +94,20 @@ export const SupportContactLine = () => {
 
 /**
  * The shared authenticated application shell: logo plus module name in the
- * header, the application switcher in the top right, navigation in the
- * sidebar, the user menu at the bottom of the sidebar, and — when support
- * contact details are configured — a slim support footer.
+ * header, navigation in the sidebar, the user menu at the bottom of the
+ * sidebar, and — when support contact details are configured — a slim support
+ * footer.
  */
 export const AppShellLayout = ({
   moduleName,
-  apps,
   user,
   userMenuItems,
   onSignOut,
   signOutDisabled,
   navbarTop,
   nav,
+  navLower,
+  overlay,
   children,
 }: AppShellLayoutProps) => {
   const [opened, { toggle, close }] = useDisclosure();
@@ -121,30 +123,63 @@ export const AppShellLayout = ({
     >
       <AppShell.Header>
         <Group h="100%" px="md" gap="sm" wrap="nowrap">
-          <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-          <Image src={config.logoUrl ?? vantigoLogo} alt={config.title} h={32} w="auto" fit="contain" />
+          <Burger
+            opened={opened}
+            onClick={toggle}
+            hiddenFrom="sm"
+            size="sm"
+            aria-label={opened ? "Close navigation" : "Open navigation"}
+          />
+          <Image src={config.logoUrl ?? vantigoLogo} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" />
           <Divider orientation="vertical" my="md" />
-          <Title order={4} fw={500}>
+          <Title
+            order={4}
+            fw={500}
+            style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
             {moduleName ?? config.title}
           </Title>
-          <Group ml="auto" gap="xs">
-            <AppSwitcher apps={apps} />
-          </Group>
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md">
+      <AppShell.Navbar
+        p="md"
+        component="nav"
+        aria-label="Primary navigation"
+        style={{ minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}
+      >
         {navbarTop && <AppShell.Section>{navbarTop}</AppShell.Section>}
 
-        <AppShell.Section grow mt="sm">
+        {/* The primary list grows into spare space, keeping the lower group and
+            account controls at the bottom at normal heights. It does not
+            shrink, so the navbar itself becomes the escape hatch on short or
+            zoomed viewports instead of clipping those controls. */}
+        <AppShell.Section grow mt="sm" style={{ flex: "1 0 auto" }}>
           {nav(close)}
         </AppShell.Section>
 
-        <AppShell.Section>
+        {navLower && (
+          <AppShell.Section mt="sm" style={{ flexShrink: 0 }}>
+            <Divider mb="sm" />
+            {navLower(close)}
+          </AppShell.Section>
+        )}
+
+        <AppShell.Section style={{ flexShrink: 0 }}>
           <Divider mb="sm" />
           <Menu position="right-end" withArrow>
             <Menu.Target>
-              <UnstyledButton w="100%" p="xs">
+              <UnstyledButton
+                w="100%"
+                p="xs"
+                aria-label="Open account menu"
+                aria-haspopup="menu"
+                styles={{
+                  root: {
+                    "&:focus-visible": { outline: "2px solid var(--mantine-color-vantigo-5)", outlineOffset: 2 },
+                  },
+                }}
+              >
                 <Group gap="sm" wrap="nowrap">
                   <Avatar color="vantigo" radius="xl">
                     {user ? initials(user.displayName) : "\u2026"}
@@ -178,6 +213,8 @@ export const AppShellLayout = ({
       </AppShell.Navbar>
 
       <AppShell.Main>{children}</AppShell.Main>
+
+      {overlay?.(close)}
 
       {showFooter && (
         <AppShell.Footer>

@@ -252,7 +252,7 @@ To opt out, set `Development__Seed__Enabled=false`. Seeding is never enabled out
 
 For self-hosted Vantigo authentication, deployment configuration, and production
 migration guidance, see [Vantigo identity](docs/customers-authentication.md). For
-persisted enterprise SSO, SCIM provisioning, and the operator runbook, see the
+static workforce OIDC, static SCIM provisioning, and the operator runbook, see the
 [SSO and SCIM operations guide](docs/sso-scim-operations.md) and the
 [documentation index](docs/README.md).
 The Products domain model, pricing rules and cross-service contracts are documented

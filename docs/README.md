@@ -3,11 +3,10 @@
 Operator and contributor documentation for Vantigo:
 
 - [Identity, authentication and deployment](customers-authentication.md) — local
-  accounts, the legacy environment-configured OIDC provider, email, proxy trust,
+  accounts, the static environment-configured OIDC provider, email, proxy trust,
   PostgreSQL Data Protection keys, and migrations.
-- [SSO and SCIM operations](sso-scim-operations.md) — persisted multi-provider OIDC,
-  provider setup, SCIM 2.0, group mapping, lifecycle controls, secrets, and recovery
-  runbooks.
+- [Static identity operations](sso-scim-operations.md) — production static-only
+  OIDC/SCIM configuration, rotation, migration, lifecycle, and recovery.
 - [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
   quick start, proxy example, upgrades, and production notes.
 - [Products module](products.md) — product domain and API reference.

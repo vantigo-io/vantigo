@@ -10,7 +10,6 @@ import { bootstrapAccount, createInvitation, fetchBootstrapStatus, mfaStatus } f
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { AppSpotlight } from "../components/app-spotlight";
 import { showLifecycleFormError } from "../lib/lifecycle-form-errors";
-import { shellApps } from "../lib/shell-apps";
 import { ContactDetailsPage } from "../pages/contacts.$contactId";
 import { ContactsPage } from "../pages/contacts.index";
 import { CustomerDetailHeader, CustomerOverview } from "../pages/customers.$customerId";
@@ -99,7 +98,6 @@ const Settings = () => {
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: () => (
     <AppShellLayout
-      apps={shellApps}
       user={{ displayName: "Test User", email: "test@example.com" }}
       onSignOut={() => {}}
       navbarTop={<SpotlightSearchBox />}

@@ -51,7 +51,6 @@ internal static class AuthorizationManagementEndpoints
         owner.MapPost("/delegations/{id:guid}/revoke", RevokeDelegation).RequireAuthorization(AuthPolicies.OwnerManagement);
 
         IdentityControlPlaneEndpoints.MapIdentityControlPlaneEndpoints(app);
-        ScimControlPlaneEndpoints.Map(app);
 
         app.MapGet("/api/v1/identity/access/me", EffectiveAccessForCurrentUser)
             .RequireAuthorization();

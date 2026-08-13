@@ -27,7 +27,8 @@ public sealed class ScimProtocolService(
     UserManager<ApplicationUser> userManager,
     AuthorizationAuditWriter auditWriter,
     IHttpContextAccessor httpContextAccessor,
-    ScimIngressRateLimiter ingressRateLimiter)
+    ScimIngressRateLimiter ingressRateLimiter,
+    OperationalEventService operationalEventService)
 {
     public static Func<Exception?>? AuditFailureInjector { get; set; }
     public const string BasePath = "/api/v1/identity/scim/v2";
@@ -110,13 +111,12 @@ public sealed class ScimProtocolService(
     {
         var authentication = await AuthenticateAsync(cancellationToken);
         if (authentication.Error is not null) return authentication.Error;
-        if (!TryReadUser(body, requireUserName: true, requireExternalId: true, out var input, out var error))
+        if (!TryReadUser(body, requireUserName: true, requireExternalId: false, out var input, out var error))
             return error!;
 
         var connectionId = authentication.ConnectionId!.Value;
+        input!.ExternalId ??= Guid.NewGuid().ToString("D");
         var validation = await ValidateUserInputAsync(connectionId, input!, null, cancellationToken);
-        if (validation is not null) return validation;
-        validation = await ValidateEntraExternalIdAsync(connectionId, input!, null, cancellationToken);
         if (validation is not null) return validation;
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
@@ -129,9 +129,6 @@ public sealed class ScimProtocolService(
             // OIDC-first correlation deliberately joins this transaction. The
             // mapping audit, SCIM resource mutation, and protocol audit must
             // commit or roll back as one unit.
-            mapping ??= await lifecycleService.EnsureMappingForOidcFederatedIdentityAsync(
-                connectionId, input!.ExternalId!, cancellationToken);
-
             ApplicationUser user;
             var isNewUser = mapping is null;
             if (mapping is null)
@@ -248,8 +245,6 @@ public sealed class ScimProtocolService(
         input!.ExternalId ??= mapping.ExternalId;
         var validation = await ValidateUserInputAsync(connectionId, input, mapping.Id, cancellationToken);
         if (validation is not null) return validation;
-        validation = await ValidateEntraExternalIdAsync(connectionId, input, mapping, cancellationToken);
-        if (validation is not null) return validation;
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
@@ -297,9 +292,6 @@ public sealed class ScimProtocolService(
         if (!TryValidateUserOperations(operations!, mapping, user, out var actions, out var operationError))
             return operationError!;
         var externalAction = actions!.FirstOrDefault(item => item.Field == "externalId");
-        if (externalAction is not null && await IsEntraConnectionAsync(connectionId, cancellationToken) &&
-            !Guid.TryParse(externalAction.Value, out _))
-            return Error(StatusCodes.Status400BadRequest, "invalidValue", "Entra externalId must be an object-id GUID.");
         if (externalAction is not null && !string.Equals(NormalizeExternalId(externalAction.Value), mapping.ExternalId, StringComparison.Ordinal))
             return Error(StatusCodes.Status409Conflict, "mutability", "externalId is immutable once mapped.");
         var beforeFacts = await CaptureUserFactsAsync(mapping, user, connectionId, cancellationToken);
@@ -547,7 +539,7 @@ public sealed class ScimProtocolService(
         var verification = await tokenService.VerifyAsync(token, cancellationToken);
         if (!verification.Succeeded || verification.ScimConnectionId is null) return (null, Unauthorized());
         var connection = await dbContext.ScimConnections.AsNoTracking().SingleOrDefaultAsync(
-            item => item.Id == verification.ScimConnectionId.Value && item.IsEnabled, cancellationToken);
+            item => item.Id == ScimConnection.StaticId && item.Id == verification.ScimConnectionId.Value, cancellationToken);
         return connection is null ? (null, Unauthorized()) : (connection.Id, null);
     }
 
@@ -562,7 +554,7 @@ public sealed class ScimProtocolService(
         var header = context.Request.Headers.Authorization.ToString();
         var verification = !string.IsNullOrWhiteSpace(header) && header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
             ? await tokenService.VerifyAsync(header[7..].Trim(), cancellationToken)
-            : new ScimTokenVerificationResult(false, null, null);
+            : new ScimTokenVerificationResult(false, null);
         var connectionId = verification.Succeeded && verification.ScimConnectionId.HasValue
             ? verification.ScimConnectionId.Value.ToString("D")
             : "ip:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -570,8 +562,17 @@ public sealed class ScimProtocolService(
             return Error(StatusCodes.Status429TooManyRequests, "tooMany", "SCIM request rate limit exceeded.");
         if (!verification.Succeeded || !verification.ScimConnectionId.HasValue ||
             !await dbContext.ScimConnections.AsNoTracking().AnyAsync(item =>
-                item.Id == verification.ScimConnectionId.Value && item.IsEnabled, cancellationToken))
+                item.Id == ScimConnection.StaticId && item.Id == verification.ScimConnectionId.Value, cancellationToken))
             return Unauthorized();
+        try
+        {
+            await operationalEventService.RecordAsync(OperationalEventKinds.AuthenticatedScimRequest,
+                DateTimeOffset.UtcNow, CancellationToken.None);
+        }
+        catch
+        {
+            // Operational status is best effort and must not reject valid SCIM traffic.
+        }
         return null;
     }
 
@@ -686,33 +687,6 @@ public sealed class ScimProtocolService(
             item.ExternalId == input.ExternalId && item.Id != currentMappingId, cancellationToken);
         return duplicateExternal ? Error(StatusCodes.Status409Conflict, "uniqueness", "externalId is already used by this connection.") : null;
     }
-
-    private async Task<IResult?> ValidateEntraExternalIdAsync(Guid connectionId, ScimUserInput input,
-        ScimUserMapping? currentMapping, CancellationToken cancellationToken)
-    {
-        var isEntra = await IsEntraConnectionAsync(connectionId, cancellationToken);
-        if (!isEntra) return null;
-        if (!Guid.TryParse(input.ExternalId, out var objectId))
-            return Error(StatusCodes.Status400BadRequest, "invalidValue", "Entra externalId must be an object-id GUID.");
-        input.ExternalId = objectId.ToString("D");
-        if (currentMapping is not null && !string.Equals(currentMapping.ExternalId, input.ExternalId, StringComparison.Ordinal))
-            return Error(StatusCodes.Status409Conflict, "mutability", "externalId is immutable once mapped.");
-        return null;
-    }
-
-    private async Task<IResult?> ValidateEntraExternalIdValueAsync(Guid connectionId, string? externalId, CancellationToken cancellationToken)
-    {
-        if (!await IsEntraConnectionAsync(connectionId, cancellationToken)) return null;
-        return Guid.TryParse(externalId, out _)
-            ? null
-            : Error(StatusCodes.Status400BadRequest, "invalidValue", "Entra externalId must be an object-id GUID.");
-    }
-
-    private Task<bool> IsEntraConnectionAsync(Guid connectionId, CancellationToken cancellationToken) =>
-        dbContext.ScimConnections.AsNoTracking()
-            .Join(dbContext.FederationConnections.AsNoTracking(), scim => scim.FederationConnectionId,
-                federation => federation.Id, (scim, federation) => new { scim.Id, federation.ProviderKind })
-            .AnyAsync(item => item.Id == connectionId && item.ProviderKind == FederationProviderKind.Entra, cancellationToken);
 
     private static bool TryReadUser(JsonElement root, bool requireUserName, bool requireExternalId, out ScimUserInput? input, out IResult? error)
     {
