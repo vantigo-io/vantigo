@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Vantigo.Configuration;
 using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
+using Vantigo.Identity.Services;
 
 namespace Vantigo.Identity.Endpoints.Auth;
 
@@ -138,6 +139,11 @@ public static class AuthServiceCollectionExtensions
                 : CookieSecurePolicy.Always;
         });
 
+        services.AddScoped<DynamicFederationOidcService>();
+        services.AddAuthentication()
+            .AddScheme<AuthenticationSchemeOptions, DynamicFederationOidcAuthenticationHandler>(
+                DynamicFederationAuthentication.Scheme, _ => { });
+
         var workforceOidc = WorkforceOidcOptionsExtensions.Load(configuration, environment);
         if (workforceOidc.Enabled)
         {
@@ -248,6 +254,23 @@ public static class AuthServiceCollectionExtensions
         services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, AuthorizationManagementHandler>();
         services.AddScoped<AuthorizationMutationService>();
         services.AddScoped<AuthorizationAuditWriter>();
+        services.AddHttpContextAccessor();
+        services.AddSingleton<IFederationClientSecretResolver, ConfigurationFederationClientSecretResolver>();
+        services.AddHttpClient(OidcFederationDiscoveryValidator.HttpClientName, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(10);
+        }).ConfigurePrimaryHttpMessageHandler(() => new FederationDiscoveryHttpMessageHandler());
+        services.AddSingleton<IFederationHostAddressResolver, DnsFederationHostAddressResolver>();
+        services.AddScoped<IFederationDiscoveryValidator, OidcFederationDiscoveryValidator>();
+        services.AddScoped<FederationConnectionManagementService>();
+        services.AddScoped<AccessGroupManagementService>();
+        services.AddScoped<ScimControlPlaneService>();
+        services.AddScoped<ScimProtocolService>();
+        services.AddScoped<ScimIngressEndpointFilter>();
+        services.AddSingleton<ScimIngressRateLimiter>();
+        services.AddScoped<ScimLifecycleService>();
+        services.AddScoped<ScimTokenService>();
+        services.AddSingleton<IScimTokenPepper, EnvironmentScimTokenPepper>();
         services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
         return services;
@@ -286,10 +309,8 @@ public static class AuthServiceCollectionExtensions
                 }
 
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var dbContext = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
-                var accountIsActive = await dbContext.Users.AsNoTracking()
-                    .AnyAsync(user => user.Id == userId && !user.IsDisabled,
-                        context.HttpContext.RequestAborted);
+                var lifecycle = scope.ServiceProvider.GetRequiredService<ScimLifecycleService>();
+                var accountIsActive = !await lifecycle.IsEffectivelyDisabledAsync(userId, context.HttpContext.RequestAborted);
                 if (!accountIsActive)
                 {
                     context.RejectPrincipal();

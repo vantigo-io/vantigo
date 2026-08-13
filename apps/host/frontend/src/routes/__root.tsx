@@ -4,6 +4,7 @@ import {
   IconBolt,
   IconCategory,
   IconInbox,
+  IconKey,
   IconLayoutDashboard,
   IconMailbox,
   IconMailOff,
@@ -76,6 +77,7 @@ const navSections: readonly NavSection[] = [
     items: [
       { label: "Users", to: "/admin/users", icon: IconUsers, ownerOnly: true },
       { label: "Roles & access", to: "/admin/roles", icon: IconShieldCheck, capability: "authorization" },
+      { label: "Single sign-on", to: "/admin/sso", icon: IconKey, ownerOnly: true },
     ],
   },
   {

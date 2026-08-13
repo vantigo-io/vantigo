@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.Security.Claims;
+using System.Security.Cryptography;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +17,19 @@ namespace Vantigo.Identity.Authorization;
 /// </summary>
 public sealed class AuthorizationMutationService(AccountsDbContext dbContext, IPermissionCatalog catalog)
 {
+    public async Task AcquireRoleMutationLockAsync(Guid roleId, CancellationToken cancellationToken)
+    {
+        await dbContext.Database.ExecuteSqlRawAsync(
+            "SELECT pg_advisory_xact_lock(CAST({0} AS bigint))",
+            [(object)RoleMutationLockKey(roleId)], cancellationToken);
+    }
+
+    public static long RoleMutationLockKey(Guid roleId)
+    {
+        var digest = SHA256.HashData(roleId.ToByteArray());
+        return BinaryPrimitives.ReadInt64BigEndian(digest.AsSpan(0, sizeof(long)));
+    }
+
     public async Task<(IResult? Error, AuthorizationScope? Scope)> AuthorizeRoleCreateAsync(
         Guid actorId,
         IReadOnlyCollection<string> keys,
@@ -41,14 +56,25 @@ public sealed class AuthorizationMutationService(AccountsDbContext dbContext, IP
     public async Task<IResult?> AuthorizeRoleEditAsync(
         Guid actorId,
         Guid roleId,
+        string roleName,
         IReadOnlyCollection<string> keys,
         CancellationToken cancellationToken)
     {
-        if (await IsOwnerAsync(actorId, cancellationToken)) return null;
-        var role = await dbContext.RoleMetadata.AsNoTracking().SingleOrDefaultAsync(item => item.RoleId == roleId, cancellationToken);
+        await AcquireRoleMutationLockAsync(roleId, cancellationToken);
         var currentPermissionKeys = await dbContext.RolePermissions.AsNoTracking()
             .Where(item => item.RoleId == roleId).Select(item => item.PermissionKey).ToArrayAsync(cancellationToken);
         var effectivePermissionKeys = currentPermissionKeys.Concat(keys).Distinct(StringComparer.Ordinal).ToArray();
+        if (await dbContext.AccessGroupRoleMappings.AsNoTracking()
+                .AnyAsync(item => item.RoleId == roleId, cancellationToken) &&
+            (string.Equals(roleName, AuthRoles.Owner, StringComparison.Ordinal) ||
+             effectivePermissionKeys.Any(IsProtectedPermission)))
+        {
+            return Forbidden("role_group_protected_permission",
+                "A role mapped to an access group cannot receive Owner or protected authorization-management permissions.");
+        }
+
+        if (await IsOwnerAsync(actorId, cancellationToken)) return null;
+        var role = await dbContext.RoleMetadata.AsNoTracking().SingleOrDefaultAsync(item => item.RoleId == roleId, cancellationToken);
         var scopes = await ActiveScopesAsync(actorId, cancellationToken);
         if (role is null || role.IsSystem || role.IsBuiltIn || !scopes.Any(scope =>
                 scope.StewardedRoleIds.Contains(roleId) && KeysWithinScope(scope, effectivePermissionKeys)))
@@ -58,6 +84,13 @@ public sealed class AuthorizationMutationService(AccountsDbContext dbContext, IP
 
     public async Task<IResult?> AuthorizeRoleDeleteAsync(Guid actorId, Guid roleId, CancellationToken cancellationToken)
     {
+        await AcquireRoleMutationLockAsync(roleId, cancellationToken);
+        if (await dbContext.AccessGroupRoleMappings.AsNoTracking()
+                .AnyAsync(item => item.RoleId == roleId, cancellationToken))
+        {
+            return Forbidden("role_mapped", "Roles mapped to access groups cannot be deleted; remove every mapping first.");
+        }
+
         if (await IsOwnerAsync(actorId, cancellationToken)) return null;
         var role = await dbContext.RoleMetadata.AsNoTracking().SingleOrDefaultAsync(item => item.RoleId == roleId, cancellationToken);
         var permissionKeys = await dbContext.RolePermissions.AsNoTracking()
@@ -185,6 +218,9 @@ public sealed class AuthorizationMutationService(AccountsDbContext dbContext, IP
     private bool KeysWithinScope(AuthorizationScope scope, IReadOnlyCollection<string> keys) =>
         keys.All(key => catalog.Contains(key) && catalog.GetRequired(key).Delegable &&
             scope.GrantablePermissionKeys.Contains(key, StringComparer.Ordinal));
+
+    private bool IsProtectedPermission(string key) =>
+        catalog.Contains(key) && !catalog.GetRequired(key).Delegable;
 
     private async Task<IReadOnlyCollection<Guid>> AssignableRoleIdsForScopeAsync(
         AuthorizationScope scope, CancellationToken cancellationToken)

@@ -50,6 +50,9 @@ internal static class AuthorizationManagementEndpoints
         owner.MapPut("/delegations/{id:guid}", UpdateDelegation).RequireAuthorization(AuthPolicies.OwnerManagement);
         owner.MapPost("/delegations/{id:guid}/revoke", RevokeDelegation).RequireAuthorization(AuthPolicies.OwnerManagement);
 
+        IdentityControlPlaneEndpoints.MapIdentityControlPlaneEndpoints(app);
+        ScimControlPlaneEndpoints.Map(app);
+
         app.MapGet("/api/v1/identity/access/me", EffectiveAccessForCurrentUser)
             .RequireAuthorization();
     }
@@ -217,15 +220,24 @@ internal static class AuthorizationManagementEndpoints
         if (string.IsNullOrWhiteSpace(request!.ConcurrencyStamp) ||
             !string.Equals(metadata.ConcurrencyStamp, request.ConcurrencyStamp, StringComparison.Ordinal))
             return Conflict("role_conflict", "The role changed concurrently; refresh its version.");
-        var guard = await mutations.AuthorizeRoleEditAsync(actor.Id, id, request.PermissionKeys!, cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            System.Data.IsolationLevel.Serializable, cancellationToken);
+        var guard = await mutations.AuthorizeRoleEditAsync(actor.Id, id, request.Name!.Trim(), request.PermissionKeys!, cancellationToken);
         if (guard is not null) return guard;
 
         try
         {
-            await using var transaction = await dbContext.Database.BeginTransactionAsync(
-                System.Data.IsolationLevel.Serializable, cancellationToken);
+            await mutations.AcquireRoleMutationLockAsync(id, cancellationToken);
             var beforePermissions = await dbContext.RolePermissions.Where(item => item.RoleId == id)
                 .Select(item => item.PermissionKey).ToArrayAsync(cancellationToken);
+            if (await dbContext.AccessGroupRoleMappings.AsNoTracking().AnyAsync(item => item.RoleId == id, cancellationToken) &&
+                (string.Equals(request.Name!.Trim(), AuthRoles.Owner, StringComparison.Ordinal) ||
+                 request.PermissionKeys!.Any(key => catalog.Contains(key) && !catalog.GetRequired(key).Delegable)))
+                return TypedResults.Json(new
+                {
+                    code = "role_group_protected_permission",
+                    message = "A role mapped to an access group cannot receive Owner or protected authorization-management permissions.",
+                }, statusCode: StatusCodes.Status403Forbidden);
             var before = new { role.Name, metadata.DisplayName, metadata.Description, Permissions = beforePermissions };
             var normalizedName = request.Name!.Trim().ToUpperInvariant();
             if (await dbContext.Roles.AnyAsync(item => item.Id != id && item.NormalizedName == normalizedName, cancellationToken))
@@ -293,8 +305,15 @@ internal static class AuthorizationManagementEndpoints
                 return Conflict("role_conflict", "The role changed concurrently; refresh its version.");
             var guard = await mutations.AuthorizeRoleDeleteAsync(actor.Id, id, cancellationToken);
             if (guard is not null) return guard;
-            await dbContext.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(CAST({0} AS bigint))",
-                [(object)(long)AuthAccountState.OwnerMutationLockKey], cancellationToken);
+            // AuthorizeRoleDeleteAsync acquires and validates the role-keyed lock.
+            // Recheck after the lock because a concurrent mapping mutation may have
+            // committed between the initial load and the authorization decision.
+            if (await dbContext.AccessGroupRoleMappings.AsNoTracking().AnyAsync(item => item.RoleId == id, cancellationToken))
+                return TypedResults.Json(new
+                {
+                    code = "role_mapped",
+                    message = "Roles mapped to access groups cannot be deleted; remove every mapping first.",
+                }, statusCode: StatusCodes.Status403Forbidden);
             if (await dbContext.UserRoles.AnyAsync(item => item.RoleId == id, cancellationToken))
                 return Conflict("role_assigned", "Assigned roles cannot be deleted.");
             dbContext.Roles.Remove(role);

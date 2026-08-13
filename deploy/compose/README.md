@@ -60,6 +60,8 @@ can invite further users from `/settings`.
 
 The complete configuration reference is in
 [docs/customers-authentication.md](../../docs/customers-authentication.md).
+For persisted multi-provider SSO, SCIM provisioning, and recovery procedures, see
+the [SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
 Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`.
 
 ## Base path and reverse proxy
@@ -110,9 +112,20 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 - Put the application behind a TLS-terminating reverse proxy and configure the
   `ForwardedHeaders__*` settings to trust exactly that proxy.
 - Set `App__PublicOrigin` to the public origin; mailed links and the OIDC
-  callback are derived from it.
-- Keep the `vantigo-dataprotection` volume. It persists the keys required for
-  sign-in cookies and account tokens across restarts.
+  callbacks are derived from it. Persisted SSO uses
+  `/api/v1/identity/federation/callback`; the legacy static OIDC path defaults to
+  `/api/v1/identity/oidc/callback`.
+- The `vantigo.env.example` file documents the legacy static OIDC settings. For
+  persisted SSO, inject client secrets as exact `VANTIGO_SSO_*_CLIENT_SECRET`
+  environment variables and configure the reference through the owner control
+  plane. Do not put provider secrets in source-controlled files.
+- SCIM uses `/api/v1/identity/scim/v2`, bearer tokens, and
+  `application/scim+json`. Set
+  `Authentication__Scim__TokenPepperReference` to a matching
+  `VANTIGO_SCIM_*_TOKEN_PEPPER` environment variable before creating tokens.
+- The Compose `postgres-data` volume contains the PostgreSQL-backed Data Protection
+  keys as well as application data. Back up the database before upgrades and keep
+  one migration job only; do not run `seed` in production.
 - Never run `seed` in production; it is Development-only.
 
 ## Upgrading
@@ -123,3 +136,6 @@ docker compose up -d
 ```
 
 The migration job runs automatically before the application starts.
+
+For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
+see [SSO and SCIM operations](../../docs/sso-scim-operations.md).

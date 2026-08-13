@@ -251,7 +251,10 @@ To opt out, set `Development__Seed__Enabled=false`. Seeding is never enabled out
 `Development`.
 
 For self-hosted Vantigo authentication, deployment configuration, and production
-migration guidance, see [Vantigo identity](docs/customers-authentication.md).
+migration guidance, see [Vantigo identity](docs/customers-authentication.md). For
+persisted enterprise SSO, SCIM provisioning, and the operator runbook, see the
+[SSO and SCIM operations guide](docs/sso-scim-operations.md) and the
+[documentation index](docs/README.md).
 The Products domain model, pricing rules and cross-service contracts are documented
 in [Products](docs/products.md).
 
@@ -293,15 +296,13 @@ docker run -d \
   --name vantigo \
   -p 8080:8080 \
   -e ConnectionStrings__vantigo="Host=your-postgres;Database=vantigo;Username=...;Password=..." \
-  -e DataProtection__KeysPath=/var/lib/vantigo/dataprotection \
-  -v vantigo-dataprotection:/var/lib/vantigo/dataprotection \
   ghcr.io/vantigo-io/vantigo api
 ```
 
-A persistent `DataProtection__KeysPath` volume is required so sign-in cookies and
-account tokens survive restarts. Do not run
-`seed` in production; it is only for Development. Authentication, reverse-proxy and
-full configuration guidance lives in
+A persistent Data Protection key ring is stored in PostgreSQL, so the database
+connection and backup must be shared by all replicas. Do not run `seed` in
+production; it is only for Development. Authentication, reverse-proxy and full
+configuration guidance lives in
 [Vantigo identity](docs/customers-authentication.md).
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same

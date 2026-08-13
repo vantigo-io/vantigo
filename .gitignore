@@ -5,6 +5,7 @@
 
 # dotenv files
 .env
+deploy/compose/vantigo.env
 deploy/compose/customers.env
 deploy/compose/communications.env
 .slim/deepwork/

@@ -12,6 +12,7 @@ internal static class AuthRateLimitPolicies
     internal const string Mfa = "auth-mfa";
     internal const string PasskeyLogin = "auth-passkey-login";
     internal const string UserManagement = "auth-user-management";
+    internal const string Federation = "auth-federation";
 }
 
 internal sealed record BootstrapRequest(

@@ -18,19 +18,33 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { appConfig, appUrl, SupportContactLine } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { loginWithPasskey } from "../api/account";
-import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
+import { completeTwoFactor } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signIn } from "../api/auth";
+import {
+  type FederationProviderDiscovery,
+  federationChallengeUrl,
+  fetchPublicSignInProviders,
+} from "../api/federation";
 
 const SignInPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const search = Route.useSearch();
+  const federationMfa = search.mfa === "federation" || search.mfa === "required";
+  const federationFailed = search.error === "federation_sign_in_failed";
   const [mfa, setMfa] = useState(false);
+  const showingMfa = mfa || federationMfa;
   const [code, setCode] = useState("");
-  const [oidc, setOidc] = useState<string | null>(null);
+  const [providers, setProviders] = useState<FederationProviderDiscovery[]>([]);
+  const [providerLoading, setProviderLoading] = useState(true);
+  const [providerError, setProviderError] = useState<string | null>(null);
   useEffect(() => {
-    fetchOidcProvider()
-      .then((provider) => setOidc(provider.oidc?.displayName ?? null))
-      .catch(() => {});
+    fetchPublicSignInProviders()
+      .then(setProviders)
+      .catch((error: unknown) =>
+        setProviderError(error instanceof Error ? error.message : "Sign-in providers are unavailable."),
+      )
+      .finally(() => setProviderLoading(false));
   }, []);
   const form = useForm({ initialValues: { email: "", password: "" } });
   const login = useMutation({
@@ -40,7 +54,7 @@ const SignInPage = () => {
       else {
         queryClient.setQueryData(sessionQueryKey, data);
         if (data.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
-        else void navigate({ to: "/" });
+        else void navigate({ to: "/", search: {}, replace: true });
       }
     },
   });
@@ -50,7 +64,7 @@ const SignInPage = () => {
       queryClient.setQueryData(sessionQueryKey, data);
       await queryClient.refetchQueries({ queryKey: sessionQueryKey });
       if (data.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
-      else void navigate({ to: "/" });
+      else void navigate({ to: "/", search: {}, replace: true });
     },
   });
   const verify = useMutation({
@@ -58,7 +72,7 @@ const SignInPage = () => {
     onSuccess: (data) => {
       queryClient.setQueryData(sessionQueryKey, data);
       if (data.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
-      else void navigate({ to: "/" });
+      else void navigate({ to: "/", search: {}, replace: true });
     },
   });
   return (
@@ -66,16 +80,20 @@ const SignInPage = () => {
       <Stack maw={440} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>
-            <Title order={2}>{mfa ? "Verify your sign-in" : "Welcome back"}</Title>
+            <Title order={2}>{showingMfa ? "Verify your sign-in" : "Welcome back"}</Title>
             <Text c="dimmed">
-              {mfa ? "Enter your authenticator or recovery code." : `Sign in to continue to ${appConfig().title}.`}
+              {showingMfa
+                ? "Enter your authenticator or recovery code."
+                : `Sign in to continue to ${appConfig().title}.`}
             </Text>
-            {(login.error || verify.error || passkeyLogin.error) && (
+            {(login.error || verify.error || passkeyLogin.error || federationFailed) && (
               <Alert icon={<IconAlertCircle size={18} />} color="red">
-                {(login.error || verify.error || passkeyLogin.error)?.message}
+                {federationFailed
+                  ? "Your identity provider could not complete sign-in. Try again or use another sign-in method."
+                  : (login.error || verify.error || passkeyLogin.error)?.message}
               </Alert>
             )}
-            {mfa ? (
+            {showingMfa ? (
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -90,6 +108,17 @@ const SignInPage = () => {
                   />
                   <Button type="submit" loading={verify.isPending}>
                     Verify
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="subtle"
+                    onClick={() => {
+                      setMfa(false);
+                      setCode("");
+                      void navigate({ to: "/sign-in", search: { mfa: undefined, error: undefined }, replace: true });
+                    }}
+                  >
+                    Use another sign-in method
                   </Button>
                 </Stack>
               </form>
@@ -114,13 +143,26 @@ const SignInPage = () => {
                   <Anchor component="a" href={appUrl("/forgot-password")} size="sm">
                     Forgot your password?
                   </Anchor>
-                  {oidc && (
-                    <>
-                      <Divider label="or" />
-                      <Button variant="default" component="a" href={appUrl("/api/v1/identity/oidc/challenge")}>
-                        Continue with {oidc}
-                      </Button>
-                    </>
+                  {providerLoading && (
+                    <Text size="sm" c="dimmed" ta="center">
+                      Checking available sign-in providers…
+                    </Text>
+                  )}
+                  {providers.length > 0 && <Divider label="or" />}
+                  {providers.map((provider) => (
+                    <Button
+                      key={provider.id}
+                      variant="default"
+                      component="a"
+                      href={federationChallengeUrl(provider.id)}
+                    >
+                      Continue with {provider.displayName}
+                    </Button>
+                  ))}
+                  {providerError && (
+                    <Text size="sm" c="dimmed" ta="center">
+                      {providerError}
+                    </Text>
                   )}
                 </Stack>
               </form>
@@ -133,6 +175,11 @@ const SignInPage = () => {
   );
 };
 export const Route = createFileRoute("/sign-in")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    // Only these server-issued markers may enter the MFA continuation UI.
+    mfa: search.mfa === "federation" || search.mfa === "required" ? search.mfa : undefined,
+    error: search.error === "federation_sign_in_failed" ? search.error : undefined,
+  }),
   beforeLoad: async () => {
     const session = await fetchSession();
     if (session) throw redirect({ to: "/" });

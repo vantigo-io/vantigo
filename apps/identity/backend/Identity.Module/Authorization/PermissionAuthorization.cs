@@ -72,8 +72,22 @@ public sealed class PermissionAuthorizationHandler(AccountsDbContext dbContext, 
             .Where(item => item.UserId == userId)
             .Select(item => item.RoleId)
             .ToArrayAsync();
+        var groupRoleIds = await dbContext.AccessGroupMemberships.AsNoTracking()
+            .Where(membership => membership.UserId == userId &&
+                (membership.Override == AccessGroupMembershipOverride.ForceMember ||
+                 membership.Override == null && membership.IsUpstreamPresent))
+            .Join(dbContext.AccessGroups.AsNoTracking().Where(group => group.IsActive),
+                membership => membership.GroupId, group => group.Id, (membership, _) => membership.GroupId)
+            .Join(dbContext.AccessGroups.AsNoTracking(), groupId => groupId, group => group.Id,
+                (groupId, group) => new { groupId, group.Source })
+            .Join(dbContext.AccessGroupRoleMappings.AsNoTracking(), item => item.groupId, mapping => mapping.GroupId,
+                (item, mapping) => new { mapping.RoleId, MappingSource = mapping.Source, GroupSource = item.Source })
+            .Where(item => item.MappingSource == item.GroupSource)
+            .Select(item => item.RoleId)
+            .ToArrayAsync();
+        var effectiveRoleIds = roleIds.Concat(groupRoleIds).Distinct().ToArray();
         if (await dbContext.RolePermissions.AsNoTracking()
-                .AnyAsync(item => roleIds.Contains(item.RoleId) && item.PermissionKey == requirement.PermissionKey))
+                .AnyAsync(item => effectiveRoleIds.Contains(item.RoleId) && item.PermissionKey == requirement.PermissionKey))
             context.Succeed(requirement);
     }
 }

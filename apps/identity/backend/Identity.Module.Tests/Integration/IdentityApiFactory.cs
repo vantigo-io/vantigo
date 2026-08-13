@@ -13,6 +13,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Http;
 
 using Testcontainers.PostgreSql;
 
@@ -35,10 +36,32 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     public const string BootstrapSecret = "identity-integration-bootstrap-secret";
     public const string OwnerEmail = "identity-owner@integration.test";
     public const string OwnerPassword = "IdentityOwnerPassword123";
+    public const string ScimTokenPepperReference = "VANTIGO_SCIM_INTEGRATION_TOKEN_PEPPER";
+    private static readonly object ScimPepperLock = new();
+    private static string? originalScimTokenPepper;
+    private static int scimPepperUsers;
+    private bool ownsScimPepper;
 
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("vantigo")
         .Build();
+
+    public IdentityApiFactory()
+    {
+        // EnvironmentScimTokenPepper intentionally resolves the secret from
+        // the process environment, not from test configuration. Set it before
+        // the WebApplicationFactory can initialize the host and restore it
+        // after the host is disposed.
+        lock (ScimPepperLock)
+        {
+            if (scimPepperUsers++ == 0)
+            {
+                originalScimTokenPepper = Environment.GetEnvironmentVariable(ScimTokenPepperReference);
+            }
+            Environment.SetEnvironmentVariable(ScimTokenPepperReference, "integration-scim-token-pepper");
+            ownsScimPepper = true;
+        }
+    }
 
     protected bool RequireOwnerMfa { get; set; }
     protected bool EnableWorkforceOidc { get; set; }
@@ -204,7 +227,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             {
                 ["ConnectionStrings:vantigo"] = postgres.GetConnectionString(),
                 ["Modules:Customers:Enabled"] = "true",
-                ["Modules:Communications:Enabled"] = "false",
+                ["Modules:Communications:Enabled"] = "true",
                 ["Modules:Products:Enabled"] = "false",
                 ["Modules:Energy:Enabled"] = "false",
                 ["Development:Seed:Enabled"] = "false",
@@ -212,6 +235,9 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Authentication:Owners:RequireMfa"] = RequireOwnerMfa.ToString(),
                 ["Authentication:Invitations:AcceptUrl"] = "http://test.local/invitations?token={token}",
                 ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",
+                ["VANTIGO_SSO_ENTRA_CLIENT_SECRET"] = "integration-entra-secret",
+                ["VANTIGO_SSO_GOOGLE_CLIENT_SECRET"] = "integration-google-secret",
+                ["Authentication:Scim:TokenPepperReference"] = ScimTokenPepperReference,
             };
             if (EnableWorkforceOidc)
             {
@@ -230,6 +256,14 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 SeedDevelopmentData: false));
             services.RemoveAll<IApplicationEmailSender>();
             services.AddSingleton<IApplicationEmailSender, TestEmailSender>();
+            services.RemoveAll<IFederationDiscoveryValidator>();
+            services.AddScoped<IFederationDiscoveryValidator, TestFederationDiscoveryValidator>();
+            services.RemoveAll<IFederationHostAddressResolver>();
+            services.AddSingleton<IFederationHostAddressResolver, TestFederationHostAddressResolver>();
+            services.Configure<HttpClientFactoryOptions>(OidcFederationDiscoveryValidator.HttpClientName,
+                options => options.HttpMessageHandlerBuilderActions.Add(builder =>
+                    builder.PrimaryHandler = new DynamicFederationTestHttpMessageHandler()));
+            Environment.SetEnvironmentVariable("VANTIGO_SSO_INTEGRATION_CLIENT_SECRET", "integration-federation-secret");
         });
 
         if (EnableWorkforceOidc)
@@ -243,6 +277,16 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await base.DisposeAsync();
         await postgres.DisposeAsync();
+        if (!ownsScimPepper) return;
+        lock (ScimPepperLock)
+        {
+            if (--scimPepperUsers == 0)
+            {
+                Environment.SetEnvironmentVariable(ScimTokenPepperReference, originalScimTokenPepper);
+                originalScimTokenPepper = null;
+            }
+            ownsScimPepper = false;
+        }
     }
 }
 
@@ -262,6 +306,47 @@ internal sealed class TestEmailSender : IApplicationEmailSender
 {
     public Task SendAsync(ApplicationEmail email, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
+}
+
+internal sealed class TestFederationDiscoveryValidator : IFederationDiscoveryValidator
+{
+    public Task<FederationDiscoveryValidationResult> ValidateAsync(
+        FederationProviderKind providerKind,
+        string normalizedAuthority,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(new FederationDiscoveryValidationResult(
+            true,
+            "validated",
+            "The OIDC discovery document was validated.",
+            normalizedAuthority,
+            normalizedAuthority + "/.well-known/openid-configuration",
+            normalizedAuthority + "/authorize",
+            normalizedAuthority + "/token",
+            normalizedAuthority + "/keys"));
+}
+
+internal sealed class TestFederationHostAddressResolver : IFederationHostAddressResolver
+{
+    public Task<System.Net.IPAddress[]> ResolveAsync(string host, CancellationToken cancellationToken) =>
+        Task.FromResult(new[] { System.Net.IPAddress.Parse("1.2.3.4") });
+}
+
+internal static class DynamicFederationTestTransport
+{
+    public static Func<HttpRequestMessage, HttpResponseMessage>? Responder { get; set; }
+    public static List<Uri> Requests { get; } = [];
+    public static List<string> RequestBodies { get; } = [];
+}
+
+internal sealed class DynamicFederationTestHttpMessageHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        DynamicFederationTestTransport.Requests.Add(request.RequestUri!);
+        DynamicFederationTestTransport.RequestBodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
+        return Task.FromResult(DynamicFederationTestTransport.Responder?.Invoke(request) ??
+            new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+    }
 }
 
 internal sealed class ControlledExternalCookieStartupFilter : IStartupFilter

@@ -61,6 +61,29 @@ internal static class AuthAccountState
         return activeOwnerCount <= 1;
     }
 
+    internal static async Task<bool> HasScimProvenanceAsync(
+        AccountsDbContext dbContext,
+        Guid userId,
+        CancellationToken cancellationToken) =>
+        await dbContext.ScimUserMappings.AnyAsync(mapping => mapping.UserId == userId, cancellationToken) ||
+        await dbContext.FederatedIdentities.AnyAsync(identity => identity.UserId == userId, cancellationToken);
+
+    internal static bool IsProvenanceDeletionConflict(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is Npgsql.PostgresException postgres &&
+                postgres.SqlState == Npgsql.PostgresErrorCodes.ForeignKeyViolation &&
+                (postgres.ConstraintName?.Contains("scim", StringComparison.OrdinalIgnoreCase) == true ||
+                 postgres.ConstraintName?.Contains("federated", StringComparison.OrdinalIgnoreCase) == true))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     internal static bool IsExpectedConflict(Exception exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)

@@ -45,11 +45,8 @@ services:
     env_file: vantigo.env
     environment:
       ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
-      DataProtection__KeysPath: /var/lib/vantigo/dataprotection
     ports:
       - "${VANTIGO_PORT:-8080}:8080"
-    volumes:
-      - vantigo-dataprotection:/var/lib/vantigo/dataprotection
     depends_on:
       vantigo-migrate:
         condition: service_completed_successfully
@@ -62,4 +59,3 @@ configs:
 
 volumes:
   postgres-data:
-  vantigo-dataprotection:

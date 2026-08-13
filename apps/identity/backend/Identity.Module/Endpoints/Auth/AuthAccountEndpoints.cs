@@ -864,7 +864,22 @@ internal static class AuthAccountEndpoints
             return Error(StatusCodes.Status409Conflict, "last_active_owner", "The last active Owner cannot be deleted.");
         }
 
-        var deleteResult = await userManager.DeleteAsync(target);
+        if (await AuthAccountState.HasScimProvenanceAsync(dbContext, target.Id, cancellationToken))
+        {
+            return Error(StatusCodes.Status409Conflict, "provenance_conflict",
+                "This user has SCIM or federated identity history and cannot be deleted.");
+        }
+
+        IdentityResult deleteResult;
+        try
+        {
+            deleteResult = await userManager.DeleteAsync(target);
+        }
+        catch (Exception exception) when (AuthAccountState.IsProvenanceDeletionConflict(exception))
+        {
+            return Error(StatusCodes.Status409Conflict, "provenance_conflict",
+                "This user has SCIM or federated identity history and cannot be deleted.");
+        }
         if (!deleteResult.Succeeded)
         {
             return IdentityFailure(deleteResult, "The user account could not be deleted.");

@@ -5,6 +5,9 @@ same-origin API. The API returns JSON `401`/`403` responses rather than login
 redirects. Mutating browser requests use antiforgery protection: obtain a token from
 `GET /api/v1/identity/antiforgery` and send it in `X-XSRF-TOKEN`.
 
+For persisted multi-provider SSO, SCIM 2.0, group mappings, provider setup, and the
+operator recovery runbook, see [SSO and SCIM operations](sso-scim-operations.md).
+
 The application cookie and antiforgery cookie are `HttpOnly` and `SameSite=Strict`, and
 are Secure outside Development. Run the SPA and API under one public origin in
 deployment. A reverse proxy may serve both paths, but it must preserve the host and
@@ -117,13 +120,27 @@ Email__Smtp__TimeoutSeconds=30
 the username is optional for servers that do not require authentication. Do not use
 real credentials in configuration examples.
 
-## Optional workforce OIDC
+## Legacy optional workforce OIDC
 
-At most one workforce OpenID Connect provider can be configured. OIDC is disabled
+This is the legacy, startup-configured OIDC path. At most one workforce OpenID
+Connect provider can be configured, and its settings are not persisted in the
+accounts database. OIDC is disabled
 when all three required values are absent. Once any required value is supplied,
 `Authority`, `ClientId`, and `ClientSecret` are all required and invalid partial
 configuration fails startup. The optional display name defaults to `Workforce SSO`;
 the callback path defaults to `/api/v1/identity/oidc/callback`.
+
+This path is distinct from persisted multi-provider SSO. Persisted connections are
+owner-managed, use `clientSecretReference` values in the dedicated
+`VANTIGO_SSO_*_CLIENT_SECRET` environment namespace, and use the dynamic routes
+`/api/v1/identity/federation/providers`,
+`/api/v1/identity/federation/{connectionId}/challenge`, and
+`/api/v1/identity/federation/callback`. Do not configure a persisted connection by
+putting its secret or reference in `Authentication__Oidc__ClientSecret`. For this
+legacy path only, `Authentication__Oidc__ClientSecret` is the actual direct runtime
+secret injected into the process, not a `VANTIGO_SSO_*_CLIENT_SECRET` reference.
+Never mix this direct legacy secret with persisted connection setup; use the
+[SSO and SCIM operations guide](sso-scim-operations.md).
 
 The flow is authorization code plus PKCE. ASP.NET Core's built-in handler validates
 provider metadata, issuer, audience, signature, state, nonce, and correlation. The
@@ -194,6 +211,28 @@ supplied return URL.
 
 ## Deployment configuration reference
 
+Persisted enterprise federation connections store only a client-secret reference,
+never the secret itself. Set the referenced key in the identity container's
+environment (Docker/Kubernetes secret injection is recommended), for example:
+
+```text
+VANTIGO_SSO_ENTRA_CLIENT_SECRET=<secret-from-your-secret-store>
+```
+
+When creating a connection, set `clientSecretReference` to a name in the dedicated
+`VANTIGO_SSO_*_CLIENT_SECRET` namespace, such as
+`VANTIGO_SSO_ENTRA_CLIENT_SECRET`. The API never returns or logs the resolved
+secret. The resolver reads only that exact process environment variable; it does
+not resolve arbitrary configuration hierarchy keys or application aliases. The
+runtime resolver distinguishes an unset key from a configured key internally. A
+connection must pass owner-only OIDC discovery validation before it can be enabled.
+
+For generic providers, production deployments must also enforce outbound egress
+controls or configure an approved issuer-host allowlist at the network/platform
+boundary. Application-level DNS preflight rejects private, loopback, link-local,
+and other non-public targets, but cannot by itself guarantee safety against DNS
+rebinding between validation and a later metadata/token/JWKS request.
+
 Environment variables use ASP.NET Core's standard double-underscore mapping:
 
 | Variable | Purpose | Default |
@@ -206,13 +245,17 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 | `Authentication__Invitations__Lifetime` | Invitation lifetime as a .NET `TimeSpan` (`1`–`30` days) | `7.00:00:00` |
 | `Authentication__Invitations__AcceptUrl` | Invitation URL template with `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/invitations/accept?token={token}` |
 | `Authentication__PasswordReset__ResetUrl` | Reset URL template with `{email}` and `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/password-reset?email={email}&token={token}` |
-| `Authentication__Oidc__Authority` | OIDC issuer/authority; required to enable OIDC | unset |
-| `Authentication__Oidc__ClientId` | OIDC client ID; required to enable OIDC | unset |
-| `Authentication__Oidc__ClientSecret` | OIDC client secret; required to enable OIDC | unset |
+| `Authentication__Oidc__Authority` | Legacy static OIDC issuer/authority; required to enable the single startup-configured provider | unset |
+| `Authentication__Oidc__ClientId` | Legacy static OIDC client ID; required to enable the single startup-configured provider | unset |
+| `Authentication__Oidc__ClientSecret` | Legacy static OIDC client secret; required to enable the single startup-configured provider | unset |
 | `Authentication__Oidc__DisplayName` | Sign-in button/provider label | `Workforce SSO` |
 | `Authentication__Oidc__CallbackPath` | OIDC callback path | `/api/v1/identity/oidc/callback` |
-| `DataProtection__KeysPath` | Persistent Data Protection key directory; relative paths are under the content root | unset |
-| `DataProtection__ApplicationName` | Shared Data Protection application discriminator | framework default |
+| `Authentication__Scim__TokenPepperReference` | Exact environment-variable name containing the SCIM token pepper; see the SSO/SCIM guide | unset |
+| `DataProtection__PostgreSql__ConnectionString` | Optional override for the PostgreSQL connection used for Data Protection keys | `ConnectionStrings__Vantigo` |
+| `DataProtection__PostgreSql__ConnectionStringName` | Named connection-string lookup used when the override is unset | `Vantigo` |
+| `DataProtection__PostgreSql__Schema` | PostgreSQL schema for the Data Protection key table | `dataprotection` |
+| `DataProtection__PostgreSql__TableName` | PostgreSQL Data Protection key table | `Keys` |
+| `DataProtection__PostgreSql__ApplicationName` | Shared Data Protection application discriminator | host application name |
 | `ForwardedHeaders__KnownProxies` | Trusted proxy IP(s), comma-separated or indexed | ASP.NET Core safe defaults |
 | `ForwardedHeaders__KnownNetworks__0` | Trusted proxy network in IPv4/IPv6 CIDR form | ASP.NET Core safe defaults |
 | `Email__Provider` | `Smtp` selects SMTP; any other value selects logging | `Logging` |
@@ -226,12 +269,18 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 
 ### Data Protection keys
 
-Set a writable, persistent `DataProtection__KeysPath` in every replica. A relative
-path is resolved below the API content root; an absolute path is used as-is. Set the
-same `DataProtection__ApplicationName` for replicas of this application. Shared,
-persistent keys are required for cookie validation and protected Identity tokens
-across restarts and replicas. Protect the directory with filesystem/secret-store
-controls and do not commit its contents.
+ASP.NET Core Data Protection keys are persisted in the shared PostgreSQL database
+in the `dataprotection."Keys"` table by default. All replicas must use the same
+database and `DataProtection__PostgreSql__ApplicationName` (or the same default
+application name) so cookies, antiforgery tokens, and protected Identity tokens
+remain compatible across restarts and replicas. The key ring is managed through the
+PostgreSQL-backed Data Protection context rather than an application file volume.
+
+For higher-assurance deployments, external at-rest wrapping of the database or key
+material is recommended. Vantigo does not currently provide a product-level
+configuration for that wrapping; it must be implemented and operated by the
+deployment or an extension. Do not represent external wrapping as a built-in
+Vantigo feature.
 
 ### Forwarded headers and HTTPS
 
@@ -268,4 +317,5 @@ platform must not start the API until the migration job has completed successful
 
 Development Aspire explicitly selects `migrate`, then the Development-only `seed`, and
 then `api`. Do not run `seed` in production. Verify the database is reachable and the
-persistent Data Protection directory is ready before accepting browser traffic.
+PostgreSQL-backed Data Protection key context is available before accepting browser
+traffic.

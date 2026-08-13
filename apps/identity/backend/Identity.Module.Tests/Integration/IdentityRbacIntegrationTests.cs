@@ -97,6 +97,82 @@ public sealed class IdentityRbacIntegrationTests(IdentityApiFactory factory)
     }
 
     [Fact]
+    public async Task ScimGroupRoleAuthorizationHonorsForceOverridesAndPreservesDirectRoles()
+    {
+        var user = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        using var owner = await factory.CreateOwnerClientAsync();
+        var derivedRole = await CreateRoleAsync(owner, $"scim-derived-{Guid.NewGuid():N}", [PermissionA]);
+        var directRole = await CreateRoleAsync(owner, $"scim-direct-{Guid.NewGuid():N}", [PermissionB]);
+        await EnsureSuccess(await AssignRoleAsync(owner, user.Id, directRole.Id));
+
+        var now = DateTimeOffset.UtcNow;
+        var federation = new FederationConnection
+        {
+            ProviderKind = FederationProviderKind.Generic,
+            DisplayName = $"SCIM authorization {Guid.NewGuid():N}",
+            Authority = $"https://scim-authorization-{Guid.NewGuid():N}.integration.test",
+            ClientId = "scim-authorization-client",
+            ConcurrencyStamp = Guid.NewGuid().ToString("N"),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var connection = new ScimConnection
+        {
+            FederationConnectionId = federation.Id,
+            IsEnabled = true,
+            ConcurrencyStamp = Guid.NewGuid().ToString("N"),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var group = new AccessGroup
+        {
+            ScimConnectionId = connection.Id,
+            DisplayName = $"SCIM authorization group {Guid.NewGuid():N}",
+            Source = AccessGroupSource.Scim,
+            ExternalId = Guid.NewGuid().ToString("N"),
+            IsActive = true,
+            ConcurrencyStamp = Guid.NewGuid().ToString("N"),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+            db.FederationConnections.Add(federation);
+            db.ScimConnections.Add(connection);
+            db.AccessGroups.Add(group);
+            db.AccessGroupMemberships.Add(new AccessGroupMembership
+            {
+                GroupId = group.Id,
+                UserId = user.Id,
+                Source = AccessGroupSource.Scim,
+                IsUpstreamPresent = true,
+                UpdatedAt = now,
+            });
+            db.AccessGroupRoleMappings.Add(new AccessGroupRoleMapping
+            {
+                GroupId = group.Id,
+                RoleId = derivedRole.Id,
+                Source = AccessGroupSource.Scim,
+                CreatedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.True(await AuthorizePermissionAsync(user.Id, PermissionA));
+        Assert.True(await AuthorizePermissionAsync(user.Id, PermissionB));
+        await SetOverrideAsync(group.Id, user.Id, AccessGroupMembershipOverride.ForceNonMember, upstreamPresent: true);
+        Assert.False(await AuthorizePermissionAsync(user.Id, PermissionA));
+        Assert.True(await AuthorizePermissionAsync(user.Id, PermissionB));
+        await SetOverrideAsync(group.Id, user.Id, AccessGroupMembershipOverride.ForceMember, upstreamPresent: false);
+        Assert.True(await AuthorizePermissionAsync(user.Id, PermissionA));
+        Assert.True(await AuthorizePermissionAsync(user.Id, PermissionB));
+        await SetGroupActiveAsync(group.Id, false);
+        Assert.False(await AuthorizePermissionAsync(user.Id, PermissionA));
+        Assert.True(await AuthorizePermissionAsync(user.Id, PermissionB));
+    }
+
+    [Fact]
     public async Task AssignmentPreservesProtectedSystemRolesAndReturnsARevision()
     {
         var user = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
@@ -602,15 +678,35 @@ public sealed class IdentityRbacIntegrationTests(IdentityApiFactory factory)
         Assert.False(await verifyDb.Roles.AnyAsync(item => item.Name == failedRoleName));
     }
 
-    private async Task<bool> AuthorizePermissionAsync(Guid userId, bool ownerClaim = false)
+    private async Task<bool> AuthorizePermissionAsync(Guid userId, string permission = Permission, bool ownerClaim = false)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var authorization = scope.ServiceProvider.GetRequiredService<IAuthorizationService>();
         var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, userId.ToString()) };
         if (ownerClaim) claims.Add(new Claim(ClaimTypes.Role, AuthRoles.Owner));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
-        var result = await authorization.AuthorizeAsync(principal, null, $"permission:{Permission}");
+        var result = await authorization.AuthorizeAsync(principal, null, $"permission:{permission}");
         return result.Succeeded;
+    }
+
+    private async Task SetOverrideAsync(Guid groupId, Guid userId, AccessGroupMembershipOverride value, bool upstreamPresent)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        var membership = await db.AccessGroupMemberships.SingleAsync(item => item.GroupId == groupId && item.UserId == userId);
+        membership.Override = value;
+        membership.IsUpstreamPresent = upstreamPresent;
+        membership.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SetGroupActiveAsync(Guid groupId, bool active)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        var group = await db.AccessGroups.SingleAsync(item => item.Id == groupId);
+        group.IsActive = active;
+        await db.SaveChangesAsync();
     }
 
     private async Task<RoleResponse> CreateRoleAsync(HttpClient owner, string name, IReadOnlyCollection<string> permissions)

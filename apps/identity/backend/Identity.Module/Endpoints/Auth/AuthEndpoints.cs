@@ -35,6 +35,22 @@ public static class AuthEndpoints
         group.MapGet("/providers", WorkforceOidcEndpoints.Providers)
             .WithSummary("Get the configured workforce sign-in providers");
 
+        group.MapGet("/federation/providers", DynamicFederationProviders)
+            .WithSummary("Get enabled persisted federation sign-in providers")
+            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
+
+        group.MapGet("/federation/{connectionId:guid}/challenge", DynamicFederationChallenge)
+            .WithSummary("Start a persisted federation OpenID Connect sign-in")
+            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
+
+        group.MapGet("/federation/callback", DynamicFederationCallback)
+            .WithSummary("Complete a persisted federation OpenID Connect sign-in")
+            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
+
+        group.MapPost("/federation/callback", DynamicFederationCallback)
+            .ExcludeFromDescription()
+            .RequireRateLimiting(AuthRateLimitPolicies.Federation);
+
         if (workforceOidc.Enabled)
         {
             group.MapGet("/oidc/challenge", WorkforceOidcEndpoints.Challenge)
@@ -71,9 +87,50 @@ public static class AuthEndpoints
         app.MapAccountAuthEndpoints();
         app.MapAccountSettingsEndpoints();
         AuthorizationManagementEndpoints.MapAuthorizationManagementEndpoints(app);
+        ScimProtocolEndpoints.Map(app);
 
         return app;
     }
+
+    private static async Task<IResult> DynamicFederationProviders(
+        DynamicFederationOidcService federation,
+        CancellationToken cancellationToken) =>
+        TypedResults.Ok(await federation.ListProvidersAsync(cancellationToken));
+
+    private static async Task<IResult> DynamicFederationChallenge(
+        Guid connectionId,
+        string? returnPath,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var properties = new AuthenticationProperties();
+        properties.Items[DynamicFederationAuthentication.ConnectionIdItem] = connectionId.ToString("D");
+        properties.Items[DynamicFederationAuthentication.ConfigurationVersionItem] = "0";
+        properties.Items[DynamicFederationAuthentication.ReturnPathItem] = returnPath ?? "/";
+
+        // The handler re-reads the connection and version. The placeholder is
+        // replaced by the current version only after the same request has
+        // accepted the connection; this prevents callers from supplying a
+        // version or any provider endpoint.
+        await using var scope = httpContext.RequestServices.CreateAsyncScope();
+        var federation = scope.ServiceProvider.GetRequiredService<DynamicFederationOidcService>();
+        var connection = await federation.GetCurrentConnectionAsync(connectionId, cancellationToken);
+        if (connection is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        properties.Items[DynamicFederationAuthentication.ConfigurationVersionItem] =
+            connection.ConfigurationVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        await httpContext.ChallengeAsync(DynamicFederationAuthentication.Scheme, properties);
+        return TypedResults.Empty;
+    }
+
+    private static Task<IResult> DynamicFederationCallback(
+        HttpContext httpContext,
+        DynamicFederationOidcService federation,
+        CancellationToken cancellationToken) =>
+        federation.CompleteAsync(httpContext, cancellationToken);
 
     private static IResult AntiforgeryToken(HttpContext httpContext, IAntiforgery antiforgery)
     {
@@ -195,6 +252,7 @@ public static class AuthEndpoints
         HttpContext httpContext,
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
+        ScimLifecycleService lifecycleService,
         IOptions<VantigoAuthenticationOptions> options,
         CancellationToken cancellationToken)
     {
@@ -215,7 +273,7 @@ public static class AuthEndpoints
         }
 
         var user = await userManager.FindByEmailAsync(request!.Email!.Trim());
-        if (user?.IsDisabled == true)
+        if (user is not null && await lifecycleService.IsEffectivelyDisabledAsync(user.Id, cancellationToken))
         {
             return Error(StatusCodes.Status429TooManyRequests, "account_locked", "The account is temporarily unavailable. Please try again later.");
         }

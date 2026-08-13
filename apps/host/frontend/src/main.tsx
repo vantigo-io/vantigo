@@ -25,7 +25,8 @@ document.title = appConfig().title;
 const router = createRouter({ routeTree, basepath: "/", context: { queryClient } });
 setAuthStateClearer(() => queryClient.removeQueries({ queryKey: ["auth", "session"], exact: true }));
 setUnauthorizedHandler(() => {
-  if (window.location.pathname !== "/sign-in") void router.navigate({ to: "/sign-in" });
+  if (window.location.pathname !== "/sign-in")
+    void router.navigate({ to: "/sign-in", search: { mfa: undefined, error: undefined } });
 });
 wireNavigationProgress(router);
 declare module "@tanstack/react-router" {
