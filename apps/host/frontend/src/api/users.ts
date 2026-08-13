@@ -12,6 +12,8 @@ export interface OwnerUserResponse {
   lockedOut: boolean;
   disabled: boolean;
   twoFactorEnabled: boolean;
+  avatarUrl?: string | null;
+  ssoEnabled: boolean;
 }
 
 export type ManagedUser = OwnerUserResponse;

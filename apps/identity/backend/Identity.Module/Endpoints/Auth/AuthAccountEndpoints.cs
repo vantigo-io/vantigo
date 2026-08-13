@@ -73,6 +73,8 @@ internal static class AuthAccountEndpoints
             .RequireRateLimiting(AuthRateLimitPolicies.Mfa);
         ownerManagement.MapGet("/users", ListUsers)
             .RequireRateLimiting(AuthRateLimitPolicies.UserManagement);
+        ownerManagement.MapGet("/users/{id:guid}/avatar", GetManagedUserAvatar)
+            .RequireRateLimiting(AuthRateLimitPolicies.OwnerAvatarRead);
         ownerManagement.MapPost("/users", CreateUser)
             .RequireRateLimiting(AuthRateLimitPolicies.UserManagement);
         ownerManagement.MapPut("/users/{id:guid}", UpdateUser)
@@ -404,8 +406,12 @@ internal static class AuthAccountEndpoints
 
     private static async Task<IResult> ListUsers(
         AccountsDbContext dbContext,
+        WorkforceOidcOptions oidcOptions,
         CancellationToken cancellationToken)
     {
+        var oidcLoginProvider = WorkforceOidcOptions.TryNormalizeIssuer(oidcOptions.Authority, out var normalizedAuthority)
+            ? normalizedAuthority
+            : null;
         var users = await dbContext.Users
             .AsNoTracking()
             .OrderBy(user => user.DisplayName)
@@ -418,6 +424,12 @@ internal static class AuthAccountEndpoints
                 user.IsDisabled,
                 user.LockoutEnd,
                 user.TwoFactorEnabled,
+                AvatarUrl = dbContext.ProfileAvatars
+                    .Where(avatar => avatar.UserId == user.Id)
+                    .Select(_ => $"/api/v1/identity/owner/users/{user.Id}/avatar")
+                    .SingleOrDefault(),
+                SsoEnabled = oidcLoginProvider != null && dbContext.UserLogins.Any(login => login.UserId == user.Id &&
+                    login.LoginProvider == oidcLoginProvider),
             })
             .ToListAsync(cancellationToken);
 
@@ -440,12 +452,35 @@ internal static class AuthAccountEndpoints
             user.IsDisabled,
             AuthAccountState.IsLockedOut(user.LockoutEnd, now),
             user.LockoutEnd,
-            user.TwoFactorEnabled))
+            user.TwoFactorEnabled,
+            user.AvatarUrl,
+            user.SsoEnabled))
             .OrderBy(user => string.Equals(user.Role, AuthRoles.Owner, StringComparison.Ordinal) ? 0 : 1)
             .ThenBy(user => user.DisplayName, StringComparer.Ordinal)
             .ThenBy(user => user.Id)
             .ToArray();
         return TypedResults.Ok(response);
+    }
+
+    private static async Task<IResult> GetManagedUserAvatar(
+        Guid id,
+        AccountsDbContext dbContext,
+        CancellationToken cancellationToken,
+        HttpResponse response)
+    {
+        var avatar = await dbContext.ProfileAvatars.AsNoTracking()
+            .Where(item => item.UserId == id)
+            .Select(item => new { item.Data, item.ContentType })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (avatar is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        response.Headers.CacheControl = "private, no-store";
+        response.Headers.ContentDisposition = "inline";
+        response.Headers["X-Content-Type-Options"] = "nosniff";
+        return TypedResults.Bytes(avatar.Data, avatar.ContentType);
     }
 
     private static async Task<IResult> CreateUser(

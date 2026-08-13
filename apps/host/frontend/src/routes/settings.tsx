@@ -30,6 +30,7 @@ import {
   getProfile,
   initializeMfa,
   listPasskeys,
+  profileQueryKey,
   regenerateRecoveryCodes,
   removePasskey,
   removeProfilePhoto,
@@ -38,7 +39,6 @@ import {
 } from "../api/account";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 
-const profileKey = ["account", "profile"] as const;
 const mfaKey = ["account", "mfa"] as const;
 const passkeyKey = ["account", "passkeys"] as const;
 const message = (e: unknown) => (e instanceof Error ? e.message : "The request could not be completed.");
@@ -51,7 +51,9 @@ const saved = (text: string) => notifications.show({ title: "Saved", message: te
 
 function ProfileTab() {
   const qc = useQueryClient();
-  const query = useQuery({ queryKey: profileKey, queryFn: getProfile });
+  const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
+  const userId = session.data?.user.id;
+  const query = useQuery({ queryKey: profileQueryKey(userId ?? "unknown"), queryFn: getProfile, enabled: !!userId });
   const [file, setFile] = useState<File | null>(null);
   const form = useForm<{ displayName: string; preferredLanguage: "auto" | "en" }>({
     initialValues: { displayName: "", preferredLanguage: "auto" },
@@ -64,7 +66,7 @@ function ProfileTab() {
   const save = useMutation({
     mutationFn: updateProfile,
     onSuccess: (v) => {
-      qc.setQueryData(profileKey, v);
+      if (userId) qc.setQueryData(profileQueryKey(userId), v);
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
       saved("Your profile was updated.");
     },
@@ -74,7 +76,7 @@ function ProfileTab() {
     mutationFn: uploadProfilePhoto,
     onSuccess: () => {
       setFile(null);
-      void qc.invalidateQueries({ queryKey: profileKey });
+      if (userId) void qc.invalidateQueries({ queryKey: profileQueryKey(userId) });
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
       saved("Your profile photo was updated.");
     },
@@ -83,7 +85,8 @@ function ProfileTab() {
   const remove = useMutation({
     mutationFn: removeProfilePhoto,
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: profileKey });
+      if (userId) void qc.invalidateQueries({ queryKey: profileQueryKey(userId) });
+      void qc.invalidateQueries({ queryKey: sessionQueryKey });
       saved("Your profile photo was removed.");
     },
     onError: (e) => notify("Photo could not be removed", e),

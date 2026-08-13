@@ -18,6 +18,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
+import { Route as AdminInvitationsRouteImport } from './routes/admin/invitations'
 import { Route as AdminRolesRouteImport } from './routes/admin/roles'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as CommunicationsMailboxesRouteImport } from './routes/communications/mailboxes'
@@ -82,6 +83,11 @@ const SignInRoute = SignInRouteImport.update({
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
   id: '/admin/dashboard',
   path: '/admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminInvitationsRoute = AdminInvitationsRouteImport.update({
+  id: '/admin/invitations',
+  path: '/admin/invitations',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRolesRoute = AdminRolesRouteImport.update({
@@ -200,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/invitations': typeof AdminInvitationsRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
@@ -231,6 +238,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/invitations': typeof AdminInvitationsRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
@@ -262,6 +270,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/invitations': typeof AdminInvitationsRoute
   '/admin/roles': typeof AdminRolesRoute
   '/admin/users': typeof AdminUsersRoute
   '/communications/mailboxes': typeof CommunicationsMailboxesRoute
@@ -295,6 +304,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/admin/dashboard'
+    | '/admin/invitations'
     | '/admin/roles'
     | '/admin/users'
     | '/communications/mailboxes'
@@ -326,6 +336,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/admin/dashboard'
+    | '/admin/invitations'
     | '/admin/roles'
     | '/admin/users'
     | '/communications/mailboxes'
@@ -356,6 +367,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/admin/dashboard'
+    | '/admin/invitations'
     | '/admin/roles'
     | '/admin/users'
     | '/communications/mailboxes'
@@ -388,6 +400,7 @@ export interface RootRouteChildren {
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminInvitationsRoute: typeof AdminInvitationsRoute
   AdminRolesRoute: typeof AdminRolesRoute
   AdminUsersRoute: typeof AdminUsersRoute
   CommunicationsMailboxesRoute: typeof CommunicationsMailboxesRoute
@@ -471,6 +484,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/dashboard'
       fullPath: '/admin/dashboard'
       preLoaderRoute: typeof AdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/invitations': {
+      id: '/admin/invitations'
+      path: '/admin/invitations'
+      fullPath: '/admin/invitations'
+      preLoaderRoute: typeof AdminInvitationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/roles': {
@@ -639,6 +659,7 @@ const rootRouteChildren: RootRouteChildren = {
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  AdminInvitationsRoute: AdminInvitationsRoute,
   AdminRolesRoute: AdminRolesRoute,
   AdminUsersRoute: AdminUsersRoute,
   CommunicationsMailboxesRoute: CommunicationsMailboxesRoute,

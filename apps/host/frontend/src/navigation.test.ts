@@ -33,6 +33,15 @@ describe("navigation permissions", () => {
     expect(labels).toEqual(navSections.flatMap((section) => section.items.map((item) => item.label)));
   });
 
+  it("does not expose users or invitations as direct owner destinations", () => {
+    const ownerItems = visibleNavSections(["*"], true, true).flatMap((section) => section.items);
+
+    expect(ownerItems.map((item) => item.label)).not.toContain("Users");
+    expect(ownerItems.map((item) => item.label)).not.toContain("Invitations");
+    expect(ownerItems.map((item) => item.to)).not.toContain("/admin/users");
+    expect(ownerItems.map((item) => item.to)).not.toContain("/admin/invitations");
+  });
+
   it("keeps lower administration separate from the first integrated destination", () => {
     const lower = navSections.find((section) => section.placement === "lower");
     expect(lower?.label).toBe("Settings & administration");
@@ -60,6 +69,20 @@ describe("navigation permissions", () => {
         .find((section) => section.placement === "lower")
         ?.items.find((item) => item.label === "Admin dashboard"),
     ).toMatchObject({ to: "/admin/dashboard", ownerOnly: true });
+  });
+
+  it("keeps Roles & access reachable for authorization users", () => {
+    const authorizationItems = visibleNavSections(["*"], false, true).flatMap((section) => section.items);
+
+    expect(authorizationItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Roles & access",
+          to: "/admin/roles",
+          capability: "authorization",
+        }),
+      ]),
+    );
   });
 
   it("provides search defaults only for list destinations", () => {

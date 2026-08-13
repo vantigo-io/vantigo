@@ -20,6 +20,7 @@ import { vantigoLogo } from "./logo";
 export interface ShellUser {
   displayName: string;
   email: string;
+  avatarUrl?: string | null;
 }
 
 export interface AppShellLayoutProps {
@@ -181,7 +182,7 @@ export const AppShellLayout = ({
                 }}
               >
                 <Group gap="sm" wrap="nowrap">
-                  <Avatar color="vantigo" radius="xl">
+                  <Avatar src={user?.avatarUrl} color="vantigo" radius="xl">
                     {user ? initials(user.displayName) : "\u2026"}
                   </Avatar>
                   <div style={{ flex: 1, minWidth: 0 }}>

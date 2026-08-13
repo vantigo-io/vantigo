@@ -239,10 +239,12 @@ public sealed class IdentityAccountEndpointsTests(IdentityApiFactory factory)
         var second = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
         using var firstClient = await factory.CreateAuthenticatedClientAsync(first.Email, first.Password);
         using var secondClient = await factory.CreateAuthenticatedClientAsync(second.Email, second.Password);
+        using var owner = await factory.CreateOwnerClientAsync();
 
         using var upload = new MultipartFormDataContent();
-        var image = new ByteArrayContent(Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+        var imageBytes = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        var image = new ByteArrayContent(imageBytes);
         image.Headers.ContentType = new MediaTypeHeaderValue("image/png");
         upload.Add(image, "avatar", "avatar.png");
         var uploaded = await firstClient.PutAsync("/api/v1/identity/account/avatar", upload);
@@ -254,6 +256,19 @@ public sealed class IdentityAccountEndpointsTests(IdentityApiFactory factory)
         Assert.Equal(HttpStatusCode.OK, avatar.StatusCode);
         Assert.Contains("no-store", avatar.Headers.CacheControl?.ToString(), StringComparison.OrdinalIgnoreCase);
         Assert.Equal("nosniff", avatar.Headers.GetValues("X-Content-Type-Options").Single());
+
+        var users = await owner.GetFromJsonAsync<ManagedUserResponse[]>("/api/v1/identity/owner/users");
+        var listedFirst = Assert.Single(users!, user => user.Id == first.Id);
+        Assert.Equal($"/api/v1/identity/owner/users/{first.Id}/avatar", listedFirst.AvatarUrl);
+        var managedAvatar = await owner.GetAsync(listedFirst.AvatarUrl);
+        Assert.Equal(HttpStatusCode.OK, managedAvatar.StatusCode);
+        Assert.Equal("image/png", managedAvatar.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(imageBytes, await managedAvatar.Content.ReadAsByteArrayAsync());
+
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await secondClient.GetAsync($"/api/v1/identity/owner/users/{first.Id}/avatar")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await owner.GetAsync($"/api/v1/identity/owner/users/{second.Id}/avatar")).StatusCode);
 
         Assert.Equal(HttpStatusCode.NotFound,
             (await secondClient.GetAsync("/api/v1/identity/account/avatar")).StatusCode);
@@ -298,6 +313,8 @@ public sealed class IdentityAccountEndpointsTests(IdentityApiFactory factory)
         bool Disabled,
         bool LockedOut,
         DateTimeOffset? LockoutEnd,
-        bool TwoFactorEnabled);
+        bool TwoFactorEnabled,
+        string? AvatarUrl,
+        bool SsoEnabled);
 
 }

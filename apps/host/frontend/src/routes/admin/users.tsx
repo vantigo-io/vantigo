@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Alert,
   Anchor,
+  Avatar,
   Badge,
   Button,
   Card,
@@ -12,6 +13,7 @@ import {
   SegmentedControl,
   Select,
   SimpleGrid,
+  Skeleton,
   Stack,
   Table,
   Text,
@@ -34,9 +36,10 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { appUrl } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
-import { createInvitation } from "../../api/account-lifecycle";
+import { createInvitation, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import {
   createUser,
@@ -59,7 +62,9 @@ const UsersPage = () => {
   const qc = useQueryClient();
   const session = qc.getQueryData<Awaited<ReturnType<typeof fetchSession>>>(sessionQueryKey);
   const users = useQuery({ queryKey: ["owner-users"], queryFn: listUsers });
+  const invitations = useQuery({ queryKey: ["owner-invitations"], queryFn: listInvitations });
   const [search, setSearch] = useState("");
+  const [metricFilter, setMetricFilter] = useState<string | null>(null);
   const [mode, setMode] = useState<"invite" | "initial">("invite");
   const [opened, { open, close }] = useDisclosure(false);
   const [editing, setEditing] = useState<ManagedUser | null>(null);
@@ -101,6 +106,7 @@ const UsersPage = () => {
       form.reset();
       setEditing(null);
       refresh();
+      void qc.invalidateQueries({ queryKey: ["owner-invitations"] });
       notifications.show({
         title: editing ? "User updated" : mode === "invite" ? "Invitation sent" : "User created",
         message: "The change was saved successfully.",
@@ -147,10 +153,19 @@ const UsersPage = () => {
   });
   const filtered = useMemo(
     () =>
-      (users.data ?? []).filter((u) =>
-        `${u.displayName ?? ""} ${u.email ?? ""}`.toLowerCase().includes(search.toLowerCase()),
+      (users.data ?? []).filter(
+        (u) =>
+          `${u.displayName ?? ""} ${u.email ?? ""}`.toLowerCase().includes(search.toLowerCase()) &&
+          (!metricFilter ||
+            (metricFilter === "active"
+              ? u.active
+              : metricFilter === "disabled"
+                ? u.disabled
+                : metricFilter === "sso"
+                  ? u.ssoEnabled
+                  : u.role === "Owner")),
       ),
-    [users.data, search],
+    [users.data, search, metricFilter],
   );
   const openEdit = (u: ManagedUser) => {
     setMode("invite");
@@ -180,7 +195,11 @@ const UsersPage = () => {
   const actions = (u: ManagedUser) =>
     self(u) ? (
       <Text size="sm" c="dimmed">
-        This is your account. Manage it in <Anchor href="/settings">Account settings</Anchor>.
+        This is your account. Manage it in{" "}
+        <Anchor component={Link} to="/settings">
+          Account settings
+        </Anchor>
+        .
       </Text>
     ) : (
       <Menu position="bottom-end">
@@ -244,6 +263,14 @@ const UsersPage = () => {
       </Text>
     </>
   );
+  const avatar = (u: ManagedUser) => (
+    <Avatar
+      src={u.avatarUrl ? appUrl(u.avatarUrl) : null}
+      name={u.displayName || u.email || "User"}
+      color="initials"
+      radius="xl"
+    />
+  );
   return (
     <Stack maw={1100} mx="auto" gap="xl">
       <Group justify="space-between" align="flex-end">
@@ -268,6 +295,58 @@ const UsersPage = () => {
           Add user
         </Button>
       </Group>
+      <SimpleGrid className="admin-metrics" cols={{ base: 2, sm: 5 }} spacing="sm">
+        {[
+          ["Active", (users.data ?? []).filter((u) => u.active), "teal"],
+          ["Disabled", (users.data ?? []).filter((u) => u.disabled), "gray"],
+          ["SSO", (users.data ?? []).filter((u) => u.ssoEnabled), "blue"],
+          ["Admins", (users.data ?? []).filter((u) => u.role === "Owner"), "violet"],
+        ].map(([label, value, color]) => (
+          <Card
+            key={label as string}
+            withBorder
+            radius="md"
+            padding="md"
+            component="button"
+            type="button"
+            aria-pressed={metricFilter === label?.toString().toLowerCase()}
+            aria-label={`Filter users by ${label}`}
+            onClick={() =>
+              setMetricFilter(metricFilter === label?.toString().toLowerCase() ? null : label?.toString().toLowerCase())
+            }
+            style={{ textAlign: "left", cursor: "pointer" }}
+            styles={{
+              root: {
+                borderColor:
+                  metricFilter === label?.toString().toLowerCase() ? "var(--mantine-color-vantigo-6)" : undefined,
+                backgroundColor:
+                  metricFilter === label?.toString().toLowerCase() ? "var(--mantine-color-vantigo-0)" : undefined,
+              },
+            }}
+          >
+            <Text size="sm" c="dimmed">
+              {label as string}
+            </Text>
+            <Text fz={25} fw={700} c={color as string}>
+              {(value as ManagedUser[]).length}
+            </Text>
+          </Card>
+        ))}
+        <Anchor component={Link} to="/admin/invitations" style={{ textDecoration: "none", color: "inherit" }}>
+          <Card withBorder radius="md" padding="md">
+            <Text size="sm" c="dimmed">
+              Pending invitations
+            </Text>
+            <Text fz={25} fw={700}>
+              {
+                (invitations.data ?? []).filter(
+                  (i) => !i.revokedAt && !i.acceptedAt && new Date(i.expiresAt) > new Date(),
+                ).length
+              }
+            </Text>
+          </Card>
+        </Anchor>
+      </SimpleGrid>
       <Card withBorder radius="md" p={0} style={{ overflow: "hidden" }}>
         <Group p="md" justify="space-between">
           <TextInput
@@ -287,13 +366,21 @@ const UsersPage = () => {
           </Alert>
         )}
         {users.isPending ? (
-          <Text p="xl" c="dimmed">
-            Loading users…
-          </Text>
+          <Stack p="md">
+            {[1, 2, 3].map((n) => (
+              <Skeleton key={n} height={52} radius="sm" />
+            ))}
+          </Stack>
         ) : filtered.length === 0 ? (
           <Stack align="center" p={50}>
             <IconUsers size={38} color="var(--mantine-color-gray-5)" />
-            <Text c="dimmed">{search ? "No users match your search." : "No users yet."}</Text>
+            <Text c="dimmed">
+              {search
+                ? "No users match your search."
+                : metricFilter
+                  ? `No ${metricFilter} users found.`
+                  : "No users yet."}
+            </Text>
           </Stack>
         ) : (
           <>
@@ -301,6 +388,7 @@ const UsersPage = () => {
               <Table verticalSpacing="md" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th>Avatar</Table.Th>
                     <Table.Th>User</Table.Th>
                     <Table.Th>Role</Table.Th>
                     <Table.Th>Access</Table.Th>
@@ -315,6 +403,7 @@ const UsersPage = () => {
                     const label = status(u);
                     return (
                       <Table.Tr key={u.id}>
+                        <Table.Td>{avatar(u)}</Table.Td>
                         <Table.Td>{userInfo(u)}</Table.Td>
                         <Table.Td>
                           <Badge variant="light">{u.role}</Badge>
@@ -350,7 +439,10 @@ const UsersPage = () => {
                   <Card key={u.id} withBorder>
                     <Stack gap="sm">
                       <Group justify="space-between" align="flex-start">
-                        <div>{userInfo(u)}</div>
+                        <Group gap="sm" wrap="nowrap">
+                          {avatar(u)}
+                          {userInfo(u)}
+                        </Group>
                         {actions(u)}
                       </Group>
                       <Group gap="xs">

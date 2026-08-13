@@ -18,6 +18,7 @@ export interface PersonalMfaStatus {
   twoFactorEnabled: boolean;
   mfaEnrollmentRequired: boolean;
 }
+export const profileQueryKey = (userId: string) => ["account", "profile", userId] as const;
 export interface MfaSetup {
   sharedKey: string | null;
   authenticatorUri: string | null;

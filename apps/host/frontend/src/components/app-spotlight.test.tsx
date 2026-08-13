@@ -105,6 +105,26 @@ describe("AppSpotlight navigation authorization", () => {
     await waitFor(() => expect(screen.queryByText("Admin dashboard", { exact: true })).not.toBeInTheDocument());
   });
 
+  it("does not expose users or invitations in owner search and keeps Roles & access for authorization users", async () => {
+    renderSpotlight(["*"], true, true);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Users", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText("Invitations", { exact: true })).not.toBeInTheDocument();
+    });
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], false, true);
+
+    await waitFor(() => {
+      expect(screen.getByText("Roles & access", { exact: true })).toBeInTheDocument();
+      expect(screen.queryByText("Admin dashboard", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText("Users", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText("Invitations", { exact: true })).not.toBeInTheDocument();
+    });
+  });
+
   it("queries only entities covered by their effective permissions", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);

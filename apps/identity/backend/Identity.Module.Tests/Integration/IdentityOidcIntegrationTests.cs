@@ -72,6 +72,15 @@ public sealed class IdentityOidcIntegrationTests(OidcIdentityApiFactory factory)
         var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
         Assert.Equal(1, await db.Users.CountAsync(user => user.Email == $"{subject}@integration.test"));
         Assert.Equal(1, await db.UserLogins.CountAsync(login => login.LoginProvider == IdentityApiFactory.OidcAuthority && login.ProviderKey == subject));
+        var oidcUserId = await db.Users
+            .Where(user => user.Email == $"{subject}@integration.test")
+            .Select(user => user.Id)
+            .SingleAsync();
+
+        using var owner = await factory.CreateOwnerClientAsync();
+        var users = await owner.GetFromJsonAsync<JsonElement[]>("/api/v1/identity/owner/users");
+        var listedUser = Assert.Single(users!, user => user.GetProperty("id").GetGuid() == oidcUserId);
+        Assert.True(listedUser.GetProperty("ssoEnabled").GetBoolean());
     }
 
     [Fact]

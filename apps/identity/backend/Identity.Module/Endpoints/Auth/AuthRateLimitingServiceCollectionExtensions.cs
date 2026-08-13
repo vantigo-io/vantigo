@@ -63,6 +63,9 @@ public static class AuthRateLimitingServiceCollectionExtensions
             options.AddPolicy(AuthRateLimitPolicies.UserManagement, context =>
                 RateLimitPartition.GetFixedWindowLimiter(GetRateLimitPartitionKey(context),
                     _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            options.AddPolicy(AuthRateLimitPolicies.OwnerAvatarRead, context =>
+                RateLimitPartition.GetFixedWindowLimiter(GetRateLimitPartitionKey(context),
+                    _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
         });
 
         return services;

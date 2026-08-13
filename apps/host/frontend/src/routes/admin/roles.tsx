@@ -10,8 +10,8 @@ import {
   Modal,
   MultiSelect,
   Select,
-  SimpleGrid,
   Stack,
+  Tabs,
   Text,
   TextInput,
   Title,
@@ -71,6 +71,7 @@ const RolesPage = () => {
     queryFn: listDelegations,
     enabled: manageable && isOwner,
   });
+  const [activeSection, setActiveSection] = useState("roles");
   const [selectedRole, setSelectedRole] = useState<AuthorizationRole | null>(null);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
@@ -249,188 +250,221 @@ const RolesPage = () => {
           </Text>
         </div>
         <Group>
-          {isOwner && (
-            <Button variant="light" leftSection={<IconUsers size={16} />} onClick={openDelegate}>
-              Delegate administration
-            </Button>
-          )}
-          {canCreateRole && (
+          {activeSection === "roles" && canCreateRole && (
             <Button leftSection={<IconPlus size={16} />} onClick={() => openRoleEditor()}>
               Create custom role
             </Button>
           )}
         </Group>
       </Group>
-      <SimpleGrid cols={{ base: 1, md: 2 }}>
-        <Card withBorder>
-          <Stack>
-            <Group justify="space-between">
-              <Title order={3}>Role composer</Title>
-              <Badge variant="light">
-                {displayRoles.filter((role) => !role.isSystem && !role.isBuiltIn).length} managed custom
-              </Badge>
-            </Group>
-            <Text size="sm" c="dimmed">
-              Permissions are additive. Protected roles are read-only; delegated administrators see only their stewarded
-              roles.
-            </Text>
-            {roles.isPending || catalog.isPending ? (
-              <Loader />
-            ) : (
-              <Stack>
-                {displayRoles.map((role) => {
-                  const editable = editableRole(role) && canEditRole(role);
-                  return (
-                    <Card key={role.id} withBorder padding="sm">
-                      <Group justify="space-between">
-                        <div>
-                          <Group gap="xs">
-                            {(role.isSystem || role.isBuiltIn || !editable) && <IconLock size={15} />}
-                            <Text fw={600}>{role.displayName}</Text>
-                          </Group>
-                          <Text size="xs" c="dimmed">
-                            {role.description}
-                          </Text>
-                        </div>
-                        {role.isSystem || role.isBuiltIn ? (
-                          <Badge color="gray">Protected</Badge>
-                        ) : editable ? (
-                          <Group>
-                            <Button size="compact-sm" variant="subtle" onClick={() => openRoleEditor(role)}>
-                              Edit
-                            </Button>
-                            <Button
-                              size="compact-sm"
-                              color="red"
-                              variant="subtle"
-                              onClick={() =>
-                                modals.openConfirmModal({
-                                  title: "Delete custom role?",
-                                  children: <Text size="sm">Assignments using this role may change.</Text>,
-                                  labels: { confirm: "Delete role", cancel: "Cancel" },
-                                  confirmProps: { color: "red" },
-                                  onConfirm: () => removeRole.mutate(role),
-                                })
-                              }
-                            >
-                              <IconTrash size={15} />
-                            </Button>
-                          </Group>
-                        ) : (
-                          <Badge color="gray">Outside current delegation boundary</Badge>
-                        )}
-                      </Group>
-                    </Card>
-                  );
-                })}
-              </Stack>
-            )}
-          </Stack>
-        </Card>
-        <Card withBorder>
-          <Stack>
-            <Title order={3}>Assign roles</Title>
-            <Text size="sm" c="dimmed">
-              Roles outside your delegated scope are kept. Backend authority remains final.
-            </Text>
-            {!isOwner && (
-              <Select
-                label="Assignment scope"
-                placeholder="Choose one scope"
-                data={scopes
-                  .filter((item) => item.assignableRoleIds.length > 0)
-                  .map((item) => ({ value: item.id, label: `Delegation ${item.id.slice(0, 8)}` }))}
-                value={assignmentScopeId}
-                onChange={setAssignmentScopeId}
-                required
-              />
-            )}
-            <Select
-              label="User"
-              placeholder="Select a user"
-              searchable
-              data={(users.data ?? [])
-                .filter((user) => user.id !== me.data?.id)
-                .map((user) => ({ value: user.id, label: user.displayName || user.email || user.id }))}
-              value={selectedUser}
-              onChange={setSelectedUser}
-            />
-            <Divider />
-            {selectedUser && access.data && (isOwner || assignmentScope) ? (
-              <>
-                <Group>
-                  <Text fw={600}>Current roles</Text>
-                  {access.data.roles.map((role) => (
-                    <Badge key={role} color={role === "Owner" ? "violet" : undefined}>
-                      {role}
-                    </Badge>
-                  ))}
-                </Group>
-                <Text size="sm" c="dimmed">
-                  Effective permissions:{" "}
-                  {access.data.permissions.includes("*")
-                    ? "All permissions"
-                    : access.data.permissions.join(", ") || "None"}
-                </Text>
-                <MultiSelect
-                  label="Assignable custom roles"
-                  data={assignableRoles.map((role) => ({ value: role.id, label: role.displayName }))}
-                  value={assignableRoles
-                    .filter((role) => access.data?.roleIds?.includes(role.id))
-                    .map((role) => role.id)}
-                  onChange={(roleIds) =>
-                    selectedUser && access.data
-                      ? assignment.mutate({ id: selectedUser, roleIds, version: access.data.version })
-                      : undefined
-                  }
-                  disabled={assignment.isPending}
-                />
-              </>
-            ) : selectedUser ? (
-              <Loader />
-            ) : (
-              <Text size="sm" c="dimmed">
-                Select a user to review effective access.
-              </Text>
-            )}
-          </Stack>
-        </Card>
-      </SimpleGrid>
-      {isOwner && (
-        <Card withBorder>
-          <Stack>
-            <Title order={3}>Delegated administrators</Title>
-            <Text size="sm" c="dimmed">
-              Delegation grants role administration, not business data access.
-            </Text>
-            {(delegations.data ?? [])
-              .filter((item) => !item.revokedAt)
-              .map((item) => (
-                <Group key={item.id} justify="space-between">
-                  <Text>
-                    {users.data?.find((user) => user.id === item.granteeUserId)?.displayName || item.granteeUserId}
+      <Tabs value={activeSection} onChange={(value) => setActiveSection(value ?? "roles")} keepMounted>
+        <Tabs.List aria-label="Roles and access administration">
+          <Tabs.Tab value="roles">Roles</Tabs.Tab>
+          <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
+          <Tabs.Tab value="delegations">Delegations</Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="roles" pt="xl">
+          <Card withBorder>
+            <Stack>
+              <Group justify="space-between">
+                <div>
+                  <Title order={3}>Role permissions</Title>
+                  <Text size="sm" c="dimmed" mt={4}>
+                    Define reusable permission sets. Assigning a role to a person happens in Assignments.
                   </Text>
-                  <Button
-                    size="compact-sm"
-                    color="red"
-                    variant="subtle"
-                    onClick={() =>
-                      modals.openConfirmModal({
-                        title: "Revoke delegation?",
-                        children: <Text size="sm">This removes the delegated administration boundary.</Text>,
-                        labels: { confirm: "Revoke", cancel: "Cancel" },
-                        confirmProps: { color: "red" },
-                        onConfirm: () => revoke.mutate({ id: item.id, version: item.version }),
-                      })
+                </div>
+                <Badge variant="light">
+                  {displayRoles.filter((role) => !role.isSystem && !role.isBuiltIn).length} managed custom
+                </Badge>
+              </Group>
+              {roles.isPending || catalog.isPending ? (
+                <Loader />
+              ) : (
+                <Stack>
+                  {displayRoles.map((role) => {
+                    const editable = editableRole(role) && canEditRole(role);
+                    return (
+                      <Card key={role.id} withBorder padding="sm">
+                        <Group justify="space-between">
+                          <div>
+                            <Group gap="xs">
+                              {(role.isSystem || role.isBuiltIn || !editable) && <IconLock size={15} />}
+                              <Text fw={600}>{role.displayName}</Text>
+                            </Group>
+                            <Text size="xs" c="dimmed">
+                              {role.description}
+                            </Text>
+                          </div>
+                          {role.isSystem || role.isBuiltIn ? (
+                            <Badge color="gray">Protected</Badge>
+                          ) : editable ? (
+                            <Group>
+                              <Button size="compact-sm" variant="subtle" onClick={() => openRoleEditor(role)}>
+                                Edit
+                              </Button>
+                              <Button
+                                size="compact-sm"
+                                color="red"
+                                variant="subtle"
+                                onClick={() =>
+                                  modals.openConfirmModal({
+                                    title: "Delete custom role?",
+                                    children: <Text size="sm">Assignments using this role may change.</Text>,
+                                    labels: { confirm: "Delete role", cancel: "Cancel" },
+                                    confirmProps: { color: "red" },
+                                    onConfirm: () => removeRole.mutate(role),
+                                  })
+                                }
+                              >
+                                <IconTrash size={15} />
+                              </Button>
+                            </Group>
+                          ) : (
+                            <Badge color="gray">Outside current delegation boundary</Badge>
+                          )}
+                        </Group>
+                      </Card>
+                    );
+                  })}
+                </Stack>
+              )}
+            </Stack>
+          </Card>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="assignments" pt="xl">
+          <Card withBorder>
+            <Stack>
+              <Title order={3}>User assignments</Title>
+              <Text size="sm" c="dimmed">
+                Add or remove custom roles for a user. Roles outside your delegated scope are kept, and backend
+                authority remains final.
+              </Text>
+              {!isOwner && (
+                <Select
+                  label="Assignment scope"
+                  placeholder="Choose one scope"
+                  data={scopes
+                    .filter((item) => item.assignableRoleIds.length > 0)
+                    .map((item) => ({ value: item.id, label: `Delegation ${item.id.slice(0, 8)}` }))}
+                  value={assignmentScopeId}
+                  onChange={setAssignmentScopeId}
+                  required
+                />
+              )}
+              <Select
+                label="User"
+                placeholder="Select a user"
+                searchable
+                data={(users.data ?? [])
+                  .filter((user) => user.id !== me.data?.id)
+                  .map((user) => ({ value: user.id, label: user.displayName || user.email || user.id }))}
+                value={selectedUser}
+                onChange={setSelectedUser}
+              />
+              <Divider />
+              {selectedUser && access.data && (isOwner || assignmentScope) ? (
+                <>
+                  <Group>
+                    <Text fw={600}>Current roles</Text>
+                    {access.data.roles.map((role) => (
+                      <Badge key={role} color={role === "Owner" ? "violet" : undefined}>
+                        {role}
+                      </Badge>
+                    ))}
+                  </Group>
+                  <Text size="sm" c="dimmed">
+                    Effective permissions:{" "}
+                    {access.data.permissions.includes("*")
+                      ? "All permissions"
+                      : access.data.permissions.join(", ") || "None"}
+                  </Text>
+                  <MultiSelect
+                    label="Assignable custom roles"
+                    data={assignableRoles.map((role) => ({ value: role.id, label: role.displayName }))}
+                    value={assignableRoles
+                      .filter((role) => access.data?.roleIds?.includes(role.id))
+                      .map((role) => role.id)}
+                    onChange={(roleIds) =>
+                      selectedUser && access.data
+                        ? assignment.mutate({ id: selectedUser, roleIds, version: access.data.version })
+                        : undefined
                     }
-                  >
-                    Revoke
+                    disabled={assignment.isPending}
+                  />
+                </>
+              ) : selectedUser ? (
+                <Loader />
+              ) : (
+                <Text size="sm" c="dimmed">
+                  Select a user to review effective access.
+                </Text>
+              )}
+            </Stack>
+          </Card>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="delegations" pt="xl">
+          <Card withBorder>
+            <Stack>
+              <Group justify="space-between">
+                <div>
+                  <Title order={3}>Delegated administration</Title>
+                  <Text size="sm" c="dimmed" mt={4}>
+                    Grant scope-aware role administration without granting business data access.
+                  </Text>
+                </div>
+                {isOwner && (
+                  <Button variant="light" leftSection={<IconUsers size={16} />} onClick={openDelegate}>
+                    Delegate administration
                   </Button>
-                </Group>
-              ))}
-          </Stack>
-        </Card>
-      )}
+                )}
+              </Group>
+              {!isOwner && (
+                <Text size="sm" c="dimmed">
+                  Delegations are managed by the account owner. Your current access is limited to the scopes delegated
+                  to you.
+                </Text>
+              )}
+              {isOwner && (
+                <>
+                  <Text size="sm" c="dimmed">
+                    Active administrators and their boundaries appear here. Revoke access when the administration window
+                    ends.
+                  </Text>
+                  {(delegations.data ?? [])
+                    .filter((item) => !item.revokedAt)
+                    .map((item) => (
+                      <Group key={item.id} justify="space-between">
+                        <Text>
+                          {users.data?.find((user) => user.id === item.granteeUserId)?.displayName ||
+                            item.granteeUserId}
+                        </Text>
+                        <Button
+                          size="compact-sm"
+                          color="red"
+                          variant="subtle"
+                          onClick={() =>
+                            modals.openConfirmModal({
+                              title: "Revoke delegation?",
+                              children: <Text size="sm">This removes the delegated administration boundary.</Text>,
+                              labels: { confirm: "Revoke", cancel: "Cancel" },
+                              confirmProps: { color: "red" },
+                              onConfirm: () => revoke.mutate({ id: item.id, version: item.version }),
+                            })
+                          }
+                        >
+                          Revoke
+                        </Button>
+                      </Group>
+                    ))}
+                </>
+              )}
+            </Stack>
+          </Card>
+        </Tabs.Panel>
+      </Tabs>
       <Modal
         opened={roleModal}
         onClose={closeRole}

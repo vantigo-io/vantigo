@@ -115,7 +115,6 @@ export const navSections: readonly NavSection[] = [
     items: [
       { label: "Settings", to: "/settings", icon: IconSettings },
       { label: "Admin dashboard", to: "/admin/dashboard", icon: IconLayoutDashboard, ownerOnly: true },
-      { label: "Users", to: "/admin/users", icon: IconUsers, ownerOnly: true },
       { label: "Roles & access", to: "/admin/roles", icon: IconShieldCheck, capability: "authorization" },
     ],
   },

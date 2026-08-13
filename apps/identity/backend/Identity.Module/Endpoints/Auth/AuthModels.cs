@@ -12,6 +12,7 @@ internal static class AuthRateLimitPolicies
     internal const string Mfa = "auth-mfa";
     internal const string PasskeyLogin = "auth-passkey-login";
     internal const string UserManagement = "auth-user-management";
+    internal const string OwnerAvatarRead = "auth-owner-avatar-read";
 }
 
 internal sealed record BootstrapRequest(
@@ -79,7 +80,8 @@ internal sealed record InvitationResponse(Guid Id, string Email, string Role, st
     DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt, DateTimeOffset? RevokedAt, DateTimeOffset? AcceptedAt);
 
 internal sealed record OwnerUserResponse(Guid Id, string DisplayName, string? Email, string Role, bool Active,
-    bool Disabled, bool LockedOut, DateTimeOffset? LockoutEnd, bool TwoFactorEnabled);
+    bool Disabled, bool LockedOut, DateTimeOffset? LockoutEnd, bool TwoFactorEnabled, string? AvatarUrl = null,
+    bool SsoEnabled = false);
 
 internal sealed record InvitationAcceptanceResponse(bool Valid, string? Email = null, string? Role = null, DateTimeOffset? ExpiresAt = null);
 

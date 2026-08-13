@@ -7,6 +7,7 @@ import { createRootRouteWithContext, Link, Outlet, redirect, useRouterState } fr
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { AppShellLayout, appUrl, SpotlightSearchBox } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
+import { getProfile, profileQueryKey } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
@@ -69,6 +70,12 @@ const RootLayout = () => {
     retry: false,
     staleTime: 300_000,
   });
+  const profile = useQuery({
+    queryKey: profileQueryKey(session?.user.id ?? "unknown"),
+    queryFn: getProfile,
+    enabled: !isPublic && !!session,
+    staleTime: 300_000,
+  });
   const logout = useMutation({
     mutationFn: signOut,
     onSuccess: () => {
@@ -96,7 +103,12 @@ const RootLayout = () => {
     <>
       <AppShellLayout
         moduleName="Vantigo"
-        user={session.user}
+        user={{
+          ...session.user,
+          avatarUrl: profile.data?.avatarUrl
+            ? `${appUrl(profile.data.avatarUrl)}${profile.data.avatarUrl.includes("?") ? "&" : "?"}v=${profile.dataUpdatedAt}`
+            : null,
+        }}
         userMenuItems={
           <Menu.Item component={Link} to="/settings" leftSection={<IconSettings size={14} />}>
             Settings
