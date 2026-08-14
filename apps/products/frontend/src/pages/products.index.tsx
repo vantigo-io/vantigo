@@ -18,8 +18,9 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
+import "../i18n";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import { type ProductResponse, type ProductStatus, productsQueryOptions } from "../api/products";
 import { ProductFormModal, type ProductModalState } from "./-product-form-modal";
@@ -35,10 +36,8 @@ interface ProductsSearch {
 
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
 const nokPrice = (product: ProductResponse) => product.effectivePrices.find((price) => price.currency === "NOK");
-const formatPrice = (amount: number | undefined) =>
-  amount === undefined ? "—" : new Intl.NumberFormat("nb-NO", { style: "currency", currency: "NOK" }).format(amount);
-
 export const ProductsPage = () => {
+  const { t, formatters } = useI18n("products");
   const { page, search, status, categoryId } = useSearch({ strict: false }) as ProductsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
   const [searchInput, setSearchInput] = useState(search);
@@ -60,7 +59,7 @@ export const ProductsPage = () => {
   );
   const { data: categories } = useQuery(categoriesQueryOptions());
   const categoryOptions = [
-    { value: UNCATEGORIZED, label: "Uncategorised" },
+    { value: UNCATEGORIZED, label: t("products.uncategorised") },
     ...buildCategoryTree(categories ?? []).map(({ category, depth }) => ({
       value: String(category.id),
       label: `${"\u00A0".repeat(depth * 3)}${category.name}`,
@@ -70,21 +69,21 @@ export const ProductsPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow="Products"
+        eyebrow={t("navigation.products")}
         title={
           <>
-            Products
+            {t("products.heading")}
             {data && (
               <Badge variant="light" size="lg">
-                {data.pagination.totalCount} total
+                {t("products.total", { count: data.pagination.totalCount })}
               </Badge>
             )}
           </>
         }
-        description="Everything you sell, with variants, pricing, and lifecycle status."
+        description={t("products.description")}
         actions={
           <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-            New product
+            {t("products.newProduct")}
           </Button>
         }
       />
@@ -93,17 +92,17 @@ export const ProductsPage = () => {
         <Stack gap="md">
           <Group align="end">
             <TextInput
-              placeholder="Search by name or SKU..."
+              placeholder={t("products.searchPlaceholder")}
               leftSection={<IconSearch size={16} />}
               value={searchInput}
               onChange={(event) => setSearchInput(event.currentTarget.value)}
               maw={400}
             />
             <Select
-              label="Status"
-              placeholder="All statuses"
+              label={t("common.status")}
+              placeholder={t("products.allStatuses")}
               clearable
-              data={["Draft", "Active", "Discontinued"]}
+              data={["Draft", "Active", "Discontinued"].map((item) => ({ value: item, label: t(`status.${item}`) }))}
               value={status || null}
               onChange={(value) =>
                 void navigate({
@@ -112,8 +111,8 @@ export const ProductsPage = () => {
               }
             />
             <Select
-              label="Category"
-              placeholder="All categories"
+              label={t("common.category")}
+              placeholder={t("products.allCategories")}
               clearable
               searchable
               data={categoryOptions}
@@ -131,7 +130,7 @@ export const ProductsPage = () => {
             />
           </Group>
           {isError && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Failed to load products">
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("products.failedToLoad")}>
               {error.message}
             </Alert>
           )}
@@ -146,60 +145,67 @@ export const ProductsPage = () => {
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Name</Table.Th>
-                      <Table.Th>SKU / variants</Table.Th>
-                      <Table.Th>Type</Table.Th>
-                      <Table.Th>Category</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th>Unit</Table.Th>
-                      <Table.Th>Tax category</Table.Th>
-                      <Table.Th>Current NOK price</Table.Th>
-                      <Table.Th w={48} aria-label="Actions" />
+                      <Table.Th>{t("common.name")}</Table.Th>
+                      <Table.Th>{t("products.skuVariants")}</Table.Th>
+                      <Table.Th>{t("common.type")}</Table.Th>
+                      <Table.Th>{t("common.category")}</Table.Th>
+                      <Table.Th>{t("common.status")}</Table.Th>
+                      <Table.Th>{t("common.unit")}</Table.Th>
+                      <Table.Th>{t("common.taxCategory")}</Table.Th>
+                      <Table.Th>{t("products.currentNokPrice", { currency: "NOK" })}</Table.Th>
+                      <Table.Th w={48} aria-label={t("common.actions")} />
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {data.data.map((product) => (
-                      <Table.Tr
-                        key={product.id}
-                        style={{ cursor: "pointer" }}
-                        onClick={() => void navigate({ to: "/products/$productId", params: { productId: product.id } })}
-                      >
-                        <Table.Td>{product.name}</Table.Td>
-                        <Table.Td>
-                          {(product.variants ?? []).length > 1
-                            ? `${product.variants.length} variants`
-                            : (product.variants?.[0]?.sku ?? product.sku ?? "—")}
-                        </Table.Td>
-                        <Table.Td>{product.type}</Table.Td>
-                        <Table.Td>{product.category?.name ?? "—"}</Table.Td>
-                        <Table.Td>
-                          <Badge color={statusColor(product.status)}>{product.status}</Badge>
-                        </Table.Td>
-                        <Table.Td>{product.unit || "—"}</Table.Td>
-                        <Table.Td>
-                          {product.taxCategory
-                            ? `${product.taxCategory.name} (${(product.taxCategory.rate * 100).toFixed(2)}%)`
-                            : "—"}
-                        </Table.Td>
-                        <Table.Td>{formatPrice(nokPrice(product)?.amount)}</Table.Td>
-                        <Table.Td onClick={(event) => event.stopPropagation()}>
-                          <ActionIcon
-                            variant="subtle"
-                            color="gray"
-                            aria-label={`Edit ${product.name}`}
-                            onClick={() => setModalState({ mode: "edit", product })}
-                          >
-                            <IconPencil size={16} />
-                          </ActionIcon>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
+                    {data.data.map((product) => {
+                      const price = nokPrice(product);
+                      return (
+                        <Table.Tr
+                          key={product.id}
+                          style={{ cursor: "pointer" }}
+                          onClick={() =>
+                            void navigate({ to: "/products/$productId", params: { productId: product.id } })
+                          }
+                        >
+                          <Table.Td>{product.name}</Table.Td>
+                          <Table.Td>
+                            {(product.variants ?? []).length > 1
+                              ? t("products.variantsCount", { count: product.variants.length })
+                              : (product.variants?.[0]?.sku ?? product.sku ?? t("common.noValue"))}
+                          </Table.Td>
+                          <Table.Td>{t(`type.${product.type}`)}</Table.Td>
+                          <Table.Td>{product.category?.name ?? t("common.noValue")}</Table.Td>
+                          <Table.Td>
+                            <Badge color={statusColor(product.status)}>{t(`status.${product.status}`)}</Badge>
+                          </Table.Td>
+                          <Table.Td>{product.unit || t("common.noValue")}</Table.Td>
+                          <Table.Td>
+                            {product.taxCategory
+                              ? `${product.taxCategory.name} (${formatters.formatNumber(product.taxCategory.rate * 100, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%)`
+                              : t("common.noValue")}
+                          </Table.Td>
+                          <Table.Td>
+                            {price === undefined ? t("common.noValue") : formatters.formatCurrency(price.amount, "NOK")}
+                          </Table.Td>
+                          <Table.Td onClick={(event) => event.stopPropagation()}>
+                            <ActionIcon
+                              variant="subtle"
+                              color="gray"
+                              aria-label={t("common.editNamed", { name: product.name })}
+                              onClick={() => setModalState({ mode: "edit", product })}
+                            >
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
               {data.data.length === 0 && (
                 <Center py="xl">
-                  <Text c="dimmed">No products found.</Text>
+                  <Text c="dimmed">{t("products.noProducts")}</Text>
                 </Center>
               )}
               {data.pagination.totalPages > 1 && (

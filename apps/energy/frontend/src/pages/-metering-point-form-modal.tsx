@@ -2,6 +2,7 @@ import { Button, Group, Modal, NumberInput, Select, Stack, TextInput } from "@ma
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import {
   ApiValidationError,
@@ -11,6 +12,7 @@ import {
   type MeteringPointUpdateInput,
   updateMeteringPoint,
 } from "../api/energy";
+import "../i18n";
 
 export type MeteringPointModalState = { mode: "create" } | { mode: "edit"; meteringPoint: MeteringPoint };
 
@@ -70,17 +72,18 @@ export const MeteringPointFormModal = ({
   state: MeteringPointModalState | null;
   onClose: () => void;
 }) => {
+  const { t } = useI18n("energy");
   const client = useQueryClient();
   const isEdit = state?.mode === "edit";
   const form = useForm<Values>({
     initialValues: empty,
     validate: {
-      gsrn: (value) => (/^\d{18}$/.test(value.trim()) ? null : "GSRN must contain exactly 18 digits"),
-      meterNumber: (value) => (isEdit || value.trim() ? null : "Meter number is required"),
-      streetAddress: (value) => (value.trim() ? null : "Street address is required"),
-      postalCode: (value) => (value.trim() ? null : "Postal code is required"),
-      city: (value) => (value.trim() ? null : "City is required"),
-      countryCode: (value) => (/^[A-Za-z]{2}$/.test(value.trim()) ? null : "Use a two-letter country code"),
+      gsrn: (value) => (/^\d{18}$/.test(value.trim()) ? null : t("gsrnInvalid")),
+      meterNumber: (value) => (isEdit || value.trim() ? null : t("meterNumberRequired")),
+      streetAddress: (value) => (value.trim() ? null : t("streetAddressRequired")),
+      postalCode: (value) => (value.trim() ? null : t("postalCodeRequired")),
+      city: (value) => (value.trim() ? null : t("cityRequired")),
+      countryCode: (value) => (/^[A-Za-z]{2}$/.test(value.trim()) ? null : t("countryCodeInvalid")),
     },
   });
 
@@ -103,14 +106,14 @@ export const MeteringPointFormModal = ({
       void client.invalidateQueries({ queryKey: ["energy", "metering-points"] });
       notifications.show({
         color: "teal",
-        title: isEdit ? "Metering point updated" : "Metering point created",
-        message: "The metering point was saved.",
+        title: isEdit ? t("meteringPointUpdated") : t("meteringPointCreated"),
+        message: t("meteringPointSaved"),
       });
       onClose();
     },
     onError: (error) => {
       if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
-      else notifications.show({ color: "red", title: "Could not save metering point", message: error.message });
+      else notifications.show({ color: "red", title: t("couldNotSaveMeteringPoint"), message: error.message });
     },
   });
 
@@ -138,49 +141,59 @@ export const MeteringPointFormModal = ({
     <Modal
       opened={state !== null}
       onClose={onClose}
-      title={isEdit ? "Edit metering point" : "New metering point"}
+      title={isEdit ? t("editMeteringPointTitle") : t("newMeteringPointTitle")}
       centered
     >
       <form onSubmit={submit}>
         <Stack>
-          <TextInput label="GSRN" description="18 digits" withAsterisk data-autofocus {...form.getInputProps("gsrn")} />
-          {!isEdit && <TextInput label="Meter number" withAsterisk {...form.getInputProps("meterNumber")} />}
-          <TextInput label="Street address" withAsterisk {...form.getInputProps("streetAddress")} />
+          <TextInput
+            label="GSRN"
+            description={t("gsrnDescription")}
+            withAsterisk
+            data-autofocus
+            {...form.getInputProps("gsrn")}
+          />
+          {!isEdit && <TextInput label={t("meterNumber")} withAsterisk {...form.getInputProps("meterNumber")} />}
+          <TextInput label={t("streetAddress")} withAsterisk {...form.getInputProps("streetAddress")} />
           <Group grow>
-            <TextInput label="Postal code" withAsterisk {...form.getInputProps("postalCode")} />
-            <TextInput label="City" withAsterisk {...form.getInputProps("city")} />
+            <TextInput label={t("postalCode")} withAsterisk {...form.getInputProps("postalCode")} />
+            <TextInput label={t("city")} withAsterisk {...form.getInputProps("city")} />
           </Group>
           <Group grow>
-            <TextInput label="Country code" withAsterisk {...form.getInputProps("countryCode")} />
+            <TextInput label={t("countryCode")} withAsterisk {...form.getInputProps("countryCode")} />
             <Select
-              label="Price area"
+              label={t("priceArea")}
               data={["NO1", "NO2", "NO3", "NO4", "NO5"]}
               {...form.getInputProps("priceArea")}
             />
           </Group>
           <Group grow>
-            <TextInput label="Grid area" {...form.getInputProps("gridArea")} />
+            <TextInput label={t("gridArea")} {...form.getInputProps("gridArea")} />
             <Select
-              label="Connection status"
-              data={["New", "Connected", "Disconnected"]}
+              label={t("connectionStatus")}
+              data={[
+                { value: "New", label: t("connectionStatusNew") },
+                { value: "Connected", label: t("connectionStatusConnected") },
+                { value: "Disconnected", label: t("connectionStatusDisconnected") },
+              ]}
               {...form.getInputProps("connectionStatus")}
             />
           </Group>
           <NumberInput
-            label="Expected annual consumption (kWh)"
+            label={t("expectedAnnualConsumptionKwh")}
             min={0}
             {...form.getInputProps("expectedAnnualConsumptionKwh")}
           />
           <Group grow>
-            <NumberInput label="Latitude" decimalScale={6} {...form.getInputProps("latitude")} />
-            <NumberInput label="Longitude" decimalScale={6} {...form.getInputProps("longitude")} />
+            <NumberInput label={t("latitude")} decimalScale={6} {...form.getInputProps("latitude")} />
+            <NumberInput label={t("longitude")} decimalScale={6} {...form.getInputProps("longitude")} />
           </Group>
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              {isEdit ? "Save changes" : "Create metering point"}
+              {isEdit ? t("saveChanges") : t("createMeteringPoint")}
             </Button>
           </Group>
         </Stack>

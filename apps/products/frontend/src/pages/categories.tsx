@@ -20,8 +20,9 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCategory, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import "../i18n";
 import {
   ApiValidationError,
   buildCategoryTree,
@@ -60,13 +61,14 @@ const StatCard = ({ label, value, hint }: { label: string; value: string | numbe
 );
 
 export const CategoriesPage = () => {
+  const { t } = useI18n("products");
   const queryClient = useQueryClient();
   const { data: categories, isPending, isError, error } = useQuery(categoriesQueryOptions());
   const { data: uncategorizedPage } = useQuery(productsQueryOptions({ pageSize: 1, uncategorized: true }));
   const [modalState, setModalState] = useState<CategoryModalState | null>(null);
   const form = useForm<CategoryFormValues>({
     initialValues: { name: "", parentId: null },
-    validate: { name: (value) => (value.trim() ? null : "Name is required") },
+    validate: { name: (value) => (value.trim() ? null : t("categories.nameRequired")) },
   });
 
   const tree = buildCategoryTree(categories ?? []);
@@ -92,8 +94,11 @@ export const CategoriesPage = () => {
     onSuccess: (category) => {
       notifications.show({
         color: "teal",
-        title: isEdit ? "Category updated" : "Category created",
-        message: `"${category.name}" was ${isEdit ? "updated" : "created"} successfully.`,
+        title: isEdit ? t("categories.updated") : t("categories.created"),
+        message: t("categories.savedMessage", {
+          name: category.name,
+          action: isEdit ? t("categories.updatedAction") : t("categories.createdAction"),
+        }),
       });
       invalidate();
       setModalState(null);
@@ -105,7 +110,7 @@ export const CategoriesPage = () => {
       }
       notifications.show({
         color: "red",
-        title: isEdit ? "Failed to update category" : "Failed to create category",
+        title: isEdit ? t("categories.failedToUpdate") : t("categories.failedToCreate"),
         message: error.message,
       });
     },
@@ -114,11 +119,11 @@ export const CategoriesPage = () => {
   const removal = useMutation({
     mutationFn: (id: number) => deleteCategory(id),
     onSuccess: () => {
-      notifications.show({ color: "teal", title: "Category deleted", message: "The category was deleted." });
+      notifications.show({ color: "teal", title: t("categories.deleted"), message: t("categories.deletedMessage") });
       invalidate();
     },
     onError: (error) =>
-      notifications.show({ color: "red", title: "Failed to delete category", message: error.message }),
+      notifications.show({ color: "red", title: t("categories.failedToDelete"), message: error.message }),
   });
 
   const openCreate = () => {
@@ -135,14 +140,10 @@ export const CategoriesPage = () => {
 
   const confirmDelete = (category: CategoryResponse) =>
     modals.openConfirmModal({
-      title: "Delete category",
+      title: t("categories.deleteTitle"),
       centered: true,
-      children: (
-        <Text size="sm">
-          Delete <b>{category.name}</b>? Categories with subcategories or assigned products cannot be deleted.
-        </Text>
-      ),
-      labels: { confirm: "Delete", cancel: "Cancel" },
+      children: <Text size="sm">{t("categories.deleteConfirm", { name: category.name })}</Text>,
+      labels: { confirm: t("common.delete"), cancel: t("common.cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => removal.mutate(category.id),
     });
@@ -157,36 +158,47 @@ export const CategoriesPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow="Products"
+        eyebrow={t("navigation.products")}
         title={
           <>
-            <IconCategory size={28} /> Categories
+            <IconCategory size={28} /> {t("navigation.categories")}
           </>
         }
-        description="Organize products into groups for browsing and reporting."
+        description={t("categories.description")}
         actions={
           <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
-            New category
+            {t("categories.newCategory")}
           </Button>
         }
       />
       {categories && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
-          <StatCard label="Total categories" value={categories.length} />
-          <StatCard label="Root categories" value={rootCount} />
-          <StatCard label="Max depth" value={maxDepth(categories)} hint="Nesting levels" />
-          <StatCard label="Empty categories" value={emptyCount} hint="No products in subtree" />
-          <StatCard label="Uncategorised products" value={uncategorizedCount ?? "…"} hint="Without any category" />
+          <StatCard label={t("categories.totalCategories")} value={categories.length} />
+          <StatCard label={t("categories.rootCategories")} value={rootCount} />
+          <StatCard
+            label={t("categories.maxDepth")}
+            value={maxDepth(categories)}
+            hint={t("categories.nestingLevels")}
+          />
+          <StatCard
+            label={t("categories.emptyCategories")}
+            value={emptyCount}
+            hint={t("categories.noProductsInSubtree")}
+          />
+          <StatCard
+            label={t("categories.uncategorisedProducts")}
+            value={uncategorizedCount ?? t("common.noValue")}
+            hint={t("categories.withoutCategory")}
+          />
         </SimpleGrid>
       )}
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            Categories form a hierarchy; each product belongs to at most one category. Filtering by a category also
-            matches products in its subcategories.
+            {t("categories.hierarchyDescription")}
           </Text>
           {isError && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Failed to load categories">
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("categories.failedToLoad")}>
               {error.message}
             </Alert>
           )}
@@ -200,9 +212,9 @@ export const CategoriesPage = () => {
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Name</Table.Th>
-                    <Table.Th>Products</Table.Th>
-                    <Table.Th w={96} aria-label="Actions" />
+                    <Table.Th>{t("common.name")}</Table.Th>
+                    <Table.Th>{t("common.products")}</Table.Th>
+                    <Table.Th w={96} aria-label={t("common.actions")} />
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -215,7 +227,7 @@ export const CategoriesPage = () => {
                             {category.name}
                             {subtreeCount === 0 && (
                               <Badge size="sm" color="gray" variant="light">
-                                Empty
+                                {t("categories.empty")}
                               </Badge>
                             )}
                           </Group>
@@ -226,7 +238,7 @@ export const CategoriesPage = () => {
                             {subtreeCount !== category.productCount && (
                               <Text span size="sm" c="dimmed">
                                 {" "}
-                                · {subtreeCount} in subtree
+                                · {t("categories.inSubtree", { count: subtreeCount })}
                               </Text>
                             )}
                           </Text>
@@ -236,7 +248,7 @@ export const CategoriesPage = () => {
                             <ActionIcon
                               variant="subtle"
                               color="gray"
-                              aria-label={`Edit ${category.name}`}
+                              aria-label={t("common.editNamed", { name: category.name })}
                               onClick={() => openEdit(category)}
                             >
                               <IconPencil size={16} />
@@ -244,7 +256,7 @@ export const CategoriesPage = () => {
                             <ActionIcon
                               variant="subtle"
                               color="red"
-                              aria-label={`Delete ${category.name}`}
+                              aria-label={t("common.deleteNamed", { name: category.name })}
                               loading={removal.isPending && removal.variables === category.id}
                               onClick={() => confirmDelete(category)}
                             >
@@ -259,7 +271,7 @@ export const CategoriesPage = () => {
               </Table>
               {categories.length === 0 && (
                 <Center py="xl">
-                  <Text c="dimmed">No categories yet. Create one to organise the catalog.</Text>
+                  <Text c="dimmed">{t("categories.noCategories")}</Text>
                 </Center>
               )}
             </>
@@ -269,21 +281,21 @@ export const CategoriesPage = () => {
       <Modal
         opened={modalState !== null}
         onClose={() => setModalState(null)}
-        title={isEdit ? "Edit category" : "Create new category"}
+        title={isEdit ? t("categories.editTitle") : t("categories.createTitle")}
         centered
       >
         <form onSubmit={handleSubmit}>
           <Stack>
             <TextInput
-              label="Name"
-              placeholder="e.g. Furniture"
+              label={t("common.name")}
+              placeholder={t("categories.namePlaceholder")}
               withAsterisk
               data-autofocus
               {...form.getInputProps("name")}
             />
             <Select
-              label="Parent category"
-              placeholder="None (root category)"
+              label={t("categories.parentCategory")}
+              placeholder={t("categories.rootPlaceholder")}
               clearable
               searchable
               data={parentOptions}
@@ -291,10 +303,10 @@ export const CategoriesPage = () => {
             />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setModalState(null)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" loading={mutation.isPending}>
-                {isEdit ? "Save changes" : "Create category"}
+                {isEdit ? t("common.saveChanges") : t("categories.createCategory")}
               </Button>
             </Group>
           </Stack>

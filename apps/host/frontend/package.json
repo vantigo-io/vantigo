@@ -36,7 +36,8 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "@mantine/hooks": "catalog:",
-    "country-flag-icons": "catalog:"
+    "country-flag-icons": "catalog:",
+    "dayjs": "catalog:"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

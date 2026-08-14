@@ -36,6 +36,7 @@ import {
   IconWand,
 } from "@tabler/icons-react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import {
   createTimelineEntry,
@@ -49,34 +50,33 @@ import {
   timelineRevisionsQueryOptions,
   updateTimelineEntry,
 } from "../api/timeline";
+import "../i18n";
 
 const manualTypes = [
-  { value: "registry.change", label: "Registry change" },
-  { value: "interaction.call", label: "Call" },
-  { value: "interaction.meeting", label: "Meeting" },
-  { value: "interaction.email", label: "Email" },
-  { value: "note", label: "Note" },
-  { value: "other", label: "Other" },
+  "registry.change",
+  "interaction.call",
+  "interaction.meeting",
+  "interaction.email",
+  "note",
+  "other",
 ];
-const generatedLabels: Record<string, string> = {
-  "customer.created": "Customer created",
-  "customer.updated": "Customer updated",
-  "customer.contact_attached": "Contact linked",
-  "customer.contact_relationship_updated": "Contact relationship updated",
-  "customer.contact_detached": "Contact unlinked",
-  "customer.contact_removed": "Contact removed",
+const typeKey: Record<string, string> = {
+  "registry.change": "registryChange",
+  "interaction.call": "call",
+  "interaction.meeting": "meeting",
+  "interaction.email": "emailEvent",
+  note: "note",
+  other: "other",
+  "customer.created": "customerCreatedEvent",
+  "customer.updated": "customerUpdatedEvent",
+  "customer.contact_attached": "contactLinked",
+  "customer.contact_relationship_updated": "contactRelationshipUpdated",
+  "customer.contact_detached": "contactUnlinked",
+  "customer.contact_removed": "contactRemoved",
 };
-const eventTypeOptions = [
-  ...manualTypes,
-  ...Object.entries(generatedLabels).map(([value, label]) => ({ value, label })),
-];
-const typeLabel = (type: string) =>
-  manualTypes.find((item) => item.value === type)?.label ?? generatedLabels[type] ?? "Timeline event";
 const iconFor = (type: string) =>
   type.startsWith("interaction.") ? IconCalendarEvent : type === "note" ? IconEdit : IconWand;
 const utcToday = () => new Date().toISOString().slice(0, 10);
-const formatMoment = (date: string, time?: string | null) =>
-  `${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`))}${time ? ` · ${new Intl.DateTimeFormat(undefined, { timeStyle: "short", timeZone: "UTC" }).format(new Date(time))} UTC` : ""}`;
 const contactReference = (payload: unknown) => {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as Record<string, unknown>;
@@ -100,7 +100,7 @@ const displayValue = (value: unknown): string | null => {
   }
   return null;
 };
-const payloadDetails = (payload: unknown) => {
+const payloadDetails = (payload: unknown, t: (key: string, options?: Record<string, unknown>) => string) => {
   if (!payload || typeof payload !== "object") return null;
   const changes = (payload as Record<string, unknown>).changes;
   if (!changes || typeof changes !== "object") return null;
@@ -118,41 +118,44 @@ const payloadDetails = (payload: unknown) => {
         .map((key) => {
           const label =
             key === "name"
-              ? "legal name"
+              ? t("legalName")
               : key === "id"
-                ? "ID"
+                ? t("identityId")
                 : key === "country"
-                  ? "country"
+                  ? t("country")
                   : key === "type"
-                    ? "type"
-                    : "source";
+                    ? t("identityType")
+                    : t("sourceField");
           const oldValue = displayValue(oldRecord[key]);
           const newValue = displayValue(newRecord[key]);
           return oldValue == null && newValue != null
-            ? `${label} added: ${newValue}`
+            ? t("fieldAddedShort", { field: label, value: newValue })
             : newValue == null && oldValue != null
-              ? `${label} removed (was ${oldValue})`
-              : `${label}: ${oldValue} → ${newValue}`;
+              ? t("fieldRemovedShort", { field: label, value: oldValue })
+              : t("fieldChanged", { field: label, oldValue, newValue });
         });
       if (changed.length)
         details.push(
-          `Legal identity ${before == null ? "added" : after == null ? "removed" : "updated"}: ${changed.join(", ")}`,
+          t(before == null ? "identityAdded" : after == null ? "identityRemoved" : "identityUpdated", {
+            details: changed.join(", "),
+          }),
         );
       continue;
     }
     const oldValue = displayValue(before);
     const newValue = displayValue(after);
     if (oldValue === newValue) continue;
-    const label = field.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
-    details.push(
-      oldValue == null && newValue != null
-        ? `${label} added: ${newValue}`
-        : newValue == null && oldValue != null
-          ? `${label} removed (was ${oldValue})`
-          : oldValue != null && newValue != null
-            ? `${label} updated: ${oldValue} → ${newValue}`
-            : "",
-    );
+    const label =
+      field === "customerName"
+        ? t("customerNameField")
+        : field.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+    if (oldValue == null && newValue != null) {
+      details.push(t("fieldAdded", { field: label, value: newValue }));
+    } else if (newValue == null && oldValue != null) {
+      details.push(t("fieldRemoved", { field: label, value: oldValue }));
+    } else if (oldValue != null && newValue != null) {
+      details.push(t("fieldUpdated", { field: label, oldValue, newValue }));
+    }
   }
   return details.filter(Boolean).join(" · ") || null;
 };
@@ -164,6 +167,19 @@ const dateValue = (value: Date | string | null) =>
     : null;
 
 export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
+  const { t, formatters } = useI18n("customers");
+  const manualTypeOptions = manualTypes.map((value) => ({ value, label: t(typeKey[value]) }));
+  const eventTypeOptions = [
+    ...manualTypeOptions,
+    ...Object.keys(typeKey)
+      .filter((value) => !manualTypes.includes(value))
+      .map((value) => ({ value, label: t(typeKey[value]) })),
+  ];
+  const typeLabel = (type: string) => t(typeKey[type] ?? "timelineEvent");
+  const formatDateOnly = (date: string) =>
+    formatters.formatDate(`${date}T00:00:00Z`, { dateStyle: "medium", timeZone: "UTC" });
+  const formatMoment = (date: string, time?: string | null) =>
+    `${formatDateOnly(date)}${time ? ` · ${formatters.formatDate(time, { timeStyle: "short", timeZone: "UTC" })} UTC` : ""}`;
   const client = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<TimelineEntry | null>(null);
@@ -196,8 +212,8 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
       refresh();
       notifications.show({
         color: error.status === 409 ? "yellow" : "red",
-        title: error.status === 409 ? "Event changed" : "Could not delete event",
-        message: error.status === 409 ? "The timeline was refreshed; please retry deletion." : error.message,
+        title: error.status === 409 ? t("eventChanged") : t("couldNotDeleteEvent"),
+        message: error.status === 409 ? t("timelineRefreshed") : error.message,
       });
     },
   });
@@ -214,17 +230,17 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
     <Stack gap="sm">
       <SegmentedControl
         fullWidth
-        aria-label="Source"
+        aria-label={t("sourceLabel")}
         data={[
-          { value: "all", label: "All" },
-          { value: "manual", label: "Manual" },
-          { value: "generated", label: "Automatic" },
+          { value: "all", label: t("all") },
+          { value: "manual", label: t("manual") },
+          { value: "generated", label: t("automatic") },
         ]}
         value={draft.provenance}
         onChange={(value) => setDraft({ ...draft, provenance: value as TimelineFilters["provenance"] })}
       />
       <MultiSelect
-        label="Event types"
+        label={t("eventTypes")}
         data={eventTypeOptions}
         value={draft.eventTypes}
         onChange={(value) => setDraft({ ...draft, eventTypes: value })}
@@ -233,7 +249,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
       />
       <DatePickerInput
         type="range"
-        label="Occurred on"
+        label={t("occurredOn")}
         value={[
           draft.occurredFrom ? new Date(`${draft.occurredFrom}T00:00:00`) : null,
           draft.occurredTo ? new Date(`${draft.occurredTo}T00:00:00`) : null,
@@ -251,7 +267,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
           <Group gap="xs">
             <IconHistory size={18} aria-hidden="true" />
             <Text fw={600} component="h3">
-              Timeline
+              {t("timeline")}
             </Text>
           </Group>
           <Group gap="xs">
@@ -264,7 +280,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                 setFormOpen(true);
               }}
             >
-              Add event
+              {t("addEvent")}
             </Button>
             {small && (
               <Button
@@ -275,31 +291,31 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                   setFilterOpen(true);
                 }}
               >
-                Filters {activeCount > 0 && <Badge ml={4}>{activeCount}</Badge>}
+                {t("filters")} {activeCount > 0 && <Badge ml={4}>{formatters.formatNumber(activeCount)}</Badge>}
               </Button>
             )}
           </Group>
         </Group>
         {small ? (
-          <Drawer opened={filterOpen} onClose={() => setFilterOpen(false)} title="Filters" position="right">
+          <Drawer opened={filterOpen} onClose={() => setFilterOpen(false)} title={t("filters")} position="right">
             <Stack>
               {inputs}
               <Group justify="space-between">
                 <Button variant="subtle" onClick={reset}>
-                  Reset
+                  {t("reset")}
                 </Button>
-                <Button onClick={apply}>Apply</Button>
+                <Button onClick={apply}>{t("apply")}</Button>
               </Group>
             </Stack>
           </Drawer>
         ) : (
           <Group align="end" wrap="wrap">
             <SegmentedControl
-              aria-label="Source"
+              aria-label={t("sourceLabel")}
               data={[
-                { value: "all", label: "All" },
-                { value: "manual", label: "Manual" },
-                { value: "generated", label: "Automatic" },
+                { value: "all", label: t("all") },
+                { value: "manual", label: t("manual") },
+                { value: "generated", label: t("automatic") },
               ]}
               value={draft.provenance}
               onChange={(value) => {
@@ -310,7 +326,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
             />
             <MultiSelect
               w={260}
-              label="Event types"
+              label={t("eventTypes")}
               data={eventTypeOptions}
               value={draft.eventTypes}
               onChange={(value) => {
@@ -323,7 +339,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
             />
             <DatePickerInput
               type="range"
-              label="Occurred on"
+              label={t("occurredOn")}
               value={[
                 draft.occurredFrom ? new Date(`${draft.occurredFrom}T00:00:00`) : null,
                 draft.occurredTo ? new Date(`${draft.occurredTo}T00:00:00`) : null,
@@ -336,9 +352,9 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
               valueFormat="YYYY-MM-DD"
               clearable
             />
-            <Badge variant="light">{activeCount} active</Badge>
+            <Badge variant="light">{t("active", { count: activeCount })}</Badge>
             <Button variant="subtle" onClick={reset}>
-              Reset
+              {t("reset")}
             </Button>
           </Group>
         )}
@@ -348,24 +364,20 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
           </Center>
         ) : feed.isError ? (
           <Stack align="center" py="md">
-            <Text c="red">Could not load the timeline.</Text>
+            <Text c="red">{t("couldNotLoadTimeline")}</Text>
             <Button variant="light" onClick={() => feed.refetch()}>
-              Try again
+              {t("tryAgain")}
             </Button>
           </Stack>
         ) : entries.length === 0 ? (
           <Center py="xl">
-            <Text c="dimmed">
-              {activeCount
-                ? "No events match these filters."
-                : "No events yet. Add the first moment worth remembering."}
-            </Text>
+            <Text c="dimmed">{activeCount ? t("noEventsMatch") : t("noEventsYet")}</Text>
           </Center>
         ) : (
           <Timeline active={-1} bulletSize={30} lineWidth={2}>
             {entries.map((entry) => {
               const EventIcon = iconFor(entry.eventType);
-              const details = payloadDetails(entry.payload);
+              const details = payloadDetails(entry.payload, t);
               const contact = contactReference(entry.payload);
               return (
                 <Timeline.Item
@@ -384,7 +396,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                     <Group gap="xs">
                       <Text fw={600}>{typeLabel(entry.eventType)}</Text>
                       <Badge size="xs" variant="light">
-                        {entry.provenance === "generated" ? "Automatic" : "Manual"}
+                        {entry.provenance === "generated" ? t("automaticEvent") : t("manualEvent")}
                       </Badge>
                     </Group>
                   }
@@ -395,7 +407,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                         {formatMoment(entry.occurredOn, entry.occurredAt)}
                         {entry.producer ? ` · ${entry.producer}` : ""}
                       </Text>
-                      <Text size="sm">{entry.note || entry.summary || "No additional details."}</Text>
+                      <Text size="sm">{entry.note || entry.summary || t("noAdditionalDetails")}</Text>
                       {details && (
                         <Text size="sm" c="dimmed">
                           {details}
@@ -403,7 +415,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                       )}
                       {!entry.note && !(contact && entry.summary?.includes(contact)) && contact && (
                         <Text size="sm" c="dimmed">
-                          Contact: {contact}
+                          {t("contactReference", { name: contact })}
                         </Text>
                       )}
                       {entry.sourceUrl && (
@@ -417,7 +429,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                           px={0}
                           leftSection={<IconExternalLink size={14} />}
                         >
-                          Open source
+                          {t("openSource")}
                         </Button>
                       )}
                     </Stack>
@@ -426,7 +438,11 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                         <Menu.Target>
                           <ActionIcon
                             variant="subtle"
-                            aria-label={`Actions for ${typeLabel(entry.eventType)} on ${entry.occurredOn} (event ${entry.id})`}
+                            aria-label={t("timelineActions", {
+                              type: typeLabel(entry.eventType),
+                              date: formatDateOnly(entry.occurredOn),
+                              id: entry.id,
+                            })}
                           >
                             <IconDots size={18} />
                           </ActionIcon>
@@ -439,17 +455,17 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
                               setFormOpen(true);
                             }}
                           >
-                            Edit
+                            {t("edit")}
                           </Menu.Item>
                           <Menu.Item leftSection={<IconHistory size={15} />} onClick={() => setRevisions(entry)}>
-                            Revision history
+                            {t("revisionHistory")}
                           </Menu.Item>
                           <Menu.Item
                             color="red"
                             leftSection={<IconTrash size={15} />}
                             onClick={() => setDeleting(entry)}
                           >
-                            Delete
+                            {t("delete")}
                           </Menu.Item>
                         </Menu.Dropdown>
                       </Menu>
@@ -462,7 +478,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
         )}
         {feed.hasNextPage && (
           <Button variant="default" loading={feed.isFetchingNextPage} onClick={() => feed.fetchNextPage()}>
-            Load more
+            {t("loadMore")}
           </Button>
         )}
       </Stack>
@@ -480,14 +496,14 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
       <Modal
         opened={Boolean(deleting)}
         onClose={() => !remove.isPending && setDeleting(null)}
-        title="Delete timeline event"
+        title={t("deleteTimelineEvent")}
         centered
       >
         <Stack>
-          <Text>Delete this event? It will be removed from the timeline.</Text>
+          <Text>{t("deleteEventQuestion")}</Text>
           <Group justify="flex-end">
             <Button variant="default" disabled={remove.isPending} onClick={() => setDeleting(null)}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               color="red"
@@ -495,7 +511,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
               disabled={remove.isPending}
               onClick={() => deleting && !remove.isPending && remove.mutate(deleting)}
             >
-              Delete event
+              {t("deleteEvent")}
             </Button>
           </Group>
         </Stack>
@@ -517,12 +533,13 @@ const TimelineForm = ({
   onClose: () => void;
   onSuccess: () => void;
 }) => {
+  const { t } = useI18n("customers");
   const form = useForm({
     initialValues: { eventType: "note", occurredOn: utcToday(), occurredAt: "", note: "", sourceUrl: "" },
     validate: {
-      eventType: (v) => (!v ? "Type is required" : null),
-      occurredOn: (v) => (!v ? "Date is required" : v > utcToday() ? "Date cannot be in the future" : null),
-      note: (v) => (!v.trim() ? "Description is required" : null),
+      eventType: (v) => (!v ? t("typeRequired") : null),
+      occurredOn: (v) => (!v ? t("dateRequired") : v > utcToday() ? t("dateFuture") : null),
+      note: (v) => (!v.trim() ? t("descriptionRequired") : null),
     },
   });
   useEffect(() => {
@@ -553,7 +570,7 @@ const TimelineForm = ({
       if (error.status === 409) client.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
       notifications.show({
         color: "red",
-        title: error.status === 409 ? "This event changed" : "Could not save event",
+        title: error.status === 409 ? t("thisEventChanged") : t("couldNotSaveEvent"),
         message: error.message,
       });
     },
@@ -568,25 +585,34 @@ const TimelineForm = ({
     }),
   );
   return (
-    <Modal opened={opened} onClose={onClose} title={entry ? "Edit timeline event" : "Add timeline event"} centered>
+    <Modal opened={opened} onClose={onClose} title={entry ? t("editTimelineEvent") : t("addTimelineEvent")} centered>
       <form onSubmit={submit}>
         <Stack>
-          <Select label="Type" data={manualTypes} withAsterisk {...form.getInputProps("eventType")} />
-          <DateInput label="Date" valueFormat="YYYY-MM-DD" withAsterisk {...form.getInputProps("occurredOn")} />
+          <Select
+            label={t("type")}
+            data={manualTypes.map((value) => ({ value, label: t(typeKey[value]) }))}
+            withAsterisk
+            {...form.getInputProps("eventType")}
+          />
+          <DateInput label={t("date")} valueFormat="YYYY-MM-DD" withAsterisk {...form.getInputProps("occurredOn")} />
           <TextInput
-            label="Time (UTC)"
+            label={t("timeUtc")}
             type="time"
             leftSection={<IconClock size={16} />}
             {...form.getInputProps("occurredAt")}
           />
-          <Textarea label="Description" withAsterisk minRows={3} {...form.getInputProps("note")} />
-          <TextInput label="Source URL" placeholder="https://…" {...form.getInputProps("sourceUrl")} />
+          <Textarea label={t("description")} withAsterisk minRows={3} {...form.getInputProps("note")} />
+          <TextInput
+            label={t("sourceUrl")}
+            placeholder={t("sourceUrlPlaceholder")}
+            {...form.getInputProps("sourceUrl")}
+          />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              {entry ? "Save changes" : "Add event"}
+              {entry ? t("saveChanges") : t("addEvent")}
             </Button>
           </Group>
         </Stack>
@@ -604,27 +630,28 @@ const RevisionPanel = ({
   entry: TimelineEntry | null;
   onClose: () => void;
 }) => {
+  const { t } = useI18n("customers");
   const query = useQuery({ ...timelineRevisionsQueryOptions(customerId, entry?.id ?? 0), enabled: Boolean(entry) });
   const body = (
     <Stack>
       <Text size="sm" c="dimmed">
-        Every saved version is preserved for auditability.
+        {t("revisionAuditDescription")}
       </Text>
       {query.isPending ? (
         <Loader size="sm" />
       ) : query.isError ? (
-        <Text c="red">Could not load revisions.</Text>
+        <Text c="red">{t("couldNotLoadRevisions")}</Text>
       ) : (
         <Accordion variant="separated">
           {query.data?.map((revision) => (
             <Accordion.Item key={revision.revision} value={String(revision.revision)}>
-              <Accordion.Control>Revision {revision.revision}</Accordion.Control>
+              <Accordion.Control>{t("revision", { number: revision.revision })}</Accordion.Control>
               <Accordion.Panel>
                 <Stack gap="xs">
                   <Text size="sm">
-                    {revision.action} · {revision.actorDisplayName || "Unattributed"}
+                    {revision.action} · {revision.actorDisplayName || t("unattributed")}
                   </Text>
-                  <Text>{revision.note || "No description"}</Text>
+                  <Text>{revision.note || t("noDescription")}</Text>
                 </Stack>
               </Accordion.Panel>
             </Accordion.Item>
@@ -634,7 +661,7 @@ const RevisionPanel = ({
     </Stack>
   );
   return (
-    <Modal opened={Boolean(entry)} onClose={onClose} title="Revision history" centered>
+    <Modal opened={Boolean(entry)} onClose={onClose} title={t("revisionHistory")} centered>
       {body}
     </Modal>
   );

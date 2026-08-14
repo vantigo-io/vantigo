@@ -31,17 +31,17 @@ export interface NavSection {
 
 export const navSections: readonly NavSection[] = [
   {
-    label: "Customer workspace",
+    label: "navigation.customerWorkspace",
     items: [
       {
-        label: "Customers",
+        label: "navigation.customers",
         to: "/customers",
         icon: IconUsers,
         requiredPermissions: ["customers:view"],
         searchStrategy: "customer-list",
       },
       {
-        label: "Contacts",
+        label: "navigation.contacts",
         to: "/contacts",
         icon: IconAddressBook,
         requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
@@ -50,23 +50,23 @@ export const navSections: readonly NavSection[] = [
     ],
   },
   {
-    label: "Communications",
+    label: "navigation.communications",
     items: [
       {
-        label: "Messages",
+        label: "navigation.messages",
         to: "/messages",
         icon: IconInbox,
         requiredPermissions: ["communications:messages-view"],
         searchStrategy: "messages-list",
       },
       {
-        label: "Mailboxes",
+        label: "navigation.mailboxes",
         to: "/communications/mailboxes",
         icon: IconMailbox,
         requiredPermissions: ["communications:mailboxes-view"],
       },
       {
-        label: "Suppressions",
+        label: "navigation.suppressions",
         to: "/communications/suppressions",
         icon: IconMailOff,
         requiredPermissions: ["communications:suppressions-view"],
@@ -74,10 +74,10 @@ export const navSections: readonly NavSection[] = [
     ],
   },
   {
-    label: "Catalog",
+    label: "navigation.catalog",
     items: [
       {
-        label: "Products",
+        label: "navigation.products",
         to: "/products",
         icon: IconPackage,
         requiredPermissions: [
@@ -90,7 +90,7 @@ export const navSections: readonly NavSection[] = [
         searchStrategy: "products-list",
       },
       {
-        label: "Categories",
+        label: "navigation.categories",
         to: "/products/categories",
         icon: IconCategory,
         requiredPermissions: ["products:categories-view"],
@@ -98,10 +98,10 @@ export const navSections: readonly NavSection[] = [
     ],
   },
   {
-    label: "Energy",
+    label: "navigation.energy",
     items: [
       {
-        label: "Metering points",
+        label: "navigation.meteringPoints",
         to: "/energy/metering-points",
         icon: IconBolt,
         requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
@@ -110,12 +110,12 @@ export const navSections: readonly NavSection[] = [
     ],
   },
   {
-    label: "Settings & administration",
+    label: "navigation.settingsAdministration",
     placement: "lower",
     items: [
-      { label: "Settings", to: "/settings", icon: IconSettings },
-      { label: "Admin dashboard", to: "/admin/dashboard", icon: IconLayoutDashboard, ownerOnly: true },
-      { label: "Roles & access", to: "/admin/roles", icon: IconShieldCheck, capability: "authorization" },
+      { label: "navigation.settings", to: "/settings", icon: IconSettings },
+      { label: "navigation.adminDashboard", to: "/admin/dashboard", icon: IconLayoutDashboard, ownerOnly: true },
+      { label: "navigation.rolesAccess", to: "/admin/roles", icon: IconShieldCheck, capability: "authorization" },
     ],
   },
 ];

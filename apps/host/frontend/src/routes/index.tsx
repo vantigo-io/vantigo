@@ -1,38 +1,43 @@
 import { Button, Card, SimpleGrid, Stack, Text, Title } from "@mantine/core";
 import { IconMessage, IconPackage, IconUsers } from "@tabler/icons-react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
+import "../i18n";
 
 const modules = [
-  { title: "Customers", description: "Manage customers and contacts.", to: "/customers", icon: IconUsers },
+  { title: "dashboard.customers", description: "dashboard.manageCustomers", to: "/customers", icon: IconUsers },
   {
-    title: "Communications",
-    description: "Review and send messages.",
+    title: "dashboard.communications",
+    description: "dashboard.reviewMessages",
     to: "/messages",
     icon: IconMessage,
   },
-  { title: "Products", description: "Manage products, prices and categories.", to: "/products", icon: IconPackage },
+  { title: "dashboard.products", description: "dashboard.manageProducts", to: "/products", icon: IconPackage },
 ] as const;
 
-const DashboardPage = () => (
-  <Stack gap="lg">
-    <Title order={2}>Dashboard</Title>
-    <Text c="dimmed">Choose a module to get started.</Text>
-    <SimpleGrid cols={{ base: 1, sm: 3 }}>
-      {modules.map((module) => (
-        <Card key={module.to} withBorder>
-          <Stack>
-            <module.icon size={28} />
-            <Title order={4}>{module.title}</Title>
-            <Text c="dimmed" size="sm">
-              {module.description}
-            </Text>
-            <Button component={Link} to={module.to}>
-              Open
-            </Button>
-          </Stack>
-        </Card>
-      ))}
-    </SimpleGrid>
-  </Stack>
-);
+const DashboardPage = () => {
+  const { t } = useI18n("host");
+  return (
+    <Stack gap="lg">
+      <Title order={2}>{t("dashboard.title")}</Title>
+      <Text c="dimmed">{t("dashboard.chooseModule")}</Text>
+      <SimpleGrid cols={{ base: 1, sm: 3 }}>
+        {modules.map((module) => (
+          <Card key={module.to} withBorder>
+            <Stack>
+              <module.icon size={28} />
+              <Title order={4}>{t(module.title)}</Title>
+              <Text c="dimmed" size="sm">
+                {t(module.description)}
+              </Text>
+              <Button component={Link} to={module.to}>
+                {t("dashboard.open")}
+              </Button>
+            </Stack>
+          </Card>
+        ))}
+      </SimpleGrid>
+    </Stack>
+  );
+};
 export const Route = createFileRoute("/")({ component: DashboardPage });

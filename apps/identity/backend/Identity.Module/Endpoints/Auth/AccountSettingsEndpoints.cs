@@ -895,7 +895,7 @@ internal static class AccountSettingsEndpoints
     private static string? NormalizeLanguage(string? value) =>
         string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "automatic", StringComparison.OrdinalIgnoreCase)
             ? null
-            : "en";
+            : value.Trim().ToLowerInvariant();
 
     private static Dictionary<string, string[]> ValidateProfile(AccountProfileRequest? request)
     {
@@ -903,9 +903,11 @@ internal static class AccountSettingsEndpoints
         if (string.IsNullOrWhiteSpace(request?.DisplayName) || request.DisplayName.Trim().Length > 200)
             errors["displayName"] = ["Display name is required and must be at most 200 characters."];
         if (request?.PreferredLanguage is not null &&
-            !string.Equals(request.PreferredLanguage, "en", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(request.PreferredLanguage, "automatic", StringComparison.OrdinalIgnoreCase))
-            errors["preferredLanguage"] = ["Preferred language must be Automatic or en."];
+            !string.IsNullOrWhiteSpace(request.PreferredLanguage) &&
+            !string.Equals(request.PreferredLanguage.Trim(), "en", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.PreferredLanguage.Trim(), "nb", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.PreferredLanguage.Trim(), "automatic", StringComparison.OrdinalIgnoreCase))
+            errors["preferredLanguage"] = ["Preferred language must be Automatic, en, or nb."];
         return errors;
     }
 

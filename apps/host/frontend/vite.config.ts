@@ -21,6 +21,9 @@ export default defineConfig({
     }),
     react(),
   ],
+  resolve: {
+    dedupe: ["react", "react-dom", "@mantine/core", "@mantine/dates", "@mantine/hooks"],
+  },
   server: { port: 10011, proxy: { "/api": { target: apiTarget, changeOrigin: true, secure: false } } },
   build: { outDir: "dist", emptyOutDir: true },
   test: { environment: "jsdom", setupFiles: ["src/test/setup.ts"], globals: false },

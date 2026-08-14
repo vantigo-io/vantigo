@@ -2,11 +2,13 @@ import { Alert, Button, Card, Center, PasswordInput, Stack, Text, TextInput, Tit
 import { useForm } from "@mantine/form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl } from "@vantigo/frontend-shell";
+import { appConfig, appUrl, useI18n } from "@vantigo/frontend-shell";
 import { acceptInvitation, validateInvitation } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
+import "../i18n";
 
 export const AcceptInvitationPage = ({ token }: { token: string }) => {
+  const { t } = useI18n("host");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const invitation = useQuery({
@@ -28,25 +30,23 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     <Center mih="100vh" bg="gray.0">
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
-          <Title order={2}>Join {appConfig().title}</Title>
-          {!invitation.isPending && !invitation.data?.valid && (
-            <Alert color="red">This invitation is invalid or expired.</Alert>
-          )}
+          <Title order={2}>{t("auth.joinApp", { app: appConfig().title })}</Title>
+          {!invitation.isPending && !invitation.data?.valid && <Alert color="red">{t("auth.invalidInvitation")}</Alert>}
           {invitation.data?.valid && (
             <>
-              <Text>Invitation for {invitation.data.email}</Text>
+              <Text>{t("auth.invitationFor", { email: invitation.data.email })}</Text>
               <form onSubmit={form.onSubmit(() => mutation.mutate())}>
                 <Stack>
-                  <TextInput label="Display name" {...form.getInputProps("displayName")} />
-                  <PasswordInput label="Password" required {...form.getInputProps("password")} />
+                  <TextInput label={t("common.displayName")} {...form.getInputProps("displayName")} />
+                  <PasswordInput label={t("common.password")} required {...form.getInputProps("password")} />
                   <Button type="submit" loading={mutation.isPending}>
-                    Create account
+                    {t("auth.createAccount")}
                   </Button>
                 </Stack>
               </form>
             </>
           )}
-          {mutation.error && <Alert color="red">This invitation is invalid or no longer available.</Alert>}
+          {mutation.error && <Alert color="red">{t("auth.invitationUnavailable")}</Alert>}
         </Stack>
       </Card>
     </Center>

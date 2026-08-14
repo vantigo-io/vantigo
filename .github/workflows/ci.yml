@@ -70,6 +70,12 @@ jobs:
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: 🌐 Check translation catalogs
+        run: bun run translations:check
+
+      - name: 🧪 Test i18n quality gates
+        run: bun run i18n:test
+
       - name: 🔍 Check formatting
         run: bun run format:check
 

@@ -5,8 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { AppShellLayout, appUrl, SpotlightSearchBox } from "@vantigo/frontend-shell";
+import { AppShellLayout, appUrl, SpotlightSearchBox, useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
+import "../i18n";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
@@ -24,7 +25,12 @@ const publicPaths = new Set([
   "/invitations/accept",
 ]);
 
-const renderNavSections = (sections: readonly NavSection[], pathname: string, close: () => void) =>
+const renderNavSections = (
+  sections: readonly NavSection[],
+  pathname: string,
+  close: () => void,
+  t: (key: string) => string,
+) =>
   sections.map((section, sectionIndex) => {
     if (section.items.length === 0) return null;
     const active = activeNavPath(pathname, section.items);
@@ -32,7 +38,7 @@ const renderNavSections = (sections: readonly NavSection[], pathname: string, cl
       <div key={section.label ?? sectionIndex}>
         {section.label && (
           <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt="md" mb={4} px="xs">
-            {section.label}
+            {t(section.label)}
           </Text>
         )}
         {section.items.map((item) => (
@@ -43,7 +49,7 @@ const renderNavSections = (sections: readonly NavSection[], pathname: string, cl
             // Mantine styles [aria-current="page"] as active; keep TanStack's
             // own marker exact so only activeNavPath decides the highlight.
             activeOptions={{ exact: true }}
-            label={item.label}
+            label={t(item.label)}
             leftSection={<item.icon size={18} stroke={1.5} />}
             active={item.to === active}
             onClick={close}
@@ -54,6 +60,7 @@ const renderNavSections = (sections: readonly NavSection[], pathname: string, cl
   });
 
 const RootLayout = () => {
+  const { t } = useI18n("host");
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const queryClient = useQueryClient();
   const isPublic = publicPaths.has(pathname);
@@ -111,14 +118,14 @@ const RootLayout = () => {
         }}
         userMenuItems={
           <Menu.Item component={Link} to="/settings" leftSection={<IconSettings size={14} />}>
-            Settings
+            {t("navigation.settings")}
           </Menu.Item>
         }
         onSignOut={() => logout.mutate()}
         signOutDisabled={logout.isPending}
         navbarTop={<SpotlightSearchBox />}
-        nav={(close) => renderNavSections(primarySections, pathname, close)}
-        navLower={(close) => renderNavSections(lowerSections, pathname, close)}
+        nav={(close) => renderNavSections(primarySections, pathname, close, t)}
+        navLower={(close) => renderNavSections(lowerSections, pathname, close, t)}
       >
         <Outlet />
       </AppShellLayout>

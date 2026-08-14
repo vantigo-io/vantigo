@@ -20,7 +20,9 @@ import { notifications } from "@mantine/notifications";
 import { IconKey, IconLock, IconShieldLock, IconUser } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { setLanguagePreference, useTranslation } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
+import "../i18n";
 import {
   changePassword,
   disableMfa,
@@ -29,6 +31,7 @@ import {
   getMfaStatus,
   getProfile,
   initializeMfa,
+  isPasskeyClientError,
   listPasskeys,
   profileQueryKey,
   regenerateRecoveryCodes,
@@ -41,23 +44,25 @@ import { fetchSession, sessionQueryKey } from "../api/auth";
 
 const mfaKey = ["account", "mfa"] as const;
 const passkeyKey = ["account", "passkeys"] as const;
-const message = (e: unknown) => (e instanceof Error ? e.message : "The request could not be completed.");
+const message = (e: unknown, fallback = "The request could not be completed.") =>
+  e instanceof Error ? e.message : fallback;
 const isOidcError = (e: unknown) => {
   const value = e as { code?: string };
   return value.code === "local_password_unavailable";
 };
-const notify = (title: string, e: unknown) => notifications.show({ title, message: message(e), color: "red" });
-const saved = (text: string) => notifications.show({ title: "Saved", message: text, color: "teal" });
+const notify = (title: string, e: unknown, fallback?: string) =>
+  notifications.show({ title, message: message(e, fallback), color: "red" });
 
 function ProfileTab() {
+  const { t } = useTranslation("settings");
   const qc = useQueryClient();
   const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
   const userId = session.data?.user.id;
   const query = useQuery({ queryKey: profileQueryKey(userId ?? "unknown"), queryFn: getProfile, enabled: !!userId });
   const [file, setFile] = useState<File | null>(null);
-  const form = useForm<{ displayName: string; preferredLanguage: "auto" | "en" }>({
+  const form = useForm<{ displayName: string; preferredLanguage: "auto" | "en" | "nb" }>({
     initialValues: { displayName: "", preferredLanguage: "auto" },
-    validate: { displayName: (v) => (v.trim() ? null : "Enter your name") },
+    validate: { displayName: (v) => (v.trim() ? null : t("enterYourName")) },
   });
   useEffect(() => {
     if (query.data)
@@ -68,9 +73,10 @@ function ProfileTab() {
     onSuccess: (v) => {
       if (userId) qc.setQueryData(profileQueryKey(userId), v);
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
-      saved("Your profile was updated.");
+      setLanguagePreference(v.preferredLanguage);
+      notifications.show({ title: t("saved"), message: t("profileUpdated"), color: "teal" });
     },
-    onError: (e) => notify("Profile could not be saved", e),
+    onError: (e) => notify(t("profileCouldNotSave"), e, t("requestCouldNotComplete")),
   });
   const upload = useMutation({
     mutationFn: uploadProfilePhoto,
@@ -78,24 +84,24 @@ function ProfileTab() {
       setFile(null);
       if (userId) void qc.invalidateQueries({ queryKey: profileQueryKey(userId) });
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
-      saved("Your profile photo was updated.");
+      notifications.show({ title: t("saved"), message: t("photoUpdated"), color: "teal" });
     },
-    onError: (e) => notify("Photo could not be uploaded", e),
+    onError: (e) => notify(t("photoCouldNotUpload"), e, t("requestCouldNotComplete")),
   });
   const remove = useMutation({
     mutationFn: removeProfilePhoto,
     onSuccess: () => {
       if (userId) void qc.invalidateQueries({ queryKey: profileQueryKey(userId) });
       void qc.invalidateQueries({ queryKey: sessionQueryKey });
-      saved("Your profile photo was removed.");
+      notifications.show({ title: t("saved"), message: t("photoRemoved"), color: "teal" });
     },
-    onError: (e) => notify("Photo could not be removed", e),
+    onError: (e) => notify(t("photoCouldNotRemove"), e, t("requestCouldNotComplete")),
   });
-  if (query.isPending) return <Text c="dimmed">Loading profile…</Text>;
+  if (query.isPending) return <Text c="dimmed">{t("loadingProfile")}</Text>;
   if (query.isError)
     return (
-      <Alert color="red" title="Profile could not be loaded">
-        {message(query.error)}
+      <Alert color="red" title={t("profileCouldNotLoad")}>
+        {message(query.error, t("requestCouldNotComplete"))}
       </Alert>
     );
   const value = query.data;
@@ -108,20 +114,26 @@ function ProfileTab() {
               <IconUser />
             </Avatar>
             <div>
-              <Text fw={600}>Profile photo</Text>
+              <Text fw={600}>{t("profilePhoto")}</Text>
               <Text size="sm" c="dimmed">
-                JPEG or PNG, up to 5 MB.
+                {t("photoRequirements")}
               </Text>
             </div>
           </Group>
           <Group align="end">
-            <FileInput flex={1} label="Choose a photo" accept="image/jpeg,image/png" value={file} onChange={setFile} />
+            <FileInput
+              flex={1}
+              label={t("choosePhoto")}
+              accept="image/jpeg,image/png"
+              value={file}
+              onChange={setFile}
+            />
             <Button disabled={!file} loading={upload.isPending} onClick={() => file && upload.mutate(file)}>
-              Upload photo
+              {t("uploadPhoto")}
             </Button>
             {value.avatarUrl && (
               <Button color="red" variant="subtle" loading={remove.isPending} onClick={() => remove.mutate()}>
-                Remove
+                {t("remove")}
               </Button>
             )}
           </Group>
@@ -130,24 +142,20 @@ function ProfileTab() {
       <Card withBorder>
         <form onSubmit={form.onSubmit((v) => save.mutate(v))}>
           <Stack>
-            <TextInput label="Name" {...form.getInputProps("displayName")} />
-            <TextInput
-              label="Email"
-              value={value.email ?? ""}
-              readOnly
-              description="Your email is managed by your sign-in provider."
-            />
+            <TextInput label={t("name")} {...form.getInputProps("displayName")} />
+            <TextInput label={t("email")} value={value.email ?? ""} readOnly description={t("emailDescription")} />
             <Select
-              label="Preferred language"
+              label={t("preferredLanguage")}
               data={[
-                { value: "auto", label: "Automatic" },
-                { value: "en", label: "English" },
+                { value: "auto", label: t("automatic") },
+                { value: "nb", label: t("norwegian") },
+                { value: "en", label: t("english") },
               ]}
               {...form.getInputProps("preferredLanguage")}
-              description="App translation is coming later. This preference is saved for your account."
+              description={t("languageDescription")}
             />
             <Button type="submit" loading={save.isPending} w="fit-content">
-              Save profile
+              {t("saveProfile")}
             </Button>
           </Stack>
         </form>
@@ -157,6 +165,8 @@ function ProfileTab() {
 }
 
 function SecurityTab() {
+  const { t } = useTranslation("settings");
+  const { t: hostT } = useTranslation("host");
   const qc = useQueryClient();
   const mfa = useQuery({ queryKey: mfaKey, queryFn: getMfaStatus });
   const passkeys = useQuery({ queryKey: passkeyKey, queryFn: listPasskeys });
@@ -169,8 +179,8 @@ function SecurityTab() {
   const password = useForm({
     initialValues: { currentPassword: "", newPassword: "", confirm: "" },
     validate: {
-      newPassword: (v) => (v.length < 12 ? "Use at least 12 characters" : null),
-      confirm: (v, values) => (v !== values.newPassword ? "Passwords do not match" : null),
+      newPassword: (v) => (v.length < 12 ? t("useAtLeast12Characters") : null),
+      confirm: (v, values) => (v !== values.newPassword ? t("passwordsDoNotMatch") : null),
     },
   });
   const mfaForm = useForm({ initialValues: { password: "", code: "" } });
@@ -178,26 +188,26 @@ function SecurityTab() {
   const passkeyForm = useForm({
     initialValues: { name: "", currentPassword: "" },
     validate: {
-      name: (v) => (v.trim() ? null : "Enter a name"),
-      currentPassword: (v) => (v ? null : "Enter your current password"),
+      name: (v) => (v.trim() ? null : t("enterYourName")),
+      currentPassword: (v) => (v ? null : t("currentPassword")),
     },
   });
   const onMfaError = (title: string) => (e: unknown) => {
     if (isOidcError(e)) setOidcOnly(true);
-    notify(title, e);
+    notify(title, e, t("requestCouldNotComplete"));
   };
   const change = useMutation({
     mutationFn: changePassword,
     onSuccess: () => {
       password.reset();
-      saved("Your password was changed.");
+      notifications.show({ title: t("saved"), message: t("passwordChanged"), color: "teal" });
     },
-    onError: onMfaError("Password could not be changed"),
+    onError: onMfaError(t("passwordCouldNotBeChanged")),
   });
   const start = useMutation({
     mutationFn: initializeMfa,
     onSuccess: setSetup,
-    onError: onMfaError("Authenticator setup could not start"),
+    onError: onMfaError(t("authenticatorSetupCouldNotStartTitle")),
   });
   const enable = useMutation({
     mutationFn: enableMfa,
@@ -207,7 +217,7 @@ function SecurityTab() {
       mfaForm.reset();
       void qc.invalidateQueries({ queryKey: mfaKey });
     },
-    onError: onMfaError("Authenticator code was not accepted"),
+    onError: onMfaError(t("authenticatorCodeNotAcceptedTitle")),
   });
   const disable = useMutation({
     mutationFn: disableMfa,
@@ -215,9 +225,9 @@ function SecurityTab() {
       setDisableOpen(false);
       reauth.reset();
       void qc.invalidateQueries({ queryKey: mfaKey });
-      saved("Authenticator sign-in was disabled.");
+      notifications.show({ title: t("saved"), message: t("authenticatorDisabled"), color: "teal" });
     },
-    onError: onMfaError("Authenticator sign-in could not be disabled"),
+    onError: onMfaError(t("authenticatorCouldNotDisable")),
   });
   const regenerate = useMutation({
     mutationFn: regenerateRecoveryCodes,
@@ -226,7 +236,7 @@ function SecurityTab() {
       setRecoveryOpen(false);
       reauth.reset();
     },
-    onError: onMfaError("Recovery codes could not be regenerated"),
+    onError: onMfaError(t("recoveryCodesCouldNotRegenerate")),
   });
   const remove = useMutation({
     mutationFn: ({ id, password: currentPassword }: { id: string; password: string }) =>
@@ -235,18 +245,29 @@ function SecurityTab() {
       setRemoveId(null);
       reauth.reset();
       void qc.invalidateQueries({ queryKey: passkeyKey });
-      saved("Passkey removed.");
+      notifications.show({ title: t("saved"), message: t("passkeyRemoved"), color: "teal" });
     },
-    onError: onMfaError("Passkey could not be removed"),
+    onError: onMfaError(t("passwordToRemovePasskey")),
   });
   const enroll = useMutation({
     mutationFn: enrollPasskey,
     onSuccess: () => {
       passkeyForm.reset();
       void qc.invalidateQueries({ queryKey: passkeyKey });
-      saved("Passkey added.");
+      notifications.show({ title: t("saved"), message: t("passkeyAdded"), color: "teal" });
     },
-    onError: (e) => notify("Passkey could not be added", e),
+    onError: (e) =>
+      notifications.show({
+        title: t("passkeyCouldNotAdd"),
+        message: isPasskeyClientError(e)
+          ? e.code === "unsupported"
+            ? hostT("settings.passkeyUnsupported")
+            : e.code === "cancelled"
+              ? hostT("settings.passkeyEnrollmentCancelled")
+              : hostT("settings.passkeyEnrollmentFailed")
+          : message(e, t("requestCouldNotComplete")),
+        color: "red",
+      }),
   });
   return (
     <Stack gap="lg">
@@ -254,16 +275,16 @@ function SecurityTab() {
         <Stack>
           <Group justify="space-between">
             <div>
-              <Title order={4}>Password</Title>
+              <Title order={4}>{t("password")}</Title>
               <Text size="sm" c="dimmed">
-                Use a unique password you do not reuse elsewhere.
+                {t("passwordDescription")}
               </Text>
             </div>
             <IconLock size={22} />
           </Group>
           {oidcOnly && (
-            <Alert color="blue" title="Local password unavailable">
-              This account signs in with an organization identity provider. Manage your password and security there.
+            <Alert color="blue" title={t("localPasswordUnavailable")}>
+              {t("localPasswordUnavailableMessage")}
             </Alert>
           )}
           <form
@@ -273,14 +294,18 @@ function SecurityTab() {
           >
             <Stack>
               <PasswordInput
-                label="Current password"
+                label={t("currentPassword")}
                 disabled={oidcOnly}
                 {...password.getInputProps("currentPassword")}
               />
-              <PasswordInput label="New password" disabled={oidcOnly} {...password.getInputProps("newPassword")} />
-              <PasswordInput label="Confirm new password" disabled={oidcOnly} {...password.getInputProps("confirm")} />
+              <PasswordInput label={t("newPassword")} disabled={oidcOnly} {...password.getInputProps("newPassword")} />
+              <PasswordInput
+                label={t("confirmNewPassword")}
+                disabled={oidcOnly}
+                {...password.getInputProps("confirm")}
+              />
               <Button type="submit" disabled={oidcOnly} loading={change.isPending} w="fit-content">
-                Change password
+                {t("changePassword")}
               </Button>
             </Stack>
           </form>
@@ -291,60 +316,60 @@ function SecurityTab() {
           <Group>
             <IconShieldLock size={22} />
             <div>
-              <Title order={4}>Authenticator app</Title>
+              <Title order={4}>{t("authenticatorApp")}</Title>
               <Text size="sm" c="dimmed">
-                Add a second step when you sign in.
+                {t("authenticatorDescription")}
               </Text>
             </div>
           </Group>
           {mfa.data?.twoFactorEnabled ? (
             <>
               <Badge color="teal" w="fit-content">
-                Enabled
+                {t("enabled")}
               </Badge>
               <Group>
                 <Button color="red" variant="light" disabled={oidcOnly} onClick={() => setDisableOpen(true)}>
-                  Disable
+                  {t("disable")}
                 </Button>
                 <Button variant="subtle" disabled={oidcOnly} onClick={() => setRecoveryOpen(true)}>
-                  Regenerate recovery codes
+                  {t("regenerateRecoveryCodes")}
                 </Button>
               </Group>
             </>
           ) : (
             <Button disabled={oidcOnly} loading={start.isPending} onClick={() => mfaForm.reset()} w="fit-content">
-              Set up authenticator app
+              {t("setUpAuthenticator")}
             </Button>
           )}
           {!mfa.data?.twoFactorEnabled && (
             <form onSubmit={mfaForm.onSubmit((v) => start.mutate(v.password))}>
               <Stack>
                 <PasswordInput
-                  label="Current password to begin setup"
+                  label={t("currentPasswordToBegin")}
                   disabled={oidcOnly}
                   {...mfaForm.getInputProps("password")}
                 />
                 <Button type="submit" loading={start.isPending} disabled={oidcOnly} w="fit-content">
-                  Begin setup
+                  {t("beginSetup")}
                 </Button>
               </Stack>
             </form>
           )}
           {setup && (
             <Stack>
-              <Text size="sm">Scan this setup URI in your authenticator app, then confirm with a six-digit code.</Text>
-              <TextInput label="Setup URI" value={setup.authenticatorUri ?? "Unavailable"} readOnly />
+              <Text size="sm">{t("scanSetupUri")}</Text>
+              <TextInput label={t("setupUri")} value={setup.authenticatorUri ?? t("unavailable")} readOnly />
               <form onSubmit={mfaForm.onSubmit((v) => enable.mutate({ code: v.code, password: v.password }))}>
-                <PasswordInput label="Current password" {...mfaForm.getInputProps("password")} />
-                <TextInput label="Authenticator code" {...mfaForm.getInputProps("code")} />
+                <PasswordInput label={t("currentPassword")} {...mfaForm.getInputProps("password")} />
+                <TextInput label={t("authenticatorCode")} {...mfaForm.getInputProps("code")} />
                 <Button type="submit" loading={enable.isPending}>
-                  Enable
+                  {t("enable")}
                 </Button>
               </form>
             </Stack>
           )}
           {recovery.length > 0 && (
-            <Alert color="yellow" title="Save your recovery codes now">
+            <Alert color="yellow" title={t("saveRecoveryCodesNow")}>
               {recovery.join(" · ")}
             </Alert>
           )}
@@ -355,73 +380,77 @@ function SecurityTab() {
           <Group>
             <IconKey size={22} />
             <div>
-              <Title order={4}>Passkeys</Title>
+              <Title order={4}>{t("passkeys")}</Title>
               <Text size="sm" c="dimmed">
-                Use a device or security key as an alternative sign-in.
+                {t("passkeysDescription")}
               </Text>
             </div>
           </Group>
           {passkeys.isError ? (
-            <Alert color="red">{message(passkeys.error)}</Alert>
+            <Alert color="red">{message(passkeys.error, t("requestCouldNotComplete"))}</Alert>
           ) : passkeys.data?.length ? (
             passkeys.data.map((key) => (
               <Group key={key.credentialId} justify="space-between">
                 <Text>{key.name}</Text>
                 <Button color="red" variant="subtle" onClick={() => setRemoveId(key.credentialId)}>
-                  Remove
+                  {t("remove")}
                 </Button>
               </Group>
             ))
           ) : (
-            <Text c="dimmed">No passkeys registered.</Text>
+            <Text c="dimmed">{t("noPasskeys")}</Text>
           )}
           <form onSubmit={passkeyForm.onSubmit((v) => enroll.mutate(v))}>
             <Stack>
-              <TextInput label="Passkey name" placeholder="e.g. MacBook" {...passkeyForm.getInputProps("name")} />
-              <PasswordInput label="Current password" {...passkeyForm.getInputProps("currentPassword")} />
+              <TextInput
+                label={t("passkeyName")}
+                placeholder={t("passkeyNamePlaceholder")}
+                {...passkeyForm.getInputProps("name")}
+              />
+              <PasswordInput label={t("currentPassword")} {...passkeyForm.getInputProps("currentPassword")} />
               <Button type="submit" loading={enroll.isPending} variant="light">
-                Add a passkey
+                {t("addPasskey")}
               </Button>
             </Stack>
           </form>
           <Text size="xs" c="dimmed">
-            Your browser or device will ask you to verify with the passkey.
+            {t("passkeyVerification")}
           </Text>
         </Stack>
       </Card>
-      <Modal opened={disableOpen} onClose={() => setDisableOpen(false)} title="Disable authenticator sign-in">
+      <Modal opened={disableOpen} onClose={() => setDisableOpen(false)} title={t("disableAuthenticatorTitle")}>
         <form onSubmit={reauth.onSubmit((v) => disable.mutate(v.password))}>
           <Stack>
-            <Text size="sm">This is a sensitive change. Confirm with your current password.</Text>
-            <PasswordInput label="Current password" {...reauth.getInputProps("password")} />
+            <Text size="sm">{t("sensitiveChangeDescription")}</Text>
+            <PasswordInput label={t("currentPassword")} {...reauth.getInputProps("password")} />
             <Button color="red" type="submit" loading={disable.isPending}>
-              Disable authenticator
+              {t("disableAuthenticator")}
             </Button>
           </Stack>
         </form>
       </Modal>
-      <Modal opened={recoveryOpen} onClose={() => setRecoveryOpen(false)} title="Regenerate recovery codes">
+      <Modal opened={recoveryOpen} onClose={() => setRecoveryOpen(false)} title={t("regenerateRecoveryCodes")}>
         <form onSubmit={reauth.onSubmit((v) => regenerate.mutate({ password: v.password, code: v.code }))}>
           <Stack>
-            <PasswordInput label="Current password" {...reauth.getInputProps("password")} />
-            <TextInput label="Authenticator code" {...reauth.getInputProps("code")} />
+            <PasswordInput label={t("currentPassword")} {...reauth.getInputProps("password")} />
+            <TextInput label={t("authenticatorCode")} {...reauth.getInputProps("code")} />
             <Button type="submit" loading={regenerate.isPending}>
-              Regenerate codes
+              {t("regenerateCodes")}
             </Button>
           </Stack>
         </form>
       </Modal>
-      <Modal opened={removeId !== null} onClose={() => setRemoveId(null)} title="Remove passkey">
+      <Modal opened={removeId !== null} onClose={() => setRemoveId(null)} title={t("removePasskeyTitle")}>
         <form
           onSubmit={reauth.onSubmit((v) => {
             if (removeId) remove.mutate({ id: removeId, password: v.password });
           })}
         >
           <Stack>
-            <Text>This cannot be undone. Confirm with your current password.</Text>
-            <PasswordInput label="Current password" {...reauth.getInputProps("password")} />
+            <Text>{t("cannotUndoDescription")}</Text>
+            <PasswordInput label={t("currentPassword")} {...reauth.getInputProps("password")} />
             <Button color="red" type="submit" loading={remove.isPending}>
-              Remove passkey
+              {t("removePasskey")}
             </Button>
           </Stack>
         </form>
@@ -429,32 +458,37 @@ function SecurityTab() {
     </Stack>
   );
 }
-const SettingsPage = () => (
-  <Stack maw={920} mx="auto" gap="xl">
-    <div>
-      <Title order={2}>Settings</Title>
-      <Text c="dimmed" mt={4}>
-        Manage your personal details and sign-in methods.
-      </Text>
-    </div>
-    <Tabs defaultValue="profile" keepMounted={false}>
-      <Tabs.List aria-label="Personal settings">
-        <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
-          Profile
-        </Tabs.Tab>
-        <Tabs.Tab value="security" leftSection={<IconShieldLock size={16} />}>
-          Security
-        </Tabs.Tab>
-      </Tabs.List>
-      <Tabs.Panel value="profile" pt="xl">
-        <ProfileTab />
-      </Tabs.Panel>
-      <Tabs.Panel value="security" pt="xl">
-        <SecurityTab />
-      </Tabs.Panel>
-    </Tabs>
-  </Stack>
-);
+const SettingsPage = () => <SettingsContent />;
+
+function SettingsContent() {
+  const { t } = useTranslation("settings");
+  return (
+    <Stack maw={920} mx="auto" gap="xl">
+      <div>
+        <Title order={2}>{t("settings")}</Title>
+        <Text c="dimmed" mt={4}>
+          {t("settingsDescription")}
+        </Text>
+      </div>
+      <Tabs defaultValue="profile" keepMounted={false}>
+        <Tabs.List aria-label={t("personalSettings")}>
+          <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
+            {t("profile")}
+          </Tabs.Tab>
+          <Tabs.Tab value="security" leftSection={<IconShieldLock size={16} />}>
+            {t("security")}
+          </Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="profile" pt="xl">
+          <ProfileTab />
+        </Tabs.Panel>
+        <Tabs.Panel value="security" pt="xl">
+          <SecurityTab />
+        </Tabs.Panel>
+      </Tabs>
+    </Stack>
+  );
+}
 export const Route = createFileRoute("/settings")({
   beforeLoad: async ({ context }) => {
     await context.queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });

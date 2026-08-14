@@ -1,10 +1,11 @@
 import { Anchor, Badge, type BadgeProps, Image, Text, Tooltip } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { type Icon, IconBuilding, IconUser } from "@tabler/icons-react";
+import { useI18n } from "@vantigo/frontend-shell";
 import * as Flags from "country-flag-icons/react/3x2";
 import type { ReactNode } from "react";
-
 import { getLegalSource } from "../lib/legal-sources";
+import "../i18n";
 
 /** The icon shared by all badges of a given legal type. */
 const legalTypeIcons: Record<string, Icon | undefined> = {
@@ -28,6 +29,7 @@ interface CopyableBadgeProps extends BadgeProps {
  */
 export const CopyableBadge = ({ tooltip, copyValue, children, ...badgeProps }: CopyableBadgeProps) => {
   const clipboard = useClipboard({ timeout: 1500 });
+  const { t } = useI18n("host");
 
   const badge = copyValue ? (
     <Badge
@@ -43,7 +45,9 @@ export const CopyableBadge = ({ tooltip, copyValue, children, ...badgeProps }: C
     <Badge {...badgeProps}>{children}</Badge>
   );
 
-  const label = clipboard.copied ? "Copied!" : [tooltip, copyValue && "Click to copy."].filter(Boolean).join(" ");
+  const label = clipboard.copied
+    ? t("legal.copied")
+    : [tooltip, copyValue && t("legal.clickToCopy")].filter(Boolean).join(" ");
 
   if (!label) {
     return badge;
@@ -145,6 +149,7 @@ export const LegalSourceBadge = ({
   /** Deep-links the logo to the source's page for this entity. */
   legalId?: string;
 }) => {
+  const { t } = useI18n("host");
   const info = getLegalSource(source);
   const href = legalId && info.entityUrl ? info.entityUrl(legalId) : info.url;
 
@@ -152,7 +157,7 @@ export const LegalSourceBadge = ({
     const logo = <Image src={info.logo} alt={info.label} h={14} w="auto" fit="contain" display="inline-block" />;
 
     return (
-      <Tooltip label={tooltip ?? `Retrieved from ${info.label}`} maw={320} multiline>
+      <Tooltip label={tooltip ?? t("legal.retrievedFrom", { source: info.label })} maw={320} multiline>
         {href ? (
           <Anchor href={href} target="_blank" rel="noreferrer" aria-label={info.label} lh={1}>
             {logo}

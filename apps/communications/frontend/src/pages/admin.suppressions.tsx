@@ -2,18 +2,20 @@ import { Alert, Button, Card, Group, Loader, Modal, Stack, Table, Text, TextInpu
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ApiError } from "../api/request";
 import { createSuppression, deleteSuppression, suppressionsQueryOptions } from "../api/suppressions";
+import "../i18n";
 
 export function SuppressionsPage() {
+  const { t, formatters } = useI18n("communications");
   const client = useQueryClient();
   const query = useQuery(suppressionsQueryOptions());
   const form = useForm({
     initialValues: { emailAddress: "", reason: "" },
     validate: {
-      emailAddress: (value) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : "Enter a valid email address"),
+      emailAddress: (value) => (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : t("validEmailAddress")),
     },
   });
   const [search, setSearch] = useState("");
@@ -23,20 +25,20 @@ export function SuppressionsPage() {
     onSuccess: () => {
       form.reset();
       void client.invalidateQueries({ queryKey: ["suppressions"] });
-      notifications.show({ title: "Suppression added", message: "The address will not receive messages." });
+      notifications.show({ title: t("suppressionAdded"), message: t("addressWillNotReceive") });
     },
     onError: (error: ApiError) =>
-      notifications.show({ color: "red", title: "Suppression not added", message: error.message }),
+      notifications.show({ color: "red", title: t("suppressionNotAdded"), message: error.message }),
   });
   const remove = useMutation({
     mutationFn: deleteSuppression,
     onSuccess: () => {
       setDeleteId(null);
       void client.invalidateQueries({ queryKey: ["suppressions"] });
-      notifications.show({ title: "Suppression deleted", message: "The address can receive messages again." });
+      notifications.show({ title: t("suppressionDeleted"), message: t("addressCanReceive") });
     },
     onError: (error: ApiError) =>
-      notifications.show({ color: "red", title: "Suppression not deleted", message: error.message }),
+      notifications.show({ color: "red", title: t("suppressionNotDeleted"), message: error.message }),
   });
   if (query.isPending) return <Loader />;
   if (query.isError) return <Alert color="red">{query.error.message}</Alert>;
@@ -45,11 +47,7 @@ export function SuppressionsPage() {
   );
   return (
     <Stack gap="xl">
-      <PageHeader
-        eyebrow="Communications"
-        title="Suppressions"
-        description="Addresses that are blocked from receiving messages, and why."
-      />
+      <PageHeader eyebrow={t("communications")} title={t("suppressions")} description={t("suppressionsDescription")} />
       <Card withBorder radius="lg">
         <form
           onSubmit={form.onSubmit((values) =>
@@ -57,18 +55,18 @@ export function SuppressionsPage() {
           )}
         >
           <Group align="end">
-            <TextInput label="Email address" required {...form.getInputProps("emailAddress")} />
-            <TextInput label="Reason (optional)" {...form.getInputProps("reason")} />
+            <TextInput label={t("emailAddress")} required {...form.getInputProps("emailAddress")} />
+            <TextInput label={t("reasonOptional")} {...form.getInputProps("reason")} />
             <Button type="submit" loading={create.isPending}>
-              Add suppression
+              {t("addSuppression")}
             </Button>
           </Group>
         </form>
       </Card>
       <Card withBorder radius="lg">
         <TextInput
-          label="Search"
-          placeholder="Search email or reason"
+          label={t("search")}
+          placeholder={t("searchEmailOrReason")}
           value={search}
           onChange={(event) => setSearch(event.currentTarget.value)}
           mb="lg"
@@ -77,9 +75,9 @@ export function SuppressionsPage() {
           <Table>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Email</Table.Th>
-                <Table.Th>Reason</Table.Th>
-                <Table.Th>Created</Table.Th>
+                <Table.Th>{t("email")}</Table.Th>
+                <Table.Th>{t("reason")}</Table.Th>
+                <Table.Th>{t("created")}</Table.Th>
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
@@ -87,11 +85,13 @@ export function SuppressionsPage() {
               {visible.map((item) => (
                 <Table.Tr key={item.id}>
                   <Table.Td>{item.emailAddress}</Table.Td>
-                  <Table.Td>{item.reason || "—"}</Table.Td>
-                  <Table.Td>{new Date(item.createdAt).toLocaleString()}</Table.Td>
+                  <Table.Td>{item.reason || t("noReason")}</Table.Td>
+                  <Table.Td>
+                    {formatters.formatDate(item.createdAt, { dateStyle: "medium", timeStyle: "short" })}
+                  </Table.Td>
                   <Table.Td>
                     <Button color="red" variant="subtle" size="xs" onClick={() => setDeleteId(item.id)}>
-                      Delete
+                      {t("delete")}
                     </Button>
                   </Table.Td>
                 </Table.Tr>
@@ -101,19 +101,19 @@ export function SuppressionsPage() {
         </Table.ScrollContainer>
         {visible.length === 0 && (
           <Text c="dimmed" ta="center" py="lg">
-            No suppressions found.
+            {t("noSuppressionsFound")}
           </Text>
         )}
       </Card>
-      <Modal opened={deleteId !== null} onClose={() => setDeleteId(null)} title="Delete suppression" centered>
+      <Modal opened={deleteId !== null} onClose={() => setDeleteId(null)} title={t("deleteSuppression")} centered>
         <Stack>
-          <Text>Allow this address to receive messages again?</Text>
+          <Text>{t("allowAddressAgain")}</Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setDeleteId(null)}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button color="red" loading={remove.isPending} onClick={() => deleteId && remove.mutate(deleteId)}>
-              Delete suppression
+              {t("deleteSuppression")}
             </Button>
           </Group>
         </Stack>

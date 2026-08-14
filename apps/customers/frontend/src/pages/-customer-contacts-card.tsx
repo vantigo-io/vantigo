@@ -21,6 +21,7 @@ import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconUserOff, IconUsersGroup } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   attachCustomerContact,
@@ -35,6 +36,7 @@ import { ApiValidationError } from "../api/customers";
 import { formatContactName } from "../lib/format-contact-name";
 import { ConnectionFields, ConnectionValue, EditConnectionModal, type EditConnectionTarget } from "./-connection";
 import { ContactFields, toContactInput } from "./-contact-form-modal";
+import "../i18n";
 
 /**
  * The contacts widget on the customer dashboard: a mini table of the contacts
@@ -42,6 +44,7 @@ import { ContactFields, toContactInput } from "./-contact-form-modal";
  * remove associations.
  */
 export const CustomerContactsCard = ({ customerId }: { customerId: number }) => {
+  const { t } = useI18n("customers");
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery(customerContactsQueryOptions(customerId));
@@ -58,28 +61,30 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
     onSuccess: (_, association) => {
       notifications.show({
         color: "teal",
-        title: "Contact removed",
-        message: `"${formatContactName(association.contact)}" is no longer associated with this customer.`,
+        title: t("contactRemoved"),
+        message: t("customerRemovedMessage", {
+          contact: formatContactName(association.contact),
+          customer: t("customer"),
+        }),
       });
       queryClient.invalidateQueries({ queryKey: ["customers", customerId, "contacts"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       invalidateCustomerTimeline();
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Failed to remove contact", message: error.message });
+      notifications.show({ color: "red", title: t("failedRemoveCustomer"), message: error.message });
     },
   });
 
   const confirmDetach = (association: CustomerContactResponse) =>
     modals.openConfirmModal({
-      title: "Remove contact",
+      title: t("removeNamed", { name: t("contact") }),
       children: (
         <Text size="sm">
-          Remove "{formatContactName(association.contact)}" from this customer? The contact itself is kept and can be
-          added again later.
+          {t("removeAssociationQuestion", { contact: formatContactName(association.contact), customer: t("customer") })}
         </Text>
       ),
-      labels: { confirm: "Remove", cancel: "Cancel" },
+      labels: { confirm: t("remove"), cancel: t("cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => detach.mutate(association),
     });
@@ -90,7 +95,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
         <Group justify="space-between">
           <Group gap="xs">
             <IconUsersGroup size={18} stroke={1.5} />
-            <Text fw={600}>Contacts</Text>
+            <Text fw={600}>{t("contacts")}</Text>
           </Group>
           <Button
             variant="light"
@@ -98,7 +103,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
             leftSection={<IconPlus size={14} />}
             onClick={() => setAddModalOpened(true)}
           >
-            Add contact
+            {t("addContact")}
           </Button>
         </Group>
 
@@ -109,7 +114,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
         ) : associations.length === 0 ? (
           <Center py="md">
             <Text size="sm" c="dimmed">
-              No contacts associated with this customer yet.
+              {t("noContactsAssociated")}
             </Text>
           </Center>
         ) : (
@@ -117,11 +122,11 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
             <Table highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Role</Table.Th>
-                  <Table.Th>Email</Table.Th>
-                  <Table.Th>Phone</Table.Th>
-                  <Table.Th w={80} aria-label="Actions" />
+                  <Table.Th>{t("name")}</Table.Th>
+                  <Table.Th>{t("role")}</Table.Th>
+                  <Table.Th>{t("email")}</Table.Th>
+                  <Table.Th>{t("phone")}</Table.Th>
+                  <Table.Th w={80} aria-label={t("actions")} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -149,7 +154,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                         <ActionIcon
                           variant="subtle"
                           color="gray"
-                          aria-label={`Edit connection for ${formatContactName(association.contact)}`}
+                          aria-label={t("editConnectionFor", { name: formatContactName(association.contact) })}
                           onClick={() =>
                             setEditing({
                               customerId,
@@ -166,7 +171,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                         <ActionIcon
                           variant="subtle"
                           color="red"
-                          aria-label={`Remove ${formatContactName(association.contact)}`}
+                          aria-label={t("removeNamed", { name: formatContactName(association.contact) })}
                           onClick={() => confirmDetach(association)}
                         >
                           <IconUserOff size={16} />
@@ -204,6 +209,7 @@ interface AddContactModalProps {
  * a role, or — when nothing matches — create a new contact and attach it in one go.
  */
 const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: AddContactModalProps) => {
+  const { t } = useI18n("customers");
   const queryClient = useQueryClient();
   const invalidateCustomerTimeline = () =>
     queryClient.invalidateQueries({ queryKey: ["customers", customerId, "timeline"] });
@@ -234,9 +240,9 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
       connectionEmail: "",
     },
     validate: {
-      role: (value) => (value.trim().length === 0 ? "Role is required" : null),
-      firstName: (value) => (creatingNew && !selected && value.trim().length === 0 ? "First name is required" : null),
-      lastName: (value) => (creatingNew && !selected && value.trim().length === 0 ? "Last name is required" : null),
+      role: (value) => (value.trim().length === 0 ? t("roleRequired") : null),
+      firstName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("firstNameRequired") : null),
+      lastName: (value) => (creatingNew && !selected && value.trim().length === 0 ? t("lastNameRequired") : null),
     },
   });
 
@@ -255,8 +261,8 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
   const onSuccess = (contact: ContactResponse) => {
     notifications.show({
       color: "teal",
-      title: "Contact added",
-      message: `"${formatContactName(contact)}" was added to this customer.`,
+      title: t("contactAdded"),
+      message: t("contactSaved", { name: formatContactName(contact), action: t("addContact") }),
     });
     queryClient.invalidateQueries({ queryKey: ["customers", customerId, "contacts"] });
     queryClient.invalidateQueries({ queryKey: ["contacts"] });
@@ -278,7 +284,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
         form.setErrors(mapConnectionErrors(error));
         return;
       }
-      notifications.show({ color: "red", title: "Failed to add contact", message: error.message });
+      notifications.show({ color: "red", title: t("contactCouldNotBeCreated"), message: error.message });
     },
   });
 
@@ -310,7 +316,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
         form.setErrors(error.fieldErrors);
         return;
       }
-      notifications.show({ color: "red", title: "Failed to add contact", message: error.message });
+      notifications.show({ color: "red", title: t("contactCouldNotBeCreated"), message: error.message });
     },
   });
 
@@ -325,7 +331,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
   const showConnectionForm = selected !== null || creatingNew;
 
   return (
-    <Modal opened={opened} onClose={close} title="Add contact" centered size="lg">
+    <Modal opened={opened} onClose={close} title={t("addContact")} centered size="lg">
       <form onSubmit={handleSubmit}>
         <Stack>
           {!showConnectionForm && (
@@ -346,9 +352,9 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
             >
               <Combobox.Target>
                 <TextInput
-                  label="Search for a contact"
-                  description="Search by name, phone or email"
-                  placeholder="e.g. Anders"
+                  label={t("searchForContact")}
+                  description={t("searchContactDescription")}
+                  placeholder={t("contactPlaceholder")}
                   data-autofocus
                   value={searchInput}
                   rightSection={lookup.isFetching && <Loader size="xs" />}
@@ -372,12 +378,12 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
                             <Text size="sm">{formatContactName(item.contact)}</Text>
                             <Text size="xs" c="dimmed">
                               {[item.contact.email, item.contact.phone].filter(Boolean).join(" · ") ||
-                                "No contact details"}
+                                t("noContactDetails")}
                             </Text>
                           </div>
                           {alreadyAttached && (
                             <Text size="xs" c="dimmed">
-                              Already added
+                              {t("alreadyAdded")}
                             </Text>
                           )}
                         </Group>
@@ -386,7 +392,7 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
                   })}
                   {suggestions.length === 0 && (
                     <Combobox.Option value="create-new">
-                      <Text size="sm">No contact found — create "{searchInput.trim()}" as a new contact</Text>
+                      <Text size="sm">{t("noContactFoundCreate", { name: searchInput.trim() })}</Text>
                     </Combobox.Option>
                   )}
                 </Combobox.Options>
@@ -399,11 +405,11 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
               <div>
                 <Text fw={500}>{formatContactName(selected)}</Text>
                 <Text size="xs" c="dimmed">
-                  {[selected.email, selected.phone].filter(Boolean).join(" · ") || "No contact details"}
+                  {[selected.email, selected.phone].filter(Boolean).join(" · ") || t("noContactDetails")}
                 </Text>
               </div>
               <Button variant="subtle" size="compact-sm" onClick={reset}>
-                Change
+                {t("change")}
               </Button>
             </Group>
           )}
@@ -411,9 +417,9 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
           {creatingNew && (
             <>
               <Group justify="space-between">
-                <Text fw={500}>New contact</Text>
+                <Text fw={500}>{t("newContact")}</Text>
                 <Button variant="subtle" size="compact-sm" onClick={reset}>
-                  Back to search
+                  {t("backToSearch")}
                 </Button>
               </Group>
               <ContactFields
@@ -430,14 +436,19 @@ const AddContactModal = ({ customerId, attachedContactIds, opened, onClose }: Ad
               {selected ? (
                 <ConnectionFields getInputProps={(path) => form.getInputProps(mapConnectionPath(path))} />
               ) : (
-                <TextInput label="Role" placeholder="e.g. CEO" withAsterisk {...form.getInputProps("role")} />
+                <TextInput
+                  label={t("role")}
+                  placeholder={t("rolePlaceholder")}
+                  withAsterisk
+                  {...form.getInputProps("role")}
+                />
               )}
               <Group justify="flex-end" mt="xs">
                 <Button variant="default" onClick={close}>
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button type="submit" loading={attachExisting.isPending || createAndAttach.isPending}>
-                  Add contact
+                  {t("addContact")}
                 </Button>
               </Group>
             </>

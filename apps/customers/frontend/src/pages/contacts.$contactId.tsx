@@ -22,7 +22,7 @@ import { notifications } from "@mantine/notifications";
 import { IconBuildingStore, IconMail, IconPencil, IconPhone, IconPlus, IconUserOff } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import {
@@ -38,14 +38,10 @@ import { CopyableBadge } from "../components/legal-badges";
 import { formatContactName } from "../lib/format-contact-name";
 import { ConnectionFields, ConnectionValue, EditConnectionModal, type EditConnectionTarget } from "./-connection";
 import { ContactFormModal, type ContactModalState } from "./-contact-form-modal";
-
-const tooltips = {
-  contactId: "The unique id identifying the contact within Vantigo.",
-  phone: "The contact's own phone number.",
-  email: "The contact's own email address.",
-};
+import "../i18n";
 
 export const ContactDetailsPage = () => {
+  const { t } = useI18n("customers");
   const { contactId } = useParams({ strict: false }) as { contactId: number };
   const { data: contact } = useSuspenseQuery(contactQueryOptions(contactId));
   const [modalState, setModalState] = useState<ContactModalState | null>(null);
@@ -56,19 +52,19 @@ export const ContactDetailsPage = () => {
     <Stack gap="lg">
       <Breadcrumbs>
         <Anchor component={Link} to="/contacts" size="sm">
-          Contacts
+          {t("contacts")}
         </Anchor>
         <Text size="sm">{name}</Text>
       </Breadcrumbs>
 
       <Stack gap="xs">
         <PageHeader
-          eyebrow="Customers"
+          eyebrow={t("customers")}
           title={name}
-          description="Contact details and the customers this person is linked to."
+          description={t("contactDetailsDescription")}
           actions={
             <Group gap="sm">
-              <CopyableBadge variant="light" size="lg" tooltip={tooltips.contactId} copyValue={String(contact.id)}>
+              <CopyableBadge variant="light" size="lg" tooltip={t("contactIdTooltip")} copyValue={String(contact.id)}>
                 #{contact.id}
               </CopyableBadge>
               <Button
@@ -76,7 +72,7 @@ export const ContactDetailsPage = () => {
                 leftSection={<IconPencil size={16} />}
                 onClick={() => setModalState({ mode: "edit", contact })}
               >
-                Edit contact
+                {t("editContact")}
               </Button>
             </Group>
           }
@@ -92,7 +88,7 @@ export const ContactDetailsPage = () => {
                 tt="none"
                 fw={500}
                 leftSection={<IconPhone size={12} />}
-                tooltip={tooltips.phone}
+                tooltip={t("contactPhoneTooltip")}
                 copyValue={contact.phone}
               >
                 {contact.phone}
@@ -106,7 +102,7 @@ export const ContactDetailsPage = () => {
                 tt="none"
                 fw={500}
                 leftSection={<IconMail size={12} />}
-                tooltip={tooltips.email}
+                tooltip={t("contactEmailTooltip")}
                 copyValue={contact.email}
               >
                 {contact.email}
@@ -129,6 +125,7 @@ export const ContactDetailsPage = () => {
  * remove associations — the mirror of the customer dashboard's contacts card.
  */
 const ContactCustomersCard = ({ contact, contactName }: { contact: ContactResponse; contactName: string }) => {
+  const { t } = useI18n("customers");
   const contactId = contact.id;
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
@@ -144,28 +141,27 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
     onSuccess: (_, association) => {
       notifications.show({
         color: "teal",
-        title: "Customer removed",
-        message: `"${contactName}" is no longer associated with "${association.customer.name}".`,
+        title: t("customerRemoved"),
+        message: t("customerRemovedMessage", { contact: contactName, customer: association.customer.name }),
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["customers", association.customer.id, "timeline"] });
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: "Failed to remove customer", message: error.message });
+      notifications.show({ color: "red", title: t("failedRemoveCustomer"), message: error.message });
     },
   });
 
   const confirmDetach = (association: ContactCustomerResponse) =>
     modals.openConfirmModal({
-      title: "Remove customer",
+      title: t("removeCustomer"),
       children: (
         <Text size="sm">
-          Remove the association between "{contactName}" and "{association.customer.name}"? Both the contact and the
-          customer are kept.
+          {t("removeAssociationQuestion", { contact: contactName, customer: association.customer.name })}
         </Text>
       ),
-      labels: { confirm: "Remove", cancel: "Cancel" },
+      labels: { confirm: t("remove"), cancel: t("cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => detach.mutate(association),
     });
@@ -176,7 +172,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
         <Group justify="space-between">
           <Group gap="xs">
             <IconBuildingStore size={18} stroke={1.5} />
-            <Text fw={600}>Customers</Text>
+            <Text fw={600}>{t("customers")}</Text>
           </Group>
           <Button
             variant="light"
@@ -184,7 +180,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
             leftSection={<IconPlus size={14} />}
             onClick={() => setAddModalOpened(true)}
           >
-            Add customer
+            {t("addCustomer")}
           </Button>
         </Group>
 
@@ -195,7 +191,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
         ) : associations.length === 0 ? (
           <Center py="md">
             <Text size="sm" c="dimmed">
-              This contact is not associated with any customers yet.
+              {t("noCustomersAssociated")}
             </Text>
           </Center>
         ) : (
@@ -203,11 +199,11 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
             <Table highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Customer</Table.Th>
-                  <Table.Th>Role</Table.Th>
-                  <Table.Th>Email</Table.Th>
-                  <Table.Th>Phone</Table.Th>
-                  <Table.Th w={80} aria-label="Actions" />
+                  <Table.Th>{t("customer")}</Table.Th>
+                  <Table.Th>{t("role")}</Table.Th>
+                  <Table.Th>{t("email")}</Table.Th>
+                  <Table.Th>{t("phone")}</Table.Th>
+                  <Table.Th w={80} aria-label={t("actions")} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -248,7 +244,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                         <ActionIcon
                           variant="subtle"
                           color="gray"
-                          aria-label={`Edit connection for ${association.customer.name}`}
+                          aria-label={t("editConnectionFor", { name: association.customer.name })}
                           onClick={() =>
                             setEditing({
                               customerId: association.customer.id,
@@ -265,7 +261,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                         <ActionIcon
                           variant="subtle"
                           color="red"
-                          aria-label={`Remove ${association.customer.name}`}
+                          aria-label={t("removeNamed", { name: association.customer.name })}
                           onClick={() => confirmDetach(association)}
                         >
                           <IconUserOff size={16} />
@@ -305,6 +301,7 @@ interface AddCustomerModalProps {
  * give the connection a role and optional contact details.
  */
 const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened, onClose }: AddCustomerModalProps) => {
+  const { t } = useI18n("customers");
   const queryClient = useQueryClient();
   const combobox = useCombobox();
 
@@ -321,7 +318,7 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
   const form = useForm({
     initialValues: { role: "", phone: "", email: "" },
     validate: {
-      role: (value) => (value.trim().length === 0 ? "Role is required" : null),
+      role: (value) => (value.trim().length === 0 ? t("roleRequired") : null),
     },
   });
 
@@ -347,8 +344,8 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
     onSuccess: (_, customer) => {
       notifications.show({
         color: "teal",
-        title: "Customer added",
-        message: `"${contactName}" is now associated with "${customer.name}".`,
+        title: t("customerAdded"),
+        message: t("customerAddedMessage", { contact: contactName, customer: customer.name }),
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
@@ -360,7 +357,7 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
         form.setErrors(error.fieldErrors);
         return;
       }
-      notifications.show({ color: "red", title: "Failed to add customer", message: error.message });
+      notifications.show({ color: "red", title: t("customerCouldNotBeSaved"), message: error.message });
     },
   });
 
@@ -371,7 +368,7 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
   });
 
   return (
-    <Modal opened={opened} onClose={close} title="Add customer" centered size="lg">
+    <Modal opened={opened} onClose={close} title={t("addCustomer")} centered size="lg">
       <form onSubmit={handleSubmit}>
         <Stack>
           {!selected && (
@@ -387,9 +384,9 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
             >
               <Combobox.Target>
                 <TextInput
-                  label="Search for a customer"
-                  description="Search by name, legal name or legal id"
-                  placeholder="e.g. Refsdal Holding"
+                  label={t("searchForCustomer")}
+                  description={t("searchCustomerDescription")}
+                  placeholder={t("customerPlaceholder")}
                   data-autofocus
                   value={searchInput}
                   rightSection={lookup.isFetching && <Loader size="xs" />}
@@ -412,19 +409,19 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
                           <div>
                             <Text size="sm">{customer.name}</Text>
                             <Text size="xs" c="dimmed">
-                              "Customer details"
+                              {t("customerDetails")}
                             </Text>
                           </div>
                           {alreadyAttached && (
                             <Text size="xs" c="dimmed">
-                              Already added
+                              {t("alreadyAdded")}
                             </Text>
                           )}
                         </Group>
                       </Combobox.Option>
                     );
                   })}
-                  {suggestions.length === 0 && <Combobox.Empty>No customers found.</Combobox.Empty>}
+                  {suggestions.length === 0 && <Combobox.Empty>{t("noCustomersFoundCombobox")}</Combobox.Empty>}
                 </Combobox.Options>
               </Combobox.Dropdown>
             </Combobox>
@@ -436,11 +433,11 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
                 <div>
                   <Text fw={500}>{selected.name}</Text>
                   <Text size="xs" c="dimmed">
-                    "Customer"
+                    {t("customer")}
                   </Text>
                 </div>
                 <Button variant="subtle" size="compact-sm" onClick={reset}>
-                  Change
+                  {t("change")}
                 </Button>
               </Group>
 
@@ -448,10 +445,10 @@ const AddCustomerModal = ({ contactId, contactName, attachedCustomerIds, opened,
 
               <Group justify="flex-end" mt="xs">
                 <Button variant="default" onClick={close}>
-                  Cancel
+                  {t("cancel")}
                 </Button>
                 <Button type="submit" loading={mutation.isPending}>
-                  Add customer
+                  {t("addCustomer")}
                 </Button>
               </Group>
             </>

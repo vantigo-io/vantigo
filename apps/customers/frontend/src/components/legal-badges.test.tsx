@@ -1,12 +1,17 @@
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { setLanguagePreference } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CopyableBadge, LegalCountryBadge, LegalSourceBadge, LegalTypeBadge, LegalValueBadge } from "./legal-badges";
 
 const renderBadge = (children: ReactNode) => render(<MantineProvider>{children}</MantineProvider>);
+
+afterEach(() => {
+  setLanguagePreference("auto");
+});
 
 describe("LegalTypeBadge", () => {
   it.each([["business"], ["person"]])("capitalizes the %s type and shows an icon", (type) => {
@@ -72,6 +77,13 @@ describe("LegalSourceBadge", () => {
 
     expect(screen.getByText("Manual entry")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("localizes the manual entry label", async () => {
+    setLanguagePreference("nb");
+    renderBadge(<LegalSourceBadge source="manual" />);
+
+    expect(await screen.findByText("Manuell registrering")).toBeInTheDocument();
   });
 
   it("falls back to the raw code for unknown sources", () => {

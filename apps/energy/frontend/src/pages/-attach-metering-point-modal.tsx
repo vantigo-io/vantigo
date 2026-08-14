@@ -3,8 +3,10 @@ import { useForm } from "@mantine/form";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { assignSupplyPeriod, meteringPointsQueryOptions } from "../api/energy";
+import "../i18n";
 
 export const AttachMeteringPointModal = ({
   customerId,
@@ -15,6 +17,7 @@ export const AttachMeteringPointModal = ({
   opened: boolean;
   onClose: () => void;
 }) => {
+  const { t } = useI18n("energy");
   const client = useQueryClient();
   const [searchInput, setSearchInput] = useState("");
   const [search] = useDebouncedValue(searchInput, 250);
@@ -22,8 +25,8 @@ export const AttachMeteringPointModal = ({
   const form = useForm({
     initialValues: { meteringPointId: "", start: "" },
     validate: {
-      meteringPointId: (value) => (value ? null : "Metering point is required"),
-      start: (value) => (value ? null : "Start is required"),
+      meteringPointId: (value) => (value ? null : t("meteringPointRequired")),
+      start: (value) => (value ? null : t("startRequired")),
     },
   });
   const mutation = useMutation({
@@ -37,15 +40,12 @@ export const AttachMeteringPointModal = ({
     onError: (error) =>
       notifications.show({
         color: "red",
-        title: "Could not attach metering point",
-        message:
-          (error as { status?: number }).status === 409
-            ? "This metering point already has an overlapping supply period."
-            : error.message,
+        title: t("couldNotAttachMeteringPoint"),
+        message: (error as { status?: number }).status === 409 ? t("overlappingSupplyPeriod") : error.message,
       }),
   });
   return (
-    <Modal opened={opened} onClose={onClose} title="Attach metering point" centered>
+    <Modal opened={opened} onClose={onClose} title={t("attachMeteringPoint")} centered>
       <form
         onSubmit={form.onSubmit((values) =>
           mutation.mutate({
@@ -58,25 +58,25 @@ export const AttachMeteringPointModal = ({
       >
         <Stack>
           <Select
-            label="Metering point"
-            placeholder="Search GSRN or meter number"
+            label={t("meteringPoints")}
+            placeholder={t("searchGsrnOrMeterNumber")}
             withAsterisk
             searchable
             searchValue={searchInput}
             onSearchChange={setSearchInput}
             data={(data?.data ?? []).map((point) => ({
               value: String(point.id),
-              label: `${point.gsrn} · ${point.meterNumber ?? "—"}`,
+              label: `${point.gsrn} · ${point.meterNumber ?? t("notAvailable")}`,
             }))}
             {...form.getInputProps("meteringPointId")}
           />
-          <TextInput label="Start" type="date" withAsterisk {...form.getInputProps("start")} />
+          <TextInput label={t("start")} type="date" withAsterisk {...form.getInputProps("start")} />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              Attach metering point
+              {t("attachMeteringPoint")}
             </Button>
           </Group>
         </Stack>

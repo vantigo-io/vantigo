@@ -2,9 +2,12 @@ import { Alert, Button, Card, Center, PasswordInput, Stack, Title } from "@manti
 import { useForm } from "@mantine/form";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import { resetPassword } from "../api/account-lifecycle";
 import { ApiValidationError } from "../api/request";
+import "../i18n";
 export const ResetPasswordPage = ({ email, token }: { email: string; token: string }) => {
+  const { t } = useI18n("host");
   const form = useForm({ initialValues: { password: "" } });
   const mutation = useMutation({
     mutationFn: () => resetPassword({ email, token, newPassword: form.values.password }),
@@ -14,7 +17,7 @@ export const ResetPasswordPage = ({ email, token }: { email: string; token: stri
     <Center mih="100vh" bg="gray.0">
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
-          <Title order={2}>Choose a new password</Title>
+          <Title order={2}>{t("auth.chooseNewPassword")}</Title>
           {mutation.error &&
             (validation ? (
               <Alert color="red">
@@ -23,21 +26,21 @@ export const ResetPasswordPage = ({ email, token }: { email: string; token: stri
                 ))}
               </Alert>
             ) : (
-              <Alert color="red">This reset link is invalid or expired.</Alert>
+              <Alert color="red">{t("auth.invalidReset")}</Alert>
             ))}
           {mutation.isSuccess ? (
-            <Alert color="teal">Your password has been reset. You can sign in now.</Alert>
+            <Alert color="teal">{t("auth.passwordReset")}</Alert>
           ) : (
             <form onSubmit={form.onSubmit(() => mutation.mutate())}>
               <Stack>
                 <PasswordInput
-                  label="New password"
+                  label={t("auth.newPassword")}
                   required
                   error={validation?.fieldErrors.newPassword}
                   {...form.getInputProps("password")}
                 />
                 <Button type="submit" loading={mutation.isPending}>
-                  Reset password
+                  {t("auth.resetPassword")}
                 </Button>
               </Stack>
             </form>

@@ -15,19 +15,17 @@ import {
 import { IconActivity, IconCloudLock, IconDatabase, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getIdentitySystemStatus } from "../../api/system-status";
+import "../../i18n";
 
-const date = (value: string | null) =>
-  value
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-    : null;
-const providerName = (value: string | null) => {
-  if (!value) return "Disabled";
+const providerName = (value: string | null, t: (key: string) => string) => {
+  if (!value) return t("common.disabled");
   if (value.toLowerCase().includes("entra") || value.toLowerCase().includes("azure")) return "Microsoft Entra ID";
   if (value.toLowerCase().includes("google")) return "Google Workspace";
-  return "Enabled";
+  return t("common.enabled");
 };
 
 const StatusCard = ({
@@ -89,6 +87,9 @@ const Metric = ({ label, value }: { label: string; value: string | number }) => 
 );
 
 const AdminDashboardPage = () => {
+  const { t, formatters } = useI18n("host");
+  const date = (value: string | null) =>
+    value ? formatters.formatDate(new Date(value), { dateStyle: "medium", timeStyle: "short" }) : null;
   const status = useQuery({ queryKey: ["owner-system-status"], queryFn: getIdentitySystemStatus });
   const loading = status.isPending;
   const failed = status.isError;
@@ -99,17 +100,17 @@ const AdminDashboardPage = () => {
   return (
     <Stack maw={1100} mx="auto" gap="xl">
       <div>
-        <Title order={2}>Admin dashboard</Title>
+        <Title order={2}>{t("admin.dashboard")}</Title>
         <Text c="dimmed" mt={4}>
-          A read-only overview of accounts and identity integrations.
+          {t("admin.overview")}
         </Text>
       </div>
       {failed && (
-        <Alert color="red" title="Status could not be loaded">
+        <Alert color="red" title={t("admin.statusLoadFailed")}>
           <Group justify="space-between" align="center">
-            <Text size="sm">No configuration details are shown here.</Text>
+            <Text size="sm">{t("admin.noConfiguration")}</Text>
             <Button size="compact-sm" variant="light" onClick={retry}>
-              Try again
+              {t("common.tryAgain")}
             </Button>
           </Group>
         </Alert>
@@ -128,85 +129,78 @@ const AdminDashboardPage = () => {
       {!loading && (
         <Stack gap="lg">
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-            <ManagementCard
-              title="People"
-              icon={IconUsers}
-              description="Manage team accounts, access, and sign-in security."
-            >
+            <ManagementCard title={t("admin.people")} icon={IconUsers} description={t("admin.peopleDescription")}>
               <SimpleGrid cols={{ base: 2, xs: 4 }}>
-                <Metric label="Total" value={status.data?.total ?? "—"} />
-                <Metric label="Active" value={status.data?.active ?? "—"} />
-                <Metric label="Disabled" value={status.data?.disabled ?? "—"} />
-                <Metric label="Pending invitations" value={status.data?.pendingInvitations ?? "—"} />
+                <Metric label={t("admin.total")} value={status.data?.total ?? "—"} />
+                <Metric label={t("admin.active")} value={status.data?.active ?? "—"} />
+                <Metric label={t("common.disabled")} value={status.data?.disabled ?? "—"} />
+                <Metric label={t("admin.pendingInvitations")} value={status.data?.pendingInvitations ?? "—"} />
               </SimpleGrid>
               <Anchor component={Link} to="/admin/users" size="sm" mt="lg" display="block">
-                View users
+                {t("admin.viewUsers")}
               </Anchor>
             </ManagementCard>
             <ManagementCard
-              title="Invitations"
+              title={t("admin.invitations")}
               icon={IconUsers}
-              description="Keep new team members moving through onboarding."
+              description={t("admin.invitationsDescription")}
             >
               <Group justify="space-between">
-                <Metric label="Pending invitations" value={status.data?.pendingInvitations ?? "—"} />
+                <Metric label={t("admin.pendingInvitations")} value={status.data?.pendingInvitations ?? "—"} />
                 <Anchor component={Link} to="/admin/invitations" size="sm">
-                  Manage invitations
+                  {t("admin.manageInvitations")}
                 </Anchor>
               </Group>
             </ManagementCard>
             <ManagementCard
-              title="Access control"
+              title={t("admin.accessControl")}
               icon={IconUsers}
-              description="Review roles, assignments, and delegated administration."
+              description={t("admin.accessControlDescription")}
             >
               <Anchor component={Link} to="/admin/roles" size="sm">
-                Manage roles &amp; access
+                {t("admin.manageRoles")}
               </Anchor>
             </ManagementCard>
-            <StatusCard title="Identity integrations" icon={IconCloudLock}>
+            <StatusCard title={t("admin.identityIntegrations")} icon={IconCloudLock}>
               <Stack gap="sm">
                 <Group justify="space-between">
-                  <Text>SSO</Text>
+                  <Text>{t("admin.sso")}</Text>
                   <Badge color={status.data?.staticOidcEnabled ? "teal" : "gray"}>
-                    {providerName(status.data?.staticOidcProvider ?? null)}
+                    {providerName(status.data?.staticOidcProvider ?? null, t)}
                   </Badge>
                 </Group>
                 <Group justify="space-between">
-                  <Text>Client authentication</Text>
+                  <Text>{t("admin.clientAuthentication")}</Text>
                   <Text size="sm" c="dimmed">
-                    Managed by deployment
+                    {t("admin.managedByDeployment")}
                   </Text>
                 </Group>
                 <Group justify="space-between">
-                  <Text>Last successful SSO use</Text>
+                  <Text>{t("admin.lastSsoUse")}</Text>
                   <Text size="sm" c="dimmed">
-                    {ssoLastUsed ?? "No successful sign-ins yet"}
+                    {ssoLastUsed ?? t("admin.noSuccessfulSignIns")}
                   </Text>
                 </Group>
               </Stack>
             </StatusCard>
-            <StatusCard title="SCIM provisioning" icon={IconDatabase}>
+            <StatusCard title={t("admin.scim")} icon={IconDatabase}>
               <Stack gap="sm">
                 <Group justify="space-between">
-                  <Text>Status</Text>
+                  <Text>{t("admin.status")}</Text>
                   <Badge color={status.data?.staticScimEnabled ? "teal" : "gray"}>
-                    {status.data?.staticScimEnabled ? "Enabled" : "Disabled"}
+                    {status.data?.staticScimEnabled ? t("common.enabled") : t("common.disabled")}
                   </Badge>
                 </Group>
                 <Group justify="space-between">
-                  <Text>Last authenticated request</Text>
+                  <Text>{t("admin.lastAuthenticatedRequest")}</Text>
                   <Text size="sm" c="dimmed">
-                    {scimLastUsed ?? "No authenticated requests yet"}
+                    {scimLastUsed ?? t("admin.noAuthenticatedRequests")}
                   </Text>
                 </Group>
               </Stack>
             </StatusCard>
-            <StatusCard title="Operational activity" icon={IconActivity}>
-              <Text c="dimmed">
-                This overview reports only non-sensitive identity activity. Credentials, authorities, and provider
-                configuration details are intentionally not displayed.
-              </Text>
+            <StatusCard title={t("admin.operationalActivity")} icon={IconActivity}>
+              <Text c="dimmed">{t("admin.activityDescription")}</Text>
             </StatusCard>
           </SimpleGrid>
         </Stack>

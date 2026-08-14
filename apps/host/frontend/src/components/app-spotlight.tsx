@@ -7,7 +7,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { contactsQueryOptions } from "@vantigo/customers-ui/api/contacts";
 import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import "../i18n";
 import { hasPermissions, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
@@ -25,6 +27,7 @@ interface AppSpotlightProps {
  * to the app sections plus live search across customers and contacts.
  */
 export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onNavigate }: AppSpotlightProps) => {
+  const { t } = useI18n("host");
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebouncedValue(query, 300);
@@ -34,7 +37,7 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
   const navigationActions = visibleNavSections(permissions, isOwner, canManageAuthorization).flatMap((section) =>
     section.items.map((item) => ({
       ...item,
-      description: `Open ${item.label.toLowerCase()}`,
+      description: t("navigation.open", { label: t(item.label).toLowerCase() }),
     })),
   );
   const canSearchCustomers = hasPermissions(permissions, ["customers:view"]);
@@ -54,7 +57,7 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
   });
 
   const matchingNavigation = navigationActions.filter((action) =>
-    action.label.toLowerCase().includes(query.trim().toLowerCase()),
+    t(action.label).toLowerCase().includes(query.trim().toLowerCase()),
   );
   const customerResults = searchEnabled && canSearchCustomers ? (customers.data?.data ?? []) : [];
   const contactResults = searchEnabled && canSearchContacts ? (contacts.data?.data ?? []) : [];
@@ -65,17 +68,17 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
   return (
     <Spotlight.Root shortcut="mod + K" query={query} onQueryChange={setQuery} onSpotlightClose={() => setQuery("")}>
       <Spotlight.Search
-        placeholder="Search customers, contacts..."
+        placeholder={t("navigation.search")}
         leftSection={<IconSearch size={20} stroke={1.5} />}
         rightSection={isSearching && <Loader size="xs" />}
       />
       <Spotlight.ActionsList>
         {matchingNavigation.length > 0 && (
-          <Spotlight.ActionsGroup label="Navigation">
+          <Spotlight.ActionsGroup label={t("navigation.navigation")}>
             {matchingNavigation.map((action) => (
               <Spotlight.Action
                 key={action.to}
-                label={action.label}
+                label={t(action.label)}
                 description={action.description}
                 leftSection={<action.icon size={20} stroke={1.5} />}
                 onClick={() =>
@@ -92,12 +95,12 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
         )}
 
         {customerResults.length > 0 && (
-          <Spotlight.ActionsGroup label="Customers">
+          <Spotlight.ActionsGroup label={t("navigation.customers")}>
             {customerResults.map((customer) => (
               <Spotlight.Action
                 key={customer.id}
                 label={customer.name}
-                description={"Customer"}
+                description={t("navigation.customer")}
                 leftSection={<IconBuilding size={20} stroke={1.5} />}
                 onClick={() =>
                   handleNavigate(() => navigate({ to: "/customers/$customerId", params: { customerId: customer.id } }))
@@ -108,13 +111,14 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
         )}
 
         {contactResults.length > 0 && (
-          <Spotlight.ActionsGroup label="Contacts">
+          <Spotlight.ActionsGroup label={t("navigation.contacts")}>
             {contactResults.map((item) => (
               <Spotlight.Action
                 key={item.contact.id}
                 label={formatContactName(item.contact)}
                 description={
-                  [item.contact.email, item.contact.phone].filter(Boolean).join(" · ") || "No contact details"
+                  [item.contact.email, item.contact.phone].filter(Boolean).join(" · ") ||
+                  t("navigation.noContactDetails")
                 }
                 leftSection={<IconUser size={20} stroke={1.5} />}
                 onClick={() =>
@@ -133,7 +137,7 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
           ) : (
             <Spotlight.Empty>
               <Text c="dimmed" size="sm">
-                Nothing found...
+                {t("navigation.nothingFound")}
               </Text>
             </Spotlight.Empty>
           ))}

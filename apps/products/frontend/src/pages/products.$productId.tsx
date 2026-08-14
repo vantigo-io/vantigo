@@ -21,8 +21,9 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconArchive, IconPackage, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import "../i18n";
 import { categoriesQueryOptions, categoryPath } from "../api/categories";
 import {
   addProductPrice,
@@ -42,10 +43,7 @@ import {
 import { toIsoTimestamp, toPickerValue } from "../lib/dates";
 import { ProductFormModal, type ProductModalState } from "./-product-form-modal";
 
-const formatDateTime = (value: string | null) => (value ? new Date(value).toLocaleString() : "Open-ended");
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
-
-const formatPrice = (price: { amount: number; currency: string }) => `${price.amount.toFixed(2)} ${price.currency}`;
 
 type PriceModalState = { mode: "add" } | { mode: "edit"; price: PriceRow };
 type VariantModalState = { mode: "add" } | { mode: "edit"; variant: VariantResponse };
@@ -58,6 +56,7 @@ interface PriceFormValues {
 }
 
 export const ProductDetailsPage = () => {
+  const { t, formatters } = useI18n("products");
   const { productId } = useParams({ strict: false }) as { productId: number };
   const queryClient = useQueryClient();
   const { data: product } = useSuspenseQuery(productQueryOptions(productId));
@@ -73,8 +72,8 @@ export const ProductDetailsPage = () => {
   const priceForm = useForm<PriceFormValues>({
     initialValues: { currency: "NOK", amount: "", validFrom: null, validTo: null },
     validate: {
-      currency: (value) => (/^[A-Za-z]{3}$/.test(value) ? null : "Enter a 3-letter currency code"),
-      amount: (value) => (Number(value) >= 0 ? null : "Amount must be zero or greater"),
+      currency: (value) => (/^[A-Za-z]{3}$/.test(value) ? null : t("prices.validCurrency")),
+      amount: (value) => (Number(value) >= 0 ? null : t("prices.validAmount")),
     },
   });
 
@@ -86,7 +85,11 @@ export const ProductDetailsPage = () => {
   const archive = useMutation({
     mutationFn: () => archiveProduct(product.id),
     onSuccess: () => {
-      notifications.show({ color: "teal", title: "Product archived", message: `"${product.name}" was discontinued.` });
+      notifications.show({
+        color: "teal",
+        title: t("prices.archived"),
+        message: t("prices.archivedMessage", { name: product.name }),
+      });
       void queryClient.invalidateQueries({ queryKey: ["products"] });
     },
   });
@@ -100,7 +103,7 @@ export const ProductDetailsPage = () => {
       setPriceModal(null);
       priceForm.reset();
     },
-    onError: (error) => notifications.show({ color: "red", title: "Failed to save price", message: error.message }),
+    onError: (error) => notifications.show({ color: "red", title: t("prices.failedToSave"), message: error.message }),
   });
   const removal = useMutation({
     mutationFn: (priceId: number) => deleteProductPrice(product.id, variant.id, priceId),
@@ -115,7 +118,8 @@ export const ProductDetailsPage = () => {
       void queryClient.invalidateQueries({ queryKey: ["products", product.id] });
       setVariantModal(null);
     },
-    onError: (error) => notifications.show({ color: "red", title: "Could not save variant", message: error.message }),
+    onError: (error) =>
+      notifications.show({ color: "red", title: t("prices.couldNotSaveVariant"), message: error.message }),
   });
   const variantRemoval = useMutation({
     mutationFn: (id: number) => deleteProductVariant(product.id, id),
@@ -123,9 +127,8 @@ export const ProductDetailsPage = () => {
     onError: (error) =>
       notifications.show({
         color: "red",
-        title: "Could not delete variant",
-        message:
-          (error as { status?: number }).status === 409 ? "A product must keep at least one variant." : error.message,
+        title: t("prices.couldNotDeleteVariant"),
+        message: (error as { status?: number }).status === 409 ? t("prices.lastVariant") : error.message,
       }),
   });
 
@@ -174,27 +177,24 @@ export const ProductDetailsPage = () => {
 
   const confirmArchive = () =>
     modals.openConfirmModal({
-      title: "Archive product",
+      title: t("prices.archiveTitle"),
       centered: true,
-      children: (
-        <Text size="sm">
-          Archive <b>{product.name}</b>? The product is marked as discontinued and can no longer be sold, but it is kept
-          for historical references.
-        </Text>
-      ),
-      labels: { confirm: "Archive", cancel: "Cancel" },
+      children: <Text size="sm">{t("prices.archiveConfirm", { name: product.name })}</Text>,
+      labels: { confirm: t("prices.archive"), cancel: t("common.cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => archive.mutate(),
     });
 
   const confirmDeletePrice = (price: PriceRow) =>
     modals.openConfirmModal({
-      title: "Delete price",
+      title: t("prices.deleteTitle"),
       centered: true,
       children: (
-        <Text size="sm">Delete the {formatPrice(price)} price row? This also removes it from the price history.</Text>
+        <Text size="sm">
+          {t("prices.deleteConfirm", { price: formatters.formatCurrency(price.amount, price.currency) })}
+        </Text>
       ),
-      labels: { confirm: "Delete", cancel: "Cancel" },
+      labels: { confirm: t("common.delete"), cancel: t("common.cancel") },
       confirmProps: { color: "red" },
       onConfirm: () => removal.mutate(price.id),
     });
@@ -212,19 +212,19 @@ export const ProductDetailsPage = () => {
     <Stack gap="lg">
       <Breadcrumbs>
         <Anchor component={Link} to="/products" size="sm">
-          Products
+          {t("navigation.products")}
         </Anchor>
         <Text size="sm">{product.name}</Text>
       </Breadcrumbs>
       <PageHeader
-        eyebrow="Products"
+        eyebrow={t("navigation.products")}
         title={
           <>
             <IconPackage size={28} /> {product.name}
-            <Badge color={statusColor(product.status)}>{product.status}</Badge>
+            <Badge color={statusColor(product.status)}>{t(`status.${product.status}`)}</Badge>
           </>
         }
-        description="Details, variants, and pricing for this product."
+        description={t("prices.detailsDescription")}
         actions={
           <Group>
             <Button
@@ -232,11 +232,11 @@ export const ProductDetailsPage = () => {
               leftSection={<IconPencil size={16} />}
               onClick={() => setModalState({ mode: "edit", product })}
             >
-              Edit product
+              {t("productForm.editTitle")}
             </Button>
             {product.status !== "Discontinued" && (
               <Button color="red" variant="light" leftSection={<IconArchive size={16} />} onClick={confirmArchive}>
-                Archive
+                {t("prices.archive")}
               </Button>
             )}
           </Group>
@@ -245,35 +245,40 @@ export const ProductDetailsPage = () => {
       <ProductFormModal state={modalState} onClose={() => setModalState(null)} />
       <Card withBorder>
         <Stack>
-          <Title order={3}>Product details</Title>
+          <Title order={3}>{t("prices.productDetails")}</Title>
           <Group>
             <Text>
-              <b>SKU:</b> {product.sku}
+              <b>{t("common.sku")}:</b> {product.sku}
             </Text>
             <Text>
-              <b>Type:</b> {product.type}
+              <b>{t("common.type")}:</b> {t(`type.${product.type}`)}
             </Text>
             <Text>
-              <b>Category:</b>{" "}
+              <b>{t("common.category")}:</b>{" "}
               {product.category
                 ? (categories && categoryPath(categories, product.category.id)) || product.category.name
-                : "—"}
+                : t("common.noValue")}
             </Text>
             <Text>
-              <b>Barcode:</b> {product.barcode ?? "—"}
+              <b>{t("prices.barcode")}:</b> {product.barcode ?? t("common.noValue")}
             </Text>
             <Text>
-              <b>Unit:</b> {product.unit || "—"}
+              <b>{t("common.unit")}:</b> {product.unit || t("common.noValue")}
             </Text>
             <Text>
-              <b>Standard cost:</b> {product.standardCost ?? "—"}
+              <b>{t("prices.standardCost")}:</b> {product.standardCost ?? t("common.noValue")}
             </Text>
             <Text>
-              <b>Tax category:</b> {product.taxCategory.name} ({product.taxCategory.rate * 100}%)
+              <b>{t("common.taxCategory")}:</b> {product.taxCategory.name} (
+              {formatters.formatNumber(product.taxCategory.rate * 100)}%)
             </Text>
             <Text>
-              <b>Current price:</b>{" "}
-              {product.effectivePrices.length > 0 ? product.effectivePrices.map(formatPrice).join(" · ") : "—"}
+              <b>{t("prices.currentPrice")}:</b>{" "}
+              {product.effectivePrices.length > 0
+                ? product.effectivePrices
+                    .map((price) => formatters.formatCurrency(price.amount, price.currency))
+                    .join(" · ")
+                : t("common.noValue")}
             </Text>
           </Group>
           {product.description && <Text style={{ whiteSpace: "pre-wrap" }}>{product.description}</Text>}
@@ -282,13 +287,14 @@ export const ProductDetailsPage = () => {
             product.widthCm !== null ||
             product.heightCm !== null) && (
             <Stack gap={4}>
-              <Title order={4}>Logistics</Title>
+              <Title order={4}>{t("prices.logistics")}</Title>
               <Group>
                 <Text>
-                  <b>Weight:</b> {product.weightKg !== null ? `${product.weightKg} kg` : "—"}
+                  <b>{t("prices.weight")}:</b>{" "}
+                  {product.weightKg !== null ? `${product.weightKg} kg` : t("common.noValue")}
                 </Text>
                 <Text>
-                  <b>Dimensions (L×W×H):</b>{" "}
+                  <b>{t("prices.dimensions")}:</b>{" "}
                   {[product.lengthCm, product.widthCm, product.heightCm]
                     .map((value) => (value !== null ? `${value} cm` : "—"))
                     .join(" × ")}
@@ -302,20 +308,20 @@ export const ProductDetailsPage = () => {
         <Card withBorder>
           <Stack>
             <Group justify="space-between">
-              <Title order={3}>Variants</Title>
+              <Title order={3}>{t("common.variants")}</Title>
               <Button leftSection={<IconPlus size={16} />} onClick={() => openVariant()}>
-                Add variant
+                {t("prices.addVariant")}
               </Button>
             </Group>
             <Table.ScrollContainer minWidth={720}>
               <Table striped>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>SKU</Table.Th>
-                    <Table.Th>Option values</Table.Th>
-                    <Table.Th>Unit</Table.Th>
-                    <Table.Th>Cost</Table.Th>
-                    <Table.Th>Prices</Table.Th>
+                    <Table.Th>{t("common.sku")}</Table.Th>
+                    <Table.Th>{t("prices.optionValues")}</Table.Th>
+                    <Table.Th>{t("common.unit")}</Table.Th>
+                    <Table.Th>{t("common.cost")}</Table.Th>
+                    <Table.Th>{t("common.prices")}</Table.Th>
                     <Table.Th />
                   </Table.Tr>
                 </Table.Thead>
@@ -326,17 +332,21 @@ export const ProductDetailsPage = () => {
                       <Table.Td>
                         {Object.entries(item.optionValues)
                           .map(([key, value]) => `${key}: ${value}`)
-                          .join(" · ") || "—"}
+                          .join(" · ") || t("common.noValue")}
                       </Table.Td>
-                      <Table.Td>{item.unit || "—"}</Table.Td>
-                      <Table.Td>{item.standardCost ?? "—"}</Table.Td>
-                      <Table.Td>{item.effectivePrices.map(formatPrice).join(" · ") || "—"}</Table.Td>
+                      <Table.Td>{item.unit || t("common.noValue")}</Table.Td>
+                      <Table.Td>{item.standardCost ?? t("common.noValue")}</Table.Td>
+                      <Table.Td>
+                        {item.effectivePrices
+                          .map((price) => formatters.formatCurrency(price.amount, price.currency))
+                          .join(" · ") || t("common.noValue")}
+                      </Table.Td>
                       <Table.Td>
                         <Group gap={4}>
                           <Button
                             size="compact-sm"
                             variant="subtle"
-                            aria-label={`Edit ${item.sku}`}
+                            aria-label={t("common.editNamed", { name: item.sku })}
                             onClick={() => openVariant(item)}
                           >
                             <IconPencil size={16} />
@@ -345,7 +355,7 @@ export const ProductDetailsPage = () => {
                             size="compact-sm"
                             variant="subtle"
                             color="red"
-                            aria-label={`Delete ${item.sku}`}
+                            aria-label={t("common.deleteNamed", { name: item.sku })}
                             onClick={() => variantRemoval.mutate(item.id)}
                           >
                             <IconTrash size={16} />
@@ -363,23 +373,23 @@ export const ProductDetailsPage = () => {
       <Card withBorder>
         <Stack>
           <Group justify="space-between">
-            <Title order={3}>Prices</Title>
+            <Title order={3}>{t("common.prices")}</Title>
             <Button leftSection={<IconPlus size={16} />} onClick={openAddPrice}>
-              Add price
+              {t("prices.addPrice")}
             </Button>
           </Group>
           <Text size="sm" c="dimmed">
-            Prices are excluding VAT. Bounded rows are campaign prices. Times are shown in your local timezone.
+            {t("prices.pricesDescription")}
           </Text>
           <Table.ScrollContainer minWidth={640}>
             <Table striped>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Currency</Table.Th>
-                  <Table.Th>Amount</Table.Th>
-                  <Table.Th>Valid from</Table.Th>
-                  <Table.Th>Valid to</Table.Th>
-                  <Table.Th w={96} aria-label="Actions" />
+                  <Table.Th>{t("common.currency")}</Table.Th>
+                  <Table.Th>{t("common.amount")}</Table.Th>
+                  <Table.Th>{t("prices.validFrom")}</Table.Th>
+                  <Table.Th>{t("prices.validTo")}</Table.Th>
+                  <Table.Th w={96} aria-label={t("common.actions")} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -388,22 +398,30 @@ export const ProductDetailsPage = () => {
                     <Table.Td>{price.currency}</Table.Td>
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap">
-                        {price.amount.toFixed(2)}
+                        {formatters.formatNumber(price.amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         {product.effectivePrices.some((effective) => effective.id === price.id) && (
                           <Badge size="sm" color="teal" variant="light">
-                            Current
+                            {t("prices.currentBadge")}
                           </Badge>
                         )}
                       </Group>
                     </Table.Td>
-                    <Table.Td>{formatDateTime(price.validFrom)}</Table.Td>
-                    <Table.Td>{formatDateTime(price.validTo)}</Table.Td>
+                    <Table.Td>
+                      {price.validFrom
+                        ? formatters.formatDate(price.validFrom, { dateStyle: "medium", timeStyle: "short" })
+                        : t("prices.openEnded")}
+                    </Table.Td>
+                    <Table.Td>
+                      {price.validTo
+                        ? formatters.formatDate(price.validTo, { dateStyle: "medium", timeStyle: "short" })
+                        : t("prices.openEnded")}
+                    </Table.Td>
                     <Table.Td>
                       <Group gap={4} wrap="nowrap" justify="flex-end">
                         <Button
                           variant="subtle"
                           size="compact-sm"
-                          aria-label={`Edit ${price.currency} price`}
+                          aria-label={t("common.editNamed", { name: `${price.currency} ${t("common.price")}` })}
                           onClick={() => openEditPrice(price)}
                         >
                           <IconPencil size={16} />
@@ -412,7 +430,7 @@ export const ProductDetailsPage = () => {
                           variant="subtle"
                           color="red"
                           size="compact-sm"
-                          aria-label={`Delete ${price.currency} price`}
+                          aria-label={t("common.deleteNamed", { name: `${price.currency} ${t("common.price")}` })}
                           loading={removal.isPending && removal.variables === price.id}
                           onClick={() => confirmDeletePrice(price)}
                         >
@@ -425,57 +443,55 @@ export const ProductDetailsPage = () => {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
-          {prices.length === 0 && <Text c="dimmed">No prices configured.</Text>}
+          {prices.length === 0 && <Text c="dimmed">{t("prices.noPrices")}</Text>}
         </Stack>
       </Card>
       <Modal
         opened={priceModal !== null}
         onClose={() => setPriceModal(null)}
-        title={priceModal?.mode === "edit" ? "Edit price" : "Add price"}
+        title={priceModal?.mode === "edit" ? t("prices.editPrice") : t("prices.addPrice")}
         centered
       >
         <form onSubmit={submitPrice}>
           <Stack>
             {priceModal?.mode === "edit" && (
-              <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title="Editing rewrites this price row">
-                Recorded orders are unaffected — they snapshot prices — but anything re-reading this row will see the
-                new values. For a planned price change or campaign, prefer adding a new price row with a validity window
-                instead.
+              <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={t("prices.editingWarningTitle")}>
+                {t("prices.editingWarning")}
               </Alert>
             )}
             <TextInput
-              label="Currency"
-              description="ISO 4217 code"
+              label={t("common.currency")}
+              description={t("prices.isoCode")}
               withAsterisk
               {...priceForm.getInputProps("currency")}
             />
             <NumberInput
-              label="Amount (ex VAT)"
+              label={t("prices.amountExVat")}
               min={0}
               decimalScale={2}
               withAsterisk
               {...priceForm.getInputProps("amount")}
             />
             <DateTimePicker
-              label="Valid from"
-              description="Local time; leave empty for an open-ended base price"
+              label={t("prices.validFrom")}
+              description={t("prices.validFromDescription")}
               clearable
               valueFormat="YYYY-MM-DD HH:mm"
               {...priceForm.getInputProps("validFrom")}
             />
             <DateTimePicker
-              label="Valid to"
-              description="Local time, exclusive"
+              label={t("prices.validTo")}
+              description={t("prices.validToDescription")}
               clearable
               valueFormat="YYYY-MM-DD HH:mm"
               {...priceForm.getInputProps("validTo")}
             />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setPriceModal(null)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" loading={priceMutation.isPending}>
-                {priceModal?.mode === "edit" ? "Save price" : "Add price"}
+                {priceModal?.mode === "edit" ? t("prices.savePrice") : t("prices.addPriceSubmit")}
               </Button>
             </Group>
           </Stack>
@@ -484,25 +500,30 @@ export const ProductDetailsPage = () => {
       <Modal
         opened={variantModal !== null}
         onClose={() => setVariantModal(null)}
-        title={variantModal?.mode === "edit" ? "Edit variant" : "Add variant"}
+        title={variantModal?.mode === "edit" ? t("prices.editVariant") : t("prices.addVariantTitle")}
         centered
       >
         <form onSubmit={submitVariant}>
           <Stack>
-            <TextInput label="SKU" withAsterisk {...variantForm.getInputProps("sku")} />
+            <TextInput label={t("prices.skuRequired")} withAsterisk {...variantForm.getInputProps("sku")} />
             <TextInput
-              label="Option values"
-              description="Color=Blue, Size=M"
+              label={t("prices.optionValues")}
+              description={t("prices.optionValuesPlaceholder")}
               {...variantForm.getInputProps("optionValues")}
             />
-            <TextInput label="Unit" {...variantForm.getInputProps("unit")} />
-            <NumberInput label="Unit cost" min={0} decimalScale={2} {...variantForm.getInputProps("standardCost")} />
+            <TextInput label={t("common.unit")} {...variantForm.getInputProps("unit")} />
+            <NumberInput
+              label={t("prices.unitCost")}
+              min={0}
+              decimalScale={2}
+              {...variantForm.getInputProps("standardCost")}
+            />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setVariantModal(null)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" loading={variantMutation.isPending}>
-                Save variant
+                {t("prices.saveVariant")}
               </Button>
             </Group>
           </Stack>

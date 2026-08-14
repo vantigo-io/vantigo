@@ -1,3 +1,5 @@
+import "./i18n";
+
 export * from "./api/categories";
 export * from "./api/products";
 export * from "./api/tax-categories";

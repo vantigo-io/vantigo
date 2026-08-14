@@ -19,9 +19,12 @@ import { notifications } from "@mantine/notifications";
 import { IconDots, IconMailForward, IconPlus, IconUserPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { type Invitation, invitationAction, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { translateHostRole } from "../../i18n";
+import "../../i18n";
 
 const status = (item: Invitation) =>
   item.revokedAt
@@ -32,7 +35,16 @@ const status = (item: Invitation) =>
         ? "expired"
         : "pending";
 const colors = { pending: "blue", expired: "orange", revoked: "gray", accepted: "teal" } as const;
+const statusLabel = (value: ReturnType<typeof status>, t: (key: string) => string) =>
+  value === "pending"
+    ? t("common.pending")
+    : value === "expired"
+      ? t("common.expired")
+      : value === "revoked"
+        ? t("common.revoked")
+        : t("common.accepted");
 const InvitationsPage = () => {
+  const { t, formatters } = useI18n("host");
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ["owner-invitations"], queryFn: listInvitations, refetchInterval: 30000 });
   const [search, setSearch] = useState("");
@@ -42,16 +54,16 @@ const InvitationsPage = () => {
     onSuccess: (_, v) => {
       void qc.invalidateQueries({ queryKey: ["owner-invitations"] }).then(() =>
         notifications.show({
-          title: v.kind === "revoke" ? "Invitation revoked" : "Invitation resent",
-          message: "The invitation list is up to date.",
+          title: v.kind === "revoke" ? t("admin.invitationRevoked") : t("admin.invitationResent"),
+          message: t("admin.invitationListUpdated"),
           color: "teal",
         }),
       );
     },
     onError: (error, v) =>
       notifications.show({
-        title: v.kind === "revoke" ? "Invitation could not be revoked" : "Invitation could not be resent",
-        message: error instanceof Error ? error.message : "Try again.",
+        title: v.kind === "revoke" ? t("admin.invitationRevokeFailed") : t("admin.invitationResendFailed"),
+        message: error instanceof Error ? error.message : t("common.tryAgain"),
         color: "red",
       }),
   });
@@ -67,9 +79,9 @@ const InvitationsPage = () => {
   const act = (i: Invitation, kind: "revoke" | "resend") =>
     kind === "revoke"
       ? modals.openConfirmModal({
-          title: "Revoke invitation?",
-          children: <Text size="sm">{i.email} will no longer be able to use this invitation.</Text>,
-          labels: { confirm: "Revoke", cancel: "Cancel" },
+          title: t("admin.revokeInvitationQuestion"),
+          children: <Text size="sm">{t("admin.invitationWillNotWork", { email: i.email })}</Text>,
+          labels: { confirm: t("admin.revoke"), cancel: t("common.cancel") },
           confirmProps: { color: "red" },
           onConfirm: () => action.mutate({ id: i.id, kind }),
         })
@@ -80,21 +92,21 @@ const InvitationsPage = () => {
         <div>
           <Group gap="sm">
             <IconMailForward size={30} color="var(--mantine-color-vantigo-6)" />
-            <Title order={2}>Invitations</Title>
+            <Title order={2}>{t("admin.invitations")}</Title>
           </Group>
           <Text c="dimmed" mt={5}>
-            Track team invitations and keep access moving.
+            {t("admin.invitationsDescriptionShort")}
           </Text>
         </div>
         <Button component={Link} to="/admin/users" leftSection={<IconPlus size={16} />}>
-          Invite someone
+          {t("admin.inviteSomeone")}
         </Button>
       </Group>
       <Card withBorder radius="md" p={0} style={{ overflow: "hidden" }}>
         <Group p="md">
           <TextInput
-            label="Search invitations"
-            placeholder="Search by name or email"
+            label={t("admin.searchInvitations")}
+            placeholder={t("admin.searchNameEmail")}
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
             style={{ flex: "1 1 280px" }}
@@ -102,15 +114,23 @@ const InvitationsPage = () => {
           <SimpleGrid cols={5} spacing={5} style={{ flex: "1 1 360px" }}>
             {["all", "pending", "expired", "revoked", "accepted"].map((v) => (
               <Button key={v} variant={filter === v ? "filled" : "subtle"} size="xs" onClick={() => setFilter(v)}>
-                {v[0].toUpperCase() + v.slice(1)}
+                {v === "all"
+                  ? t("common.all")
+                  : v === "pending"
+                    ? t("common.pending")
+                    : v === "expired"
+                      ? t("common.expired")
+                      : v === "revoked"
+                        ? t("common.revoked")
+                        : t("common.accepted")}
               </Button>
             ))}
           </SimpleGrid>
         </Group>
         {query.isError ? (
-          <Alert m="md" color="red" title="Invitations could not be loaded">
+          <Alert m="md" color="red" title={t("admin.invitationLoadFailed")}>
             <Button size="compact-sm" variant="light" onClick={() => void query.refetch()}>
-              Try again
+              {t("common.tryAgain")}
             </Button>
           </Alert>
         ) : query.isPending ? (
@@ -122,7 +142,7 @@ const InvitationsPage = () => {
         ) : items.length === 0 ? (
           <Stack align="center" p={50}>
             <IconUserPlus size={38} color="var(--mantine-color-gray-5)" />
-            <Text c="dimmed">No invitations match your filters.</Text>
+            <Text c="dimmed">{t("admin.noInvitationFilters")}</Text>
           </Stack>
         ) : (
           <>
@@ -130,10 +150,10 @@ const InvitationsPage = () => {
               <Table verticalSpacing="md" highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Recipient</Table.Th>
-                    <Table.Th>Role</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Created / expires</Table.Th>
+                    <Table.Th>{t("admin.recipient")}</Table.Th>
+                    <Table.Th>{t("common.role")}</Table.Th>
+                    <Table.Th>{t("admin.status")}</Table.Th>
+                    <Table.Th>{t("admin.createdExpires")}</Table.Th>
                     <Table.Th />
                   </Table.Tr>
                 </Table.Thead>
@@ -144,7 +164,7 @@ const InvitationsPage = () => {
                         <Group gap="sm">
                           <Avatar name={i.displayName || i.email} color="initials" />
                           <div>
-                            <Text fw={600}>{i.displayName || "Unnamed user"}</Text>
+                            <Text fw={600}>{i.displayName || t("admin.unnamedUser")}</Text>
                             <Text size="sm" c="dimmed">
                               {i.email}
                             </Text>
@@ -152,22 +172,27 @@ const InvitationsPage = () => {
                         </Group>
                       </Table.Td>
                       <Table.Td>
-                        <Badge variant="light">{i.role}</Badge>
+                        <Badge variant="light">{translateHostRole(i.role, t)}</Badge>
                       </Table.Td>
                       <Table.Td>
                         <Badge color={colors[status(i)]} variant="dot">
-                          {status(i)}
+                          {statusLabel(status(i), t)}
                         </Badge>
                       </Table.Td>
                       <Table.Td>
                         <Text size="sm">
-                          {new Date(i.createdAt).toLocaleDateString()} · {new Date(i.expiresAt).toLocaleDateString()}
+                          {formatters.formatDate(new Date(i.createdAt), { dateStyle: "medium" })} ·{" "}
+                          {formatters.formatDate(new Date(i.expiresAt), { dateStyle: "medium" })}
                         </Text>
                       </Table.Td>
                       <Table.Td ta="right">
                         <Menu>
                           <Menu.Target>
-                            <Button variant="subtle" size="compact-sm" aria-label={`Actions for ${i.email}`}>
+                            <Button
+                              variant="subtle"
+                              size="compact-sm"
+                              aria-label={t("admin.actionsFor", { user: i.email })}
+                            >
                               <IconDots size={18} />
                             </Button>
                           </Menu.Target>
@@ -177,14 +202,14 @@ const InvitationsPage = () => {
                               onClick={() => act(i, "resend")}
                               disabled={action.isPending || status(i) === "accepted" || status(i) === "revoked"}
                             >
-                              Resend
+                              {t("admin.resend")}
                             </Menu.Item>
                             <Menu.Item
                               color="red"
                               onClick={() => act(i, "revoke")}
                               disabled={action.isPending || status(i) === "accepted" || status(i) === "revoked"}
                             >
-                              Revoke
+                              {t("admin.revoke")}
                             </Menu.Item>
                           </Menu.Dropdown>
                         </Menu>
@@ -201,7 +226,7 @@ const InvitationsPage = () => {
                     <Group gap="sm">
                       <Avatar name={i.displayName || i.email} color="initials" />
                       <div>
-                        <Text fw={600}>{i.displayName || "Unnamed user"}</Text>
+                        <Text fw={600}>{i.displayName || t("admin.unnamedUser")}</Text>
                         <Text size="sm" c="dimmed">
                           {i.email}
                         </Text>
@@ -209,7 +234,11 @@ const InvitationsPage = () => {
                     </Group>
                     <Menu>
                       <Menu.Target>
-                        <Button variant="subtle" size="compact-sm" aria-label={`Actions for invitation to ${i.email}`}>
+                        <Button
+                          variant="subtle"
+                          size="compact-sm"
+                          aria-label={t("admin.actionsForInvitation", { email: i.email })}
+                        >
                           <IconDots size={18} />
                         </Button>
                       </Menu.Target>
@@ -218,22 +247,22 @@ const InvitationsPage = () => {
                           onClick={() => act(i, "resend")}
                           disabled={action.isPending || status(i) === "accepted" || status(i) === "revoked"}
                         >
-                          Resend
+                          {t("admin.resend")}
                         </Menu.Item>
                         <Menu.Item
                           color="red"
                           onClick={() => act(i, "revoke")}
                           disabled={action.isPending || status(i) === "accepted" || status(i) === "revoked"}
                         >
-                          Revoke
+                          {t("admin.revoke")}
                         </Menu.Item>
                       </Menu.Dropdown>
                     </Menu>
                   </Group>
                   <Group mt="md">
-                    <Badge variant="light">{i.role}</Badge>
+                    <Badge variant="light">{translateHostRole(i.role, t)}</Badge>
                     <Badge color={colors[status(i)]} variant="dot">
-                      {status(i)}
+                      {statusLabel(status(i), t)}
                     </Badge>
                   </Group>
                 </Card>

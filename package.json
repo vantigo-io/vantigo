@@ -45,6 +45,8 @@
       "eslint-plugin-react-hooks": "^7.1.1",
       "eslint-plugin-react-refresh": "^0.5.3",
       "globals": "^17.7.0",
+      "i18next": "^25.6.2",
+      "react-i18next": "^16.0.1",
       "react": "^19.2.8",
       "react-dom": "^19.2.8",
       "recharts": "^3.10.0",
@@ -59,6 +61,8 @@
     "frontend:lint": "bun run --cwd apps/customers/frontend lint && bun run --cwd apps/communications/frontend lint && bun run --cwd apps/products/frontend lint && bun run --cwd apps/energy/frontend lint && bun run --cwd apps/host/frontend lint",
     "frontend:test": "bun run --cwd apps/customers/frontend test && bun run --cwd apps/communications/frontend test && bun run --cwd apps/products/frontend test && bun run --cwd apps/energy/frontend test && bun run --cwd apps/host/frontend test",
     "frontend:build": "bun run --cwd apps/host/frontend build",
+    "translations:check": "bun run tools/i18n/check.ts",
+    "i18n:test": "bun run --cwd apps/customers/frontend vitest run --root ../../../packages/frontend-shell src/i18n && bun test tools/i18n",
     "prepare": "husky",
     "format:check": "biome check . && dotnet format \"Vantigo.slnx\" --verify-no-changes --no-restore",
     "format:write": "biome check --write . && dotnet format"

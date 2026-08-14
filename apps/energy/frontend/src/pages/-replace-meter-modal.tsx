@@ -2,7 +2,9 @@ import { Button, Group, Modal, Stack, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { ApiValidationError, replaceMeter } from "../api/energy";
+import "../i18n";
 
 type Values = { meterNumber: string; installedAt: string };
 
@@ -20,12 +22,13 @@ export const ReplaceMeterModal = ({
   opened: boolean;
   onClose: () => void;
 }) => {
+  const { t } = useI18n("energy");
   const client = useQueryClient();
   const form = useForm<Values>({
     initialValues: initialValues(),
     validate: {
-      meterNumber: (value) => (value.trim() ? null : "Meter number is required"),
-      installedAt: (value) => (value ? null : "Installation time is required"),
+      meterNumber: (value) => (value.trim() ? null : t("meterNumberRequired")),
+      installedAt: (value) => (value ? null : t("installationTimeRequired")),
     },
   });
   const mutation = useMutation({
@@ -39,24 +42,29 @@ export const ReplaceMeterModal = ({
     },
     onError: (error) => {
       if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
-      else notifications.show({ color: "red", title: "Could not replace meter", message: error.message });
+      else notifications.show({ color: "red", title: t("couldNotReplaceMeter"), message: error.message });
     },
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Replace meter" centered>
+    <Modal opened={opened} onClose={onClose} title={t("replaceMeterTitle")} centered>
       <form
         onSubmit={form.onSubmit((values) => mutation.mutate({ ...values, meterNumber: values.meterNumber.trim() }))}
       >
         <Stack>
-          <TextInput label="New meter number" withAsterisk {...form.getInputProps("meterNumber")} />
-          <TextInput label="Installed at" type="datetime-local" withAsterisk {...form.getInputProps("installedAt")} />
+          <TextInput label={t("newMeterNumber")} withAsterisk {...form.getInputProps("meterNumber")} />
+          <TextInput
+            label={t("installedAt")}
+            type="datetime-local"
+            withAsterisk
+            {...form.getInputProps("installedAt")}
+          />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              Replace meter
+              {t("replaceMeter")}
             </Button>
           </Group>
         </Stack>

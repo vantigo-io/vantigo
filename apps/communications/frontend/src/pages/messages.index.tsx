@@ -16,10 +16,12 @@ import {
 import { IconAlertCircle, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { messagesQueryOptions } from "../api/messages";
 import { statusColor, statusLabel } from "../lib/status";
+import "../i18n";
 export function MessagesPage() {
+  const { t, formatters } = useI18n("communications");
   const { page, archived } = useSearch({ strict: false }) as { page: number; archived?: boolean };
   const navigate = useNavigate() as (options: unknown) => void;
   const includeArchived = archived ?? false;
@@ -27,13 +29,15 @@ export function MessagesPage() {
   return (
     <Stack gap="xl">
       <PageHeader
-        eyebrow="Communications"
-        title="Messages"
-        description="Every message sent through your services, from submission to reply."
+        eyebrow={t("communications")}
+        title={t("messages")}
+        description={t("messagesDescription")}
         actions={
           q.data && (
             <Badge size="lg" variant="light">
-              {q.data.pagination.totalCount} messages
+              {t(q.data.pagination.totalCount === 1 ? "messageCountSingular" : "messageCountPlural", {
+                count: q.data.pagination.totalCount,
+              })}
             </Badge>
           )
         }
@@ -41,20 +45,20 @@ export function MessagesPage() {
       <Card withBorder radius="lg" padding="lg">
         <Group mb="lg" align="center" gap="md">
           <TextInput
-            placeholder="Search history"
+            placeholder={t("searchHistory")}
             leftSection={<IconSearch size={16} />}
             disabled
-            aria-label="Search history (coming soon)"
+            aria-label={t("searchHistoryComingSoon")}
             style={{ flex: 1 }}
           />
           <Switch
-            label="Show archived"
+            label={t("showArchived")}
             checked={includeArchived}
             onChange={(event) => navigate({ search: { page: 1, archived: event.currentTarget.checked || undefined } })}
           />
         </Group>
         {q.isError && (
-          <Alert color="red" icon={<IconAlertCircle size={16} />} title="Could not load messages">
+          <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("couldNotLoadMessages")}>
             {q.error.message}
           </Alert>
         )}
@@ -69,9 +73,9 @@ export function MessagesPage() {
             <Center py={70}>
               <Stack align="center">
                 <div className="empty-icon">✦</div>
-                <Title order={4}>No messages yet</Title>
+                <Title order={4}>{t("noMessagesYet")}</Title>
                 <Text c="dimmed" ta="center">
-                  Messages sent through your service will appear here.
+                  {t("messagesWillAppear")}
                 </Text>
               </Stack>
             </Center>
@@ -81,10 +85,10 @@ export function MessagesPage() {
                 <Table highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Message</Table.Th>
-                      <Table.Th>Recipients</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th>Created</Table.Th>
+                      <Table.Th>{t("message")}</Table.Th>
+                      <Table.Th>{t("recipients")}</Table.Th>
+                      <Table.Th>{t("status")}</Table.Th>
+                      <Table.Th>{t("created")}</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -93,11 +97,11 @@ export function MessagesPage() {
                         <Table.Td>
                           <Group gap="xs" wrap="nowrap">
                             <Link className="message-link" to="/messages/$messageId" params={{ messageId: m.id }}>
-                              {m.subject || `Message ${m.id}`}
+                              {m.subject || t("messageFallback", { id: m.id })}
                             </Link>
                             {m.archivedAt && (
                               <Badge size="xs" color="gray" variant="light">
-                                Archived
+                                {t("archived")}
                               </Badge>
                             )}
                           </Group>
@@ -105,12 +109,12 @@ export function MessagesPage() {
                         <Table.Td>{m.recipientCount}</Table.Td>
                         <Table.Td>
                           <Badge color={statusColor(m.status)} variant="light">
-                            {statusLabel(m.status)}
+                            {statusLabel(m.status, t)}
                           </Badge>
                         </Table.Td>
                         <Table.Td>
                           <Text size="sm" c="dimmed">
-                            {new Date(m.createdAt).toLocaleString()}
+                            {formatters.formatDate(m.createdAt, { dateStyle: "medium", timeStyle: "short" })}
                           </Text>
                         </Table.Td>
                       </Table.Tr>

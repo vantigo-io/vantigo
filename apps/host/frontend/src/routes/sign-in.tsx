@@ -3,13 +3,15 @@ import { useForm } from "@mantine/form";
 import { IconAlertCircle } from "@tabler/icons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { appConfig, appUrl, SupportContactLine } from "@vantigo/frontend-shell";
+import { appConfig, appUrl, SupportContactLine, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
-import { loginWithPasskey } from "../api/account";
+import { isPasskeyClientError, loginWithPasskey } from "../api/account";
 import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signIn } from "../api/auth";
+import "../i18n";
 
 const SignInPage = () => {
+  const { t } = useI18n("host");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const search = Route.useSearch();
@@ -23,11 +25,19 @@ const SignInPage = () => {
     fetchOidcProvider()
       .then((result) => setOidcProvider(result.oidc))
       .catch((error: unknown) =>
-        setOidcProviderError(error instanceof Error ? error.message : "OIDC sign-in is unavailable."),
+        setOidcProviderError(error instanceof Error ? error.message : t("auth.oidcUnavailable")),
       )
       .finally(() => setOidcProviderLoading(false));
-  }, []);
+  }, [t]);
   const form = useForm({ initialValues: { email: "", password: "" } });
+  const errorMessage = (error: unknown) => {
+    if (isPasskeyClientError(error)) {
+      if (error.code === "unsupported") return t("auth.passkeyUnsupported");
+      if (error.code === "cancelled") return t("auth.passkeySignInCancelled");
+      return t("auth.passkeySignInFailed");
+    }
+    return error instanceof Error ? error.message : t("common.requestFailed");
+  };
   const login = useMutation({
     mutationFn: (values: typeof form.values) => signIn(values.email, values.password),
     onSuccess: (data) => {
@@ -61,17 +71,15 @@ const SignInPage = () => {
       <Stack maw={440} w="100%" align="center">
         <Card withBorder shadow="sm" p="xl" w="100%">
           <Stack>
-            <Title order={2}>{showingMfa ? "Verify your sign-in" : "Welcome back"}</Title>
+            <Title order={2}>{showingMfa ? t("auth.verifySignIn") : t("auth.welcomeBack")}</Title>
             <Text c="dimmed">
-              {showingMfa
-                ? "Enter your authenticator or recovery code."
-                : `Sign in to continue to ${appConfig().title}.`}
+              {showingMfa ? t("auth.authenticatorRecoveryCode") : t("auth.signInContinue", { app: appConfig().title })}
             </Text>
             {(login.error || verify.error || passkeyLogin.error || search.error) && (
               <Alert icon={<IconAlertCircle size={18} />} color="red">
                 {search.error
-                  ? "Your identity provider could not complete sign-in. Try again or use another sign-in method."
-                  : (login.error || verify.error || passkeyLogin.error)?.message}
+                  ? t("auth.identityProviderError")
+                  : errorMessage(login.error || verify.error || passkeyLogin.error)}
               </Alert>
             )}
             {showingMfa ? (
@@ -83,12 +91,12 @@ const SignInPage = () => {
               >
                 <Stack>
                   <TextInput
-                    label="Security code"
+                    label={t("auth.securityCode")}
                     value={code}
                     onChange={(event) => setCode(event.currentTarget.value)}
                   />
                   <Button type="submit" loading={verify.isPending}>
-                    Verify
+                    {t("auth.verify")}
                   </Button>
                   <Button
                     type="button"
@@ -99,17 +107,21 @@ const SignInPage = () => {
                       void navigate({ to: "/sign-in", search: { error: undefined }, replace: true });
                     }}
                   >
-                    Use another sign-in method
+                    {t("auth.useAnotherMethod")}
                   </Button>
                 </Stack>
               </form>
             ) : (
               <form onSubmit={form.onSubmit((values) => login.mutate(values))}>
                 <Stack>
-                  <TextInput label="Email" autoComplete="email" {...form.getInputProps("email")} />
-                  <PasswordInput label="Password" autoComplete="current-password" {...form.getInputProps("password")} />
+                  <TextInput label={t("common.email")} autoComplete="email" {...form.getInputProps("email")} />
+                  <PasswordInput
+                    label={t("common.password")}
+                    autoComplete="current-password"
+                    {...form.getInputProps("password")}
+                  />
                   <Button type="submit" fullWidth loading={login.isPending}>
-                    Sign in
+                    {t("auth.signIn")}
                   </Button>
                   <Button
                     type="button"
@@ -119,19 +131,19 @@ const SignInPage = () => {
                     disabled={!form.values.email.trim()}
                     onClick={() => passkeyLogin.mutate()}
                   >
-                    Sign in with a passkey
+                    {t("auth.signInWithPasskey")}
                   </Button>
                   <Anchor component="a" href={appUrl("/forgot-password")} size="sm">
-                    Forgot your password?
+                    {t("auth.forgotPassword")}
                   </Anchor>
                   {oidcProviderLoading && (
                     <Text size="sm" c="dimmed" ta="center">
-                      Checking available sign-in methods…
+                      {t("auth.checkingMethods")}
                     </Text>
                   )}
                   {oidcProvider && (
                     <Button variant="default" component="a" href={appUrl("/api/v1/identity/oidc/challenge")}>
-                      Continue with {oidcProvider.displayName}
+                      {t("auth.continueWith", { provider: oidcProvider.displayName })}
                     </Button>
                   )}
                   {oidcProviderError && (

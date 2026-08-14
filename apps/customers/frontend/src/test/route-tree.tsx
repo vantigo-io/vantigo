@@ -4,7 +4,7 @@ import { useForm } from "@mantine/form";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { AppShellLayout, SpotlightSearchBox } from "@vantigo/frontend-shell";
+import { AppShellLayout, SpotlightSearchBox, useI18n } from "@vantigo/frontend-shell";
 import type { ReactElement } from "react";
 import { bootstrapAccount, createInvitation, fetchBootstrapStatus, mfaStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
@@ -14,8 +14,12 @@ import { ContactDetailsPage } from "../pages/contacts.$contactId";
 import { ContactsPage } from "../pages/contacts.index";
 import { CustomerDetailHeader, CustomerOverview } from "../pages/customers.$customerId";
 import { CustomersPage } from "../pages/customers.index";
+import "../i18n";
 
-const Dashboard = () => <Title order={2}>Dashboard</Title>;
+const Dashboard = () => {
+  const { t } = useI18n("customers");
+  return <Title order={2}>{t("dashboard")}</Title>;
+};
 
 const CustomerDetailsTestPage = () => {
   const { customerId } = useParams({ strict: false }) as { customerId: number };
@@ -28,6 +32,7 @@ const CustomerDetailsTestPage = () => {
 };
 
 const Setup = () => {
+  const { t } = useI18n("customers");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const status = useQuery({ queryKey: ["auth", "bootstrap-status"], queryFn: fetchBootstrapStatus, retry: false });
@@ -39,27 +44,31 @@ const Setup = () => {
       queryClient.setQueryData(sessionQueryKey, session);
       void navigate({ to: "/" });
     },
-    onError: (error) => showLifecycleFormError(error, form, "Setup could not be completed"),
+    onError: (error) =>
+      showLifecycleFormError(error, form, t("setupCouldNotBeCompleted"), {
+        accountExists: t("accountAlreadyExists"),
+        request: t("requestCouldNotComplete"),
+      }),
   });
   if (status.isPending)
     return (
       <Center mih="100vh">
-        <Text>Checking setup availability…</Text>
+        <Text>{t("checkingSetupAvailability")}</Text>
       </Center>
     );
   return (
     <Center mih="100vh">
       <Card withBorder p="xl" maw={460} w="100%">
         <Stack>
-          <Title order={2}>Set up Vantigo</Title>
+          <Title order={2}>{t("setupVantigo")}</Title>
           <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
             <Stack>
-              <TextInput label="Setup secret" {...form.getInputProps("secret")} />
-              <TextInput label="Display name" {...form.getInputProps("displayName")} />
-              <TextInput label="Email" {...form.getInputProps("email")} />
-              <PasswordInput label="Password" {...form.getInputProps("password")} />
+              <TextInput label={t("setupSecret")} {...form.getInputProps("secret")} />
+              <TextInput label={t("displayName")} {...form.getInputProps("displayName")} />
+              <TextInput label={t("email")} {...form.getInputProps("email")} />
+              <PasswordInput label={t("password")} {...form.getInputProps("password")} />
               <Button type="submit" loading={mutation.isPending}>
-                Create Owner account
+                {t("createOwnerAccount")}
               </Button>
             </Stack>
           </form>
@@ -71,26 +80,31 @@ const Setup = () => {
 };
 
 const Settings = () => {
+  const { t } = useI18n("customers");
   const mfa = useQuery({ queryKey: ["mfa"], queryFn: mfaStatus });
   const form = useForm({ initialValues: { email: "", displayName: "", role: "User" as "User" | "Owner" } });
   const mutation = useMutation({
     mutationFn: createInvitation,
     onSuccess: () => form.reset(),
-    onError: (error) => showLifecycleFormError(error, form, "Invitation could not be sent"),
+    onError: (error) =>
+      showLifecycleFormError(error, form, t("invitationCouldNotBeSent"), {
+        accountExists: t("accountAlreadyExists"),
+        request: t("requestCouldNotComplete"),
+      }),
   });
   return (
     <Stack>
-      <Title order={2}>Account settings</Title>
+      <Title order={2}>{t("accountSettings")}</Title>
       <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
         <Stack>
-          <TextInput label="Email" {...form.getInputProps("email")} />
-          <TextInput label="Display name" {...form.getInputProps("displayName")} />
+          <TextInput label={t("email")} {...form.getInputProps("email")} />
+          <TextInput label={t("displayName")} {...form.getInputProps("displayName")} />
           <Button type="submit" loading={mutation.isPending}>
-            Send invite
+            {t("sendInvite")}
           </Button>
         </Stack>
       </form>
-      <Text>{mfa.data?.twoFactorEnabled ? "Enabled" : "Not enabled"}</Text>
+      <Text>{mfa.data?.twoFactorEnabled ? t("automatic") : t("notEnabled")}</Text>
     </Stack>
   );
 };

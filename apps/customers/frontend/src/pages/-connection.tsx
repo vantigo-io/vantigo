@@ -2,24 +2,26 @@ import { Button, Group, Modal, Stack, Text, TextInput, Tooltip } from "@mantine/
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
-
 import { updateCustomerContact } from "../api/contacts";
 import { ApiValidationError } from "../api/customers";
 import { NoValue } from "../components/legal-badges";
+import "../i18n";
 
 /**
  * Shows the connection-specific value when set, otherwise falls back to the
  * contact's own value (dimmed, to signal it is inherited).
  */
 export const ConnectionValue = ({ own, connection }: { own: string | null; connection: string | null }) => {
+  const { t } = useI18n("customers");
   if (connection) {
     return <Text size="sm">{connection}</Text>;
   }
 
   if (own) {
     return (
-      <Tooltip label="The contact's own value — no connection-specific one is set">
+      <Tooltip label={t("inheritedValueTooltip")}>
         <Text size="sm" c="dimmed">
           {own}
         </Text>
@@ -36,15 +38,18 @@ export interface ConnectionFormValues {
   email: string;
 }
 
-export const ConnectionFields = ({ getInputProps }: { getInputProps: (path: string) => object }) => (
-  <>
-    <TextInput label="Role" placeholder="e.g. CEO" withAsterisk {...getInputProps("role")} />
-    <Group grow>
-      <TextInput label="Phone" description="Specific to this customer connection" {...getInputProps("phone")} />
-      <TextInput label="Email" description="Specific to this customer connection" {...getInputProps("email")} />
-    </Group>
-  </>
-);
+export const ConnectionFields = ({ getInputProps }: { getInputProps: (path: string) => object }) => {
+  const { t } = useI18n("customers");
+  return (
+    <>
+      <TextInput label={t("role")} placeholder={t("rolePlaceholder")} withAsterisk {...getInputProps("role")} />
+      <Group grow>
+        <TextInput label={t("phone")} description={t("connectionPhoneDescription")} {...getInputProps("phone")} />
+        <TextInput label={t("email")} description={t("connectionEmailDescription")} {...getInputProps("email")} />
+      </Group>
+    </>
+  );
+};
 
 /** Identifies the association being edited plus its current values and modal title. */
 export interface EditConnectionTarget {
@@ -69,11 +74,12 @@ interface EditConnectionModalProps {
  */
 export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProps) => {
   const queryClient = useQueryClient();
+  const { t } = useI18n("customers");
 
   const form = useForm<ConnectionFormValues>({
     initialValues: { role: "", phone: "", email: "" },
     validate: {
-      role: (value) => (value.trim().length === 0 ? "Role is required" : null),
+      role: (value) => (value.trim().length === 0 ? t("roleRequired") : null),
     },
   });
 
@@ -96,7 +102,7 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
   const mutation = useMutation({
     mutationFn: (values: ConnectionFormValues) => {
       if (!target) {
-        throw new Error("No association is being edited");
+        throw new Error(t("editConnection"));
       }
 
       return updateCustomerContact(target.customerId, target.contactId, {
@@ -108,8 +114,8 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
     onSuccess: () => {
       notifications.show({
         color: "teal",
-        title: "Connection updated",
-        message: target ? `The connection to "${target.counterpartName}" was updated.` : "",
+        title: t("connectionUpdated"),
+        message: target ? t("connectionUpdatedMessage", { name: target.counterpartName }) : "",
       });
       if (target) {
         queryClient.invalidateQueries({ queryKey: ["customers", target.customerId, "contacts"] });
@@ -123,7 +129,7 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
         form.setErrors(error.fieldErrors);
         return;
       }
-      notifications.show({ color: "red", title: "Failed to update connection", message: error.message });
+      notifications.show({ color: "red", title: t("failedUpdateConnection"), message: error.message });
     },
   });
 
@@ -131,7 +137,7 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
     <Modal
       opened={target !== null}
       onClose={onClose}
-      title={target ? `Edit connection — ${target.counterpartName}` : ""}
+      title={target ? t("editConnection", { name: target.counterpartName }) : ""}
       centered
     >
       <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
@@ -139,10 +145,10 @@ export const EditConnectionModal = ({ target, onClose }: EditConnectionModalProp
           <ConnectionFields getInputProps={form.getInputProps} />
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              Save changes
+              {t("saveChanges")}
             </Button>
           </Group>
         </Stack>

@@ -2,6 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { spotlight } from "@mantine/spotlight";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { i18n } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { navSections, visibleNavSections } from "../navigation";
 import { AppSpotlight } from "./app-spotlight";
@@ -57,11 +58,11 @@ const expectNavigationParity = async (
   canManageAuthorization: boolean,
 ) => {
   const expected = visibleNavSections(permissions, isOwner, canManageAuthorization).flatMap((section) =>
-    section.items.map((item) => item.label),
+    section.items.map((item) => i18n.t(item.label, { ns: "host", lng: "en" })),
   );
   const restricted = navSections
     .flatMap((section) => section.items)
-    .map((item) => item.label)
+    .map((item) => i18n.t(item.label, { ns: "host", lng: "en" }))
     .filter((label) => !expected.includes(label));
 
   await waitFor(() => {

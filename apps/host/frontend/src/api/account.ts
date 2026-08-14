@@ -1,7 +1,7 @@
 import { clearCsrfToken, ensureCsrfToken, request } from "./request";
 import { creationOptions, credentialJson, requestOptions, webAuthnAvailable } from "./webauthn";
 
-export type Language = "auto" | "en";
+export type Language = "auto" | "en" | "nb";
 export interface PersonalProfile {
   displayName: string;
   email: string | null;
@@ -43,6 +43,24 @@ export interface PasskeyLoginSession {
   mfaEnrollmentRequired?: boolean;
   mfaAuthenticated?: boolean;
 }
+export type PasskeyOperation = "enrollment" | "sign-in";
+export type PasskeyClientErrorCode = "unsupported" | "cancelled" | "failed";
+
+/** A stable error from the local WebAuthn ceremony, before any API submission. */
+export class PasskeyClientError extends Error {
+  readonly code: PasskeyClientErrorCode;
+  readonly operation: PasskeyOperation;
+
+  constructor(code: PasskeyClientErrorCode, operation: PasskeyOperation, cause?: unknown) {
+    super(code, cause === undefined ? undefined : { cause });
+    this.name = "PasskeyClientError";
+    this.code = code;
+    this.operation = operation;
+  }
+}
+
+export const isPasskeyClientError = (error: unknown): error is PasskeyClientError =>
+  error instanceof PasskeyClientError;
 
 const json = (method: string, body: unknown): RequestInit => ({
   method,
@@ -51,7 +69,12 @@ const json = (method: string, body: unknown): RequestInit => ({
 });
 const toProfile = (value: AccountResponse): PersonalProfile => ({
   ...value,
-  preferredLanguage: value.preferredLanguage?.toLowerCase() === "en" ? "en" : "auto",
+  preferredLanguage:
+    value.preferredLanguage?.trim().toLowerCase() === "en"
+      ? "en"
+      : value.preferredLanguage?.trim().toLowerCase() === "nb"
+        ? "nb"
+        : "auto",
 });
 const account = "/api/v1/identity/account";
 export const getProfile = async () => toProfile(await request<AccountResponse>(account));
@@ -108,38 +131,40 @@ export const completePasskeyLogin = async (ceremonyId: string, credential: strin
   return session;
 };
 
-const requireWebAuthn = () => {
-  if (!webAuthnAvailable()) throw new Error("Passkeys are not supported on this device or browser.");
+const requireWebAuthn = (operation: PasskeyOperation) => {
+  if (!webAuthnAvailable()) throw new PasskeyClientError("unsupported", operation);
 };
 const cancelled = (error: unknown) => error instanceof DOMException && error.name === "NotAllowedError";
 
-/** Runs the browser ceremony and submits the required JSON string to the API. */
-export const enrollPasskey = async (body: { name: string; currentPassword: string }) => {
-  requireWebAuthn();
-  const ceremony = await beginPasskeyEnrollment(body);
+const localCredentialJson = async (
+  operation: PasskeyOperation,
+  getCredential: () => Promise<Credential | null>,
+): Promise<string> => {
   try {
-    const credential = await navigator.credentials.create({ publicKey: creationOptions(ceremony.options) });
-    if (!credential) throw new Error("Passkey enrollment was cancelled.");
-    await completePasskeyEnrollment({
-      ...body,
-      ceremonyId: ceremony.ceremonyId,
-      credentialJson: JSON.stringify(credentialJson(credential)),
-    });
+    const credential = await getCredential();
+    if (!credential) throw new PasskeyClientError("cancelled", operation);
+    return JSON.stringify(credentialJson(credential));
   } catch (error) {
-    if (cancelled(error)) throw new Error("Passkey enrollment was cancelled.", { cause: error });
-    throw error;
+    if (error instanceof PasskeyClientError) throw error;
+    throw new PasskeyClientError(cancelled(error) ? "cancelled" : "failed", operation, error);
   }
 };
 
+/** Runs the browser ceremony and submits the required JSON string to the API. */
+export const enrollPasskey = async (body: { name: string; currentPassword: string }) => {
+  requireWebAuthn("enrollment");
+  const ceremony = await beginPasskeyEnrollment(body);
+  const credential = await localCredentialJson("enrollment", () =>
+    navigator.credentials.create({ publicKey: creationOptions(ceremony.options) }),
+  );
+  await completePasskeyEnrollment({ ...body, ceremonyId: ceremony.ceremonyId, credentialJson: credential });
+};
+
 export const loginWithPasskey = async (email: string) => {
-  requireWebAuthn();
+  requireWebAuthn("sign-in");
   const ceremony = await beginPasskeyLogin(email);
-  try {
-    const credential = await navigator.credentials.get({ publicKey: requestOptions(ceremony.options) });
-    if (!credential) throw new Error("Passkey sign-in was cancelled.");
-    return completePasskeyLogin(ceremony.ceremonyId, JSON.stringify(credentialJson(credential)));
-  } catch (error) {
-    if (cancelled(error)) throw new Error("Passkey sign-in was cancelled.", { cause: error });
-    throw error;
-  }
+  const credential = await localCredentialJson("sign-in", () =>
+    navigator.credentials.get({ publicKey: requestOptions(ceremony.options) }),
+  );
+  return completePasskeyLogin(ceremony.ceremonyId, credential);
 };

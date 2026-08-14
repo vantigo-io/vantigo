@@ -21,9 +21,9 @@ describe("navigation permissions", () => {
     const sections = visibleNavSections(["customers:view", "communications:messages-view"], false, false);
 
     expect(sections.flatMap((section) => section.items.map((item) => item.label))).toEqual([
-      "Customers",
-      "Messages",
-      "Settings",
+      "navigation.customers",
+      "navigation.messages",
+      "navigation.settings",
     ]);
   });
 
@@ -36,20 +36,20 @@ describe("navigation permissions", () => {
   it("does not expose users or invitations as direct owner destinations", () => {
     const ownerItems = visibleNavSections(["*"], true, true).flatMap((section) => section.items);
 
-    expect(ownerItems.map((item) => item.label)).not.toContain("Users");
-    expect(ownerItems.map((item) => item.label)).not.toContain("Invitations");
+    expect(ownerItems.map((item) => item.label)).not.toContain("admin.users");
+    expect(ownerItems.map((item) => item.label)).not.toContain("admin.invitations");
     expect(ownerItems.map((item) => item.to)).not.toContain("/admin/users");
     expect(ownerItems.map((item) => item.to)).not.toContain("/admin/invitations");
   });
 
   it("keeps lower administration separate from the first integrated destination", () => {
     const lower = navSections.find((section) => section.placement === "lower");
-    expect(lower?.label).toBe("Settings & administration");
+    expect(lower?.label).toBe("navigation.settingsAdministration");
     expect(
       visibleNavSections(["customers:view"], false, false)
         .find((section) => section.placement === "lower")
         ?.items.map((item) => item.label),
-    ).toEqual(["Settings"]);
+    ).toEqual(["navigation.settings"]);
     expect(firstAuthorizedIntegratedAppDestination(["customers:view"], false, false)).toBe("/customers");
     expect(firstAuthorizedIntegratedAppDestination([], false, false)).toBeUndefined();
   });
@@ -62,12 +62,12 @@ describe("navigation permissions", () => {
       .find((section) => section.placement === "lower")
       ?.items.map((item) => item.label);
 
-    expect(ownerLowerLabels).toContain("Admin dashboard");
-    expect(userLowerLabels).not.toContain("Admin dashboard");
+    expect(ownerLowerLabels).toContain("navigation.adminDashboard");
+    expect(userLowerLabels).not.toContain("navigation.adminDashboard");
     expect(
       navSections
         .find((section) => section.placement === "lower")
-        ?.items.find((item) => item.label === "Admin dashboard"),
+        ?.items.find((item) => item.label === "navigation.adminDashboard"),
     ).toMatchObject({ to: "/admin/dashboard", ownerOnly: true });
   });
 
@@ -77,7 +77,7 @@ describe("navigation permissions", () => {
     expect(authorizationItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          label: "Roles & access",
+          label: "navigation.rolesAccess",
           to: "/admin/roles",
           capability: "authorization",
         }),

@@ -73,6 +73,7 @@ describe("ProductsPage", () => {
     stubFetch();
     renderPage();
     expect(await screen.findByText("Widget")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Products/ })).toBeInTheDocument();
     expect(screen.getByText("W-1")).toBeInTheDocument();
     expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
     expect(screen.getByText("New product")).toBeInTheDocument();

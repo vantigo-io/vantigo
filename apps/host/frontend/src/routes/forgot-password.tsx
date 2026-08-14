@@ -2,27 +2,26 @@ import { Alert, Button, Card, Center, Stack, Text, TextInput, Title } from "@man
 import { useForm } from "@mantine/form";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import { requestPasswordRecovery } from "../api/account-lifecycle";
+import "../i18n";
 
 const ForgotPasswordPage = () => {
+  const { t } = useI18n("host");
   const form = useForm({ initialValues: { email: "" } });
   const mutation = useMutation({ mutationFn: () => requestPasswordRecovery(form.values.email) });
   return (
     <Center mih="100vh" bg="gray.0">
       <Card withBorder p="xl" maw={440} w="100%">
         <Stack>
-          <Title order={2}>Reset your password</Title>
-          <Text c="dimmed">Enter your email and, if an account matches, we’ll send a reset link.</Text>
-          {mutation.isSuccess && (
-            <Alert color="teal">
-              Check your inbox for next steps. This message is the same whether or not an account exists.
-            </Alert>
-          )}
+          <Title order={2}>{t("auth.resetTitle")}</Title>
+          <Text c="dimmed">{t("auth.resetDescription")}</Text>
+          {mutation.isSuccess && <Alert color="teal">{t("auth.checkInbox")}</Alert>}
           <form onSubmit={form.onSubmit(() => mutation.mutate())}>
             <Stack>
-              <TextInput label="Email" required {...form.getInputProps("email")} />
+              <TextInput label={t("common.email")} required {...form.getInputProps("email")} />
               <Button type="submit" loading={mutation.isPending}>
-                Send reset link
+                {t("auth.sendReset")}
               </Button>
             </Stack>
           </form>

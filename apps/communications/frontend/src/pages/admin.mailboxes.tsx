@@ -18,7 +18,7 @@ import {
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type CreateMailboxRequest,
@@ -30,6 +30,7 @@ import {
   verifyMailbox,
 } from "../api/mailboxes";
 import type { ApiError } from "../api/request";
+import "../i18n";
 
 type MailboxFormValues = {
   fromAddress: string;
@@ -87,15 +88,16 @@ function CredentialFields({
   form: ReturnType<typeof useForm<MailboxFormValues>>;
   passwordRequired?: boolean;
 }) {
+  const { t } = useI18n("communications");
   if (form.values.provider === "smtp") {
     return (
       <>
-        <TextInput label="SMTP host" required {...form.getInputProps("host")} />
-        <NumberInput label="SMTP port" min={1} max={65535} required {...form.getInputProps("port")} />
-        <Checkbox label="Use SSL" {...form.getInputProps("useSsl", { type: "checkbox" })} />
-        <TextInput label="Username" {...form.getInputProps("username")} />
+        <TextInput label={t("smtpHost")} required {...form.getInputProps("host")} />
+        <NumberInput label={t("smtpPort")} min={1} max={65535} required {...form.getInputProps("port")} />
+        <Checkbox label={t("useSsl")} {...form.getInputProps("useSsl", { type: "checkbox" })} />
+        <TextInput label={t("username")} {...form.getInputProps("username")} />
         <PasswordInput
-          label="Password"
+          label={t("password")}
           required={passwordRequired}
           autoComplete="new-password"
           {...form.getInputProps("password")}
@@ -105,18 +107,18 @@ function CredentialFields({
   }
   return (
     <>
-      <TextInput label="Mailgun domain" required {...form.getInputProps("domain")} />
+      <TextInput label={t("mailgunDomain")} required {...form.getInputProps("domain")} />
       <Select
-        label="Region"
+        label={t("region")}
         data={[
-          { value: "us", label: "US" },
-          { value: "eu", label: "EU" },
+          { value: "us", label: t("us") },
+          { value: "eu", label: t("eu") },
         ]}
         required
         {...form.getInputProps("region")}
       />
       <PasswordInput
-        label="API key"
+        label={t("apiKey")}
         required={passwordRequired}
         autoComplete="new-password"
         {...form.getInputProps("apiKey")}
@@ -139,6 +141,7 @@ function valuesFromMailbox(mailbox: Mailbox): MailboxFormValues {
 }
 
 export function MailboxesPage() {
+  const { t } = useI18n("communications");
   const client = useQueryClient();
   const query = useQuery(mailboxesQueryOptions());
   const form = useForm<MailboxFormValues>({ initialValues });
@@ -162,14 +165,14 @@ export function MailboxesPage() {
       form.reset();
       setCreateModalOpen(false);
       refresh();
-      notifications.show({ title: "Mailbox created", message: "The workspace mailbox is ready." });
+      notifications.show({ title: t("mailboxCreated"), message: t("workspaceMailboxReady") });
     },
     onError: (error: ApiError) => {
       if (error.status === 409 && error.code === "mailbox_address_exists") {
         form.setFieldError("fromAddress", error.message);
         return;
       }
-      notifications.show({ color: "red", title: "Mailbox not created", message: error.message });
+      notifications.show({ color: "red", title: t("mailboxNotCreated"), message: error.message });
     },
   });
   const update = useMutation({
@@ -177,20 +180,20 @@ export function MailboxesPage() {
     onSuccess: () => {
       setDeactivatingId(null);
       refresh();
-      notifications.show({ title: "Mailbox updated", message: "Mailbox settings saved." });
+      notifications.show({ title: t("mailboxUpdated"), message: t("mailboxSettingsSaved") });
     },
     onError: (error: ApiError) =>
       notifications.show({
         color: "red",
-        title: error.code === "mailbox_default_required" ? "Default mailbox required" : "Mailbox not updated",
+        title: error.code === "mailbox_default_required" ? t("defaultMailboxRequired") : t("mailboxNotUpdated"),
         message: error.message,
       }),
   });
   const verify = useMutation({
     mutationFn: verifyMailbox,
-    onSuccess: () => notifications.show({ title: "Mailbox verified", message: "The mailbox connection is valid." }),
+    onSuccess: () => notifications.show({ title: t("mailboxVerified"), message: t("mailboxConnectionValid") }),
     onError: (error: ApiError) =>
-      notifications.show({ color: "red", title: "Verification failed", message: error.message }),
+      notifications.show({ color: "red", title: t("verificationFailed"), message: error.message }),
   });
   if (query.isPending) return <Loader />;
   if (query.isError) return <Alert color="red">{query.error.message}</Alert>;
@@ -198,22 +201,22 @@ export function MailboxesPage() {
   return (
     <Stack gap="xl">
       <PageHeader
-        eyebrow="Communications"
-        title="Mailboxes"
-        description="Configure the mailboxes that send and receive messages."
-        actions={<Button onClick={() => setCreateModalOpen(true)}>Add Mailbox</Button>}
+        eyebrow={t("communications")}
+        title={t("mailboxes")}
+        description={t("mailboxesDescription")}
+        actions={<Button onClick={() => setCreateModalOpen(true)}>{t("addMailbox")}</Button>}
       />
       <Card withBorder radius="lg">
         <Table.ScrollContainer minWidth={950}>
           <Table>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>From address</Table.Th>
-                <Table.Th>Display name</Table.Th>
-                <Table.Th>Provider</Table.Th>
-                <Table.Th>Default</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Created</Table.Th>
+                <Table.Th>{t("fromAddress")}</Table.Th>
+                <Table.Th>{t("displayName")}</Table.Th>
+                <Table.Th>{t("provider")}</Table.Th>
+                <Table.Th>{t("default")}</Table.Th>
+                <Table.Th>{t("status")}</Table.Th>
+                <Table.Th>{t("created")}</Table.Th>
                 <Table.Th />
               </Table.Tr>
             </Table.Thead>
@@ -243,42 +246,48 @@ export function MailboxesPage() {
       {deactivatingId && (
         <Card withBorder shadow="md">
           <Stack>
-            <Text fw={600}>Deactivate this mailbox?</Text>
+            <Text fw={600}>{t("deactivateThisMailbox")}</Text>
             <Text size="sm" c="dimmed">
-              Messages cannot be sent from this mailbox while it is inactive.
+              {t("mailboxInactiveDescription")}
             </Text>
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setDeactivatingId(null)}>
-                Cancel
+                {t("cancel")}
               </Button>
               <Button
                 color="red"
                 loading={update.isPending}
                 onClick={() => update.mutate({ id: deactivatingId, body: { isActive: false } })}
               >
-                Deactivate
+                {t("deactivate")}
               </Button>
             </Group>
           </Stack>
         </Card>
       )}
-      <Modal opened={createModalOpen} onClose={() => setCreateModalOpen(false)} title="Add mailbox" centered size="lg">
+      <Modal
+        opened={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title={t("addMailboxTitle")}
+        centered
+        size="lg"
+      >
         <form onSubmit={form.onSubmit((values) => create.mutate(values))}>
           <Stack>
-            <TextInput label="From address" type="email" required {...form.getInputProps("fromAddress")} />
-            <TextInput label="Display name" {...form.getInputProps("displayName")} />
+            <TextInput label={t("fromAddress")} type="email" required {...form.getInputProps("fromAddress")} />
+            <TextInput label={t("displayName")} {...form.getInputProps("displayName")} />
             <Select
-              label="Provider"
+              label={t("provider")}
               data={[
-                { value: "smtp", label: "SMTP" },
-                { value: "mailgun", label: "Mailgun" },
+                { value: "smtp", label: t("smtp") },
+                { value: "mailgun", label: t("mailgun") },
               ]}
               required
               {...form.getInputProps("provider")}
             />
             <CredentialFields form={form} passwordRequired />
             <Button type="submit" loading={create.isPending} w="fit-content">
-              Create mailbox
+              {t("createMailbox")}
             </Button>
           </Stack>
         </form>
@@ -286,7 +295,7 @@ export function MailboxesPage() {
       <Modal
         opened={credentialMailbox !== null}
         onClose={() => setCredentialMailbox(null)}
-        title="Edit credentials"
+        title={t("editCredentialsTitle")}
         centered
       >
         <form
@@ -298,17 +307,17 @@ export function MailboxesPage() {
         >
           <Stack>
             <Select
-              label="Provider"
+              label={t("provider")}
               data={[
-                { value: "smtp", label: "SMTP" },
-                { value: "mailgun", label: "Mailgun" },
+                { value: "smtp", label: t("smtp") },
+                { value: "mailgun", label: t("mailgun") },
               ]}
               required
               {...credentialsForm.getInputProps("provider")}
             />
             <CredentialFields form={credentialsForm} passwordRequired />
             <Button type="submit" loading={update.isPending}>
-              Save credentials
+              {t("saveCredentials")}
             </Button>
           </Stack>
         </form>
@@ -332,43 +341,44 @@ function MailboxRow({
   onVerify: () => void;
   onEditCredentials: () => void;
 }) {
+  const { t, formatters } = useI18n("communications");
   const [displayName, setDisplayName] = useState(mailbox.displayName || "");
   return (
     <Table.Tr>
       <Table.Td>{mailbox.fromAddress}</Table.Td>
       <Table.Td>
         <TextInput
-          aria-label={`Display name for ${mailbox.fromAddress}`}
+          aria-label={t("displayNameFor", { address: mailbox.fromAddress })}
           value={displayName}
           onChange={(event) => setDisplayName(event.currentTarget.value)}
           onBlur={() => onSave(displayName || null)}
         />
       </Table.Td>
       <Table.Td>
-        <Badge>{mailbox.provider === "smtp" ? "SMTP" : "Mailgun"}</Badge>
+        <Badge>{mailbox.provider === "smtp" ? t("smtp") : t("mailgun")}</Badge>
       </Table.Td>
-      <Table.Td>{mailbox.isDefault && <Badge color="indigo">Default</Badge>}</Table.Td>
+      <Table.Td>{mailbox.isDefault && <Badge color="indigo">{t("default")}</Badge>}</Table.Td>
       <Table.Td>
-        <Badge color={mailbox.isActive ? "green" : "gray"}>{mailbox.isActive ? "Active" : "Inactive"}</Badge>
+        <Badge color={mailbox.isActive ? "green" : "gray"}>{mailbox.isActive ? t("active") : t("inactive")}</Badge>
       </Table.Td>
       <Table.Td>
-        <Text size="sm">{new Date(mailbox.createdAt).toLocaleString()}</Text>
+        <Text size="sm">{formatters.formatDate(mailbox.createdAt, { dateStyle: "medium", timeStyle: "short" })}</Text>
       </Table.Td>
       <Table.Td>
         <Group gap="xs" wrap="nowrap">
           {!mailbox.isDefault && (
             <Button size="xs" variant="subtle" onClick={onSetDefault}>
-              Set default
+              {t("setDefault")}
             </Button>
           )}
           <Button size="xs" variant="subtle" onClick={onToggle}>
-            {mailbox.isActive ? "Deactivate" : "Activate"}
+            {mailbox.isActive ? t("deactivate") : t("activate")}
           </Button>
           <Button size="xs" variant="subtle" onClick={onVerify}>
-            Verify
+            {t("verify")}
           </Button>
           <Button size="xs" variant="subtle" onClick={onEditCredentials}>
-            Edit credentials
+            {t("editCredentials")}
           </Button>
         </Group>
       </Table.Td>

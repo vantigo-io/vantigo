@@ -1,10 +1,12 @@
 import { Anchor, Badge, type BadgeProps, Image, Text, Tooltip } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { type Icon, IconBuilding, IconUser } from "@tabler/icons-react";
+import { useI18n } from "@vantigo/frontend-shell";
 import * as Flags from "country-flag-icons/react/3x2";
 import type { ReactNode } from "react";
 
 import { getLegalSource } from "../lib/legal-sources";
+import "../i18n";
 
 /** The icon shared by all badges of a given legal type. */
 const legalTypeIcons: Record<string, Icon | undefined> = {
@@ -27,6 +29,7 @@ interface CopyableBadgeProps extends BadgeProps {
  * copy value is given, the badge becomes a button and the tooltip confirms the copy.
  */
 export const CopyableBadge = ({ tooltip, copyValue, children, ...badgeProps }: CopyableBadgeProps) => {
+  const { t } = useI18n("customers");
   const clipboard = useClipboard({ timeout: 1500 });
 
   const badge = copyValue ? (
@@ -43,7 +46,7 @@ export const CopyableBadge = ({ tooltip, copyValue, children, ...badgeProps }: C
     <Badge {...badgeProps}>{children}</Badge>
   );
 
-  const label = clipboard.copied ? "Copied!" : [tooltip, copyValue && "Click to copy."].filter(Boolean).join(" ");
+  const label = clipboard.copied ? t("copied") : [tooltip, copyValue && t("clickToCopy")].filter(Boolean).join(" ");
 
   if (!label) {
     return badge;
@@ -88,6 +91,7 @@ export const LegalValueBadge = ({ type, tooltip, copyable, children }: LegalBadg
 
 /** A badge showing the legal type with its icon (building for business, user for person). */
 export const LegalTypeBadge = ({ type, tooltip, copyable }: { type: string; tooltip?: string; copyable?: boolean }) => {
+  const { t } = useI18n("customers");
   const TypeIcon = legalTypeIcons[type];
 
   return (
@@ -98,7 +102,7 @@ export const LegalTypeBadge = ({ type, tooltip, copyable }: { type: string; tool
       tooltip={tooltip}
       copyValue={copyable ? type : undefined}
     >
-      {capitalize(type)}
+      {type === "business" ? t("legalTypeBusiness") : type === "person" ? t("legalTypePerson") : capitalize(type)}
     </CopyableBadge>
   );
 };
@@ -145,16 +149,18 @@ export const LegalSourceBadge = ({
   /** Deep-links the logo to the source's page for this entity. */
   legalId?: string;
 }) => {
+  const { t } = useI18n("customers");
   const info = getLegalSource(source);
+  const label = info.labelKey ? t(info.labelKey) : info.label;
   const href = legalId && info.entityUrl ? info.entityUrl(legalId) : info.url;
 
   if (info.logo) {
-    const logo = <Image src={info.logo} alt={info.label} h={14} w="auto" fit="contain" display="inline-block" />;
+    const logo = <Image src={info.logo} alt={label} h={14} w="auto" fit="contain" display="inline-block" />;
 
     return (
-      <Tooltip label={tooltip ?? `Retrieved from ${info.label}`} maw={320} multiline>
+      <Tooltip label={tooltip ?? t("retrievedFrom", { source: label })} maw={320} multiline>
         {href ? (
-          <Anchor href={href} target="_blank" rel="noreferrer" aria-label={info.label} lh={1}>
+          <Anchor href={href} target="_blank" rel="noreferrer" aria-label={label} lh={1}>
             {logo}
           </Anchor>
         ) : (
@@ -176,7 +182,7 @@ export const LegalSourceBadge = ({
       leftSection={FallbackIcon && <FallbackIcon size={12} />}
       tooltip={tooltip}
     >
-      {info.label}
+      {label}
     </CopyableBadge>
   );
 };

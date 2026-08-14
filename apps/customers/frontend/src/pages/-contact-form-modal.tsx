@@ -2,11 +2,13 @@ import { Button, Chip, Group, Modal, Stack, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 
 import { type ContactInput, type ContactResponse, createContact, updateContact } from "../api/contacts";
 import { ApiValidationError } from "../api/customers";
 import { formatContactName } from "../lib/format-contact-name";
+import "../i18n";
 
 export type ContactModalState = { mode: "create" } | { mode: "edit"; contact: ContactResponse };
 
@@ -66,13 +68,14 @@ interface ContactFormModalProps {
  */
 export const ContactFormModal = ({ state, onClose }: ContactFormModalProps) => {
   const queryClient = useQueryClient();
+  const { t } = useI18n("customers");
   const isEdit = state?.mode === "edit";
 
   const form = useForm<ContactFormValues>({
     initialValues: emptyValues,
     validate: {
-      firstName: (value) => (value.trim().length === 0 ? "First name is required" : null),
-      lastName: (value) => (value.trim().length === 0 ? "Last name is required" : null),
+      firstName: (value) => (value.trim().length === 0 ? t("firstNameRequired") : null),
+      lastName: (value) => (value.trim().length === 0 ? t("lastNameRequired") : null),
     },
   });
 
@@ -93,8 +96,11 @@ export const ContactFormModal = ({ state, onClose }: ContactFormModalProps) => {
     onSuccess: (contact) => {
       notifications.show({
         color: "teal",
-        title: isEdit ? "Contact updated" : "Contact created",
-        message: `"${formatContactName(contact)}" was ${isEdit ? "updated" : "created"} successfully.`,
+        title: isEdit ? t("contactUpdated") : t("contactCreated"),
+        message: t("contactSaved", {
+          name: formatContactName(contact),
+          action: isEdit ? t("contactUpdatedAction") : t("contactCreatedAction"),
+        }),
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
@@ -107,7 +113,7 @@ export const ContactFormModal = ({ state, onClose }: ContactFormModalProps) => {
       }
       notifications.show({
         color: "red",
-        title: isEdit ? "Failed to update contact" : "Failed to create contact",
+        title: isEdit ? t("contactCouldNotBeUpdated") : t("contactCouldNotBeCreated"),
         message: error.message,
       });
     },
@@ -118,7 +124,7 @@ export const ContactFormModal = ({ state, onClose }: ContactFormModalProps) => {
   });
 
   return (
-    <Modal opened={state !== null} onClose={onClose} title={isEdit ? "Edit contact" : "Create new contact"} centered>
+    <Modal opened={state !== null} onClose={onClose} title={isEdit ? t("editContact") : t("createNewContact")} centered>
       <form onSubmit={handleSubmit}>
         <Stack>
           <ContactFields
@@ -129,10 +135,10 @@ export const ContactFormModal = ({ state, onClose }: ContactFormModalProps) => {
           />
           <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              {isEdit ? "Save changes" : "Create contact"}
+              {isEdit ? t("saveChanges") : t("createContact")}
             </Button>
           </Group>
         </Stack>
@@ -142,13 +148,9 @@ export const ContactFormModal = ({ state, onClose }: ContactFormModalProps) => {
 };
 
 /** The optional name parts hidden behind chips, in their natural display order. */
-const optionalNameParts = [
-  { field: "prefix", label: "Prefix", placeholder: "e.g. Dr." },
-  { field: "middleName", label: "Middle name", placeholder: "e.g. Bernhard" },
-  { field: "suffix", label: "Suffix", placeholder: "e.g. PhD" },
-] as const;
+const optionalNameParts = ["prefix", "middleName", "suffix"] as const;
 
-type OptionalNamePart = (typeof optionalNameParts)[number]["field"];
+type OptionalNamePart = (typeof optionalNameParts)[number];
 
 interface ContactFieldsProps {
   getInputProps: (path: string) => object;
@@ -164,44 +166,48 @@ interface ContactFieldsProps {
  * so hidden values are never submitted.
  */
 export const ContactFields = ({ getInputProps, setFieldValue, values }: ContactFieldsProps) => {
+  const { t } = useI18n("customers");
   const [toggledParts, setToggledParts] = useState<string[]>([]);
 
   // Visibility is derived: a part is shown when it holds a value (e.g. prefilled
   // while editing) or when its chip was toggled on. Toggling a chip off clears the
   // value, so hidden values are never submitted.
-  const visibleParts = optionalNameParts
-    .map((part) => part.field)
-    .filter((field) => values[field] || toggledParts.includes(field));
+  const visibleParts = optionalNameParts.filter((field) => values[field] || toggledParts.includes(field));
 
   const toggleParts = (parts: string[]) => {
     for (const part of optionalNameParts) {
-      if (!parts.includes(part.field)) {
-        setFieldValue(part.field, "");
+      if (!parts.includes(part)) {
+        setFieldValue(part, "");
       }
     }
     setToggledParts(parts);
   };
 
-  const shownParts = optionalNameParts.filter((part) => visibleParts.includes(part.field));
+  const shownParts = optionalNameParts.filter((part) => visibleParts.includes(part));
 
   return (
     <>
       <Group grow>
         <TextInput
-          label="First name"
-          placeholder="e.g. Anders"
+          label={t("firstName")}
+          placeholder={t("firstNamePlaceholder")}
           withAsterisk
           data-autofocus
           {...getInputProps("firstName")}
         />
-        <TextInput label="Last name" placeholder="e.g. Refsdal" withAsterisk {...getInputProps("lastName")} />
+        <TextInput
+          label={t("lastName")}
+          placeholder={t("lastNamePlaceholder")}
+          withAsterisk
+          {...getInputProps("lastName")}
+        />
       </Group>
 
       <Chip.Group multiple value={visibleParts} onChange={toggleParts}>
         <Group gap="xs">
           {optionalNameParts.map((part) => (
-            <Chip key={part.field} value={part.field} size="xs" variant="light">
-              + {part.label}
+            <Chip key={part} value={part} size="xs" variant="light">
+              {t("contactNamePart", { part: t(part) })}
             </Chip>
           ))}
         </Group>
@@ -210,19 +216,14 @@ export const ContactFields = ({ getInputProps, setFieldValue, values }: ContactF
       {shownParts.length > 0 && (
         <Group grow>
           {shownParts.map((part) => (
-            <TextInput
-              key={part.field}
-              label={part.label}
-              placeholder={part.placeholder}
-              {...getInputProps(part.field)}
-            />
+            <TextInput key={part} label={t(part)} placeholder={t(`${part}Placeholder`)} {...getInputProps(part)} />
           ))}
         </Group>
       )}
 
       <Group grow>
-        <TextInput label="Phone" placeholder="e.g. +47 934 89 731" {...getInputProps("phone")} />
-        <TextInput label="Email" placeholder="e.g. anders@refsdal.no" {...getInputProps("email")} />
+        <TextInput label={t("phone")} placeholder={t("phonePlaceholder")} {...getInputProps("phone")} />
+        <TextInput label={t("email")} placeholder={t("emailPlaceholder")} {...getInputProps("email")} />
       </Group>
     </>
   );

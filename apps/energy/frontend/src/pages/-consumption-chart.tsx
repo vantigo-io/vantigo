@@ -1,7 +1,8 @@
 import { AreaChart } from "@mantine/charts";
 import { Text } from "@mantine/core";
-import dayjs from "dayjs";
+import { useI18n } from "@vantigo/frontend-shell";
 import type { ConsumptionAggregate, ConsumptionResolution } from "../api/energy";
+import "../i18n";
 
 export const ConsumptionChart = ({
   aggregates,
@@ -12,11 +13,14 @@ export const ConsumptionChart = ({
   resolution: ConsumptionResolution;
   color?: string;
 }) => {
-  if (aggregates.length === 0) return <Text c="dimmed">No consumption readings for this period.</Text>;
+  const { t, formatters } = useI18n("energy");
+  if (aggregates.length === 0) return <Text c="dimmed">{t("noConsumptionReadings")}</Text>;
   const data = aggregates.map((item) => ({
-    date: dayjs(item.bucketStart).format(
-      resolution === "hour" ? "MMM D HH:mm" : resolution === "day" ? "MMM D" : "MMM YYYY",
-    ),
+    date: formatters.formatDate(item.bucketStart, {
+      month: "short",
+      ...(resolution !== "month" ? { day: "numeric" } : {}),
+      ...(resolution === "hour" ? { hour: "2-digit", minute: "2-digit" } : {}),
+    }),
     quantityKwh: item.quantityKwh,
   }));
   return (
@@ -24,7 +28,7 @@ export const ConsumptionChart = ({
       h={240}
       data={data}
       dataKey="date"
-      series={[{ name: "quantityKwh", label: "kWh", color }]}
+      series={[{ name: "quantityKwh", label: t("chartQuantity"), color }]}
       curveType="natural"
       withDots
     />

@@ -15,7 +15,11 @@ import { useDisclosure } from "@mantine/hooks";
 import { IconChevronRight, IconLogout } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { appConfig, hasSupportContact } from "./app-config";
+import { registerCatalog, useI18n } from "./i18n";
+import { shellCatalog } from "./i18n/catalogs/shell";
 import { vantigoLogo } from "./logo";
+
+registerCatalog("shell", shellCatalog);
 
 export interface ShellUser {
   displayName: string;
@@ -54,6 +58,7 @@ const initials = (name: string) =>
 /** The support contact line shown in the shell footer and on auth pages. */
 export const SupportContactLine = () => {
   const { support } = appConfig();
+  const { t } = useI18n("shell");
   if (!hasSupportContact()) return null;
   const items: ReactNode[] = [];
   if (support.email)
@@ -71,13 +76,13 @@ export const SupportContactLine = () => {
   if (support.url)
     items.push(
       <Anchor key="url" href={support.url} target="_blank" rel="noreferrer" size="xs" c="dimmed">
-        Help center
+        {t("helpCenter")}
       </Anchor>,
     );
   return (
     <Group gap="xs" wrap="nowrap">
       <Text size="xs" c="dimmed">
-        Support:
+        {t("support")}
       </Text>
       {items.flatMap((item, index) =>
         index > 0
@@ -112,6 +117,7 @@ export const AppShellLayout = ({
   children,
 }: AppShellLayoutProps) => {
   const [opened, { toggle, close }] = useDisclosure();
+  const { t } = useI18n("shell");
   const config = appConfig();
   const showFooter = hasSupportContact(config);
 
@@ -129,7 +135,7 @@ export const AppShellLayout = ({
             onClick={toggle}
             hiddenFrom="sm"
             size="sm"
-            aria-label={opened ? "Close navigation" : "Open navigation"}
+            aria-label={t(opened ? "closeNavigation" : "openNavigation")}
           />
           <Image src={config.logoUrl ?? vantigoLogo} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" />
           <Divider orientation="vertical" my="md" />
@@ -146,7 +152,7 @@ export const AppShellLayout = ({
       <AppShell.Navbar
         p="md"
         component="nav"
-        aria-label="Primary navigation"
+        aria-label={t("primaryNavigation")}
         style={{ minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" }}
       >
         {navbarTop && <AppShell.Section>{navbarTop}</AppShell.Section>}
@@ -173,7 +179,7 @@ export const AppShellLayout = ({
               <UnstyledButton
                 w="100%"
                 p="xs"
-                aria-label="Open account menu"
+                aria-label={t("openAccountMenu")}
                 aria-haspopup="menu"
                 styles={{
                   root: {
@@ -183,11 +189,11 @@ export const AppShellLayout = ({
               >
                 <Group gap="sm" wrap="nowrap">
                   <Avatar src={user?.avatarUrl} color="vantigo" radius="xl">
-                    {user ? initials(user.displayName) : "\u2026"}
+                    {user ? initials(user.displayName) : t("loadingIndicator")}
                   </Avatar>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <Text size="sm" fw={500} truncate>
-                      {user?.displayName ?? "Loading account\u2026"}
+                      {user?.displayName ?? t("loadingAccount")}
                     </Text>
                     <Text size="xs" c="dimmed" truncate>
                       {user?.email ?? ""}
@@ -206,7 +212,7 @@ export const AppShellLayout = ({
                 onClick={onSignOut}
                 disabled={signOutDisabled}
               >
-                Sign out
+                {t("signOut")}
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>

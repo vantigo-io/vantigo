@@ -3,20 +3,23 @@ import { IconBolt, IconLayoutDashboard } from "@tabler/icons-react";
 import { createFileRoute, notFound, Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { customerQueryOptions, NotFoundError } from "@vantigo/customers-ui/api/customers";
 import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$customerId";
+import { useI18n } from "@vantigo/frontend-shell";
+import "../../i18n";
 
 type CustomerDetailTab = {
   value: "overview" | "energy";
-  label: string;
+  labelKey: "customer.overviewTab" | "customer.energyTab";
   icon: typeof IconLayoutDashboard;
   to: "/customers/$customerId" | "/customers/$customerId/energy";
 };
 
 export const customerDetailTabs: CustomerDetailTab[] = [
-  { value: "overview", label: "Overview", icon: IconLayoutDashboard, to: "/customers/$customerId" },
-  { value: "energy", label: "Energy", icon: IconBolt, to: "/customers/$customerId/energy" },
+  { value: "overview", labelKey: "customer.overviewTab", icon: IconLayoutDashboard, to: "/customers/$customerId" },
+  { value: "energy", labelKey: "customer.energyTab", icon: IconBolt, to: "/customers/$customerId/energy" },
 ];
 
 const CustomerDetailLayout = () => {
+  const { t } = useI18n("host");
   const { customerId } = useParams({ from: "/customers/$customerId" });
   const matches = useMatches();
   const navigate = useNavigate();
@@ -33,9 +36,9 @@ const CustomerDetailLayout = () => {
         }}
       >
         <Tabs.List>
-          {customerDetailTabs.map(({ value, label, icon: Icon }) => (
+          {customerDetailTabs.map(({ value, labelKey, icon: Icon }) => (
             <Tabs.Tab key={value} value={value} leftSection={<Icon size={16} />}>
-              {label}
+              {t(labelKey)}
             </Tabs.Tab>
           ))}
         </Tabs.List>

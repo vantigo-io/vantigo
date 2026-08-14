@@ -4,11 +4,13 @@ import { Spotlight } from "@mantine/spotlight";
 import { IconAddressBook, IconBuilding, IconSearch, IconUser, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import { contactsQueryOptions } from "../api/contacts";
 import { customersQueryOptions } from "../api/customers";
 import { formatContactName } from "../lib/format-contact-name";
+import "../i18n";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
@@ -23,6 +25,7 @@ const navigationActions = [
  * to the app sections plus live search across customers and contacts.
  */
 export const AppSpotlight = () => {
+  const { t } = useI18n("customers");
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [debouncedQuery] = useDebouncedValue(query, 300);
@@ -39,7 +42,11 @@ export const AppSpotlight = () => {
     enabled: searchEnabled,
   });
 
-  const matchingNavigation = navigationActions.filter((action) =>
+  const navigation = [
+    { ...navigationActions[0], label: t("customers"), description: t("browseAllCustomers") },
+    { ...navigationActions[1], label: t("contacts"), description: t("browseAllContacts") },
+  ];
+  const matchingNavigation = navigation.filter((action) =>
     action.label.toLowerCase().includes(query.trim().toLowerCase()),
   );
   const customerResults = searchEnabled ? (customers.data?.data ?? []) : [];
@@ -51,13 +58,13 @@ export const AppSpotlight = () => {
   return (
     <Spotlight.Root shortcut="mod + K" query={query} onQueryChange={setQuery} onSpotlightClose={() => setQuery("")}>
       <Spotlight.Search
-        placeholder="Search customers, contacts..."
+        placeholder={t("searchCustomersContacts")}
         leftSection={<IconSearch size={20} stroke={1.5} />}
         rightSection={isSearching && <Loader size="xs" />}
       />
       <Spotlight.ActionsList>
         {matchingNavigation.length > 0 && (
-          <Spotlight.ActionsGroup label="Navigation">
+          <Spotlight.ActionsGroup label={t("navigation")}>
             {matchingNavigation.map((action) => (
               <Spotlight.Action
                 key={action.to}
@@ -71,12 +78,12 @@ export const AppSpotlight = () => {
         )}
 
         {customerResults.length > 0 && (
-          <Spotlight.ActionsGroup label="Customers">
+          <Spotlight.ActionsGroup label={t("customers")}>
             {customerResults.map((customer) => (
               <Spotlight.Action
                 key={customer.id}
                 label={customer.name}
-                description={"Customer"}
+                description={t("customer")}
                 leftSection={<IconBuilding size={20} stroke={1.5} />}
                 onClick={() => navigate({ to: "/customers/$customerId", params: { customerId: customer.id } })}
               />
@@ -85,13 +92,13 @@ export const AppSpotlight = () => {
         )}
 
         {contactResults.length > 0 && (
-          <Spotlight.ActionsGroup label="Contacts">
+          <Spotlight.ActionsGroup label={t("contacts")}>
             {contactResults.map((item) => (
               <Spotlight.Action
                 key={item.contact.id}
                 label={formatContactName(item.contact)}
                 description={
-                  [item.contact.email, item.contact.phone].filter(Boolean).join(" · ") || "No contact details"
+                  [item.contact.email, item.contact.phone].filter(Boolean).join(" · ") || t("noContactDetails")
                 }
                 leftSection={<IconUser size={20} stroke={1.5} />}
                 onClick={() => navigate({ to: "/contacts/$contactId", params: { contactId: item.contact.id } })}
@@ -108,7 +115,7 @@ export const AppSpotlight = () => {
           ) : (
             <Spotlight.Empty>
               <Text c="dimmed" size="sm">
-                Nothing found...
+                {t("nothingFound")}
               </Text>
             </Spotlight.Empty>
           ))}

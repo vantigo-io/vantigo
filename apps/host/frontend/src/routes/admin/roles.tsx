@@ -23,6 +23,7 @@ import { notifications } from "@mantine/notifications";
 import { IconLock, IconPlus, IconShield, IconTrash, IconUsers } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type AuthorizationRole,
@@ -41,10 +42,20 @@ import {
   revokeDelegation,
   updateAuthorizationRole,
 } from "../../api/authorization";
+import {
+  translateHostPermissionCategory,
+  translateHostPermissionDescription,
+  translateHostPermissionKey,
+  translateHostPermissionModule,
+  translateHostRole,
+  translateHostRoleDescription,
+} from "../../i18n";
+import "../../i18n";
 
-const errorText = (error: unknown) => (error instanceof Error ? error.message : "The request could not be completed.");
+const errorText = (error: unknown, requestFailed: string) => (error instanceof Error ? error.message : requestFailed);
 
 const RolesPage = () => {
+  const { t } = useI18n("host");
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["authorization", "me"], queryFn: getAuthorizationMe });
   const manageable = me.data?.canManageAuthorization === true;
@@ -81,10 +92,10 @@ const RolesPage = () => {
   const roleForm = useForm<RoleInput>({
     initialValues: { name: "", displayName: "", description: "", permissionKeys: [] },
     validate: {
-      name: (value) => (/^[a-z][a-z0-9-]+$/.test(value) ? null : "Use lowercase letters, numbers, and hyphens"),
-      displayName: (value) => (value.trim() ? null : "Enter a display name"),
-      description: (value) => (value.trim() ? null : "Enter a description"),
-      permissionKeys: (value) => (value.length ? null : "Select at least one permission"),
+      name: (value) => (/^[a-z][a-z0-9-]+$/.test(value) ? null : t("admin.nameValidation")),
+      displayName: (value) => (value.trim() ? null : t("admin.displayNameValidation")),
+      description: (value) => (value.trim() ? null : t("admin.descriptionValidation")),
+      permissionKeys: (value) => (value.length ? null : t("admin.permissionValidation")),
     },
   });
   const delegateForm = useForm<DelegationInput>({
@@ -98,7 +109,7 @@ const RolesPage = () => {
   });
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["authorization"] });
   const mutationError = (title: string) => (error: unknown) =>
-    notifications.show({ color: "red", title, message: errorText(error) });
+    notifications.show({ color: "red", title, message: errorText(error, t("common.requestFailed")) });
   const scopeForCreation = scopes.find((item) => item.id === selectedScopeId && item.canCreateRoles);
   const stewardedRoleIds = new Set(scopes.flatMap((item) => item.stewardedRoleIds));
   const allRoles = roles.data ?? [];
@@ -130,7 +141,11 @@ const RolesPage = () => {
   );
   const groupedPermissions = new Map<string, typeof catalog.data>();
   for (const permission of (catalog.data ?? []).filter((item) => allowedPermissionKeys.has(item.key))) {
-    const key = `${permission.module} · ${permission.category}`;
+    const key = `${translateHostPermissionModule(permission.key, permission.module, t)} · ${translateHostPermissionCategory(
+      permission.key,
+      permission.category,
+      t,
+    )}`;
     groupedPermissions.set(key, [...(groupedPermissions.get(key) ?? []), permission]);
   }
   const saveRole = useMutation({
@@ -143,16 +158,16 @@ const RolesPage = () => {
       invalidate();
       notifications.show({
         color: "teal",
-        title: selectedRole ? "Role updated" : "Role created",
-        message: "The role was saved successfully.",
+        title: selectedRole ? t("admin.roleUpdated") : t("admin.roleCreated"),
+        message: t("admin.roleSaved"),
       });
     },
-    onError: mutationError("Role could not be saved"),
+    onError: mutationError(t("admin.roleSaveFailed")),
   });
   const removeRole = useMutation({
     mutationFn: (role: AuthorizationRole) => deleteAuthorizationRole(role.id, role.version),
     onSuccess: invalidate,
-    onError: mutationError("Role could not be deleted"),
+    onError: mutationError(t("admin.roleDeleteFailed")),
   });
   const assignment = useMutation({
     mutationFn: ({ id, roleIds, version }: { id: string; roleIds: string[]; version: string }) =>
@@ -165,11 +180,11 @@ const RolesPage = () => {
       invalidate();
       notifications.show({
         color: "teal",
-        title: "Roles assigned",
-        message: "Roles outside your delegated scope are kept.",
+        title: t("admin.rolesAssigned"),
+        message: t("admin.rolesOutsideScope"),
       });
     },
-    onError: mutationError("Roles could not be assigned"),
+    onError: mutationError(t("admin.rolesAssignFailed")),
   });
   const saveDelegation = useMutation({
     mutationFn: createDelegation,
@@ -178,21 +193,21 @@ const RolesPage = () => {
       invalidate();
       notifications.show({
         color: "teal",
-        title: "Delegation granted",
-        message: "This grants administration only, not data access.",
+        title: t("admin.delegationGranted"),
+        message: t("admin.delegationGrantMessage"),
       });
     },
-    onError: mutationError("Delegation could not be granted"),
+    onError: mutationError(t("admin.delegationGrantFailed")),
   });
   const revoke = useMutation({
     mutationFn: (item: { id: string; version: string }) => revokeDelegation(item.id, item.version),
     onSuccess: invalidate,
-    onError: mutationError("Delegation could not be revoked"),
+    onError: mutationError(t("admin.delegationRevokeFailed")),
   });
   const access = useQuery({
     queryKey: ["authorization", "user", selectedUser],
     queryFn: () => {
-      if (!selectedUser) throw new Error("Select a user before loading access.");
+      if (!selectedUser) throw new Error(t("admin.selectUserBeforeAccess"));
       return getUserAccess(selectedUser);
     },
     enabled: !!selectedUser && manageable,
@@ -219,14 +234,14 @@ const RolesPage = () => {
   if (me.isPending) return <Loader />;
   if (me.isError)
     return (
-      <Alert color="red" title="Authorization administration unavailable">
-        {errorText(me.error)}
+      <Alert color="red" title={t("admin.authUnavailable")}>
+        {errorText(me.error, t("common.requestFailed"))}
       </Alert>
     );
   if (!manageable)
     return (
-      <Alert color="yellow" title="Access not available">
-        Your account cannot manage roles and access.
+      <Alert color="yellow" title={t("admin.accessUnavailable")}>
+        {t("admin.cannotManageRoles")}
       </Alert>
     );
   const canCreateRole = isOwner || scopes.some((item) => item.canCreateRoles);
@@ -243,25 +258,25 @@ const RolesPage = () => {
         <div>
           <Group gap="sm">
             <IconShield size={30} color="var(--mantine-color-vantigo-6)" />
-            <Title order={2}>Roles & access</Title>
+            <Title order={2}>{t("admin.rolesAccess")}</Title>
           </Group>
           <Text c="dimmed" mt={5}>
-            Build additive permission sets and assign them safely to your team.
+            {t("admin.rolesDescription")}
           </Text>
         </div>
         <Group>
           {activeSection === "roles" && canCreateRole && (
             <Button leftSection={<IconPlus size={16} />} onClick={() => openRoleEditor()}>
-              Create custom role
+              {t("admin.createCustomRole")}
             </Button>
           )}
         </Group>
       </Group>
       <Tabs value={activeSection} onChange={(value) => setActiveSection(value ?? "roles")} keepMounted>
-        <Tabs.List aria-label="Roles and access administration">
-          <Tabs.Tab value="roles">Roles</Tabs.Tab>
-          <Tabs.Tab value="assignments">Assignments</Tabs.Tab>
-          <Tabs.Tab value="delegations">Delegations</Tabs.Tab>
+        <Tabs.List aria-label={t("admin.rolesAdministration")}>
+          <Tabs.Tab value="roles">{t("admin.roles")}</Tabs.Tab>
+          <Tabs.Tab value="assignments">{t("admin.assignments")}</Tabs.Tab>
+          <Tabs.Tab value="delegations">{t("admin.delegations")}</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="roles" pt="xl">
@@ -269,13 +284,13 @@ const RolesPage = () => {
             <Stack>
               <Group justify="space-between">
                 <div>
-                  <Title order={3}>Role permissions</Title>
+                  <Title order={3}>{t("admin.rolePermissions")}</Title>
                   <Text size="sm" c="dimmed" mt={4}>
-                    Define reusable permission sets. Assigning a role to a person happens in Assignments.
+                    {t("admin.rolePermissionsDescription")}
                   </Text>
                 </div>
                 <Badge variant="light">
-                  {displayRoles.filter((role) => !role.isSystem && !role.isBuiltIn).length} managed custom
+                  {displayRoles.filter((role) => !role.isSystem && !role.isBuiltIn).length} {t("admin.managedCustom")}
                 </Badge>
               </Group>
               {roles.isPending || catalog.isPending ? (
@@ -290,28 +305,35 @@ const RolesPage = () => {
                           <div>
                             <Group gap="xs">
                               {(role.isSystem || role.isBuiltIn || !editable) && <IconLock size={15} />}
-                              <Text fw={600}>{role.displayName}</Text>
+                              <Text fw={600}>
+                                {role.isSystem || role.isBuiltIn
+                                  ? translateHostRole(role.name, t, role.displayName)
+                                  : role.displayName}
+                              </Text>
                             </Group>
                             <Text size="xs" c="dimmed">
-                              {role.description}
+                              {role.isSystem || role.isBuiltIn
+                                ? translateHostRoleDescription(role.name, role.description, t)
+                                : role.description}
                             </Text>
                           </div>
                           {role.isSystem || role.isBuiltIn ? (
-                            <Badge color="gray">Protected</Badge>
+                            <Badge color="gray">{t("admin.protected")}</Badge>
                           ) : editable ? (
                             <Group>
                               <Button size="compact-sm" variant="subtle" onClick={() => openRoleEditor(role)}>
-                                Edit
+                                {t("admin.edit")}
                               </Button>
                               <Button
                                 size="compact-sm"
                                 color="red"
                                 variant="subtle"
+                                aria-label={t("admin.deleteRole")}
                                 onClick={() =>
                                   modals.openConfirmModal({
-                                    title: "Delete custom role?",
-                                    children: <Text size="sm">Assignments using this role may change.</Text>,
-                                    labels: { confirm: "Delete role", cancel: "Cancel" },
+                                    title: t("admin.deleteCustomRoleQuestion"),
+                                    children: <Text size="sm">{t("admin.roleAssignmentsMayChange")}</Text>,
+                                    labels: { confirm: t("admin.deleteRole"), cancel: t("common.cancel") },
                                     confirmProps: { color: "red" },
                                     onConfirm: () => removeRole.mutate(role),
                                   })
@@ -321,7 +343,7 @@ const RolesPage = () => {
                               </Button>
                             </Group>
                           ) : (
-                            <Badge color="gray">Outside current delegation boundary</Badge>
+                            <Badge color="gray">{t("admin.outsideDelegation")}</Badge>
                           )}
                         </Group>
                       </Card>
@@ -336,26 +358,25 @@ const RolesPage = () => {
         <Tabs.Panel value="assignments" pt="xl">
           <Card withBorder>
             <Stack>
-              <Title order={3}>User assignments</Title>
+              <Title order={3}>{t("admin.userAssignments")}</Title>
               <Text size="sm" c="dimmed">
-                Add or remove custom roles for a user. Roles outside your delegated scope are kept, and backend
-                authority remains final.
+                {t("admin.userAssignmentsDescription")}
               </Text>
               {!isOwner && (
                 <Select
-                  label="Assignment scope"
-                  placeholder="Choose one scope"
+                  label={t("admin.assignmentScope")}
+                  placeholder={t("admin.chooseOneScope")}
                   data={scopes
                     .filter((item) => item.assignableRoleIds.length > 0)
-                    .map((item) => ({ value: item.id, label: `Delegation ${item.id.slice(0, 8)}` }))}
+                    .map((item) => ({ value: item.id, label: t("admin.delegation", { id: item.id.slice(0, 8) }) }))}
                   value={assignmentScopeId}
                   onChange={setAssignmentScopeId}
                   required
                 />
               )}
               <Select
-                label="User"
-                placeholder="Select a user"
+                label={t("common.user")}
+                placeholder={t("admin.selectUser")}
                 searchable
                 data={(users.data ?? [])
                   .filter((user) => user.id !== me.data?.id)
@@ -367,21 +388,22 @@ const RolesPage = () => {
               {selectedUser && access.data && (isOwner || assignmentScope) ? (
                 <>
                   <Group>
-                    <Text fw={600}>Current roles</Text>
+                    <Text fw={600}>{t("admin.currentRoles")}</Text>
                     {access.data.roles.map((role) => (
                       <Badge key={role} color={role === "Owner" ? "violet" : undefined}>
-                        {role}
+                        {translateHostRole(role, t)}
                       </Badge>
                     ))}
                   </Group>
                   <Text size="sm" c="dimmed">
-                    Effective permissions:{" "}
+                    {t("admin.effectivePermissions")}{" "}
                     {access.data.permissions.includes("*")
-                      ? "All permissions"
-                      : access.data.permissions.join(", ") || "None"}
+                      ? t("admin.allPermissions")
+                      : access.data.permissions.map((key) => translateHostPermissionKey(key, t)).join(", ") ||
+                        t("admin.none")}
                   </Text>
                   <MultiSelect
-                    label="Assignable custom roles"
+                    label={t("admin.assignableRoles")}
                     data={assignableRoles.map((role) => ({ value: role.id, label: role.displayName }))}
                     value={assignableRoles
                       .filter((role) => access.data?.roleIds?.includes(role.id))
@@ -398,7 +420,7 @@ const RolesPage = () => {
                 <Loader />
               ) : (
                 <Text size="sm" c="dimmed">
-                  Select a user to review effective access.
+                  {t("admin.reviewAccess")}
                 </Text>
               )}
             </Stack>
@@ -410,28 +432,26 @@ const RolesPage = () => {
             <Stack>
               <Group justify="space-between">
                 <div>
-                  <Title order={3}>Delegated administration</Title>
+                  <Title order={3}>{t("admin.delegatedAdministration")}</Title>
                   <Text size="sm" c="dimmed" mt={4}>
-                    Grant scope-aware role administration without granting business data access.
+                    {t("admin.delegatedDescription")}
                   </Text>
                 </div>
                 {isOwner && (
                   <Button variant="light" leftSection={<IconUsers size={16} />} onClick={openDelegate}>
-                    Delegate administration
+                    {t("admin.delegateAdministration")}
                   </Button>
                 )}
               </Group>
               {!isOwner && (
                 <Text size="sm" c="dimmed">
-                  Delegations are managed by the account owner. Your current access is limited to the scopes delegated
-                  to you.
+                  {t("admin.ownerManagesDelegations")}
                 </Text>
               )}
               {isOwner && (
                 <>
                   <Text size="sm" c="dimmed">
-                    Active administrators and their boundaries appear here. Revoke access when the administration window
-                    ends.
+                    {t("admin.activeBoundaries")}
                   </Text>
                   {(delegations.data ?? [])
                     .filter((item) => !item.revokedAt)
@@ -447,15 +467,15 @@ const RolesPage = () => {
                           variant="subtle"
                           onClick={() =>
                             modals.openConfirmModal({
-                              title: "Revoke delegation?",
-                              children: <Text size="sm">This removes the delegated administration boundary.</Text>,
-                              labels: { confirm: "Revoke", cancel: "Cancel" },
+                              title: t("admin.revokeDelegationQuestion"),
+                              children: <Text size="sm">{t("admin.removeDelegationBoundary")}</Text>,
+                              labels: { confirm: t("admin.revoke"), cancel: t("common.cancel") },
                               confirmProps: { color: "red" },
                               onConfirm: () => revoke.mutate({ id: item.id, version: item.version }),
                             })
                           }
                         >
-                          Revoke
+                          {t("admin.revoke")}
                         </Button>
                       </Group>
                     ))}
@@ -468,7 +488,7 @@ const RolesPage = () => {
       <Modal
         opened={roleModal}
         onClose={closeRole}
-        title={selectedRole ? "Edit custom role" : "Create custom role"}
+        title={selectedRole ? t("admin.editCustomRole") : t("admin.createCustomRole")}
         size="lg"
       >
         <form
@@ -493,10 +513,10 @@ const RolesPage = () => {
           <Stack>
             {!isOwner && (
               <Select
-                label="Delegation scope"
-                placeholder="Choose a scope"
+                label={t("admin.delegationScope")}
+                placeholder={t("admin.chooseScope")}
                 data={(selectedRole ? coveringEditScopes : scopes.filter((item) => item.canCreateRoles)).map(
-                  (item) => ({ value: item.id, label: `Delegation ${item.id.slice(0, 8)}` }),
+                  (item) => ({ value: item.id, label: t("admin.delegation", { id: item.id.slice(0, 8) }) }),
                 )}
                 value={selectedScopeId}
                 onChange={(value) => {
@@ -508,12 +528,12 @@ const RolesPage = () => {
             )}
             {!isOwner && !selectedScopeId && (
               <Text size="sm" c="dimmed">
-                Choose a qualifying delegation scope before selecting permissions.
+                {t("admin.chooseScopePermissions")}
               </Text>
             )}
-            <TextInput label="Internal name" disabled={!!selectedRole} {...roleForm.getInputProps("name")} />
-            <TextInput label="Display name" {...roleForm.getInputProps("displayName")} />
-            <TextInput label="Description" {...roleForm.getInputProps("description")} />
+            <TextInput label={t("admin.internalName")} disabled={!!selectedRole} {...roleForm.getInputProps("name")} />
+            <TextInput label={t("common.displayName")} {...roleForm.getInputProps("displayName")} />
+            <TextInput label={t("admin.description")} {...roleForm.getInputProps("description")} />
             {(isOwner || (selectedRole ? selectedEditScope : scopeForCreation)) &&
               [...groupedPermissions.entries()].map(([group, permissions]) => (
                 <Stack key={group} gap="xs">
@@ -523,11 +543,11 @@ const RolesPage = () => {
                       key={permission.key}
                       label={
                         <Group gap="xs">
-                          <span>{permission.displayName}</span>
-                          {permission.sensitive && <Badge color="orange">Sensitive</Badge>}
+                          <span>{translateHostPermissionKey(permission.key, t, permission.displayName)}</span>
+                          {permission.sensitive && <Badge color="orange">{t("admin.sensitive")}</Badge>}
                         </Group>
                       }
-                      description={permission.description}
+                      description={translateHostPermissionDescription(permission.key, permission.description, t)}
                       checked={roleForm.values.permissionKeys.includes(permission.key)}
                       onChange={(event) =>
                         roleForm.setFieldValue(
@@ -546,48 +566,51 @@ const RolesPage = () => {
               loading={saveRole.isPending}
               disabled={!isOwner && !(selectedRole ? selectedEditScope : scopeForCreation)}
             >
-              Save role
+              {t("admin.saveRole")}
             </Button>
           </Stack>
         </form>
       </Modal>
       {isOwner && (
-        <Modal opened={delegateModal} onClose={closeDelegate} title="Delegate role administration">
+        <Modal opened={delegateModal} onClose={closeDelegate} title={t("admin.delegateRoleAdministration")}>
           <form onSubmit={delegateForm.onSubmit((values) => saveDelegation.mutate(values))}>
             <Stack>
               <Text size="sm" c="dimmed">
-                This grants administration only, not business data access. You cannot delegate to yourself.
+                {t("admin.delegateDescription")}
               </Text>
               <Select
-                label="Administrator"
+                label={t("admin.administrator")}
                 data={(users.data ?? [])
                   .filter((user) => user.id !== me.data?.id)
                   .map((user) => ({ value: user.id, label: user.displayName || user.email || user.id }))}
                 {...delegateForm.getInputProps("granteeUserId")}
               />
               <MultiSelect
-                label="Delegable permissions"
+                label={t("admin.delegablePermissions")}
                 data={(catalog.data ?? [])
                   .filter((item) => item.delegable)
-                  .map((item) => ({ value: item.key, label: item.displayName }))}
+                  .map((item) => ({
+                    value: item.key,
+                    label: translateHostPermissionKey(item.key, t, item.displayName),
+                  }))}
                 {...delegateForm.getInputProps("permissionKeys")}
               />
               <MultiSelect
-                label="Stewarded custom roles"
+                label={t("admin.stewardedRoles")}
                 data={customRoles.map((role) => ({ value: role.id, label: role.displayName }))}
                 {...delegateForm.getInputProps("stewardedRoleIds")}
               />
               <TextInput
-                label="Expiry (optional)"
-                placeholder="2027-01-31T00:00:00Z"
+                label={t("admin.expiryOptional")}
+                placeholder={t("admin.expiryPlaceholder")}
                 {...delegateForm.getInputProps("expiresAt")}
               />
               <Checkbox
-                label="May create custom roles"
+                label={t("admin.mayCreateRoles")}
                 {...delegateForm.getInputProps("canCreateRoles", { type: "checkbox" })}
               />
               <Button type="submit" loading={saveDelegation.isPending}>
-                Grant delegation
+                {t("admin.grantDelegation")}
               </Button>
             </Stack>
           </form>

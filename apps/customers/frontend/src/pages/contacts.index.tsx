@@ -19,13 +19,14 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 
 import { type ContactListItem, contactsQueryOptions, deleteContact } from "../api/contacts";
 import { NoValue } from "../components/legal-badges";
 import { formatContactName } from "../lib/format-contact-name";
 import { ContactFormModal, type ContactModalState } from "./-contact-form-modal";
+import "../i18n";
 
 const PAGE_SIZE = 25;
 
@@ -35,6 +36,7 @@ interface ContactsSearch {
 }
 
 export const ContactsPage = () => {
+  const { t, formatters } = useI18n("customers");
   const { page, search } = useSearch({ strict: false }) as ContactsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
@@ -65,7 +67,7 @@ export const ContactsPage = () => {
     onSuccess: (_, item) => {
       notifications.show({
         color: "teal",
-        title: "Contact deleted",
+        title: t("contactDeleted"),
         message: `"${formatContactName(item.contact)}" was deleted.`,
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
@@ -78,7 +80,7 @@ export const ContactsPage = () => {
     onError: (mutationError) => {
       notifications.show({
         color: "red",
-        title: "Failed to delete contact",
+        title: t("failedDeleteContact"),
         message: mutationError.message,
       });
     },
@@ -87,18 +89,18 @@ export const ContactsPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow="Customers"
-        title="Contacts"
-        description="People linked to your customers, with their contact details."
+        eyebrow={t("customers")}
+        title={t("contacts")}
+        description={t("contactsDescription")}
         actions={
           <Group gap="sm">
             {data && (
               <Badge variant="light" size="lg">
-                {data.pagination.totalCount} total
+                {t("total", { count: formatters.formatNumber(data.pagination.totalCount) })}
               </Badge>
             )}
             <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-              Create new contact
+              {t("createNewContact")}
             </Button>
           </Group>
         }
@@ -109,7 +111,7 @@ export const ContactsPage = () => {
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <TextInput
-            placeholder="Search by name, phone or email..."
+            placeholder={t("searchContacts")}
             leftSection={<IconSearch size={16} />}
             value={searchInput}
             onChange={(event) => setSearchInput(event.currentTarget.value)}
@@ -117,7 +119,7 @@ export const ContactsPage = () => {
           />
 
           {isError && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Failed to load contacts">
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedLoadContacts")}>
               {error.message}
             </Alert>
           )}
@@ -134,11 +136,11 @@ export const ContactsPage = () => {
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Name</Table.Th>
-                      <Table.Th>Phone</Table.Th>
-                      <Table.Th>Email</Table.Th>
-                      <Table.Th>Customers</Table.Th>
-                      <Table.Th w={80} aria-label="Actions" />
+                      <Table.Th>{t("name")}</Table.Th>
+                      <Table.Th>{t("phone")}</Table.Th>
+                      <Table.Th>{t("email")}</Table.Th>
+                      <Table.Th>{t("customerColumn")}</Table.Th>
+                      <Table.Th w={80} aria-label={t("actions")} />
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -164,7 +166,7 @@ export const ContactsPage = () => {
                             <ActionIcon
                               variant="subtle"
                               color="gray"
-                              aria-label={`Edit ${formatContactName(item.contact)}`}
+                              aria-label={t("editNamed", { name: formatContactName(item.contact) })}
                               onClick={() => setModalState({ mode: "edit", contact: item.contact })}
                             >
                               <IconPencil size={16} />
@@ -172,7 +174,7 @@ export const ContactsPage = () => {
                             <ActionIcon
                               variant="subtle"
                               color="red"
-                              aria-label={`Delete ${formatContactName(item.contact)}`}
+                              aria-label={t("removeNamed", { name: formatContactName(item.contact) })}
                               loading={removal.isPending && removal.variables === item}
                               onClick={() => removal.mutate(item)}
                             >
@@ -188,7 +190,7 @@ export const ContactsPage = () => {
 
               {data.data.length === 0 && (
                 <Center py="xl">
-                  <Text c="dimmed">No contacts found.</Text>
+                  <Text c="dimmed">{t("noContactsFound")}</Text>
                 </Center>
               )}
 

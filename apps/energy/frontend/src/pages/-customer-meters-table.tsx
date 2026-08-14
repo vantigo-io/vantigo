@@ -1,34 +1,40 @@
 import { Badge, Card, Group, Stack, Table, Text, Title, Tooltip } from "@mantine/core";
 import { useNavigate } from "@tanstack/react-router";
+import { useI18n } from "@vantigo/frontend-shell";
 import type { ConnectionStatus, CustomerMeteringPoint, SupplyPeriod } from "../api/energy";
+import "../i18n";
 
 const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "teal", Disconnected: "red" })[status];
 const periodColor = (status: SupplyPeriod["status"]) => ({ Active: "teal", Ended: "gray", Cancelled: "red" })[status];
 
-const formatDate = (value: string) => new Date(value).toLocaleDateString();
-const formatPeriod = (period: SupplyPeriod) =>
-  `${formatDate(period.start)} – ${period.end ? formatDate(period.end) : "Open-ended"}`;
-const formatKwh = (value: number | undefined | null) =>
-  typeof value === "number" ? `${new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(value)} kWh` : "—";
-
 /** The latest (by start) supply period is the customer-facing one; older periods go in a tooltip. */
 const latestPeriod = (periods: SupplyPeriod[]) => [...periods].sort((a, b) => b.start.localeCompare(a.start))[0];
 
-const SupplyPeriodCell = ({ periods }: { periods: SupplyPeriod[] }) => {
+const SupplyPeriodCell = ({
+  periods,
+  formatPeriod,
+  statusLabel,
+  notAvailable,
+}: {
+  periods: SupplyPeriod[];
+  formatPeriod: (period: SupplyPeriod) => string;
+  statusLabel: (status: SupplyPeriod["status"]) => string;
+  notAvailable: string;
+}) => {
   const latest = latestPeriod(periods);
-  if (!latest) return <Text c="dimmed">—</Text>;
+  if (!latest) return <Text c="dimmed">{notAvailable}</Text>;
   const cell = (
     <Group gap="xs" wrap="nowrap">
       <Text size="sm">{formatPeriod(latest)}</Text>
       <Badge variant="light" color={periodColor(latest.status)}>
-        {latest.status}
+        {statusLabel(latest.status)}
       </Badge>
     </Group>
   );
   if (periods.length <= 1) return cell;
   return (
     <Tooltip
-      label={periods.map((period) => `${formatPeriod(period)} (${period.status})`).join("\n")}
+      label={periods.map((period) => `${formatPeriod(period)} (${statusLabel(period.status)})`).join("\n")}
       multiline
       style={{ whiteSpace: "pre-line" }}
     >
@@ -38,13 +44,20 @@ const SupplyPeriodCell = ({ periods }: { periods: SupplyPeriod[] }) => {
 };
 
 export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[] }) => {
+  const { t, formatters } = useI18n("energy");
   const navigate = useNavigate();
+  const formatPeriod = (period: SupplyPeriod) =>
+    `${formatters.formatDate(period.start, { dateStyle: "medium", timeZone: "UTC" })} – ${period.end ? formatters.formatDate(period.end, { dateStyle: "medium", timeZone: "UTC" }) : t("openEnded")}`;
+  const formatKwh = (value: number | undefined | null) =>
+    typeof value === "number"
+      ? `${formatters.formatNumber(value, { maximumFractionDigits: 0 })} kWh`
+      : t("notAvailable");
   if (meters.length === 0)
     return (
       <Card withBorder>
         <Stack align="center">
-          <Title order={3}>No metering points</Title>
-          <Text c="dimmed">Attach a metering point to start tracking consumption.</Text>
+          <Title order={3}>{t("noCustomerMeteringPoints")}</Title>
+          <Text c="dimmed">{t("attachToTrackConsumption")}</Text>
         </Stack>
       </Card>
     );
@@ -53,12 +66,12 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>Metering point ID</Table.Th>
-            <Table.Th>Installation address</Table.Th>
-            <Table.Th>Price area</Table.Th>
-            <Table.Th>Expected annual consumption</Table.Th>
-            <Table.Th>Supply period</Table.Th>
-            <Table.Th>Status</Table.Th>
+            <Table.Th>{t("meteringPointId")}</Table.Th>
+            <Table.Th>{t("installationAddress")}</Table.Th>
+            <Table.Th>{t("priceArea")}</Table.Th>
+            <Table.Th>{t("expectedAnnualConsumption")}</Table.Th>
+            <Table.Th>{t("supplyPeriods")}</Table.Th>
+            <Table.Th>{t("status")}</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -80,10 +93,17 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
               <Table.Td>{meteringPoint.priceArea}</Table.Td>
               <Table.Td>{formatKwh(meteringPoint.expectedAnnualConsumptionKwh)}</Table.Td>
               <Table.Td>
-                <SupplyPeriodCell periods={supplyPeriods} />
+                <SupplyPeriodCell
+                  periods={supplyPeriods}
+                  formatPeriod={formatPeriod}
+                  statusLabel={(status) => t(`supplyPeriodStatus${status}`)}
+                  notAvailable={t("notAvailable")}
+                />
               </Table.Td>
               <Table.Td>
-                <Badge color={statusColor(meteringPoint.connectionStatus)}>{meteringPoint.connectionStatus}</Badge>
+                <Badge color={statusColor(meteringPoint.connectionStatus)}>
+                  {t(`connectionStatus${meteringPoint.connectionStatus}`)}
+                </Badge>
               </Table.Td>
             </Table.Tr>
           ))}

@@ -17,7 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { IconBolt, IconCalendar, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { customersQueryOptions } from "../api/customers";
 import {
@@ -34,8 +34,8 @@ import { ManualReadingModal } from "./-manual-reading-modal";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
 import { ReplaceMeterModal } from "./-replace-meter-modal";
 import { SupplyPeriodModal } from "./-supply-period-modal";
+import "../i18n";
 
-const dateOnly = (value: string | null | undefined) => (value ? new Date(value).toLocaleDateString() : "Open-ended");
 const defaultFrom = () => {
   const date = new Date();
   date.setMonth(date.getMonth() - 1);
@@ -44,6 +44,7 @@ const defaultFrom = () => {
 const defaultTo = () => new Date().toISOString().slice(0, 10);
 
 export const MeteringPointDetailsPage = () => {
+  const { t, formatters } = useI18n("energy");
   const { meteringPointId } = useParams({ strict: false }) as { meteringPointId: number };
   const client = useQueryClient();
   const { data: point } = useSuspenseQuery(meteringPointQueryOptions(meteringPointId));
@@ -63,21 +64,26 @@ export const MeteringPointDetailsPage = () => {
     mutationFn: (periodId: number) => endSupplyPeriod(meteringPointId, periodId, new Date().toISOString()),
     onSuccess: () =>
       void client.invalidateQueries({ queryKey: ["energy", "metering-points", meteringPointId, "supply-periods"] }),
-    onError: (error) => notifications.show({ color: "red", title: "Could not end period", message: error.message }),
+    onError: (error) => notifications.show({ color: "red", title: t("couldNotEndPeriod"), message: error.message }),
   });
   const customerName = (id: number) =>
-    customers?.data.find((customer) => customer.id === id)?.name ?? `Customer #${id}`;
+    customers?.data.find((customer) => customer.id === id)?.name ?? t("customerNumber", { id });
+  const supplyPeriodDate = (value: string | null | undefined) =>
+    value ? formatters.formatDate(value, { dateStyle: "medium", timeZone: "UTC" }) : t("openEnded");
+  const meterTimestamp = (value: string | null | undefined) =>
+    value ? formatters.formatDate(value, { dateStyle: "medium", timeStyle: "short" }) : t("openEnded");
+  const timestampDate = (value: string | null | undefined) => (value ? formatters.formatDate(value) : t("openEnded"));
   const hasActivePeriod = periods?.some((period) => period.status === "Active") ?? false;
   return (
     <Stack gap="lg">
       <Breadcrumbs>
         <Anchor component={Link} to="/energy/metering-points" size="sm">
-          Metering points
+          {t("meteringPoints")}
         </Anchor>
         <Text size="sm">{point.gsrn}</Text>
       </Breadcrumbs>
       <PageHeader
-        eyebrow="Energy"
+        eyebrow={t("energy")}
         title={
           <>
             <IconBolt size={28} /> {point.gsrn}
@@ -90,30 +96,32 @@ export const MeteringPointDetailsPage = () => {
             leftSection={<IconPencil size={16} />}
             onClick={() => setEditState({ mode: "edit", meteringPoint: point })}
           >
-            Edit metering point
+            {t("editMeteringPointAction")}
           </Button>
         }
       />
       <MeteringPointFormModal state={editState} onClose={() => setEditState(null)} />
       <Card withBorder>
         <Stack>
-          <Title order={3}>Metering point details</Title>
+          <Title order={3}>{t("meteringPointDetails")}</Title>
           <Group>
             <Text>
-              <b>Meter number:</b> {point.meterNumber ?? "—"}
+              <b>{t("meterNumber")}:</b> {point.meterNumber ?? t("notAvailable")}
             </Text>
             <Text>
-              <b>Price area:</b> {point.priceArea}
+              <b>{t("priceArea")}:</b> {point.priceArea}
             </Text>
             <Text>
-              <b>Grid area:</b> {point.gridArea ?? "—"}
+              <b>{t("gridArea")}:</b> {point.gridArea ?? t("notAvailable")}
             </Text>
             <Text>
-              <b>Connection:</b> <Badge>{point.connectionStatus}</Badge>
+              <b>{t("connection")}:</b> <Badge>{t(`connectionStatus${point.connectionStatus}`)}</Badge>
             </Text>
             <Text>
-              <b>Expected annual consumption:</b>{" "}
-              {point.expectedAnnualConsumptionKwh ? `${point.expectedAnnualConsumptionKwh} kWh` : "—"}
+              <b>{t("expectedAnnualConsumption")}:</b>{" "}
+              {point.expectedAnnualConsumptionKwh !== undefined
+                ? `${formatters.formatNumber(point.expectedAnnualConsumptionKwh, { maximumFractionDigits: 0 })} kWh`
+                : t("notAvailable")}
             </Text>
           </Group>
         </Stack>
@@ -121,8 +129,8 @@ export const MeteringPointDetailsPage = () => {
       <Card withBorder>
         <Stack>
           <Group justify="space-between">
-            <Title order={3}>Meter history</Title>
-            <Button onClick={() => setReplaceMeterOpen(true)}>Replace meter</Button>
+            <Title order={3}>{t("meterHistory")}</Title>
+            <Button onClick={() => setReplaceMeterOpen(true)}>{t("replaceMeter")}</Button>
           </Group>
           <ReplaceMeterModal
             meteringPointId={meteringPointId}
@@ -133,32 +141,32 @@ export const MeteringPointDetailsPage = () => {
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Meter number</Table.Th>
-                  <Table.Th>Installed</Table.Th>
-                  <Table.Th>Removed</Table.Th>
+                  <Table.Th>{t("meterNumber")}</Table.Th>
+                  <Table.Th>{t("installed")}</Table.Th>
+                  <Table.Th>{t("removed")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {meters.map((meter) => (
                   <Table.Tr key={meter.id}>
                     <Table.Td>{meter.meterNumber}</Table.Td>
-                    <Table.Td>{dateOnly(meter.installedAt)}</Table.Td>
-                    <Table.Td>{dateOnly(meter.removedAt)}</Table.Td>
+                    <Table.Td>{meterTimestamp(meter.installedAt)}</Table.Td>
+                    <Table.Td>{meterTimestamp(meter.removedAt)}</Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
             </Table>
           ) : (
-            <Text c="dimmed">No meter history found.</Text>
+            <Text c="dimmed">{t("noMeterHistory")}</Text>
           )}
         </Stack>
       </Card>
       <Card withBorder>
         <Stack>
           <Group justify="space-between">
-            <Title order={3}>Supply periods</Title>
+            <Title order={3}>{t("supplyPeriods")}</Title>
             <Button leftSection={<IconPlus size={16} />} onClick={() => setSupplyPeriodModalOpen(true)}>
-              {hasActivePeriod ? "Switch customer" : "Assign customer"}
+              {hasActivePeriod ? t("switchCustomer") : t("assignCustomer")}
             </Button>
           </Group>
           <SupplyPeriodModal
@@ -171,10 +179,10 @@ export const MeteringPointDetailsPage = () => {
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Customer</Table.Th>
-                  <Table.Th>Start</Table.Th>
-                  <Table.Th>End</Table.Th>
-                  <Table.Th>Status</Table.Th>
+                  <Table.Th>{t("customer")}</Table.Th>
+                  <Table.Th>{t("start")}</Table.Th>
+                  <Table.Th>{t("end")}</Table.Th>
+                  <Table.Th>{t("status")}</Table.Th>
                   <Table.Th />
                 </Table.Tr>
               </Table.Thead>
@@ -182,15 +190,17 @@ export const MeteringPointDetailsPage = () => {
                 {periods.map((period) => (
                   <Table.Tr key={period.id}>
                     <Table.Td>{customerName(period.customerId)}</Table.Td>
-                    <Table.Td>{dateOnly(period.start)}</Table.Td>
-                    <Table.Td>{dateOnly(period.end)}</Table.Td>
+                    <Table.Td>{supplyPeriodDate(period.start)}</Table.Td>
+                    <Table.Td>{supplyPeriodDate(period.end)}</Table.Td>
                     <Table.Td>
-                      <Badge color={period.status === "Active" ? "teal" : "gray"}>{period.status}</Badge>
+                      <Badge color={period.status === "Active" ? "teal" : "gray"}>
+                        {t(`supplyPeriodStatus${period.status}`)}
+                      </Badge>
                     </Table.Td>
                     <Table.Td>
                       {period.status === "Active" && (
                         <Button size="compact-sm" variant="light" onClick={() => endMutation.mutate(period.id)}>
-                          End period
+                          {t("endPeriod")}
                         </Button>
                       )}
                     </Table.Td>
@@ -199,42 +209,42 @@ export const MeteringPointDetailsPage = () => {
               </Table.Tbody>
             </Table>
           ) : (
-            <Text c="dimmed">No supply periods assigned.</Text>
+            <Text c="dimmed">{t("noSupplyPeriods")}</Text>
           )}
         </Stack>
       </Card>
       <Card withBorder>
         <Stack>
           <Group justify="space-between">
-            <Title order={3}>Consumption</Title>
+            <Title order={3}>{t("consumption")}</Title>
             <Button leftSection={<IconPlus size={16} />} onClick={() => setReadingOpen(true)}>
-              Add manual reading
+              {t("addManualReading")}
             </Button>
           </Group>
           <Group>
             <DateInput
-              label="From"
+              label={t("from")}
               value={from}
-              valueFormat="YYYY-MM-DD"
+              valueFormat={t("dateInputFormat")}
               onChange={(value) => value && setFrom(value)}
               leftSection={<IconCalendar size={16} />}
             />
             <DateInput
-              label="To"
+              label={t("to")}
               value={to}
-              valueFormat="YYYY-MM-DD"
+              valueFormat={t("dateInputFormat")}
               onChange={(value) => value && setTo(value)}
               leftSection={<IconCalendar size={16} />}
             />
           </Group>
           <SegmentedControl
-            aria-label="Consumption resolution"
+            aria-label={t("consumptionResolution")}
             value={resolution}
             onChange={(value) => setResolution(value as ConsumptionResolution)}
             data={[
-              { label: "Hour", value: "hour" },
-              { label: "Day", value: "day" },
-              { label: "Month", value: "month" },
+              { label: t("hour"), value: "hour" },
+              { label: t("day"), value: "day" },
+              { label: t("month"), value: "month" },
             ]}
           />
           <ConsumptionChart aggregates={aggregates ?? []} resolution={resolution} />
@@ -242,27 +252,27 @@ export const MeteringPointDetailsPage = () => {
             <Table>
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Start</Table.Th>
-                  <Table.Th>End</Table.Th>
-                  <Table.Th>Quantity (kWh)</Table.Th>
-                  <Table.Th>Quality</Table.Th>
-                  <Table.Th>Source</Table.Th>
+                  <Table.Th>{t("start")}</Table.Th>
+                  <Table.Th>{t("end")}</Table.Th>
+                  <Table.Th>{t("quantityKwh")}</Table.Th>
+                  <Table.Th>{t("quality")}</Table.Th>
+                  <Table.Th>{t("source")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {consumption.map((item) => (
                   <Table.Tr key={item.id}>
-                    <Table.Td>{dateOnly(item.start)}</Table.Td>
-                    <Table.Td>{dateOnly(item.end)}</Table.Td>
-                    <Table.Td>{item.quantityKwh}</Table.Td>
-                    <Table.Td>{item.quality}</Table.Td>
-                    <Table.Td>{item.source}</Table.Td>
+                    <Table.Td>{timestampDate(item.start)}</Table.Td>
+                    <Table.Td>{timestampDate(item.end)}</Table.Td>
+                    <Table.Td>{formatters.formatNumber(item.quantityKwh)}</Table.Td>
+                    <Table.Td>{t(`quality${item.quality}`)}</Table.Td>
+                    <Table.Td>{t(`source${item.source}`)}</Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
             </Table>
           ) : (
-            <Alert color="gray">No readings found for the selected date range.</Alert>
+            <Alert color="gray">{t("noReadingsForRange")}</Alert>
           )}
           <ManualReadingModal
             meteringPointId={meteringPointId}

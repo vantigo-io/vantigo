@@ -11,7 +11,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import {
   archiveMessage,
   messageEventsQueryOptions,
@@ -21,14 +21,15 @@ import {
   unarchiveMessage,
 } from "../api/messages";
 import { eventLabel, statusColor, statusLabel } from "../lib/status";
+import "../i18n";
 
 const htmlAsText = (html: string) => {
   const element = document.createElement("div");
   element.innerHTML = html;
   return element.textContent || "";
 };
-const eventDescription = (dataJson: string | null) => {
-  if (!dataJson) return "Status recorded by the service.";
+const eventDescription = (dataJson: string | null, statusRecorded: string) => {
+  if (!dataJson) return statusRecorded;
   try {
     const parsed = JSON.parse(dataJson) as { error?: string };
     if (parsed && typeof parsed.error === "string" && parsed.error) return parsed.error;
@@ -38,6 +39,7 @@ const eventDescription = (dataJson: string | null) => {
   return dataJson;
 };
 export function DetailPage() {
+  const { t, formatters } = useI18n("communications");
   const { messageId } = useParams({ strict: false }) as { messageId: string };
   const queryClient = useQueryClient();
   const message = useQuery(messageQueryOptions(messageId));
@@ -53,34 +55,36 @@ export function DetailPage() {
     mutationFn: (scope: ResendScope) => resendMessage(messageId, scope),
     onSuccess: async (result) => {
       notifications.show({
-        title: "Message re-queued",
-        message: `${result.requeuedRecipientCount} recipient${result.requeuedRecipientCount === 1 ? "" : "s"} queued for sending.`,
+        title: t("messageRequeued"),
+        message: t(result.requeuedRecipientCount === 1 ? "recipientsQueuedSingular" : "recipientsQueuedPlural", {
+          count: result.requeuedRecipientCount,
+        }),
       });
       await invalidate();
     },
-    onError: (error) => notifications.show({ color: "red", title: "Could not resend", message: error.message }),
+    onError: (error) => notifications.show({ color: "red", title: t("couldNotResend"), message: error.message }),
   });
   const archive = useMutation({
     mutationFn: () => archiveMessage(messageId),
     onSuccess: async () => {
       archiveConfirm.close();
-      notifications.show({ title: "Message archived", message: "The message was moved to the archive." });
+      notifications.show({ title: t("messageArchived"), message: t("messageMovedToArchive") });
       await invalidate();
     },
-    onError: (error) => notifications.show({ color: "red", title: "Could not archive", message: error.message }),
+    onError: (error) => notifications.show({ color: "red", title: t("couldNotArchive"), message: error.message }),
   });
   const unarchive = useMutation({
     mutationFn: () => unarchiveMessage(messageId),
     onSuccess: async () => {
-      notifications.show({ title: "Message restored", message: "The message is back in the history." });
+      notifications.show({ title: t("messageRestored"), message: t("messageBackInHistory") });
       await invalidate();
     },
-    onError: (error) => notifications.show({ color: "red", title: "Could not restore", message: error.message }),
+    onError: (error) => notifications.show({ color: "red", title: t("couldNotRestore"), message: error.message }),
   });
   if (message.isPending) return <Loader />;
   if (message.isError)
     return (
-      <Alert color="red" title="Message unavailable">
+      <Alert color="red" title={t("messageUnavailable")}>
         {message.error.message}
       </Alert>
     );
@@ -88,7 +92,7 @@ export function DetailPage() {
   const isArchived = m.archivedAt !== null;
   const hasFailedDeliveries = m.deliveries.some((delivery) => delivery.status === "submission_failed");
   const sendInProgress = m.deliveries.some((delivery) => ["queued", "sending", "retrying"].includes(delivery.status));
-  const body = m.textBody || (m.htmlBody ? htmlAsText(m.htmlBody) : "No message body was provided.");
+  const body = m.textBody || (m.htmlBody ? htmlAsText(m.htmlBody) : t("noMessageBody"));
   return (
     <Stack gap="xl">
       <Button
@@ -98,17 +102,18 @@ export function DetailPage() {
         leftSection={<IconArrowLeft size={16} />}
         w="fit-content"
       >
-        Back to history
+        {t("searchHistory")}
       </Button>
       <PageHeader
-        eyebrow="Communications"
+        eyebrow={t("communications")}
         title={m.subject}
         description={
           <>
-            {m.source || "Unknown source"} · {new Date(m.createdAt).toLocaleString()}
+            {m.source || t("unknownSource")} ·{" "}
+            {formatters.formatDate(m.createdAt, { dateStyle: "medium", timeStyle: "short" })}
             {m.mailbox && (
               <>
-                {" · Sent from "}
+                {` · ${t("sentFrom")} `}
                 {m.mailbox.displayName ? `${m.mailbox.displayName} <${m.mailbox.fromAddress}>` : m.mailbox.fromAddress}
               </>
             )}
@@ -118,7 +123,7 @@ export function DetailPage() {
           <Group gap="sm">
             {isArchived && (
               <Badge color="gray" variant="light">
-                Archived
+                {t("archived")}
               </Badge>
             )}
             {!isArchived && (
@@ -130,16 +135,16 @@ export function DetailPage() {
                     rightSection={<IconChevronDown size={16} />}
                     loading={resend.isPending}
                     disabled={sendInProgress}
-                    title={sendInProgress ? "A send is already in progress." : undefined}
+                    title={sendInProgress ? t("sendInProgress") : undefined}
                   >
-                    Resend
+                    {t("resend")}
                   </Button>
                 </Menu.Target>
                 <Menu.Dropdown>
                   <Menu.Item disabled={!hasFailedDeliveries} onClick={() => resend.mutate("failed")}>
-                    Resend failed recipients only
+                    {t("resendFailedRecipients")}
                   </Menu.Item>
-                  <Menu.Item onClick={() => resend.mutate("all")}>Resend to all recipients</Menu.Item>
+                  <Menu.Item onClick={() => resend.mutate("all")}>{t("resendAllRecipients")}</Menu.Item>
                 </Menu.Dropdown>
               </Menu>
             )}
@@ -150,7 +155,7 @@ export function DetailPage() {
                 loading={unarchive.isPending}
                 onClick={() => unarchive.mutate()}
               >
-                Unarchive
+                {t("unarchive")}
               </Button>
             ) : (
               <Button
@@ -159,31 +164,30 @@ export function DetailPage() {
                 leftSection={<IconArchive size={16} />}
                 onClick={archiveConfirm.open}
               >
-                Archive
+                {t("archive")}
               </Button>
             )}
           </Group>
         }
       />
-      <Modal opened={archiveConfirmOpened} onClose={archiveConfirm.close} title="Archive message" centered>
+      <Modal opened={archiveConfirmOpened} onClose={archiveConfirm.close} title={t("archiveMessage")} centered>
         <Stack gap="md">
           <Text>
-            The message will be hidden from the default history view.
-            {sendInProgress ? " Any pending send will be cancelled." : ""} You can unarchive it later.
+            {t("archiveMessageDescription", { pendingText: sendInProgress ? t("pendingSendCancelled") : "" })}
           </Text>
           <Group justify="end">
             <Button variant="default" onClick={archiveConfirm.close}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button color="red" loading={archive.isPending} onClick={() => archive.mutate()}>
-              Archive
+              {t("archive")}
             </Button>
           </Group>
         </Stack>
       </Modal>
       <Card withBorder radius="lg">
         <Text size="sm" c="dimmed">
-          Message body
+          {t("messageBody")}
         </Text>
         <Text mt="sm" style={{ whiteSpace: "pre-wrap" }}>
           {body}
@@ -191,7 +195,7 @@ export function DetailPage() {
       </Card>
       <Card withBorder radius="lg">
         <Title order={4} mb="lg">
-          Recipients
+          {t("recipients")}
         </Title>
         <Stack gap="sm">
           {m.deliveries.length ? (
@@ -200,7 +204,13 @@ export function DetailPage() {
                 <div>
                   <Text>{delivery.emailAddress}</Text>
                   <Text size="xs" c="dimmed">
-                    {delivery.recipientType}
+                    {delivery.recipientType === "to"
+                      ? t("recipientTo")
+                      : delivery.recipientType === "cc"
+                        ? t("recipientCc")
+                        : delivery.recipientType === "bcc"
+                          ? t("recipientBcc")
+                          : delivery.recipientType}
                   </Text>
                   {delivery.lastError && (
                     <Text size="xs" c="red">
@@ -209,19 +219,19 @@ export function DetailPage() {
                   )}
                 </div>
                 <Badge color={statusColor(delivery.status)} variant="light">
-                  {statusLabel(delivery.status)}
+                  {statusLabel(delivery.status, t)}
                 </Badge>
               </Group>
             ))
           ) : (
-            <Text c="dimmed">No recipients recorded.</Text>
+            <Text c="dimmed">{t("noRecipientsRecorded")}</Text>
           )}
         </Stack>
       </Card>
       {m.externalLinks.length > 0 && (
         <Card withBorder radius="lg">
           <Title order={4} mb="lg">
-            External references
+            {t("externalReferences")}
           </Title>
           <Stack gap="sm">
             {m.externalLinks.map((link) => (
@@ -237,14 +247,14 @@ export function DetailPage() {
       )}
       <Card withBorder radius="lg">
         <Title order={4} mb="lg">
-          Delivery timeline
+          {t("deliveryTimeline")}
         </Title>
         {events.isPending ? (
           <Loader size="sm" />
         ) : events.isError ? (
-          <Alert color="red">Could not load delivery events.</Alert>
+          <Alert color="red">{t("couldNotLoadDeliveryEvents")}</Alert>
         ) : events.data.data.length === 0 ? (
-          <Text c="dimmed">No events recorded.</Text>
+          <Text c="dimmed">{t("noEventsRecorded")}</Text>
         ) : (
           <Timeline active={events.data.data.length - 1}>
             {events.data.data.map((e) => (
@@ -253,15 +263,15 @@ export function DetailPage() {
                 bullet={<IconCircleCheck size={14} />}
                 title={
                   <Group gap="sm">
-                    <Text fw={600}>{eventLabel(e.eventType)}</Text>
+                    <Text fw={600}>{eventLabel(e.eventType, t)}</Text>
                     <Text size="xs" c="dimmed">
-                      {new Date(e.occurredAt).toLocaleString()}
+                      {formatters.formatDate(e.occurredAt, { dateStyle: "medium", timeStyle: "short" })}
                     </Text>
                   </Group>
                 }
               >
                 <Text size="sm" c="dimmed">
-                  {eventDescription(e.dataJson)}
+                  {eventDescription(e.dataJson, t("statusRecorded"))}
                 </Text>
               </Timeline.Item>
             ))}

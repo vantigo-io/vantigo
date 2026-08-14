@@ -2,17 +2,20 @@ import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import { ApiValidationError, type CustomerResponse, createCustomer, updateCustomer } from "../api/customers";
+import "../i18n";
 
 export type CustomerModalState = { mode: "create" } | { mode: "edit"; customer: CustomerResponse };
 
 export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalState | null; onClose: () => void }) => {
   const queryClient = useQueryClient();
+  const { t } = useI18n("customers");
   const isEdit = state?.mode === "edit";
   const form = useForm({
     initialValues: { name: "" },
-    validate: { name: (value: string) => (value.trim() ? null : "Name is required") },
+    validate: { name: (value: string) => (value.trim() ? null : t("customerNameRequired")) },
   });
   useEffect(() => {
     if (state) {
@@ -29,36 +32,41 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
       onClose();
       notifications.show({
         color: "teal",
-        title: isEdit ? "Customer updated" : "Customer created",
-        message: "The customer was saved successfully.",
+        title: isEdit ? t("customerUpdated") : t("customerCreated"),
+        message: t("customerSaved"),
       });
     },
     onError: (error) => {
       if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
-      else notifications.show({ color: "red", title: "Customer could not be saved", message: error.message });
+      else notifications.show({ color: "red", title: t("customerCouldNotBeSaved"), message: error.message });
     },
   });
   return (
-    <Modal opened={state !== null} onClose={onClose} title={isEdit ? "Edit customer" : "Create new customer"} centered>
+    <Modal
+      opened={state !== null}
+      onClose={onClose}
+      title={isEdit ? t("editCustomer") : t("createNewCustomer")}
+      centered
+    >
       <form onSubmit={form.onSubmit(({ name }) => mutation.mutate(name.trim()))}>
         <Stack>
           <TextInput
-            label="Name"
-            description="A friendly name used to identify the customer"
-            placeholder="e.g. Acme"
+            label={t("name")}
+            description={t("customerNameDescription")}
+            placeholder={t("customerNamePlaceholder")}
             withAsterisk
             data-autofocus
             {...form.getInputProps("name")}
           />
           <Text size="sm" c="dimmed">
-            Legal identity is managed separately by users with the required permission.
+            {t("legalIdentityPermission")}
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              {isEdit ? "Save changes" : "Create customer"}
+              {isEdit ? t("saveChanges") : t("createCustomer")}
             </Button>
           </Group>
         </Stack>

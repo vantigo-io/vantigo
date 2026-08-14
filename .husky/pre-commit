@@ -4,6 +4,12 @@ set -e
 REPOSITORY_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPOSITORY_ROOT"
 
+printf '%s\n' 'Running: bun run translations:check'
+bun run translations:check
+
+printf '%s\n' 'Running: bun run i18n:test'
+bun run i18n:test
+
 printf '%s\n' 'Running: bunx biome check .'
 bunx biome check .
 

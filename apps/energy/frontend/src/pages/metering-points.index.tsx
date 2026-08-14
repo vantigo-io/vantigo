@@ -17,9 +17,10 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconBolt, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import { type ConnectionStatus, meteringPointsQueryOptions } from "../api/energy";
+import "../i18n";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
 
 const PAGE_SIZE = 25;
@@ -31,6 +32,7 @@ interface MeteringPointsSearch {
 const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "teal", Disconnected: "red" })[status];
 
 export const MeteringPointsPage = () => {
+  const { t } = useI18n("energy");
   const { page, search } = useSearch({ strict: false }) as MeteringPointsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
   const [searchInput, setSearchInput] = useState(search);
@@ -46,21 +48,21 @@ export const MeteringPointsPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow="Energy"
+        eyebrow={t("energy")}
         title={
           <>
-            <IconBolt size={28} /> Metering points{" "}
+            <IconBolt size={28} /> {t("meteringPoints")}{" "}
             {data && (
               <Badge variant="light" size="lg">
-                {data.pagination.totalCount} total
+                {t("total", { count: data.pagination.totalCount })}
               </Badge>
             )}
           </>
         }
-        description="Meters, grid connections, supply periods, and consumption readings."
+        description={t("meteringPointsDescription")}
         actions={
           <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-            New metering point
+            {t("newMeteringPoint")}
           </Button>
         }
       />
@@ -68,14 +70,14 @@ export const MeteringPointsPage = () => {
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <TextInput
-            placeholder="Search by GSRN, meter number or address..."
+            placeholder={t("searchMeteringPoints")}
             leftSection={<IconSearch size={16} />}
             value={searchInput}
             onChange={(event) => setSearchInput(event.currentTarget.value)}
             maw={420}
           />
           {isError && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Failed to load metering points">
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadMeteringPoints")}>
               {error.message}
             </Alert>
           )}
@@ -91,11 +93,11 @@ export const MeteringPointsPage = () => {
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>GSRN</Table.Th>
-                      <Table.Th>Meter number</Table.Th>
-                      <Table.Th>Address</Table.Th>
-                      <Table.Th>Price area</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th w={48} aria-label="Actions" />
+                      <Table.Th>{t("meterNumber")}</Table.Th>
+                      <Table.Th>{t("address")}</Table.Th>
+                      <Table.Th>{t("priceArea")}</Table.Th>
+                      <Table.Th>{t("status")}</Table.Th>
+                      <Table.Th w={48} aria-label={t("actions")} />
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -111,19 +113,26 @@ export const MeteringPointsPage = () => {
                         }
                       >
                         <Table.Td>{point.gsrn}</Table.Td>
-                        <Table.Td>{point.meterNumber ?? "—"}</Table.Td>
+                        <Table.Td>{point.meterNumber ?? t("notAvailable")}</Table.Td>
                         <Table.Td>
                           {point.address.streetAddress}, {point.address.postalCode} {point.address.city}
                         </Table.Td>
                         <Table.Td>{point.priceArea}</Table.Td>
                         <Table.Td>
-                          <Badge color={statusColor(point.connectionStatus)}>{point.connectionStatus}</Badge>
+                          <Badge color={statusColor(point.connectionStatus)}>
+                            {t(
+                              `connectionStatus${point.connectionStatus}` as
+                                | "connectionStatusNew"
+                                | "connectionStatusConnected"
+                                | "connectionStatusDisconnected",
+                            )}
+                          </Badge>
                         </Table.Td>
                         <Table.Td onClick={(event) => event.stopPropagation()}>
                           <ActionIcon
                             variant="subtle"
                             color="gray"
-                            aria-label={`Edit ${point.gsrn}`}
+                            aria-label={t("editMeteringPoint", { gsrn: point.gsrn })}
                             onClick={() => setModalState({ mode: "edit", meteringPoint: point })}
                           >
                             <IconPencil size={16} />
@@ -136,7 +145,7 @@ export const MeteringPointsPage = () => {
               </Table.ScrollContainer>
               {data.data.length === 0 && (
                 <Center py="xl">
-                  <Text c="dimmed">No metering points found.</Text>
+                  <Text c="dimmed">{t("noMeteringPointsFound")}</Text>
                 </Center>
               )}
               {data.pagination.totalPages > 1 && (

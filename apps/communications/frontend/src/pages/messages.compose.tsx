@@ -6,12 +6,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { mailboxesQueryOptions } from "../api/mailboxes";
 import { type CreateMessageRequest, createMessage } from "../api/messages";
 import type { ApiError } from "../api/request";
+import "../i18n";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type ComposeValues = { subject: string; to: string[]; cc: string[]; bcc: string[]; mailboxId: string };
@@ -27,6 +28,7 @@ const duplicateEmails = (values: ComposeValues) => {
 };
 
 export function ComposePage() {
+  const { t } = useI18n("communications");
   const navigate = useNavigate() as (options: unknown) => void;
   const [showCcBcc, setShowCcBcc] = useState(false);
   const [bodyError, setBodyError] = useState<string | null>(null);
@@ -43,22 +45,22 @@ export function ComposePage() {
   const form = useForm<ComposeValues>({
     initialValues: { subject: "", to: [], cc: [], bcc: [], mailboxId: "" },
     validate: {
-      subject: (value) => (value.trim() ? null : "Subject is required"),
+      subject: (value) => (value.trim() ? null : t("subjectRequired")),
       to: (value, values) => {
-        if (!value.length) return "At least one recipient is required";
-        if (value.some((email) => !emailPattern.test(email.trim()))) return "Enter valid email addresses";
+        if (!value.length) return t("recipientRequired");
+        if (value.some((email) => !emailPattern.test(email.trim()))) return t("validEmailAddresses");
         const duplicates = duplicateEmails(values);
-        return duplicates.size ? `Duplicate recipient: ${[...duplicates].join(", ")}` : null;
+        return duplicates.size ? t("duplicateRecipient", { recipients: [...duplicates].join(", ") }) : null;
       },
       cc: (value, values) => {
-        if (value.some((email) => !emailPattern.test(email.trim()))) return "Enter valid email addresses";
+        if (value.some((email) => !emailPattern.test(email.trim()))) return t("validEmailAddresses");
         const duplicates = duplicateEmails(values);
-        return duplicates.size ? `Duplicate recipient: ${[...duplicates].join(", ")}` : null;
+        return duplicates.size ? t("duplicateRecipient", { recipients: [...duplicates].join(", ") }) : null;
       },
       bcc: (value, values) => {
-        if (value.some((email) => !emailPattern.test(email.trim()))) return "Enter valid email addresses";
+        if (value.some((email) => !emailPattern.test(email.trim()))) return t("validEmailAddresses");
         const duplicates = duplicateEmails(values);
-        return duplicates.size ? `Duplicate recipient: ${[...duplicates].join(", ")}` : null;
+        return duplicates.size ? t("duplicateRecipient", { recipients: [...duplicates].join(", ") }) : null;
       },
     },
   });
@@ -78,20 +80,22 @@ export function ComposePage() {
       return createMessage(body, idempotencyKey);
     },
     onSuccess: (result) => {
-      notifications.show({ title: "Message queued", message: "Your message has been submitted." });
+      notifications.show({ title: t("messageQueued"), message: t("messageSubmitted") });
       setIdempotencyKey(crypto.randomUUID());
       void navigate({ to: "/messages/$messageId", params: { messageId: result.messageId } });
     },
     onError: (error: ApiError) => {
       if (error.status === 422 && error.code === "recipient_suppressed") {
         const suppressed = Array.isArray(error.fields?.recipients) ? error.fields.recipients : [];
-        const message = suppressed.length ? `Suppressed recipients: ${suppressed.join(", ")}` : error.message;
+        const message = suppressed.length
+          ? t("suppressedRecipients", { recipients: suppressed.join(", ") })
+          : error.message;
         for (const field of ["to", "cc", "bcc"] as const) {
           const recipients = form.values[field].map((email) => email.toLowerCase());
           const matches = suppressed.filter((email) => recipients.includes(email.toLowerCase()));
-          if (matches.length) form.setFieldError(field, `Suppressed recipients: ${matches.join(", ")}`);
+          if (matches.length) form.setFieldError(field, t("suppressedRecipients", { recipients: matches.join(", ") }));
         }
-        if (!suppressed.length) notifications.show({ color: "red", title: "Message not sent", message });
+        if (!suppressed.length) notifications.show({ color: "red", title: t("messageNotSent"), message });
         return;
       }
       if (error.status === 400 && error.fields) {
@@ -110,8 +114,8 @@ export function ComposePage() {
       if (error.status === 503) {
         notifications.show({
           color: "red",
-          title: "No active mailbox",
-          message: "Configure an active mailbox before sending.",
+          title: t("noActiveMailbox"),
+          message: t("configureActiveMailbox"),
         });
         return;
       }
@@ -119,30 +123,26 @@ export function ComposePage() {
         form.setFieldError("mailboxId", error.message);
         return;
       }
-      notifications.show({ color: "red", title: "Message not sent", message: error.message });
+      notifications.show({ color: "red", title: t("messageNotSent"), message: error.message });
     },
   });
 
   return (
     <Stack maw={900} mx="auto" gap="xl">
-      <PageHeader
-        eyebrow="Communications"
-        title="New message"
-        description="Write and send a message to one or more recipients."
-      />
+      <PageHeader eyebrow={t("communications")} title={t("newMessage")} description={t("newMessageDescription")} />
       {mutation.error?.status === 503 && (
-        <Alert color="red" title="No active mailbox is configured">
-          Ask an Owner to configure an active mailbox before sending messages.
+        <Alert color="red" title={t("noActiveMailboxConfigured")}>
+          {t("askOwnerToConfigure")}
         </Alert>
       )}
       <Card withBorder radius="lg" padding="lg">
         <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
           <Stack>
-            <TextInput label="Subject" placeholder="Subject" required {...form.getInputProps("subject")} />
+            <TextInput label={t("subject")} placeholder={t("subject")} required {...form.getInputProps("subject")} />
             {showMailboxSelector && (
               <Select
-                label="Send from"
-                placeholder="Select a mailbox"
+                label={t("sendFrom")}
+                placeholder={t("selectMailbox")}
                 data={activeMailboxes.map((mailbox) => ({
                   value: mailbox.id,
                   label: mailbox.displayName ? `${mailbox.displayName} <${mailbox.fromAddress}>` : mailbox.fromAddress,
@@ -154,28 +154,28 @@ export function ComposePage() {
               />
             )}
             <TagsInput
-              label="To"
-              placeholder="Add recipient"
+              label={t("to")}
+              placeholder={t("addRecipient")}
               required
               maxTags={100}
               splitChars={[",", " "]}
               {...form.getInputProps("to")}
             />
             <Button type="button" variant="subtle" w="fit-content" onClick={() => setShowCcBcc((value) => !value)}>
-              {showCcBcc ? "Hide Cc and Bcc" : "Add Cc or Bcc"}
+              {showCcBcc ? t("hideCcAndBcc") : t("addCcOrBcc")}
             </Button>
             {showCcBcc && (
               <>
                 <TagsInput
-                  label="Cc"
-                  placeholder="Add Cc recipient"
+                  label={t("cc")}
+                  placeholder={t("addCcRecipient")}
                   maxTags={100}
                   splitChars={[",", " "]}
                   {...form.getInputProps("cc")}
                 />
                 <TagsInput
-                  label="Bcc"
-                  placeholder="Add Bcc recipient"
+                  label={t("bcc")}
+                  placeholder={t("addBccRecipient")}
                   maxTags={100}
                   splitChars={[",", " "]}
                   {...form.getInputProps("bcc")}
@@ -184,7 +184,7 @@ export function ComposePage() {
             )}
             <div>
               <Text size="sm" fw={500} mb={5}>
-                Body
+                {t("body")}
               </Text>
               <RichTextEditor editor={editor} mih={240}>
                 <RichTextEditor.Toolbar sticky stickyOffset={60}>
@@ -207,7 +207,7 @@ export function ComposePage() {
             </div>
             <Group justify="flex-end">
               <Button type="submit" loading={mutation.isPending}>
-                Send message
+                {t("sendMessage")}
               </Button>
             </Group>
           </Stack>

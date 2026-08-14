@@ -1,8 +1,5 @@
 import type { ConsumptionAggregate, CustomerMeteringPoint } from "../api/energy";
 
-export const formatKwh = (value: number | null) =>
-  value === null ? "—" : `${new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(value)} kWh`;
-
 export const summarizeCustomerEnergy = (meters: CustomerMeteringPoint[], aggregates: ConsumptionAggregate[]) => {
   const expected = meters
     .map((item) => item.meteringPoint.expectedAnnualConsumptionKwh)

@@ -210,6 +210,44 @@ public sealed class IdentityAccountEndpointsTests(IdentityApiFactory factory)
     }
 
     [Fact]
+    public async Task AccountProfile_NorwegianLanguageRoundTripsCaseInsensitivelyAndNormalizesAutomatic()
+    {
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        using var client = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+
+        var blank = await client.PutAsJsonAsync("/api/v1/identity/account/profile", new
+        {
+            displayName = "Language Test",
+            preferredLanguage = "   ",
+        });
+        Assert.Equal(HttpStatusCode.OK, blank.StatusCode);
+        Assert.Null((await blank.Content.ReadFromJsonAsync<AccountResponse>())!.PreferredLanguage);
+
+        var automatic = await client.PutAsJsonAsync("/api/v1/identity/account/profile", new
+        {
+            displayName = "Language Test",
+            preferredLanguage = "AUTOMATIC",
+        });
+        Assert.Equal(HttpStatusCode.OK, automatic.StatusCode);
+        Assert.Null((await automatic.Content.ReadFromJsonAsync<AccountResponse>())!.PreferredLanguage);
+
+        var norwegian = await client.PutAsJsonAsync("/api/v1/identity/account/profile", new
+        {
+            displayName = "Language Test",
+            preferredLanguage = "NB",
+        });
+        Assert.Equal(HttpStatusCode.OK, norwegian.StatusCode);
+        Assert.Equal("nb", (await norwegian.Content.ReadFromJsonAsync<AccountResponse>())!.PreferredLanguage);
+
+        var roundTrip = await client.GetFromJsonAsync<AccountResponse>("/api/v1/identity/account");
+        Assert.Equal("nb", roundTrip!.PreferredLanguage);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        Assert.Equal("nb", (await db.Users.SingleAsync(user => user.Id == credentials.Id)).PreferredLanguage);
+    }
+
+    [Fact]
     public async Task PasswordChange_InvalidPasswordDoesNotMutateAndReturnsValidation()
     {
         var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);

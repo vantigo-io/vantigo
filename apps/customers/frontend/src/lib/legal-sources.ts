@@ -10,6 +10,8 @@ import brregLogo from "../assets/sources/brreg.svg";
 export interface LegalSourceInfo {
   /** Human-readable name of the source. */
   label: string;
+  /** Translation key for the source label, when the catalog provides one. */
+  labelKey?: "legalSourcesBrreg" | "legalSourcesManual";
   /** Brand logo displayed alongside the data, when the source has one. */
   logo?: string;
   /** Link to the source's website. */
@@ -23,12 +25,14 @@ export interface LegalSourceInfo {
 const legalSources: Record<string, LegalSourceInfo> = {
   brreg: {
     label: "Brønnøysundregistrene",
+    labelKey: "legalSourcesBrreg",
     logo: brregLogo,
     url: "https://www.brreg.no",
     entityUrl: (legalId) => `https://virksomhet.brreg.no/nb/oppslag/enheter/${legalId}`,
   },
   manual: {
     label: "Manual entry",
+    labelKey: "legalSourcesManual",
     icon: IconPencil,
   },
 };

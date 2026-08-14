@@ -2,7 +2,9 @@ import { Button, Group, Modal, Select, Stack, Text, Textarea, TextInput } from "
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
+import "../i18n";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
 import {
   ApiValidationError,
@@ -41,6 +43,7 @@ const fromState = (state: ProductModalState): Values =>
         taxCategoryId: state.product.taxCategory ? String(state.product.taxCategory.id) : null,
       };
 export const ProductFormModal = ({ state, onClose }: { state: ProductModalState | null; onClose: () => void }) => {
+  const { t, formatters } = useI18n("products");
   const client = useQueryClient();
   const isEdit = state?.mode === "edit";
   const { data: categories } = useQuery({ ...categoriesQueryOptions(), enabled: state !== null });
@@ -48,8 +51,8 @@ export const ProductFormModal = ({ state, onClose }: { state: ProductModalState 
   const form = useForm<Values>({
     initialValues: empty,
     validate: {
-      name: (v) => (v.trim() ? null : "Name is required"),
-      taxCategoryId: (v) => (v ? null : "Tax category is required"),
+      name: (v) => (v.trim() ? null : t("categories.nameRequired")),
+      taxCategoryId: (v) => (v ? null : t("common.required", { field: t("common.taxCategory") })),
     },
   });
   const { setValues, resetDirty, clearErrors } = form;
@@ -66,15 +69,15 @@ export const ProductFormModal = ({ state, onClose }: { state: ProductModalState 
     onSuccess: (product) => {
       notifications.show({
         color: "teal",
-        title: isEdit ? "Product updated" : "Product created",
-        message: `"${product.name}" was saved.`,
+        title: isEdit ? t("productForm.updated") : t("productForm.created"),
+        message: t("productForm.savedMessage", { name: product.name }),
       });
       void client.invalidateQueries({ queryKey: ["products"] });
       onClose();
     },
     onError: (error) => {
       if (error instanceof ApiValidationError) form.setErrors(error.fieldErrors);
-      else notifications.show({ color: "red", title: "Could not save product", message: error.message });
+      else notifications.show({ color: "red", title: t("productForm.couldNotSave"), message: error.message });
     },
   });
   const submit = form.onSubmit((v) =>
@@ -93,41 +96,60 @@ export const ProductFormModal = ({ state, onClose }: { state: ProductModalState 
     label: `${"\u00A0".repeat(depth * 3)}${category.name}`,
   }));
   return (
-    <Modal opened={state !== null} onClose={onClose} title={isEdit ? "Edit product" : "Create new product"} centered>
+    <Modal
+      opened={state !== null}
+      onClose={onClose}
+      title={isEdit ? t("productForm.editTitle") : t("productForm.createTitle")}
+      centered
+    >
       <form onSubmit={submit}>
         <Stack>
-          <TextInput label="Name" withAsterisk data-autofocus {...form.getInputProps("name")} />
-          <Textarea label="Description" rows={3} {...form.getInputProps("description")} />
-          <Select label="Category" clearable searchable data={categoryOptions} {...form.getInputProps("categoryId")} />
+          <TextInput label={t("common.name")} withAsterisk data-autofocus {...form.getInputProps("name")} />
+          <Textarea label={t("common.description")} rows={3} {...form.getInputProps("description")} />
           <Select
-            label="Tax category"
+            label={t("common.category")}
+            clearable
+            searchable
+            data={categoryOptions}
+            {...form.getInputProps("categoryId")}
+          />
+          <Select
+            label={t("common.taxCategory")}
             withAsterisk
             data={(taxes ?? []).map((tax) => ({
               value: String(tax.id),
-              label: `${tax.name} (${(tax.rate * 100).toFixed(2)}%)`,
+              label: `${tax.name} (${formatters.formatNumber(tax.rate * 100, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%)`,
             }))}
             {...form.getInputProps("taxCategoryId")}
           />
           <Group grow>
-            <Select label="Type" data={["Goods", "Service"]} allowDeselect={false} {...form.getInputProps("type")} />
             <Select
-              label="Status"
-              data={["Draft", "Active", "Discontinued"]}
+              label={t("common.type")}
+              data={["Goods", "Service"].map((type) => ({ value: type, label: t(`type.${type}`) }))}
+              allowDeselect={false}
+              {...form.getInputProps("type")}
+            />
+            <Select
+              label={t("common.status")}
+              data={["Draft", "Active", "Discontinued"].map((status) => ({
+                value: status,
+                label: t(`status.${status}`),
+              }))}
               allowDeselect={false}
               {...form.getInputProps("status")}
             />
           </Group>
           {!isEdit && (
             <Text size="sm" c="dimmed">
-              A default variant will be created. Add more variants from the product page.
+              {t("productForm.defaultVariant")}
             </Text>
           )}
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" loading={mutation.isPending}>
-              {isEdit ? "Save changes" : "Create product"}
+              {isEdit ? t("productForm.saveProduct") : t("productForm.createProduct")}
             </Button>
           </Group>
         </Stack>

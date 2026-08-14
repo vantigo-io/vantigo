@@ -17,10 +17,11 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 
 import { customersQueryOptions } from "../api/customers";
+import "../i18n";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
 const PAGE_SIZE = 25;
@@ -31,6 +32,7 @@ interface CustomersSearch {
 }
 
 export const CustomersPage = () => {
+  const { t, formatters } = useI18n("customers");
   const { page, search } = useSearch({ strict: false }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 
@@ -58,18 +60,18 @@ export const CustomersPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow="Customers"
-        title="Customers"
-        description="The companies and people you do business with."
+        eyebrow={t("customers")}
+        title={t("customers")}
+        description={t("customersDescription")}
         actions={
           <Group gap="sm">
             {data && (
               <Badge variant="light" size="lg">
-                {data.pagination.totalCount} total
+                {t("total", { count: formatters.formatNumber(data.pagination.totalCount) })}
               </Badge>
             )}
             <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
-              Create new customer
+              {t("createNewCustomer")}
             </Button>
           </Group>
         }
@@ -80,7 +82,7 @@ export const CustomersPage = () => {
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <TextInput
-            placeholder="Search by customer name..."
+            placeholder={t("searchCustomers")}
             leftSection={<IconSearch size={16} />}
             value={searchInput}
             onChange={(event) => setSearchInput(event.currentTarget.value)}
@@ -88,7 +90,7 @@ export const CustomersPage = () => {
           />
 
           {isError && (
-            <Alert color="red" icon={<IconAlertCircle size={16} />} title="Failed to load customers">
+            <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedLoadCustomers")}>
               {error.message}
             </Alert>
           )}
@@ -105,9 +107,9 @@ export const CustomersPage = () => {
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Id</Table.Th>
-                      <Table.Th>Name</Table.Th>
-                      <Table.Th w={48} aria-label="Actions" />
+                      <Table.Th>{t("id")}</Table.Th>
+                      <Table.Th>{t("name")}</Table.Th>
+                      <Table.Th w={48} aria-label={t("actions")} />
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -128,7 +130,7 @@ export const CustomersPage = () => {
                           <ActionIcon
                             variant="subtle"
                             color="gray"
-                            aria-label={`Edit ${customer.name}`}
+                            aria-label={t("editNamed", { name: customer.name })}
                             onClick={() => setModalState({ mode: "edit", customer })}
                           >
                             <IconPencil size={16} />
@@ -142,7 +144,7 @@ export const CustomersPage = () => {
 
               {data.data.length === 0 && (
                 <Center py="xl">
-                  <Text c="dimmed">No customers found.</Text>
+                  <Text c="dimmed">{t("noCustomersFound")}</Text>
                 </Center>
               )}
 

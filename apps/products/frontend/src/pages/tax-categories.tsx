@@ -16,8 +16,9 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import "../i18n";
 import type { ApiError } from "../api/request";
 import {
   createTaxCategory,
@@ -33,6 +34,7 @@ type FormValues = { name: string; kind: TaxCategoryKind; rate: number | string }
 const kinds: TaxCategoryKind[] = ["Standard", "Reduced", "Zero", "Exempt"];
 
 export const TaxCategoriesPage = () => {
+  const { t, formatters } = useI18n("products");
   const client = useQueryClient();
   const { data = [] } = useQuery(taxCategoriesQueryOptions());
   const [editing, setEditing] = useState<TaxCategoryResponse | null | undefined>(undefined);
@@ -40,8 +42,8 @@ export const TaxCategoriesPage = () => {
   const form = useForm<FormValues>({
     initialValues: { name: "", kind: "Standard", rate: "" },
     validate: {
-      name: (v) => (v.trim() ? null : "Name is required"),
-      rate: (v) => (Number(v) >= 0 && Number(v) <= 100 ? null : "Enter a percentage from 0 to 100"),
+      name: (v) => (v.trim() ? null : t("categories.nameRequired")),
+      rate: (v) => (Number(v) >= 0 && Number(v) <= 100 ? null : t("taxCategories.rateValidation")),
     },
   });
   const save = useMutation({
@@ -50,7 +52,7 @@ export const TaxCategoriesPage = () => {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["tax-categories"] });
       setEditing(undefined);
-      notifications.show({ color: "teal", title: "Tax category saved", message: "Your changes are live." });
+      notifications.show({ color: "teal", title: t("taxCategories.saved"), message: t("taxCategories.savedMessage") });
     },
     onError: (e) => setError(e.message),
   });
@@ -60,8 +62,7 @@ export const TaxCategoriesPage = () => {
       void client.invalidateQueries({ queryKey: ["tax-categories"] });
       setError(null);
     },
-    onError: (e: ApiError) =>
-      setError(e.status === 409 ? "This tax category is in use and cannot be deleted." : e.message),
+    onError: (e: ApiError) => setError(e.status === 409 ? t("taxCategories.inUse") : e.message),
   });
   const open = (category?: TaxCategoryResponse) => {
     setError(null);
@@ -76,17 +77,17 @@ export const TaxCategoriesPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow="Products"
-        title="Tax categories"
-        description="Tax rules applied to products at checkout."
+        eyebrow={t("navigation.products")}
+        title={t("navigation.taxCategories")}
+        description={t("taxCategories.description")}
         actions={
           <Button leftSection={<IconPlus size={16} />} onClick={() => open()}>
-            New tax category
+            {t("taxCategories.newCategory")}
           </Button>
         }
       />
       {error && (
-        <Alert color="red" title="Could not complete that action" withCloseButton onClose={() => setError(null)}>
+        <Alert color="red" title={t("taxCategories.couldNotComplete")} withCloseButton onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
@@ -94,25 +95,36 @@ export const TaxCategoriesPage = () => {
         <Table striped>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              <Table.Th>Kind</Table.Th>
-              <Table.Th>Rate</Table.Th>
-              <Table.Th w={96} />
+              <Table.Th>{t("common.name")}</Table.Th>
+              <Table.Th>{t("common.kind")}</Table.Th>
+              <Table.Th>{t("common.rate")}</Table.Th>
+              <Table.Th w={96} aria-label={t("common.actions")} />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {data.map((category) => (
               <Table.Tr key={category.id}>
                 <Table.Td>{category.name}</Table.Td>
-                <Table.Td>{category.kind}</Table.Td>
-                <Table.Td>{(category.rate * 100).toFixed(2)}%</Table.Td>
+                <Table.Td>{t(`taxKind.${category.kind}`)}</Table.Td>
+                <Table.Td>
+                  {t("common.percent", {
+                    value: formatters.formatNumber(category.rate * 100, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    }),
+                  })}
+                </Table.Td>
                 <Table.Td>
                   <Group gap={4} justify="flex-end">
-                    <ActionIcon aria-label={`Edit ${category.name}`} variant="subtle" onClick={() => open(category)}>
+                    <ActionIcon
+                      aria-label={t("common.editNamed", { name: category.name })}
+                      variant="subtle"
+                      onClick={() => open(category)}
+                    >
                       <IconPencil size={16} />
                     </ActionIcon>
                     <ActionIcon
-                      aria-label={`Delete ${category.name}`}
+                      aria-label={t("common.deleteNamed", { name: category.name })}
                       color="red"
                       variant="subtle"
                       loading={remove.isPending && remove.variables === category.id}
@@ -128,23 +140,28 @@ export const TaxCategoriesPage = () => {
         </Table>
         {data.length === 0 && (
           <Text c="dimmed" ta="center" py="lg">
-            No tax categories yet.
+            {t("taxCategories.noCategories")}
           </Text>
         )}
       </Card>
       <Modal
         opened={editing !== undefined}
         onClose={() => setEditing(undefined)}
-        title={editing ? "Edit tax category" : "New tax category"}
+        title={editing ? t("taxCategories.editTitle") : t("taxCategories.newTitle")}
         centered
       >
         <form onSubmit={submit}>
           <Stack>
-            <TextInput label="Name" withAsterisk {...form.getInputProps("name")} />
-            <Select label="Kind" data={kinds} allowDeselect={false} {...form.getInputProps("kind")} />
+            <TextInput label={t("common.name")} withAsterisk {...form.getInputProps("name")} />
+            <Select
+              label={t("common.kind")}
+              data={kinds.map((kind) => ({ value: kind, label: t(`taxKind.${kind}`) }))}
+              allowDeselect={false}
+              {...form.getInputProps("kind")}
+            />
             <NumberInput
-              label="Rate (%)"
-              description="Enter 25 for a 25% rate"
+              label={t("taxCategories.rateLabel")}
+              description={t("taxCategories.rateDescription")}
               min={0}
               max={100}
               decimalScale={2}
@@ -153,10 +170,10 @@ export const TaxCategoriesPage = () => {
             />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setEditing(undefined)}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button type="submit" loading={save.isPending}>
-                Save
+                {t("common.save")}
               </Button>
             </Group>
           </Stack>
