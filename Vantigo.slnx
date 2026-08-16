@@ -32,9 +32,18 @@
   </Folder>
   <Folder Name="/packages/">
     <Project Path="packages/architecture/Vantigo.Architecture.Tests/Vantigo.Architecture.Tests.csproj" />
+    <Project Path="packages/azure-identity/Vantigo.Azure.Identity.Tests/Vantigo.Azure.Identity.Tests.csproj" />
+    <Project Path="packages/azure-identity/Vantigo.Azure.Identity/Vantigo.Azure.Identity.csproj" />
     <Project Path="packages/configuration/Vantigo.Configuration.Tests/Vantigo.Configuration.Tests.csproj" />
     <Project Path="packages/configuration/Vantigo.Configuration/Vantigo.Configuration.csproj" />
     <Project Path="packages/contracts/Vantigo.Contracts/Vantigo.Contracts.csproj" />
+    <Project Path="packages/storage/Vantigo.Storage.Abstractions/Vantigo.Storage.Abstractions.csproj" />
+    <Project Path="packages/storage/Vantigo.Storage/Vantigo.Storage.csproj" />
+    <Project Path="packages/storage/Vantigo.Storage.Tests/Vantigo.Storage.Tests.csproj" />
+    <Project Path="packages/tenancy/Vantigo.Tenancy.Abstractions/Vantigo.Tenancy.Abstractions.csproj" />
+    <Project Path="packages/tenancy/Vantigo.Tenancy/Vantigo.Tenancy.csproj" />
+    <Project Path="packages/tenancy/Vantigo.Tenancy.EntityFramework/Vantigo.Tenancy.EntityFramework.csproj" />
+    <Project Path="packages/tenancy/Vantigo.Tenancy.Tests/Vantigo.Tenancy.Tests.csproj" />
     <Project Path="packages/dataprotection-postgresql/Vantigo.DataProtection.PostgreSql/Vantigo.DataProtection.PostgreSql.csproj" />
   </Folder>
 </Solution>

@@ -28,6 +28,8 @@ public static class VantigoConfigurationServiceCollectionExtensions
         services.AddVantigoForwardedHeaders();
         services.AddObservabilityOptions(configuration);
         services.AddModuleHostingOptions(configuration);
+        services.AddStorageOptions(configuration);
+        services.AddTenancyOptions(configuration);
         services.AddWorkforceOidcOptions();
         services.AddScimOptions();
         services.AddSingleton<AppPublicUrls>();

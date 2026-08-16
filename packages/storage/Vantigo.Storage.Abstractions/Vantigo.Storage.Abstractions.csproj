@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Vantigo.Storage.Abstractions</AssemblyName>
+    <RootNamespace>Vantigo.Storage.Abstractions</RootNamespace>
+    <Description>Dependency-free object storage contracts for Vantigo modules.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Remove="GitVersion.MsBuild" />
+  </ItemGroup>
+</Project>
