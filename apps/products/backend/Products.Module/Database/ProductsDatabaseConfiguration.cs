@@ -17,7 +17,7 @@ using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Products.Database;
 
-public static class ProductDatabaseConfiguration
+public static class ProductsDatabaseConfiguration
 {
     public static IServiceCollection AddProductsModule(this IServiceCollection services)
     {

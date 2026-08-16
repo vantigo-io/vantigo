@@ -11,10 +11,10 @@ public sealed class ModuleArchitectureTests
 {
     private static readonly IReadOnlyList<ModuleDefinition> Modules =
     [
-        new("Products", "Vantigo.Products", typeof(Vantigo.Products.Endpoints.ProductsModuleEndpointExtensions).Assembly),
+        new("Products", "Vantigo.Products", typeof(Vantigo.Products.Endpoints.VersionedBusinessEndpointExtensions).Assembly),
         new("Customers", "Vantigo.Customers", typeof(Vantigo.Customers.Endpoints.VersionedBusinessEndpointExtensions).Assembly),
         new("Communications", "Vantigo.Communications", typeof(Vantigo.Communications.Endpoints.VersionedBusinessEndpointExtensions).Assembly),
-        new("Energy", "Vantigo.Energy", typeof(Vantigo.Energy.Endpoints.EnergyModuleEndpointExtensions).Assembly),
+        new("Energy", "Vantigo.Energy", typeof(Vantigo.Energy.Endpoints.VersionedBusinessEndpointExtensions).Assembly),
     ];
 
     private static readonly IReadOnlySet<string> AllowedVantigoDependencies =
@@ -146,12 +146,12 @@ public sealed class ModuleArchitectureTests
             // are consumed by the host, ASP.NET Core DI, or EF tooling.
             "Vantigo.Products.Database.Products.ProductsDbContext",
             "Vantigo.Products.Database.Products.ProductsDbContextFactory",
-            "Vantigo.Products.Database.ProductDatabaseConfiguration",
+            "Vantigo.Products.Database.ProductsDatabaseConfiguration",
             "Vantigo.Products.Database.Products.Migrations.Initial",
-            "Vantigo.Products.Endpoints.ProductsModuleEndpointExtensions",
+            "Vantigo.Products.Endpoints.VersionedBusinessEndpointExtensions",
             "Vantigo.Customers.Database.Customers.CustomersDbContext",
             "Vantigo.Customers.Database.Customers.CustomersDbContextFactory",
-            "Vantigo.Customers.Database.CustomerDatabaseConfiguration",
+            "Vantigo.Customers.Database.CustomersDatabaseConfiguration",
             "Vantigo.Customers.Database.DevelopmentSeed.DevelopmentDataSeeder",
             "Vantigo.Customers.Database.Customers.Migrations.Initial",
             "Vantigo.Customers.Endpoints.VersionedBusinessEndpointExtensions",
@@ -197,7 +197,7 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Energy.Database.Energy.EnergyDbContextFactory",
             "Vantigo.Energy.Database.Energy.Migrations.Initial",
             "Vantigo.Energy.Database.EnergyDatabaseConfiguration",
-            "Vantigo.Energy.Endpoints.EnergyModuleEndpointExtensions",
+            "Vantigo.Energy.Endpoints.VersionedBusinessEndpointExtensions",
         };
 
     private static string RegexEscape(string value) =>

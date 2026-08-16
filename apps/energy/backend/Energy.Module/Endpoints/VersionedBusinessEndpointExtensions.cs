@@ -4,9 +4,9 @@ using Vantigo.Tenancy;
 
 namespace Vantigo.Energy.Endpoints;
 
-internal static class VersionedBusinessEndpointExtensions
+public static class VersionedBusinessEndpointExtensions
 {
-    internal static IEndpointRouteBuilder MapVersionedBusinessEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapEnergyModule(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.NewVersionedApi()
             .MapTenantGroup("/api/v{version:apiVersion}/energy")
