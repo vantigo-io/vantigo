@@ -1,0 +1,51 @@
+import type { CatalogResources } from "@vantigo/frontend-shell";
+
+const en = {
+  "common.email": "Email",
+  "common.password": "Password",
+  "common.displayName": "Display name",
+  "common.cancel": "Cancel",
+  "common.save": "Save",
+  "common.tryAgain": "Try again",
+  "common.requestFailed": "The request could not be completed.",
+  "common.user": "User",
+  "common.users": "users",
+  "common.userSingular": "user",
+  "common.all": "All",
+  "common.role": "Role",
+  "common.active": "Active",
+  "common.on": "On",
+  "common.off": "Off",
+  "common.enabled": "Enabled",
+  "common.disabled": "Disabled",
+  "common.pending": "Pending",
+  "common.accepted": "Accepted",
+  "common.expired": "Expired",
+  "common.revoked": "Revoked",
+};
+
+const nb: { [Key in keyof typeof en]: string } = {
+  "common.email": "E-post",
+  "common.password": "Passord",
+  "common.displayName": "Visningsnavn",
+  "common.cancel": "Avbryt",
+  "common.save": "Lagre",
+  "common.tryAgain": "Prøv igjen",
+  "common.requestFailed": "Forespørselen kunne ikke fullføres.",
+  "common.user": "bruker",
+  "common.users": "brukere",
+  "common.userSingular": "bruker",
+  "common.all": "Alle",
+  "common.role": "Rolle",
+  "common.active": "Aktiv",
+  "common.on": "På",
+  "common.off": "Av",
+  "common.enabled": "Aktivert",
+  "common.disabled": "Deaktivert",
+  "common.pending": "Ventende",
+  "common.accepted": "Godtatt",
+  "common.expired": "Utløpt",
+  "common.revoked": "Tilbakekalt",
+};
+
+export const commonCatalog = { en, nb } as const satisfies CatalogResources;

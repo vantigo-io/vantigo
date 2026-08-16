@@ -1,0 +1,53 @@
+import type { CatalogResources } from "@vantigo/frontend-shell";
+
+const en = {
+  "navigation.customerWorkspace": "Customer workspace",
+  "navigation.customers": "Customers",
+  "navigation.contacts": "Contacts",
+  "navigation.communications": "Communications",
+  "navigation.inbox": "Inbox",
+  "navigation.channels": "Channels",
+  "navigation.suppressions": "Suppressions",
+  "navigation.catalog": "Catalog",
+  "navigation.products": "Products",
+  "navigation.categories": "Categories",
+  "navigation.energy": "Energy",
+  "navigation.meteringPoints": "Metering points",
+  "navigation.settingsAdministration": "Settings & administration",
+  "navigation.settings": "Settings",
+  "navigation.adminDashboard": "Admin dashboard",
+  "navigation.rolesAccess": "Roles & access",
+  "navigation.open": "Open {{label}}",
+  "navigation.search": "Search customers, contacts...",
+  "navigation.navigation": "Navigation",
+  "navigation.customer": "Customer",
+  "navigation.noContactDetails": "No contact details",
+  "navigation.nothingFound": "Nothing found...",
+};
+
+const nb: { [Key in keyof typeof en]: string } = {
+  "navigation.customerWorkspace": "Kundeområde",
+  "navigation.customers": "Kunder",
+  "navigation.contacts": "Kontakter",
+  "navigation.communications": "Kommunikasjon",
+  "navigation.inbox": "Innboks",
+  "navigation.channels": "Kanaler",
+  "navigation.suppressions": "Blokkeringer",
+  "navigation.catalog": "Katalog",
+  "navigation.products": "Produkter",
+  "navigation.categories": "Kategorier",
+  "navigation.energy": "Energi",
+  "navigation.meteringPoints": "Målepunkter",
+  "navigation.settingsAdministration": "Innstillinger og administrasjon",
+  "navigation.settings": "Innstillinger",
+  "navigation.adminDashboard": "Administrasjonspanel",
+  "navigation.rolesAccess": "Roller og tilgang",
+  "navigation.open": "Åpne {{label}}",
+  "navigation.search": "Søk etter kunder, kontakter...",
+  "navigation.navigation": "Navigasjon",
+  "navigation.customer": "Kunde",
+  "navigation.noContactDetails": "Ingen kontaktdetaljer",
+  "navigation.nothingFound": "Ingenting funnet...",
+};
+
+export const navigationCatalog = { en, nb } as const satisfies CatalogResources;
