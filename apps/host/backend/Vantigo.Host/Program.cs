@@ -41,6 +41,9 @@ var builder = WebApplication.CreateBuilder(commandLine.RemainingArguments);
 var configuresApi = commandLine.Command is VantigoCommand.Api or VantigoCommand.NoArguments;
 builder.Services.AddVantigoConfiguration(builder.Configuration);
 builder.Services.AddVantigoTenancy();
+// Tenant directory services are needed by every command path: API traffic,
+// seeding, and module migrations that resolve the default tenant.
+builder.Services.AddVantigoIdentityTenancy();
 builder.Services.AddVantigoAzureIdentity(builder.Configuration);
 builder.Services.AddHostDatabases();
 builder.Services.AddVantigoDataProtection(builder.Configuration, builder.Environment);
@@ -52,7 +55,6 @@ if (configuresApi)
     builder.Services.AddSingleton<BootstrapSecretProvider>();
     builder.Services.AddVantigoForwardedHeaders();
     builder.Services.AddVantigoIdentity(builder.Environment);
-    builder.Services.AddVantigoIdentityTenancy();
     builder.Services.AddWorkforceOidc(builder.Configuration, builder.Environment);
     builder.Services.AddVantigoAuthorization();
     builder.Services.AddVantigoAntiforgery(builder.Environment);
@@ -63,7 +65,6 @@ if (configuresApi)
 else if (commandLine.Command == VantigoCommand.Seed)
 {
     builder.Services.AddVantigoIdentity(builder.Environment);
-    builder.Services.AddVantigoIdentityTenancy();
 }
 
 AddEnabledModules(builder.Services);
