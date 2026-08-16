@@ -197,12 +197,13 @@ public sealed class ScimProtocolService(
     {
         var authentication = await AuthenticateAsync(cancellationToken);
         if (authentication.Error is not null) return authentication.Error;
+        if (authentication.ConnectionId is not Guid connectionId) return Unauthorized();
         if (!TryReadPaging(request, out var startIndex, out var count, out var pagingError)) return pagingError!;
         if (!TryReadFilter(request.Query["filter"], new[] { "userName", "externalId" }, out var filters, out var filterError))
             return filterError!;
 
         var mappingsQuery = dbContext.ScimUserMappings.AsNoTracking()
-            .Where(item => item.ScimConnectionId == authentication.ConnectionId!.Value)
+            .Where(item => item.ScimConnectionId == connectionId)
             .AsQueryable();
         if (filters is not null)
             foreach (var filter in filters)
@@ -216,7 +217,7 @@ public sealed class ScimProtocolService(
         var resources = new List<object>();
         foreach (var mapping in mappings)
         {
-            var resource = await ReadUserResourceAsync(authentication.ConnectionId.Value, mapping.ResourceId, true, cancellationToken);
+            var resource = await ReadUserResourceAsync(connectionId, mapping.ResourceId, true, cancellationToken);
             if (resource is not null) resources.Add(resource);
         }
 
@@ -418,11 +419,12 @@ public sealed class ScimProtocolService(
     {
         var authentication = await AuthenticateAsync(cancellationToken);
         if (authentication.Error is not null) return authentication.Error;
+        if (authentication.ConnectionId is not Guid connectionId) return Unauthorized();
         if (!TryReadPaging(request, out var startIndex, out var count, out var pagingError)) return pagingError!;
         if (!TryReadFilter(request.Query["filter"], new[] { "displayName", "externalId" }, out var filters, out var filterError))
             return filterError!;
         var groupsQuery = dbContext.AccessGroups.AsNoTracking()
-            .Where(group => group.ScimConnectionId == authentication.ConnectionId!.Value && group.Source == AccessGroupSource.Scim)
+            .Where(group => group.ScimConnectionId == connectionId && group.Source == AccessGroupSource.Scim)
             .AsQueryable();
         if (filters is not null)
             foreach (var filter in filters)
@@ -434,7 +436,7 @@ public sealed class ScimProtocolService(
             .Skip(startIndex - 1).Take(count).ToListAsync(cancellationToken);
         var resources = new List<object>();
         foreach (var group in groups)
-            resources.Add(await ReadGroupResourceAsync(authentication.ConnectionId.Value, group.Id, IsMembersExcluded(request), cancellationToken));
+            resources.Add(await ReadGroupResourceAsync(connectionId, group.Id, IsMembersExcluded(request), cancellationToken));
         return Ok(new { schemas = new[] { ListResponseSchema }, totalResults = total, startIndex, itemsPerPage = resources.Count, Resources = resources });
     }
 
@@ -450,8 +452,10 @@ public sealed class ScimProtocolService(
         if (precondition is not null) return precondition;
         precondition = CheckMetaVersion(body, group.ConcurrencyStamp);
         if (precondition is not null) return precondition;
-        if (!TryValidateGroupOperations(operations!, out var actions, out var operationError)) return operationError!;
-        if (actions!.Sum(action => action.MemberIds.Count) > MaximumGroupMembersPerMutation)
+        if (!TryValidateGroupOperations(operations!, out var actions, out var operationError))
+            return operationError ?? Error(StatusCodes.Status400BadRequest, "invalidSyntax", "The group PatchOp is invalid.");
+        if (actions is null) return Error(StatusCodes.Status400BadRequest, "invalidSyntax", "The group PatchOp is invalid.");
+        if (actions.Sum(action => action.MemberIds.Count) > MaximumGroupMembersPerMutation)
             return Error(StatusCodes.Status400BadRequest, "tooMany", "A group membership mutation exceeds the safe member cap.");
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);

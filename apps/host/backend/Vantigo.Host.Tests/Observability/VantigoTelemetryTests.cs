@@ -1,7 +1,5 @@
 using System.Reflection;
 
-using Microsoft.Extensions.Configuration;
-
 namespace Vantigo.Host.Tests.Observability;
 
 public class VantigoTelemetryTests
@@ -36,30 +34,6 @@ public class VantigoTelemetryTests
     [Fact]
     public void ResolveServiceVersion_returns_null_for_null_assembly() =>
         Assert.Null(VantigoTelemetry.ResolveServiceVersion(null));
-
-    [Theory]
-    [InlineData("OTEL_EXPORTER_OTLP_ENDPOINT")]
-    [InlineData("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")]
-    [InlineData("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT")]
-    [InlineData("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT")]
-    public void HasOtlpExporterEndpoint_detects_standard_variables(string key)
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [key] = "http://localhost:4317" })
-            .Build();
-
-        Assert.True(VantigoTelemetry.HasOtlpExporterEndpoint(configuration));
-    }
-
-    [Fact]
-    public void HasOtlpExporterEndpoint_is_false_without_endpoint()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["OTEL_EXPORTER_OTLP_ENDPOINT"] = " " })
-            .Build();
-
-        Assert.False(VantigoTelemetry.HasOtlpExporterEndpoint(configuration));
-    }
 
     [Theory]
     [InlineData("/")]

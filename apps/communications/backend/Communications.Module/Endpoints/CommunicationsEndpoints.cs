@@ -536,11 +536,12 @@ internal static class CommunicationsEndpoints
     {
         if (inbound is null) return [];
         var sender = inbound.Participant?.Address;
+        var normalizedSender = sender is null ? null : EmailSuppression.Normalize(sender);
         return (metadata.Cc ?? [])
             .Where(CommunicationValidation.IsEmail)
             .Select(EmailSuppression.Normalize)
             .Where(address => !string.Equals(address, EmailSuppression.Normalize(mailbox), StringComparison.Ordinal) &&
-                              !string.Equals(address, EmailSuppression.Normalize(sender), StringComparison.Ordinal))
+                              (normalizedSender is null || !string.Equals(address, normalizedSender, StringComparison.Ordinal)))
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToArray();
     }
 

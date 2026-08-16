@@ -92,7 +92,11 @@ internal static class MailgunInboundMimeBuilder
         if (ParseHeaders(form.Headers).TryGetValue("Cc", out var headerCc)) AddMailboxes(message.Cc, headerCc);
         if (message.From.Count == 0 && TryMailbox(form.From ?? form.Sender, out var from)) message.From.Add(from!);
         if (message.To.Count == 0 && TryMailbox(form.Recipient, out var to)) message.To.Add(to!);
-        if (message.Subject is null) message.Subject = Clean(form.Subject, 998);
+        if (message.Subject is null)
+        {
+            var subject = Clean(form.Subject, 998);
+            if (subject is not null) message.Subject = subject;
+        }
         if (message.Date == DateTimeOffset.MinValue) message.Date = now;
 
         var builder = new BodyBuilder
@@ -474,6 +478,7 @@ internal sealed class InboundEmailJobProcessor(
     private static byte[] ReadPart(MimePart part)
     {
         using var stream = new MemoryStream();
+        if (part.Content is null) throw new InvalidOperationException("MIME part has no content.");
         part.Content.DecodeTo(stream);
         return stream.ToArray();
     }

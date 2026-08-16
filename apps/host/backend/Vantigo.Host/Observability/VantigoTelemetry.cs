@@ -119,16 +119,6 @@ public static class VantigoTelemetry
     }
 
     /// <summary>
-    /// True when any standard OTLP endpoint variable is configured.
-    /// </summary>
-    [Obsolete("Use IOptions<ObservabilityOptions>.Value.HasAnyOtlpEndpoint instead.")]
-    public static bool HasOtlpExporterEndpoint(IConfiguration configuration) =>
-        !string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_ENDPOINT"])
-        || !string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])
-        || !string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"])
-        || !string.IsNullOrWhiteSpace(configuration["OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"]);
-
-    /// <summary>
     /// Filters low-value server spans: OpenAPI documents, the SPA entry point
     /// and static assets outside /api and /auth, which are always traced.
     /// </summary>
