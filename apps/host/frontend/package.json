@@ -27,6 +27,7 @@
     "@vantigo/communications-ui": "workspace:*",
     "@vantigo/customers-ui": "workspace:*",
     "@vantigo/energy-ui": "workspace:*",
+    "@vantigo/frontend-api-client": "workspace:*",
     "@vantigo/frontend-shell": "workspace:*",
     "@vantigo/products-ui": "workspace:*",
     "@tiptap/extension-link": "catalog:",

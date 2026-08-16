@@ -25,6 +25,7 @@
         "@tiptap/pm": "catalog:",
         "@tiptap/react": "catalog:",
         "@tiptap/starter-kit": "catalog:",
+        "@vantigo/frontend-api-client": "workspace:*",
         "@vantigo/frontend-shell": "workspace:*",
         "react": "catalog:",
         "react-dom": "catalog:",
@@ -72,6 +73,7 @@
         "@tiptap/pm": "catalog:",
         "@tiptap/react": "catalog:",
         "@tiptap/starter-kit": "catalog:",
+        "@vantigo/frontend-api-client": "workspace:*",
         "@vantigo/frontend-shell": "workspace:*",
         "country-flag-icons": "catalog:",
         "dayjs": "catalog:",
@@ -123,6 +125,7 @@
         "@tiptap/pm": "catalog:",
         "@tiptap/react": "catalog:",
         "@tiptap/starter-kit": "catalog:",
+        "@vantigo/frontend-api-client": "workspace:*",
         "@vantigo/frontend-shell": "workspace:*",
         "country-flag-icons": "catalog:",
         "dayjs": "catalog:",
@@ -174,6 +177,7 @@
         "@vantigo/communications-ui": "workspace:*",
         "@vantigo/customers-ui": "workspace:*",
         "@vantigo/energy-ui": "workspace:*",
+        "@vantigo/frontend-api-client": "workspace:*",
         "@vantigo/frontend-shell": "workspace:*",
         "@vantigo/products-ui": "workspace:*",
         "country-flag-icons": "catalog:",
@@ -227,6 +231,7 @@
         "@tiptap/pm": "catalog:",
         "@tiptap/react": "catalog:",
         "@tiptap/starter-kit": "catalog:",
+        "@vantigo/frontend-api-client": "workspace:*",
         "@vantigo/frontend-shell": "workspace:*",
         "country-flag-icons": "catalog:",
         "dayjs": "catalog:",
@@ -250,6 +255,14 @@
         "typescript": "catalog:",
         "typescript-eslint": "catalog:",
         "vite": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/frontend-api-client": {
+      "name": "@vantigo/frontend-api-client",
+      "version": "0.0.0",
+      "devDependencies": {
+        "typescript": "catalog:",
         "vitest": "catalog:",
       },
     },
@@ -687,6 +700,8 @@
     "@vantigo/customers-ui": ["@vantigo/customers-ui@workspace:apps/customers/frontend"],
 
     "@vantigo/energy-ui": ["@vantigo/energy-ui@workspace:apps/energy/frontend"],
+
+    "@vantigo/frontend-api-client": ["@vantigo/frontend-api-client@workspace:packages/frontend-api-client"],
 
     "@vantigo/frontend-shell": ["@vantigo/frontend-shell@workspace:packages/frontend-shell"],
 

@@ -20,6 +20,7 @@
     "@tiptap/pm": "catalog:",
     "@tiptap/react": "catalog:",
     "@tiptap/starter-kit": "catalog:",
+    "@vantigo/frontend-api-client": "workspace:*",
     "@vantigo/frontend-shell": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:"

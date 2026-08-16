@@ -1,0 +1,17 @@
+{
+  "name": "@vantigo/frontend-api-client",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Framework-agnostic API transport for Vantigo frontend applications.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

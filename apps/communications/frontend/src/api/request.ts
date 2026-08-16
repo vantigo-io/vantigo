@@ -1,64 +1,9 @@
+import { createApiClient } from "@vantigo/frontend-api-client";
 import { appUrl } from "@vantigo/frontend-shell";
 
-let onUnauthorized: (() => void) | undefined;
-let csrfToken: string | null = null;
-let csrfRequest: Promise<string> | undefined;
-export type ApiError = Error & {
-  status?: number;
-  code?: string;
-  fields?: Record<string, string | string[]>;
-};
-export type RequestOptions = RequestInit & { handleUnauthorized?: boolean };
-export const setUnauthorizedHandler = (handler: (() => void) | undefined) => {
-  onUnauthorized = handler;
-};
-export const clearCsrfToken = () => {
-  csrfToken = null;
-  csrfRequest = undefined;
-};
-export async function ensureCsrfToken(): Promise<string> {
-  if (csrfToken) return csrfToken;
-  if (!csrfRequest)
-    csrfRequest = fetch(appUrl("/api/v1/identity/antiforgery"), { credentials: "include" })
-      .then(async (response) => {
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok || typeof body.token !== "string" || !body.token)
-          throw new Error(body?.error?.message || "Could not establish a secure session");
-        csrfToken = body.token;
-        return body.token as string;
-      })
-      .finally(() => {
-        csrfRequest = undefined;
-      });
-  return csrfRequest as Promise<string>;
-}
-export async function request<T>(url: string, init: RequestOptions = {}): Promise<T> {
-  const { handleUnauthorized = true, ...fetchInit } = init;
-  const method = (fetchInit.method || "GET").toUpperCase();
-  const headers = new Headers(fetchInit.headers);
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) headers.set("X-XSRF-TOKEN", await ensureCsrfToken());
-  // Root-relative URLs are resolved against the app's base path so the app can
-  // be served under a path prefix (e.g. /communications) on a shared domain.
-  const response = await fetch(url.startsWith("/") ? appUrl(url) : url, {
-    ...fetchInit,
-    headers,
-    credentials: "include",
-  });
-  if (response.status === 401 && handleUnauthorized) {
-    clearCsrfToken();
-    onUnauthorized?.();
-  }
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    const error: ApiError = Object.assign(
-      new Error(body?.error?.message || body?.detail || body?.title || `Request failed (HTTP ${response.status})`),
-      {
-        status: response.status,
-        code: body?.error?.code,
-        fields: body?.error?.fields,
-      },
-    );
-    throw error;
-  }
-  return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
-}
+const client = createApiClient({ resolveUrl: appUrl, sessionNotFoundMeansExpired: false });
+
+export const { clearCsrfToken, ensureCsrfToken, getCsrfToken, request, setAuthStateClearer, setUnauthorizedHandler } =
+  client;
+export type { ApiError, RequestOptions } from "@vantigo/frontend-api-client";
+export { ApiValidationError, NotFoundError, readJson } from "@vantigo/frontend-api-client";
