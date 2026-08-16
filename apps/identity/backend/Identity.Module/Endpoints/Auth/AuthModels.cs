@@ -60,13 +60,21 @@ internal sealed record AuthSessionResponse(
     AuthUserResponse User,
     bool TwoFactorEnabled,
     bool MfaEnrollmentRequired,
-    bool MfaAuthenticated);
+    bool MfaAuthenticated,
+    IReadOnlyCollection<TenantSessionResponse> Tenants,
+    Guid? ActiveTenantId);
 
 internal sealed record AuthSuccessResponse(
     AuthUserResponse? User,
     bool RequiresTwoFactor,
     bool TwoFactorEnabled,
-    bool MfaEnrollmentRequired);
+    bool MfaEnrollmentRequired,
+    IReadOnlyCollection<TenantSessionResponse>? Tenants = null,
+    Guid? ActiveTenantId = null);
+
+internal sealed record TenantSessionResponse(Guid Id, string Name, string Slug);
+
+internal sealed record TenantSwitchRequest(Guid TenantId);
 
 internal sealed record LogoutResponse(bool Success);
 

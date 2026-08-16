@@ -10,6 +10,9 @@ using Testcontainers.PostgreSql;
 
 using Vantigo.Contracts;
 using Vantigo.Host;
+using Vantigo.Tenancy;
+using Vantigo.Tenancy.Abstractions;
+using Vantigo.Identity.Services;
 
 namespace Vantigo.Energy.Module.Tests.Integration;
 
@@ -19,6 +22,8 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("vantigo")
         .Build();
+
+    public Guid CurrentTenantId { get; private set; }
 
     public async Task InitializeAsync()
     {
@@ -35,6 +40,9 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
         });
         if (!bootstrap.IsSuccessStatusCode)
             throw new InvalidOperationException($"Fresh integration bootstrap failed: {bootstrap.StatusCode}");
+        await using var scope = Services.CreateAsyncScope();
+        CurrentTenantId = (await scope.ServiceProvider.GetRequiredService<TenantDirectory>()
+            .GetDefaultTenantAsync()).Value;
     }
 
     public HttpClient CreateAuthenticatedClient()
@@ -54,6 +62,8 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", refreshedToken!.Token);
         return client;
     }
+
+    public IDisposable EnterTenant(Guid tenantId) => AmbientTenantContext.Enter(new TenantId(tenantId));
 
     public async Task<HttpClient> CreateAuthenticatedClientAsync(string email, string password)
     {

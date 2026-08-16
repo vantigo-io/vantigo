@@ -29,4 +29,13 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     /// </summary>
     public string? PreferredLanguage { get; set; }
 
+    /// <summary>The last tenant selected by this user, when one has been selected.</summary>
+    public Guid? ActiveTenantId { get; set; }
+
+}
+
+/// <summary>Role assignment with an optional tenant scope; null is system scope.</summary>
+public sealed class ApplicationUserRole : IdentityUserRole<Guid>
+{
+    public Guid? TenantId { get; set; }
 }

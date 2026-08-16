@@ -8,6 +8,9 @@ public sealed class Invitation
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>Invitation tenant; null denotes the bootstrap default tenant.</summary>
+    public Guid? TenantId { get; set; }
+
     public required string Email { get; set; }
 
     public required string NormalizedEmail { get; set; }

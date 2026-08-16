@@ -15,6 +15,7 @@ internal sealed class ApplicationUserEntityTypeConfiguration : IEntityTypeConfig
         builder.Property(user => user.DisplayName).HasColumnName("display_name").HasMaxLength(200).IsRequired();
         builder.Property(user => user.IsDisabled).HasColumnName("is_disabled").IsRequired();
         builder.Property(user => user.PreferredLanguage).HasColumnName("preferred_language").HasMaxLength(10);
+        builder.Property(user => user.ActiveTenantId).HasColumnName("active_tenant_id");
         builder.Property(user => user.UserName).HasColumnName("user_name");
         builder.Property(user => user.NormalizedUserName).HasColumnName("normalized_user_name");
         builder.Property(user => user.Email).HasColumnName("email");

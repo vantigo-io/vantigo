@@ -1,12 +1,16 @@
 namespace Vantigo.Customers.Domain.Timeline;
 
+using Vantigo.Tenancy.Abstractions;
+
 /// <summary>
 /// The current, query-optimized state of one customer timeline entry. Generated entries
 /// are immutable; manual entries are changed by appending a revision and replacing this
 /// snapshot.
 /// </summary>
-public sealed class CustomerTimelineEntry
+public sealed class CustomerTimelineEntry : ITenantOwned
 {
+    public Guid TenantId { get; set; }
+
     public int Id { get; set; }
     public int CustomerId { get; set; }
     public Customers.Customer Customer { get; set; } = null!;

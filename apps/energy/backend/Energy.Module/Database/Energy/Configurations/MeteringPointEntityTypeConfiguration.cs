@@ -10,8 +10,9 @@ internal sealed class MeteringPointEntityTypeConfiguration : IEntityTypeConfigur
     public void Configure(EntityTypeBuilder<MeteringPoint> builder)
     {
         builder.ToTable("metering_points");
-        builder.HasKey(point => point.Id);
-        builder.Property(point => point.Id).HasColumnName("id").IsRequired().HasIdentityOptions(1001, 1);
+        builder.HasKey(point => new { point.TenantId, point.Id });
+        builder.Property(point => point.TenantId).HasColumnName("tenant_id").IsRequired();
+        builder.Property(point => point.Id).HasColumnName("id").ValueGeneratedOnAdd().IsRequired().HasIdentityOptions(1001, 1);
         builder.Property(point => point.Gsrn).HasColumnName("gsrn")
             .HasConversion(value => value.Value, value => new Gsrn(value)).HasMaxLength(18).IsUnicode(false).IsRequired();
         builder.Property(point => point.PriceArea).HasColumnName("price_area").HasMaxLength(4).IsUnicode(false).IsRequired();
@@ -29,6 +30,6 @@ internal sealed class MeteringPointEntityTypeConfiguration : IEntityTypeConfigur
             address.Property(value => value.City).HasColumnName("city").HasMaxLength(Address.CityMaxLength).IsRequired();
             address.Property(value => value.CountryCode).HasColumnName("country_code").HasMaxLength(2).IsUnicode(false).IsRequired();
         });
-        builder.HasIndex(point => point.Gsrn).IsUnique();
+        builder.HasIndex(point => new { point.TenantId, point.Gsrn }).IsUnique();
     }
 }

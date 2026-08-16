@@ -392,7 +392,7 @@ internal static class AuthorizationManagementEndpoints
                 !requestedCustomRoleIds.Contains(item.RoleId) && removableCustomRoleIds.Contains(item.RoleId)));
             var existingIds = existing.Select(item => item.RoleId).ToHashSet();
             dbContext.UserRoles.AddRange(roleIds.Where(roleId => !existingIds.Contains(roleId))
-                .Select(roleId => new IdentityUserRole<Guid> { UserId = id, RoleId = roleId }));
+                .Select(roleId => new ApplicationUserRole { UserId = id, RoleId = roleId }));
             target.SecurityStamp = Guid.NewGuid().ToString("N");
             target.ConcurrencyStamp = Guid.NewGuid().ToString("N");
             var effectiveRoleIds = existing.Where(item => systemRoleIds.Contains(item.RoleId) ||

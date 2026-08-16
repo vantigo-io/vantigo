@@ -397,7 +397,8 @@ public sealed class CustomersEndpointsTests
     [Fact]
     public async Task GetCustomers_WithoutParameters_AppliesDefaultPagination()
     {
-        await _client.PostAsJsonAsync("/api/v1/customers", new { name = "Default Paging Co" });
+        var created = await _client.PostAsJsonAsync("/api/v1/customers", new { name = "Default Paging Co" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
 
         var response = await _client.GetFromJsonAsync<CustomerList>("/api/v1/customers");
 
@@ -515,11 +516,11 @@ public sealed class CustomersEndpointsTests
         Assert.Contains("/api/v1/customers", document);
     }
 
-    private readonly record struct CreatedCustomer(int Id);
+    private readonly record struct CreatedCustomer(int Id, long CustomerNumber);
 
     private readonly record struct ValidationProblem(Dictionary<string, string[]> Errors);
 
-    private readonly record struct Customer(int Id, string Name, LegalIdentity? Identity);
+    private readonly record struct Customer(int Id, long CustomerNumber, string Name, LegalIdentity? Identity);
 
     private readonly record struct LegalIdentity(string Country, string Type, string Id, string Name, string Source);
 

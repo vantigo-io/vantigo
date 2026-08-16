@@ -8,6 +8,7 @@ namespace Vantigo.Customers.Endpoints.Customers.Dtos;
 internal readonly record struct CustomerResponse
 {
     public required int Id { get; init; }
+    public required long CustomerNumber { get; init; }
     public required string Name { get; init; }
     public LegalIdentityResponse? Identity { get; init; }
 
@@ -17,6 +18,7 @@ internal readonly record struct CustomerResponse
     internal static CustomerResponse FromDomain(Customer customer) => new()
     {
         Id = customer.Id,
+        CustomerNumber = customer.CustomerNumber,
         Name = customer.Name,
         Identity = customer.Identity is { } identity
             ? LegalIdentityResponse.FromDomain(identity)

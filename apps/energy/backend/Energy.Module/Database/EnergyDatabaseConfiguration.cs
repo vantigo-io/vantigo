@@ -9,6 +9,7 @@ using Vantigo.Contracts.Authorization;
 using Vantigo.Energy.Authorization;
 using Vantigo.Energy.Database.Energy;
 using Vantigo.Energy.Endpoints;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Energy.Database;
 
@@ -16,6 +17,7 @@ public static class EnergyDatabaseConfiguration
 {
     public static IServiceCollection AddEnergyModule(this IServiceCollection services)
     {
+        services.AddVantigoTenancyEntityFramework();
         services.AddSingleton<IPermissionCatalogContributor, EnergyPermissionCatalogContributor>();
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
@@ -25,9 +27,11 @@ public static class EnergyDatabaseConfiguration
             builder.EnableDynamicJson();
             return builder.Build();
         });
-        services.AddDbContext<EnergyDbContext>((provider, options) => options.UseNpgsql(
-            provider.GetRequiredService<NpgsqlDataSource>(),
-            npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "energy")));
+        services.AddDbContext<EnergyDbContext>((provider, options) =>
+            options.UseNpgsql(
+                    provider.GetRequiredService<NpgsqlDataSource>(),
+                    npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "energy"))
+                .UseTenancy(provider));
         services.AddEnergyApiVersioning();
         return services;
     }

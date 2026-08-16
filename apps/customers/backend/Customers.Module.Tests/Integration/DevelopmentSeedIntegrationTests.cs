@@ -15,6 +15,8 @@ using Vantigo.Customers.Database.Customers;
 using Vantigo.Host;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
+using Vantigo.Tenancy;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -143,7 +145,8 @@ public sealed class DevelopmentSeedIntegrationTests
         var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
         var customers = scope.ServiceProvider.GetRequiredService<CustomersDbContext>();
-
+        using var tenantScope = AmbientTenantContext.Enter(
+            await scope.ServiceProvider.GetRequiredService<ITenantDirectory>().GetDefaultTenantAsync());
         var admin = await users.FindByEmailAsync(AdminEmail);
         Assert.NotNull(admin);
         Assert.Equal(AdminId, admin.Id);
@@ -237,6 +240,7 @@ public sealed class DevelopmentSeedIntegrationTests
                     ["ConnectionStrings:vantigo"] = connectionString,
                     ["Modules:Customers:Enabled"] = "true",
                     ["Modules:Communications:Enabled"] = "false",
+                    ["Modules:Energy:Enabled"] = "false",
                     ["Modules:Products:Enabled"] = "false",
                 };
                 if (customerCount is not null)

@@ -108,6 +108,7 @@ internal static class AuthAccountEndpoints
     private static async Task<IResult> MfaStatus(
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
+        TenantMembershipService tenantMembershipService,
         IOptions<VantigoAuthenticationOptions> options,
         SignInManager<ApplicationUser> signInManager)
     {
@@ -489,6 +490,7 @@ internal static class AuthAccountEndpoints
         AccountsDbContext dbContext,
         UserManager<ApplicationUser> userManager,
         AuthorizationAuditWriter auditWriter,
+        TenantMembershipService tenantMembershipService,
         CancellationToken cancellationToken)
     {
         var validation = ValidateOwnerUserCreateRequest(request);
@@ -533,6 +535,8 @@ internal static class AuthAccountEndpoints
         {
             return IdentityFailure(createResult, "The user account could not be created.");
         }
+
+        await tenantMembershipService.EnsureDefaultMembershipAsync(user.Id, cancellationToken);
 
         var roleResult = await userManager.AddToRoleAsync(user, request.Role!);
         if (!roleResult.Succeeded)
@@ -1084,6 +1088,7 @@ internal static class AuthAccountEndpoints
         IOptions<VantigoAuthenticationOptions> options,
         AppPublicUrls appPublicUrls,
         IApplicationEmailSender emailSender,
+        TenantMembershipService tenantMembershipService,
         CancellationToken cancellationToken)
     {
         var validation = ValidateInvitationRequest(request);
@@ -1119,6 +1124,7 @@ internal static class AuthAccountEndpoints
             CreatedAt = now,
             ExpiresAt = now.Add(expiration),
             InvitedByUserId = invitedByUser.Id,
+            TenantId = (await tenantMembershipService.ResolveActiveTenantIdAsync(invitedByUser, principal, cancellationToken)),
         };
 
         await using (var transaction = await dbContext.Database.BeginTransactionAsync(
@@ -1282,6 +1288,7 @@ internal static class AuthAccountEndpoints
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         AuthorizationAuditWriter auditWriter,
+        TenantMembershipService tenantMembershipService,
         HttpContext httpContext,
         IOptions<VantigoAuthenticationOptions> options,
         CancellationToken cancellationToken)
@@ -1344,12 +1351,18 @@ internal static class AuthAccountEndpoints
             return IdentityFailure(roleResult, "The invitation account could not be assigned its role.");
         }
 
+        var tenantId = invitation.TenantId is Guid invitationTenantId
+            ? new Vantigo.Tenancy.Abstractions.TenantId(invitationTenantId)
+            : await tenantMembershipService.GetDefaultTenantIdAsync(cancellationToken);
+        await tenantMembershipService.EnsureMembershipAsync(user.Id, tenantId, cancellationToken);
+
         invitation.AcceptedAt = DateTimeOffset.UtcNow;
         var after = await auditWriter.CaptureUserAsync(dbContext, user.Id, cancellationToken);
         await auditWriter.WriteAsync(dbContext, httpContext, null, user.Id, null,
             "invitation.accepted-with-role", new { InvitationId = invitation.Id, Roles = Array.Empty<string>() }, after, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await signInManager.SignInAsync(user, isPersistent: false);
+        await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, isPersistent: false,
+            cancellationToken: cancellationToken);
 
         var roles = await userManager.GetRolesAsync(user);
         var orderedRoles = AuthRoleOrdering.Ordered(roles);

@@ -67,6 +67,10 @@ public static class AuthEndpoints
             .WithSummary("Get the authenticated browser session")
             .RequireAuthorization();
 
+        group.MapPost("/session/tenant", SwitchTenant)
+            .WithSummary("Switch the authenticated session's active tenant")
+            .RequireAuthorization();
+
         app.MapAccountAuthEndpoints();
         app.MapAccountSettingsEndpoints();
         AuthorizationManagementEndpoints.MapAuthorizationManagementEndpoints(app);
@@ -154,6 +158,7 @@ public static class AuthEndpoints
         IPermissionCatalog permissionCatalog,
         SignInManager<ApplicationUser> signInManager,
         AuthorizationAuditWriter auditWriter,
+        TenantMembershipService tenantMembershipService,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -202,6 +207,8 @@ public static class AuthEndpoints
                 return IdentityFailure(addRoleResult, "The Owner account could not be assigned its role.");
             }
 
+            await tenantMembershipService.EnsureDefaultMembershipAsync(user.Id, cancellationToken);
+
             dbContext.BootstrapStates.Add(new BootstrapState
             {
                 Id = 1,
@@ -223,7 +230,8 @@ public static class AuthEndpoints
 
             // The database is authoritative: only issue the application cookie
             // after the owner, role assignment, and one-time marker are committed.
-            await signInManager.SignInAsync(user, isPersistent: false);
+            await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, isPersistent: false,
+                cancellationToken: cancellationToken);
 
             return TypedResults.Created("/api/v1/identity/session", new
             {
@@ -245,6 +253,7 @@ public static class AuthEndpoints
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
         ScimLifecycleService lifecycleService,
+        TenantMembershipService tenantMembershipService,
         IOptions<VantigoAuthenticationOptions> options,
         CancellationToken cancellationToken)
     {
@@ -301,7 +310,8 @@ public static class AuthEndpoints
             return IdentityFailure(cleanupResult, "The sign-in could not be completed.");
         }
 
-        await signInManager.SignInAsync(user, isPersistent: false);
+        await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, isPersistent: false,
+            cancellationToken: cancellationToken);
         var roles = await userManager.GetRolesAsync(user);
         var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles));
         return TypedResults.Ok(new AuthSuccessResponse(
@@ -318,6 +328,7 @@ public static class AuthEndpoints
         SignInManager<ApplicationUser> signInManager,
         UserManager<ApplicationUser> userManager,
         IOptions<VantigoAuthenticationOptions> options,
+        TenantMembershipService tenantMembershipService,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request?.Code))
@@ -361,8 +372,8 @@ public static class AuthEndpoints
         }
 
         await signInManager.SignOutAsync();
-        await signInManager.SignInWithClaimsAsync(user, new AuthenticationProperties { IsPersistent = request.RememberMe },
-            MfaClaims());
+        await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, isPersistent: request.RememberMe,
+            priorPrincipal: new ClaimsPrincipal(new ClaimsIdentity(MfaClaims())), cancellationToken: cancellationToken);
         var roles = await userManager.GetRolesAsync(user);
         var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles));
         var requiresEnrollment = await userManager.IsInRoleAsync(user, AuthRoles.Owner) &&
@@ -379,7 +390,9 @@ public static class AuthEndpoints
     private static async Task<IResult> Session(
         ClaimsPrincipal principal,
         UserManager<ApplicationUser> userManager,
-        IOptions<VantigoAuthenticationOptions> options)
+        IOptions<VantigoAuthenticationOptions> options,
+        TenantMembershipService tenantMembershipService,
+        CancellationToken cancellationToken)
     {
         var user = await userManager.GetUserAsync(principal);
         if (user is null)
@@ -388,6 +401,8 @@ public static class AuthEndpoints
         }
 
         var roles = await userManager.GetRolesAsync(user);
+        var tenants = await tenantMembershipService.GetTenantsAsync(user.Id, cancellationToken);
+        var activeTenantId = await tenantMembershipService.ResolveActiveTenantIdAsync(user, principal, cancellationToken);
         var mfaAuthenticated = principal.Claims.Any(claim =>
             (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
             string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
@@ -396,7 +411,44 @@ public static class AuthEndpoints
             new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles)),
             user.TwoFactorEnabled,
             owner && options.Value.Owners.RequireMfa && !user.TwoFactorEnabled,
-            mfaAuthenticated));
+            mfaAuthenticated,
+            tenants.Select(tenant => new TenantSessionResponse(tenant.Id, tenant.Name, tenant.Slug)).ToArray(),
+            activeTenantId));
+    }
+
+    private static async Task<IResult> SwitchTenant(
+        TenantSwitchRequest? request,
+        ClaimsPrincipal principal,
+        UserManager<ApplicationUser> userManager,
+        SignInManager<ApplicationUser> signInManager,
+        TenantMembershipService tenantMembershipService,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || request.TenantId == Guid.Empty)
+            return Error(StatusCodes.Status400BadRequest, "invalid_request", "A tenant id is required.");
+
+        var user = await userManager.GetUserAsync(principal);
+        if (user is null) return Error(StatusCodes.Status401Unauthorized, "unauthenticated", "Authentication is required.");
+
+        var tenants = await tenantMembershipService.GetTenantsAsync(user.Id, cancellationToken);
+        if (!tenants.Any(tenant => tenant.Id == request.TenantId))
+            return Error(StatusCodes.Status403Forbidden, "tenant_membership_required", "You are not a member of that tenant.");
+
+        user.ActiveTenantId = request.TenantId;
+        await userManager.UpdateAsync(user);
+        await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, principal, cancellationToken: cancellationToken);
+        var roles = await userManager.GetRolesAsync(user);
+        var activeTenants = tenants.Select(tenant => new TenantSessionResponse(tenant.Id, tenant.Name, tenant.Slug)).ToArray();
+        var mfaAuthenticated = principal.Claims.Any(claim =>
+            (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
+            string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+        return TypedResults.Ok(new AuthSessionResponse(
+            new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles)),
+            user.TwoFactorEnabled,
+            false,
+            mfaAuthenticated,
+            activeTenants,
+            request.TenantId));
     }
 
     private static async Task<bool> IsBootstrapConsumed(

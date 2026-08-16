@@ -9,6 +9,9 @@ using Vantigo.Customers.Domain.Contacts;
 using Vantigo.Customers.Domain.Customers;
 using Vantigo.Customers.Domain.Customers.Common;
 using Vantigo.Customers.Domain.Customers.ValueObjects;
+using Vantigo.Tenancy;
+using Vantigo.Tenancy.Abstractions;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Customers.Database.DevelopmentSeed;
 
@@ -47,9 +50,13 @@ public static class DevelopmentDataSeeder
     {
         await using var scope = services.CreateAsyncScope();
         var seedData = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value.Data;
+        var tenant = await scope.ServiceProvider.GetRequiredService<ITenantDirectory>()
+            .GetDefaultTenantAsync(cancellationToken);
+        using var tenantScope = AmbientTenantContext.Enter(tenant);
 
         await SeedCustomersAsync(
             scope.ServiceProvider.GetRequiredService<CustomersDbContext>(),
+            scope.ServiceProvider.GetRequiredService<ITenantCounterService>(),
             seedData.Customers,
             seedData.Contacts,
             cancellationToken);
@@ -57,6 +64,7 @@ public static class DevelopmentDataSeeder
 
     private static async Task SeedCustomersAsync(
         CustomersDbContext dbContext,
+        ITenantCounterService tenantCounterService,
         int customerCount,
         int contactCount,
         CancellationToken cancellationToken)
@@ -65,6 +73,7 @@ public static class DevelopmentDataSeeder
         contactCount = ClampSeedCount(contactCount, DefaultContactCount);
         var customerSeeds = CreateCustomerSeeds(customerCount);
         var customersByKey = new Dictionary<string, Customer>(StringComparer.Ordinal);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
         foreach (var seed in customerSeeds)
         {
@@ -85,6 +94,8 @@ public static class DevelopmentDataSeeder
                         Name = seed.LegalName,
                         Source = LegalSource.Manual,
                     },
+                    CustomerNumber = await tenantCounterService.NextAsync(
+                        dbContext, "customer-number", cancellationToken),
                 };
                 dbContext.Customers.Add(customer);
             }
@@ -143,6 +154,7 @@ public static class DevelopmentDataSeeder
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private static IReadOnlyList<CustomerSeed> CreateCustomerSeeds(int count)

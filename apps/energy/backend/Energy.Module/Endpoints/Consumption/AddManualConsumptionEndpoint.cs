@@ -29,8 +29,11 @@ internal static class AddManualConsumptionEndpoint
             ReceivedAt = DateTimeOffset.UtcNow,
             IsCurrent = true,
             SupersedesId = previous?.Id,
+            SupersedesStart = previous?.Start,
         };
         db.ConsumptionIntervals.Add(interval);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT energy.ensure_consumption_partition({request.Start.UtcDateTime.Date:yyyy-MM-dd}::date)", cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return TypedResults.Ok(ConsumptionResponse.FromDomain(interval));
     }

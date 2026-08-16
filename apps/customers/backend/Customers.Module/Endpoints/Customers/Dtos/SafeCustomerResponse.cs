@@ -7,6 +7,7 @@ namespace Vantigo.Customers.Endpoints.Customers.Dtos;
 internal readonly record struct SafeCustomerResponse
 {
     public required int Id { get; init; }
+    public required long CustomerNumber { get; init; }
     public required string Name { get; init; }
     public required SafeTimelineSummary TimelineSummary { get; init; }
 }

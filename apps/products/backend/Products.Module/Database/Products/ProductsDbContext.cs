@@ -2,11 +2,17 @@ using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Products.Database.Products.Configurations;
 using Vantigo.Products.Domain.Products;
+using Vantigo.Tenancy.Abstractions;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Products.Database.Products;
 
-public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> options) : DbContext(options)
+public sealed class ProductsDbContext(
+    DbContextOptions<ProductsDbContext> options,
+    ITenantContext? tenantContext = null) : DbContext(options)
 {
+    private readonly ITenantContext _tenantContext = tenantContext ?? new UnresolvedTenantContext();
+
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductPrice> ProductPrices => Set<ProductPrice>();
@@ -23,6 +29,7 @@ public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> option
         modelBuilder.ApplyConfiguration(new ProductPriceEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ProductCategoryEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new TaxCategoryEntityTypeConfiguration());
+        modelBuilder.ApplyTenantOwnership(_tenantContext);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -80,5 +87,12 @@ public sealed class ProductsDbContext(DbContextOptions<ProductsDbContext> option
                 entry.Entity.UpdatedAt = now;
             }
         }
+    }
+
+    private sealed class UnresolvedTenantContext : ITenantContext
+    {
+        public bool IsResolved => false;
+
+        public TenantId Current => throw new TenantUnresolvedException();
     }
 }

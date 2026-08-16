@@ -293,7 +293,7 @@ public sealed class CustomersPermissionIntegrationTests(CustomersApiFactory fact
             (await user.GetAsync("/api/v1/customers")).StatusCode);
     }
 
-    private readonly record struct CreatedCustomer(int Id);
+    private readonly record struct CreatedCustomer(int Id, long CustomerNumber);
     private readonly record struct ContactResponse(int Id, string? FirstName = null, string? LastName = null);
     private readonly record struct CustomerContactResponse(ContactProjection Contact, string Role, string? Phone, string? Email);
     private readonly record struct ContactProjection(int Id, string FirstName, string LastName, string? MiddleName, string? Prefix, string? Suffix, string? Phone, string? Email);

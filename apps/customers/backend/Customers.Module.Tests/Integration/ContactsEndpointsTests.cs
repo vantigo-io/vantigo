@@ -457,7 +457,7 @@ public sealed class ContactsEndpointsTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
-    private readonly record struct CreatedCustomer(int Id);
+    private readonly record struct CreatedCustomer(int Id, long CustomerNumber);
 
     private readonly record struct ValidationProblem(Dictionary<string, string[]> Errors);
 

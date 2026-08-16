@@ -22,6 +22,7 @@ internal static class GetCustomerEndpoint
             .Select(customer => (SafeCustomerResponse?)new SafeCustomerResponse
             {
                 Id = customer.Id,
+                CustomerNumber = customer.CustomerNumber,
                 Name = customer.Name,
                 TimelineSummary = new SafeTimelineSummary
                 {

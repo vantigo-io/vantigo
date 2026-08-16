@@ -5,6 +5,8 @@ using Vantigo.Energy.Domain.Consumption;
 using Vantigo.Energy.Domain.MeteringPoints;
 using Vantigo.Energy.Domain.Meters;
 using Vantigo.Energy.Domain.SupplyPeriods;
+using Vantigo.Tenancy;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Energy.Database.DevelopmentSeed;
 
@@ -15,6 +17,9 @@ internal static class DevelopmentDataSeeder
     internal static async Task SeedEnergyAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
         await using var scope = services.CreateAsyncScope();
+        var tenantDirectory = scope.ServiceProvider.GetRequiredService<ITenantDirectory>();
+        using var tenantScope = AmbientTenantContext.Enter(
+            await tenantDirectory.GetDefaultTenantAsync(cancellationToken));
         var db = scope.ServiceProvider.GetRequiredService<EnergyDbContext>();
         var definitions = new[]
         {

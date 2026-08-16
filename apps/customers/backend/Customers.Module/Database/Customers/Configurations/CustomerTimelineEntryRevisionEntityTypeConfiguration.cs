@@ -11,10 +11,15 @@ internal sealed class CustomerTimelineEntryRevisionEntityTypeConfiguration :
     public void Configure(EntityTypeBuilder<CustomerTimelineEntryRevision> builder)
     {
         builder.ToTable("customers_timeline_entries_revisions");
-        builder.HasKey(revision => revision.Id);
+        builder.HasKey(revision => new { revision.TenantId, revision.Id });
+
+        builder.Property(revision => revision.TenantId)
+            .HasColumnName("tenant_id")
+            .IsRequired();
 
         builder.Property(revision => revision.Id)
             .HasColumnName("id")
+            .ValueGeneratedOnAdd()
             .HasIdentityOptions(1001, 1)
             .IsRequired();
         builder.Property(revision => revision.CustomerTimelineEntryId)
@@ -39,10 +44,11 @@ internal sealed class CustomerTimelineEntryRevisionEntityTypeConfiguration :
 
         builder.HasOne(revision => revision.Entry)
             .WithMany(entry => entry.Revisions)
-            .HasForeignKey(revision => revision.CustomerTimelineEntryId)
+            .HasForeignKey(revision => new { revision.TenantId, revision.CustomerTimelineEntryId })
+            .HasPrincipalKey(entry => new { entry.TenantId, entry.Id })
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(revision => new { revision.CustomerTimelineEntryId, revision.RevisionNumber })
+        builder.HasIndex(revision => new { revision.TenantId, revision.CustomerTimelineEntryId, revision.RevisionNumber })
             .IsUnique()
             .HasDatabaseName("ux_customers_timeline_entries_revisions_entry_revision");
     }

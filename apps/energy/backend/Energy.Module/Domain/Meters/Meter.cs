@@ -1,9 +1,11 @@
 using Vantigo.Energy.Domain.Exceptions;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Energy.Domain.Meters;
 
-public sealed class Meter
+public sealed class Meter : ITenantOwned
 {
+    public Guid TenantId { get; set; }
     public int Id { get; set; }
     public int MeteringPointId { get; set; }
     public string MeterNumber { get; set; } = string.Empty;

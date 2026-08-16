@@ -11,13 +11,19 @@ internal sealed class TaxCategoryEntityTypeConfiguration : IEntityTypeConfigurat
     {
         builder.ToTable("tax_categories");
 
-        builder.HasKey(category => category.Id);
+        builder.HasKey(category => new { category.TenantId, category.Id });
 
         builder.Property(category => category.Id)
             .HasColumnName("id")
             .HasComment("The unique identifier of the tax category")
             .IsRequired()
+            .ValueGeneratedOnAdd()
             .HasIdentityOptions(1001, 1);
+
+        builder.Property(category => category.TenantId)
+            .HasColumnName("tenant_id")
+            .HasComment("The tenant that owns the tax category")
+            .IsRequired();
 
         builder.Property(category => category.Name)
             .HasColumnName("name")
@@ -50,6 +56,6 @@ internal sealed class TaxCategoryEntityTypeConfiguration : IEntityTypeConfigurat
             .HasComment("When the tax category was last updated")
             .IsRequired();
 
-        builder.HasIndex(category => category.Name).IsUnique();
+        builder.HasIndex(category => new { category.TenantId, category.Name }).IsUnique();
     }
 }

@@ -1,12 +1,14 @@
 namespace Vantigo.Products.Domain.Products;
 
+using Vantigo.Tenancy.Abstractions;
+
 /// <summary>
 /// A category groups products for navigation and reporting. Categories form a
 /// multi-level hierarchy through the parent reference (adjacency list); a category
 /// with a parent is a subcategory. Each product belongs to at most one category —
 /// cross-cutting grouping is a future tags/collections concern.
 /// </summary>
-public sealed class ProductCategory
+public sealed class ProductCategory : ITenantOwned
 {
     public const int NameMaxLength = 200;
 
@@ -15,6 +17,9 @@ public sealed class ProductCategory
     /// auto incrementable value set by the database once a category has been persisted.
     /// </summary>
     public int Id { get; set; }
+
+    /// <summary>The tenant that owns the category.</summary>
+    public Guid TenantId { get; set; }
 
     /// <summary>The display name of the category, unique among its siblings.</summary>
     public string Name { get; set; } = string.Empty;

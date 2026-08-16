@@ -12,12 +12,17 @@ internal sealed class ContactEntityTypeConfiguration : IEntityTypeConfiguration<
     {
         builder.ToTable("contacts");
 
-        builder.HasKey(c => c.Id);
+        builder.HasKey(c => new { c.TenantId, c.Id });
+
+        builder.Property(c => c.TenantId)
+            .HasColumnName("tenant_id")
+            .IsRequired();
 
         builder.Property(c => c.Id)
             .HasColumnName("id")
             .HasComment("The unique identifier of the contact")
             .IsRequired()
+            .ValueGeneratedOnAdd()
             .HasIdentityOptions(1001, 1);
 
         builder.Property(c => c.FirstName)

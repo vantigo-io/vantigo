@@ -5,10 +5,14 @@ using Vantigo.Energy.Domain.Consumption;
 using Vantigo.Energy.Domain.MeteringPoints;
 using Vantigo.Energy.Domain.Meters;
 using Vantigo.Energy.Domain.SupplyPeriods;
+using Vantigo.Tenancy.Abstractions;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Energy.Database.Energy;
 
-public sealed class EnergyDbContext(DbContextOptions<EnergyDbContext> options) : DbContext(options)
+public sealed class EnergyDbContext(
+    DbContextOptions<EnergyDbContext> options,
+    ITenantContext tenantContext) : DbContext(options)
 {
     public DbSet<MeteringPoint> MeteringPoints => Set<MeteringPoint>();
     public DbSet<Meter> Meters => Set<Meter>();
@@ -22,6 +26,7 @@ public sealed class EnergyDbContext(DbContextOptions<EnergyDbContext> options) :
         modelBuilder.ApplyConfiguration(new MeterEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ConsumptionIntervalEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new SupplyPeriodEntityTypeConfiguration());
+        modelBuilder.ApplyTenantOwnership(tenantContext);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

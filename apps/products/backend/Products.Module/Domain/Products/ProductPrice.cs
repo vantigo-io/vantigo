@@ -1,5 +1,7 @@
 namespace Vantigo.Products.Domain.Products;
 
+using Vantigo.Tenancy.Abstractions;
+
 /// <summary>
 /// A sales price for a product in a specific currency, excluding VAT. A price can be
 /// limited to a validity window, which is how campaign and sale prices are expressed:
@@ -7,13 +9,16 @@ namespace Vantigo.Products.Domain.Products;
 /// precedence over it. Consumers must snapshot the effective price at transaction time
 /// rather than referencing price rows.
 /// </summary>
-public sealed class ProductPrice
+public sealed class ProductPrice : ITenantOwned
 {
     /// <summary>The length of an ISO 4217 currency code.</summary>
     public const int CurrencyLength = 3;
 
     /// <summary>The auto-generated identity of the price row.</summary>
     public int Id { get; set; }
+
+    /// <summary>The tenant that owns the price row.</summary>
+    public Guid TenantId { get; set; }
 
     /// <summary>The variant that owns this price row.</summary>
     public int VariantId { get; set; }

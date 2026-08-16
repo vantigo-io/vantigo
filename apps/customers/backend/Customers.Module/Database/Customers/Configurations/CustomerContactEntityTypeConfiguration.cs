@@ -12,7 +12,11 @@ internal sealed class CustomerContactEntityTypeConfiguration : IEntityTypeConfig
     {
         builder.ToTable("customers_contacts");
 
-        builder.HasKey(cc => new { cc.CustomerId, cc.ContactId });
+        builder.HasKey(cc => new { cc.TenantId, cc.CustomerId, cc.ContactId });
+
+        builder.Property(cc => cc.TenantId)
+            .HasColumnName("tenant_id")
+            .IsRequired();
 
         builder.Property(cc => cc.CustomerId)
             .HasColumnName("customer_id")
@@ -48,12 +52,17 @@ internal sealed class CustomerContactEntityTypeConfiguration : IEntityTypeConfig
 
         builder.HasOne(cc => cc.Customer)
             .WithMany()
-            .HasForeignKey(cc => cc.CustomerId)
+            .HasForeignKey(cc => new { cc.TenantId, cc.CustomerId })
+            .HasPrincipalKey(customer => new { customer.TenantId, customer.Id })
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne(cc => cc.Contact)
             .WithMany()
-            .HasForeignKey(cc => cc.ContactId)
+            .HasForeignKey(cc => new { cc.TenantId, cc.ContactId })
+            .HasPrincipalKey(contact => new { contact.TenantId, contact.Id })
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(cc => new { cc.TenantId, cc.ContactId })
+            .HasDatabaseName("ix_customers_contacts_tenant_contact_id");
     }
 }

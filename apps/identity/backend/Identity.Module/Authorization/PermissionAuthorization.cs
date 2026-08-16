@@ -10,6 +10,7 @@ using Vantigo.Contracts.Authorization;
 using Vantigo.Contracts.Identity;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Endpoints.Auth;
+using Vantigo.Identity.Services;
 
 namespace Vantigo.Identity.Authorization;
 
@@ -49,6 +50,8 @@ public sealed class PermissionAuthorizationHandler(AccountsDbContext dbContext, 
 
         var userIdValue = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(userIdValue, out var userId)) return;
+        var activeTenantValue = context.User.FindFirstValue(TenantMembershipService.ActiveTenantClaim);
+        var hasActiveTenant = Guid.TryParse(activeTenantValue, out var activeTenantId);
 
         var user = await dbContext.Users.AsNoTracking()
             .Where(item => item.Id == userId)
@@ -59,6 +62,8 @@ public sealed class PermissionAuthorizationHandler(AccountsDbContext dbContext, 
 
         var roles = await dbContext.UserRoles.AsNoTracking()
             .Where(item => item.UserId == userId)
+            // Global role assignments remain valid; tenant assignments must match the active tenant.
+            .Where(item => !hasActiveTenant || item.TenantId == null || item.TenantId == activeTenantId)
             .Join(dbContext.Roles.AsNoTracking(), assignment => assignment.RoleId, role => role.Id,
                 (assignment, role) => role.Name)
             .ToListAsync();
@@ -74,6 +79,7 @@ public sealed class PermissionAuthorizationHandler(AccountsDbContext dbContext, 
             .ToArrayAsync();
         var groupRoleIds = await dbContext.AccessGroupMemberships.AsNoTracking()
             .Where(membership => membership.UserId == userId &&
+                (!hasActiveTenant || membership.TenantId == null || membership.TenantId == activeTenantId) &&
                 (membership.Override == AccessGroupMembershipOverride.ForceMember ||
                  membership.Override == null && membership.IsUpstreamPresent))
             .Join(dbContext.AccessGroups.AsNoTracking().Where(group => group.IsActive),
@@ -81,7 +87,9 @@ public sealed class PermissionAuthorizationHandler(AccountsDbContext dbContext, 
             .Join(dbContext.AccessGroups.AsNoTracking(), groupId => groupId, group => group.Id,
                 (groupId, group) => new { groupId, group.Source })
             .Join(dbContext.AccessGroupRoleMappings.AsNoTracking(), item => item.groupId, mapping => mapping.GroupId,
-                (item, mapping) => new { mapping.RoleId, MappingSource = mapping.Source, GroupSource = item.Source })
+                (item, mapping) => new { mapping.RoleId, mapping.TenantId, MappingSource = mapping.Source, GroupSource = item.Source })
+            // Group role mappings use the same null=system fallback as user roles.
+            .Where(item => !hasActiveTenant || item.TenantId == null || item.TenantId == activeTenantId)
             .Where(item => item.MappingSource == item.GroupSource)
             .Select(item => item.RoleId)
             .ToArrayAsync();

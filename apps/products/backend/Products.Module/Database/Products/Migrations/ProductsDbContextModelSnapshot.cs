@@ -25,6 +25,11 @@ namespace Vantigo.Products.Database.Products.Migrations
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.Product", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id")
+                        .HasComment("The tenant that owns the product");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -85,17 +90,22 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("updated_at")
                         .HasComment("When the product was last updated");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("CategoryId");
+                    b.HasIndex("TenantId", "CategoryId");
 
-                    b.HasIndex("TaxCategoryId");
+                    b.HasIndex("TenantId", "TaxCategoryId");
 
                     b.ToTable("products", "products");
                 });
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductCategory", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id")
+                        .HasComment("The tenant that owns the category");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -118,18 +128,25 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("parent_id")
                         .HasComment("The parent category; null means the category is a root");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("ParentId", "Name")
+                    b.HasIndex("TenantId", "ParentId");
+
+                    b.HasIndex("TenantId", "ParentId", "Name")
                         .IsUnique();
 
-                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("ParentId", "Name"), false);
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("TenantId", "ParentId", "Name"), false);
 
                     b.ToTable("product_categories", "products");
                 });
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductPrice", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id")
+                        .HasComment("The tenant that owns the price row");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -169,15 +186,22 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("variant_id")
                         .HasComment("The product variant the price belongs to");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("VariantId", "Currency");
+                    b.HasIndex("TenantId", "VariantId");
+
+                    b.HasIndex("TenantId", "VariantId", "Currency");
 
                     b.ToTable("product_prices", "products");
                 });
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.ProductVariant", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id")
+                        .HasComment("The tenant that owns the variant");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -261,15 +285,15 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("width_cm")
                         .HasComment("The width of one unit in centimetres");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("Barcode")
+                    b.HasIndex("TenantId", "Barcode")
                         .IsUnique()
                         .HasFilter("barcode IS NOT NULL");
 
-                    b.HasIndex("ProductId");
+                    b.HasIndex("TenantId", "ProductId");
 
-                    b.HasIndex("Sku")
+                    b.HasIndex("TenantId", "Sku")
                         .IsUnique();
 
                     b.ToTable("product_variants", "products");
@@ -277,6 +301,11 @@ namespace Vantigo.Products.Database.Products.Migrations
 
             modelBuilder.Entity("Vantigo.Products.Domain.Products.TaxCategory", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id")
+                        .HasComment("The tenant that owns the tax category");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -318,9 +347,9 @@ namespace Vantigo.Products.Database.Products.Migrations
                         .HasColumnName("updated_at")
                         .HasComment("When the tax category was last updated");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("TenantId", "Name")
                         .IsUnique();
 
                     b.ToTable("tax_categories", "products");
@@ -330,12 +359,12 @@ namespace Vantigo.Products.Database.Products.Migrations
                 {
                     b.HasOne("Vantigo.Products.Domain.Products.ProductCategory", "Category")
                         .WithMany()
-                        .HasForeignKey("CategoryId")
+                        .HasForeignKey("TenantId", "CategoryId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Vantigo.Products.Domain.Products.TaxCategory", "TaxCategory")
                         .WithMany()
-                        .HasForeignKey("TaxCategoryId")
+                        .HasForeignKey("TenantId", "TaxCategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -348,7 +377,7 @@ namespace Vantigo.Products.Database.Products.Migrations
                 {
                     b.HasOne("Vantigo.Products.Domain.Products.ProductCategory", null)
                         .WithMany()
-                        .HasForeignKey("ParentId")
+                        .HasForeignKey("TenantId", "ParentId")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
@@ -356,7 +385,7 @@ namespace Vantigo.Products.Database.Products.Migrations
                 {
                     b.HasOne("Vantigo.Products.Domain.Products.ProductVariant", null)
                         .WithMany("Prices")
-                        .HasForeignKey("VariantId")
+                        .HasForeignKey("TenantId", "VariantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -365,7 +394,7 @@ namespace Vantigo.Products.Database.Products.Migrations
                 {
                     b.HasOne("Vantigo.Products.Domain.Products.Product", null)
                         .WithMany("Variants")
-                        .HasForeignKey("ProductId")
+                        .HasForeignKey("TenantId", "ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

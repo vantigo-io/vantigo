@@ -8,10 +8,16 @@ namespace Vantigo.Identity.Database.Accounts;
 
 public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> options)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid,
-        IdentityUserClaim<Guid>, IdentityUserRole<Guid>, IdentityUserLogin<Guid>,
+        IdentityUserClaim<Guid>, ApplicationUserRole, IdentityUserLogin<Guid>,
         IdentityRoleClaim<Guid>, IdentityUserToken<Guid>, IdentityUserPasskey<Guid>>(options)
 {
     public DbSet<BootstrapState> BootstrapStates => Set<BootstrapState>();
+
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+
+    public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
+
+    public DbSet<TenantSsoConfiguration> TenantSsoConfigurations => Set<TenantSsoConfiguration>();
 
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
@@ -49,9 +55,12 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
 
         modelBuilder.HasDefaultSchema("identity");
         modelBuilder.ApplyConfiguration(new ApplicationUserEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantMembershipEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantSsoConfigurationEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityRoleEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityUserClaimEntityTypeConfiguration());
-        modelBuilder.ApplyConfiguration(new IdentityUserRoleEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new ApplicationUserRoleEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityUserLoginEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityUserTokenEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityRoleClaimEntityTypeConfiguration());

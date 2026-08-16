@@ -1,9 +1,11 @@
 using Vantigo.Energy.Domain.Exceptions;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Energy.Domain.Consumption;
 
-public sealed class ConsumptionInterval
+public sealed class ConsumptionInterval : ITenantOwned
 {
+    public Guid TenantId { get; set; }
     public long Id { get; set; }
     public int MeteringPointId { get; set; }
     public DateTimeOffset Start { get; set; }
@@ -14,6 +16,7 @@ public sealed class ConsumptionInterval
     public DateTimeOffset ReceivedAt { get; set; }
     public bool IsCurrent { get; set; } = true;
     public long? SupersedesId { get; set; }
+    public DateTimeOffset? SupersedesStart { get; set; }
     public ConsumptionInterval? Supersedes { get; set; }
     public MeteringPoints.MeteringPoint? MeteringPoint { get; set; }
 

@@ -12,8 +12,8 @@ using Vantigo.Energy.Database.Energy;
 namespace Vantigo.Energy.Database.Energy.Migrations
 {
     [DbContext(typeof(EnergyDbContext))]
-    [Migration("20260810205048_IntroduceMeters")]
-    partial class IntroduceMeters
+    [Migration("20260816005144_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -28,12 +28,20 @@ namespace Vantigo.Energy.Database.Energy.Migrations
 
             modelBuilder.Entity("Vantigo.Energy.Domain.Consumption.ConsumptionInterval", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("Start")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start");
 
                     b.Property<DateTimeOffset>("End")
                         .HasColumnType("timestamp with time zone")
@@ -70,19 +78,19 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("source");
 
-                    b.Property<DateTimeOffset>("Start")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("start");
-
                     b.Property<long?>("SupersedesId")
                         .HasColumnType("bigint")
                         .HasColumnName("supersedes_id");
 
-                    b.HasKey("Id");
+                    b.Property<DateTimeOffset?>("SupersedesStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("supersedes_start");
 
-                    b.HasIndex("SupersedesId");
+                    b.HasKey("TenantId", "Id", "Start");
 
-                    b.HasIndex("MeteringPointId", "Start", "End")
+                    b.HasIndex("TenantId", "SupersedesId", "SupersedesStart");
+
+                    b.HasIndex("TenantId", "MeteringPointId", "Start", "End")
                         .IsUnique()
                         .HasFilter("is_current = TRUE");
 
@@ -91,6 +99,10 @@ namespace Vantigo.Energy.Database.Energy.Migrations
 
             modelBuilder.Entity("Vantigo.Energy.Domain.MeteringPoints.MeteringPoint", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -149,9 +161,9 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("Gsrn")
+                    b.HasIndex("TenantId", "Gsrn")
                         .IsUnique();
 
                     b.ToTable("metering_points", "energy");
@@ -159,6 +171,10 @@ namespace Vantigo.Energy.Database.Energy.Migrations
 
             modelBuilder.Entity("Vantigo.Energy.Domain.Meters.Meter", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -185,9 +201,9 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("removed_at");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("MeteringPointId")
+                    b.HasIndex("TenantId", "MeteringPointId")
                         .IsUnique()
                         .HasFilter("removed_at IS NULL");
 
@@ -196,6 +212,10 @@ namespace Vantigo.Energy.Database.Energy.Migrations
 
             modelBuilder.Entity("Vantigo.Energy.Domain.SupplyPeriods.SupplyPeriod", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -227,9 +247,9 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("MeteringPointId");
+                    b.HasIndex("TenantId", "MeteringPointId");
 
                     b.ToTable("supply_periods", "energy");
                 });
@@ -238,13 +258,13 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                 {
                     b.HasOne("Vantigo.Energy.Domain.MeteringPoints.MeteringPoint", "MeteringPoint")
                         .WithMany("ConsumptionIntervals")
-                        .HasForeignKey("MeteringPointId")
+                        .HasForeignKey("TenantId", "MeteringPointId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Vantigo.Energy.Domain.Consumption.ConsumptionInterval", "Supersedes")
                         .WithMany()
-                        .HasForeignKey("SupersedesId")
+                        .HasForeignKey("TenantId", "SupersedesId", "SupersedesStart")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("MeteringPoint");
@@ -256,6 +276,9 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                 {
                     b.OwnsOne("Vantigo.Energy.Domain.MeteringPoints.Address", "Address", b1 =>
                         {
+                            b1.Property<Guid>("MeteringPointTenantId")
+                                .HasColumnType("uuid");
+
                             b1.Property<int>("MeteringPointId")
                                 .HasColumnType("integer");
 
@@ -284,12 +307,12 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                                 .HasColumnType("character varying(200)")
                                 .HasColumnName("street_address");
 
-                            b1.HasKey("MeteringPointId");
+                            b1.HasKey("MeteringPointTenantId", "MeteringPointId");
 
                             b1.ToTable("metering_points", "energy");
 
                             b1.WithOwner()
-                                .HasForeignKey("MeteringPointId");
+                                .HasForeignKey("MeteringPointTenantId", "MeteringPointId");
                         });
 
                     b.Navigation("Address")
@@ -300,7 +323,7 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                 {
                     b.HasOne("Vantigo.Energy.Domain.MeteringPoints.MeteringPoint", "MeteringPoint")
                         .WithMany("Meters")
-                        .HasForeignKey("MeteringPointId")
+                        .HasForeignKey("TenantId", "MeteringPointId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -311,7 +334,7 @@ namespace Vantigo.Energy.Database.Energy.Migrations
                 {
                     b.HasOne("Vantigo.Energy.Domain.MeteringPoints.MeteringPoint", "MeteringPoint")
                         .WithMany("SupplyPeriods")
-                        .HasForeignKey("MeteringPointId")
+                        .HasForeignKey("TenantId", "MeteringPointId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

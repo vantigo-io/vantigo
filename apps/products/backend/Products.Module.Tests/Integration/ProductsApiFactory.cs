@@ -14,8 +14,11 @@ using Testcontainers.PostgreSql;
 using Vantigo.Contracts.Identity;
 using Vantigo.Host;
 using Vantigo.Identity.Database.Accounts;
+using Vantigo.Identity.Services;
 using Vantigo.Products.Database.Products;
 using Vantigo.Products.Domain.Products;
+using Vantigo.Tenancy;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Products.Module.Tests.Integration;
 
@@ -31,6 +34,8 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .WithDatabase("vantigo")
         .Build();
+
+    public Guid DefaultTenantId { get; private set; }
 
     public async Task InitializeAsync()
     {
@@ -52,6 +57,11 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
             throw new InvalidOperationException($"Fresh integration bootstrap failed: {bootstrap.StatusCode}");
         }
 
+        await using var tenantSetupScope = Services.CreateAsyncScope();
+        DefaultTenantId = (await tenantSetupScope.ServiceProvider
+            .GetRequiredService<TenantDirectory>().GetDefaultTenantAsync()).Value;
+
+        using var tenantScope = EnterDefaultTenant();
         await using var scope = Services.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<ProductsDbContext>();
         if (!await dbContext.TaxCategories.AnyAsync())
@@ -65,6 +75,9 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
             await dbContext.SaveChangesAsync();
         }
     }
+
+    public IDisposable EnterDefaultTenant() =>
+        AmbientTenantContext.Enter(new TenantId(DefaultTenantId));
 
     public HttpClient CreateAuthenticatedClient()
     {

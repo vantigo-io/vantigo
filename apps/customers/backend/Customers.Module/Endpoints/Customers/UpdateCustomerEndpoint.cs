@@ -86,6 +86,7 @@ internal static class UpdateCustomerEndpoint
         return TypedResults.Ok(new SafeCustomerResponse
         {
             Id = customer.Id,
+            CustomerNumber = customer.CustomerNumber,
             Name = customer.Name,
             TimelineSummary = await SafeCustomerProjection.TimelineSummaryAsync(dbContext, customer.Id, cancellationToken),
         });

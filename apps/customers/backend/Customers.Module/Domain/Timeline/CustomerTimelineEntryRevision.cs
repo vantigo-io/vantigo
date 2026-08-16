@@ -1,10 +1,14 @@
 namespace Vantigo.Customers.Domain.Timeline;
 
+using Vantigo.Tenancy.Abstractions;
+
 /// <summary>
 /// An immutable full snapshot of a timeline entry at a particular revision.
 /// </summary>
-public sealed class CustomerTimelineEntryRevision
+public sealed class CustomerTimelineEntryRevision : ITenantOwned
 {
+    public Guid TenantId { get; set; }
+
     public int Id { get; set; }
     public int CustomerTimelineEntryId { get; set; }
     public CustomerTimelineEntry Entry { get; set; } = null!;

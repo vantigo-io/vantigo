@@ -36,6 +36,7 @@ internal static class GetContactCustomersEndpoint
                 Customer = new CustomerReference
                 {
                     Id = cc.CustomerId,
+                    CustomerNumber = cc.Customer.CustomerNumber,
                     Name = cc.Customer.Name,
                 },
                 Role = cc.Role,
@@ -63,6 +64,7 @@ internal static class GetContactCustomersEndpoint
     internal readonly record struct CustomerReference
     {
         public required int Id { get; init; }
+        public required long CustomerNumber { get; init; }
         public required string Name { get; init; }
     }
 }

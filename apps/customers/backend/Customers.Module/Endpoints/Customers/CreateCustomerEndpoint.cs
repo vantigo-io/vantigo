@@ -10,6 +10,7 @@ using Vantigo.Customers.Domain.Customers.Common;
 using Vantigo.Customers.Domain.Customers.ValueObjects;
 using Vantigo.Customers.Endpoints.Customers.Dtos;
 using Vantigo.Customers.Services;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Customers.Endpoints.Customers;
 
@@ -26,6 +27,7 @@ internal static class CreateCustomerEndpoint
         IAuthorizationService authorization,
         CustomersDbContext dbContext,
         ICustomerTimelineRecorder timelineRecorder,
+        ITenantCounterService tenantCounterService,
         CancellationToken cancellationToken)
     {
         // All validation errors are collected up front and keyed by the JSON path of
@@ -73,6 +75,8 @@ internal static class CreateCustomerEndpoint
         };
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        customer.CustomerNumber = await tenantCounterService.NextAsync(
+            dbContext, "customer-number", cancellationToken);
         dbContext.Customers.Add(customer);
         // The customer identity is database-generated, so stage the event after the
         // insert has been flushed, but keep both operations in the same transaction.
@@ -82,7 +86,7 @@ internal static class CreateCustomerEndpoint
         await transaction.CommitAsync(cancellationToken);
 
         return TypedResults.CreatedAtRoute(
-            new Response { Id = customer.Id },
+            new Response { Id = customer.Id, CustomerNumber = customer.CustomerNumber },
             CustomersEndpoints.GetCustomerRouteName,
             new { id = customer.Id });
     }
@@ -96,5 +100,6 @@ internal static class CreateCustomerEndpoint
     internal readonly record struct Response
     {
         public required int Id { get; init; }
+        public required long CustomerNumber { get; init; }
     }
 }

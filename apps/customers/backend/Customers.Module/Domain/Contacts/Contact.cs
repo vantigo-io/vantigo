@@ -1,4 +1,5 @@
 using Vantigo.Customers.Domain.Contacts.Common;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Customers.Domain.Contacts;
 
@@ -8,8 +9,10 @@ namespace Vantigo.Customers.Domain.Contacts;
 /// associations: a contact can be created before any customer relation exists and
 /// survives when associations are removed.
 /// </summary>
-public sealed class Contact
+public sealed class Contact : ITenantOwned
 {
+    public Guid TenantId { get; set; }
+
     /// <summary>
     /// The id is the primary method of identifying a contact. It is an auto incrementable
     /// value that is uniquely identifiable within the system. This value is set by the

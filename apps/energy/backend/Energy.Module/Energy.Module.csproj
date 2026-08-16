@@ -23,6 +23,9 @@
     <ProjectReference Include="..\..\..\..\packages\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
     <ProjectReference Include="..\..\..\..\packages\contracts\Vantigo.Contracts\Vantigo.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\packages\contracts\Vantigo.Contracts.AspNetCore\Vantigo.Contracts.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\tenancy\Vantigo.Tenancy.Abstractions\Vantigo.Tenancy.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\tenancy\Vantigo.Tenancy.EntityFramework\Vantigo.Tenancy.EntityFramework.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\tenancy\Vantigo.Tenancy\Vantigo.Tenancy.csproj" />
   </ItemGroup>
 
   <ItemGroup>

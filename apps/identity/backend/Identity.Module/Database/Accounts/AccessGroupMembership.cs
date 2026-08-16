@@ -11,6 +11,7 @@ public sealed class AccessGroupMembership
 {
     public Guid GroupId { get; set; }
     public Guid UserId { get; set; }
+    public Guid? TenantId { get; set; }
     public AccessGroupSource Source { get; set; }
     public bool IsUpstreamPresent { get; set; }
     public AccessGroupMembershipOverride? Override { get; set; }

@@ -12,6 +12,7 @@ internal sealed class InvitationEntityTypeConfiguration : IEntityTypeConfigurati
         builder.ToTable("invitations", "identity");
         builder.HasKey(invitation => invitation.Id).HasName("pk_invitations");
         builder.Property(invitation => invitation.Id).HasColumnName("id");
+        builder.Property(invitation => invitation.TenantId).HasColumnName("tenant_id");
         builder.Property(invitation => invitation.Email).HasColumnName("email").HasMaxLength(256).IsRequired();
         builder.Property(invitation => invitation.NormalizedEmail).HasColumnName("normalized_email").HasMaxLength(256).IsRequired();
         builder.Property(invitation => invitation.Role).HasColumnName("role").HasMaxLength(32).IsRequired();

@@ -1,5 +1,6 @@
 using Vantigo.Customers.Domain.Customers.Common;
 using Vantigo.Customers.Domain.Customers.ValueObjects;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Customers.Domain.Customers;
 
@@ -8,14 +9,22 @@ namespace Vantigo.Customers.Domain.Customers;
 /// the Vantigo Customers system. A customer will always have an id that it can be identified
 /// with and belonging data in the form of entities and values.
 /// </summary>
-public sealed class Customer
+public sealed class Customer : ITenantOwned
 {
+    public Guid TenantId { get; set; }
+
     /// <summary>
     /// The id is the primary method of identifying a customer. It is an auto incrementable value
     /// that is uniquely identifiable within the system. This value is set by the database once
     /// a customer has been persisted.
     /// </summary>
     public int Id { get; set; }
+
+    /// <summary>
+    /// The tenant-local, monotonically increasing number used to identify the customer
+    /// in business-facing workflows.
+    /// </summary>
+    public long CustomerNumber { get; set; }
 
     /// <summary>
     /// The name is a field that is used to define a "friendly name" of the customer. It is not

@@ -1,9 +1,11 @@
 using Vantigo.Energy.Domain.Exceptions;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Energy.Domain.SupplyPeriods;
 
-public sealed class SupplyPeriod
+public sealed class SupplyPeriod : ITenantOwned
 {
+    public Guid TenantId { get; set; }
     public int Id { get; set; }
     public int MeteringPointId { get; set; }
     public int CustomerId { get; set; }

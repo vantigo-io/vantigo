@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Vantigo.Tenancy.Tests</AssemblyName>
+    <RootNamespace>Vantigo.Tenancy.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Vantigo.Tenancy.Abstractions\Vantigo.Tenancy.Abstractions.csproj" />
+    <ProjectReference Include="..\Vantigo.Tenancy\Vantigo.Tenancy.csproj" />
+    <ProjectReference Include="..\Vantigo.Tenancy.EntityFramework\Vantigo.Tenancy.EntityFramework.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

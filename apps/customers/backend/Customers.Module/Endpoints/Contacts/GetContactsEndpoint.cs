@@ -95,7 +95,12 @@ internal static class GetContactsEndpoint
             .Select(cc => new
             {
                 cc.ContactId,
-                Customer = new CustomerReference { Id = cc.CustomerId, Name = cc.Customer.Name },
+                Customer = new CustomerReference
+                {
+                    Id = cc.CustomerId,
+                    CustomerNumber = cc.Customer.CustomerNumber,
+                    Name = cc.Customer.Name,
+                },
             })
             .ToListAsync(cancellationToken);
 
@@ -189,6 +194,7 @@ internal static class GetContactsEndpoint
     internal readonly record struct CustomerReference
     {
         public required int Id { get; init; }
+        public required long CustomerNumber { get; init; }
         public required string Name { get; init; }
     }
 

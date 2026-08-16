@@ -4,12 +4,14 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
+using Vantigo.Tenancy.EntityFramework;
+
 #nullable disable
 
 namespace Vantigo.Customers.Database.Customers.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCustomersSchema : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -22,6 +24,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 schema: "customers",
                 columns: table => new
                 {
+                    tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     id = table.Column<int>(type: "integer", nullable: false, comment: "The unique identifier of the contact")
                         .Annotation("Npgsql:IdentitySequenceOptions", "'1001', '1', '', '', 'False', '1'")
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
@@ -35,7 +38,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_contacts", x => x.id);
+                    table.PrimaryKey("PK_contacts", x => new { x.tenant_id, x.id });
                 });
 
             migrationBuilder.CreateTable(
@@ -43,9 +46,11 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 schema: "customers",
                 columns: table => new
                 {
+                    tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     id = table.Column<int>(type: "integer", nullable: false, comment: "The unique identifier of the customer")
                         .Annotation("Npgsql:IdentitySequenceOptions", "'1001', '1', '', '', 'False', '1'")
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    customer_number = table.Column<long>(type: "bigint", nullable: false),
                     name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false, comment: "The friendly name of the customer"),
                     legal_country = table.Column<string>(type: "character varying(2)", unicode: false, maxLength: 2, nullable: true, comment: "The legal country of the identity that is associated with the customer"),
                     legal_id = table.Column<string>(type: "character varying(50)", unicode: false, maxLength: 50, nullable: true, comment: "The legal id of the identity that is associated with the customer"),
@@ -55,7 +60,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_customers", x => x.id);
+                    table.PrimaryKey("PK_customers", x => new { x.tenant_id, x.id });
                 });
 
             migrationBuilder.CreateTable(
@@ -63,6 +68,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 schema: "customers",
                 columns: table => new
                 {
+                    tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     customer_id = table.Column<int>(type: "integer", nullable: false, comment: "The id of the customer the contact is associated with"),
                     contact_id = table.Column<int>(type: "integer", nullable: false, comment: "The id of the associated contact"),
                     role = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false, comment: "The role the contact holds for the customer, such as 'CEO' or 'Custodian'"),
@@ -71,20 +77,20 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_customers_contacts", x => new { x.customer_id, x.contact_id });
+                    table.PrimaryKey("PK_customers_contacts", x => new { x.tenant_id, x.customer_id, x.contact_id });
                     table.ForeignKey(
-                        name: "FK_customers_contacts_contacts_contact_id",
-                        column: x => x.contact_id,
+                        name: "FK_customers_contacts_contacts_tenant_id_contact_id",
+                        columns: x => new { x.tenant_id, x.contact_id },
                         principalSchema: "customers",
                         principalTable: "contacts",
-                        principalColumn: "id",
+                        principalColumns: new[] { "tenant_id", "id" },
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_customers_contacts_customers_customer_id",
-                        column: x => x.customer_id,
+                        name: "FK_customers_contacts_customers_tenant_id_customer_id",
+                        columns: x => new { x.tenant_id, x.customer_id },
                         principalSchema: "customers",
                         principalTable: "customers",
-                        principalColumn: "id",
+                        principalColumns: new[] { "tenant_id", "id" },
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -93,6 +99,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 schema: "customers",
                 columns: table => new
                 {
+                    tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:IdentitySequenceOptions", "'1001', '1', '', '', 'False', '1'")
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
@@ -117,13 +124,13 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_customers_timeline_entries", x => x.id);
+                    table.PrimaryKey("PK_customers_timeline_entries", x => new { x.tenant_id, x.id });
                     table.ForeignKey(
-                        name: "FK_customers_timeline_entries_customers_customer_id",
-                        column: x => x.customer_id,
+                        name: "FK_customers_timeline_entries_customers_tenant_id_customer_id",
+                        columns: x => new { x.tenant_id, x.customer_id },
                         principalSchema: "customers",
                         principalTable: "customers",
-                        principalColumn: "id",
+                        principalColumns: new[] { "tenant_id", "id" },
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -132,6 +139,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 schema: "customers",
                 columns: table => new
                 {
+                    tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:IdentitySequenceOptions", "'1001', '1', '', '', 'False', '1'")
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
@@ -155,39 +163,55 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_customers_timeline_entries_revisions", x => x.id);
+                    table.PrimaryKey("PK_customers_timeline_entries_revisions", x => new { x.tenant_id, x.id });
                     table.ForeignKey(
                         name: "FK_customers_timeline_entries_revisions_customers_timeline_ent~",
-                        column: x => x.customer_timeline_entry_id,
+                        columns: x => new { x.tenant_id, x.customer_timeline_entry_id },
                         principalSchema: "customers",
                         principalTable: "customers_timeline_entries",
-                        principalColumn: "id",
+                        principalColumns: new[] { "tenant_id", "id" },
                         onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_customers_contacts_contact_id",
+                name: "ux_customers_tenant_customer_number",
                 schema: "customers",
-                table: "customers_contacts",
-                column: "contact_id");
+                table: "customers",
+                columns: new[] { "tenant_id", "customer_number" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_customers_timeline_entries_customer_id",
+                name: "ix_customers_contacts_tenant_contact_id",
+                schema: "customers",
+                table: "customers_contacts",
+                columns: new[] { "tenant_id", "contact_id" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_customers_timeline_entries_tenant_customer_id",
                 schema: "customers",
                 table: "customers_timeline_entries",
-                column: "customer_id");
+                columns: new[] { "tenant_id", "customer_id" });
 
             migrationBuilder.CreateIndex(
                 name: "ux_customers_timeline_entries_revisions_entry_revision",
                 schema: "customers",
                 table: "customers_timeline_entries_revisions",
-                columns: new[] { "customer_timeline_entry_id", "revision_number" },
+                columns: new[] { "tenant_id", "customer_timeline_entry_id", "revision_number" },
                 unique: true);
+
+            migrationBuilder.EnableTenantRls("customers", "contacts");
+            migrationBuilder.EnableTenantRls("customers", "customers");
+            migrationBuilder.EnableTenantRls("customers", "customers_contacts");
+            migrationBuilder.EnableTenantRls("customers", "customers_timeline_entries");
+            migrationBuilder.EnableTenantRls("customers", "customers_timeline_entries_revisions");
+            migrationBuilder.AddTenantCountersTable("customers");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.Sql("DROP TABLE IF EXISTS \"customers\".\"tenant_counters\";");
+
             migrationBuilder.DropTable(
                 name: "customers_contacts",
                 schema: "customers");

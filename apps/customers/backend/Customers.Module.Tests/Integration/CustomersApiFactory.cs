@@ -17,6 +17,8 @@ using Vantigo.Host;
 using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
+using Vantigo.Tenancy;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -43,6 +45,9 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+
+        using var tenantScope = AmbientTenantContext.Enter(
+            new TenantId(new Guid("00000000-0000-0000-0000-000000000001")));
 
         using var client = CreateClientWithTestAddress(new WebApplicationFactoryClientOptions { HandleCookies = true });
         var tokenResponse = await client.GetAsync("/api/v1/identity/antiforgery");
@@ -189,7 +194,7 @@ internal sealed class TestClientAddressStartupFilter : IStartupFilter
     };
 }
 
-[CollectionDefinition(Name)]
+[CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class CustomersApiCollection : ICollectionFixture<CustomersApiFactory>
 {
     public const string Name = "CustomersApi";

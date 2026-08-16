@@ -11,10 +11,15 @@ internal sealed class CustomerTimelineEntryEntityTypeConfiguration :
     public void Configure(EntityTypeBuilder<CustomerTimelineEntry> builder)
     {
         builder.ToTable("customers_timeline_entries");
-        builder.HasKey(entry => entry.Id);
+        builder.HasKey(entry => new { entry.TenantId, entry.Id });
+
+        builder.Property(entry => entry.TenantId)
+            .HasColumnName("tenant_id")
+            .IsRequired();
 
         builder.Property(entry => entry.Id)
             .HasColumnName("id")
+            .ValueGeneratedOnAdd()
             .HasIdentityOptions(1001, 1)
             .IsRequired();
         builder.Property(entry => entry.CustomerId).HasColumnName("customer_id").IsRequired();
@@ -43,8 +48,12 @@ internal sealed class CustomerTimelineEntryEntityTypeConfiguration :
 
         builder.HasOne(entry => entry.Customer)
             .WithMany()
-            .HasForeignKey(entry => entry.CustomerId)
+            .HasForeignKey(entry => new { entry.TenantId, entry.CustomerId })
+            .HasPrincipalKey(customer => new { customer.TenantId, customer.Id })
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(entry => new { entry.TenantId, entry.CustomerId })
+            .HasDatabaseName("ix_customers_timeline_entries_tenant_customer_id");
 
         // The feed index is created as a PostgreSQL expression index in the migration.
         // Its occurred_at IS NOT NULL key matches the LINQ order below, which puts

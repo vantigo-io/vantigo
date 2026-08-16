@@ -23,6 +23,10 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Configuration",
             "Vantigo.Contracts",
             "Vantigo.Contracts.AspNetCore",
+            "Vantigo.Storage.Abstractions",
+            "Vantigo.Tenancy",
+            "Vantigo.Tenancy.Abstractions",
+            "Vantigo.Tenancy.EntityFramework",
         };
 
     public static IEnumerable<object[]> ModulePairs =>
@@ -143,20 +147,18 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Products.Database.Products.ProductsDbContext",
             "Vantigo.Products.Database.Products.ProductsDbContextFactory",
             "Vantigo.Products.Database.ProductDatabaseConfiguration",
-            "Vantigo.Products.Database.Products.Migrations.InitialProductsSchema",
-            "Vantigo.Products.Database.Products.Migrations.IntroduceTaxCategories",
-            "Vantigo.Products.Database.Products.Migrations.SplitProductVariants",
+            "Vantigo.Products.Database.Products.Migrations.Initial",
             "Vantigo.Products.Endpoints.ProductsModuleEndpointExtensions",
             "Vantigo.Customers.Database.Customers.CustomersDbContext",
             "Vantigo.Customers.Database.Customers.CustomersDbContextFactory",
             "Vantigo.Customers.Database.CustomerDatabaseConfiguration",
             "Vantigo.Customers.Database.DevelopmentSeed.DevelopmentDataSeeder",
-            "Vantigo.Customers.Database.Customers.Migrations.InitialCustomersSchema",
+            "Vantigo.Customers.Database.Customers.Migrations.Initial",
             "Vantigo.Customers.Endpoints.VersionedBusinessEndpointExtensions",
             "Vantigo.Communications.Database.Communications.CommunicationsDbContext",
             "Vantigo.Communications.Database.Communications.CommunicationsDbContextFactory",
             "Vantigo.Communications.Database.CommunicationsDatabaseConfiguration",
-            "Vantigo.Communications.Database.Communications.Migrations.InitialCommunicationsSchemaV3",
+            "Vantigo.Communications.Database.Communications.Migrations.Initial",
             "Vantigo.Communications.Endpoints.VersionedBusinessEndpointExtensions",
             // Communications currently exposes its HTTP request/response contracts and EF entities;
             // the endpoint binder and EF model builder consume these public types.
@@ -193,8 +195,7 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Communications.Endpoints.UpdateMailboxRequest",
             "Vantigo.Energy.Database.Energy.EnergyDbContext",
             "Vantigo.Energy.Database.Energy.EnergyDbContextFactory",
-            "Vantigo.Energy.Database.Energy.Migrations.InitialEnergySchema",
-            "Vantigo.Energy.Database.Energy.Migrations.IntroduceMeters",
+            "Vantigo.Energy.Database.Energy.Migrations.Initial",
             "Vantigo.Energy.Database.EnergyDatabaseConfiguration",
             "Vantigo.Energy.Endpoints.EnergyModuleEndpointExtensions",
         };

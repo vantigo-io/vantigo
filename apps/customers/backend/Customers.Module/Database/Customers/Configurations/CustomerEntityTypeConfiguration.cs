@@ -12,12 +12,25 @@ internal sealed class CustomerEntityTypeConfiguration : IEntityTypeConfiguration
     {
         builder.ToTable("customers");
 
-        builder.HasKey(c => c.Id);
+        builder.HasKey(c => new { c.TenantId, c.Id });
+
+        builder.Property(c => c.TenantId)
+            .HasColumnName("tenant_id")
+            .IsRequired();
+
+        builder.Property(c => c.CustomerNumber)
+            .HasColumnName("customer_number")
+            .IsRequired();
+
+        builder.HasIndex(c => new { c.TenantId, c.CustomerNumber })
+            .IsUnique()
+            .HasDatabaseName("ux_customers_tenant_customer_number");
 
         builder.Property(c => c.Id)
             .HasColumnName("id")
             .HasComment("The unique identifier of the customer")
             .IsRequired()
+            .ValueGeneratedOnAdd()
             .HasIdentityOptions(1001, 1);
 
         builder.Property(c => c.Name)

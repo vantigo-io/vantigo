@@ -33,6 +33,8 @@ internal static class IdentityControlPlaneEndpoints
         groups.MapPost("/{groupId:guid}/role-mappings/{roleId:guid}", AddRoleMapping);
         groups.MapPut("/{groupId:guid}/role-mappings/{roleId:guid}", AddRoleMapping);
         groups.MapDelete("/{groupId:guid}/role-mappings/{roleId:guid}", RemoveRoleMapping);
+
+        TenantControlPlaneEndpoints.Map(app);
     }
 
     private static async Task<IResult> ListGroups(AccessGroupManagementService service, CancellationToken token)

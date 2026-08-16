@@ -11,13 +11,19 @@ internal sealed class ProductPriceEntityTypeConfiguration : IEntityTypeConfigura
     {
         builder.ToTable("product_prices");
 
-        builder.HasKey(p => p.Id);
+        builder.HasKey(p => new { p.TenantId, p.Id });
 
         builder.Property(p => p.Id)
             .HasColumnName("id")
             .HasComment("The unique identifier of the price")
             .IsRequired()
+            .ValueGeneratedOnAdd()
             .HasIdentityOptions(1001, 1);
+
+        builder.Property(p => p.TenantId)
+            .HasColumnName("tenant_id")
+            .HasComment("The tenant that owns the price row")
+            .IsRequired();
 
         builder.Property(p => p.VariantId)
             .HasColumnName("variant_id")
@@ -46,7 +52,8 @@ internal sealed class ProductPriceEntityTypeConfiguration : IEntityTypeConfigura
             .HasColumnName("valid_to")
             .HasComment("When the price stops being valid (exclusive); null means open-ended");
 
-        builder.HasIndex(p => new { p.VariantId, p.Currency });
+        builder.HasIndex(p => new { p.TenantId, p.VariantId, p.Currency });
+        builder.HasIndex(p => new { p.TenantId, p.VariantId });
 
         builder.Ignore(p => p.IsBounded);
     }

@@ -20,7 +20,7 @@ public readonly record struct EmailAddress
             throw new DomainException(error);
         }
 
-        _value = value.Trim().ToLower();
+        _value = value.Trim().ToLowerInvariant();
     }
 
     /// <summary>

@@ -42,6 +42,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected bool EnableStaticScim { get; set; }
     protected bool RequireOwnerMfa { get; set; }
     protected bool EnableWorkforceOidc { get; set; }
+    protected bool EnableMultiTenant { get; set; }
     public Guid OwnerId { get; private set; }
 
     public async Task InitializeAsync()
@@ -127,6 +128,8 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 $"Could not create integration user '{email}': {FormatIdentityErrors(userResult)}");
         }
 
+        await scope.ServiceProvider.GetRequiredService<TenantMembershipService>().EnsureDefaultMembershipAsync(user.Id);
+
         var roleAssignmentResult = await users.AddToRoleAsync(user, role);
         if (!roleAssignmentResult.Succeeded)
         {
@@ -188,6 +191,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Modules:Communications:Enabled"] = "false",
                 ["Modules:Products:Enabled"] = "false",
                 ["Modules:Energy:Enabled"] = "false",
+                ["Tenancy:Mode"] = EnableMultiTenant ? "multi" : "single",
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
                 ["Authentication:Owners:RequireMfa"] = RequireOwnerMfa.ToString(),
@@ -262,6 +266,7 @@ public sealed class StaticScimIdentityApiFactory : IdentityApiFactory
 
 public sealed class OidcIdentityApiFactory : IdentityApiFactory { public OidcIdentityApiFactory() => EnableWorkforceOidc = true; }
 public sealed class MfaIdentityApiFactory : IdentityApiFactory { public MfaIdentityApiFactory() => RequireOwnerMfa = true; }
+public sealed class MultiTenantIdentityApiFactory : IdentityApiFactory { public MultiTenantIdentityApiFactory() => EnableMultiTenant = true; }
 
 internal sealed record AntiforgeryToken(string Token);
 internal sealed class TestEmailSender : IApplicationEmailSender
@@ -489,3 +494,4 @@ internal sealed class DeterministicOidcBackchannelHandler(
 [CollectionDefinition(Name)] public sealed class StaticScimApiCollection : ICollectionFixture<StaticScimIdentityApiFactory> { public const string Name = "StaticScimApi"; }
 [CollectionDefinition(Name)] public sealed class IdentityOidcApiCollection : ICollectionFixture<OidcIdentityApiFactory> { public const string Name = "IdentityOidcApi"; }
 [CollectionDefinition(Name)] public sealed class IdentityMfaApiCollection : ICollectionFixture<MfaIdentityApiFactory> { public const string Name = "IdentityMfaApi"; }
+[CollectionDefinition(Name)] public sealed class MultiTenantIdentityApiCollection : ICollectionFixture<MultiTenantIdentityApiFactory> { public const string Name = "MultiTenantIdentityApi"; }

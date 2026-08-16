@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Vantigo.Contracts.Identity;
 using Vantigo.Identity.Database.Accounts;
+using Vantigo.Identity.Services;
 
 namespace Vantigo.Identity.Tests.Integration;
 
@@ -607,6 +608,12 @@ public sealed class IdentityRbacIntegrationTests(IdentityApiFactory factory)
         await using var scope = factory.Services.CreateAsyncScope();
         var authorization = scope.ServiceProvider.GetRequiredService<IAuthorizationService>();
         var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, userId.ToString()) };
+        await using (var membershipScope = factory.Services.CreateAsyncScope())
+        {
+            var memberships = membershipScope.ServiceProvider.GetRequiredService<AccountsDbContext>().TenantMemberships;
+            var tenantId = await memberships.Where(item => item.UserId == userId).Select(item => item.TenantId).FirstOrDefaultAsync();
+            if (tenantId != Guid.Empty) claims.Add(TenantMembershipService.ActiveTenantClaimFor(tenantId));
+        }
         if (ownerClaim) claims.Add(new Claim(ClaimTypes.Role, AuthRoles.Owner));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
         var result = await authorization.AuthorizeAsync(principal, null, $"permission:{permission}");

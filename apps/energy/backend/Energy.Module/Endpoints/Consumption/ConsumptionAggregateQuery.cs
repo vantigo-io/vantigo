@@ -31,7 +31,8 @@ internal static class ConsumptionAggregateQuery
                        c.quantity_kwh,
                        c.quality
                 FROM energy.consumption_intervals AS c
-                WHERE c.metering_point_id = @metering_point_id
+                WHERE c.tenant_id = current_setting('app.tenant_id', true)::uuid
+                   AND c.metering_point_id = @metering_point_id
                   AND c.is_current
                   AND c."start" >= @from
                   AND c."end" <= @to
@@ -80,14 +81,16 @@ internal static class ConsumptionAggregateQuery
                        c.quantity_kwh,
                        c.quality
                 FROM energy.consumption_intervals AS c
-                WHERE c.metering_point_id = @metering_point_id
+                WHERE c.tenant_id = current_setting('app.tenant_id', true)::uuid
+                   AND c.metering_point_id = @metering_point_id
                   AND c.is_current
                   AND c."start" >= @from
                   AND c."end" <= @to
                   AND EXISTS (
                       SELECT 1
                       FROM energy.supply_periods AS p
-                      WHERE p.customer_id = @customer_id
+                      WHERE p.tenant_id = current_setting('app.tenant_id', true)::uuid
+                        AND p.customer_id = @customer_id
                         AND p.metering_point_id = c.metering_point_id
                         AND p.status <> 'Cancelled'
                         AND c."start" >= p."start"
@@ -145,13 +148,16 @@ internal static class ConsumptionAggregateQuery
     {
         var connection = db.Database.GetDbConnection();
         var shouldClose = connection.State != ConnectionState.Open;
+        var transaction = db.Database.CurrentTransaction;
+        var ownsTransaction = transaction is null;
         if (shouldClose) await db.Database.OpenConnectionAsync(cancellationToken);
+        if (ownsTransaction) transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         try
         {
             await using var command = connection.CreateCommand();
             command.CommandText = sql;
-            if (db.Database.CurrentTransaction is { } transaction)
+            if (transaction is not null)
                 command.Transaction = transaction.GetDbTransaction();
             addParameters(command, (NpgsqlParameterCollection)command.Parameters);
 
@@ -162,6 +168,7 @@ internal static class ConsumptionAggregateQuery
         }
         finally
         {
+            if (ownsTransaction && transaction is not null) await transaction.DisposeAsync();
             if (shouldClose) await db.Database.CloseConnectionAsync();
         }
     }

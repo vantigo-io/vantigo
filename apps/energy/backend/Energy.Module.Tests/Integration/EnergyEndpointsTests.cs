@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Vantigo.Energy.Database.Energy;
 using Vantigo.Energy.Domain.Consumption;
 using Vantigo.Energy.Domain.SupplyPeriods;
+using Vantigo.Tenancy;
 
 namespace Vantigo.Energy.Module.Tests.Integration;
 
@@ -306,6 +307,7 @@ public sealed class EnergyEndpointsTests
 
     private async Task AddElhubConsumptionAsync(int pointId, DateTimeOffset start, DateTimeOffset end, decimal quantity)
     {
+        using var tenantScope = AmbientTenantContext.Enter(new Vantigo.Tenancy.Abstractions.TenantId(_factory.CurrentTenantId));
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<EnergyDbContext>();
         db.ConsumptionIntervals.Add(new ConsumptionInterval

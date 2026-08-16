@@ -167,25 +167,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.ToTable("user_passkeys", "identity");
                 });
 
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<Guid>("RoleId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("role_id");
-
-                    b.HasKey("UserId", "RoleId")
-                        .HasName("pk_user_roles");
-
-                    b.HasIndex("RoleId")
-                        .HasDatabaseName("ix_user_roles_role_id");
-
-                    b.ToTable("user_roles", "identity");
-                });
-
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -296,6 +277,10 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("source");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -305,6 +290,10 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("ix_access_group_memberships_user_id");
+
+                    b.HasIndex("GroupId", "UserId", "TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_access_group_memberships_group_user_tenant");
 
                     b.ToTable("access_group_memberships", "identity");
                 });
@@ -329,11 +318,19 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("source");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.HasKey("GroupId", "RoleId")
                         .HasName("pk_access_group_role_mappings");
 
                     b.HasIndex("RoleId")
                         .HasDatabaseName("ix_access_group_role_mappings_role_id");
+
+                    b.HasIndex("GroupId", "RoleId", "TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_access_group_role_mappings_group_role_tenant");
 
                     b.ToTable("access_group_role_mappings", "identity");
                 });
@@ -348,6 +345,10 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer")
                         .HasColumnName("access_failed_count");
+
+                    b.Property<Guid?>("ActiveTenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("active_tenant_id");
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
@@ -432,6 +433,33 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasDatabaseName("ux_users_normalized_user_name");
 
                     b.ToTable("users", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ApplicationUserRole", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("RoleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("role_id");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("UserId", "RoleId")
+                        .HasName("pk_user_roles");
+
+                    b.HasIndex("RoleId")
+                        .HasDatabaseName("ix_user_roles_role_id");
+
+                    b.HasIndex("UserId", "RoleId", "TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_user_roles_user_role_tenant");
+
+                    b.ToTable("user_roles", "identity");
                 });
 
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationAuditEvent", b =>
@@ -649,6 +677,10 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")
                         .HasColumnName("role");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
@@ -954,6 +986,98 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                     b.ToTable("scim_user_mappings", "identity");
                 });
 
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.Tenant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.PrimitiveCollection<string[]>("EnabledModules")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("enabled_modules");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(63)
+                        .HasColumnType("character varying(63)")
+                        .HasColumnName("slug");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tenants");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("ux_tenants_slug");
+
+                    b.ToTable("tenants", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.TenantMembership", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.HasKey("UserId", "TenantId")
+                        .HasName("pk_tenant_memberships");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_tenant_memberships_tenant_id");
+
+                    b.ToTable("tenant_memberships", "identity");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.TenantSsoConfiguration", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("AllowedEmailDomain")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("allowed_email_domain");
+
+                    b.Property<Guid>("EntraTenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entra_tenant_id");
+
+                    b.Property<bool>("JitProvisioningEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("jit_provisioning_enabled");
+
+                    b.HasKey("TenantId")
+                        .HasName("pk_tenant_sso_configurations");
+
+                    b.ToTable("tenant_sso_configurations", "identity");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -992,23 +1116,6 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_passkeys_users_user_id");
-                });
-
-            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<System.Guid>", b =>
-                {
-                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
-                        .WithMany()
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_user_roles_roles_role_id");
-
-                    b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_user_roles_users_user_id");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<System.Guid>", b =>
@@ -1062,6 +1169,23 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_access_group_role_mappings_roles_role_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.ApplicationUserRole", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_roles_roles_role_id");
+
+                    b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_user_roles_users_user_id");
                 });
 
             modelBuilder.Entity("Vantigo.Identity.Database.Accounts.AuthorizationDelegation", b =>
@@ -1162,6 +1286,33 @@ namespace Vantigo.Identity.Database.Accounts.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_scim_user_mappings_users_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.TenantMembership", b =>
+                {
+                    b.HasOne("Vantigo.Identity.Database.Accounts.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_memberships_tenants_tenant_id");
+
+                    b.HasOne("Vantigo.Identity.Database.Accounts.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_memberships_users_user_id");
+                });
+
+            modelBuilder.Entity("Vantigo.Identity.Database.Accounts.TenantSsoConfiguration", b =>
+                {
+                    b.HasOne("Vantigo.Identity.Database.Accounts.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_tenant_sso_configurations_tenants_tenant_id");
                 });
 #pragma warning restore 612, 618
         }

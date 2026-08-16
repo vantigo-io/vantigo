@@ -24,6 +24,7 @@ public sealed class ScimProtocolService(
     AccountsDbContext dbContext,
     ScimTokenService tokenService,
     ScimLifecycleService lifecycleService,
+    TenantMembershipService tenantMembershipService,
     UserManager<ApplicationUser> userManager,
     AuthorizationAuditWriter auditWriter,
     IHttpContextAccessor httpContextAccessor,
@@ -144,6 +145,8 @@ public sealed class ScimProtocolService(
                 var create = await userManager.CreateAsync(user);
                 if (!create.Succeeded)
                     return UserManagerFailure(create);
+
+                await tenantMembershipService.EnsureDefaultMembershipAsync(user.Id, cancellationToken);
 
                 // No role, group, Owner, or other authorization assignment is
                 // made here.  SCIM-created users are intentionally unprivileged.

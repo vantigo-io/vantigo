@@ -1,10 +1,12 @@
 namespace Vantigo.Products.Domain.Products;
 
+using Vantigo.Tenancy.Abstractions;
+
 /// <summary>
 /// The shared identity of an item or service in the Vantigo Products system. Sellable
 /// identity, including SKU, logistics fields and prices, belongs to one or more variants.
 /// </summary>
-public sealed class Product
+public sealed class Product : ITenantOwned
 {
     /// <summary>The maximum length of a product name.</summary>
     public const int NameMaxLength = 200;
@@ -16,6 +18,9 @@ public sealed class Product
     /// The auto-generated identity of the product.
     /// </summary>
     public int Id { get; set; }
+
+    /// <summary>The tenant that owns the product.</summary>
+    public Guid TenantId { get; set; }
 
     /// <summary>The display name shared by all variants.</summary>
     public string Name { get; set; } = string.Empty;

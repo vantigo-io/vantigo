@@ -50,6 +50,7 @@ internal static class WorkforceOidcEndpoints
         SignInManager<ApplicationUser> signInManager,
         AccountsDbContext dbContext,
         OperationalEventService operationalEventService,
+        TenantMembershipService tenantMembershipService,
         CancellationToken cancellationToken)
     {
         if (!options.Enabled)
@@ -125,6 +126,7 @@ internal static class WorkforceOidcEndpoints
                 userManager,
                 roleManager,
                 dbContext,
+                tenantMembershipService,
                 cancellationToken);
             if (created is null)
             {
@@ -174,6 +176,7 @@ internal static class WorkforceOidcEndpoints
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole<Guid>> roleManager,
         AccountsDbContext dbContext,
+        TenantMembershipService tenantMembershipService,
         CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
@@ -222,6 +225,8 @@ internal static class WorkforceOidcEndpoints
             await transaction.RollbackAsync(cancellationToken);
             return null;
         }
+
+        await tenantMembershipService.EnsureDefaultMembershipAsync(user.Id, cancellationToken);
 
         var loginResult = await userManager.AddLoginAsync(user, new UserLoginInfo(
             identity.LoginProvider,

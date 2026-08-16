@@ -13,8 +13,8 @@ using Vantigo.Customers.Database.Customers;
 namespace Vantigo.Customers.Database.Customers.Migrations
 {
     [DbContext(typeof(CustomersDbContext))]
-    [Migration("20260810103200_InitialCustomersSchema")]
-    partial class InitialCustomersSchema
+    [Migration("20260816005322_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -29,6 +29,10 @@ namespace Vantigo.Customers.Database.Customers.Migrations
 
             modelBuilder.Entity("Vantigo.Customers.Domain.Contacts.Contact", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -89,13 +93,17 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                         .HasColumnName("suffix")
                         .HasComment("An honorific suffix such as 'Jr.' or 'PhD', when known");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
                     b.ToTable("contacts", "customers");
                 });
 
             modelBuilder.Entity("Vantigo.Customers.Domain.Contacts.CustomerContact", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer")
                         .HasColumnName("customer_id")
@@ -128,15 +136,20 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                         .HasColumnName("role")
                         .HasComment("The role the contact holds for the customer, such as 'CEO' or 'Custodian'");
 
-                    b.HasKey("CustomerId", "ContactId");
+                    b.HasKey("TenantId", "CustomerId", "ContactId");
 
-                    b.HasIndex("ContactId");
+                    b.HasIndex("TenantId", "ContactId")
+                        .HasDatabaseName("ix_customers_contacts_tenant_contact_id");
 
                     b.ToTable("customers_contacts", "customers");
                 });
 
             modelBuilder.Entity("Vantigo.Customers.Domain.Customers.Customer", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -145,6 +158,10 @@ namespace Vantigo.Customers.Database.Customers.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
                     NpgsqlPropertyBuilderExtensions.HasIdentityOptions(b.Property<int>("Id"), 1001L, null, null, null, null, null);
+
+                    b.Property<long>("CustomerNumber")
+                        .HasColumnType("bigint")
+                        .HasColumnName("customer_number");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -197,13 +214,21 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                                 .HasComment("The legal type of the identity that is associated with the customer");
                         });
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
+
+                    b.HasIndex("TenantId", "CustomerNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_customers_tenant_customer_number");
 
                     b.ToTable("customers", "customers");
                 });
 
             modelBuilder.Entity("Vantigo.Customers.Domain.Timeline.CustomerTimelineEntry", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -299,15 +324,20 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("CustomerId");
+                    b.HasIndex("TenantId", "CustomerId")
+                        .HasDatabaseName("ix_customers_timeline_entries_tenant_customer_id");
 
                     b.ToTable("customers_timeline_entries", "customers");
                 });
 
             modelBuilder.Entity("Vantigo.Customers.Domain.Timeline.CustomerTimelineEntryRevision", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -398,9 +428,9 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("summary");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
-                    b.HasIndex("CustomerTimelineEntryId", "RevisionNumber")
+                    b.HasIndex("TenantId", "CustomerTimelineEntryId", "RevisionNumber")
                         .IsUnique()
                         .HasDatabaseName("ux_customers_timeline_entries_revisions_entry_revision");
 
@@ -411,13 +441,13 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 {
                     b.HasOne("Vantigo.Customers.Domain.Contacts.Contact", "Contact")
                         .WithMany()
-                        .HasForeignKey("ContactId")
+                        .HasForeignKey("TenantId", "ContactId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Vantigo.Customers.Domain.Customers.Customer", "Customer")
                         .WithMany()
-                        .HasForeignKey("CustomerId")
+                        .HasForeignKey("TenantId", "CustomerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -430,7 +460,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 {
                     b.HasOne("Vantigo.Customers.Domain.Customers.Customer", "Customer")
                         .WithMany()
-                        .HasForeignKey("CustomerId")
+                        .HasForeignKey("TenantId", "CustomerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -441,7 +471,7 @@ namespace Vantigo.Customers.Database.Customers.Migrations
                 {
                     b.HasOne("Vantigo.Customers.Domain.Timeline.CustomerTimelineEntry", "Entry")
                         .WithMany("Revisions")
-                        .HasForeignKey("CustomerTimelineEntryId")
+                        .HasForeignKey("TenantId", "CustomerTimelineEntryId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

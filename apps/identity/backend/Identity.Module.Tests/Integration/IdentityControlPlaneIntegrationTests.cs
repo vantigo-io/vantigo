@@ -18,4 +18,14 @@ public sealed class IdentityControlPlaneIntegrationTests(IdentityApiFactory fact
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.Contains("Local integration group", await owner.GetStringAsync("/api/v1/identity/access/groups"));
     }
+
+    [Fact]
+    public async Task TenantControlPlane_IsGatedToMultiTenantMode()
+    {
+        using var owner = await factory.CreateOwnerClientAsync();
+        var response = await owner.GetAsync("/api/v1/identity/admin/tenants");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("multi_tenant_required", await response.Content.ReadAsStringAsync());
+    }
 }

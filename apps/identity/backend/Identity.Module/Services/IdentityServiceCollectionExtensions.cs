@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using Vantigo.Configuration;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Identity.Services;
 
@@ -20,6 +21,17 @@ public static class IdentityServiceCollectionExtensions
                     serviceProvider.GetRequiredService<ILogger<LoggingApplicationEmailSender>>());
         });
 
+        return services;
+    }
+
+    /// <summary>Registers identity's tenant control-plane services.</summary>
+    public static IServiceCollection AddVantigoIdentityTenancy(this IServiceCollection services)
+    {
+        services.AddScoped<TenantDirectory>();
+        services.AddScoped<ITenantDirectory>(provider => provider.GetRequiredService<TenantDirectory>());
+        services.AddScoped<TenantMembershipService>();
+        services.AddScoped<TenantBootstrapper>();
+        services.AddSingleton<TenantOffboardingService>();
         return services;
     }
 }

@@ -14,13 +14,19 @@ internal sealed class ProductVariantEntityTypeConfiguration : IEntityTypeConfigu
     {
         builder.ToTable("product_variants");
 
-        builder.HasKey(v => v.Id);
+        builder.HasKey(v => new { v.TenantId, v.Id });
 
         builder.Property(v => v.Id)
             .HasColumnName("id")
             .HasComment("The unique identifier of the product variant")
             .IsRequired()
+            .ValueGeneratedOnAdd()
             .HasIdentityOptions(1001, 1);
+
+        builder.Property(v => v.TenantId)
+            .HasColumnName("tenant_id")
+            .HasComment("The tenant that owns the variant")
+            .IsRequired();
 
         builder.Property(v => v.ProductId)
             .HasColumnName("product_id")
@@ -34,7 +40,7 @@ internal sealed class ProductVariantEntityTypeConfiguration : IEntityTypeConfigu
             .IsUnicode(false)
             .IsRequired();
 
-        builder.HasIndex(v => v.Sku).IsUnique();
+        builder.HasIndex(v => new { v.TenantId, v.Sku }).IsUnique();
 
         builder.Property(v => v.Barcode)
             .HasColumnName("barcode")
@@ -42,7 +48,7 @@ internal sealed class ProductVariantEntityTypeConfiguration : IEntityTypeConfigu
             .HasMaxLength(Gtin.MaxLength)
             .IsUnicode(false);
 
-        builder.HasIndex(v => v.Barcode)
+        builder.HasIndex(v => new { v.TenantId, v.Barcode })
             .IsUnique()
             .HasFilter("barcode IS NOT NULL");
 
@@ -105,12 +111,16 @@ internal sealed class ProductVariantEntityTypeConfiguration : IEntityTypeConfigu
 
         builder.HasOne<Product>()
             .WithMany(p => p.Variants)
-            .HasForeignKey(v => v.ProductId)
+            .HasForeignKey(v => new { v.TenantId, v.ProductId })
+            .HasPrincipalKey(product => new { product.TenantId, product.Id })
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(v => new { v.TenantId, v.ProductId });
 
         builder.HasMany(v => v.Prices)
             .WithOne()
-            .HasForeignKey(price => price.VariantId)
+            .HasForeignKey(price => new { price.TenantId, price.VariantId })
+            .HasPrincipalKey(variant => new { variant.TenantId, variant.Id })
             .OnDelete(DeleteBehavior.Cascade);
     }
 

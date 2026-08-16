@@ -1,5 +1,6 @@
 using Vantigo.Customers.Domain.Contacts.Common;
 using Vantigo.Customers.Domain.Customers;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Customers.Domain.Contacts;
 
@@ -9,8 +10,10 @@ namespace Vantigo.Customers.Domain.Contacts;
 /// connection-specific contact details, such as the work email used at that company.
 /// A contact can be associated with a customer at most once.
 /// </summary>
-public sealed class CustomerContact
+public sealed class CustomerContact : ITenantOwned
 {
+    public Guid TenantId { get; set; }
+
     /// <summary>
     /// The id of the customer the contact is associated with.
     /// </summary>

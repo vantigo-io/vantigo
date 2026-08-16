@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Vantigo.Tenancy.Abstractions</AssemblyName>
+    <RootNamespace>Vantigo.Tenancy.Abstractions</RootNamespace>
+    <Description>Dependency-free multi-tenancy contracts for Vantigo modules.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Remove="GitVersion.MsBuild" />
+  </ItemGroup>
+</Project>

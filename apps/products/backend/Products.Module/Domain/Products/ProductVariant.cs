@@ -1,10 +1,12 @@
 namespace Vantigo.Products.Domain.Products;
 
+using Vantigo.Tenancy.Abstractions;
+
 /// <summary>
 /// The sellable identity of a product. A variant owns the SKU, barcode, logistics
 /// fields, option values and sales prices used by downstream commerce operations.
 /// </summary>
-public sealed class ProductVariant
+public sealed class ProductVariant : ITenantOwned
 {
     /// <summary>The maximum length of a stock keeping unit.</summary>
     public const int SkuMaxLength = 64;
@@ -18,13 +20,16 @@ public sealed class ProductVariant
     /// <summary>The auto-generated identity of the variant.</summary>
     public int Id { get; set; }
 
+    /// <summary>The tenant that owns the variant.</summary>
+    public Guid TenantId { get; set; }
+
     /// <summary>The product that owns this variant.</summary>
     public int ProductId { get; set; }
 
-    /// <summary>The stock keeping unit, unique across all product variants.</summary>
+    /// <summary>The stock keeping unit, unique among this tenant's variants.</summary>
     public string Sku { get; set; } = string.Empty;
 
-    /// <summary>The GTIN barcode, unique across all variants when set.</summary>
+    /// <summary>The GTIN barcode, unique among this tenant's variants when set.</summary>
     public string? Barcode { get; set; }
 
     /// <summary>The unit this variant is sold in, for instance pcs or hour.</summary>
