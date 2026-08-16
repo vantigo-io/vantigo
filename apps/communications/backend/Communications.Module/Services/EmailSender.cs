@@ -19,22 +19,6 @@ using Vantigo.Storage.Abstractions;
 
 namespace Vantigo.Communications.Services;
 
-public sealed record EmailEnvelope(
-    Guid MessageId,
-    string FromAddress,
-    string? FromDisplayName,
-    string Subject,
-    string? TextBody,
-    string? HtmlBody,
-    IReadOnlyList<string> To,
-    IReadOnlyList<string> Cc,
-    IReadOnlyList<string> Bcc,
-    string? InReplyTo = null,
-    IReadOnlyList<string>? References = null,
-    IReadOnlyList<EmailAttachment>? Attachments = null);
-
-public sealed record EmailAttachment(string FileName, string ContentType, string StorageKey, long SizeBytes, string? ContentId, bool IsInline);
-
 internal static class EmailMessageId
 {
     internal static string For(Guid messageId) => $"<{messageId:N}@vantigo.invalid>";
@@ -63,23 +47,6 @@ internal sealed class EmailOutboundChannelAdapter(IEmailSender sender) : IOutbou
 }
 
 internal interface IInboundChannelAdapter { }
-
-public sealed record NormalizedInboundAttachment(string? ContentId, string FileName, string ContentType, byte[] Bytes);
-public sealed record NormalizedInboundMessage(
-    string FromAddress,
-    string? FromDisplayName,
-    IReadOnlyList<string> To,
-    IReadOnlyList<string> Cc,
-    string? Subject,
-    string? Text,
-    string? Html,
-    string? RfcMessageId,
-    string? InReplyTo,
-    IReadOnlyList<string> References,
-    IReadOnlyList<NormalizedInboundAttachment> Attachments,
-    DateTimeOffset OccurredAt,
-    string? ProviderMessageId,
-    byte[]? RawPayload);
 
 internal interface IThreadResolver
 {
@@ -177,9 +144,6 @@ internal static class MailgunCredentialSecretReader
         return new MailgunCredentialSecrets(value);
     }
 }
-
-public sealed record SmtpProviderSettings(string Host, int Port, bool UseSsl, string? Username);
-public sealed record MailgunProviderSettings(string Domain, string Region);
 
 internal sealed class SmtpDeliveryProvider(IOptions<SmtpOptions> options, IOptions<OutboxOptions> outboxOptions, IHostEnvironment environment, MailboxCredentialProtector protector, IObjectStore<CommunicationsStorageScope> objectStore) : IEmailDeliveryProvider
 {
@@ -332,6 +296,3 @@ internal static class EmailEnvelopeFactory
     }
     internal static EmailThreadMetadata ParseMetadata(string? json) => string.IsNullOrWhiteSpace(json) ? new() : JsonSerializer.Deserialize<EmailThreadMetadata>(json, SmtpDeliveryProvider.JsonOptions) ?? new();
 }
-
-public sealed record EmailThreadMetadata(string? RfcMessageId = null, string? InReplyTo = null, IReadOnlyList<string>? References = null,
-    IReadOnlyList<string>? To = null, IReadOnlyList<string>? Cc = null);

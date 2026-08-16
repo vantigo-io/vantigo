@@ -2,9 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using Vantigo.Communications.Database.Communications;
-using Vantigo.Communications.Infrastructure.Storage;
 using Vantigo.Configuration;
-using Vantigo.Storage.Abstractions;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
 
@@ -114,125 +112,5 @@ public sealed class RetentionCleanupService(
         await db.Participants.Where(item => !db.ConversationParticipants.Any(link => link.ParticipantId == item.Id)).ExecuteDeleteAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return deleted;
-    }
-}
-
-public sealed class AttachmentCleanupService(
-    CommunicationsDbContext db,
-    ITenantDirectory tenantDirectory,
-    ILogger<AttachmentCleanupService> logger,
-    IObjectStore<CommunicationsStorageScope> objectStore)
-{
-    public async Task<int> CleanupBatchAsync(DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var cleaned = 0;
-        // System-context discovery; tenant scope is entered before processing.
-        // Cleanup is intentionally iterated from the active tenant directory.
-        foreach (var tenant in await tenantDirectory.GetActiveTenantsAsync(cancellationToken))
-        {
-            try
-            {
-                db.ChangeTracker.Clear();
-                using var tenantScope = AmbientTenantContext.Enter(tenant);
-                cleaned += await CleanupTenantBatchAsync(now, cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception exception)
-            {
-                logger.LogError(exception, "Communications object cleanup failed for tenant {TenantId}.", tenant.Value);
-            }
-            finally { db.ChangeTracker.Clear(); }
-        }
-
-        return cleaned;
-    }
-
-    private async Task<int> CleanupTenantBatchAsync(DateTimeOffset now, CancellationToken cancellationToken)
-    {
-
-        var candidates = await db.AttachmentCleanupRecords
-            .Where(item => (item.Status == ObjectOwnershipLifecycle.Pending && item.NextAttemptAt <= now) ||
-                (item.Status == ObjectOwnershipLifecycle.Staged && item.ReservationExpiresAt <= now) ||
-                (item.Status == ObjectOwnershipLifecycle.Deleting && item.LeaseUntil <= now))
-            .OrderBy(item => item.CreatedAt).Take(100).Select(item => item.Id).ToListAsync(cancellationToken);
-        var records = new List<AttachmentCleanupRecord>();
-        foreach (var id in candidates)
-        {
-            var lease = Guid.NewGuid().ToString("N");
-            var claimed = await db.AttachmentCleanupRecords.Where(item => item.Id == id &&
-                ((item.Status == ObjectOwnershipLifecycle.Pending && item.NextAttemptAt <= now) ||
-                 (item.Status == ObjectOwnershipLifecycle.Staged && item.ReservationExpiresAt <= now) ||
-                 (item.Status == ObjectOwnershipLifecycle.Deleting && item.LeaseUntil <= now)))
-                .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.Status, ObjectOwnershipLifecycle.Deleting)
-                    .SetProperty(item => item.LeaseId, lease).SetProperty(item => item.LeaseUntil, now.AddMinutes(5)), cancellationToken);
-            if (claimed == 0) continue;
-            var record = await db.AttachmentCleanupRecords.SingleAsync(item => item.Id == id, cancellationToken);
-            records.Add(record);
-        }
-        foreach (var record in records)
-        {
-            try
-            {
-                await objectStore.DeleteAsync(record.StorageKey, cancellationToken);
-                record.Status = ObjectOwnershipLifecycle.Completed;
-                record.LeaseId = null;
-                record.LeaseUntil = null;
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                record.Status = ObjectOwnershipLifecycle.Pending;
-                record.Attempts++;
-                record.LastError = "Object cleanup failed.";
-                record.NextAttemptAt = now.AddSeconds(Math.Min(3600, Math.Pow(2, Math.Min(record.Attempts, 10))));
-                record.LeaseId = null;
-                record.LeaseUntil = null;
-            }
-        }
-        await db.SaveChangesAsync(cancellationToken);
-        return records.Count;
-    }
-}
-
-public sealed class CommunicationsRetentionWorker(
-    IServiceScopeFactory scopeFactory,
-    ILogger<CommunicationsRetentionWorker> logger,
-    IOptions<CommunicationsOptions> options) : BackgroundService
-{
-    private readonly CommunicationsOptions communications = options.Value;
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        var minutes = Math.Max(1, communications.Retention.PollMinutes);
-        var delay = TimeSpan.FromMinutes(minutes);
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var cleanup = scope.ServiceProvider.GetRequiredService<RetentionCleanupService>();
-                while (await cleanup.CleanupBatchAsync(DateTimeOffset.UtcNow, stoppingToken) > 0) { }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-            catch (Exception exception) { logger.LogError(exception, "Communications retention cleanup failed."); }
-            await Task.Delay(delay, stoppingToken);
-        }
-    }
-}
-
-public sealed class CommunicationsAttachmentCleanupWorker(IServiceScopeFactory scopeFactory, ILogger<CommunicationsAttachmentCleanupWorker> logger) : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try
-            {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                await scope.ServiceProvider.GetRequiredService<AttachmentCleanupService>().CleanupBatchAsync(DateTimeOffset.UtcNow, stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-            catch (Exception exception) { logger.LogError(exception, "Communications object cleanup failed."); }
-            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-        }
     }
 }
