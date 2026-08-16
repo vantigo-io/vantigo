@@ -1,4 +1,4 @@
-namespace Vantigo.Communications.Endpoints.Dtos;
+namespace Vantigo.Communications.Endpoints;
 
 internal sealed record PaginationMetadata
 {
