@@ -5,6 +5,23 @@ let csrfTokenRequest: Promise<string> | undefined;
 let csrfGeneration = 0;
 let onUnauthorized: (() => void) | undefined;
 let clearAuthState: () => void | Promise<void> = () => undefined;
+let activeTenantSlug: string | undefined;
+let tenantRoutingEnabled = false;
+
+/** Sets the optional tenant prefix for business API calls. Identity stays global. */
+export const setActiveTenantSlug = (slug: string | undefined) => {
+  activeTenantSlug = slug;
+};
+/** Enables the future tenant-prefixed API mode without breaking single-mode deployments. */
+export const setTenantRoutingEnabled = (enabled: boolean) => {
+  tenantRoutingEnabled = enabled;
+};
+
+const tenantAwareUrl = (url: string) => {
+  if (!tenantRoutingEnabled || !activeTenantSlug || !url.startsWith("/api/") || url.startsWith("/api/v1/identity/"))
+    return url;
+  return `/api/v1/t/${encodeURIComponent(activeTenantSlug)}${url.slice(7)}`;
+};
 
 export type ApiError = Error & { status?: number; fields?: Record<string, string[]>; code?: string };
 export type RequestOptions = RequestInit & {
@@ -121,7 +138,8 @@ export async function request<T>(url: string, init: RequestOptions = {}): Promis
   }
   // Root-relative URLs are resolved against the app's base path so the app can
   // be served under a path prefix (e.g. /customers) on a shared domain.
-  const response = await fetch(url.startsWith("/") ? appUrl(url) : url, {
+  const requestUrl = tenantAwareUrl(url);
+  const response = await fetch(requestUrl.startsWith("/") ? appUrl(requestUrl) : requestUrl, {
     ...fetchInit,
     headers,
     credentials: "include",

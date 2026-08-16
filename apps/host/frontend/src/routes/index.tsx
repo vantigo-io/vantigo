@@ -9,7 +9,7 @@ const modules = [
   {
     title: "dashboard.communications",
     description: "dashboard.reviewMessages",
-    to: "/messages",
+    to: "/inbox",
     icon: IconMessage,
   },
   { title: "dashboard.products", description: "dashboard.manageProducts", to: "/products", icon: IconPackage },

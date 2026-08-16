@@ -38,8 +38,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\packages\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\azure-identity\Vantigo.Azure.Identity\Vantigo.Azure.Identity.csproj" />
     <ProjectReference Include="..\..\..\..\packages\contracts\Vantigo.Contracts.AspNetCore\Vantigo.Contracts.AspNetCore.csproj" />
     <ProjectReference Include="..\..\..\..\packages\dataprotection-postgresql\Vantigo.DataProtection.PostgreSql\Vantigo.DataProtection.PostgreSql.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\storage\Vantigo.Storage\Vantigo.Storage.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\tenancy\Vantigo.Tenancy\Vantigo.Tenancy.csproj" />
     <ProjectReference Include="..\..\..\identity\backend\Identity.Module\Identity.Module.csproj" />
     <ProjectReference Include="..\..\..\..\apps\customers\backend\Customers.Module\Customers.Module.csproj" />
     <ProjectReference Include="..\..\..\..\apps\communications\backend\Communications.Module\Communications.Module.csproj" />

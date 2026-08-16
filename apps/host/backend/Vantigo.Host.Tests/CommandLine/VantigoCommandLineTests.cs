@@ -22,6 +22,7 @@ public sealed class VantigoCommandLineTests
     [Theory]
     [InlineData("migrate", VantigoCommand.Migrate)]
     [InlineData("seed", VantigoCommand.Seed)]
+    [InlineData("reset-communications", VantigoCommand.ResetCommunications)]
     public void Parse_WithKnownCommand_ReturnsCommand(string argument, VantigoCommand expected)
     {
         var result = VantigoCommandLine.Parse([argument]);

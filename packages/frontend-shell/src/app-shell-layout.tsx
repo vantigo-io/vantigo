@@ -12,8 +12,8 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconChevronRight, IconLogout } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { IconBuilding, IconCheck, IconChevronRight, IconLoader2, IconLogout } from "@tabler/icons-react";
+import { type ReactNode, useState } from "react";
 import { appConfig, hasSupportContact } from "./app-config";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
@@ -27,6 +27,12 @@ export interface ShellUser {
   avatarUrl?: string | null;
 }
 
+export interface ShellTenant {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface AppShellLayoutProps {
   /** The module name displayed next to the logo. Defaults to the runtime app title. */
   moduleName?: string;
@@ -36,6 +42,10 @@ export interface AppShellLayoutProps {
   userMenuItems?: ReactNode;
   onSignOut: () => void;
   signOutDisabled?: boolean;
+  /** Available tenants. The switcher is intentionally hidden for zero or one tenant. */
+  tenants?: readonly ShellTenant[];
+  activeTenantId?: string | null;
+  onTenantSwitch?: (tenant: ShellTenant) => Promise<void> | void;
   /** Optional slot at the top of the sidebar (e.g. the spotlight search box). */
   navbarTop?: ReactNode;
   /** The sidebar navigation. Call `closeMobileNav` when a nav item is clicked. */
@@ -110,6 +120,9 @@ export const AppShellLayout = ({
   userMenuItems,
   onSignOut,
   signOutDisabled,
+  tenants = [],
+  activeTenantId,
+  onTenantSwitch,
   navbarTop,
   nav,
   navLower,
@@ -120,6 +133,19 @@ export const AppShellLayout = ({
   const { t } = useI18n("shell");
   const config = appConfig();
   const showFooter = hasSupportContact(config);
+  const showTenantSwitcher = tenants.length > 1 && !!onTenantSwitch;
+  const activeTenant = tenants.find((tenant) => tenant.id === activeTenantId);
+  const [switchingTenantId, setSwitchingTenantId] = useState<string | null>(null);
+
+  const handleTenantSwitch = async (tenant: ShellTenant) => {
+    if (!onTenantSwitch || switchingTenantId) return;
+    setSwitchingTenantId(tenant.id);
+    try {
+      await onTenantSwitch(tenant);
+    } finally {
+      setSwitchingTenantId(null);
+    }
+  };
 
   return (
     <AppShell
@@ -174,6 +200,62 @@ export const AppShellLayout = ({
 
         <AppShell.Section style={{ flexShrink: 0 }}>
           <Divider mb="sm" />
+          {showTenantSwitcher && activeTenant && (
+            <Menu position="right-end" withArrow withinPortal>
+              <Menu.Target>
+                <UnstyledButton
+                  w="100%"
+                  p="xs"
+                  mb="xs"
+                  disabled={switchingTenantId !== null}
+                  aria-label={t("openWorkspaceMenu")}
+                  aria-haspopup="menu"
+                  styles={{
+                    root: {
+                      borderRadius: 6,
+                      "&:hover": { background: "var(--mantine-color-gray-0)" },
+                      "&:focus-visible": { outline: "2px solid var(--mantine-color-vantigo-5)", outlineOffset: 2 },
+                    },
+                  }}
+                >
+                  <Group gap="sm" wrap="nowrap">
+                    <Avatar color="blue" radius="sm">
+                      <IconBuilding size={17} />
+                    </Avatar>
+                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                      <Text size="xs" c="dimmed">
+                        {t("workspaces")}
+                      </Text>
+                      <Text size="sm" fw={600} truncate>
+                        {activeTenant.name}
+                      </Text>
+                    </div>
+                    {switchingTenantId ? (
+                      <IconLoader2 size={16} className="tenant-switcher-spinner" aria-label={t("switchingWorkspace")} />
+                    ) : (
+                      <IconChevronRight size={14} stroke={1.5} />
+                    )}
+                  </Group>
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown aria-label={t("workspaces")}>
+                <Menu.Label>{t("workspaces")}</Menu.Label>
+                {tenants.map((tenant) => (
+                  <Menu.Item
+                    key={tenant.id}
+                    leftSection={
+                      tenant.id === activeTenantId ? <IconCheck size={15} /> : <span style={{ width: 15 }} />
+                    }
+                    aria-current={tenant.id === activeTenantId ? "true" : undefined}
+                    disabled={switchingTenantId !== null || tenant.id === activeTenantId}
+                    onClick={() => void handleTenantSwitch(tenant)}
+                  >
+                    {tenant.name}
+                  </Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
+          )}
           <Menu position="right-end" withArrow>
             <Menu.Target>
               <UnstyledButton

@@ -1,4 +1,4 @@
-import { Center, Loader, Menu, NavLink, Text } from "@mantine/core";
+import { Alert, Center, Loader, Menu, NavLink, Stack, Text, Title } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,8 +10,9 @@ import { useEffect } from "react";
 import "../i18n";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
-import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
+import { fetchSession, sessionQueryKey, signOut, switchTenant } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
+import { setActiveTenantSlug } from "../api/request";
 import { AppSpotlight } from "../components/app-spotlight";
 import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
 
@@ -106,6 +107,34 @@ const RootLayout = () => {
   const visibleSections = visibleNavSections(permissions, isOwner, canManageAuthorization);
   const primarySections = visibleSections.filter((section) => section.placement !== "lower");
   const lowerSections = visibleSections.filter((section) => section.placement === "lower");
+  const tenants = session.tenants ?? [];
+  const activeTenant =
+    tenants.find((tenant) => tenant.id === session.activeTenantId) ?? (tenants.length === 1 ? tenants[0] : undefined);
+  const tenantUnavailable =
+    tenants.length === 0 ||
+    !activeTenant ||
+    (activeTenant.status && !["active", "enabled"].includes(activeTenant.status.toLowerCase()));
+  setActiveTenantSlug(activeTenant?.slug);
+  const handleTenantSwitch = async (tenant: { id: string; slug: string }) => {
+    const updated = await switchTenant(tenant.id);
+    queryClient.setQueryData(sessionQueryKey, updated);
+    // Tenant-owned data must never flash from the previous workspace.
+    await queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
+    setActiveTenantSlug(updated.tenants?.find((item) => item.id === updated.activeTenantId)?.slug);
+    window.history.replaceState({}, "", appUrl("/"));
+  };
+  if (tenantUnavailable)
+    return (
+      <Center mih="100vh" p="xl">
+        <Stack align="center" maw={440} ta="center">
+          <Title order={2}>{tenants.length === 0 ? t("tenantRequiredTitle") : t("tenantUnavailableTitle")}</Title>
+          <Text c="dimmed">{tenants.length === 0 ? t("tenantRequiredBody") : t("tenantUnavailableBody")}</Text>
+          <Alert color="gray" variant="light">
+            {t("tenantContactAdmin")}
+          </Alert>
+        </Stack>
+      </Center>
+    );
   return (
     <>
       <AppShellLayout
@@ -123,6 +152,9 @@ const RootLayout = () => {
         }
         onSignOut={() => logout.mutate()}
         signOutDisabled={logout.isPending}
+        tenants={tenants}
+        activeTenantId={session.activeTenantId}
+        onTenantSwitch={handleTenantSwitch}
         navbarTop={<SpotlightSearchBox />}
         nav={(close) => renderNavSections(primarySections, pathname, close, t)}
         navLower={(close) => renderNavSections(lowerSections, pathname, close, t)}

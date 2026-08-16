@@ -1,5 +1,5 @@
 import { Tabs } from "@mantine/core";
-import { IconBolt, IconLayoutDashboard } from "@tabler/icons-react";
+import { IconBolt, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
 import { createFileRoute, notFound, Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { customerQueryOptions, NotFoundError } from "@vantigo/customers-ui/api/customers";
 import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$customerId";
@@ -7,8 +7,8 @@ import { useI18n } from "@vantigo/frontend-shell";
 import "../../i18n";
 
 type CustomerDetailTab = {
-  value: "overview" | "energy";
-  labelKey: "customer.overviewTab" | "customer.energyTab";
+  value: "overview" | "energy" | "correspondence";
+  labelKey: "customer.overviewTab" | "customer.energyTab" | "customer.correspondenceTab";
   icon: typeof IconLayoutDashboard;
   to: "/customers/$customerId" | "/customers/$customerId/energy";
 };
@@ -16,6 +16,7 @@ type CustomerDetailTab = {
 export const customerDetailTabs: CustomerDetailTab[] = [
   { value: "overview", labelKey: "customer.overviewTab", icon: IconLayoutDashboard, to: "/customers/$customerId" },
   { value: "energy", labelKey: "customer.energyTab", icon: IconBolt, to: "/customers/$customerId/energy" },
+  { value: "correspondence", labelKey: "customer.correspondenceTab", icon: IconMessages, to: "/customers/$customerId" },
 ];
 
 const CustomerDetailLayout = () => {
@@ -32,7 +33,12 @@ const CustomerDetailLayout = () => {
         value={activeTab}
         onChange={(value) => {
           const tab = customerDetailTabs.find((item) => item.value === value);
-          if (tab) void navigate({ to: tab.to, params: { customerId } });
+          if (tab)
+            void (navigate as (options: unknown) => void)(
+              tab.value === "correspondence"
+                ? { to: "/inbox", search: { customerId: String(customerId) } }
+                : { to: tab.to, params: { customerId } },
+            );
         }}
       >
         <Tabs.List>

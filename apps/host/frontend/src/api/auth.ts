@@ -11,6 +11,15 @@ export interface Session {
   twoFactorEnabled?: boolean;
   mfaEnrollmentRequired?: boolean;
   mfaAuthenticated?: boolean;
+  tenants?: Tenant[];
+  activeTenantId?: string | null;
+}
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  /** Supplied by deployments that expose tenant availability. */
+  status?: string;
 }
 
 export const sessionQueryKey = ["auth", "session"] as const;
@@ -23,6 +32,17 @@ export const fetchSession = async (): Promise<Session | null> => {
     if (status === 401 || status === 404) return null;
     throw error;
   }
+};
+export const switchTenant = async (tenantId: string): Promise<Session> => {
+  await ensureCsrfToken();
+  const session = await request<Session>("/api/v1/identity/session/tenant", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenantId }),
+  });
+  clearCsrfToken();
+  await ensureCsrfToken();
+  return session;
 };
 export const signIn = async (email: string, password: string) => {
   await ensureCsrfToken();

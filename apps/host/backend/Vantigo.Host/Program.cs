@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 
+using Vantigo.Azure.Identity;
 using Vantigo.Communications.Database;
 using Vantigo.Communications.Endpoints;
 using Vantigo.Configuration;
@@ -20,6 +21,8 @@ using Vantigo.Identity.Endpoints.Auth;
 using Vantigo.Identity.Services;
 using Vantigo.Products.Database;
 using Vantigo.Products.Endpoints;
+using Vantigo.Storage;
+using Vantigo.Tenancy;
 
 var commandLine = VantigoCommandLine.Parse(args);
 if (commandLine.Command == VantigoCommand.Invalid)
@@ -37,8 +40,11 @@ if (commandLine.Command == VantigoCommand.NoArguments && args.Length == 0)
 var builder = WebApplication.CreateBuilder(commandLine.RemainingArguments);
 var configuresApi = commandLine.Command is VantigoCommand.Api or VantigoCommand.NoArguments;
 builder.Services.AddVantigoConfiguration(builder.Configuration);
+builder.Services.AddVantigoTenancy();
+builder.Services.AddVantigoAzureIdentity(builder.Configuration);
 builder.Services.AddHostDatabases();
 builder.Services.AddVantigoDataProtection(builder.Configuration, builder.Environment);
+builder.Services.AddVantigoObjectStorage(builder.Configuration);
 
 if (configuresApi)
 {
@@ -46,6 +52,7 @@ if (configuresApi)
     builder.Services.AddSingleton<BootstrapSecretProvider>();
     builder.Services.AddVantigoForwardedHeaders();
     builder.Services.AddVantigoIdentity(builder.Environment);
+    builder.Services.AddVantigoIdentityTenancy();
     builder.Services.AddWorkforceOidc(builder.Configuration, builder.Environment);
     builder.Services.AddVantigoAuthorization();
     builder.Services.AddVantigoAntiforgery(builder.Environment);
@@ -56,6 +63,7 @@ if (configuresApi)
 else if (commandLine.Command == VantigoCommand.Seed)
 {
     builder.Services.AddVantigoIdentity(builder.Environment);
+    builder.Services.AddVantigoIdentityTenancy();
 }
 
 AddEnabledModules(builder.Services);
@@ -78,10 +86,24 @@ if (commandLine.Command == VantigoCommand.NoArguments && testPreparation is null
     return;
 }
 
-if (commandLine.Command == VantigoCommand.Migrate)
+if (commandLine.Command is VantigoCommand.Migrate or VantigoCommand.ResetCommunications)
 {
-    await app.Services.MigrateDataProtectionAsync();
-    await MigrateEnabledModulesAsync(app.Services);
+    var commandSucceeded = await VantigoCommandDispatcher.ExecuteDatabaseCommandAsync(
+        commandLine.Command,
+        async () =>
+        {
+            await app.Services.MigrateDataProtectionAsync();
+            await MigrateEnabledModulesAsync(app.Services);
+        },
+        () => CommunicationsSchemaResetCommand.ExecuteAsync(
+            app.Services,
+            app.Environment,
+            Environment.GetEnvironmentVariable(CommunicationsSchemaResetCommand.ConfirmationEnvironmentVariable)));
+    if (commandSucceeded == false)
+    {
+        Environment.ExitCode = 2;
+    }
+
     return;
 }
 
@@ -110,6 +132,12 @@ if (testPreparation is not null)
         await SeedEnabledModulesAsync(app.Services);
 }
 
+if (configuresApi)
+{
+    await using var tenantStartupScope = app.Services.CreateAsyncScope();
+    await tenantStartupScope.ServiceProvider.GetRequiredService<TenantBootstrapper>().EnsureAsync();
+}
+
 _ = app.Services.GetRequiredService<BootstrapSecretProvider>();
 _ = app.Services.GetRequiredService<WorkforceOidcOptions>();
 _ = app.Services.GetRequiredService<StaticScimOptions>();
@@ -128,6 +156,7 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseRateLimiter();
 app.UseAuthentication();
+app.UseVantigoTenancy();
 app.UseAuthorization();
 app.UseVantigoAntiforgery();
 app.MapVantigoIdentityEndpoints();

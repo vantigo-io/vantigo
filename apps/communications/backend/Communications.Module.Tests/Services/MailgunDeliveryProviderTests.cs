@@ -5,13 +5,42 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Http;
 
+using MimeKit;
+
 using Vantigo.Communications.Database.Communications;
+using Vantigo.Communications.Infrastructure.Storage;
 using Vantigo.Communications.Services;
+using Vantigo.Storage.Abstractions;
 
 namespace Vantigo.Communications.Module.Tests.Services;
 
 public sealed class MailgunDeliveryProviderTests
 {
+    [Fact]
+    public void Synthetic_mime_preserves_only_valid_bounded_cc_mailboxes()
+    {
+        var form = new MailgunInboundForm("1", "token", "signature", "sender@example.test", null, "inbound@example.test",
+            "cc@example.test, <second@example.test>", "subject", "body", null, null, null, []);
+
+        using var message = MimeMessage.Load(new MemoryStream(MailgunInboundMimeBuilder.CreateSynthetic(form, DateTimeOffset.UtcNow)));
+
+        Assert.Equal(["cc@example.test", "second@example.test"], message.Cc.Mailboxes.Select(item => item.Address).ToArray());
+
+        var malformed = form with { Cc = "cc@example.test\r\nBcc: injected@example.test" };
+        using var safeMessage = MimeMessage.Load(new MemoryStream(MailgunInboundMimeBuilder.CreateSynthetic(malformed, DateTimeOffset.UtcNow)));
+        Assert.Empty(safeMessage.Cc);
+        Assert.DoesNotContain("injected@example.test", safeMessage.Headers.Select(item => item.Value));
+    }
+
+    [Fact]
+    public void Persisted_thread_metadata_keeps_cc_reply_all_candidates()
+    {
+        var metadata = EmailEnvelopeFactory.ParseMetadata(JsonSerializer.Serialize(
+            new EmailThreadMetadata(Cc: ["copy@example.test"]), SmtpDeliveryProvider.JsonOptions));
+
+        Assert.Contains("copy@example.test", metadata.Cc!);
+    }
+
     [Theory]
     [InlineData("us", "https://api.mailgun.net/v3/example.test/messages")]
     [InlineData("eu", "https://api.eu.mailgun.net/v3/example.test/messages")]
@@ -30,11 +59,10 @@ public sealed class MailgunDeliveryProviderTests
             ["to@example.test"],
             ["cc@example.test"],
             ["bcc@example.test"]);
-        var credential = new MailboxProviderCredential
+        var credential = new ChannelCredential
         {
             Id = Guid.NewGuid(),
-            MailboxId = Guid.NewGuid(),
-            Provider = "mailgun",
+            ChannelId = Guid.NewGuid(),
             SettingsJson = JsonSerializer.Serialize(new MailgunProviderSettings("example.test", region), SmtpDeliveryProvider.JsonOptions),
             SecretCiphertext = protector.Protect("mailgun-test-key"),
             CreatedAt = DateTimeOffset.UtcNow,
@@ -85,15 +113,14 @@ public sealed class MailgunDeliveryProviderTests
     }
 
     private static MailgunDeliveryProvider CreateProvider(RecordingHandler handler, MailboxCredentialProtector protector) =>
-        new(new StubHttpClientFactory(handler), protector);
+        new(new StubHttpClientFactory(handler), protector, new EmptyObjectStore());
 
-    private static MailboxProviderCredential CreateCredential(string region, string apiKey, MailboxCredentialProtector protector)
+    private static ChannelCredential CreateCredential(string region, string apiKey, MailboxCredentialProtector protector)
     {
-        return new MailboxProviderCredential
+        return new ChannelCredential
         {
             Id = Guid.NewGuid(),
-            MailboxId = Guid.NewGuid(),
-            Provider = "mailgun",
+            ChannelId = Guid.NewGuid(),
             SettingsJson = JsonSerializer.Serialize(new MailgunProviderSettings("example.test", region), SmtpDeliveryProvider.JsonOptions),
             SecretCiphertext = protector.Protect(apiKey),
             CreatedAt = DateTimeOffset.UtcNow,
@@ -116,5 +143,13 @@ public sealed class MailgunDeliveryProviderTests
             FormBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             return response;
         }
+    }
+
+    private sealed class EmptyObjectStore : IObjectStore<CommunicationsStorageScope>
+    {
+        public Task PutAsync(string key, Stream content, string contentType, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<Stream?> GetAsync(string key, CancellationToken cancellationToken = default) => Task.FromResult<Stream?>(null);
+        public Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task DeleteAsync(string key, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

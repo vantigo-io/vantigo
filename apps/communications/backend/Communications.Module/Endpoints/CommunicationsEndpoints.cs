@@ -1,18 +1,25 @@
+using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 using Asp.Versioning;
 
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 using Vantigo.Communications.Authorization;
 using Vantigo.Communications.Database.Communications;
 using Vantigo.Communications.Endpoints.Dtos;
+using Vantigo.Communications.Infrastructure.Storage;
 using Vantigo.Communications.Services;
 using Vantigo.Contracts;
 using Vantigo.Contracts.AspNetCore.Authorization;
+using Vantigo.Storage.Abstractions;
+using Vantigo.Tenancy;
 
 namespace Vantigo.Communications.Endpoints;
 
@@ -20,537 +27,571 @@ internal static class CommunicationsEndpoints
 {
     public static IEndpointRouteBuilder MapVersionedBusinessEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var api = endpoints.NewVersionedApi().MapGroup("/api/v{version:apiVersion}/communications").HasApiVersion(new ApiVersion(1));
-        api.MapGet("/messages", ListMessages)
-            .RequirePermission(CommunicationsPermissions.MessagesView)
-            .WithSummary("List email messages");
-        api.MapGet("/messages/{id:guid}", GetMessage)
-            .RequirePermission(CommunicationsPermissions.MessagesView)
-            .WithSummary("Get an email message");
-        api.MapGet("/messages/{id:guid}/events", ListEvents)
-            .RequirePermission(CommunicationsPermissions.MessagesView)
-            .WithSummary("List append-only message events");
-        api.MapPost("/messages/{id:guid}/resend", ResendMessage)
-            .RequirePermission(CommunicationsPermissions.MessagesManage)
-            .WithSummary("Re-queue an email message for sending")
-            .WithDescription("Scope 'failed' re-queues only submission_failed recipients; scope 'all' re-queues every recipient.");
-        api.MapPost("/messages/{id:guid}/archive", ArchiveMessage)
-            .RequirePermission(CommunicationsPermissions.MessagesManage)
-            // The mutation result is the complete message detail, including
-            // bodies and recipients, so message-management alone must not
-            // disclose it.
-            .RequirePermission(CommunicationsPermissions.MessagesView)
-            .WithSummary("Archive an email message")
-            .WithDescription("Soft-deletes the message from the default list view and cancels any pending send.");
-        api.MapPost("/messages/{id:guid}/unarchive", UnarchiveMessage)
-            .RequirePermission(CommunicationsPermissions.MessagesManage)
-            .RequirePermission(CommunicationsPermissions.MessagesView)
-            .WithSummary("Unarchive an email message");
-
-        api.MapPost("/messages", CreateMessage)
-            .RequirePermission(CommunicationsPermissions.MessagesSend)
-
-            .WithSummary("Queue an email message")
-            .WithDescription("Requires an authenticated session with same-origin antiforgery protection. Idempotency-Key is required. SMTP is queued durably and delivery is at-least-once.")
-            .Produces<EmailCreateResponse>(StatusCodes.Status201Created)
-            .Produces<EmailCreateResponse>(StatusCodes.Status200OK)
-            .Produces<CommunicationErrorResponse>(StatusCodes.Status400BadRequest)
-            .Produces<CommunicationErrorResponse>(StatusCodes.Status401Unauthorized)
-            .Produces<CommunicationErrorResponse>(StatusCodes.Status409Conflict)
-            .Produces<CommunicationErrorResponse>(StatusCodes.Status422UnprocessableEntity)
-            .Produces<CommunicationErrorResponse>(StatusCodes.Status503ServiceUnavailable);
-
-        api.MapGet("/mailboxes", ListMailboxes)
-            .RequirePermission(CommunicationsPermissions.MailboxesView);
-        api.MapGet("/mailboxes/{id:guid}", GetMailbox)
-            .RequirePermission(CommunicationsPermissions.MailboxesView);
-        api.MapPost("/mailboxes", CreateMailbox)
-            .RequirePermission(CommunicationsPermissions.MailboxesManage)
-            .RequirePermission(CommunicationsPermissions.MailboxesView);
-        api.MapPut("/mailboxes/{id:guid}", UpdateMailbox)
-            .RequirePermission(CommunicationsPermissions.MailboxesManage)
-            .RequirePermission(CommunicationsPermissions.MailboxesView);
-        api.MapPost("/mailboxes/{id:guid}/verify", VerifyMailbox)
-            .RequirePermission(CommunicationsPermissions.MailboxesManage);
-        api.MapGet("/suppressions", ListSuppressions)
-            .RequirePermission(CommunicationsPermissions.SuppressionsView);
-        api.MapGet("/suppressions/{id:guid}", GetSuppression)
-            .RequirePermission(CommunicationsPermissions.SuppressionsView);
-        api.MapPost("/suppressions", CreateSuppression)
-            .RequirePermission(CommunicationsPermissions.SuppressionsManage)
-            .RequirePermission(CommunicationsPermissions.SuppressionsView);
-        api.MapDelete("/suppressions/{id:guid}", DeleteSuppression)
-            .RequirePermission(CommunicationsPermissions.SuppressionsManage);
+        var api = endpoints.NewVersionedApi().MapTenantGroup("/api/v{version:apiVersion}/communications").HasApiVersion(new ApiVersion(1));
+        api.MapGet("/conversations", ListConversations).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapGet("/conversations/{id:guid}", GetConversation).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPost("/conversations/{id:guid}/read", MarkRead).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPost("/conversations/{id:guid}/reply", Reply).RequirePermission(CommunicationsPermissions.ConversationsReply).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPost("/conversations/{id:guid}/attachments", StageAttachment).RequirePermission(CommunicationsPermissions.ConversationsReply).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapGet("/conversations/{conversationId:guid}/attachments/{attachmentId:guid}", GetAttachmentUploadStatus).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapGet("/attachments/{id:guid}/download", DownloadAttachment).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPost("/conversations/{id:guid}/ai/draft", DraftAi).RequirePermission(CommunicationsPermissions.ConversationsReply).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPost("/conversations/{id:guid}/ai/customer-suggestion", CustomerSuggestionAi).RequirePermission(CommunicationsPermissions.ConversationsManage).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPost("/conversations", CreateConversation).RequirePermission(CommunicationsPermissions.ConversationsReply);
+        api.MapPost("/conversations/{id:guid}/notes", AddNote).RequirePermission(CommunicationsPermissions.ConversationsManage).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPatch("/conversations/{id:guid}", UpdateConversation).RequirePermission(CommunicationsPermissions.ConversationsManage).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapGet("/tags", ListTags).RequirePermission(CommunicationsPermissions.ConversationsView);
+        api.MapPost("/tags", CreateTag).RequirePermission(CommunicationsPermissions.ConversationsManage);
+        api.MapPut("/conversations/{id:guid}/tags/{tagId:guid}", AddTag).RequirePermission(CommunicationsPermissions.ConversationsManage);
+        api.MapDelete("/conversations/{id:guid}/tags/{tagId:guid}", RemoveTag).RequirePermission(CommunicationsPermissions.ConversationsManage);
+        api.MapGet("/channels", ListChannels).RequirePermission(CommunicationsPermissions.ChannelsManage);
+        api.MapGet("/channels/{id:guid}", GetChannel).RequirePermission(CommunicationsPermissions.ChannelsManage);
+        api.MapPost("/channels", CreateChannel).RequirePermission(CommunicationsPermissions.ChannelsManage);
+        api.MapPut("/channels/{id:guid}", UpdateChannel).RequirePermission(CommunicationsPermissions.ChannelsManage);
+        api.MapPost("/channels/{id:guid}/verify", VerifyChannel).RequirePermission(CommunicationsPermissions.ChannelsManage);
+        api.MapGet("/suppressions", ListSuppressions).RequirePermission(CommunicationsPermissions.SuppressionsManage);
+        api.MapGet("/suppressions/{id:guid}", GetSuppression).RequirePermission(CommunicationsPermissions.SuppressionsManage);
+        api.MapPost("/suppressions", CreateSuppression).RequirePermission(CommunicationsPermissions.SuppressionsManage);
+        api.MapDelete("/suppressions/{id:guid}", DeleteSuppression).RequirePermission(CommunicationsPermissions.SuppressionsManage);
         return endpoints;
     }
 
-    private static async Task<IResult> ListMessages(int? page, int? pageSize, Guid? mailboxId, bool? includeArchived, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> ListConversations(int? page, int? pageSize, string? status, Guid? assignedUserId, Guid? tagId,
+        int? customerId, bool? unreadOnly, HttpContext http, CommunicationsDbContext db, CancellationToken ct)
     {
         var (currentPage, size) = PageValues(page, pageSize);
-        var query = db.EmailMessages.AsNoTracking()
-            .Where(message => !mailboxId.HasValue || message.MailboxId == mailboxId.Value)
-            .Where(message => includeArchived == true || message.ArchivedAt == null);
-        var total = await query.CountAsync(cancellationToken);
-        var items = await query.OrderByDescending(message => message.CreatedAt)
-            .Skip((currentPage - 1) * size).Take(size)
-                .Select(message => new MessageListItem(message.Id, message.Subject, message.CreatedAt,
-                    message.Deliveries.Count, message.Deliveries.All(delivery => delivery.Status == "relay_accepted") ? "relay_accepted" :
-                        message.Deliveries.Any(delivery => delivery.Status == "submission_failed") ? "submission_failed" : "queued", message.Source,
-                    message.ArchivedAt,
-                    new MailboxSummaryResponse(message.Mailbox!.Id, message.Mailbox.FromAddress, message.Mailbox.DisplayName)))
-            .ToListAsync(cancellationToken);
-        return TypedResults.Ok(PaginatedResponse<MessageListItem>.Create(items, currentPage, size, total));
+        var userId = CurrentUserId(http);
+        var query = db.Conversations.AsNoTracking()
+            .Include(item => item.Tags).ThenInclude(item => item.Tag)
+            .Include(item => item.CustomerCandidates)
+            .Include(item => item.Participants).ThenInclude(item => item.Participant).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(status)) query = query.Where(item => item.Status == status.Trim().ToLowerInvariant());
+        if (assignedUserId.HasValue) query = query.Where(item => item.AssignedUserId == assignedUserId);
+        if (customerId.HasValue) query = query.Where(item => item.CustomerId == customerId);
+        if (tagId.HasValue) query = query.Where(item => item.Tags.Any(tag => tag.TagId == tagId));
+        if (unreadOnly == true && userId.HasValue) query = query.Where(item => !item.ReadStates.Any(state => state.UserId == userId && state.LastReadAt >= item.LastActivityAt));
+        var total = await query.CountAsync(ct);
+        var conversations = await query.OrderByDescending(item => item.LastActivityAt).Skip((currentPage - 1) * size).Take(size).ToListAsync(ct);
+        var readAt = userId.HasValue ? await db.ConversationReadStates.AsNoTracking().Where(item => conversations.Select(conversation => conversation.Id).Contains(item.ConversationId) && item.UserId == userId).ToDictionaryAsync(item => item.ConversationId, item => item.LastReadAt, ct) : [];
+        var result = conversations.Select(item => new ConversationListItem(item.Id, item.ChannelId, item.Subject, item.Status, item.AssignedUserId, item.CustomerId,
+            item.CustomerAssociationSource, item.SuggestedCustomerId, item.CustomerCandidates.OrderBy(candidate => candidate.CustomerId).Select(candidate => candidate.CustomerId).ToArray(),
+            item.LastActivityAt, item.PreviewText, Participants(item.Participants), !readAt.TryGetValue(item.Id, out var lastRead) || lastRead < item.LastActivityAt, Tags(item.Tags))).ToArray();
+        return TypedResults.Ok(PaginatedResponse<ConversationListItem>.Create(result, currentPage, size, total));
     }
 
-    private static async Task<IResult> GetMessage(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> GetConversation(Guid id, HttpContext http, CommunicationsDbContext db, CancellationToken ct)
     {
-        var message = await db.EmailMessages.AsNoTracking().Include(item => item.Mailbox).Include(item => item.Deliveries).Include(item => item.ExternalLinks)
-            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        return message is null ? TypedResults.NotFound() : TypedResults.Ok(ToDetail(message));
+        var item = await db.Conversations.AsNoTracking().Include(conversation => conversation.Channel).Include(conversation => conversation.Messages).ThenInclude(message => message.Participant)
+            .Include(conversation => conversation.Messages).ThenInclude(message => message.Attachments)
+            .Include(conversation => conversation.Messages).ThenInclude(message => message.Deliveries)
+            .Include(conversation => conversation.Participants).ThenInclude(link => link.Participant)
+            .Include(conversation => conversation.CustomerCandidates)
+            .Include(conversation => conversation.Tags).ThenInclude(tag => tag.Tag)
+            .SingleOrDefaultAsync(conversation => conversation.Id == id, ct);
+        if (item is null) return TypedResults.NotFound();
+        var userId = CurrentUserId(http);
+        var lastRead = userId.HasValue ? await db.ConversationReadStates.AsNoTracking().Where(state => state.ConversationId == id && state.UserId == userId).Select(state => (DateTimeOffset?)state.LastReadAt).SingleOrDefaultAsync(ct) : null;
+        return TypedResults.Ok(new ConversationDetailResponse(item.Id, item.ChannelId, item.Subject, item.Status, item.AssignedUserId, item.CustomerId,
+            item.CustomerAssociationSource, item.SuggestedCustomerId, item.SuggestedCustomerConfidence, item.SuggestedCustomerReasoning,
+            item.CustomerCandidates.OrderBy(candidate => candidate.CustomerId).Select(candidate => candidate.CustomerId).ToArray(), item.LastActivityAt, item.PreviewText, item.CreatedAt,
+            item.Messages.OrderBy(message => message.OccurredAt).Select(message => ToMessage(message, http)).ToArray(), Participants(item.Participants), Tags(item.Tags), lastRead,
+            ReplyRecipients(item)));
     }
 
-    private static async Task<IResult> ListEvents(Guid id, int? page, int? pageSize, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> MarkRead(Guid id, HttpContext http, CommunicationsDbContext db, CancellationToken ct)
     {
-        if (!await db.EmailMessages.AnyAsync(message => message.Id == id, cancellationToken)) return TypedResults.NotFound();
-        var (currentPage, size) = PageValues(page, pageSize);
-        var query = db.MessageEvents.AsNoTracking().Where(messageEvent => messageEvent.MessageId == id);
-        var total = await query.CountAsync(cancellationToken);
-        var items = await query.OrderBy(messageEvent => messageEvent.OccurredAt).ThenBy(messageEvent => messageEvent.Id)
-            .Skip((currentPage - 1) * size).Take(size)
-            .Select(messageEvent => new MessageEventResponse(messageEvent.Id, messageEvent.DeliveryId, messageEvent.EventType, messageEvent.OccurredAt, messageEvent.DataJson))
-            .ToListAsync(cancellationToken);
-        return TypedResults.Ok(PaginatedResponse<MessageEventResponse>.Create(items, currentPage, size, total));
+        var userId = CurrentUserId(http);
+        if (!userId.HasValue) return TypedResults.Unauthorized();
+        if (!await db.Conversations.AnyAsync(item => item.Id == id, ct)) return TypedResults.NotFound();
+        var state = await db.ConversationReadStates.FindAsync([id, userId.Value], ct);
+        if (state is null) db.ConversationReadStates.Add(new ConversationReadState { ConversationId = id, UserId = userId.Value, LastReadAt = DateTimeOffset.UtcNow });
+        else state.LastReadAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Ok();
     }
 
-    private static async Task<IResult> ResendMessage(Guid id, ResendMessageRequest? request, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> Reply(Guid id, ReplyRequest? request, HttpContext http, IAntiforgery antiforgery, CommunicationsDbContext db, CancellationToken ct)
     {
-        var scope = request?.Scope?.Trim().ToLowerInvariant() ?? "failed";
-        if (scope is not ("failed" or "all"))
-            return Error(StatusCodes.Status400BadRequest, "invalid_scope", "Scope must be 'failed' or 'all'.");
-
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var message = await db.EmailMessages.Include(item => item.Deliveries).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (message is null) return TypedResults.NotFound();
-        if (message.ArchivedAt is not null)
-            return Error(StatusCodes.Status409Conflict, "message_archived", "An archived message cannot be resent. Unarchive it first.");
-        var activeJob = await db.OutboxJobs.AnyAsync(job => job.MessageId == id &&
-            (job.Status == "pending" || job.Status == "retry" || job.Status == "processing"), cancellationToken);
-        if (activeJob)
-            return Error(StatusCodes.Status409Conflict, "resend_in_progress", "A send for this message is already pending or in progress.");
-
-        var targets = scope == "failed"
-            ? message.Deliveries.Where(delivery => delivery.Status == "submission_failed").ToArray()
-            : message.Deliveries.Where(delivery => delivery.Status != "suppressed").ToArray();
-        if (targets.Length == 0)
-            return Error(StatusCodes.Status400BadRequest, "no_deliveries_to_resend",
-                scope == "failed" ? "This message has no failed recipients to resend." : "This message has no recipients to resend.");
-
-        var now = DateTimeOffset.UtcNow;
-        foreach (var delivery in targets)
-        {
-            delivery.Status = "queued";
-            delivery.LastError = null;
-            delivery.AcceptedAt = null;
-        }
-        db.MessageEvents.Add(new MessageEvent
-        {
-            Id = Guid.NewGuid(),
-            MessageId = message.Id,
-            EventType = "resend_requested",
-            OccurredAt = now,
-            DataJson = JsonSerializer.Serialize(new { scope, recipientCount = targets.Length }),
-        });
-        db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, NextAttemptAt = now, CreatedAt = now });
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return TypedResults.Ok(new ResendMessageResponse(message.Id, "queued", scope, targets.Length));
+        var csrf = await ValidateAntiforgery(http, antiforgery); if (csrf is not null) return csrf;
+        var validation = CommunicationValidation.ValidateReply(request); if (validation.Count > 0) return ValidationError(validation);
+        return await QueueOutboundAsync(id, request!, http, db, ct, true);
     }
 
-    private static async Task<IResult> ArchiveMessage(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> StageAttachment(Guid id, HttpContext http, IAntiforgery antiforgery,
+        CommunicationsDbContext db, IObjectStore<CommunicationsStorageScope> objectStore, IOptions<ClamAvOptions> scannerOptions, CancellationToken ct)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var message = await db.EmailMessages.Include(item => item.Mailbox).Include(item => item.Deliveries).Include(item => item.ExternalLinks)
-            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (message is null) return TypedResults.NotFound();
-        if (message.ArchivedAt is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-            return TypedResults.Ok(ToDetail(message));
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        message.ArchivedAt = now;
-        // Cancel sends that have not been claimed yet. Jobs in the processing
-        // state hold a lease and are mid-send, so they are left untouched.
-        await db.OutboxJobs.Where(job => job.MessageId == id && (job.Status == "pending" || job.Status == "retry"))
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(job => job.Status, "cancelled")
-                .SetProperty(job => job.CompletedAt, now), cancellationToken);
-        foreach (var delivery in message.Deliveries.Where(delivery => delivery.Status is "queued" or "retrying"))
-            delivery.Status = "cancelled";
-        db.MessageEvents.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, EventType = "archived", OccurredAt = now });
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return TypedResults.Ok(ToDetail(message));
-    }
-
-    private static async Task<IResult> UnarchiveMessage(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
-    {
-        var message = await db.EmailMessages.Include(item => item.Mailbox).Include(item => item.Deliveries).Include(item => item.ExternalLinks)
-            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (message is null) return TypedResults.NotFound();
-        if (message.ArchivedAt is not null)
-        {
-            message.ArchivedAt = null;
-            db.MessageEvents.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, EventType = "unarchived", OccurredAt = DateTimeOffset.UtcNow });
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        return TypedResults.Ok(ToDetail(message));
-    }
-
-    private static async Task<IResult> CreateMessage(
-        CreateEmailRequest? request,
-        HttpContext httpContext,
-        IAntiforgery antiforgery,
-        ICustomerDirectory customerDirectory,
-        CommunicationsDbContext db,
-        CancellationToken cancellationToken)
-    {
-        try { await antiforgery.ValidateRequestAsync(httpContext); }
-        catch (AntiforgeryValidationException)
-        { return Error(StatusCodes.Status400BadRequest, "csrf_validation_failed", "A valid X-XSRF-TOKEN header and antiforgery cookie are required."); }
-
-        var key = httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
+        var csrf = await ValidateAntiforgery(http, antiforgery); if (csrf is not null) return csrf;
+        var userId = CurrentUserId(http);
+        if (!userId.HasValue) return TypedResults.Unauthorized();
+        var key = http.Request.Headers["Idempotency-Key"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(key) || key.Length > 200 || key != key.Trim() || key.Any(char.IsControl))
             return Error(StatusCodes.Status400BadRequest, "idempotency_key_required", "A valid Idempotency-Key header is required.");
-        var errors = CommunicationValidation.Validate(request);
-        if (errors.Count > 0) return ValidationError(errors);
-
-        var payloadFingerprint = EmailPayloadFingerprint.Create(request!);
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                return await PersistMessageAsync(request!, key, payloadFingerprint, httpContext, customerDirectory, db, cancellationToken);
-            }
-            catch (Exception exception) when (IsIdempotencyRace(exception))
-            {
-                if (attempt < 2)
-                {
-                    db.ChangeTracker.Clear();
-                    await Task.Delay(TimeSpan.FromMilliseconds(20 * (attempt + 1)), cancellationToken);
-                    continue;
-                }
-
-                return await ReconcileIdempotencyAsync(key, payloadFingerprint, db, cancellationToken);
-            }
-        }
-
-        return Error(StatusCodes.Status409Conflict, "idempotency_unavailable", "The idempotency request could not be reconciled.");
-    }
-
-    private static async Task<IResult> PersistMessageAsync(
-        CreateEmailRequest request,
-        string key,
-        string payloadFingerprint,
-        HttpContext httpContext,
-        ICustomerDirectory customerDirectory,
-        CommunicationsDbContext db,
-        CancellationToken cancellationToken)
-    {
-        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
-        var existing = await db.IdempotencyRecords.SingleOrDefaultAsync(record => record.Key == key, cancellationToken);
-        if (existing is not null)
-        {
-            if (!string.Equals(existing.PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal))
-                return Error(StatusCodes.Status409Conflict, "idempotency_key_reused", "The Idempotency-Key was already used with a different payload.");
-            await transaction.CommitAsync(cancellationToken);
-            return TypedResults.Ok(new EmailCreateResponse(existing.MessageId, "queued", key));
-        }
-
-        var mailbox = request.MailboxId.HasValue
-            ? await db.SharedMailboxes.SingleOrDefaultAsync(item => item.Id == request.MailboxId.Value && item.IsActive, cancellationToken)
-            : await db.SharedMailboxes.Where(item => item.IsActive).OrderByDescending(item => item.IsDefault).ThenBy(item => item.CreatedAt).FirstOrDefaultAsync(cancellationToken);
-        if (request.MailboxId.HasValue && mailbox is null)
-            return Error(StatusCodes.Status422UnprocessableEntity, "mailbox_invalid", "The selected mailbox does not exist or is inactive.");
-        if (mailbox is null) return Error(StatusCodes.Status503ServiceUnavailable, "mailbox_not_configured", "A shared mailbox has not been configured.");
-        var recipients = RecipientRequests(request).ToArray();
-        var normalized = recipients.Select(recipient => EmailSuppression.Normalize(recipient.EmailAddress)).ToArray();
-        var suppressed = await db.Suppressions.AsNoTracking().Where(item => normalized.Contains(item.NormalizedEmailAddress)).Select(item => item.NormalizedEmailAddress).ToListAsync(cancellationToken);
-        if (suppressed.Count > 0) return Error(StatusCodes.Status422UnprocessableEntity, "recipient_suppressed", "One or more recipients are suppressed.", new Dictionary<string, string[]> { ["recipients"] = suppressed.ToArray() });
-
+        var existing = await db.AttachmentUploads.AsNoTracking().SingleOrDefaultAsync(item => item.UploadedByUserId == userId.Value && item.IdempotencyKey == key, ct);
+        if (existing is not null) return TypedResults.Ok(ToUploadResponse(existing));
+        var conversation = await db.Conversations.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, ct);
+        if (conversation is null) return TypedResults.NotFound();
+        var options = scannerOptions.Value;
+        var maxBytes = Math.Clamp(options.MaxBytes, 1, 50 * 1024 * 1024);
+        IFormCollection form;
+        try { form = await http.Request.ReadFormAsync(new FormOptions { MultipartBodyLengthLimit = maxBytes, ValueCountLimit = 20 }, ct); }
+        catch (InvalidDataException) { return Error(StatusCodes.Status413PayloadTooLarge, "attachment_too_large", "The attachment exceeds the configured limit."); }
+        if (form.Files.Count != 1) return Error(StatusCodes.Status400BadRequest, "file_required", "Exactly one file is required.");
+        var file = form.Files[0];
+        if (file.Length <= 0 || file.Length > maxBytes) return Error(StatusCodes.Status413PayloadTooLarge, "attachment_too_large", "The attachment exceeds the configured limit.");
+        var fileName = AttachmentSafety.SafeFileName(file.FileName);
+        var contentType = AttachmentSafety.ContentType(file.ContentType);
+        var contentId = AttachmentSafety.ContentId(form["contentId"].FirstOrDefault());
+        var isInline = string.Equals(form["isInline"].FirstOrDefault(), "true", StringComparison.OrdinalIgnoreCase) && contentId is not null;
+        if (await db.AttachmentUploads.CountAsync(item => item.ConversationId == id && item.UploadedByUserId == userId && item.ScanStatus != "expired" && item.ScanStatus != "quarantined", ct) >= 20)
+            return Error(StatusCodes.Status409Conflict, "attachment_limit", "The attachment limit for this conversation has been reached.");
+        // The idempotency key is also the crash-retry identity. If the process
+        // dies after PutAsync, the next request reuses this exact object key.
+        var uploadId = ObjectOwnershipLifecycle.DeterministicGuid(userId.Value, $"staged-upload:{key}");
+        var storageKey = $"staged-attachments/{id:N}/{userId.Value:N}/{uploadId:N}";
+        var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var now = DateTimeOffset.UtcNow;
-        var message = new EmailMessage
-        {
-            Id = Guid.NewGuid(),
-            MailboxId = mailbox.Id,
-            Subject = request.Subject!,
-            TextBody = request.TextBody,
-            HtmlBody = request.HtmlBody,
-            CreatedAt = now,
-            CreatedByUserId = Guid.TryParse(httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null,
-            Source = string.IsNullOrWhiteSpace(request.Source) ? null : request.Source,
-        };
-        foreach (var recipient in recipients)
-        {
-            var delivery = new RecipientDelivery
-            {
-                Id = Guid.NewGuid(),
-                MessageId = message.Id,
-                EmailAddress = recipient.EmailAddress,
-                RecipientType = recipient.Type,
-                CreatedAt = now,
-            };
-            message.Deliveries.Add(delivery);
-            message.Events.Add(new MessageEvent
-            {
-                Id = Guid.NewGuid(),
-                MessageId = message.Id,
-                DeliveryId = delivery.Id,
-                EventType = "queued",
-                OccurredAt = now,
-            });
-        }
-        foreach (var link in request.ExternalLinks ?? [])
-        {
-            var displayLabel = link!.DisplayLabel;
-            if (string.IsNullOrWhiteSpace(displayLabel) &&
-                string.Equals(link.SourceSystem, "customers", StringComparison.OrdinalIgnoreCase) &&
-                int.TryParse(link.SourceInstance, out var customerId))
-            {
-                displayLabel = (link.EntityType?.Contains("contact", StringComparison.OrdinalIgnoreCase) == true
-                    ? (await customerDirectory.FindContactAsync(customerId, cancellationToken))?.Email
-                    : (await customerDirectory.FindCustomerAsync(customerId, cancellationToken))?.Name);
-            }
-            message.ExternalLinks.Add(new ExternalEntityLink
-            {
-                Id = Guid.NewGuid(),
-                MessageId = message.Id,
-                SourceSystem = link!.SourceSystem!,
-                SourceInstance = link.SourceInstance!,
-                EntityType = link.EntityType!,
-                ExternalEntityId = link.ExternalEntityId!,
-                DisplayLabel = string.IsNullOrEmpty(displayLabel) ? null : displayLabel,
-            });
-        }
-        message.Events.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, EventType = "message_queued", OccurredAt = now });
-        db.EmailMessages.Add(message);
-        db.IdempotencyRecords.Add(new IdempotencyRecord { Id = Guid.NewGuid(), Key = key, PayloadFingerprint = payloadFingerprint, MessageId = message.Id, CreatedAt = now });
-        db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, NextAttemptAt = now, CreatedAt = now });
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return TypedResults.Created($"/api/v1/communications/messages/{message.Id}", new EmailCreateResponse(message.Id, "queued", key));
-    }
-
-    private static async Task<IResult> ReconcileIdempotencyAsync(string key, string fingerprint, CommunicationsDbContext db, CancellationToken cancellationToken)
-    {
-        db.ChangeTracker.Clear();
-        var existing = await db.IdempotencyRecords.AsNoTracking().SingleOrDefaultAsync(record => record.Key == key, cancellationToken);
-        if (existing is null) return Error(StatusCodes.Status409Conflict, "idempotency_unavailable", "The idempotency request could not be reconciled.");
-        return string.Equals(existing.PayloadFingerprint, fingerprint, StringComparison.Ordinal)
-            ? TypedResults.Ok(new EmailCreateResponse(existing.MessageId, "queued", key))
-            : Error(StatusCodes.Status409Conflict, "idempotency_key_reused", "The Idempotency-Key was already used with a different payload.");
-    }
-
-    private static bool IsIdempotencyRace(Exception exception)
-    {
-        for (var current = exception; current is not null; current = current.InnerException)
-        {
-            if (current is Npgsql.PostgresException postgres && postgres.SqlState is Npgsql.PostgresErrorCodes.UniqueViolation or Npgsql.PostgresErrorCodes.SerializationFailure or Npgsql.PostgresErrorCodes.DeadlockDetected)
-                return true;
-        }
-        return false;
-    }
-
-    private static async Task<IResult> ListMailboxes(CommunicationsDbContext db, CancellationToken cancellationToken)
-    {
-        var mailboxes = await db.SharedMailboxes.AsNoTracking().Include(mailbox => mailbox.Credential).OrderBy(mailbox => mailbox.CreatedAt).ToListAsync(cancellationToken);
-        return TypedResults.Ok(mailboxes.Select(ToMailboxResponse).ToArray());
-    }
-
-    private static async Task<IResult> GetMailbox(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
-    {
-        var mailbox = await db.SharedMailboxes.AsNoTracking().Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        return mailbox is null ? TypedResults.NotFound() : TypedResults.Ok(ToMailboxResponse(mailbox));
-    }
-
-    private static async Task<IResult> CreateMailbox(CreateMailboxRequest? request, CommunicationsDbContext db, MailboxCredentialProtector protector, CancellationToken cancellationToken)
-    {
-        var errors = CommunicationValidation.ValidateMailbox(request);
-        if (errors.Count > 0) return ValidationError(errors);
-        var now = DateTimeOffset.UtcNow;
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var provider = CommunicationValidation.ProviderName(request!.Provider);
-        var mailbox = new SharedMailbox { Id = Guid.NewGuid(), FromAddress = request.FromAddress!, DisplayName = string.IsNullOrEmpty(request.DisplayName) ? null : request.DisplayName, Provider = provider, CreatedAt = now };
-        mailbox.IsDefault = request.IsDefault == true || !await db.SharedMailboxes.AnyAsync(cancellationToken);
-        AddCredential(mailbox, request.Smtp, request.Mailgun, provider, protector, now);
-        if (mailbox.IsDefault) await db.SharedMailboxes.Where(item => item.IsDefault).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false), cancellationToken);
-        db.SharedMailboxes.Add(mailbox);
-        try { await db.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
-        { return Error(StatusCodes.Status409Conflict, "mailbox_address_exists", "A mailbox with this FromAddress already exists."); }
-        await transaction.CommitAsync(cancellationToken);
-        return TypedResults.Created($"/api/v1/communications/mailboxes/{mailbox.Id}", ToMailboxResponse(mailbox));
-    }
-
-    private static async Task<IResult> UpdateMailbox(Guid id, UpdateMailboxRequest? request, CommunicationsDbContext db, MailboxCredentialProtector protector, CancellationToken cancellationToken)
-    {
-        var errors = CommunicationValidation.ValidateMailboxUpdate(request);
-        if (errors.Count > 0) return ValidationError(errors);
-        var mailbox = await db.SharedMailboxes.Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (mailbox is null) return TypedResults.NotFound();
-        var activeOtherCount = await db.SharedMailboxes.CountAsync(item => item.Id != id && item.IsActive, cancellationToken);
-        if (request!.IsDefault == false && mailbox.IsDefault)
-            return Error(StatusCodes.Status409Conflict, "mailbox_default_required", "Another mailbox must be promoted before this default mailbox can be demoted.");
-        if (request.IsActive == false && mailbox.IsDefault && activeOtherCount > 0)
-            return Error(StatusCodes.Status409Conflict, "mailbox_default_required", "The default mailbox cannot be deactivated while another mailbox is active.");
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        if (request.DisplayName is not null) mailbox.DisplayName = string.IsNullOrEmpty(request.DisplayName) ? null : request.DisplayName;
-        if (request.IsActive is { } isActive) mailbox.IsActive = isActive;
-        if (request.IsDefault == true) mailbox.IsDefault = true;
-        if (request.Provider is not null || request.Smtp is not null || request.Mailgun is not null)
-        {
-            var provider = CommunicationValidation.ProviderName(request.Provider);
-            mailbox.Provider = provider;
-            // Replace the whole credential config object. The old row is deleted
-            // immediately so the insert of its successor (same unique MailboxId)
-            // cannot conflict within a single change-tracker save.
-            if (mailbox.Credential is not null)
-            {
-                db.Entry(mailbox.Credential).State = EntityState.Detached;
-                await db.MailboxProviderCredentials.Where(item => item.MailboxId == mailbox.Id).ExecuteDeleteAsync(cancellationToken);
-            }
-            mailbox.Credential = null;
-            AddCredential(mailbox, request.Smtp, request.Mailgun, provider, protector, DateTimeOffset.UtcNow);
-            // The new credential has a client-generated key, so it must be added
-            // explicitly: navigation fixup on a tracked mailbox would otherwise
-            // mark it Modified and issue an UPDATE for a row that does not exist.
-            if (mailbox.Credential is not null) db.MailboxProviderCredentials.Add(mailbox.Credential);
-        }
-        if (mailbox.IsDefault) await db.SharedMailboxes.Where(item => item.Id != id && item.IsDefault).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false), cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return TypedResults.Ok(ToMailboxResponse(mailbox));
-    }
-
-    private static async Task<IResult> VerifyMailbox(Guid id, CommunicationsDbContext db,
-        [FromServices] SmtpDeliveryProvider smtp, [FromServices] MailgunDeliveryProvider mailgun, CancellationToken cancellationToken)
-    {
-        var mailbox = await db.SharedMailboxes.Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (mailbox is null) return TypedResults.NotFound();
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(10));
-            if (mailbox.Provider == "smtp") await smtp.VerifyAsync(mailbox, timeout.Token);
-            else if (mailbox.Provider == "mailgun") await mailgun.VerifyAsync(mailbox, timeout.Token);
-            else throw new InvalidOperationException($"Unknown mailbox provider '{mailbox.Provider}'.");
-            return TypedResults.Ok(new { ok = true });
+            // A reservation is durable before the object-store write.
+            await ObjectOwnershipLifecycle.ReserveAsync(db, storageKey, now, ct);
+            await db.SaveChangesAsync(ct);
+            await using var source = file.OpenReadStream();
+            await using var content = new MemoryStream();
+            await source.CopyToAsync(content, ct);
+            if (content.Length > maxBytes) throw new InvalidDataException();
+            content.Position = 0;
+            await objectStore.PutAsync(storageKey, content, contentType, ct);
+            content.Position = 0;
+            var buffer = new byte[64 * 1024];
+            while (await content.ReadAsync(buffer, ct) is > 0) { }
+            content.Position = 0;
+            hash.AppendData(content.ToArray());
         }
-        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-        { return Error(StatusCodes.Status422UnprocessableEntity, "verification_failed", exception.Message); }
+        catch (InvalidDataException) { return Error(StatusCodes.Status413PayloadTooLarge, "attachment_too_large", "The attachment exceeds the configured limit."); }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            return Error(StatusCodes.Status503ServiceUnavailable, "attachment_storage_unavailable", "Attachment storage is unavailable.");
+        }
+        var upload = new AttachmentUpload
+        {
+            Id = uploadId,
+            ConversationId = id,
+            UploadedByUserId = userId.Value,
+            IdempotencyKey = key,
+            FileName = fileName,
+            ContentType = contentType,
+            SizeBytes = file.Length,
+            ContentHash = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant(),
+            ContentId = contentId,
+            StorageKey = storageKey,
+            ScanStatus = "pending",
+            NextScanAt = now,
+            IsInline = isInline,
+            ExpiresAt = now.AddHours(24),
+            CreatedAt = now
+        };
+        db.AttachmentUploads.Add(upload);
+        try
+        {
+            // The upload row and reservation ownership transition are one DB commit.
+            await ObjectOwnershipLifecycle.MarkOwnedAsync(db, [storageKey], ct);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            var duplicate = await db.AttachmentUploads.AsNoTracking().SingleAsync(item => item.UploadedByUserId == userId.Value && item.IdempotencyKey == key, ct);
+            return TypedResults.Ok(ToUploadResponse(duplicate));
+        }
+        return TypedResults.Created(CommunicationPath(http, $"/attachments/{upload.Id}"), ToUploadResponse(upload));
     }
 
-    private static async Task<IResult> ListSuppressions(CommunicationsDbContext db, CancellationToken cancellationToken) =>
-        TypedResults.Ok(await db.Suppressions.AsNoTracking().OrderByDescending(item => item.CreatedAt)
-            .Select(item => new SuppressionResponse(item.Id, item.NormalizedEmailAddress, item.Reason, item.CreatedAt)).ToListAsync(cancellationToken));
-
-    private static async Task<IResult> GetSuppression(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> GetAttachmentUploadStatus(Guid conversationId, Guid attachmentId,
+        HttpContext http, CommunicationsDbContext db, CancellationToken ct)
     {
-        var suppression = await db.Suppressions.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        return suppression is null ? TypedResults.NotFound() : TypedResults.Ok(new SuppressionResponse(suppression.Id, suppression.NormalizedEmailAddress, suppression.Reason, suppression.CreatedAt));
+        http.Response.Headers.CacheControl = "no-store, private";
+        http.Response.Headers.Pragma = "no-cache";
+        http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        var userId = CurrentUserId(http);
+        if (!userId.HasValue) return TypedResults.Unauthorized();
+
+        // Staged uploads are private to their uploader until they are transactionally
+        // bound to an outbound message. The conversation id is part of the lookup so
+        // a valid upload id cannot be used to probe another conversation.
+        var upload = await db.AttachmentUploads.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == attachmentId && item.ConversationId == conversationId &&
+                item.UploadedByUserId == userId.Value && item.ScanStatus != "expired", ct);
+        if (upload is null) return TypedResults.NotFound();
+
+        return TypedResults.Ok(ToUploadResponse(upload));
     }
 
-    private static async Task<IResult> CreateSuppression(CreateSuppressionRequest? request, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> DownloadAttachment(Guid id, HttpContext http, IObjectStore<CommunicationsStorageScope> objectStore, CommunicationsDbContext db, CancellationToken ct)
     {
-        var errors = CommunicationValidation.ValidateSuppression(request);
-        if (errors.Count > 0) return ValidationError(errors);
-        var normalized = EmailSuppression.Normalize(request!.EmailAddress!);
-        var existing = await db.Suppressions.SingleOrDefaultAsync(item => item.NormalizedEmailAddress == normalized, cancellationToken);
-        if (existing is not null) return TypedResults.Ok(new SuppressionResponse(existing.Id, existing.NormalizedEmailAddress, existing.Reason, existing.CreatedAt));
-        var suppression = new Suppression { Id = Guid.NewGuid(), NormalizedEmailAddress = normalized, Reason = string.IsNullOrEmpty(request.Reason) ? null : request.Reason, CreatedAt = DateTimeOffset.UtcNow };
-        db.Suppressions.Add(suppression);
-        await db.SaveChangesAsync(cancellationToken);
-        return TypedResults.Created($"/api/v1/communications/suppressions/{suppression.Id}", new SuppressionResponse(suppression.Id, suppression.NormalizedEmailAddress, suppression.Reason, suppression.CreatedAt));
+        var attachment = await db.MessageAttachments.AsNoTracking().Where(item => item.Id == id && item.ScanStatus == "clean")
+            .Where(item => item.Message!.Conversation != null).Select(item => new { item.StorageKey, item.FileName, item.ContentType, item.SizeBytes }).SingleOrDefaultAsync(ct);
+        if (attachment is null) return TypedResults.NotFound();
+        try
+        {
+            var content = await objectStore.GetAsync(attachment.StorageKey, ct);
+            if (content is null) return TypedResults.NotFound();
+            var contentType = AttachmentSafety.ContentType(attachment.ContentType);
+            var fileName = AttachmentSafety.SafeFileName(attachment.FileName);
+            if (attachment.SizeBytes >= 0) http.Response.ContentLength = attachment.SizeBytes;
+            return TypedResults.Stream(content, contentType, fileName, enableRangeProcessing: false);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested) { return TypedResults.NotFound(); }
     }
 
-    private static async Task<IResult> DeleteSuppression(Guid id, CommunicationsDbContext db, CancellationToken cancellationToken)
+    private static async Task<IResult> DraftAi(Guid id, AiDraftRequest? request, HttpContext http, IAntiforgery antiforgery, ICommunicationsAiService ai, CancellationToken ct)
     {
-        var suppression = await db.Suppressions.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (suppression is null) return TypedResults.NotFound();
-        db.Suppressions.Remove(suppression);
-        await db.SaveChangesAsync(cancellationToken);
-        return TypedResults.NoContent();
+        var csrf = await ValidateAntiforgery(http, antiforgery); if (csrf is not null) return csrf;
+        if (request?.Tone?.Trim().ToLowerInvariant() is not ("concise" or "friendly" or "formal") || string.IsNullOrWhiteSpace(request.Instruction) || request.Instruction.Length > 1000)
+            return Error(StatusCodes.Status400BadRequest, "invalid_request", "Tone must be concise, friendly, or formal and instruction must be 1-1000 characters.");
+        var result = await ai.DraftAsync(id, request.Tone.Trim().ToLowerInvariant(), request.Instruction.Trim(), CurrentUserId(http), ct);
+        if (result.Unavailable) return Error(StatusCodes.Status503ServiceUnavailable, result.ErrorCode!, result.ErrorMessage!);
+        if (!result.Succeeded) return Error(result.ErrorCode == "not_found" ? StatusCodes.Status404NotFound : StatusCodes.Status422UnprocessableEntity, result.ErrorCode!, result.ErrorMessage!);
+        return TypedResults.Ok(new AiDraftResponse(result.InteractionId!.Value, result.Subject, result.Text!, result.ProductDataUsed, "Editable draft only; nothing was sent or queued."));
     }
 
-    private static IEnumerable<(string EmailAddress, string Type)> RecipientRequests(CreateEmailRequest request)
+    private static async Task<IResult> CustomerSuggestionAi(Guid id, HttpContext http, IAntiforgery antiforgery, ICommunicationsAiService ai, CancellationToken ct)
     {
-        foreach (var recipient in request.To ?? []) yield return (recipient!.Email!, "to");
-        foreach (var recipient in request.Cc ?? []) yield return (recipient!.Email!, "cc");
-        foreach (var recipient in request.Bcc ?? []) yield return (recipient!.Email!, "bcc");
+        var csrf = await ValidateAntiforgery(http, antiforgery); if (csrf is not null) return csrf;
+        var result = await ai.SuggestCustomerAsync(id, CurrentUserId(http), ct);
+        if (result.Unavailable) return Error(StatusCodes.Status503ServiceUnavailable, result.ErrorCode!, result.ErrorMessage!);
+        if (result.ErrorCode == "not_found") return TypedResults.NotFound();
+        if (result.ErrorCode == "protected_existing_customer") return Error(StatusCodes.Status409Conflict, result.ErrorCode, result.ErrorMessage!);
+        if (result.ErrorCode == "insufficient_candidates") return Error(StatusCodes.Status422UnprocessableEntity, result.ErrorCode, result.ErrorMessage!);
+        if (result.ErrorCode is not null && !result.Succeeded && result.Outcome == "invalid") return Error(StatusCodes.Status422UnprocessableEntity, result.ErrorCode, result.ErrorMessage!);
+        return TypedResults.Ok(new AiCustomerSuggestionResponse(result.InteractionId!.Value, result.CustomerId, result.Confidence, result.Rationale, result.Outcome ?? "none"));
     }
 
-    private static MessageDetailResponse ToDetail(EmailMessage message) => new(
-        message.Id, message.MailboxId, message.Subject, message.TextBody, message.HtmlBody, message.CreatedAt, message.Source, message.ArchivedAt,
-        message.Deliveries.OrderBy(delivery => delivery.CreatedAt).Select(delivery => new DeliveryResponse(delivery.Id, delivery.EmailAddress, delivery.RecipientType, delivery.Status, delivery.Attempts, delivery.LastError, delivery.AcceptedAt)).ToArray(),
-        message.ExternalLinks.Select(link => new ExternalEntityLinkResponse(link.Id, link.SourceSystem, link.SourceInstance, link.EntityType, link.ExternalEntityId, link.DisplayLabel)).ToArray(),
-        new MailboxSummaryResponse(message.Mailbox!.Id, message.Mailbox.FromAddress, message.Mailbox.DisplayName));
-
-    private static void AddCredential(SharedMailbox mailbox, SmtpMailboxCredentialRequest? smtp, MailgunMailboxCredentialRequest? mailgun,
-        string provider, MailboxCredentialProtector protector, DateTimeOffset now)
+    private static async Task<IResult> CreateConversation(CreateConversationRequest? request, HttpContext http, IAntiforgery antiforgery, ICustomerDirectory customerDirectory, CommunicationsDbContext db, CancellationToken ct)
     {
+        var csrf = await ValidateAntiforgery(http, antiforgery); if (csrf is not null) return csrf;
+        var validation = CommunicationValidation.ValidateConversation(request); if (validation.Count > 0) return ValidationError(validation);
+        var key = http.Request.Headers["Idempotency-Key"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(key) || key.Length > 200 || key != key.Trim() || key.Any(char.IsControl)) return Error(StatusCodes.Status400BadRequest, "idempotency_key_required", "A valid Idempotency-Key header is required.");
+        var fingerprint = EmailPayloadFingerprint.Create(request!);
+        var existing = await db.IdempotencyRecords.SingleOrDefaultAsync(item => item.Key == key, ct);
+        if (existing is not null) return existing.PayloadFingerprint == fingerprint ? TypedResults.Ok(new ConversationMutationResponse(existing.ConversationId, existing.MessageId, "queued", key)) : Error(StatusCodes.Status409Conflict, "idempotency_key_reused", "The Idempotency-Key was already used with a different payload.");
+        var channel = request!.ChannelId.HasValue ? await db.Channels.SingleOrDefaultAsync(item => item.Id == request.ChannelId && item.IsActive, ct)
+            : await db.Channels.Where(item => item.Type == "email" && item.IsActive).OrderByDescending(item => item.IsDefault).ThenBy(item => item.CreatedAt).FirstOrDefaultAsync(ct);
+        if (channel is null) return Error(StatusCodes.Status422UnprocessableEntity, "channel_invalid", "The selected channel does not exist or is inactive.");
+        var now = DateTimeOffset.UtcNow;
+        if (request.CustomerId is { } customerId && await customerDirectory.FindCustomerAsync(customerId, ct) is null) return Error(StatusCodes.Status422UnprocessableEntity, "customer_invalid", "The selected customer does not exist.");
+        var conversation = new Conversation { Id = Guid.NewGuid(), ChannelId = channel.Id, CustomerId = request.CustomerId, CustomerAssociationSource = request.CustomerId.HasValue ? CustomerAssociationSources.Manual : null, Subject = request.Subject, Status = "open", LastActivityAt = now, PreviewText = Preview(request.TextBody ?? request.HtmlBody), CreatedAt = now };
+        db.Conversations.Add(conversation);
+        var message = BuildOutboundMessage(conversation, request.Subject, request.TextBody, request.HtmlBody, http, now);
+        await AddGenericDeliveriesAsync(message, conversation, request, db, customerDirectory, now, ct);
+        AddQueuedEvents(message, now);
+        db.ConversationMessages.Add(message);
+        db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, NextAttemptAt = now, CreatedAt = now });
+        db.IdempotencyRecords.Add(new IdempotencyRecord { Id = Guid.NewGuid(), Key = key, PayloadFingerprint = fingerprint, ConversationId = conversation.Id, MessageId = message.Id, CreatedAt = now });
+        await db.SaveChangesAsync(ct);
+        return TypedResults.Created(CommunicationPath(http, $"/conversations/{conversation.Id}"), new ConversationMutationResponse(conversation.Id, message.Id, "queued", key));
+    }
+
+    private static async Task<IResult> QueueOutboundAsync(Guid conversationId, ReplyRequest request, HttpContext http, CommunicationsDbContext db, CancellationToken ct, bool requireIdempotency)
+    {
+        var key = http.Request.Headers["Idempotency-Key"].FirstOrDefault();
+        if (requireIdempotency && (string.IsNullOrWhiteSpace(key) || key.Length > 200 || key != key.Trim() || key.Any(char.IsControl))) return Error(StatusCodes.Status400BadRequest, "idempotency_key_required", "A valid Idempotency-Key header is required.");
+        var conversation = await db.Conversations.Include(item => item.Channel).Include(item => item.Messages).ThenInclude(item => item.Participant).SingleOrDefaultAsync(item => item.Id == conversationId, ct);
+        if (conversation is null) return TypedResults.NotFound();
+        if (!conversation.Channel!.IsActive) return Error(StatusCodes.Status422UnprocessableEntity, "channel_inactive", "The conversation channel is inactive.");
+        var requestFingerprint = EmailPayloadFingerprint.Create(new { conversationId, request.TextBody, request.HtmlBody, request.Subject, request.ReplyMode, request.AttachmentIds });
+        if (key is not null)
+        {
+            var existing = await db.IdempotencyRecords.SingleOrDefaultAsync(item => item.Key == key, ct);
+            if (existing is not null) return existing.PayloadFingerprint == requestFingerprint ? TypedResults.Ok(new ConversationMutationResponse(conversationId, existing.MessageId, "queued", key)) : Error(StatusCodes.Status409Conflict, "idempotency_key_reused", "The Idempotency-Key was already used with a different payload.");
+        }
+        var lastInbound = conversation.Messages.Where(item => item.Direction == "inbound").OrderByDescending(item => item.OccurredAt).FirstOrDefault();
+        var replyMode = request.ReplyMode?.Trim().ToLowerInvariant() ?? "reply";
+        var metadata = EmailEnvelopeFactory.ParseMetadata(lastInbound?.ChannelMetadataJson);
+        var references = (metadata.References ?? []).Concat(lastInbound?.RfcMessageId is null ? [] : [lastInbound.RfcMessageId]).Distinct(StringComparer.OrdinalIgnoreCase).Take(20).ToArray();
+        var now = DateTimeOffset.UtcNow;
+        var message = BuildOutboundMessage(conversation, request.Subject ?? conversation.Subject, request.TextBody, request.HtmlBody, http, now, new EmailThreadMetadata(InReplyTo: lastInbound?.RfcMessageId, References: references));
+        var recipients = lastInbound?.Participant is null ? Array.Empty<EmailRecipientRequest?>() : [new EmailRecipientRequest(lastInbound.Participant.Address)];
+        if (recipients.Length == 0) return Error(StatusCodes.Status422UnprocessableEntity, "recipients_missing", "The conversation has no inbound participant to reply to.");
+        var replyAllCc = replyMode == "reply_all" ? ReplyAllAddresses(lastInbound, metadata, conversation.Channel.Address) : [];
+        var primaryAddress = EmailSuppression.Normalize(recipients[0]!.Email!);
+        var ccAddresses = replyAllCc
+            .Where(address => !string.Equals(EmailSuppression.Normalize(address), primaryAddress, StringComparison.Ordinal))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var staged = request.AttachmentIds ?? [];
+        var stagedUploads = staged.Count == 0 ? [] : await db.AttachmentUploads.AsNoTracking()
+            .Where(item => staged.Contains(item.Id) && item.ConversationId == conversationId &&
+                item.UploadedByUserId == CurrentUserId(http) && item.ScanStatus == "clean" && item.ExpiresAt > now)
+            .ToListAsync(ct);
+        if (stagedUploads.Count != staged.Count) return Error(StatusCodes.Status409Conflict, "attachments_not_ready", "One or more attachments are still being scanned or are unavailable.");
+        var actualDestinations = recipients.Select(recipient => EmailSuppression.Normalize(recipient!.Email!))
+            .Concat(ccAddresses.Select(EmailSuppression.Normalize))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var suppressed = conversation.Channel.Type == "email"
+            ? await db.Suppressions.AsNoTracking().Where(item => actualDestinations.Contains(item.NormalizedEmailAddress)).Select(item => item.NormalizedEmailAddress).ToListAsync(ct)
+            : [];
+        if (suppressed.Count > 0) return Error(StatusCodes.Status422UnprocessableEntity, "recipient_suppressed", "One or more recipients are suppressed.", new Dictionary<string, string[]> { ["recipients"] = suppressed.ToArray() });
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (stagedUploads.Count > 0)
+        {
+            // Expiry and consumption race on this conditional transition. The
+            // winner owns the row until the message attachment and outbox commit.
+            var claimed = await db.AttachmentUploads
+                .Where(item => staged.Contains(item.Id) && item.ConversationId == conversationId &&
+                    item.UploadedByUserId == CurrentUserId(http) && item.ScanStatus == "clean" && item.ExpiresAt > now)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.ScanStatus, "claimed")
+                    .SetProperty(item => item.ScanLeaseId, (string?)null)
+                    .SetProperty(item => item.ScanLeaseUntil, (DateTimeOffset?)null), ct);
+            if (claimed != stagedUploads.Count)
+            {
+                await transaction.RollbackAsync(ct);
+                return Error(StatusCodes.Status409Conflict, "attachments_not_ready", "One or more attachments are still being scanned or are unavailable.");
+            }
+        }
+
+        AddDeliveries(message, recipients, ccAddresses.Select(address => new EmailRecipientRequest(address)), [], now);
+        foreach (var upload in stagedUploads)
+            message.Attachments.Add(new MessageAttachment { Id = Guid.NewGuid(), MessageId = message.Id, FileName = upload.FileName, ContentType = upload.ContentType, SizeBytes = upload.SizeBytes, ContentHash = upload.ContentHash, ContentId = upload.ContentId, StorageKey = upload.StorageKey, ScanStatus = "clean", IsInline = upload.IsInline, CreatedAt = now });
+        AddQueuedEvents(message, now);
+        db.ConversationMessages.Add(message);
+        if (stagedUploads.Count > 0)
+        {
+            await ObjectOwnershipLifecycle.MarkOwnedAsync(db, stagedUploads.Select(item => item.StorageKey), ct);
+            await db.AttachmentUploads.Where(item => staged.Contains(item.Id) && item.ScanStatus == "claimed").ExecuteDeleteAsync(ct);
+        }
+        db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, NextAttemptAt = now, CreatedAt = now });
+        db.IdempotencyRecords.Add(new IdempotencyRecord { Id = Guid.NewGuid(), Key = key!, PayloadFingerprint = requestFingerprint, ConversationId = conversationId, MessageId = message.Id, CreatedAt = now });
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return TypedResults.Created(CommunicationPath(http, $"/conversations/{conversationId}"), new ConversationMutationResponse(conversationId, message.Id, "queued", key));
+    }
+
+    private static async Task<IResult> AddNote(Guid id, NoteRequest? request, HttpContext http, IAntiforgery antiforgery, CommunicationsDbContext db, CancellationToken ct)
+    {
+        var csrf = await ValidateAntiforgery(http, antiforgery); if (csrf is not null) return csrf;
+        var validation = CommunicationValidation.ValidateNote(request); if (validation.Count > 0) return ValidationError(validation);
+        var conversation = await db.Conversations.SingleOrDefaultAsync(item => item.Id == id, ct); if (conversation is null) return TypedResults.NotFound();
+        var now = DateTimeOffset.UtcNow; var message = new ConversationMessage { Id = Guid.NewGuid(), ConversationId = id, Direction = "internal_note", TextBody = request!.TextBody, AuthorUserId = CurrentUserId(http), OccurredAt = now, CreatedAt = now };
+        conversation.LastActivityAt = now; conversation.PreviewText = Preview(request.TextBody); db.ConversationMessages.Add(message); await db.SaveChangesAsync(ct); return TypedResults.Created(CommunicationPath(http, $"/conversations/{id}"), new ConversationMutationResponse(id, message.Id, "created", null));
+    }
+
+    private static async Task<IResult> UpdateConversation(Guid id, UpdateConversationRequest? request, ICustomerDirectory customerDirectory, CommunicationsDbContext db, CancellationToken ct)
+    {
+        if (request is null || (request.Status is not null && request.Status.Trim().ToLowerInvariant() is not ("open" or "closed" or "archived"))) return Error(StatusCodes.Status400BadRequest, "invalid_request", "Status must be open, closed, or archived.");
+        var conversation = await db.Conversations.Include(item => item.CustomerCandidates).SingleOrDefaultAsync(item => item.Id == id, ct); if (conversation is null) return TypedResults.NotFound();
+        if (request.Status is not null) conversation.Status = request.Status.Trim().ToLowerInvariant();
+        if (request.AssignedUserId is { } assigned) conversation.AssignedUserId = assigned.ValueKind == JsonValueKind.Null ? null : assigned.GetGuid();
+        if (request.CustomerId.ValueKind != JsonValueKind.Undefined)
+        {
+            var requestedCustomerId = 0;
+            if (request.CustomerId.ValueKind is not (JsonValueKind.Null or JsonValueKind.Number) ||
+                (request.CustomerId.ValueKind == JsonValueKind.Number && !request.CustomerId.TryGetInt32(out requestedCustomerId)))
+                return Error(StatusCodes.Status400BadRequest, "invalid_request", "CustomerId must be an integer or null.");
+
+            var requestedCustomer = request.CustomerId.ValueKind == JsonValueKind.Null ? (int?)null : requestedCustomerId;
+            if (requestedCustomer is { } customerId && await customerDirectory.FindCustomerAsync(customerId, ct) is null)
+                return Error(StatusCodes.Status422UnprocessableEntity, "customer_invalid", "The selected customer does not exist.");
+
+            conversation.CustomerId = requestedCustomer;
+            conversation.CustomerAssociationSource = requestedCustomer.HasValue ? CustomerAssociationSources.Manual : null;
+            conversation.SuggestedCustomerId = null;
+            conversation.SuggestedCustomerConfidence = null;
+            conversation.SuggestedCustomerReasoning = null;
+            conversation.CustomerCandidates.Clear();
+        }
+        await db.SaveChangesAsync(ct); return TypedResults.Ok(new
+        {
+            conversation.Id,
+            conversation.Status,
+            conversation.AssignedUserId,
+            conversation.CustomerId,
+            conversation.CustomerAssociationSource,
+            SuggestedCustomerId = conversation.SuggestedCustomerId,
+            CandidateCustomerIds = conversation.CustomerCandidates.OrderBy(candidate => candidate.CustomerId).Select(candidate => candidate.CustomerId).ToArray(),
+        });
+    }
+
+    private static async Task<IResult> ListTags(CommunicationsDbContext db, CancellationToken ct) => TypedResults.Ok(await db.Tags.AsNoTracking().OrderBy(item => item.Name).Select(item => new TagResponse(item.Id, item.Name, item.Color)).ToListAsync(ct));
+    private static async Task<IResult> CreateTag(CreateTagRequest? request, HttpContext http, CommunicationsDbContext db, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Name) || request.Name.Length > 100) return Error(StatusCodes.Status400BadRequest, "invalid_request", "A tag name is required.");
+        var tag = new Tag { Id = Guid.NewGuid(), Name = request.Name.Trim(), Color = request.Color?.Trim() }; db.Tags.Add(tag); try { await db.SaveChangesAsync(ct); } catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return Error(StatusCodes.Status409Conflict, "tag_exists", "A tag with this name already exists."); }
+        return TypedResults.Created(CommunicationPath(http, $"/tags/{tag.Id}"), new TagResponse(tag.Id, tag.Name, tag.Color));
+    }
+    private static async Task<IResult> AddTag(Guid id, Guid tagId, CommunicationsDbContext db, CancellationToken ct) { if (!await db.Conversations.AnyAsync(item => item.Id == id, ct) || !await db.Tags.AnyAsync(item => item.Id == tagId, ct)) return TypedResults.NotFound(); if (!await db.ConversationTags.AnyAsync(item => item.ConversationId == id && item.TagId == tagId, ct)) { db.ConversationTags.Add(new ConversationTag { ConversationId = id, TagId = tagId }); await db.SaveChangesAsync(ct); } return TypedResults.NoContent(); }
+    private static async Task<IResult> RemoveTag(Guid id, Guid tagId, CommunicationsDbContext db, CancellationToken ct) { var link = await db.ConversationTags.FindAsync([id, tagId], ct); if (link is null) return TypedResults.NotFound(); db.ConversationTags.Remove(link); await db.SaveChangesAsync(ct); return TypedResults.NoContent(); }
+
+    private static async Task<IResult> ListChannels(CommunicationsDbContext db, CancellationToken ct) => TypedResults.Ok((await db.Channels.AsNoTracking().Include(item => item.Credential).OrderBy(item => item.CreatedAt).ToListAsync(ct)).Select(ToChannelResponse).ToArray());
+    private static async Task<IResult> GetChannel(Guid id, CommunicationsDbContext db, CancellationToken ct) { var channel = await db.Channels.AsNoTracking().Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, ct); return channel is null ? TypedResults.NotFound() : TypedResults.Ok(ToChannelResponse(channel)); }
+    private static async Task<IResult> CreateChannel(CreateChannelRequest? request, HttpContext http, CommunicationsDbContext db, MailboxCredentialProtector protector, CancellationToken ct)
+    {
+        var errors = CommunicationValidation.ValidateChannel(request); if (errors.Count > 0) return ValidationError(errors); var now = DateTimeOffset.UtcNow; var channel = new Channel { Id = Guid.NewGuid(), Type = request!.Type!.Trim().ToLowerInvariant(), Address = request.Address!.Trim(), DisplayName = request.DisplayName?.Trim(), Provider = CommunicationValidation.ProviderName(request.Provider), IsDefault = request.IsDefault == true || !await db.Channels.AnyAsync(ct), CreatedAt = now }; AddCredential(channel, request.Smtp, request.Mailgun, channel.Provider, protector, now); if (channel.IsDefault) await db.Channels.Where(item => item.IsDefault).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false), ct); db.Channels.Add(channel); try { await db.SaveChangesAsync(ct); } catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return Error(StatusCodes.Status409Conflict, "channel_exists", "A channel with this address already exists."); }
+        return TypedResults.Created(CommunicationPath(http, $"/channels/{channel.Id}"), ToChannelResponse(channel));
+    }
+    private static async Task<IResult> UpdateChannel(Guid id, UpdateChannelRequest? request, CommunicationsDbContext db, MailboxCredentialProtector protector, CancellationToken ct)
+    {
+        var errors = CommunicationValidation.ValidateChannelUpdate(request); if (errors.Count > 0) return ValidationError(errors);
+        var channel = await db.Channels.Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, ct); if (channel is null) return TypedResults.NotFound();
+        if (request!.DisplayName is not null) channel.DisplayName = string.IsNullOrEmpty(request.DisplayName) ? null : request.DisplayName;
+        if (request.IsActive.HasValue) channel.IsActive = request.IsActive.Value;
+        if (request.IsDefault == true) channel.IsDefault = true;
+        if (request.Provider is not null || request.Smtp is not null || request.Mailgun is not null)
+        {
+            var provider = CommunicationValidation.ProviderName(request.Provider ?? (request.Mailgun is not null ? "mailgun" : request.Smtp is not null ? "smtp" : channel.Provider));
+            if (!TryUpdateCredential(channel, request.Smtp, request.Mailgun, provider, protector, DateTimeOffset.UtcNow, out var credentialError))
+                return ValidationError(new Dictionary<string, string[]> { [provider] = [credentialError!] });
+            channel.Provider = provider;
+        }
+        if (channel.IsDefault) await db.Channels.Where(item => item.Id != id && item.IsDefault).ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false), ct);
+        await db.SaveChangesAsync(ct); return TypedResults.Ok(ToChannelResponse(channel));
+    }
+    private static async Task<IResult> VerifyChannel(Guid id, CommunicationsDbContext db, SmtpDeliveryProvider smtp, MailgunDeliveryProvider mailgun, CancellationToken ct) { var channel = await db.Channels.Include(item => item.Credential).SingleOrDefaultAsync(item => item.Id == id, ct); if (channel is null) return TypedResults.NotFound(); try { using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromSeconds(10)); if (channel.Provider == "smtp") await smtp.VerifyAsync(channel, timeout.Token); else await mailgun.VerifyAsync(channel, timeout.Token); return TypedResults.Ok(new { ok = true }); } catch (Exception) when (!ct.IsCancellationRequested) { return Error(StatusCodes.Status422UnprocessableEntity, "verification_failed", "Channel verification failed."); } }
+
+    private static async Task<IResult> ListSuppressions(CommunicationsDbContext db, CancellationToken ct) => TypedResults.Ok(await db.Suppressions.AsNoTracking().OrderByDescending(item => item.CreatedAt).Select(item => new SuppressionResponse(item.Id, item.NormalizedEmailAddress, item.Reason, item.CreatedAt)).ToListAsync(ct));
+    private static async Task<IResult> GetSuppression(Guid id, CommunicationsDbContext db, CancellationToken ct) { var item = await db.Suppressions.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, ct); return item is null ? TypedResults.NotFound() : TypedResults.Ok(new SuppressionResponse(item.Id, item.NormalizedEmailAddress, item.Reason, item.CreatedAt)); }
+    private static async Task<IResult> CreateSuppression(CreateSuppressionRequest? request, HttpContext http, CommunicationsDbContext db, CancellationToken ct) { var errors = CommunicationValidation.ValidateSuppression(request); if (errors.Count > 0) return ValidationError(errors); var normalized = EmailSuppression.Normalize(request!.EmailAddress!); var existing = await db.Suppressions.SingleOrDefaultAsync(item => item.NormalizedEmailAddress == normalized, ct); if (existing is not null) return TypedResults.Ok(new SuppressionResponse(existing.Id, existing.NormalizedEmailAddress, existing.Reason, existing.CreatedAt)); var item = new Suppression { Id = Guid.NewGuid(), NormalizedEmailAddress = normalized, Reason = request.Reason, CreatedAt = DateTimeOffset.UtcNow }; db.Suppressions.Add(item); await db.SaveChangesAsync(ct); return TypedResults.Created(CommunicationPath(http, $"/suppressions/{item.Id}"), new SuppressionResponse(item.Id, item.NormalizedEmailAddress, item.Reason, item.CreatedAt)); }
+    private static async Task<IResult> DeleteSuppression(Guid id, CommunicationsDbContext db, CancellationToken ct) { var item = await db.Suppressions.SingleOrDefaultAsync(item => item.Id == id, ct); if (item is null) return TypedResults.NotFound(); db.Suppressions.Remove(item); await db.SaveChangesAsync(ct); return TypedResults.NoContent(); }
+
+    private static ConversationMessage BuildOutboundMessage(Conversation conversation, string? subject, string? text, string? html, HttpContext http, DateTimeOffset now, EmailThreadMetadata? metadata = null)
+    {
+        var message = new ConversationMessage { Id = Guid.NewGuid(), ConversationId = conversation.Id, Direction = "outbound", AuthorUserId = CurrentUserId(http), Subject = subject, TextBody = text, HtmlBody = html, ChannelMetadataJson = metadata is null ? null : JsonSerializer.Serialize(metadata, SmtpDeliveryProvider.JsonOptions), OccurredAt = now, CreatedAt = now };
+        message.RfcMessageId = EmailMessageId.For(message.Id);
+        conversation.Subject ??= subject; conversation.LastActivityAt = now; conversation.PreviewText = text ?? html; return message;
+    }
+    private static void AddDeliveries(ConversationMessage message, IEnumerable<EmailRecipientRequest?> to, IEnumerable<EmailRecipientRequest?> cc, IEnumerable<EmailRecipientRequest?> bcc, DateTimeOffset now) { foreach (var (recipient, type) in (to ?? []).Select(item => (item, "to")).Concat((cc ?? []).Select(item => (item, "cc"))).Concat((bcc ?? []).Select(item => (item, "bcc")))) if (recipient?.Email is not null) message.Deliveries.Add(new MessageDelivery { Id = Guid.NewGuid(), MessageId = message.Id, RecipientAddress = recipient.Email, RecipientType = type, CreatedAt = now }); }
+    private static async Task AddGenericDeliveriesAsync(ConversationMessage message, Conversation conversation, CreateConversationRequest request, CommunicationsDbContext db, ICustomerDirectory customerDirectory, DateTimeOffset now, CancellationToken ct)
+    {
+        var channel = await db.Channels.SingleAsync(item => item.Id == conversation.ChannelId, ct);
+        var recipients = request.Recipients ?? [];
+        if (recipients.Count == 0 && channel.Type == "email")
+        {
+            AddDeliveries(message, request.To ?? [], request.Cc ?? [], [], now);
+            foreach (var delivery in message.Deliveries)
+            {
+                var participant = await db.Participants.SingleOrDefaultAsync(item => item.ChannelId == channel.Id && item.Address == EmailSuppression.Normalize(delivery.RecipientAddress), ct)
+                    ?? new Participant { Id = Guid.NewGuid(), ChannelId = channel.Id, Address = EmailSuppression.Normalize(delivery.RecipientAddress), CreatedAt = now };
+                if (participant.Id != Guid.Empty && participant.Channel is null) db.Participants.Add(participant);
+                delivery.RecipientParticipantId = participant.Id;
+                delivery.RecipientParticipant = participant;
+                conversation.Participants.Add(new ConversationParticipant { ConversationId = conversation.Id, ParticipantId = participant.Id, Participant = participant });
+            }
+            return;
+        }
+
+        foreach (var recipient in recipients)
+        {
+            if (recipient is null) continue;
+            Participant? participant = recipient.ParticipantId is { } participantId
+                ? await db.Participants.SingleOrDefaultAsync(item => item.Id == participantId && item.ChannelId == channel.Id, ct)
+                : null;
+            if (participant is null && !string.IsNullOrWhiteSpace(recipient.Address))
+            {
+                var normalized = channel.Type == "email" ? EmailSuppression.Normalize(recipient.Address) : recipient.Address.Trim();
+                participant = await db.Participants.SingleOrDefaultAsync(item => item.ChannelId == channel.Id && item.Address == normalized, ct);
+                if (participant is null)
+                {
+                    participant = new Participant { Id = Guid.NewGuid(), ChannelId = channel.Id, Address = normalized, ContactId = recipient.ContactId, CreatedAt = now };
+                    db.Participants.Add(participant);
+                }
+            }
+            if (participant is null) continue;
+            if (recipient.ContactId is { } contactId && await customerDirectory.FindContactAsync(contactId, ct) is null)
+                throw new InvalidOperationException("The selected contact does not exist.");
+            var recipientType = recipient.Type?.Trim().ToLowerInvariant() is "cc" or "bcc" ? recipient.Type.Trim().ToLowerInvariant() : "to";
+            message.Deliveries.Add(new MessageDelivery { Id = Guid.NewGuid(), MessageId = message.Id, RecipientParticipantId = participant.Id, RecipientAddress = participant.Address, RecipientType = recipientType, CreatedAt = now });
+            if (!conversation.Participants.Any(item => item.ParticipantId == participant.Id)) conversation.Participants.Add(new ConversationParticipant { ConversationId = conversation.Id, ParticipantId = participant.Id, Participant = participant });
+        }
+    }
+    private static void AddQueuedEvents(ConversationMessage message, DateTimeOffset now) { foreach (var delivery in message.Deliveries) message.Events.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, DeliveryId = delivery.Id, EventType = "queued", OccurredAt = now }); message.Events.Add(new MessageEvent { Id = Guid.NewGuid(), MessageId = message.Id, EventType = "message_queued", OccurredAt = now }); }
+    private static ConversationMessageResponse ToMessage(ConversationMessage item, HttpContext http) => new(item.Id, item.Direction, item.Participant is null ? null : new ParticipantResponse(item.Participant.Id, item.Participant.ChannelId, item.Participant.Address, item.Participant.DisplayName, item.Participant.ContactId), item.AuthorUserId, item.Subject, item.TextBody, item.HtmlBody, item.OccurredAt, item.CreatedAt, item.Attachments.Select(attachment => new AttachmentResponse(attachment.Id, attachment.FileName, attachment.ContentType, attachment.SizeBytes, attachment.ContentId, attachment.ScanStatus, attachment.IsInline, attachment.CreatedAt, attachment.ScanStatus == "clean", CommunicationPath(http, $"/attachments/{attachment.Id}/download"))).ToArray(), item.Deliveries.Select(delivery => new DeliveryResponse(delivery.Id, delivery.RecipientAddress, delivery.RecipientType, delivery.Status, delivery.Attempts, null, delivery.AcceptedAt)).ToArray());
+
+    private static string CommunicationPath(HttpContext http, string suffix)
+    {
+        var path = (http.Request.PathBase + http.Request.Path).Value ?? string.Empty;
+
+        const string module = "/communications";
+        var moduleIndex = path.IndexOf(module, StringComparison.Ordinal);
+        if (moduleIndex < 0) return "/api/v1/communications" + suffix;
+        return path[..(moduleIndex + module.Length)] + suffix;
+    }
+    private static IReadOnlyList<ParticipantResponse> Participants(IEnumerable<ConversationParticipant> links) => links.Where(item => item.Participant is not null).Select(item => item.Participant!).DistinctBy(item => item.Id).Select(item => new ParticipantResponse(item.Id, item.ChannelId, item.Address, item.DisplayName, item.ContactId)).ToArray();
+    private static IReadOnlyList<TagResponse> Tags(IEnumerable<ConversationTag> tags) => tags.Where(item => item.Tag is not null).Select(item => new TagResponse(item.Tag!.Id, item.Tag.Name, item.Tag.Color)).ToArray();
+    private static string? Preview(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Length <= 500 ? value : value[..500];
+    private static AttachmentUploadResponse ToUploadResponse(AttachmentUpload item) =>
+        new(item.Id, item.FileName, item.ContentType, item.SizeBytes, item.ScanStatus, item.IsInline, item.ExpiresAt, item.ScanStatus == "clean");
+
+    private static ReplyRecipientsResponse ReplyRecipients(Conversation conversation)
+    {
+        var inbound = conversation.Messages.Where(item => item.Direction == "inbound").OrderByDescending(item => item.OccurredAt).FirstOrDefault();
+        if (inbound?.Participant is null || conversation.Channel is null)
+            return new(false, false, null, []);
+        var metadata = EmailEnvelopeFactory.ParseMetadata(inbound.ChannelMetadataJson);
+        var cc = ReplyAllAddresses(inbound, metadata, conversation.Channel.Address)
+            .Select(address => new ParticipantResponse(Guid.Empty, conversation.ChannelId, address, null, null)).ToArray();
+        return new(true, cc.Length > 0, inbound.Participant.Address, cc);
+    }
+
+    private static IReadOnlyList<string> ReplyAllAddresses(ConversationMessage? inbound, EmailThreadMetadata metadata, string mailbox)
+    {
+        if (inbound is null) return [];
+        var sender = inbound.Participant?.Address;
+        return (metadata.Cc ?? [])
+            .Where(CommunicationValidation.IsEmail)
+            .Select(EmailSuppression.Normalize)
+            .Where(address => !string.Equals(address, EmailSuppression.Normalize(mailbox), StringComparison.Ordinal) &&
+                              !string.Equals(address, EmailSuppression.Normalize(sender), StringComparison.Ordinal))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToArray();
+    }
+
+    private static ChannelResponse ToChannelResponse(Channel item) { ChannelSettingsSummary? settings = null; if (item.Credential is not null && item.Provider == "smtp") { var value = JsonSerializer.Deserialize<SmtpProviderSettings>(item.Credential.SettingsJson, SmtpDeliveryProvider.JsonOptions); if (value is not null) settings = new(value.Host, value.Port, value.UseSsl, value.Username, null, null); } else if (item.Credential is not null && item.Provider == "mailgun") { var value = JsonSerializer.Deserialize<MailgunProviderSettings>(item.Credential.SettingsJson, SmtpDeliveryProvider.JsonOptions); if (value is not null) settings = new(null, null, null, null, value.Domain, value.Region); } return new(item.Id, item.Type, item.Address, item.DisplayName, item.CreatedAt, item.IsActive, item.Provider, item.IsDefault, item.Credential is not null, settings); }
+    private static void AddCredential(Channel channel, SmtpChannelCredentialRequest? smtp, MailgunChannelCredentialRequest? mailgun, string provider, MailboxCredentialProtector protector, DateTimeOffset now) { if (provider == "smtp" && smtp is not null) channel.Credential = new ChannelCredential { Id = Guid.NewGuid(), ChannelId = channel.Id, SettingsJson = JsonSerializer.Serialize(new SmtpProviderSettings(smtp.Host!.Trim(), smtp.Port!.Value, smtp.UseSsl ?? false, string.IsNullOrWhiteSpace(smtp.Username) ? null : smtp.Username), SmtpDeliveryProvider.JsonOptions), SecretCiphertext = protector.Protect(smtp.Password ?? string.Empty), CreatedAt = now }; else if (provider == "mailgun" && mailgun is not null) channel.Credential = new ChannelCredential { Id = Guid.NewGuid(), ChannelId = channel.Id, SettingsJson = JsonSerializer.Serialize(new MailgunProviderSettings(mailgun.Domain!.Trim(), mailgun.Region!.Trim().ToLowerInvariant()), SmtpDeliveryProvider.JsonOptions), SecretCiphertext = protector.Protect(JsonSerializer.Serialize(new MailgunCredentialSecrets(mailgun.ApiKey!.Trim(), mailgun.InboundSigningKey?.Trim()), SmtpDeliveryProvider.JsonOptions)), CreatedAt = now }; }
+    private static bool TryUpdateCredential(Channel channel, SmtpChannelCredentialRequest? smtp, MailgunChannelCredentialRequest? mailgun, string provider,
+        MailboxCredentialProtector protector, DateTimeOffset now, out string? error)
+    {
+        error = null;
         if (provider == "smtp" && smtp is not null)
         {
-            mailbox.Credential = new MailboxProviderCredential
+            string? existingPassword = null;
+            if (channel.Credential is not null)
             {
-                Id = Guid.NewGuid(),
-                MailboxId = mailbox.Id,
-                Provider = provider,
-                SettingsJson = JsonSerializer.Serialize(new SmtpProviderSettings(smtp.Host!.Trim(), smtp.Port!.Value, smtp.UseSsl ?? false, string.IsNullOrWhiteSpace(smtp.Username) ? null : smtp.Username), SmtpDeliveryProvider.JsonOptions),
-                SecretCiphertext = protector.Protect(smtp.Password ?? string.Empty),
-                CreatedAt = now,
-            };
-        }
-        else if (provider == "mailgun" && mailgun is not null)
-        {
-            mailbox.Credential = new MailboxProviderCredential
-            {
-                Id = Guid.NewGuid(),
-                MailboxId = mailbox.Id,
-                Provider = provider,
-                SettingsJson = JsonSerializer.Serialize(new MailgunProviderSettings(mailgun.Domain!.Trim(), mailgun.Region!.Trim().ToLowerInvariant()), SmtpDeliveryProvider.JsonOptions),
-                SecretCiphertext = protector.Protect(mailgun.ApiKey!.Trim()),
-                CreatedAt = now,
-            };
-        }
-    }
-
-    private static MailboxResponse ToMailboxResponse(SharedMailbox mailbox)
-    {
-        MailboxSettingsSummary? settings = null;
-        if (mailbox.Credential is not null)
-        {
-            if (mailbox.Provider == "smtp")
-            {
-                var smtp = JsonSerializer.Deserialize<SmtpProviderSettings>(mailbox.Credential.SettingsJson, SmtpDeliveryProvider.JsonOptions);
-                settings = smtp is null ? null : new MailboxSettingsSummary(smtp.Host, smtp.Port, smtp.UseSsl, smtp.Username, null, null);
+                try { existingPassword = protector.Unprotect(channel.Credential.SecretCiphertext); } catch (Exception) { }
             }
-            else if (mailbox.Provider == "mailgun")
-            {
-                var mailgun = JsonSerializer.Deserialize<MailgunProviderSettings>(mailbox.Credential.SettingsJson, SmtpDeliveryProvider.JsonOptions);
-                settings = mailgun is null ? null : new MailboxSettingsSummary(null, null, null, null, mailgun.Domain, mailgun.Region);
-            }
+            var credential = channel.Credential ?? new ChannelCredential { Id = Guid.NewGuid(), ChannelId = channel.Id, SettingsJson = string.Empty, SecretCiphertext = string.Empty, CreatedAt = now };
+            credential.SettingsJson = JsonSerializer.Serialize(new SmtpProviderSettings(smtp.Host!.Trim(), smtp.Port!.Value, smtp.UseSsl ?? false, string.IsNullOrWhiteSpace(smtp.Username) ? null : smtp.Username), SmtpDeliveryProvider.JsonOptions);
+            credential.SecretCiphertext = protector.Protect(smtp.Password ?? existingPassword ?? string.Empty);
+            credential.CreatedAt = now;
+            if (channel.Credential is null) channel.Credential = credential;
+            return true;
         }
-        return new MailboxResponse(mailbox.Id, mailbox.FromAddress, mailbox.DisplayName, mailbox.CreatedAt, mailbox.IsActive,
-            mailbox.Provider, mailbox.IsDefault, mailbox.Credential is not null, settings);
+        if (provider == "mailgun" && mailgun is not null)
+        {
+            MailgunCredentialSecrets? existing = null;
+            if (channel.Credential is not null)
+            {
+                try { existing = MailgunCredentialSecretReader.Read(protector, channel.Credential); } catch (Exception) { }
+            }
+            var apiKey = string.IsNullOrWhiteSpace(mailgun.ApiKey) ? existing?.ApiKey : mailgun.ApiKey.Trim();
+            var signingKey = string.IsNullOrWhiteSpace(mailgun.InboundSigningKey) ? existing?.InboundSigningKey : mailgun.InboundSigningKey.Trim();
+            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(signingKey))
+            {
+                error = "Mailgun API key and inbound signing key are required when no existing protected secret is available.";
+                return false;
+            }
+            var credential = channel.Credential ?? new ChannelCredential { Id = Guid.NewGuid(), ChannelId = channel.Id, SettingsJson = string.Empty, SecretCiphertext = string.Empty, CreatedAt = now };
+            credential.SettingsJson = JsonSerializer.Serialize(new MailgunProviderSettings(mailgun.Domain!.Trim(), mailgun.Region!.Trim().ToLowerInvariant()), SmtpDeliveryProvider.JsonOptions);
+            credential.SecretCiphertext = protector.Protect(JsonSerializer.Serialize(new MailgunCredentialSecrets(apiKey.Trim(), signingKey), SmtpDeliveryProvider.JsonOptions));
+            credential.CreatedAt = now;
+            if (channel.Credential is null) channel.Credential = credential;
+            return true;
+        }
+        error = "Credentials for the selected provider are required.";
+        return false;
     }
-
-    private static bool IsUniqueViolation(DbUpdateException exception) =>
-        exception.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation };
-
-    private static (int Page, int PageSize) PageValues(int? page, int? pageSize) =>
-        (Math.Max(page ?? 1, 1), Math.Clamp(pageSize ?? 25, 1, 100));
-
+    private static Guid? CurrentUserId(HttpContext http) => Guid.TryParse(http.User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+    private static async Task<IResult?> ValidateAntiforgery(HttpContext context, IAntiforgery antiforgery) { try { await antiforgery.ValidateRequestAsync(context); return null; } catch (AntiforgeryValidationException) { return Error(StatusCodes.Status400BadRequest, "csrf_validation_failed", "A valid X-XSRF-TOKEN header and antiforgery cookie are required."); } }
+    private static (int Page, int PageSize) PageValues(int? page, int? pageSize) => (Math.Max(page ?? 1, 1), Math.Clamp(pageSize ?? 25, 1, 100));
     private static IResult ValidationError(Dictionary<string, string[]> errors) => Error(StatusCodes.Status400BadRequest, "invalid_request", "The request is invalid.", errors);
     private static IResult Error(int status, string code, string message, IReadOnlyDictionary<string, string[]>? fields = null) => TypedResults.Json(new CommunicationErrorResponse(new CommunicationError(code, message, fields)), statusCode: status);
+    private static bool IsUniqueViolation(DbUpdateException exception) => exception.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation };
 }

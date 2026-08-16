@@ -18,11 +18,11 @@ describe("navigation permissions", () => {
   });
 
   it("filters business, owner-only, and authorization navigation for a restricted user", () => {
-    const sections = visibleNavSections(["customers:view", "communications:messages-view"], false, false);
+    const sections = visibleNavSections(["customers:view", "communications:conversations-view"], false, false);
 
     expect(sections.flatMap((section) => section.items.map((item) => item.label))).toEqual([
       "navigation.customers",
-      "navigation.messages",
+      "navigation.inbox",
       "navigation.settings",
     ]);
   });
@@ -87,7 +87,13 @@ describe("navigation permissions", () => {
 
   it("provides search defaults only for list destinations", () => {
     expect(navSearchFor("customer-list")).toEqual({ page: 1, search: "" });
-    expect(navSearchFor("messages-list")).toEqual({ page: 1, archived: undefined });
+    expect(navSearchFor("inbox-list")).toEqual({
+      conversationId: undefined,
+      status: undefined,
+      customerId: undefined,
+      tagId: undefined,
+      unreadOnly: undefined,
+    });
     expect(navSearchFor("products-list")).toEqual({ page: 1, search: "", status: "", categoryId: "" });
     expect(navSearchFor(undefined)).toBeUndefined();
   });
@@ -98,7 +104,7 @@ describe("active navigation paths", () => {
 
   it("chooses the longest matching prefix for nested routes", () => {
     expect(activeNavPath("/products/categories/42", items)).toBe("/products/categories");
-    expect(activeNavPath("/communications/mailboxes/new", items)).toBe("/communications/mailboxes");
+    expect(activeNavPath("/communications/channels/new", items)).toBe("/communications/channels");
   });
 
   it("does not treat a similarly prefixed route as a match", () => {

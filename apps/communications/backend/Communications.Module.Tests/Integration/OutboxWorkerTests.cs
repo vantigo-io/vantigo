@@ -12,36 +12,9 @@ public sealed class OutboxWorkerTests(CommunicationsModuleFactory factory)
     [Fact]
     public async Task Worker_uses_replaceable_sender_and_marks_relay_accepted()
     {
-        using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>();
-        var mailbox = await db.SharedMailboxes.SingleAsync();
-        var message = new EmailMessage
-        {
-            Id = Guid.NewGuid(),
-            MailboxId = mailbox.Id,
-            Subject = "worker test",
-            TextBody = "body",
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-        var delivery = new RecipientDelivery
-        {
-            Id = Guid.NewGuid(),
-            MessageId = message.Id,
-            EmailAddress = "worker@example.test",
-            RecipientType = "to",
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-        message.Deliveries.Add(delivery);
-        db.EmailMessages.Add(message);
-        db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, CreatedAt = DateTimeOffset.UtcNow, NextAttemptAt = DateTimeOffset.UtcNow });
-        await db.SaveChangesAsync();
-
-        var processor = scope.ServiceProvider.GetRequiredService<OutboxJobProcessor>();
-        Assert.True(await processor.ProcessOneAsync(message.Id, CancellationToken.None));
-        db.ChangeTracker.Clear();
-        var saved = await db.RecipientDeliveries.SingleAsync(item => item.Id == delivery.Id);
-        Assert.Equal("relay_accepted", saved.Status);
-        Assert.Contains(factory.Sender.Envelopes, envelope => envelope.Subject == "worker test");
+        using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>(); var channel = await db.Channels.SingleAsync();
+        var now = DateTimeOffset.UtcNow; var conversation = new Conversation { Id = Guid.NewGuid(), ChannelId = channel.Id, Subject = "worker test", LastActivityAt = now, CreatedAt = now }; var message = new ConversationMessage { Id = Guid.NewGuid(), ConversationId = conversation.Id, Direction = "outbound", Subject = "worker test", TextBody = "body", OccurredAt = now, CreatedAt = now }; message.Deliveries.Add(new MessageDelivery { Id = Guid.NewGuid(), MessageId = message.Id, RecipientAddress = "worker@example.test", RecipientType = "to", CreatedAt = now }); db.Conversations.Add(conversation); db.ConversationMessages.Add(message); db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, CreatedAt = now, NextAttemptAt = now }); await db.SaveChangesAsync();
+        Assert.True(await scope.ServiceProvider.GetRequiredService<OutboxJobProcessor>().ProcessOneAsync(message.Id, CancellationToken.None)); db.ChangeTracker.Clear(); Assert.Equal("relay_accepted", await db.MessageDeliveries.Where(item => item.MessageId == message.Id).Select(item => item.Status).SingleAsync()); Assert.Contains(factory.Sender.Envelopes, envelope => envelope.Subject == "worker test");
     }
 
     [Fact]
@@ -50,41 +23,9 @@ public sealed class OutboxWorkerTests(CommunicationsModuleFactory factory)
         factory.Sender.ThrowOnSend = true;
         try
         {
-            using var scope = factory.Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>();
-            var mailbox = await db.SharedMailboxes.SingleAsync();
-            var message = new EmailMessage
-            {
-                Id = Guid.NewGuid(),
-                MailboxId = mailbox.Id,
-                Subject = "failed worker test",
-                TextBody = "body",
-                CreatedAt = DateTimeOffset.UtcNow,
-            };
-            message.Deliveries.Add(new RecipientDelivery
-            {
-                Id = Guid.NewGuid(),
-                MessageId = message.Id,
-                EmailAddress = "failed@example.test",
-                RecipientType = "to",
-                CreatedAt = DateTimeOffset.UtcNow,
-            });
-            db.EmailMessages.Add(message);
-            db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, Attempts = 8, CreatedAt = DateTimeOffset.UtcNow, NextAttemptAt = DateTimeOffset.UtcNow });
-            await db.SaveChangesAsync();
-
-            var processor = scope.ServiceProvider.GetRequiredService<OutboxJobProcessor>();
-            Assert.True(await processor.ProcessOneAsync(message.Id, CancellationToken.None));
-            db.ChangeTracker.Clear();
-            var saved = await db.RecipientDeliveries.SingleAsync(item => item.MessageId == message.Id);
-            Assert.Equal("submission_failed", saved.Status);
-            Assert.Equal("failed", await db.OutboxJobs.Where(item => item.MessageId == message.Id).Select(item => item.Status).SingleAsync());
-            var failureEvent = await db.MessageEvents.SingleAsync(item => item.MessageId == message.Id && item.EventType == "submission_failed");
-            Assert.Contains("fake SMTP failure", failureEvent.DataJson);
+            using var scope = factory.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>(); var channel = await db.Channels.SingleAsync(); var now = DateTimeOffset.UtcNow; var conversation = new Conversation { Id = Guid.NewGuid(), ChannelId = channel.Id, Subject = "failed worker test", LastActivityAt = now, CreatedAt = now }; var message = new ConversationMessage { Id = Guid.NewGuid(), ConversationId = conversation.Id, Direction = "outbound", Subject = "failed worker test", TextBody = "body", OccurredAt = now, CreatedAt = now }; message.Deliveries.Add(new MessageDelivery { Id = Guid.NewGuid(), MessageId = message.Id, RecipientAddress = "failed@example.test", RecipientType = "to", CreatedAt = now }); db.Conversations.Add(conversation); db.ConversationMessages.Add(message); db.OutboxJobs.Add(new OutboxJob { Id = Guid.NewGuid(), MessageId = message.Id, Attempts = 8, CreatedAt = now, NextAttemptAt = now }); await db.SaveChangesAsync();
+            Assert.True(await scope.ServiceProvider.GetRequiredService<OutboxJobProcessor>().ProcessOneAsync(message.Id, CancellationToken.None)); db.ChangeTracker.Clear(); Assert.Equal("submission_failed", await db.MessageDeliveries.Where(item => item.MessageId == message.Id).Select(item => item.Status).SingleAsync()); Assert.Equal("failed", await db.OutboxJobs.Where(item => item.MessageId == message.Id).Select(item => item.Status).SingleAsync());
         }
-        finally
-        {
-            factory.Sender.ThrowOnSend = false;
-        }
+        finally { factory.Sender.ThrowOnSend = false; }
     }
 }

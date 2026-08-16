@@ -90,7 +90,7 @@ describe("AppSpotlight navigation authorization", () => {
   });
 
   it("matches restricted sidebar navigation without exposing denied destinations", async () => {
-    const permissions = ["customers:view", "communications:messages-view"];
+    const permissions = ["customers:view", "communications:conversations-view"];
     renderSpotlight(permissions, false, false);
 
     await expectNavigationParity(permissions, false, false);

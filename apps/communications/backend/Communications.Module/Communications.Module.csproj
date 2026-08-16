@@ -16,14 +16,24 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="MailKit" />
+    <!-- HtmlSanitizer is the NuGet package that provides Ganss.Xss.HtmlSanitizer.
+         Keep the project dependency explicit so CPM's version is preserved when
+         this module is referenced by architecture/test projects. -->
+    <PackageReference Include="HtmlSanitizer" VersionOverride="9.2.995" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\packages\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
     <ProjectReference Include="..\..\..\..\packages\contracts\Vantigo.Contracts\Vantigo.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\packages\contracts\Vantigo.Contracts.AspNetCore\Vantigo.Contracts.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\storage\Vantigo.Storage.Abstractions\Vantigo.Storage.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\tenancy\Vantigo.Tenancy.Abstractions\Vantigo.Tenancy.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\tenancy\Vantigo.Tenancy.EntityFramework\Vantigo.Tenancy.EntityFramework.csproj" />
+    <ProjectReference Include="..\..\..\..\packages\tenancy\Vantigo.Tenancy\Vantigo.Tenancy.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -15,7 +15,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { appConfig, I18nProvider, initAppConfig, vantigoTheme } from "@vantigo/frontend-shell";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
-import { setAuthStateClearer, setUnauthorizedHandler } from "./api/request";
+import { setActiveTenantSlug, setAuthStateClearer, setUnauthorizedHandler } from "./api/request";
 import { AccountLanguagePreference } from "./components/account-language-preference";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
 import { wireNavigationProgress } from "./lib/navigation-progress";
@@ -26,6 +26,7 @@ initAppConfig({ title: "Vantigo" });
 document.title = appConfig().title;
 const router = createRouter({ routeTree, basepath: "/", context: { queryClient } });
 setAuthStateClearer(() => queryClient.removeQueries({ queryKey: ["auth", "session"], exact: true }));
+setActiveTenantSlug(undefined);
 setUnauthorizedHandler(() => {
   if (window.location.pathname !== "/sign-in") void router.navigate({ to: "/sign-in", search: { error: undefined } });
 });

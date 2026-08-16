@@ -21,7 +21,7 @@ export interface NavItem {
   capability?: "authorization";
   requiredPermissions?: readonly string[];
   /** Search defaults used when Spotlight opens this destination. */
-  searchStrategy?: "customer-list" | "messages-list" | "products-list" | "energy-list";
+  searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list";
 }
 export interface NavSection {
   label: string;
@@ -53,23 +53,23 @@ export const navSections: readonly NavSection[] = [
     label: "navigation.communications",
     items: [
       {
-        label: "navigation.messages",
-        to: "/messages",
+        label: "navigation.inbox",
+        to: "/inbox",
         icon: IconInbox,
-        requiredPermissions: ["communications:messages-view"],
-        searchStrategy: "messages-list",
+        requiredPermissions: ["communications:conversations-view"],
+        searchStrategy: "inbox-list",
       },
       {
-        label: "navigation.mailboxes",
-        to: "/communications/mailboxes",
+        label: "navigation.channels",
+        to: "/communications/channels",
         icon: IconMailbox,
-        requiredPermissions: ["communications:mailboxes-view"],
+        requiredPermissions: ["communications:channels-manage"],
       },
       {
         label: "navigation.suppressions",
         to: "/communications/suppressions",
         icon: IconMailOff,
-        requiredPermissions: ["communications:suppressions-view"],
+        requiredPermissions: ["communications:suppressions-manage"],
       },
     ],
   },
@@ -155,8 +155,14 @@ export const navSearchFor = (strategy: NavItem["searchStrategy"]) => {
   switch (strategy) {
     case "customer-list":
       return { page: 1, search: "" };
-    case "messages-list":
-      return { page: 1, archived: undefined };
+    case "inbox-list":
+      return {
+        conversationId: undefined,
+        status: undefined,
+        customerId: undefined,
+        tagId: undefined,
+        unreadOnly: undefined,
+      };
     case "products-list":
       return { page: 1, search: "", status: "", categoryId: "" };
     case "energy-list":

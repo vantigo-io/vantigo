@@ -19,6 +19,9 @@ internal static class HostDatabaseConfiguration
             var connectionString = connectionStrings.Resolve();
             return NpgsqlDataSource.Create(connectionString);
         });
+        services.AddSingleton<ICommunicationsSchemaResetSqlExecutor, NpgsqlCommunicationsSchemaResetSqlExecutor>();
+        services.AddSingleton<ICommunicationsSchemaResetter, CommunicationsSchemaResetter>();
+        services.AddSingleton<ICommunicationsMigrationRunner, CommunicationsMigrationRunner>();
         services.AddVantigoIdentityDatabase();
         return services;
     }

@@ -7,7 +7,13 @@ export {
   initAppConfig,
   runtimeBase,
 } from "./app-config";
-export { AppShellLayout, type AppShellLayoutProps, type ShellUser, SupportContactLine } from "./app-shell-layout";
+export {
+  AppShellLayout,
+  type AppShellLayoutProps,
+  type ShellTenant,
+  type ShellUser,
+  SupportContactLine,
+} from "./app-shell-layout";
 export {
   type CatalogLoader,
   type CatalogResources,

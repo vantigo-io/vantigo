@@ -6,23 +6,17 @@ namespace Vantigo.Communications.Module.Tests.Services;
 public sealed class CommunicationDomainTests
 {
     [Fact]
-    public void External_links_are_opaque_and_preserve_string_ids()
+    public void Participants_preserve_normalized_channel_addresses()
     {
-        var message = new EmailMessage { Id = Guid.NewGuid(), MailboxId = Guid.NewGuid(), Subject = "subject" };
-        message.ExternalLinks.Add(new ExternalEntityLink
+        var participant = new Participant
         {
             Id = Guid.NewGuid(),
-            MessageId = message.Id,
-            SourceSystem = "customers",
-            SourceInstance = "tenant-a",
-            EntityType = "account",
-            ExternalEntityId = "000123",
-            DisplayLabel = "Example",
-        });
+            ChannelId = Guid.NewGuid(),
+            Address = "PERSON@EXAMPLE.TEST",
+            DisplayName = "Example",
+        };
 
-        var link = Assert.Single(message.ExternalLinks);
-        Assert.Equal("000123", link.ExternalEntityId);
-        Assert.Equal("tenant-a", link.SourceInstance);
+        Assert.Equal("PERSON@EXAMPLE.TEST", participant.Address);
     }
 
     [Fact]
@@ -34,12 +28,13 @@ public sealed class CommunicationDomainTests
     [Fact]
     public void Envelope_uses_delivery_types_without_tracking_headers()
     {
-        var mailbox = new SharedMailbox { Id = Guid.NewGuid(), FromAddress = "noreply@example.test" };
-        var message = new EmailMessage { Id = Guid.NewGuid(), MailboxId = mailbox.Id, Subject = "subject" };
-        message.Deliveries.Add(new RecipientDelivery { Id = Guid.NewGuid(), MessageId = message.Id, EmailAddress = "to@example.test", RecipientType = "to" });
-        message.Deliveries.Add(new RecipientDelivery { Id = Guid.NewGuid(), MessageId = message.Id, EmailAddress = "blind@example.test", RecipientType = "bcc" });
+        var channel = new Channel { Id = Guid.NewGuid(), Type = "email", Address = "noreply@example.test" };
+        var conversation = new Conversation { Id = Guid.NewGuid(), ChannelId = channel.Id, Subject = "subject" };
+        var message = new ConversationMessage { Id = Guid.NewGuid(), ConversationId = conversation.Id, Direction = "outbound", Subject = "subject" };
+        message.Deliveries.Add(new MessageDelivery { Id = Guid.NewGuid(), MessageId = message.Id, RecipientAddress = "to@example.test", RecipientType = "to" });
+        message.Deliveries.Add(new MessageDelivery { Id = Guid.NewGuid(), MessageId = message.Id, RecipientAddress = "blind@example.test", RecipientType = "bcc" });
 
-        var envelope = EmailEnvelopeFactory.Create(message, mailbox);
+        var envelope = EmailEnvelopeFactory.Create(message, conversation, channel);
 
         Assert.Equal(["to@example.test"], envelope.To);
         Assert.Equal(["blind@example.test"], envelope.Bcc);

@@ -109,41 +109,29 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.customersLookupView",
     descriptionKey: "admin.permission.customersLookupViewDescription",
   },
-  "communications:messages-view": {
+  "communications:conversations-view": {
     moduleKey: "admin.permission.module.communications",
     categoryKey: "admin.permission.category.communications",
-    displayNameKey: "admin.permission.communicationsMessagesView",
-    descriptionKey: "admin.permission.communicationsMessagesViewDescription",
+    displayNameKey: "admin.permission.communicationsConversationsView",
+    descriptionKey: "admin.permission.communicationsConversationsViewDescription",
   },
-  "communications:messages-send": {
+  "communications:conversations-reply": {
     moduleKey: "admin.permission.module.communications",
     categoryKey: "admin.permission.category.communications",
-    displayNameKey: "admin.permission.communicationsMessagesSend",
-    descriptionKey: "admin.permission.communicationsMessagesSendDescription",
+    displayNameKey: "admin.permission.communicationsConversationsReply",
+    descriptionKey: "admin.permission.communicationsConversationsReplyDescription",
   },
-  "communications:messages-manage": {
+  "communications:conversations-manage": {
     moduleKey: "admin.permission.module.communications",
     categoryKey: "admin.permission.category.communications",
-    displayNameKey: "admin.permission.communicationsMessagesManage",
-    descriptionKey: "admin.permission.communicationsMessagesManageDescription",
+    displayNameKey: "admin.permission.communicationsConversationsManage",
+    descriptionKey: "admin.permission.communicationsConversationsManageDescription",
   },
-  "communications:mailboxes-view": {
+  "communications:channels-manage": {
     moduleKey: "admin.permission.module.communications",
     categoryKey: "admin.permission.category.communications",
-    displayNameKey: "admin.permission.communicationsMailboxesView",
-    descriptionKey: "admin.permission.communicationsMailboxesViewDescription",
-  },
-  "communications:mailboxes-manage": {
-    moduleKey: "admin.permission.module.communications",
-    categoryKey: "admin.permission.category.communications",
-    displayNameKey: "admin.permission.communicationsMailboxesManage",
-    descriptionKey: "admin.permission.communicationsMailboxesManageDescription",
-  },
-  "communications:suppressions-view": {
-    moduleKey: "admin.permission.module.communications",
-    categoryKey: "admin.permission.category.communications",
-    displayNameKey: "admin.permission.communicationsSuppressionsView",
-    descriptionKey: "admin.permission.communicationsSuppressionsViewDescription",
+    displayNameKey: "admin.permission.communicationsChannelsManage",
+    descriptionKey: "admin.permission.communicationsChannelsManageDescription",
   },
   "communications:suppressions-manage": {
     moduleKey: "admin.permission.module.communications",
@@ -302,12 +290,17 @@ export const translateHostPermissionDescription = (
 
 export const hostCatalog = {
   en: {
+    tenantRequiredTitle: "Choose a workspace",
+    tenantRequiredBody: "Your account is not connected to a workspace yet.",
+    tenantUnavailableTitle: "Workspace unavailable",
+    tenantUnavailableBody: "This workspace is unavailable right now.",
+    tenantContactAdmin: "Contact your administrator for access.",
     "navigation.customerWorkspace": "Customer workspace",
     "navigation.customers": "Customers",
     "navigation.contacts": "Contacts",
     "navigation.communications": "Communications",
-    "navigation.messages": "Messages",
-    "navigation.mailboxes": "Mailboxes",
+    "navigation.inbox": "Inbox",
+    "navigation.channels": "Channels",
     "navigation.suppressions": "Suppressions",
     "navigation.catalog": "Catalog",
     "navigation.products": "Products",
@@ -402,6 +395,7 @@ export const hostCatalog = {
     "dashboard.open": "Open",
     "customer.overviewTab": "Overview",
     "customer.energyTab": "Energy",
+    "customer.correspondenceTab": "Correspondence",
     "admin.dashboard": "Admin dashboard",
     "admin.overview": "A read-only overview of accounts and identity integrations.",
     "admin.statusLoadFailed": "Status could not be loaded",
@@ -488,23 +482,21 @@ export const hostCatalog = {
     "admin.permission.customersTimelineManageDescription": "Create, update, and delete customer timeline entries.",
     "admin.permission.customersLookupView": "Use registry lookup",
     "admin.permission.customersLookupViewDescription": "Search the external business registry for legal identities.",
-    "admin.permission.communicationsMessagesView": "View communications messages",
-    "admin.permission.communicationsMessagesViewDescription":
-      "View emails, message subjects, bodies, recipients, delivery status, and message events.",
-    "admin.permission.communicationsMessagesSend": "Send communications messages",
-    "admin.permission.communicationsMessagesSendDescription": "Queue email messages for delivery.",
-    "admin.permission.communicationsMessagesManage": "Manage communications messages",
-    "admin.permission.communicationsMessagesManageDescription": "Resend, archive, and unarchive email messages.",
-    "admin.permission.communicationsMailboxesView": "View communications mailboxes",
-    "admin.permission.communicationsMailboxesViewDescription":
-      "View configured shared mailboxes and their delivery settings.",
-    "admin.permission.communicationsMailboxesManage": "Manage communications mailboxes",
-    "admin.permission.communicationsMailboxesManageDescription": "Create, update, and verify shared mailboxes.",
-    "admin.permission.communicationsSuppressionsView": "View communications suppressions",
-    "admin.permission.communicationsSuppressionsViewDescription":
-      "View suppressed email addresses and suppression reasons.",
+    "admin.permission.communicationsConversationsView": "View communications conversations",
+    "admin.permission.communicationsConversationsViewDescription":
+      "View conversations, messages, participants, bodies, attachments, and tags.",
+    "admin.permission.communicationsConversationsReply": "Reply to communications conversations",
+    "admin.permission.communicationsConversationsReplyDescription":
+      "Create outbound conversation messages and queue them for delivery.",
+    "admin.permission.communicationsConversationsManage": "Manage communications conversations",
+    "admin.permission.communicationsConversationsManageDescription":
+      "Assign, close, tag, and add internal notes to conversations.",
+    "admin.permission.communicationsChannelsManage": "Manage communications channels",
+    "admin.permission.communicationsChannelsManageDescription":
+      "Create, update, and verify configured communication channels.",
     "admin.permission.communicationsSuppressionsManage": "Manage communications suppressions",
-    "admin.permission.communicationsSuppressionsManageDescription": "Create and remove suppressed email addresses.",
+    "admin.permission.communicationsSuppressionsManageDescription":
+      "View, create, and remove suppressed email addresses.",
     "admin.permission.productsProductsView": "View products",
     "admin.permission.productsProductsViewDescription": "View products and their details.",
     "admin.permission.productsProductsManage": "Manage products",
@@ -702,12 +694,17 @@ export const hostCatalog = {
     "legal.retrievedFrom": "Retrieved from {{source}}",
   },
   nb: {
+    tenantRequiredTitle: "Velg et arbeidsområde",
+    tenantRequiredBody: "Kontoen din er ikke koblet til et arbeidsområde ennå.",
+    tenantUnavailableTitle: "Arbeidsområdet er ikke tilgjengelig",
+    tenantUnavailableBody: "Dette arbeidsområdet er ikke tilgjengelig akkurat nå.",
+    tenantContactAdmin: "Kontakt administratoren din for tilgang.",
     "navigation.customerWorkspace": "Kundeområde",
     "navigation.customers": "Kunder",
     "navigation.contacts": "Kontakter",
     "navigation.communications": "Kommunikasjon",
-    "navigation.messages": "Meldinger",
-    "navigation.mailboxes": "E-postkasser",
+    "navigation.inbox": "Innboks",
+    "navigation.channels": "Kanaler",
     "navigation.suppressions": "Blokkeringer",
     "navigation.catalog": "Katalog",
     "navigation.products": "Produkter",
@@ -804,6 +801,7 @@ export const hostCatalog = {
     "dashboard.open": "Åpne",
     "customer.overviewTab": "Oversikt",
     "customer.energyTab": "Energi",
+    "customer.correspondenceTab": "Korrespondanse",
     "admin.dashboard": "Administrasjonspanel",
     "admin.overview": "En skrivebeskyttet oversikt over kontoer og identitetsintegrasjoner.",
     "admin.statusLoadFailed": "Kunne ikke laste status",
@@ -894,24 +892,20 @@ export const hostCatalog = {
     "admin.permission.customersLookupView": "Bruk registeroppslag",
     "admin.permission.customersLookupViewDescription":
       "Søk i det eksterne foretaksregisteret etter juridiske identiteter.",
-    "admin.permission.communicationsMessagesView": "Se kommunikasjonsmeldinger",
-    "admin.permission.communicationsMessagesViewDescription":
-      "Se e-poster, emner, brødtekst, mottakere, leveringsstatus og meldingshendelser.",
-    "admin.permission.communicationsMessagesSend": "Send kommunikasjonsmeldinger",
-    "admin.permission.communicationsMessagesSendDescription": "Legg e-postmeldinger i kø for levering.",
-    "admin.permission.communicationsMessagesManage": "Administrer kommunikasjonsmeldinger",
-    "admin.permission.communicationsMessagesManageDescription":
-      "Send e-postmeldinger på nytt, arkiver og fjern fra arkiv.",
-    "admin.permission.communicationsMailboxesView": "Se kommunikasjonspostkasser",
-    "admin.permission.communicationsMailboxesViewDescription":
-      "Se konfigurerte delte postkasser og leveringsinnstillingene deres.",
-    "admin.permission.communicationsMailboxesManage": "Administrer kommunikasjonspostkasser",
-    "admin.permission.communicationsMailboxesManageDescription": "Opprett, oppdater og bekreft delte postkasser.",
-    "admin.permission.communicationsSuppressionsView": "Se e-postblokkeringer",
-    "admin.permission.communicationsSuppressionsViewDescription":
-      "Se blokkerte e-postadresser og årsaker til blokkering.",
+    "admin.permission.communicationsConversationsView": "Se kommunikasjonssamtaler",
+    "admin.permission.communicationsConversationsViewDescription":
+      "Se samtaler, meldinger, deltakere, brødtekst, vedlegg og etiketter.",
+    "admin.permission.communicationsConversationsReply": "Svar på kommunikasjonssamtaler",
+    "admin.permission.communicationsConversationsReplyDescription":
+      "Opprett utgående samtalemeldinger og legg dem i kø for levering.",
+    "admin.permission.communicationsConversationsManage": "Administrer kommunikasjonssamtaler",
+    "admin.permission.communicationsConversationsManageDescription":
+      "Tildel, lukk, sett etiketter og legg til interne notater i samtaler.",
+    "admin.permission.communicationsChannelsManage": "Administrer kommunikasjonskanaler",
+    "admin.permission.communicationsChannelsManageDescription":
+      "Opprett, oppdater og bekreft konfigurerte kommunikasjonskanaler.",
     "admin.permission.communicationsSuppressionsManage": "Administrer e-postblokkeringer",
-    "admin.permission.communicationsSuppressionsManageDescription": "Opprett og fjern blokkerte e-postadresser.",
+    "admin.permission.communicationsSuppressionsManageDescription": "Se, opprett og fjern blokkerte e-postadresser.",
     "admin.permission.productsProductsView": "Se produkter",
     "admin.permission.productsProductsViewDescription": "Se produkter og detaljene deres.",
     "admin.permission.productsProductsManage": "Administrer produkter",

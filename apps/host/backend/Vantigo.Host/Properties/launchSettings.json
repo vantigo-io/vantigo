@@ -40,6 +40,16 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
+    },
+    "reset-communications": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "commandLineArgs": "reset-communications",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "VANTIGO_CONFIRM_RESET_COMMUNICATIONS": "true"
+      }
     }
   }
 }

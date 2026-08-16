@@ -13,3 +13,5 @@ Operator and contributor documentation for Vantigo:
 - [Communications module](communications.md) — communications domain and API reference.
 - [Module boundaries](module-boundaries.md) — implementation ownership and module
   conventions.
+- [Object storage](storage.md) — provider configuration, authentication, scopes,
+  permissions, and streamed downloads.
