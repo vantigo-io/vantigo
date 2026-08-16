@@ -20,7 +20,15 @@
     "react": "catalog:"
   },
   "devDependencies": {
+    "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
-    "typescript": "catalog:"
+    "@types/react-dom": "catalog:",
+    "jsdom": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "scripts": {
+    "test": "vitest run"
   }
 }

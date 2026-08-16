@@ -13,12 +13,11 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useEffect, useState } from "react";
+import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import { useState } from "react";
 
 import { customersQueryOptions } from "../api/customers";
 import "../i18n";
@@ -36,18 +35,11 @@ export const CustomersPage = () => {
   const { page, search } = useSearch({ strict: false }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 
-  const [searchInput, setSearchInput] = useState(search);
-  const [debouncedSearch] = useDebouncedValue(searchInput, 300);
+  const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
+    currentSearch: search,
+    onNavigate: (next, options) => navigate({ search: next, ...options }),
+  });
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
-
-  useEffect(() => {
-    if (debouncedSearch !== search) {
-      navigate({
-        search: { page: 1, search: debouncedSearch },
-        replace: true,
-      });
-    }
-  }, [debouncedSearch, search, navigate]);
 
   const { data, isPending, isError, error } = useQuery(
     customersQueryOptions({
@@ -150,11 +142,7 @@ export const CustomersPage = () => {
 
               {data.pagination.totalPages > 1 && (
                 <Group justify="center">
-                  <Pagination
-                    total={data.pagination.totalPages}
-                    value={page}
-                    onChange={(newPage) => navigate({ search: { page: newPage, search } })}
-                  />
+                  <Pagination total={data.pagination.totalPages} value={page} onChange={onPageChange} />
                 </Group>
               )}
             </>

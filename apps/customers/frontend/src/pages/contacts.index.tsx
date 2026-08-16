@@ -14,13 +14,12 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useEffect, useState } from "react";
+import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import { useState } from "react";
 
 import { type ContactListItem, contactsQueryOptions, deleteContact } from "../api/contacts";
 import { NoValue } from "../components/legal-badges";
@@ -41,18 +40,11 @@ export const ContactsPage = () => {
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
 
-  const [searchInput, setSearchInput] = useState(search);
-  const [debouncedSearch] = useDebouncedValue(searchInput, 300);
+  const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
+    currentSearch: search,
+    onNavigate: (next, options) => navigate({ search: next, ...options }),
+  });
   const [modalState, setModalState] = useState<ContactModalState | null>(null);
-
-  useEffect(() => {
-    if (debouncedSearch !== search) {
-      navigate({
-        search: { page: 1, search: debouncedSearch },
-        replace: true,
-      });
-    }
-  }, [debouncedSearch, search, navigate]);
 
   const { data, isPending, isError, error } = useQuery(
     contactsQueryOptions({
@@ -196,11 +188,7 @@ export const ContactsPage = () => {
 
               {data.pagination.totalPages > 1 && (
                 <Group justify="center">
-                  <Pagination
-                    total={data.pagination.totalPages}
-                    value={page}
-                    onChange={(newPage) => navigate({ search: { page: newPage, search } })}
-                  />
+                  <Pagination total={data.pagination.totalPages} value={page} onChange={onPageChange} />
                 </Group>
               )}
             </>

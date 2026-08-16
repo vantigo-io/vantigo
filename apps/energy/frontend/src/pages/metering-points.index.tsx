@@ -13,12 +13,11 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconBolt, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useEffect, useState } from "react";
+import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import { useState } from "react";
 import { type ConnectionStatus, meteringPointsQueryOptions } from "../api/energy";
 import "../i18n";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
@@ -35,12 +34,11 @@ export const MeteringPointsPage = () => {
   const { t } = useI18n("energy");
   const { page, search } = useSearch({ strict: false }) as MeteringPointsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
-  const [searchInput, setSearchInput] = useState(search);
-  const [debouncedSearch] = useDebouncedValue(searchInput, 300);
+  const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
+    currentSearch: search,
+    onNavigate: (next, options) => void navigate({ search: next, ...options }),
+  });
   const [modalState, setModalState] = useState<MeteringPointModalState | null>(null);
-  useEffect(() => {
-    if (debouncedSearch !== search) void navigate({ search: { page: 1, search: debouncedSearch }, replace: true });
-  }, [debouncedSearch, search, navigate]);
   const { data, isPending, isError, error } = useQuery(
     meteringPointsQueryOptions({ page, pageSize: PAGE_SIZE, search: search || undefined }),
   );
@@ -150,11 +148,7 @@ export const MeteringPointsPage = () => {
               )}
               {data.pagination.totalPages > 1 && (
                 <Group justify="center">
-                  <Pagination
-                    total={data.pagination.totalPages}
-                    value={page}
-                    onChange={(value) => void navigate({ search: { page: value, search } })}
-                  />
+                  <Pagination total={data.pagination.totalPages} value={page} onChange={onPageChange} />
                 </Group>
               )}
             </>

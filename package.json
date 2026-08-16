@@ -59,7 +59,7 @@
   },
   "scripts": {
     "frontend:lint": "bun run --cwd apps/customers/frontend lint && bun run --cwd apps/communications/frontend lint && bun run --cwd apps/products/frontend lint && bun run --cwd apps/energy/frontend lint && bun run --cwd apps/host/frontend lint",
-    "frontend:test": "bun run --cwd packages/frontend-api-client test && bun run --cwd apps/customers/frontend test && bun run --cwd apps/communications/frontend test && bun run --cwd apps/products/frontend test && bun run --cwd apps/energy/frontend test && bun run --cwd apps/host/frontend test",
+    "frontend:test": "bun run --cwd packages/frontend-api-client test && bun run --cwd packages/frontend-shell test && bun run --cwd apps/customers/frontend test && bun run --cwd apps/communications/frontend test && bun run --cwd apps/products/frontend test && bun run --cwd apps/energy/frontend test && bun run --cwd apps/host/frontend test",
     "frontend:build": "bun run --cwd apps/host/frontend build",
     "translations:check": "bun run tools/i18n/check.ts",
     "i18n:test": "bun run --cwd apps/customers/frontend vitest run --root ../../../packages/frontend-shell src/i18n && bun test tools/i18n",

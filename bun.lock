@@ -274,8 +274,13 @@
         "react-i18next": "catalog:",
       },
       "devDependencies": {
+        "@testing-library/react": "catalog:",
         "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "jsdom": "catalog:",
+        "react-dom": "catalog:",
         "typescript": "catalog:",
+        "vitest": "catalog:",
       },
       "peerDependencies": {
         "@mantine/core": "catalog:",
