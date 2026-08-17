@@ -58,6 +58,7 @@ interface PriceFormValues {
 export const ProductDetailsPage = () => {
   const { t, formatters } = useI18n("products");
   const { productId } = useParams({ strict: false }) as { productId: number };
+  const tenantSlug = window.location.pathname.split("/")[1] || undefined;
   const queryClient = useQueryClient();
   const { data: product } = useSuspenseQuery(productQueryOptions(productId));
   const variant = product.variants?.[0];
@@ -211,7 +212,11 @@ export const ProductDetailsPage = () => {
   return (
     <Stack gap="lg">
       <Breadcrumbs>
-        <Anchor component={Link} to="/products" size="sm">
+        <Anchor
+          component={Link}
+          to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/products` as never}
+          size="sm"
+        >
           {t("navigation.products")}
         </Anchor>
         <Text size="sm">{product.name}</Text>
