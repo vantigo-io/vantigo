@@ -1,67 +1,97 @@
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
+
+using Microsoft.EntityFrameworkCore;
+
+using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Identity.Services;
 
 /// <summary>
-/// Holds the control-plane hand-off for tenant offboarding.
-///
-/// This is intentionally a safe, process-local stub until the system
-/// orchestrator owns cross-module export and deletion. It never deletes data.
-/// A real implementation must persist the export request and token in the
-/// orchestration domain before enabling a purge worker.
+/// Persists the control-plane hand-off for tenant offboarding. This remains a
+/// safe deferred stub: it never deletes tenant data or starts orchestration.
 /// </summary>
-public sealed class TenantOffboardingService
+public sealed class TenantOffboardingService(AccountsDbContext dbContext)
 {
-    private readonly ConcurrentDictionary<Guid, OffboardingState> states = new();
-
-    public (OffboardingState State, bool Created) RequestExport(Guid tenantId)
+    public async Task<(OffboardingState State, bool Created)> RequestExportAsync(
+        Guid tenantId,
+        CancellationToken cancellationToken = default)
     {
-        var created = false;
-        var state = states.GetOrAdd(tenantId, id =>
+        var existing = await dbContext.TenantOffboardingStates
+            .AsNoTracking()
+            .SingleOrDefaultAsync(state => state.TenantId == tenantId, cancellationToken);
+        if (existing is not null)
+            return (ToState(existing), false);
+
+        var purgeToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var state = new TenantOffboardingState
         {
-            created = true;
-            return new OffboardingState(
-                Guid.NewGuid(),
-                id,
-                Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
-                DateTimeOffset.UtcNow,
-                null);
-        });
-        return (state, created);
-    }
-
-    public OffboardingState? Get(Guid tenantId) =>
-        states.TryGetValue(tenantId, out var state) ? state : null;
-
-    public bool ValidatePurge(Guid tenantId, Guid exportId, string token)
-    {
-        if (!states.TryGetValue(tenantId, out var state) || state.ExportId != exportId ||
-            token.Length != state.PurgeToken.Length)
-            return false;
-
+            TenantId = tenantId,
+            ExportId = Guid.NewGuid(),
+            // Retained to preserve the existing idempotent export response
+            // contract, which returns the token on repeated requests.
+            PurgeToken = purgeToken,
+            RequestedAtUtc = DateTimeOffset.UtcNow,
+        };
+        dbContext.TenantOffboardingStates.Add(state);
         try
         {
-            return CryptographicOperations.FixedTimeEquals(
-                Convert.FromHexString(state.PurgeToken), Convert.FromHexString(token));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return (ToState(state), true);
         }
-        catch (FormatException)
+        catch (DbUpdateException)
         {
-            return false;
+            dbContext.Entry(state).State = EntityState.Detached;
+            var concurrent = await dbContext.TenantOffboardingStates
+                .AsNoTracking()
+                .SingleAsync(item => item.TenantId == tenantId, cancellationToken);
+            return (ToState(concurrent), false);
         }
     }
 
-    public void MarkPurgeRequested(Guid tenantId)
+    public async Task<OffboardingState?> GetAsync(Guid tenantId, CancellationToken cancellationToken = default)
     {
-        if (!states.TryGetValue(tenantId, out var state)) return;
-        states[tenantId] = state with { PurgeRequestedAtUtc = DateTimeOffset.UtcNow };
+        var state = await dbContext.TenantOffboardingStates.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.TenantId == tenantId, cancellationToken);
+        return state is null ? null : ToState(state);
     }
 
-    public void Remove(Guid tenantId, Guid exportId)
+    public async Task<bool> ValidatePurgeAsync(
+        Guid tenantId,
+        Guid exportId,
+        string token,
+        CancellationToken cancellationToken = default)
     {
-        if (states.TryGetValue(tenantId, out var state) && state.ExportId == exportId)
-            states.TryRemove(tenantId, out _);
+        var state = await dbContext.TenantOffboardingStates.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.ExportId == exportId, cancellationToken);
+        if (state is null || string.IsNullOrWhiteSpace(token)) return false;
+
+        return string.Equals(state.PurgeToken, token, StringComparison.Ordinal);
     }
+
+    public async Task MarkPurgeRequestedAsync(Guid tenantId, CancellationToken cancellationToken = default)
+    {
+        var state = await dbContext.TenantOffboardingStates
+            .SingleOrDefaultAsync(item => item.TenantId == tenantId, cancellationToken);
+        if (state is null) return;
+        state.PurgeRequestedAtUtc = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task RemoveAsync(Guid tenantId, Guid exportId, CancellationToken cancellationToken = default)
+    {
+        var state = await dbContext.TenantOffboardingStates
+            .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.ExportId == exportId, cancellationToken);
+        if (state is null) return;
+        dbContext.TenantOffboardingStates.Remove(state);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static OffboardingState ToState(TenantOffboardingState state) => new(
+        state.ExportId,
+        state.TenantId,
+        state.PurgeToken,
+        state.RequestedAtUtc,
+        state.PurgeRequestedAtUtc);
 }
 
 public sealed record OffboardingState(

@@ -18,6 +18,7 @@ public static class AuthorizationCatalogExtensions
     {
         var templates = new[]
         {
+            (AuthRoles.SystemAdmin, "System administrator", "Global tenant control-plane administration.", true, true),
             (AuthRoles.Owner, "Owner", "Full installation access.", true, true),
             (AuthRoles.User, "User", "Standard user role with no permissions by default.", true, true),
         };

@@ -8,6 +8,8 @@ namespace Vantigo.Configuration;
 /// </summary>
 public sealed class VantigoAuthenticationOptions
 {
+    public SystemAdminAuthenticationOptions SystemAdmin { get; set; } = new();
+
     public OwnerAuthenticationOptions Owners { get; set; } = new();
 
     public BootstrapSecretOptions Bootstrap { get; set; } = new();
@@ -19,6 +21,15 @@ public sealed class VantigoAuthenticationOptions
     public OidcOptions Oidc { get; set; } = new();
 
     public ScimOptions Scim { get; set; } = new();
+}
+
+public sealed class SystemAdminAuthenticationOptions
+{
+    /// <summary>
+    /// Email of the existing account that should receive the protected global
+    /// SystemAdmin role during application startup.
+    /// </summary>
+    public string? Email { get; set; }
 }
 
 public sealed class OwnerAuthenticationOptions

@@ -486,3 +486,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# TanStack Router temp files
+.tanstack/

@@ -195,6 +195,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
                 ["Authentication:Owners:RequireMfa"] = RequireOwnerMfa.ToString(),
+                ["Authentication:SystemAdmin:Email"] = OwnerEmail,
                 ["Authentication:Scim:Enabled"] = EnableStaticScim.ToString(),
             };
             if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;

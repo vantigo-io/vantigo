@@ -61,6 +61,7 @@ internal sealed record AuthSessionResponse(
     bool TwoFactorEnabled,
     bool MfaEnrollmentRequired,
     bool MfaAuthenticated,
+    bool IsSystemAdmin,
     IReadOnlyCollection<TenantSessionResponse> Tenants,
     Guid? ActiveTenantId);
 

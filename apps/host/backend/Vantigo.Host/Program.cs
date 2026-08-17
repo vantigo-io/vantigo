@@ -137,6 +137,7 @@ if (configuresApi)
 {
     await using var tenantStartupScope = app.Services.CreateAsyncScope();
     await tenantStartupScope.ServiceProvider.GetRequiredService<TenantBootstrapper>().EnsureAsync();
+    await tenantStartupScope.ServiceProvider.GetRequiredService<SystemAdminBootstrapper>().EnsureAsync();
 }
 
 _ = app.Services.GetRequiredService<BootstrapSecretProvider>();

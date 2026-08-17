@@ -272,6 +272,8 @@ public static class AuthServiceCollectionExtensions
         services.AddAuthorization(options =>
         {
             options.AddPolicy("ActiveAccount", policy => policy.AddRequirements(new ActiveAccountRequirement()));
+            options.AddPolicy(AuthPolicies.SystemAdmin, policy => policy.RequireRole(AuthRoles.SystemAdmin)
+                .AddRequirements(new ActiveAccountRequirement()));
             options.AddPolicy(AuthPolicies.Owner, policy => policy.RequireRole(AuthRoles.Owner)
                 .AddRequirements(new ActiveAccountRequirement()));
             options.AddPolicy(AuthPolicies.OwnerManagement, policy =>

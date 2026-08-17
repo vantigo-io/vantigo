@@ -7,6 +7,7 @@ using Vantigo.Contracts.Authorization;
 using Vantigo.Contracts.Identity;
 using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
+using Vantigo.Identity.Services;
 
 namespace Vantigo.Host;
 
@@ -55,7 +56,9 @@ internal static class IdentityDevelopmentSeeder
         }
 
         await EnsureUserRoleAsync(userManager, user, AuthRoles.Owner);
+        await EnsureUserRoleAsync(userManager, user, AuthRoles.SystemAdmin);
         await EnsureUserRoleAsync(userManager, user, AuthRoles.User);
+        await EnsureDefaultTenantMembershipAsync(dbContext, user.Id, cancellationToken);
         if (!await dbContext.BootstrapStates.AnyAsync(state => state.Id == 1, cancellationToken))
         {
             dbContext.BootstrapStates.Add(new BootstrapState { Id = 1, CompletedAt = DevelopmentBootstrapCompletedAt });
@@ -74,6 +77,43 @@ internal static class IdentityDevelopmentSeeder
             Name = roleName,
             NormalizedName = roleName.ToUpperInvariant(),
         }), $"The development role '{roleName}' could not be created.");
+    }
+
+    private static async Task EnsureDefaultTenantMembershipAsync(
+        AccountsDbContext dbContext,
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await dbContext.Tenants.SingleOrDefaultAsync(item => item.Slug == TenantSlug.Default, cancellationToken);
+        if (tenant is null)
+        {
+            tenant = new Tenant
+            {
+                Name = "Default",
+                Slug = TenantSlug.Default,
+                Status = TenantStatus.Active,
+                EnabledModules = [.. TenantModuleCatalog.KnownModuleKeys.OrderBy(key => key, StringComparer.Ordinal)],
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            dbContext.Tenants.Add(tenant);
+        }
+        else if (tenant.EnabledModules.Length == 0)
+        {
+            tenant.EnabledModules = [.. TenantModuleCatalog.KnownModuleKeys.OrderBy(key => key, StringComparer.Ordinal)];
+        }
+
+        if (!await dbContext.TenantMemberships.AnyAsync(
+                membership => membership.UserId == userId && membership.TenantId == tenant.Id, cancellationToken))
+        {
+            dbContext.TenantMemberships.Add(new TenantMembership
+            {
+                UserId = userId,
+                TenantId = tenant.Id,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static async Task EnsureUserRoleAsync(UserManager<ApplicationUser> userManager, ApplicationUser user, string roleName)

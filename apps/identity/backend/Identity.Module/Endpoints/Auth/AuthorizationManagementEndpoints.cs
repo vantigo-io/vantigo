@@ -66,6 +66,7 @@ internal static class AuthorizationManagementEndpoints
         // delegated request must never turn malformed role metadata or a nested
         // collection projection into a 500 after policy evaluation has passed.
         var roles = await dbContext.Roles.AsNoTracking()
+            .Where(role => role.Name != AuthRoles.SystemAdmin)
             .Join(dbContext.RoleMetadata.AsNoTracking(), role => role.Id, metadata => metadata.RoleId,
                 (role, metadata) => new
                 {

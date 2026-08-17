@@ -160,6 +160,7 @@ public static class AuthEndpoints
         AuthorizationAuditWriter auditWriter,
         TenantMembershipService tenantMembershipService,
         HttpContext httpContext,
+        IOptions<VantigoAuthenticationOptions> authenticationOptions,
         CancellationToken cancellationToken)
     {
         var errors = ValidateBootstrapRequest(request);
@@ -207,6 +208,19 @@ public static class AuthEndpoints
                 return IdentityFailure(addRoleResult, "The Owner account could not be assigned its role.");
             }
 
+            var configuredSystemAdminEmail = authenticationOptions.Value.SystemAdmin.Email?.Trim();
+            var isConfiguredSystemAdmin = string.Equals(
+                configuredSystemAdminEmail, request.Email.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (isConfiguredSystemAdmin)
+            {
+                var systemAdminRoleResult = await userManager.AddToRoleAsync(user, AuthRoles.SystemAdmin);
+                if (!systemAdminRoleResult.Succeeded)
+                {
+                    return IdentityFailure(systemAdminRoleResult,
+                        "The configured SystemAdmin account could not be assigned its role.");
+                }
+            }
+
             await tenantMembershipService.EnsureDefaultMembershipAsync(user.Id, cancellationToken);
 
             dbContext.BootstrapStates.Add(new BootstrapState
@@ -223,7 +237,9 @@ public static class AuthEndpoints
                 }, new
                 {
                     UserId = user.Id,
-                    Roles = new[] { AuthRoles.Owner },
+                    Roles = isConfiguredSystemAdmin
+                        ? new[] { AuthRoles.Owner, AuthRoles.SystemAdmin }
+                        : new[] { AuthRoles.Owner },
                     PermissionKeys = new[] { "*" },
                 }, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -235,7 +251,8 @@ public static class AuthEndpoints
 
             return TypedResults.Created("/api/v1/identity/session", new
             {
-                user = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), [AuthRoles.Owner]),
+                user = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email),
+                    isConfiguredSystemAdmin ? [AuthRoles.Owner, AuthRoles.SystemAdmin] : [AuthRoles.Owner]),
             });
         }
         catch (Exception exception) when (IsExpectedBootstrapConflict(exception))
@@ -407,11 +424,13 @@ public static class AuthEndpoints
             (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
             string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
         var owner = roles.Contains(AuthRoles.Owner, StringComparer.Ordinal);
+        var isSystemAdmin = roles.Contains(AuthRoles.SystemAdmin, StringComparer.Ordinal);
         return TypedResults.Ok(new AuthSessionResponse(
             new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles)),
             user.TwoFactorEnabled,
             owner && options.Value.Owners.RequireMfa && !user.TwoFactorEnabled,
             mfaAuthenticated,
+            isSystemAdmin,
             tenants.Select(tenant => new TenantSessionResponse(tenant.Id, tenant.Name, tenant.Slug)).ToArray(),
             activeTenantId));
     }
@@ -442,11 +461,13 @@ public static class AuthEndpoints
         var mfaAuthenticated = principal.Claims.Any(claim =>
             (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
             string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+        var isSystemAdmin = roles.Contains(AuthRoles.SystemAdmin, StringComparer.Ordinal);
         return TypedResults.Ok(new AuthSessionResponse(
             new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles)),
             user.TwoFactorEnabled,
             false,
             mfaAuthenticated,
+            isSystemAdmin,
             activeTenants,
             request.TenantId));
     }

@@ -10,37 +10,50 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TenantSlugRouteImport } from './routes/$tenantSlug'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
-import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
-import { Route as AdminInvitationsRouteImport } from './routes/admin/invitations'
-import { Route as AdminRolesRouteImport } from './routes/admin/roles'
-import { Route as AdminUsersRouteImport } from './routes/admin/users'
-import { Route as CommunicationsChannelsRouteImport } from './routes/communications/channels'
-import { Route as CommunicationsSuppressionsRouteImport } from './routes/communications/suppressions'
-import { Route as ContactsIndexRouteImport } from './routes/contacts/index'
-import { Route as ContactsContactIdRouteImport } from './routes/contacts/$contactId'
-import { Route as CustomersIndexRouteImport } from './routes/customers/index'
-import { Route as CustomersCustomerIdRouteImport } from './routes/customers/$customerId'
+import { Route as TenantSlugIndexRouteImport } from './routes/$tenantSlug/index'
+import { Route as TenantSlugInboxRouteImport } from './routes/$tenantSlug/inbox'
+import { Route as TenantSlugSettingsRouteImport } from './routes/$tenantSlug/settings'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
-import { Route as ProductsIndexRouteImport } from './routes/products/index'
-import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
-import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
-import { Route as ProductsTaxCategoriesRouteImport } from './routes/products/tax-categories'
-import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
-import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
-import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
-import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
+import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
+import { Route as TenantSlugCommunicationsChannelsRouteImport } from './routes/$tenantSlug/communications/channels'
+import { Route as TenantSlugCommunicationsSuppressionsRouteImport } from './routes/$tenantSlug/communications/suppressions'
+import { Route as TenantSlugContactsIndexRouteImport } from './routes/$tenantSlug/contacts/index'
+import { Route as TenantSlugContactsContactIdRouteImport } from './routes/$tenantSlug/contacts/$contactId'
+import { Route as TenantSlugCustomersIndexRouteImport } from './routes/$tenantSlug/customers/index'
+import { Route as TenantSlugCustomersCustomerIdRouteImport } from './routes/$tenantSlug/customers/$customerId'
+import { Route as TenantSlugProductsIndexRouteImport } from './routes/$tenantSlug/products/index'
+import { Route as TenantSlugProductsProductIdRouteImport } from './routes/$tenantSlug/products/$productId'
+import { Route as TenantSlugProductsCategoriesRouteImport } from './routes/$tenantSlug/products/categories'
+import { Route as TenantSlugProductsTaxCategoriesRouteImport } from './routes/$tenantSlug/products/tax-categories'
+import { Route as TenantSlugSettingsInvitationsRouteImport } from './routes/$tenantSlug/settings/invitations'
+import { Route as TenantSlugSettingsOverviewRouteImport } from './routes/$tenantSlug/settings/overview'
+import { Route as TenantSlugSettingsRolesRouteImport } from './routes/$tenantSlug/settings/roles'
+import { Route as TenantSlugSettingsUsersRouteImport } from './routes/$tenantSlug/settings/users'
+import { Route as AdminTenantsTenantIdRouteImport } from './routes/admin/tenants/$tenantId'
+import { Route as AdminTenantsNewRouteImport } from './routes/admin/tenants/new'
+import { Route as TenantSlugCustomersCustomerIdIndexRouteImport } from './routes/$tenantSlug/customers/$customerId.index'
+import { Route as TenantSlugCustomersCustomerIdEnergyRouteImport } from './routes/$tenantSlug/customers/$customerId.energy'
+import { Route as TenantSlugEnergyMeteringPointsIndexRouteImport } from './routes/$tenantSlug/energy/metering-points/index'
+import { Route as TenantSlugEnergyMeteringPointsMeteringPointIdRouteImport } from './routes/$tenantSlug/energy/metering-points/$meteringPointId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TenantSlugRoute = TenantSlugRouteImport.update({
+  id: '/$tenantSlug',
+  path: '/$tenantSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
@@ -48,14 +61,14 @@ const AcceptInvitationRoute = AcceptInvitationRouteImport.update({
   path: '/accept-invitation',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InboxRoute = InboxRouteImport.update({
-  id: '/inbox',
-  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PasswordResetRoute = PasswordResetRouteImport.update({
@@ -83,316 +96,391 @@ const SignInRoute = SignInRouteImport.update({
   path: '/sign-in',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminDashboardRoute = AdminDashboardRouteImport.update({
-  id: '/admin/dashboard',
-  path: '/admin/dashboard',
-  getParentRoute: () => rootRouteImport,
+const TenantSlugIndexRoute = TenantSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TenantSlugRoute,
 } as any)
-const AdminInvitationsRoute = AdminInvitationsRouteImport.update({
-  id: '/admin/invitations',
-  path: '/admin/invitations',
-  getParentRoute: () => rootRouteImport,
+const TenantSlugInboxRoute = TenantSlugInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => TenantSlugRoute,
 } as any)
-const AdminRolesRoute = AdminRolesRouteImport.update({
-  id: '/admin/roles',
-  path: '/admin/roles',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminUsersRoute = AdminUsersRouteImport.update({
-  id: '/admin/users',
-  path: '/admin/users',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CommunicationsChannelsRoute = CommunicationsChannelsRouteImport.update({
-  id: '/communications/channels',
-  path: '/communications/channels',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CommunicationsSuppressionsRoute =
-  CommunicationsSuppressionsRouteImport.update({
-    id: '/communications/suppressions',
-    path: '/communications/suppressions',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ContactsIndexRoute = ContactsIndexRouteImport.update({
-  id: '/contacts/',
-  path: '/contacts/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContactsContactIdRoute = ContactsContactIdRouteImport.update({
-  id: '/contacts/$contactId',
-  path: '/contacts/$contactId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CustomersIndexRoute = CustomersIndexRouteImport.update({
-  id: '/customers/',
-  path: '/customers/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CustomersCustomerIdRoute = CustomersCustomerIdRouteImport.update({
-  id: '/customers/$customerId',
-  path: '/customers/$customerId',
-  getParentRoute: () => rootRouteImport,
+const TenantSlugSettingsRoute = TenantSlugSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => TenantSlugRoute,
 } as any)
 const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
   id: '/invitations/accept',
   path: '/invitations/accept',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProductsIndexRoute = ProductsIndexRouteImport.update({
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const TenantSlugCommunicationsChannelsRoute =
+  TenantSlugCommunicationsChannelsRouteImport.update({
+    id: '/communications/channels',
+    path: '/communications/channels',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugCommunicationsSuppressionsRoute =
+  TenantSlugCommunicationsSuppressionsRouteImport.update({
+    id: '/communications/suppressions',
+    path: '/communications/suppressions',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugContactsIndexRoute = TenantSlugContactsIndexRouteImport.update({
+  id: '/contacts/',
+  path: '/contacts/',
+  getParentRoute: () => TenantSlugRoute,
+} as any)
+const TenantSlugContactsContactIdRoute =
+  TenantSlugContactsContactIdRouteImport.update({
+    id: '/contacts/$contactId',
+    path: '/contacts/$contactId',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugCustomersIndexRoute =
+  TenantSlugCustomersIndexRouteImport.update({
+    id: '/customers/',
+    path: '/customers/',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugCustomersCustomerIdRoute =
+  TenantSlugCustomersCustomerIdRouteImport.update({
+    id: '/customers/$customerId',
+    path: '/customers/$customerId',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugProductsIndexRoute = TenantSlugProductsIndexRouteImport.update({
   id: '/products/',
   path: '/products/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => TenantSlugRoute,
 } as any)
-const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
-  id: '/products/$productId',
-  path: '/products/$productId',
-  getParentRoute: () => rootRouteImport,
+const TenantSlugProductsProductIdRoute =
+  TenantSlugProductsProductIdRouteImport.update({
+    id: '/products/$productId',
+    path: '/products/$productId',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugProductsCategoriesRoute =
+  TenantSlugProductsCategoriesRouteImport.update({
+    id: '/products/categories',
+    path: '/products/categories',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugProductsTaxCategoriesRoute =
+  TenantSlugProductsTaxCategoriesRouteImport.update({
+    id: '/products/tax-categories',
+    path: '/products/tax-categories',
+    getParentRoute: () => TenantSlugRoute,
+  } as any)
+const TenantSlugSettingsInvitationsRoute =
+  TenantSlugSettingsInvitationsRouteImport.update({
+    id: '/invitations',
+    path: '/invitations',
+    getParentRoute: () => TenantSlugSettingsRoute,
+  } as any)
+const TenantSlugSettingsOverviewRoute =
+  TenantSlugSettingsOverviewRouteImport.update({
+    id: '/overview',
+    path: '/overview',
+    getParentRoute: () => TenantSlugSettingsRoute,
+  } as any)
+const TenantSlugSettingsRolesRoute = TenantSlugSettingsRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => TenantSlugSettingsRoute,
 } as any)
-const ProductsCategoriesRoute = ProductsCategoriesRouteImport.update({
-  id: '/products/categories',
-  path: '/products/categories',
-  getParentRoute: () => rootRouteImport,
+const TenantSlugSettingsUsersRoute = TenantSlugSettingsUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => TenantSlugSettingsRoute,
 } as any)
-const ProductsTaxCategoriesRoute = ProductsTaxCategoriesRouteImport.update({
-  id: '/products/tax-categories',
-  path: '/products/tax-categories',
-  getParentRoute: () => rootRouteImport,
+const AdminTenantsTenantIdRoute = AdminTenantsTenantIdRouteImport.update({
+  id: '/tenants/$tenantId',
+  path: '/tenants/$tenantId',
+  getParentRoute: () => AdminRoute,
 } as any)
-const CustomersCustomerIdIndexRoute =
-  CustomersCustomerIdIndexRouteImport.update({
+const AdminTenantsNewRoute = AdminTenantsNewRouteImport.update({
+  id: '/tenants/new',
+  path: '/tenants/new',
+  getParentRoute: () => AdminRoute,
+} as any)
+const TenantSlugCustomersCustomerIdIndexRoute =
+  TenantSlugCustomersCustomerIdIndexRouteImport.update({
     id: '/',
     path: '/',
-    getParentRoute: () => CustomersCustomerIdRoute,
+    getParentRoute: () => TenantSlugCustomersCustomerIdRoute,
   } as any)
-const CustomersCustomerIdEnergyRoute =
-  CustomersCustomerIdEnergyRouteImport.update({
+const TenantSlugCustomersCustomerIdEnergyRoute =
+  TenantSlugCustomersCustomerIdEnergyRouteImport.update({
     id: '/energy',
     path: '/energy',
-    getParentRoute: () => CustomersCustomerIdRoute,
+    getParentRoute: () => TenantSlugCustomersCustomerIdRoute,
   } as any)
-const EnergyMeteringPointsIndexRoute =
-  EnergyMeteringPointsIndexRouteImport.update({
+const TenantSlugEnergyMeteringPointsIndexRoute =
+  TenantSlugEnergyMeteringPointsIndexRouteImport.update({
     id: '/energy/metering-points/',
     path: '/energy/metering-points/',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => TenantSlugRoute,
   } as any)
-const EnergyMeteringPointsMeteringPointIdRoute =
-  EnergyMeteringPointsMeteringPointIdRouteImport.update({
+const TenantSlugEnergyMeteringPointsMeteringPointIdRoute =
+  TenantSlugEnergyMeteringPointsMeteringPointIdRouteImport.update({
     id: '/energy/metering-points/$meteringPointId',
     path: '/energy/metering-points/$meteringPointId',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => TenantSlugRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$tenantSlug': typeof TenantSlugRouteWithChildren
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/admin': typeof AdminRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
-  '/inbox': typeof InboxRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
-  '/admin/dashboard': typeof AdminDashboardRoute
-  '/admin/invitations': typeof AdminInvitationsRoute
-  '/admin/roles': typeof AdminRolesRoute
-  '/admin/users': typeof AdminUsersRoute
-  '/communications/channels': typeof CommunicationsChannelsRoute
-  '/communications/suppressions': typeof CommunicationsSuppressionsRoute
-  '/contacts/$contactId': typeof ContactsContactIdRoute
-  '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
+  '/$tenantSlug/inbox': typeof TenantSlugInboxRoute
+  '/$tenantSlug/settings': typeof TenantSlugSettingsRouteWithChildren
   '/invitations/accept': typeof InvitationsAcceptRoute
-  '/products/$productId': typeof ProductsProductIdRoute
-  '/products/categories': typeof ProductsCategoriesRoute
-  '/products/tax-categories': typeof ProductsTaxCategoriesRoute
-  '/contacts/': typeof ContactsIndexRoute
-  '/customers/': typeof CustomersIndexRoute
-  '/products/': typeof ProductsIndexRoute
-  '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
-  '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
-  '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
-  '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/security': typeof SettingsSecurityRoute
+  '/$tenantSlug/': typeof TenantSlugIndexRoute
+  '/$tenantSlug/communications/channels': typeof TenantSlugCommunicationsChannelsRoute
+  '/$tenantSlug/communications/suppressions': typeof TenantSlugCommunicationsSuppressionsRoute
+  '/$tenantSlug/contacts/$contactId': typeof TenantSlugContactsContactIdRoute
+  '/$tenantSlug/customers/$customerId': typeof TenantSlugCustomersCustomerIdRouteWithChildren
+  '/$tenantSlug/products/$productId': typeof TenantSlugProductsProductIdRoute
+  '/$tenantSlug/products/categories': typeof TenantSlugProductsCategoriesRoute
+  '/$tenantSlug/products/tax-categories': typeof TenantSlugProductsTaxCategoriesRoute
+  '/$tenantSlug/settings/invitations': typeof TenantSlugSettingsInvitationsRoute
+  '/$tenantSlug/settings/overview': typeof TenantSlugSettingsOverviewRoute
+  '/$tenantSlug/settings/roles': typeof TenantSlugSettingsRolesRoute
+  '/$tenantSlug/settings/users': typeof TenantSlugSettingsUsersRoute
+  '/admin/tenants/$tenantId': typeof AdminTenantsTenantIdRoute
+  '/admin/tenants/new': typeof AdminTenantsNewRoute
+  '/$tenantSlug/contacts/': typeof TenantSlugContactsIndexRoute
+  '/$tenantSlug/customers/': typeof TenantSlugCustomersIndexRoute
+  '/$tenantSlug/products/': typeof TenantSlugProductsIndexRoute
+  '/$tenantSlug/customers/$customerId/energy': typeof TenantSlugCustomersCustomerIdEnergyRoute
+  '/$tenantSlug/energy/metering-points/$meteringPointId': typeof TenantSlugEnergyMeteringPointsMeteringPointIdRoute
+  '/$tenantSlug/customers/$customerId/': typeof TenantSlugCustomersCustomerIdIndexRoute
+  '/$tenantSlug/energy/metering-points/': typeof TenantSlugEnergyMeteringPointsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/admin': typeof AdminRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
-  '/inbox': typeof InboxRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
-  '/admin/dashboard': typeof AdminDashboardRoute
-  '/admin/invitations': typeof AdminInvitationsRoute
-  '/admin/roles': typeof AdminRolesRoute
-  '/admin/users': typeof AdminUsersRoute
-  '/communications/channels': typeof CommunicationsChannelsRoute
-  '/communications/suppressions': typeof CommunicationsSuppressionsRoute
-  '/contacts/$contactId': typeof ContactsContactIdRoute
+  '/$tenantSlug/inbox': typeof TenantSlugInboxRoute
+  '/$tenantSlug/settings': typeof TenantSlugSettingsRouteWithChildren
   '/invitations/accept': typeof InvitationsAcceptRoute
-  '/products/$productId': typeof ProductsProductIdRoute
-  '/products/categories': typeof ProductsCategoriesRoute
-  '/products/tax-categories': typeof ProductsTaxCategoriesRoute
-  '/contacts': typeof ContactsIndexRoute
-  '/customers': typeof CustomersIndexRoute
-  '/products': typeof ProductsIndexRoute
-  '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
-  '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
-  '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
-  '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/security': typeof SettingsSecurityRoute
+  '/$tenantSlug': typeof TenantSlugIndexRoute
+  '/$tenantSlug/communications/channels': typeof TenantSlugCommunicationsChannelsRoute
+  '/$tenantSlug/communications/suppressions': typeof TenantSlugCommunicationsSuppressionsRoute
+  '/$tenantSlug/contacts/$contactId': typeof TenantSlugContactsContactIdRoute
+  '/$tenantSlug/products/$productId': typeof TenantSlugProductsProductIdRoute
+  '/$tenantSlug/products/categories': typeof TenantSlugProductsCategoriesRoute
+  '/$tenantSlug/products/tax-categories': typeof TenantSlugProductsTaxCategoriesRoute
+  '/$tenantSlug/settings/invitations': typeof TenantSlugSettingsInvitationsRoute
+  '/$tenantSlug/settings/overview': typeof TenantSlugSettingsOverviewRoute
+  '/$tenantSlug/settings/roles': typeof TenantSlugSettingsRolesRoute
+  '/$tenantSlug/settings/users': typeof TenantSlugSettingsUsersRoute
+  '/admin/tenants/$tenantId': typeof AdminTenantsTenantIdRoute
+  '/admin/tenants/new': typeof AdminTenantsNewRoute
+  '/$tenantSlug/contacts': typeof TenantSlugContactsIndexRoute
+  '/$tenantSlug/customers': typeof TenantSlugCustomersIndexRoute
+  '/$tenantSlug/products': typeof TenantSlugProductsIndexRoute
+  '/$tenantSlug/customers/$customerId/energy': typeof TenantSlugCustomersCustomerIdEnergyRoute
+  '/$tenantSlug/energy/metering-points/$meteringPointId': typeof TenantSlugEnergyMeteringPointsMeteringPointIdRoute
+  '/$tenantSlug/customers/$customerId': typeof TenantSlugCustomersCustomerIdIndexRoute
+  '/$tenantSlug/energy/metering-points': typeof TenantSlugEnergyMeteringPointsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$tenantSlug': typeof TenantSlugRouteWithChildren
   '/accept-invitation': typeof AcceptInvitationRoute
+  '/admin': typeof AdminRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
-  '/inbox': typeof InboxRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/settings': typeof SettingsRoute
+  '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
-  '/admin/dashboard': typeof AdminDashboardRoute
-  '/admin/invitations': typeof AdminInvitationsRoute
-  '/admin/roles': typeof AdminRolesRoute
-  '/admin/users': typeof AdminUsersRoute
-  '/communications/channels': typeof CommunicationsChannelsRoute
-  '/communications/suppressions': typeof CommunicationsSuppressionsRoute
-  '/contacts/$contactId': typeof ContactsContactIdRoute
-  '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
+  '/$tenantSlug/inbox': typeof TenantSlugInboxRoute
+  '/$tenantSlug/settings': typeof TenantSlugSettingsRouteWithChildren
   '/invitations/accept': typeof InvitationsAcceptRoute
-  '/products/$productId': typeof ProductsProductIdRoute
-  '/products/categories': typeof ProductsCategoriesRoute
-  '/products/tax-categories': typeof ProductsTaxCategoriesRoute
-  '/contacts/': typeof ContactsIndexRoute
-  '/customers/': typeof CustomersIndexRoute
-  '/products/': typeof ProductsIndexRoute
-  '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
-  '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
-  '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
-  '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/security': typeof SettingsSecurityRoute
+  '/$tenantSlug/': typeof TenantSlugIndexRoute
+  '/$tenantSlug/communications/channels': typeof TenantSlugCommunicationsChannelsRoute
+  '/$tenantSlug/communications/suppressions': typeof TenantSlugCommunicationsSuppressionsRoute
+  '/$tenantSlug/contacts/$contactId': typeof TenantSlugContactsContactIdRoute
+  '/$tenantSlug/customers/$customerId': typeof TenantSlugCustomersCustomerIdRouteWithChildren
+  '/$tenantSlug/products/$productId': typeof TenantSlugProductsProductIdRoute
+  '/$tenantSlug/products/categories': typeof TenantSlugProductsCategoriesRoute
+  '/$tenantSlug/products/tax-categories': typeof TenantSlugProductsTaxCategoriesRoute
+  '/$tenantSlug/settings/invitations': typeof TenantSlugSettingsInvitationsRoute
+  '/$tenantSlug/settings/overview': typeof TenantSlugSettingsOverviewRoute
+  '/$tenantSlug/settings/roles': typeof TenantSlugSettingsRolesRoute
+  '/$tenantSlug/settings/users': typeof TenantSlugSettingsUsersRoute
+  '/admin/tenants/$tenantId': typeof AdminTenantsTenantIdRoute
+  '/admin/tenants/new': typeof AdminTenantsNewRoute
+  '/$tenantSlug/contacts/': typeof TenantSlugContactsIndexRoute
+  '/$tenantSlug/customers/': typeof TenantSlugCustomersIndexRoute
+  '/$tenantSlug/products/': typeof TenantSlugProductsIndexRoute
+  '/$tenantSlug/customers/$customerId/energy': typeof TenantSlugCustomersCustomerIdEnergyRoute
+  '/$tenantSlug/energy/metering-points/$meteringPointId': typeof TenantSlugEnergyMeteringPointsMeteringPointIdRoute
+  '/$tenantSlug/customers/$customerId/': typeof TenantSlugCustomersCustomerIdIndexRoute
+  '/$tenantSlug/energy/metering-points/': typeof TenantSlugEnergyMeteringPointsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/$tenantSlug'
     | '/accept-invitation'
+    | '/admin'
     | '/forgot-password'
-    | '/inbox'
     | '/password-reset'
     | '/reset-password'
     | '/settings'
     | '/setup'
     | '/sign-in'
-    | '/admin/dashboard'
-    | '/admin/invitations'
-    | '/admin/roles'
-    | '/admin/users'
-    | '/communications/channels'
-    | '/communications/suppressions'
-    | '/contacts/$contactId'
-    | '/customers/$customerId'
+    | '/$tenantSlug/inbox'
+    | '/$tenantSlug/settings'
     | '/invitations/accept'
-    | '/products/$productId'
-    | '/products/categories'
-    | '/products/tax-categories'
-    | '/contacts/'
-    | '/customers/'
-    | '/products/'
-    | '/customers/$customerId/energy'
-    | '/energy/metering-points/$meteringPointId'
-    | '/customers/$customerId/'
-    | '/energy/metering-points/'
+    | '/settings/profile'
+    | '/settings/security'
+    | '/$tenantSlug/'
+    | '/$tenantSlug/communications/channels'
+    | '/$tenantSlug/communications/suppressions'
+    | '/$tenantSlug/contacts/$contactId'
+    | '/$tenantSlug/customers/$customerId'
+    | '/$tenantSlug/products/$productId'
+    | '/$tenantSlug/products/categories'
+    | '/$tenantSlug/products/tax-categories'
+    | '/$tenantSlug/settings/invitations'
+    | '/$tenantSlug/settings/overview'
+    | '/$tenantSlug/settings/roles'
+    | '/$tenantSlug/settings/users'
+    | '/admin/tenants/$tenantId'
+    | '/admin/tenants/new'
+    | '/$tenantSlug/contacts/'
+    | '/$tenantSlug/customers/'
+    | '/$tenantSlug/products/'
+    | '/$tenantSlug/customers/$customerId/energy'
+    | '/$tenantSlug/energy/metering-points/$meteringPointId'
+    | '/$tenantSlug/customers/$customerId/'
+    | '/$tenantSlug/energy/metering-points/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/accept-invitation'
+    | '/admin'
     | '/forgot-password'
-    | '/inbox'
     | '/password-reset'
     | '/reset-password'
     | '/settings'
     | '/setup'
     | '/sign-in'
-    | '/admin/dashboard'
-    | '/admin/invitations'
-    | '/admin/roles'
-    | '/admin/users'
-    | '/communications/channels'
-    | '/communications/suppressions'
-    | '/contacts/$contactId'
+    | '/$tenantSlug/inbox'
+    | '/$tenantSlug/settings'
     | '/invitations/accept'
-    | '/products/$productId'
-    | '/products/categories'
-    | '/products/tax-categories'
-    | '/contacts'
-    | '/customers'
-    | '/products'
-    | '/customers/$customerId/energy'
-    | '/energy/metering-points/$meteringPointId'
-    | '/customers/$customerId'
-    | '/energy/metering-points'
+    | '/settings/profile'
+    | '/settings/security'
+    | '/$tenantSlug'
+    | '/$tenantSlug/communications/channels'
+    | '/$tenantSlug/communications/suppressions'
+    | '/$tenantSlug/contacts/$contactId'
+    | '/$tenantSlug/products/$productId'
+    | '/$tenantSlug/products/categories'
+    | '/$tenantSlug/products/tax-categories'
+    | '/$tenantSlug/settings/invitations'
+    | '/$tenantSlug/settings/overview'
+    | '/$tenantSlug/settings/roles'
+    | '/$tenantSlug/settings/users'
+    | '/admin/tenants/$tenantId'
+    | '/admin/tenants/new'
+    | '/$tenantSlug/contacts'
+    | '/$tenantSlug/customers'
+    | '/$tenantSlug/products'
+    | '/$tenantSlug/customers/$customerId/energy'
+    | '/$tenantSlug/energy/metering-points/$meteringPointId'
+    | '/$tenantSlug/customers/$customerId'
+    | '/$tenantSlug/energy/metering-points'
   id:
     | '__root__'
     | '/'
+    | '/$tenantSlug'
     | '/accept-invitation'
+    | '/admin'
     | '/forgot-password'
-    | '/inbox'
     | '/password-reset'
     | '/reset-password'
     | '/settings'
     | '/setup'
     | '/sign-in'
-    | '/admin/dashboard'
-    | '/admin/invitations'
-    | '/admin/roles'
-    | '/admin/users'
-    | '/communications/channels'
-    | '/communications/suppressions'
-    | '/contacts/$contactId'
-    | '/customers/$customerId'
+    | '/$tenantSlug/inbox'
+    | '/$tenantSlug/settings'
     | '/invitations/accept'
-    | '/products/$productId'
-    | '/products/categories'
-    | '/products/tax-categories'
-    | '/contacts/'
-    | '/customers/'
-    | '/products/'
-    | '/customers/$customerId/energy'
-    | '/energy/metering-points/$meteringPointId'
-    | '/customers/$customerId/'
-    | '/energy/metering-points/'
+    | '/settings/profile'
+    | '/settings/security'
+    | '/$tenantSlug/'
+    | '/$tenantSlug/communications/channels'
+    | '/$tenantSlug/communications/suppressions'
+    | '/$tenantSlug/contacts/$contactId'
+    | '/$tenantSlug/customers/$customerId'
+    | '/$tenantSlug/products/$productId'
+    | '/$tenantSlug/products/categories'
+    | '/$tenantSlug/products/tax-categories'
+    | '/$tenantSlug/settings/invitations'
+    | '/$tenantSlug/settings/overview'
+    | '/$tenantSlug/settings/roles'
+    | '/$tenantSlug/settings/users'
+    | '/admin/tenants/$tenantId'
+    | '/admin/tenants/new'
+    | '/$tenantSlug/contacts/'
+    | '/$tenantSlug/customers/'
+    | '/$tenantSlug/products/'
+    | '/$tenantSlug/customers/$customerId/energy'
+    | '/$tenantSlug/energy/metering-points/$meteringPointId'
+    | '/$tenantSlug/customers/$customerId/'
+    | '/$tenantSlug/energy/metering-points/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  TenantSlugRoute: typeof TenantSlugRouteWithChildren
   AcceptInvitationRoute: typeof AcceptInvitationRoute
+  AdminRoute: typeof AdminRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
-  InboxRoute: typeof InboxRoute
   PasswordResetRoute: typeof PasswordResetRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
-  SettingsRoute: typeof SettingsRoute
+  SettingsRoute: typeof SettingsRouteWithChildren
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
-  AdminDashboardRoute: typeof AdminDashboardRoute
-  AdminInvitationsRoute: typeof AdminInvitationsRoute
-  AdminRolesRoute: typeof AdminRolesRoute
-  AdminUsersRoute: typeof AdminUsersRoute
-  CommunicationsChannelsRoute: typeof CommunicationsChannelsRoute
-  CommunicationsSuppressionsRoute: typeof CommunicationsSuppressionsRoute
-  ContactsContactIdRoute: typeof ContactsContactIdRoute
-  CustomersCustomerIdRoute: typeof CustomersCustomerIdRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
-  ProductsProductIdRoute: typeof ProductsProductIdRoute
-  ProductsCategoriesRoute: typeof ProductsCategoriesRoute
-  ProductsTaxCategoriesRoute: typeof ProductsTaxCategoriesRoute
-  ContactsIndexRoute: typeof ContactsIndexRoute
-  CustomersIndexRoute: typeof CustomersIndexRoute
-  ProductsIndexRoute: typeof ProductsIndexRoute
-  EnergyMeteringPointsMeteringPointIdRoute: typeof EnergyMeteringPointsMeteringPointIdRoute
-  EnergyMeteringPointsIndexRoute: typeof EnergyMeteringPointsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -404,6 +492,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$tenantSlug': {
+      id: '/$tenantSlug'
+      path: '/$tenantSlug'
+      fullPath: '/$tenantSlug'
+      preLoaderRoute: typeof TenantSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/accept-invitation': {
       id: '/accept-invitation'
       path: '/accept-invitation'
@@ -411,18 +506,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AcceptInvitationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/forgot-password': {
       id: '/forgot-password'
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/inbox': {
-      id: '/inbox'
-      path: '/inbox'
-      fullPath: '/inbox'
-      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/password-reset': {
@@ -460,75 +555,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignInRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/dashboard': {
-      id: '/admin/dashboard'
-      path: '/admin/dashboard'
-      fullPath: '/admin/dashboard'
-      preLoaderRoute: typeof AdminDashboardRouteImport
-      parentRoute: typeof rootRouteImport
+    '/$tenantSlug/': {
+      id: '/$tenantSlug/'
+      path: '/'
+      fullPath: '/$tenantSlug/'
+      preLoaderRoute: typeof TenantSlugIndexRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
-    '/admin/invitations': {
-      id: '/admin/invitations'
-      path: '/admin/invitations'
-      fullPath: '/admin/invitations'
-      preLoaderRoute: typeof AdminInvitationsRouteImport
-      parentRoute: typeof rootRouteImport
+    '/$tenantSlug/inbox': {
+      id: '/$tenantSlug/inbox'
+      path: '/inbox'
+      fullPath: '/$tenantSlug/inbox'
+      preLoaderRoute: typeof TenantSlugInboxRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
-    '/admin/roles': {
-      id: '/admin/roles'
-      path: '/admin/roles'
-      fullPath: '/admin/roles'
-      preLoaderRoute: typeof AdminRolesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin/users': {
-      id: '/admin/users'
-      path: '/admin/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AdminUsersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/communications/channels': {
-      id: '/communications/channels'
-      path: '/communications/channels'
-      fullPath: '/communications/channels'
-      preLoaderRoute: typeof CommunicationsChannelsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/communications/suppressions': {
-      id: '/communications/suppressions'
-      path: '/communications/suppressions'
-      fullPath: '/communications/suppressions'
-      preLoaderRoute: typeof CommunicationsSuppressionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contacts/': {
-      id: '/contacts/'
-      path: '/contacts'
-      fullPath: '/contacts/'
-      preLoaderRoute: typeof ContactsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contacts/$contactId': {
-      id: '/contacts/$contactId'
-      path: '/contacts/$contactId'
-      fullPath: '/contacts/$contactId'
-      preLoaderRoute: typeof ContactsContactIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/customers/': {
-      id: '/customers/'
-      path: '/customers'
-      fullPath: '/customers/'
-      preLoaderRoute: typeof CustomersIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/customers/$customerId': {
-      id: '/customers/$customerId'
-      path: '/customers/$customerId'
-      fullPath: '/customers/$customerId'
-      preLoaderRoute: typeof CustomersCustomerIdRouteImport
-      parentRoute: typeof rootRouteImport
+    '/$tenantSlug/settings': {
+      id: '/$tenantSlug/settings'
+      path: '/settings'
+      fullPath: '/$tenantSlug/settings'
+      preLoaderRoute: typeof TenantSlugSettingsRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
     '/invitations/accept': {
       id: '/invitations/accept'
@@ -537,106 +583,280 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvitationsAcceptRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/products/': {
-      id: '/products/'
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/security': {
+      id: '/settings/security'
+      path: '/security'
+      fullPath: '/settings/security'
+      preLoaderRoute: typeof SettingsSecurityRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/$tenantSlug/communications/channels': {
+      id: '/$tenantSlug/communications/channels'
+      path: '/communications/channels'
+      fullPath: '/$tenantSlug/communications/channels'
+      preLoaderRoute: typeof TenantSlugCommunicationsChannelsRouteImport
+      parentRoute: typeof TenantSlugRoute
+    }
+    '/$tenantSlug/communications/suppressions': {
+      id: '/$tenantSlug/communications/suppressions'
+      path: '/communications/suppressions'
+      fullPath: '/$tenantSlug/communications/suppressions'
+      preLoaderRoute: typeof TenantSlugCommunicationsSuppressionsRouteImport
+      parentRoute: typeof TenantSlugRoute
+    }
+    '/$tenantSlug/contacts/': {
+      id: '/$tenantSlug/contacts/'
+      path: '/contacts'
+      fullPath: '/$tenantSlug/contacts/'
+      preLoaderRoute: typeof TenantSlugContactsIndexRouteImport
+      parentRoute: typeof TenantSlugRoute
+    }
+    '/$tenantSlug/contacts/$contactId': {
+      id: '/$tenantSlug/contacts/$contactId'
+      path: '/contacts/$contactId'
+      fullPath: '/$tenantSlug/contacts/$contactId'
+      preLoaderRoute: typeof TenantSlugContactsContactIdRouteImport
+      parentRoute: typeof TenantSlugRoute
+    }
+    '/$tenantSlug/customers/': {
+      id: '/$tenantSlug/customers/'
+      path: '/customers'
+      fullPath: '/$tenantSlug/customers/'
+      preLoaderRoute: typeof TenantSlugCustomersIndexRouteImport
+      parentRoute: typeof TenantSlugRoute
+    }
+    '/$tenantSlug/customers/$customerId': {
+      id: '/$tenantSlug/customers/$customerId'
+      path: '/customers/$customerId'
+      fullPath: '/$tenantSlug/customers/$customerId'
+      preLoaderRoute: typeof TenantSlugCustomersCustomerIdRouteImport
+      parentRoute: typeof TenantSlugRoute
+    }
+    '/$tenantSlug/products/': {
+      id: '/$tenantSlug/products/'
       path: '/products'
-      fullPath: '/products/'
-      preLoaderRoute: typeof ProductsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/$tenantSlug/products/'
+      preLoaderRoute: typeof TenantSlugProductsIndexRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
-    '/products/$productId': {
-      id: '/products/$productId'
+    '/$tenantSlug/products/$productId': {
+      id: '/$tenantSlug/products/$productId'
       path: '/products/$productId'
-      fullPath: '/products/$productId'
-      preLoaderRoute: typeof ProductsProductIdRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/$tenantSlug/products/$productId'
+      preLoaderRoute: typeof TenantSlugProductsProductIdRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
-    '/products/categories': {
-      id: '/products/categories'
+    '/$tenantSlug/products/categories': {
+      id: '/$tenantSlug/products/categories'
       path: '/products/categories'
-      fullPath: '/products/categories'
-      preLoaderRoute: typeof ProductsCategoriesRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/$tenantSlug/products/categories'
+      preLoaderRoute: typeof TenantSlugProductsCategoriesRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
-    '/products/tax-categories': {
-      id: '/products/tax-categories'
+    '/$tenantSlug/products/tax-categories': {
+      id: '/$tenantSlug/products/tax-categories'
       path: '/products/tax-categories'
-      fullPath: '/products/tax-categories'
-      preLoaderRoute: typeof ProductsTaxCategoriesRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/$tenantSlug/products/tax-categories'
+      preLoaderRoute: typeof TenantSlugProductsTaxCategoriesRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
-    '/customers/$customerId/': {
-      id: '/customers/$customerId/'
+    '/$tenantSlug/settings/invitations': {
+      id: '/$tenantSlug/settings/invitations'
+      path: '/invitations'
+      fullPath: '/$tenantSlug/settings/invitations'
+      preLoaderRoute: typeof TenantSlugSettingsInvitationsRouteImport
+      parentRoute: typeof TenantSlugSettingsRoute
+    }
+    '/$tenantSlug/settings/overview': {
+      id: '/$tenantSlug/settings/overview'
+      path: '/overview'
+      fullPath: '/$tenantSlug/settings/overview'
+      preLoaderRoute: typeof TenantSlugSettingsOverviewRouteImport
+      parentRoute: typeof TenantSlugSettingsRoute
+    }
+    '/$tenantSlug/settings/roles': {
+      id: '/$tenantSlug/settings/roles'
+      path: '/roles'
+      fullPath: '/$tenantSlug/settings/roles'
+      preLoaderRoute: typeof TenantSlugSettingsRolesRouteImport
+      parentRoute: typeof TenantSlugSettingsRoute
+    }
+    '/$tenantSlug/settings/users': {
+      id: '/$tenantSlug/settings/users'
+      path: '/users'
+      fullPath: '/$tenantSlug/settings/users'
+      preLoaderRoute: typeof TenantSlugSettingsUsersRouteImport
+      parentRoute: typeof TenantSlugSettingsRoute
+    }
+    '/admin/tenants/$tenantId': {
+      id: '/admin/tenants/$tenantId'
+      path: '/tenants/$tenantId'
+      fullPath: '/admin/tenants/$tenantId'
+      preLoaderRoute: typeof AdminTenantsTenantIdRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/tenants/new': {
+      id: '/admin/tenants/new'
+      path: '/tenants/new'
+      fullPath: '/admin/tenants/new'
+      preLoaderRoute: typeof AdminTenantsNewRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/$tenantSlug/customers/$customerId/': {
+      id: '/$tenantSlug/customers/$customerId/'
       path: '/'
-      fullPath: '/customers/$customerId/'
-      preLoaderRoute: typeof CustomersCustomerIdIndexRouteImport
-      parentRoute: typeof CustomersCustomerIdRoute
+      fullPath: '/$tenantSlug/customers/$customerId/'
+      preLoaderRoute: typeof TenantSlugCustomersCustomerIdIndexRouteImport
+      parentRoute: typeof TenantSlugCustomersCustomerIdRoute
     }
-    '/customers/$customerId/energy': {
-      id: '/customers/$customerId/energy'
+    '/$tenantSlug/customers/$customerId/energy': {
+      id: '/$tenantSlug/customers/$customerId/energy'
       path: '/energy'
-      fullPath: '/customers/$customerId/energy'
-      preLoaderRoute: typeof CustomersCustomerIdEnergyRouteImport
-      parentRoute: typeof CustomersCustomerIdRoute
+      fullPath: '/$tenantSlug/customers/$customerId/energy'
+      preLoaderRoute: typeof TenantSlugCustomersCustomerIdEnergyRouteImport
+      parentRoute: typeof TenantSlugCustomersCustomerIdRoute
     }
-    '/energy/metering-points/': {
-      id: '/energy/metering-points/'
+    '/$tenantSlug/energy/metering-points/': {
+      id: '/$tenantSlug/energy/metering-points/'
       path: '/energy/metering-points'
-      fullPath: '/energy/metering-points/'
-      preLoaderRoute: typeof EnergyMeteringPointsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/$tenantSlug/energy/metering-points/'
+      preLoaderRoute: typeof TenantSlugEnergyMeteringPointsIndexRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
-    '/energy/metering-points/$meteringPointId': {
-      id: '/energy/metering-points/$meteringPointId'
+    '/$tenantSlug/energy/metering-points/$meteringPointId': {
+      id: '/$tenantSlug/energy/metering-points/$meteringPointId'
       path: '/energy/metering-points/$meteringPointId'
-      fullPath: '/energy/metering-points/$meteringPointId'
-      preLoaderRoute: typeof EnergyMeteringPointsMeteringPointIdRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/$tenantSlug/energy/metering-points/$meteringPointId'
+      preLoaderRoute: typeof TenantSlugEnergyMeteringPointsMeteringPointIdRouteImport
+      parentRoute: typeof TenantSlugRoute
     }
   }
 }
 
-interface CustomersCustomerIdRouteChildren {
-  CustomersCustomerIdEnergyRoute: typeof CustomersCustomerIdEnergyRoute
-  CustomersCustomerIdIndexRoute: typeof CustomersCustomerIdIndexRoute
+interface TenantSlugSettingsRouteChildren {
+  TenantSlugSettingsInvitationsRoute: typeof TenantSlugSettingsInvitationsRoute
+  TenantSlugSettingsOverviewRoute: typeof TenantSlugSettingsOverviewRoute
+  TenantSlugSettingsRolesRoute: typeof TenantSlugSettingsRolesRoute
+  TenantSlugSettingsUsersRoute: typeof TenantSlugSettingsUsersRoute
 }
 
-const CustomersCustomerIdRouteChildren: CustomersCustomerIdRouteChildren = {
-  CustomersCustomerIdEnergyRoute: CustomersCustomerIdEnergyRoute,
-  CustomersCustomerIdIndexRoute: CustomersCustomerIdIndexRoute,
+const TenantSlugSettingsRouteChildren: TenantSlugSettingsRouteChildren = {
+  TenantSlugSettingsInvitationsRoute: TenantSlugSettingsInvitationsRoute,
+  TenantSlugSettingsOverviewRoute: TenantSlugSettingsOverviewRoute,
+  TenantSlugSettingsRolesRoute: TenantSlugSettingsRolesRoute,
+  TenantSlugSettingsUsersRoute: TenantSlugSettingsUsersRoute,
 }
 
-const CustomersCustomerIdRouteWithChildren =
-  CustomersCustomerIdRoute._addFileChildren(CustomersCustomerIdRouteChildren)
+const TenantSlugSettingsRouteWithChildren =
+  TenantSlugSettingsRoute._addFileChildren(TenantSlugSettingsRouteChildren)
+
+interface TenantSlugCustomersCustomerIdRouteChildren {
+  TenantSlugCustomersCustomerIdEnergyRoute: typeof TenantSlugCustomersCustomerIdEnergyRoute
+  TenantSlugCustomersCustomerIdIndexRoute: typeof TenantSlugCustomersCustomerIdIndexRoute
+}
+
+const TenantSlugCustomersCustomerIdRouteChildren: TenantSlugCustomersCustomerIdRouteChildren =
+  {
+    TenantSlugCustomersCustomerIdEnergyRoute:
+      TenantSlugCustomersCustomerIdEnergyRoute,
+    TenantSlugCustomersCustomerIdIndexRoute:
+      TenantSlugCustomersCustomerIdIndexRoute,
+  }
+
+const TenantSlugCustomersCustomerIdRouteWithChildren =
+  TenantSlugCustomersCustomerIdRoute._addFileChildren(
+    TenantSlugCustomersCustomerIdRouteChildren,
+  )
+
+interface TenantSlugRouteChildren {
+  TenantSlugInboxRoute: typeof TenantSlugInboxRoute
+  TenantSlugSettingsRoute: typeof TenantSlugSettingsRouteWithChildren
+  TenantSlugIndexRoute: typeof TenantSlugIndexRoute
+  TenantSlugCommunicationsChannelsRoute: typeof TenantSlugCommunicationsChannelsRoute
+  TenantSlugCommunicationsSuppressionsRoute: typeof TenantSlugCommunicationsSuppressionsRoute
+  TenantSlugContactsContactIdRoute: typeof TenantSlugContactsContactIdRoute
+  TenantSlugCustomersCustomerIdRoute: typeof TenantSlugCustomersCustomerIdRouteWithChildren
+  TenantSlugProductsProductIdRoute: typeof TenantSlugProductsProductIdRoute
+  TenantSlugProductsCategoriesRoute: typeof TenantSlugProductsCategoriesRoute
+  TenantSlugProductsTaxCategoriesRoute: typeof TenantSlugProductsTaxCategoriesRoute
+  TenantSlugContactsIndexRoute: typeof TenantSlugContactsIndexRoute
+  TenantSlugCustomersIndexRoute: typeof TenantSlugCustomersIndexRoute
+  TenantSlugProductsIndexRoute: typeof TenantSlugProductsIndexRoute
+  TenantSlugEnergyMeteringPointsMeteringPointIdRoute: typeof TenantSlugEnergyMeteringPointsMeteringPointIdRoute
+  TenantSlugEnergyMeteringPointsIndexRoute: typeof TenantSlugEnergyMeteringPointsIndexRoute
+}
+
+const TenantSlugRouteChildren: TenantSlugRouteChildren = {
+  TenantSlugInboxRoute: TenantSlugInboxRoute,
+  TenantSlugSettingsRoute: TenantSlugSettingsRouteWithChildren,
+  TenantSlugIndexRoute: TenantSlugIndexRoute,
+  TenantSlugCommunicationsChannelsRoute: TenantSlugCommunicationsChannelsRoute,
+  TenantSlugCommunicationsSuppressionsRoute:
+    TenantSlugCommunicationsSuppressionsRoute,
+  TenantSlugContactsContactIdRoute: TenantSlugContactsContactIdRoute,
+  TenantSlugCustomersCustomerIdRoute:
+    TenantSlugCustomersCustomerIdRouteWithChildren,
+  TenantSlugProductsProductIdRoute: TenantSlugProductsProductIdRoute,
+  TenantSlugProductsCategoriesRoute: TenantSlugProductsCategoriesRoute,
+  TenantSlugProductsTaxCategoriesRoute: TenantSlugProductsTaxCategoriesRoute,
+  TenantSlugContactsIndexRoute: TenantSlugContactsIndexRoute,
+  TenantSlugCustomersIndexRoute: TenantSlugCustomersIndexRoute,
+  TenantSlugProductsIndexRoute: TenantSlugProductsIndexRoute,
+  TenantSlugEnergyMeteringPointsMeteringPointIdRoute:
+    TenantSlugEnergyMeteringPointsMeteringPointIdRoute,
+  TenantSlugEnergyMeteringPointsIndexRoute:
+    TenantSlugEnergyMeteringPointsIndexRoute,
+}
+
+const TenantSlugRouteWithChildren = TenantSlugRoute._addFileChildren(
+  TenantSlugRouteChildren,
+)
+
+interface AdminRouteChildren {
+  AdminTenantsTenantIdRoute: typeof AdminTenantsTenantIdRoute
+  AdminTenantsNewRoute: typeof AdminTenantsNewRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminTenantsTenantIdRoute: AdminTenantsTenantIdRoute,
+  AdminTenantsNewRoute: AdminTenantsNewRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
+interface SettingsRouteChildren {
+  SettingsProfileRoute: typeof SettingsProfileRoute
+  SettingsSecurityRoute: typeof SettingsSecurityRoute
+}
+
+const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsProfileRoute: SettingsProfileRoute,
+  SettingsSecurityRoute: SettingsSecurityRoute,
+}
+
+const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
+  SettingsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  TenantSlugRoute: TenantSlugRouteWithChildren,
   AcceptInvitationRoute: AcceptInvitationRoute,
+  AdminRoute: AdminRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
-  InboxRoute: InboxRoute,
   PasswordResetRoute: PasswordResetRoute,
   ResetPasswordRoute: ResetPasswordRoute,
-  SettingsRoute: SettingsRoute,
+  SettingsRoute: SettingsRouteWithChildren,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
-  AdminDashboardRoute: AdminDashboardRoute,
-  AdminInvitationsRoute: AdminInvitationsRoute,
-  AdminRolesRoute: AdminRolesRoute,
-  AdminUsersRoute: AdminUsersRoute,
-  CommunicationsChannelsRoute: CommunicationsChannelsRoute,
-  CommunicationsSuppressionsRoute: CommunicationsSuppressionsRoute,
-  ContactsContactIdRoute: ContactsContactIdRoute,
-  CustomersCustomerIdRoute: CustomersCustomerIdRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
-  ProductsProductIdRoute: ProductsProductIdRoute,
-  ProductsCategoriesRoute: ProductsCategoriesRoute,
-  ProductsTaxCategoriesRoute: ProductsTaxCategoriesRoute,
-  ContactsIndexRoute: ContactsIndexRoute,
-  CustomersIndexRoute: CustomersIndexRoute,
-  ProductsIndexRoute: ProductsIndexRoute,
-  EnergyMeteringPointsMeteringPointIdRoute:
-    EnergyMeteringPointsMeteringPointIdRoute,
-  EnergyMeteringPointsIndexRoute: EnergyMeteringPointsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -26,12 +26,12 @@ public sealed class IdentityRbacIntegrationTests(IdentityApiFactory factory)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
-        var roles = await db.Roles.AsNoTracking().Where(role => role.Name == AuthRoles.Owner || role.Name == AuthRoles.User)
+        var roles = await db.Roles.AsNoTracking().Where(role => role.Name == AuthRoles.SystemAdmin || role.Name == AuthRoles.Owner || role.Name == AuthRoles.User)
             .ToListAsync();
         var metadata = await db.RoleMetadata.AsNoTracking().Where(item => roles.Select(role => role.Id).Contains(item.RoleId))
             .ToDictionaryAsync(item => item.RoleId);
 
-        Assert.Equal(2, roles.Count);
+        Assert.Equal(3, roles.Count);
         Assert.All(roles, role => Assert.Equal(role.Name!.ToUpperInvariant(), role.NormalizedName));
         Assert.All(roles, role =>
         {
@@ -40,6 +40,9 @@ public sealed class IdentityRbacIntegrationTests(IdentityApiFactory factory)
         });
         var ownerRole = roles.Single(role => role.Name == AuthRoles.Owner);
         Assert.Equal(factory.OwnerId, await db.UserRoles.Where(assignment => assignment.RoleId == ownerRole.Id)
+            .Select(assignment => assignment.UserId).SingleAsync());
+        var systemAdminRole = roles.Single(role => role.Name == AuthRoles.SystemAdmin);
+        Assert.Equal(factory.OwnerId, await db.UserRoles.Where(assignment => assignment.RoleId == systemAdminRole.Id)
             .Select(assignment => assignment.UserId).SingleAsync());
     }
 
@@ -197,10 +200,10 @@ public sealed class IdentityRbacIntegrationTests(IdentityApiFactory factory)
     public async Task SystemRoleMutationAndDeletionAreRejected()
     {
         using var owner = await factory.CreateOwnerClientAsync();
-        var systemRole = await RoleInfoAsync(AuthRoles.User);
+        var systemRole = await RoleInfoAsync(AuthRoles.SystemAdmin);
         var update = await owner.PutAsJsonAsync($"/api/v1/identity/access/roles/{systemRole.Id}", new
         {
-            name = AuthRoles.User + "-tampered",
+            name = AuthRoles.SystemAdmin + "-tampered",
             displayName = "Tampered",
             description = "Tampered",
             permissionKeys = Array.Empty<string>(),
@@ -215,7 +218,15 @@ public sealed class IdentityRbacIntegrationTests(IdentityApiFactory factory)
         };
         var delete = await owner.SendAsync(deleteRequest);
         Assert.Equal(HttpStatusCode.Conflict, delete.StatusCode);
-        Assert.Equal(AuthRoles.User, (await RoleInfoAsync(AuthRoles.User)).Name);
+        Assert.Equal(AuthRoles.SystemAdmin, (await RoleInfoAsync(AuthRoles.SystemAdmin)).Name);
+
+        var target = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        var assignment = await owner.PutAsJsonAsync($"/api/v1/identity/access/users/{target.Id}/roles", new
+        {
+            roleIds = new[] { systemRole.Id },
+            concurrencyStamp = await UserVersionAsync(target.Id),
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, assignment.StatusCode);
     }
 
     [Fact]

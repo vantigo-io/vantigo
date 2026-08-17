@@ -25,6 +25,43 @@ public sealed class IdentityTenantControlPlaneIntegrationTests(MultiTenantIdenti
     }
 
     [Fact]
+    public async Task OwnerWithoutSystemAdminCannotUseAnyTenantControlPlaneEndpoint()
+    {
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.Owner);
+        await using (var verificationScope = factory.Services.CreateAsyncScope())
+        {
+            var verificationDb = verificationScope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+            var assignedRoles = await verificationDb.UserRoles.Where(item => item.UserId == credentials.Id)
+                .Join(verificationDb.Roles, item => item.RoleId, role => role.Id, (_, role) => role.Name).ToArrayAsync();
+            Assert.Single(assignedRoles);
+            Assert.Equal(AuthRoles.Owner, assignedRoles[0]);
+        }
+        using var owner = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+        var id = Guid.NewGuid();
+        var requests = new Func<Task<HttpResponseMessage>>[]
+        {
+            () => owner.GetAsync("/api/v1/identity/admin/tenants"),
+            () => owner.GetAsync($"/api/v1/identity/admin/tenants/{id}"),
+            () => owner.PostAsJsonAsync("/api/v1/identity/admin/tenants", new { name = "Denied", slug = $"denied-{Guid.NewGuid():N}", enabledModules = new[] { "customers" } }),
+            () => owner.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{id}", new { name = "Denied" }),
+            () => owner.PostAsync($"/api/v1/identity/admin/tenants/{id}/suspend", null),
+            () => owner.PostAsync($"/api/v1/identity/admin/tenants/{id}/reactivate", null),
+            () => owner.GetAsync($"/api/v1/identity/admin/tenants/{id}/sso"),
+            () => owner.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{id}/sso", new { entraTenantId = Guid.NewGuid() }),
+            () => owner.GetAsync($"/api/v1/identity/admin/tenants/{id}/offboarding"),
+            () => owner.PostAsync($"/api/v1/identity/admin/tenants/{id}/offboarding/export", null),
+            () => owner.PostAsJsonAsync($"/api/v1/identity/admin/tenants/{id}/offboarding/purge", new { }),
+        };
+
+        for (var index = 0; index < requests.Length; index++)
+        {
+            var response = await requests[index]();
+            Assert.True(response.StatusCode == HttpStatusCode.Forbidden,
+                $"request {index} was {response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        }
+    }
+
+    [Fact]
     public async Task SystemAdminCanCreateUpdateSuspendAndReactivateTenant()
     {
         using var owner = await factory.CreateOwnerClientAsync();
@@ -68,6 +105,42 @@ public sealed class IdentityTenantControlPlaneIntegrationTests(MultiTenantIdenti
         await using var verifyScope = factory.Services.CreateAsyncScope();
         var verifyDirectory = verifyScope.ServiceProvider.GetRequiredService<TenantDirectory>();
         Assert.Equal(id, (await verifyDirectory.FindActiveBySlugAsync(slug))!.Value.Value);
+    }
+
+    [Fact]
+    public async Task SessionExposesSystemAdminFlag()
+    {
+        using var systemAdmin = await factory.CreateOwnerClientAsync();
+        using var systemAdminSession = JsonDocument.Parse(
+            await (await systemAdmin.GetAsync("/api/v1/identity/session")).Content.ReadAsStringAsync());
+        Assert.True(systemAdminSession.RootElement.GetProperty("isSystemAdmin").GetBoolean());
+
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.User);
+        using var user = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+        using var userSession = JsonDocument.Parse(
+            await (await user.GetAsync("/api/v1/identity/session")).Content.ReadAsStringAsync());
+        Assert.False(userSession.RootElement.GetProperty("isSystemAdmin").GetBoolean());
+    }
+
+    [Fact]
+    public async Task OffboardingStateIsAvailableFromANewServiceAndDbContext()
+    {
+        using var systemAdmin = await factory.CreateOwnerClientAsync();
+        var tenantId = await CreateTenant(systemAdmin, "Offboarding Persistence");
+        var export = await systemAdmin.PostAsync(
+            $"/api/v1/identity/admin/tenants/{tenantId}/offboarding/export", null);
+        Assert.Equal(HttpStatusCode.Accepted, export.StatusCode);
+        using var exportDocument = JsonDocument.Parse(await export.Content.ReadAsStringAsync());
+        var exportId = exportDocument.RootElement.GetProperty("exportId").GetGuid();
+        var token = exportDocument.RootElement.GetProperty("purgeToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var offboarding = scope.ServiceProvider.GetRequiredService<TenantOffboardingService>();
+        var state = await offboarding.GetAsync(tenantId);
+        Assert.NotNull(state);
+        Assert.Equal(exportId, state!.ExportId);
+        Assert.True(await offboarding.ValidatePurgeAsync(tenantId, exportId, token!));
     }
 
     [Fact]

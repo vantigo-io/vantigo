@@ -23,7 +23,7 @@ internal static class TenantControlPlaneEndpoints
     {
         var tenants = app.MapGroup("/api/v1/identity/admin/tenants")
             .WithTags("Identity tenant control plane")
-            .RequireAuthorization(AuthPolicies.OwnerManagement);
+            .RequireAuthorization(AuthPolicies.SystemAdmin);
         tenants.AddEndpointFilter(MultiTenantOnly);
 
         tenants.MapGet("", List);
@@ -416,7 +416,7 @@ internal static class TenantControlPlaneEndpoints
     {
         if (!await dbContext.Tenants.AsNoTracking().AnyAsync(tenant => tenant.Id == id, cancellationToken))
             return TypedResults.NotFound();
-        return TypedResults.Ok(ToOffboardingResponse(offboarding.Get(id)));
+        return TypedResults.Ok(ToOffboardingResponse(await offboarding.GetAsync(id, cancellationToken)));
     }
 
     private static async Task<IResult> RequestExport(
@@ -434,7 +434,7 @@ internal static class TenantControlPlaneEndpoints
         var tenant = await dbContext.Tenants.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (tenant is null) return TypedResults.NotFound();
 
-        var requested = offboarding.RequestExport(id);
+        var requested = await offboarding.RequestExportAsync(id, cancellationToken);
         if (requested.Created)
         {
             try
@@ -446,7 +446,7 @@ internal static class TenantControlPlaneEndpoints
             }
             catch
             {
-                offboarding.Remove(id, requested.State.ExportId);
+                await offboarding.RemoveAsync(id, requested.State.ExportId, cancellationToken);
                 throw;
             }
         }
@@ -479,7 +479,7 @@ internal static class TenantControlPlaneEndpoints
         var tenant = await dbContext.Tenants.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (tenant is null) return TypedResults.NotFound();
         if (!Guid.TryParse(request?.ExportRequestId, out var exportId) || string.IsNullOrWhiteSpace(request?.PurgeToken) ||
-            !offboarding.ValidatePurge(id, exportId, request.PurgeToken) ||
+            !await offboarding.ValidatePurgeAsync(id, exportId, request.PurgeToken, cancellationToken) ||
             !string.Equals(request.Confirmation, $"PURGE {tenant.Slug}", StringComparison.Ordinal))
             return Error(400, "purge_confirmation_required", "A prior export request, its two-step token, and the exact purge confirmation are required.");
 
@@ -492,7 +492,7 @@ internal static class TenantControlPlaneEndpoints
                 Status = "deferred_cross_module_orchestration",
             }, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        offboarding.MarkPurgeRequested(id);
+        await offboarding.MarkPurgeRequestedAsync(id, cancellationToken);
 
         return TypedResults.Accepted($"/api/v1/identity/admin/tenants/{id}/offboarding", new
         {

@@ -119,8 +119,9 @@ internal static class AuthRoleOrdering
 
     private static int RoleOrder(string role) => role switch
     {
-        AuthRoles.Owner => 0,
-        AuthRoles.User => 1,
-        _ => 2,
+        AuthRoles.SystemAdmin => 0,
+        AuthRoles.Owner => 1,
+        AuthRoles.User => 2,
+        _ => 3,
     };
 }

@@ -31,7 +31,8 @@ public static class IdentityServiceCollectionExtensions
         services.AddScoped<ITenantDirectory>(provider => provider.GetRequiredService<TenantDirectory>());
         services.AddScoped<TenantMembershipService>();
         services.AddScoped<TenantBootstrapper>();
-        services.AddSingleton<TenantOffboardingService>();
+        services.AddScoped<TenantOffboardingService>();
+        services.AddScoped<SystemAdminBootstrapper>();
         return services;
     }
 }
