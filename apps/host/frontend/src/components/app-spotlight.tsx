@@ -10,6 +10,7 @@ import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
+import type { ModuleKey } from "../api/tenant-capabilities";
 import { hasPermissions, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
@@ -21,6 +22,7 @@ interface AppSpotlightProps {
   canManageAuthorization: boolean;
   isSystemAdmin?: boolean;
   tenantSlug?: string;
+  enabledModules?: readonly ModuleKey[];
   onNavigate?: () => void;
 }
 
@@ -34,6 +36,7 @@ export const AppSpotlight = ({
   canManageAuthorization,
   isSystemAdmin,
   tenantSlug,
+  enabledModules,
   onNavigate,
 }: AppSpotlightProps) => {
   const { t } = useI18n("host");
@@ -43,20 +46,23 @@ export const AppSpotlight = ({
 
   const search = debouncedQuery.trim();
   const searchEnabled = search.length >= MIN_SEARCH_LENGTH;
-  const navigationActions = visibleNavSections(
+  const navigationActions = visibleNavSections({
     permissions,
     isOwner,
     canManageAuthorization,
     tenantSlug,
     isSystemAdmin,
-  ).flatMap((section) =>
+    enabledModules,
+  }).flatMap((section) =>
     section.items.map((item) => ({
       ...item,
       description: t("navigation.open", { label: t(item.label).toLowerCase() }),
     })),
   );
-  const canSearchCustomers = hasPermissions(permissions, ["customers:view"]);
-  const canSearchContacts = hasPermissions(permissions, ["customers:contacts-view", "customers:associations-view"]);
+  const customersEnabled = enabledModules?.includes("customers") === true;
+  const canSearchCustomers = customersEnabled && hasPermissions(permissions, ["customers:view"]);
+  const canSearchContacts =
+    customersEnabled && hasPermissions(permissions, ["customers:contacts-view", "customers:associations-view"]);
   const handleNavigate = (action: () => void) => {
     onNavigate?.();
     action();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ModuleKey } from "./api/tenant-capabilities";
 import {
   activeNavPath,
   firstAuthorizedIntegratedAppDestination,
@@ -9,17 +10,31 @@ import {
   visibleNavSections,
 } from "./navigation";
 
+const allModules: ModuleKey[] = ["communications", "customers", "energy", "products"];
+const context = (overrides: Partial<Parameters<typeof visibleNavSections>[0]> = {}) => ({
+  permissions: ["*"],
+  isOwner: false,
+  canManageAuthorization: false,
+  tenantSlug: "acme",
+  enabledModules: allModules,
+  ...overrides,
+});
+
 describe("navigation permissions", () => {
-  it("requires every declared permission unless access is unrestricted", () => {
+  it("grants access when any declared permission is held", () => {
     expect(hasPermissions(undefined)).toBe(true);
     expect(hasPermissions([], ["customers:view"])).toBe(false);
     expect(hasPermissions(["customers:view"], ["customers:view"])).toBe(true);
-    expect(hasPermissions(["customers:view"], ["customers:view", "customers:contacts-view"])).toBe(false);
+    expect(hasPermissions(["customers:view"], ["customers:view", "customers:contacts-view"])).toBe(true);
+    expect(hasPermissions(["customers:contacts-view"], ["customers:view", "customers:contacts-view"])).toBe(true);
+    expect(hasPermissions(["products:products-view"], ["customers:view", "customers:contacts-view"])).toBe(false);
     expect(hasPermissions(["*"], ["customers:view", "customers:contacts-view"])).toBe(true);
   });
 
   it("filters business, owner-only, and authorization navigation for a restricted user", () => {
-    const sections = visibleNavSections(["customers:view", "communications:conversations-view"], false, false);
+    const sections = visibleNavSections(
+      context({ permissions: ["customers:view", "communications:conversations-view"] }),
+    );
 
     expect(sections.flatMap((section) => section.items.map((item) => item.label))).toEqual([
       "navigation.customers",
@@ -29,21 +44,53 @@ describe("navigation permissions", () => {
   });
 
   it("shows all navigation for a system-admin owner with unrestricted access", () => {
-    const labels = visibleNavSections(["*"], true, true, undefined, true).flatMap((section) =>
-      section.items.map((item) => item.label),
-    );
+    const labels = visibleNavSections(
+      context({ isOwner: true, canManageAuthorization: true, isSystemAdmin: true }),
+    ).flatMap((section) => section.items.map((item) => item.label));
 
     expect(labels).toEqual(navSections.flatMap((section) => section.items.map((item) => item.label)));
   });
 
+  it("hides destinations for disabled modules", () => {
+    const labels = visibleNavSections(context({ enabledModules: ["customers"] })).flatMap((section) =>
+      section.items.map((item) => item.label),
+    );
+
+    expect(labels).toContain("navigation.customers");
+    expect(labels).toContain("navigation.contacts");
+    expect(labels).not.toContain("navigation.inbox");
+    expect(labels).not.toContain("navigation.products");
+    expect(labels).not.toContain("navigation.meteringPoints");
+  });
+
+  it("hides module destinations while enabled modules are unknown", () => {
+    const labels = visibleNavSections(context({ enabledModules: undefined })).flatMap((section) =>
+      section.items.map((item) => item.label),
+    );
+
+    expect(labels).toEqual(["navigation.settings"]);
+  });
+
+  it("hides tenant-scoped destinations when no tenant is selected", () => {
+    const labels = visibleNavSections(context({ tenantSlug: undefined })).flatMap((section) =>
+      section.items.map((item) => item.label),
+    );
+
+    expect(labels).toEqual(["navigation.settings"]);
+  });
+
   it("hides the system admin area from owners who are not system admins", () => {
-    const labels = visibleNavSections(["*"], true, true).flatMap((section) => section.items.map((item) => item.label));
+    const labels = visibleNavSections(context({ isOwner: true, canManageAuthorization: true })).flatMap((section) =>
+      section.items.map((item) => item.label),
+    );
 
     expect(labels).not.toContain("navigation.systemAdmin");
   });
 
   it("does not expose users or invitations as direct owner destinations", () => {
-    const ownerItems = visibleNavSections(["*"], true, true).flatMap((section) => section.items);
+    const ownerItems = visibleNavSections(context({ isOwner: true, canManageAuthorization: true })).flatMap(
+      (section) => section.items,
+    );
 
     expect(ownerItems.map((item) => item.label)).not.toContain("admin.users");
     expect(ownerItems.map((item) => item.label)).not.toContain("admin.invitations");
@@ -55,19 +102,21 @@ describe("navigation permissions", () => {
     const lower = navSections.find((section) => section.placement === "lower");
     expect(lower?.label).toBe("navigation.settingsAdministration");
     expect(
-      visibleNavSections(["customers:view"], false, false)
+      visibleNavSections(context({ permissions: ["customers:view"] }))
         .find((section) => section.placement === "lower")
         ?.items.map((item) => item.label),
     ).toEqual(["navigation.settings"]);
-    expect(firstAuthorizedIntegratedAppDestination(["customers:view"], false, false)).toBe("/customers");
-    expect(firstAuthorizedIntegratedAppDestination([], false, false)).toBeUndefined();
+    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: ["customers:view"] }))).toBe(
+      "/acme/customers",
+    );
+    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: [] }))).toBeUndefined();
   });
 
   it("shows the admin dashboard in lower navigation only to owners", () => {
-    const ownerLowerLabels = visibleNavSections(["*"], true, true)
+    const ownerLowerLabels = visibleNavSections(context({ isOwner: true, canManageAuthorization: true }))
       .find((section) => section.placement === "lower")
       ?.items.map((item) => item.label);
-    const userLowerLabels = visibleNavSections(["*"], false, true)
+    const userLowerLabels = visibleNavSections(context({ canManageAuthorization: true }))
       .find((section) => section.placement === "lower")
       ?.items.map((item) => item.label);
 
@@ -81,13 +130,15 @@ describe("navigation permissions", () => {
   });
 
   it("keeps Roles & access reachable for authorization users", () => {
-    const authorizationItems = visibleNavSections(["*"], false, true).flatMap((section) => section.items);
+    const authorizationItems = visibleNavSections(context({ canManageAuthorization: true })).flatMap(
+      (section) => section.items,
+    );
 
     expect(authorizationItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           label: "navigation.rolesAccess",
-          to: "/settings/roles",
+          to: "/acme/settings/roles",
           capability: "authorization",
         }),
       ]),

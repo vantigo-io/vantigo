@@ -9,6 +9,8 @@ const en = {
   "dashboard.manageCustomers": "Manage customers and contacts.",
   "dashboard.reviewMessages": "Review and send messages.",
   "dashboard.manageProducts": "Manage products, prices and categories.",
+  "dashboard.energy": "Energy",
+  "dashboard.manageEnergy": "Manage metering points and meters.",
   "dashboard.open": "Open",
 };
 
@@ -21,6 +23,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.manageCustomers": "Administrer kunder og kontakter.",
   "dashboard.reviewMessages": "Se gjennom og send meldinger.",
   "dashboard.manageProducts": "Administrer produkter, priser og kategorier.",
+  "dashboard.energy": "Energi",
+  "dashboard.manageEnergy": "Administrer målepunkter og målere.",
   "dashboard.open": "Åpne",
 };
 

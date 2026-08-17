@@ -74,6 +74,7 @@ public static class AuthEndpoints
         app.MapAccountAuthEndpoints();
         app.MapAccountSettingsEndpoints();
         AuthorizationManagementEndpoints.MapAuthorizationManagementEndpoints(app);
+        TenantCapabilitiesEndpoints.MapTenantCapabilitiesEndpoints(app);
         ScimProtocolEndpoints.Map(app);
 
         return app;

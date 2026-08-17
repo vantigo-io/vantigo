@@ -20,7 +20,9 @@ import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut, switchTenant } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { setActiveTenantSlug } from "../api/request";
+import { enabledModuleKeys, fetchTenantCapabilities, tenantCapabilitiesQueryKey } from "../api/tenant-capabilities";
 import { AppSpotlight } from "../components/app-spotlight";
+import { TenantSelector } from "../components/tenant-selector";
 import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
 import { activeTenantForSession, legacyTenantPath } from "./-tenant-routing";
 
@@ -82,9 +84,16 @@ const RootLayout = () => {
     staleTime: 300_000,
   });
   const authorization = useQuery({
-    queryKey: ["authorization", "me"],
+    queryKey: ["authorization", "me", session?.activeTenantId ?? "none"],
     queryFn: getAuthorizationMe,
     enabled: !isPublic && !!session,
+    retry: false,
+    staleTime: 300_000,
+  });
+  const capabilities = useQuery({
+    queryKey: tenantCapabilitiesQueryKey(session?.activeTenantId ?? undefined),
+    queryFn: fetchTenantCapabilities,
+    enabled: !isPublic && !!session?.activeTenantId,
     retry: false,
     staleTime: 300_000,
   });
@@ -122,13 +131,15 @@ const RootLayout = () => {
     tenants.find((tenant) => tenant.slug === requestedTenantSlug) ??
     tenants.find((tenant) => tenant.id === session.activeTenantId) ??
     (tenants.length === 1 ? tenants[0] : undefined);
-  const visibleSections = visibleNavSections(
+  const enabledModules = enabledModuleKeys(capabilities.data);
+  const visibleSections = visibleNavSections({
     permissions,
     isOwner,
     canManageAuthorization,
-    activeTenant?.slug,
-    session.isSystemAdmin,
-  );
+    tenantSlug: activeTenant?.slug,
+    isSystemAdmin: session.isSystemAdmin,
+    enabledModules,
+  });
   const primarySections = visibleSections.filter((section) => section.placement !== "lower");
   const lowerSections = visibleSections.filter((section) => section.placement === "lower");
   const tenantUnavailable =
@@ -150,18 +161,30 @@ const RootLayout = () => {
       href: `/${encodeURIComponent(tenant.slug)}${currentSubPath}${location.searchStr}${location.hash ? `#${location.hash}` : ""}`,
     });
   };
-  if (tenantUnavailable)
+  // System admins may use the control plane (/admin) without any tenant
+  // membership, e.g. during first onboarding before tenants exist.
+  const isAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
+  if (tenantUnavailable && !(isAdminArea && session.isSystemAdmin)) {
+    // With memberships available, offer a workspace picker instead of a dead end.
+    if (tenants.length > 0)
+      return <TenantSelector tenants={tenants} isSystemAdmin={session.isSystemAdmin} onSelect={handleTenantSwitch} />;
     return (
       <Center mih="100vh" p="xl">
         <Stack align="center" maw={440} ta="center">
-          <Title order={2}>{tenants.length === 0 ? t("tenantRequiredTitle") : t("tenantUnavailableTitle")}</Title>
-          <Text c="dimmed">{tenants.length === 0 ? t("tenantRequiredBody") : t("tenantUnavailableBody")}</Text>
+          <Title order={2}>{t("tenantRequiredTitle")}</Title>
+          <Text c="dimmed">{t("tenantRequiredBody")}</Text>
           <Alert color="gray" variant="light">
             {t("tenantContactAdmin")}
           </Alert>
+          {session.isSystemAdmin && (
+            <Text>
+              <Link to="/admin">{t("tenantGoToSystemAdmin")}</Link>
+            </Text>
+          )}
         </Stack>
       </Center>
     );
+  }
   return (
     <>
       <AppShellLayout
@@ -194,6 +217,7 @@ const RootLayout = () => {
         canManageAuthorization={canManageAuthorization}
         isSystemAdmin={session.isSystemAdmin}
         tenantSlug={activeTenant?.slug}
+        enabledModules={enabledModules}
       />
       <TanStackRouterDevtools />
       <ReactQueryDevtools />

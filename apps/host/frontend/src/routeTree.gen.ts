@@ -22,6 +22,7 @@ import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as TenantSlugIndexRouteImport } from './routes/$tenantSlug/index'
 import { Route as TenantSlugInboxRouteImport } from './routes/$tenantSlug/inbox'
 import { Route as TenantSlugSettingsRouteImport } from './routes/$tenantSlug/settings'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
@@ -110,6 +111,11 @@ const TenantSlugSettingsRoute = TenantSlugSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => TenantSlugRoute,
+} as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRoute,
 } as any)
 const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
   id: '/invitations/accept',
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/$tenantSlug/': typeof TenantSlugIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/$tenantSlug/communications/channels': typeof TenantSlugCommunicationsChannelsRoute
   '/$tenantSlug/communications/suppressions': typeof TenantSlugCommunicationsSuppressionsRoute
   '/$tenantSlug/contacts/$contactId': typeof TenantSlugContactsContactIdRoute
@@ -282,7 +289,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
-  '/admin': typeof AdminRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -295,6 +301,7 @@ export interface FileRoutesByTo {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/$tenantSlug': typeof TenantSlugIndexRoute
+  '/admin': typeof AdminIndexRoute
   '/$tenantSlug/communications/channels': typeof TenantSlugCommunicationsChannelsRoute
   '/$tenantSlug/communications/suppressions': typeof TenantSlugCommunicationsSuppressionsRoute
   '/$tenantSlug/contacts/$contactId': typeof TenantSlugContactsContactIdRoute
@@ -333,6 +340,7 @@ export interface FileRoutesById {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/$tenantSlug/': typeof TenantSlugIndexRoute
+  '/admin/': typeof AdminIndexRoute
   '/$tenantSlug/communications/channels': typeof TenantSlugCommunicationsChannelsRoute
   '/$tenantSlug/communications/suppressions': typeof TenantSlugCommunicationsSuppressionsRoute
   '/$tenantSlug/contacts/$contactId': typeof TenantSlugContactsContactIdRoute
@@ -373,6 +381,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/security'
     | '/$tenantSlug/'
+    | '/admin/'
     | '/$tenantSlug/communications/channels'
     | '/$tenantSlug/communications/suppressions'
     | '/$tenantSlug/contacts/$contactId'
@@ -397,7 +406,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/accept-invitation'
-    | '/admin'
     | '/forgot-password'
     | '/password-reset'
     | '/reset-password'
@@ -410,6 +418,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/security'
     | '/$tenantSlug'
+    | '/admin'
     | '/$tenantSlug/communications/channels'
     | '/$tenantSlug/communications/suppressions'
     | '/$tenantSlug/contacts/$contactId'
@@ -447,6 +456,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/security'
     | '/$tenantSlug/'
+    | '/admin/'
     | '/$tenantSlug/communications/channels'
     | '/$tenantSlug/communications/suppressions'
     | '/$tenantSlug/contacts/$contactId'
@@ -575,6 +585,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/$tenantSlug/settings'
       preLoaderRoute: typeof TenantSlugSettingsRouteImport
       parentRoute: typeof TenantSlugRoute
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/invitations/accept': {
       id: '/invitations/accept'
@@ -820,11 +837,13 @@ const TenantSlugRouteWithChildren = TenantSlugRoute._addFileChildren(
 )
 
 interface AdminRouteChildren {
+  AdminIndexRoute: typeof AdminIndexRoute
   AdminTenantsTenantIdRoute: typeof AdminTenantsTenantIdRoute
   AdminTenantsNewRoute: typeof AdminTenantsNewRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminIndexRoute: AdminIndexRoute,
   AdminTenantsTenantIdRoute: AdminTenantsTenantIdRoute,
   AdminTenantsNewRoute: AdminTenantsNewRoute,
 }

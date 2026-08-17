@@ -13,6 +13,7 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
+import type { ModuleKey } from "./api/tenant-capabilities";
 
 export interface NavItem {
   label: string;
@@ -22,6 +23,8 @@ export interface NavItem {
   systemAdminOnly?: boolean;
   capability?: "authorization";
   requiredPermissions?: readonly string[];
+  /** The tenant module that must be enabled for this destination. */
+  module?: ModuleKey;
   /** Business destinations are prefixed with the active tenant slug. */
   tenantScoped?: boolean;
   /** Search defaults used when Spotlight opens this destination. */
@@ -40,6 +43,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.customers",
         to: "/customers",
+        module: "customers",
         icon: IconUsers,
         requiredPermissions: ["customers:view"],
         searchStrategy: "customer-list",
@@ -48,6 +52,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.contacts",
         to: "/contacts",
+        module: "customers",
         icon: IconAddressBook,
         requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
         searchStrategy: "customer-list",
@@ -61,6 +66,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.inbox",
         to: "/inbox",
+        module: "communications",
         icon: IconInbox,
         requiredPermissions: ["communications:conversations-view"],
         searchStrategy: "inbox-list",
@@ -69,6 +75,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.channels",
         to: "/communications/channels",
+        module: "communications",
         icon: IconMailbox,
         requiredPermissions: ["communications:channels-manage"],
         tenantScoped: true,
@@ -76,6 +83,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.suppressions",
         to: "/communications/suppressions",
+        module: "communications",
         icon: IconMailOff,
         requiredPermissions: ["communications:suppressions-manage"],
         tenantScoped: true,
@@ -88,6 +96,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.products",
         to: "/products",
+        module: "products",
         icon: IconPackage,
         requiredPermissions: [
           "products:products-view",
@@ -102,6 +111,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.categories",
         to: "/products/categories",
+        module: "products",
         icon: IconCategory,
         requiredPermissions: ["products:categories-view"],
         tenantScoped: true,
@@ -114,6 +124,7 @@ export const navSections: readonly NavSection[] = [
       {
         label: "navigation.meteringPoints",
         to: "/energy/metering-points",
+        module: "energy",
         icon: IconBolt,
         requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
         searchStrategy: "energy-list",
@@ -160,14 +171,26 @@ export const navSectionsForTenant = (tenantSlug?: string): readonly NavSection[]
 export const hasPermissions = (permissions: string[] | undefined, required?: readonly string[]) =>
   !required?.length ||
   permissions?.includes("*") === true ||
-  required.every((permission) => permissions?.includes(permission));
-export const visibleNavSections = (
-  permissions: string[] | undefined,
-  isOwner: boolean,
-  canManageAuthorization: boolean,
-  tenantSlug?: string,
+  required.some((permission) => permissions?.includes(permission));
+
+export interface NavVisibilityContext {
+  permissions: string[] | undefined;
+  isOwner: boolean;
+  canManageAuthorization: boolean;
+  tenantSlug?: string;
+  isSystemAdmin?: boolean;
+  /** Enabled module keys for the active tenant; undefined while unknown (hides module destinations). */
+  enabledModules?: readonly ModuleKey[];
+}
+
+export const visibleNavSections = ({
+  permissions,
+  isOwner,
+  canManageAuthorization,
+  tenantSlug,
   isSystemAdmin = false,
-) =>
+  enabledModules,
+}: NavVisibilityContext) =>
   navSectionsForTenant(tenantSlug)
     .map((section) => ({
       ...section,
@@ -176,19 +199,17 @@ export const visibleNavSections = (
           (!item.ownerOnly || isOwner) &&
           (!item.systemAdminOnly || isSystemAdmin) &&
           (!item.capability || canManageAuthorization) &&
+          // Tenant destinations stay hidden until a tenant is selected.
+          (!item.tenantScoped || !!tenantSlug) &&
+          (!item.module || enabledModules?.includes(item.module) === true) &&
           hasPermissions(permissions, item.requiredPermissions),
       ),
     }))
     .filter((section) => section.items.length > 0);
 
 /** Select the first accessible business destination for the authenticated landing route. */
-export const firstAuthorizedIntegratedAppDestination = (
-  permissions: string[] | undefined,
-  isOwner: boolean,
-  canManageAuthorization: boolean,
-  tenantSlug?: string,
-) =>
-  visibleNavSections(permissions, isOwner, canManageAuthorization, tenantSlug)
+export const firstAuthorizedIntegratedAppDestination = (context: NavVisibilityContext) =>
+  visibleNavSections(context)
     .filter((section) => section.placement !== "lower")
     .flatMap((section) => section.items)[0]?.to;
 

@@ -4,8 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { i18n } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ModuleKey } from "../api/tenant-capabilities";
 import { navSections, visibleNavSections } from "../navigation";
 import { AppSpotlight } from "./app-spotlight";
+
+const allModules: ModuleKey[] = ["communications", "customers", "energy", "products"];
 
 const navigateMock = vi.hoisted(() => vi.fn());
 
@@ -33,7 +36,8 @@ const renderSpotlight = (
   isOwner: boolean,
   canManageAuthorization: boolean,
   onNavigate?: () => void,
-  tenantSlug?: string,
+  tenantSlug: string | undefined = "acme",
+  enabledModules: readonly ModuleKey[] | undefined = allModules,
 ) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -45,6 +49,7 @@ const renderSpotlight = (
           isOwner={isOwner}
           canManageAuthorization={canManageAuthorization}
           tenantSlug={tenantSlug}
+          enabledModules={enabledModules}
           onNavigate={onNavigate}
         />
       </QueryClientProvider>
@@ -59,9 +64,13 @@ const expectNavigationParity = async (
   isOwner: boolean,
   canManageAuthorization: boolean,
 ) => {
-  const expected = visibleNavSections(permissions, isOwner, canManageAuthorization).flatMap((section) =>
-    section.items.map((item) => i18n.t(item.label, { ns: "host", lng: "en" })),
-  );
+  const expected = visibleNavSections({
+    permissions,
+    isOwner,
+    canManageAuthorization,
+    tenantSlug: "acme",
+    enabledModules: allModules,
+  }).flatMap((section) => section.items.map((item) => i18n.t(item.label, { ns: "host", lng: "en" })));
   const restricted = navSections
     .flatMap((section) => section.items)
     .map((item) => i18n.t(item.label, { ns: "host", lng: "en" }))
