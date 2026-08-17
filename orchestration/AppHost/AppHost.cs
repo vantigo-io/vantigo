@@ -24,7 +24,9 @@ var minio = builder.AddContainer("minio", "minio/minio")
     .WithHttpEndpoint(targetPort: 9000, name: "api")
     .WithHttpEndpoint(targetPort: 9001, name: "console");
 
-var clamav = builder.AddContainer("clamav", "clamav/clamav:stable")
+// The debian variant publishes multi-arch images (amd64/arm64); the alpine-based
+// clamav/clamav:stable tag has no arm64 manifest and never starts on Apple Silicon.
+var clamav = builder.AddContainer("clamav", "clamav/clamav-debian:stable")
     .WithEndpoint(targetPort: 3310, name: "clamav");
 
 // Host lifecycle: database → migrate → seed → API.
