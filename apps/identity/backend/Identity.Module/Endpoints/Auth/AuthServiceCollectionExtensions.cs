@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 using Vantigo.Configuration;
@@ -123,7 +122,6 @@ public static class AuthServiceCollectionExtensions
 
     public static IServiceCollection AddWorkforceOidc(
         this IServiceCollection services,
-        IConfiguration configuration,
         IHostEnvironment environment)
     {
         services.Configure<CookieAuthenticationOptions>(IdentityConstants.ExternalScheme, options =>
@@ -139,11 +137,7 @@ public static class AuthServiceCollectionExtensions
                 : CookieSecurePolicy.Always;
         });
 
-        var workforceOidc = WorkforceOidcOptionsExtensions.Load(configuration, environment);
-        if (workforceOidc.Enabled)
-        {
-            services.AddOpenIdConnectAuthentication(environment);
-        }
+        services.AddOpenIdConnectAuthentication(environment);
 
         return services;
     }
@@ -173,6 +167,13 @@ public static class AuthServiceCollectionExtensions
             {
                 if (!workforceOidc.Enabled)
                 {
+                    // The scheme is intentionally present in every composition
+                    // graph, but disabled configuration must still satisfy the
+                    // framework's option validator if the authentication
+                    // middleware materializes the scheme.
+                    options.Authority = "https://disabled.vantigo.invalid";
+                    options.ClientId = "disabled";
+                    options.CallbackPath = WorkforceOidcOptions.DefaultCallbackPath;
                     return;
                 }
 

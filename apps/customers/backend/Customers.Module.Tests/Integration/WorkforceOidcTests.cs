@@ -41,6 +41,25 @@ public sealed class WorkforceOidcOptionsTests
     }
 
     [Fact]
+    public void ProviderSettingsWithOidcDisabled_FailOptionsResolution()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:Oidc:Enabled"] = "false",
+                ["Authentication:Oidc:Provider"] = "Entra",
+                ["Authentication:Oidc:Authority"] = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => WorkforceOidcOptionsTestLoader.Load(
+            configuration,
+            new HostEnvironment { EnvironmentName = Environments.Production }));
+
+        Assert.Contains("provider settings but Enabled is false", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PartialConfiguration_FailsClearly()
     {
         var configuration = new ConfigurationBuilder()

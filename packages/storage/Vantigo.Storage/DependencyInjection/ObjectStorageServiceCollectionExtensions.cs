@@ -28,10 +28,10 @@ public static class ObjectStorageServiceCollectionExtensions
     {
         if (!services.Any(descriptor => descriptor.ServiceType == typeof(IConfigureOptions<StorageOptions>)))
             services.AddStorageOptions(configuration);
-        ValidateAzureIdentityConfiguration(configuration);
         services.TryAddSingleton<ITenantContext, UnresolvedTenantContext>();
         services.AddSingleton<IStorageBackend>(provider =>
         {
+            ValidateAzureIdentityConfiguration(configuration);
             var options = provider.GetRequiredService<IOptions<StorageOptions>>().Value;
             IStorageBackend backend = options.IsConfigured
                 ? new StorageBackendAdapter(CreateConfiguredBackend(options, provider))

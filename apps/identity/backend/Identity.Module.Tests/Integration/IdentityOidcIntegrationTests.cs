@@ -13,6 +13,23 @@ using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Identity.Tests.Integration;
 
+[Collection(IdentityApiCollection.Name)]
+public sealed class DisabledIdentityOidcIntegrationTests(IdentityApiFactory factory)
+{
+    [Fact]
+    public async Task DisabledOidcChallenge_ReturnsNotFound()
+    {
+        using var client = factory.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+
+        var response = await client.GetAsync("/api/v1/identity/oidc/challenge");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+}
+
 [Collection(IdentityOidcApiCollection.Name)]
 public sealed class IdentityOidcIntegrationTests(OidcIdentityApiFactory factory)
 {

@@ -19,7 +19,9 @@ namespace Vantigo.Communications.Database;
 
 public static class CommunicationsDatabaseConfiguration
 {
-    public static IServiceCollection AddCommunicationsModule(this IServiceCollection services)
+    public static IServiceCollection AddCommunicationsModule(
+        this IServiceCollection services,
+        IConfiguration configuration)
     {
         services.AddVantigoTenancyEntityFramework();
         services.AddSingleton<IPermissionCatalogContributor, CommunicationsPermissionCatalogContributor>();
@@ -37,8 +39,7 @@ public static class CommunicationsDatabaseConfiguration
         services.AddOptions<MailgunInboundOptions>().BindConfiguration("Communications:Inbound");
         services.AddOptions<ClamAvOptions>().BindConfiguration("Communications:Scanner");
         services.AddOptions<CommunicationsAiOptions>().BindConfiguration("Communications:Ai");
-        var configuration = services.FirstOrDefault(item => item.ServiceType == typeof(IConfiguration))?.ImplementationInstance as IConfiguration;
-        var aiSection = configuration?.GetSection("Communications:Ai");
+        var aiSection = configuration.GetSection("Communications:Ai");
         // Registration is deliberately conditional: disabled or unconfigured AI must not
         // create a chat client, network client, or provider dependency in the host.
         if (aiSection?.GetValue<bool>("Enabled") == true &&
@@ -72,7 +73,7 @@ public static class CommunicationsDatabaseConfiguration
         services.AddHostedService<CommunicationsInboundWorker>();
         services.AddHostedService<CommunicationsRetentionWorker>();
         services.AddHostedService<CommunicationsAttachmentCleanupWorker>();
-        var scannerSection = configuration?.GetSection("Communications:Scanner");
+        var scannerSection = configuration.GetSection("Communications:Scanner");
         if (scannerSection?.GetValue<string>("Host") is { Length: > 0 })
             services.AddSingleton<IAttachmentScanner, ClamAvAttachmentScanner>();
         else

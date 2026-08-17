@@ -28,6 +28,24 @@ public sealed class AuthorizationCatalogTests
     }
 
     [Fact]
+    public void ContributorsMayBeRegisteredBeforeFinalizationAndDoubleFinalizationThrows()
+    {
+        var services = new ServiceCollection();
+        services.AddPermissionCatalogContributors([
+            new DeferredContributor(),
+            new AnotherContributor(),
+        ]);
+        services.AddPermissionCatalog(builder => builder.Add(Permission("identity:manage")));
+
+        using var provider = services.BuildServiceProvider();
+        var catalog = provider.GetRequiredService<IPermissionCatalog>();
+        Assert.Equal(["customers:view", "energy:view", "identity:manage"],
+            catalog.Permissions.Select(permission => permission.Key).ToArray());
+
+        Assert.Throws<InvalidOperationException>(() => services.AddPermissionCatalog());
+    }
+
+    [Fact]
     public void DuplicateAndMalformedCatalogEntriesFailValidation()
     {
         var exception = Assert.Throws<InvalidOperationException>(() => PermissionCatalog.Create([
@@ -73,5 +91,10 @@ public sealed class AuthorizationCatalogTests
     private sealed class DeferredContributor : IPermissionCatalogContributor
     {
         public void Contribute(PermissionCatalogBuilder catalog) => catalog.Add(Permission("customers:view"));
+    }
+
+    private sealed class AnotherContributor : IPermissionCatalogContributor
+    {
+        public void Contribute(PermissionCatalogBuilder catalog) => catalog.Add(Permission("energy:view"));
     }
 }

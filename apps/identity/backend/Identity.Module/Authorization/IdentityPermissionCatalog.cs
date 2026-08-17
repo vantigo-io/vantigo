@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Vantigo.Contracts.Authorization;
 
@@ -10,8 +11,14 @@ public static class IdentityPermissionCatalogRegistration
         this IServiceCollection services,
         Action<PermissionCatalogBuilder>? configure = null)
     {
+        if (services.Any(descriptor => descriptor.ServiceType == typeof(IPermissionCatalog)))
+        {
+            throw new InvalidOperationException(
+                "The permission catalog has already been finalized. Register all contributors before calling AddPermissionCatalog again.");
+        }
+
         if (configure is not null) services.AddSingleton<IPermissionCatalogContributor>(new DelegatePermissionCatalogContributor(configure));
-        services.AddSingleton<IPermissionCatalog>(sp => PermissionCatalog.Create(
+        services.TryAddSingleton<IPermissionCatalog>(sp => PermissionCatalog.Create(
             sp.GetServices<IPermissionCatalogContributor>()));
         return services;
     }
@@ -22,8 +29,6 @@ public static class IdentityPermissionCatalogRegistration
     {
         ArgumentNullException.ThrowIfNull(contributors);
         foreach (var contributor in contributors) services.AddSingleton(typeof(IPermissionCatalogContributor), contributor);
-        services.AddSingleton<IPermissionCatalog>(sp => PermissionCatalog.Create(
-            sp.GetServices<IPermissionCatalogContributor>()));
         return services;
     }
 

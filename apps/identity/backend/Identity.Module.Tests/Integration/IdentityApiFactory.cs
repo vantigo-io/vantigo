@@ -98,10 +98,34 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS identity CASCADE");
         await db.Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<StaticScimStateInitializer>().EnsureAsync();
+        await BootstrapOwnerAsync();
+    }
+
+    public async Task ResetIdentityStateWithoutBootstrapAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS identity CASCADE");
+        await db.Database.MigrateAsync();
+        await scope.ServiceProvider.GetRequiredService<StaticScimStateInitializer>().EnsureAsync();
+    }
+
+    public async Task BootstrapOwnerAsync()
+    {
         using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
         var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
-        await client.PostAsJsonAsync("/api/v1/identity/bootstrap", new { secret = BootstrapSecret, email = OwnerEmail, displayName = "Integration Owner", password = OwnerPassword });
+        var response = await client.PostAsJsonAsync("/api/v1/identity/bootstrap", new
+        {
+            secret = BootstrapSecret,
+            email = OwnerEmail,
+            displayName = "Integration Owner",
+            password = OwnerPassword,
+        });
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(await response.Content.ReadAsStringAsync());
+        await using var scope = Services.CreateAsyncScope();
+        OwnerId = (await scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>().FindByEmailAsync(OwnerEmail))!.Id;
     }
 
     public async Task<Guid> CreateUserAsync(string role, string? email = null, string? password = null)

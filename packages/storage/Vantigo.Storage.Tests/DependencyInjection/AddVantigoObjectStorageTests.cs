@@ -79,7 +79,7 @@ public sealed class AddVantigoObjectStorageTests
     }
 
     [Fact]
-    public void Disabled_global_azure_identity_fails_before_storage_resolution()
+    public void Disabled_global_azure_identity_fails_when_storage_is_resolved()
     {
         var services = CreateServices();
         var configuration = StorageTestConfiguration.Build(
@@ -89,8 +89,10 @@ public sealed class AddVantigoObjectStorageTests
             ("Storage:AzureBlob:AccountName", "vantigoaccount"),
             ("Storage:AzureBlob:ContainerName", "objects"));
 
+        services.AddVantigoObjectStorage(configuration);
+        using var provider = services.BuildServiceProvider();
         var exception = Assert.Throws<InvalidOperationException>(() =>
-            services.AddVantigoObjectStorage(configuration));
+            provider.GetRequiredService<IStorageBackend>());
         Assert.Contains("enable Azure identity", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
