@@ -5,6 +5,7 @@ import {
   hasPermissions,
   navSearchFor,
   navSections,
+  navSectionsForTenant,
   visibleNavSections,
 } from "./navigation";
 
@@ -27,10 +28,18 @@ describe("navigation permissions", () => {
     ]);
   });
 
-  it("shows all navigation for an owner with unrestricted access", () => {
-    const labels = visibleNavSections(["*"], true, true).flatMap((section) => section.items.map((item) => item.label));
+  it("shows all navigation for a system-admin owner with unrestricted access", () => {
+    const labels = visibleNavSections(["*"], true, true, undefined, true).flatMap((section) =>
+      section.items.map((item) => item.label),
+    );
 
     expect(labels).toEqual(navSections.flatMap((section) => section.items.map((item) => item.label)));
+  });
+
+  it("hides the system admin area from owners who are not system admins", () => {
+    const labels = visibleNavSections(["*"], true, true).flatMap((section) => section.items.map((item) => item.label));
+
+    expect(labels).not.toContain("navigation.systemAdmin");
   });
 
   it("does not expose users or invitations as direct owner destinations", () => {
@@ -38,8 +47,8 @@ describe("navigation permissions", () => {
 
     expect(ownerItems.map((item) => item.label)).not.toContain("admin.users");
     expect(ownerItems.map((item) => item.label)).not.toContain("admin.invitations");
-    expect(ownerItems.map((item) => item.to)).not.toContain("/admin/users");
-    expect(ownerItems.map((item) => item.to)).not.toContain("/admin/invitations");
+    expect(ownerItems.map((item) => item.to)).not.toContain("/settings/users");
+    expect(ownerItems.map((item) => item.to)).not.toContain("/settings/invitations");
   });
 
   it("keeps lower administration separate from the first integrated destination", () => {
@@ -68,7 +77,7 @@ describe("navigation permissions", () => {
       navSections
         .find((section) => section.placement === "lower")
         ?.items.find((item) => item.label === "navigation.adminDashboard"),
-    ).toMatchObject({ to: "/admin/dashboard", ownerOnly: true });
+    ).toMatchObject({ to: "/settings/overview", ownerOnly: true });
   });
 
   it("keeps Roles & access reachable for authorization users", () => {
@@ -78,7 +87,7 @@ describe("navigation permissions", () => {
       expect.arrayContaining([
         expect.objectContaining({
           label: "navigation.rolesAccess",
-          to: "/admin/roles",
+          to: "/settings/roles",
           capability: "authorization",
         }),
       ]),
@@ -96,6 +105,15 @@ describe("navigation permissions", () => {
     });
     expect(navSearchFor("products-list")).toEqual({ page: 1, search: "", status: "", categoryId: "" });
     expect(navSearchFor(undefined)).toBeUndefined();
+  });
+
+  it("prefixes tenant-scoped destinations without changing global destinations", () => {
+    const items = navSectionsForTenant("acme").flatMap((section) => section.items);
+
+    expect(items.find((item) => item.label === "navigation.customers")?.to).toBe("/acme/customers");
+    expect(items.find((item) => item.label === "navigation.inbox")?.to).toBe("/acme/inbox");
+    expect(items.find((item) => item.label === "navigation.settings")?.to).toBe("/settings");
+    expect(items.find((item) => item.label === "navigation.adminDashboard")?.to).toBe("/acme/settings/overview");
   });
 });
 

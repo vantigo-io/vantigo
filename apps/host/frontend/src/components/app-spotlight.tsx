@@ -19,6 +19,8 @@ interface AppSpotlightProps {
   permissions: string[] | undefined;
   isOwner: boolean;
   canManageAuthorization: boolean;
+  isSystemAdmin?: boolean;
+  tenantSlug?: string;
   onNavigate?: () => void;
 }
 
@@ -26,7 +28,14 @@ interface AppSpotlightProps {
  * The global search (opened with mod+K or the sidebar search box): quick navigation
  * to the app sections plus live search across customers and contacts.
  */
-export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onNavigate }: AppSpotlightProps) => {
+export const AppSpotlight = ({
+  permissions,
+  isOwner,
+  canManageAuthorization,
+  isSystemAdmin,
+  tenantSlug,
+  onNavigate,
+}: AppSpotlightProps) => {
   const { t } = useI18n("host");
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -34,7 +43,13 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
 
   const search = debouncedQuery.trim();
   const searchEnabled = search.length >= MIN_SEARCH_LENGTH;
-  const navigationActions = visibleNavSections(permissions, isOwner, canManageAuthorization).flatMap((section) =>
+  const navigationActions = visibleNavSections(
+    permissions,
+    isOwner,
+    canManageAuthorization,
+    tenantSlug,
+    isSystemAdmin,
+  ).flatMap((section) =>
     section.items.map((item) => ({
       ...item,
       description: t("navigation.open", { label: t(item.label).toLowerCase() }),
@@ -103,7 +118,13 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
                 description={t("navigation.customer")}
                 leftSection={<IconBuilding size={20} stroke={1.5} />}
                 onClick={() =>
-                  handleNavigate(() => navigate({ to: "/customers/$customerId", params: { customerId: customer.id } }))
+                  handleNavigate(() => {
+                    if (tenantSlug)
+                      void navigate({
+                        to: "/$tenantSlug/customers/$customerId",
+                        params: { tenantSlug, customerId: customer.id },
+                      });
+                  })
                 }
               />
             ))}
@@ -122,7 +143,13 @@ export const AppSpotlight = ({ permissions, isOwner, canManageAuthorization, onN
                 }
                 leftSection={<IconUser size={20} stroke={1.5} />}
                 onClick={() =>
-                  handleNavigate(() => navigate({ to: "/contacts/$contactId", params: { contactId: item.contact.id } }))
+                  handleNavigate(() => {
+                    if (tenantSlug)
+                      void navigate({
+                        to: "/$tenantSlug/contacts/$contactId",
+                        params: { tenantSlug, contactId: item.contact.id },
+                      });
+                  })
                 }
               />
             ))}

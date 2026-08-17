@@ -1,6 +1,7 @@
 import {
   IconAddressBook,
   IconBolt,
+  IconBuildingSkyscraper,
   IconCategory,
   IconInbox,
   IconLayoutDashboard,
@@ -18,8 +19,11 @@ export interface NavItem {
   to: string;
   icon: ComponentType<{ size?: number | string; stroke?: number | string }>;
   ownerOnly?: boolean;
+  systemAdminOnly?: boolean;
   capability?: "authorization";
   requiredPermissions?: readonly string[];
+  /** Business destinations are prefixed with the active tenant slug. */
+  tenantScoped?: boolean;
   /** Search defaults used when Spotlight opens this destination. */
   searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list";
 }
@@ -39,6 +43,7 @@ export const navSections: readonly NavSection[] = [
         icon: IconUsers,
         requiredPermissions: ["customers:view"],
         searchStrategy: "customer-list",
+        tenantScoped: true,
       },
       {
         label: "navigation.contacts",
@@ -46,6 +51,7 @@ export const navSections: readonly NavSection[] = [
         icon: IconAddressBook,
         requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
         searchStrategy: "customer-list",
+        tenantScoped: true,
       },
     ],
   },
@@ -58,18 +64,21 @@ export const navSections: readonly NavSection[] = [
         icon: IconInbox,
         requiredPermissions: ["communications:conversations-view"],
         searchStrategy: "inbox-list",
+        tenantScoped: true,
       },
       {
         label: "navigation.channels",
         to: "/communications/channels",
         icon: IconMailbox,
         requiredPermissions: ["communications:channels-manage"],
+        tenantScoped: true,
       },
       {
         label: "navigation.suppressions",
         to: "/communications/suppressions",
         icon: IconMailOff,
         requiredPermissions: ["communications:suppressions-manage"],
+        tenantScoped: true,
       },
     ],
   },
@@ -88,12 +97,14 @@ export const navSections: readonly NavSection[] = [
           "products:tax-categories-view",
         ],
         searchStrategy: "products-list",
+        tenantScoped: true,
       },
       {
         label: "navigation.categories",
         to: "/products/categories",
         icon: IconCategory,
         requiredPermissions: ["products:categories-view"],
+        tenantScoped: true,
       },
     ],
   },
@@ -106,6 +117,7 @@ export const navSections: readonly NavSection[] = [
         icon: IconBolt,
         requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
         searchStrategy: "energy-list",
+        tenantScoped: true,
       },
     ],
   },
@@ -114,11 +126,36 @@ export const navSections: readonly NavSection[] = [
     placement: "lower",
     items: [
       { label: "navigation.settings", to: "/settings", icon: IconSettings },
-      { label: "navigation.adminDashboard", to: "/admin/dashboard", icon: IconLayoutDashboard, ownerOnly: true },
-      { label: "navigation.rolesAccess", to: "/admin/roles", icon: IconShieldCheck, capability: "authorization" },
+      {
+        label: "navigation.adminDashboard",
+        to: "/settings/overview",
+        icon: IconLayoutDashboard,
+        ownerOnly: true,
+        tenantScoped: true,
+      },
+      {
+        label: "navigation.rolesAccess",
+        to: "/settings/roles",
+        icon: IconShieldCheck,
+        capability: "authorization",
+        tenantScoped: true,
+      },
+      { label: "navigation.systemAdmin", to: "/admin", icon: IconBuildingSkyscraper, systemAdminOnly: true },
     ],
   },
 ];
+
+export const tenantPath = (tenantSlug: string | undefined, path: string) =>
+  tenantSlug && path !== "/" ? `/${encodeURIComponent(tenantSlug)}${path}` : path;
+
+export const navSectionsForTenant = (tenantSlug?: string): readonly NavSection[] =>
+  navSections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => ({
+      ...item,
+      to: item.tenantScoped ? tenantPath(tenantSlug, item.to) : item.to,
+    })),
+  }));
 
 export const hasPermissions = (permissions: string[] | undefined, required?: readonly string[]) =>
   !required?.length ||
@@ -128,13 +165,16 @@ export const visibleNavSections = (
   permissions: string[] | undefined,
   isOwner: boolean,
   canManageAuthorization: boolean,
+  tenantSlug?: string,
+  isSystemAdmin = false,
 ) =>
-  navSections
+  navSectionsForTenant(tenantSlug)
     .map((section) => ({
       ...section,
       items: section.items.filter(
         (item) =>
           (!item.ownerOnly || isOwner) &&
+          (!item.systemAdminOnly || isSystemAdmin) &&
           (!item.capability || canManageAuthorization) &&
           hasPermissions(permissions, item.requiredPermissions),
       ),
@@ -146,8 +186,9 @@ export const firstAuthorizedIntegratedAppDestination = (
   permissions: string[] | undefined,
   isOwner: boolean,
   canManageAuthorization: boolean,
+  tenantSlug?: string,
 ) =>
-  visibleNavSections(permissions, isOwner, canManageAuthorization)
+  visibleNavSections(permissions, isOwner, canManageAuthorization, tenantSlug)
     .filter((section) => section.placement !== "lower")
     .flatMap((section) => section.items)[0]?.to;
 

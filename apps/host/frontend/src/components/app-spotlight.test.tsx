@@ -33,6 +33,7 @@ const renderSpotlight = (
   isOwner: boolean,
   canManageAuthorization: boolean,
   onNavigate?: () => void,
+  tenantSlug?: string,
 ) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -43,6 +44,7 @@ const renderSpotlight = (
           permissions={permissions}
           isOwner={isOwner}
           canManageAuthorization={canManageAuthorization}
+          tenantSlug={tenantSlug}
           onNavigate={onNavigate}
         />
       </QueryClientProvider>
@@ -80,7 +82,16 @@ describe("AppSpotlight navigation authorization", () => {
   afterEach(() => {
     cleanup();
     spotlight.close();
+    window.history.replaceState({}, "", "/");
     vi.clearAllMocks();
+  });
+
+  it("uses the current tenant slug for navigation actions", async () => {
+    renderSpotlight(["*"], true, true, undefined, "acme");
+
+    fireEvent.click(await waitFor(() => screen.getByText("Customers", { exact: true })));
+
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/acme/customers" }));
   });
 
   it("matches sidebar navigation for a permitted owner", async () => {

@@ -3,7 +3,14 @@ import { IconSettings } from "@tabler/icons-react";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { createRootRouteWithContext, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  Link,
+  Outlet,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { AppShellLayout, appUrl, SpotlightSearchBox, useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
@@ -15,6 +22,7 @@ import { getAuthorizationMe } from "../api/authorization";
 import { setActiveTenantSlug } from "../api/request";
 import { AppSpotlight } from "../components/app-spotlight";
 import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
+import { activeTenantForSession, legacyTenantPath } from "./-tenant-routing";
 
 const publicPaths = new Set([
   "/sign-in",
@@ -62,7 +70,9 @@ const renderNavSections = (
 
 const RootLayout = () => {
   const { t } = useI18n("host");
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const location = useRouterState({ select: (state) => state.location });
+  const pathname = location.pathname;
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isPublic = publicPaths.has(pathname);
   const { data: session, isPending } = useQuery({
@@ -104,24 +114,41 @@ const RootLayout = () => {
   const isOwner = session.user.roles.includes("Owner");
   const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
-  const visibleSections = visibleNavSections(permissions, isOwner, canManageAuthorization);
+  const tenants = session.tenants ?? [];
+  const requestedTenantSlug = tenants.find(
+    (tenant) => pathname === `/${tenant.slug}` || pathname.startsWith(`/${tenant.slug}/`),
+  )?.slug;
+  const activeTenant =
+    tenants.find((tenant) => tenant.slug === requestedTenantSlug) ??
+    tenants.find((tenant) => tenant.id === session.activeTenantId) ??
+    (tenants.length === 1 ? tenants[0] : undefined);
+  const visibleSections = visibleNavSections(
+    permissions,
+    isOwner,
+    canManageAuthorization,
+    activeTenant?.slug,
+    session.isSystemAdmin,
+  );
   const primarySections = visibleSections.filter((section) => section.placement !== "lower");
   const lowerSections = visibleSections.filter((section) => section.placement === "lower");
-  const tenants = session.tenants ?? [];
-  const activeTenant =
-    tenants.find((tenant) => tenant.id === session.activeTenantId) ?? (tenants.length === 1 ? tenants[0] : undefined);
   const tenantUnavailable =
     tenants.length === 0 ||
     !activeTenant ||
     (activeTenant.status && !["active", "enabled"].includes(activeTenant.status.toLowerCase()));
-  setActiveTenantSlug(activeTenant?.slug);
+  setActiveTenantSlug(requestedTenantSlug);
   const handleTenantSwitch = async (tenant: { id: string; slug: string }) => {
     const updated = await switchTenant(tenant.id);
     queryClient.setQueryData(sessionQueryKey, updated);
     // Tenant-owned data must never flash from the previous workspace.
     await queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
-    setActiveTenantSlug(updated.tenants?.find((item) => item.id === updated.activeTenantId)?.slug);
-    window.history.replaceState({}, "", appUrl("/"));
+    setActiveTenantSlug(tenant.slug);
+    const currentSubPath =
+      activeTenant?.slug && pathname.startsWith(`/${activeTenant.slug}`)
+        ? pathname.slice(activeTenant.slug.length + 1) || "/"
+        : "/";
+    await navigate({
+      href: `/${encodeURIComponent(tenant.slug)}${currentSubPath}${location.searchStr}${location.hash ? `#${location.hash}` : ""}`,
+    });
   };
   if (tenantUnavailable)
     return (
@@ -161,7 +188,13 @@ const RootLayout = () => {
       >
         <Outlet />
       </AppShellLayout>
-      <AppSpotlight permissions={permissions} isOwner={isOwner} canManageAuthorization={canManageAuthorization} />
+      <AppSpotlight
+        permissions={permissions}
+        isOwner={isOwner}
+        canManageAuthorization={canManageAuthorization}
+        isSystemAdmin={session.isSystemAdmin}
+        tenantSlug={activeTenant?.slug}
+      />
       <TanStackRouterDevtools />
       <ReactQueryDevtools />
     </>
@@ -184,6 +217,28 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         /* optional */
       }
       throw redirect({ to: available ? "/setup" : "/sign-in" });
+    }
+    if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
+      const legacyAdmin = location.pathname.match(/^\/admin\/(dashboard|users|invitations|roles)$/);
+      if (!legacyAdmin && !session.isSystemAdmin) throw redirect({ to: "/" });
+    }
+    const legacyPrefixes = ["/customers", "/contacts", "/inbox", "/communications", "/products", "/energy"];
+    const legacyAdmin = location.pathname.match(/^\/admin\/(dashboard|users|invitations|roles)$/);
+    if (legacyAdmin) {
+      const activeTenant = activeTenantForSession(session);
+      if (activeTenant)
+        throw redirect({
+          href: `/${encodeURIComponent(activeTenant.slug)}/settings/${legacyAdmin[1] === "dashboard" ? "overview" : legacyAdmin[1]}`,
+          replace: true,
+        });
+    }
+    const legacyPrefix = legacyPrefixes.find(
+      (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`),
+    );
+    if (legacyPrefix) {
+      const activeTenant = activeTenantForSession(session);
+      const href = legacyTenantPath(location.pathname, location.searchStr, location.hash, activeTenant?.slug);
+      if (href) throw redirect({ href, replace: true });
     }
   },
   component: RootLayout,

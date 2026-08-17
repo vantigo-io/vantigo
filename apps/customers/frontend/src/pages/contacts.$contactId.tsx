@@ -42,7 +42,7 @@ import "../i18n";
 
 export const ContactDetailsPage = () => {
   const { t } = useI18n("customers");
-  const { contactId } = useParams({ strict: false }) as { contactId: number };
+  const { contactId, tenantSlug } = useParams({ strict: false }) as { contactId: number; tenantSlug?: string };
   const { data: contact } = useSuspenseQuery(contactQueryOptions(contactId));
   const [modalState, setModalState] = useState<ContactModalState | null>(null);
 
@@ -51,7 +51,11 @@ export const ContactDetailsPage = () => {
   return (
     <Stack gap="lg">
       <Breadcrumbs>
-        <Anchor component={Link} to="/contacts" size="sm">
+        <Anchor
+          component={Link}
+          to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/contacts` as never}
+          size="sm"
+        >
           {t("contacts")}
         </Anchor>
         <Text size="sm">{name}</Text>
@@ -127,6 +131,7 @@ export const ContactDetailsPage = () => {
 const ContactCustomersCard = ({ contact, contactName }: { contact: ContactResponse; contactName: string }) => {
   const { t } = useI18n("customers");
   const contactId = contact.id;
+  const { tenantSlug } = useParams({ strict: false });
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery(contactCustomersQueryOptions(contactId));
@@ -213,8 +218,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                     style={{ cursor: "pointer" }}
                     onClick={() =>
                       navigate({
-                        to: "/customers/$customerId",
-                        params: { customerId: association.customer.id },
+                        href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${association.customer.id}`,
                       })
                     }
                   >
@@ -223,8 +227,9 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                         size="sm"
                         renderRoot={(props) => (
                           <Link
-                            to="/customers/$customerId"
-                            params={{ customerId: association.customer.id }}
+                            to={
+                              `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${association.customer.id}` as never
+                            }
                             {...props}
                           />
                         )}

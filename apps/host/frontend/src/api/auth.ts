@@ -11,6 +11,7 @@ export interface Session {
   twoFactorEnabled?: boolean;
   mfaEnrollmentRequired?: boolean;
   mfaAuthenticated?: boolean;
+  isSystemAdmin: boolean;
   tenants?: Tenant[];
   activeTenantId?: string | null;
 }

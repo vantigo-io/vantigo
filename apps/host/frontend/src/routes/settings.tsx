@@ -10,7 +10,6 @@ import {
   PasswordInput,
   Select,
   Stack,
-  Tabs,
   Text,
   TextInput,
   Title,
@@ -19,7 +18,7 @@ import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconKey, IconLock, IconShieldLock, IconUser } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { setLanguagePreference, useTranslation } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../i18n";
@@ -41,6 +40,7 @@ import {
   uploadProfilePhoto,
 } from "../api/account";
 import { fetchSession, sessionQueryKey } from "../api/auth";
+import { SettingsLayout } from "../components/settings-layout";
 
 const mfaKey = ["account", "mfa"] as const;
 const passkeyKey = ["account", "passkeys"] as const;
@@ -53,7 +53,7 @@ const isOidcError = (e: unknown) => {
 const notify = (title: string, e: unknown, fallback?: string) =>
   notifications.show({ title, message: message(e, fallback), color: "red" });
 
-function ProfileTab() {
+export function ProfileTab() {
   const { t } = useTranslation("settings");
   const qc = useQueryClient();
   const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
@@ -164,7 +164,7 @@ function ProfileTab() {
   );
 }
 
-function SecurityTab() {
+export function SecurityTab() {
   const { t } = useTranslation("settings");
   const { t: hostT } = useTranslation("host");
   const qc = useQueryClient();
@@ -463,30 +463,16 @@ const SettingsPage = () => <SettingsContent />;
 function SettingsContent() {
   const { t } = useTranslation("settings");
   return (
-    <Stack maw={920} mx="auto" gap="xl">
-      <div>
-        <Title order={2}>{t("settings")}</Title>
-        <Text c="dimmed" mt={4}>
-          {t("settingsDescription")}
-        </Text>
-      </div>
-      <Tabs defaultValue="profile" keepMounted={false}>
-        <Tabs.List aria-label={t("personalSettings")}>
-          <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
-            {t("profile")}
-          </Tabs.Tab>
-          <Tabs.Tab value="security" leftSection={<IconShieldLock size={16} />}>
-            {t("security")}
-          </Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="profile" pt="xl">
-          <ProfileTab />
-        </Tabs.Panel>
-        <Tabs.Panel value="security" pt="xl">
-          <SecurityTab />
-        </Tabs.Panel>
-      </Tabs>
-    </Stack>
+    <SettingsLayout
+      title={t("settings")}
+      description={t("settingsDescription")}
+      sections={[
+        { label: t("profile"), to: "/settings/profile", icon: IconUser },
+        { label: t("security"), to: "/settings/security", icon: IconShieldLock },
+      ]}
+    >
+      <Outlet />
+    </SettingsLayout>
   );
 }
 export const Route = createFileRoute("/settings")({

@@ -1,7 +1,7 @@
 import { Anchor, Breadcrumbs, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useParams } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
@@ -21,6 +21,7 @@ import "../i18n";
 
 export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => {
   const { t } = useI18n("customers");
+  const { tenantSlug } = useParams({ strict: false });
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
 
@@ -29,7 +30,11 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
   return (
     <Stack gap="lg">
       <Breadcrumbs>
-        <Anchor component={Link} to="/customers" size="sm">
+        <Anchor
+          component={Link}
+          to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers` as never}
+          size="sm"
+        >
           {t("customers")}
         </Anchor>
         <Text size="sm">{customer.name}</Text>

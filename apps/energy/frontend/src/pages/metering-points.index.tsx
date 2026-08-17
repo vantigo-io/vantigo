@@ -15,7 +15,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconBolt, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ConnectionStatus, meteringPointsQueryOptions } from "../api/energy";
@@ -31,6 +31,7 @@ interface MeteringPointsSearch {
 const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "teal", Disconnected: "red" })[status];
 
 export const MeteringPointsPage = () => {
+  const { tenantSlug } = useParams({ strict: false });
   const { t } = useI18n("energy");
   const { page, search } = useSearch({ strict: false }) as MeteringPointsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -105,8 +106,7 @@ export const MeteringPointsPage = () => {
                         style={{ cursor: "pointer" }}
                         onClick={() =>
                           void navigate({
-                            to: "/energy/metering-points/$meteringPointId",
-                            params: { meteringPointId: point.id },
+                            href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/energy/metering-points/${point.id}`,
                           })
                         }
                       >

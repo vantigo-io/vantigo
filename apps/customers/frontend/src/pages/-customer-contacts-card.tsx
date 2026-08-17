@@ -20,7 +20,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconUserOff, IconUsersGroup } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
@@ -46,6 +46,7 @@ import "../i18n";
 export const CustomerContactsCard = ({ customerId }: { customerId: number }) => {
   const { t } = useI18n("customers");
   const navigate = useNavigate() as (options: unknown) => void;
+  const { tenantSlug } = useParams({ strict: false });
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery(customerContactsQueryOptions(customerId));
 
@@ -136,8 +137,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                     style={{ cursor: "pointer" }}
                     onClick={() =>
                       navigate({
-                        to: "/contacts/$contactId",
-                        params: { contactId: association.contact.id },
+                        href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/contacts/${association.contact.id}`,
                       })
                     }
                   >

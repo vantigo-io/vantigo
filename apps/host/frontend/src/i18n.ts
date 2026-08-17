@@ -11,6 +11,7 @@ import { dashboardCatalog } from "./catalogs/dashboard";
 import { legalCatalog } from "./catalogs/legal";
 import { navigationCatalog } from "./catalogs/navigation";
 import { settingsCatalog } from "./catalogs/settings";
+import { systemAdminCatalog } from "./catalogs/system-admin";
 import { tenantCatalog } from "./catalogs/tenant";
 
 export {
@@ -25,6 +26,7 @@ export {
   translateHostRole,
   translateHostRoleDescription,
 } from "./catalogs/admin";
+export { translateSystemModule } from "./catalogs/system-admin";
 
 export const hostCatalog = {
   en: {
@@ -36,6 +38,7 @@ export const hostCatalog = {
     ...customerCatalog.en,
     ...adminCatalog.en,
     ...settingsCatalog.en,
+    ...systemAdminCatalog.en,
     ...legalCatalog.en,
   },
   nb: {
@@ -47,6 +50,7 @@ export const hostCatalog = {
     ...customerCatalog.nb,
     ...adminCatalog.nb,
     ...settingsCatalog.nb,
+    ...systemAdminCatalog.nb,
     ...legalCatalog.nb,
   },
 } as const satisfies CatalogResources;

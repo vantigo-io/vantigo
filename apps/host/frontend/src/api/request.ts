@@ -4,12 +4,12 @@ import { appUrl } from "@vantigo/frontend-shell";
 let activeTenantSlug: string | undefined;
 let tenantRoutingEnabled = false;
 
-/** Sets the optional tenant prefix for business API calls. Identity stays global. */
+/** Sets the tenant prefix for business API calls. Identity stays global. */
 export const setActiveTenantSlug = (slug: string | undefined) => {
   activeTenantSlug = slug;
 };
 
-/** Enables the future tenant-prefixed API mode without breaking single-mode deployments. */
+/** Enables tenant-prefixed API mode. Identity endpoints are always global. */
 export const setTenantRoutingEnabled = (enabled: boolean) => {
   tenantRoutingEnabled = enabled;
 };

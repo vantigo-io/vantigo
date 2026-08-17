@@ -15,7 +15,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
@@ -32,6 +32,7 @@ interface CustomersSearch {
 
 export const CustomersPage = () => {
   const { t, formatters } = useI18n("customers");
+  const { tenantSlug } = useParams({ strict: false });
   const { page, search } = useSearch({ strict: false }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 
@@ -111,8 +112,7 @@ export const CustomersPage = () => {
                         style={{ cursor: "pointer" }}
                         onClick={() =>
                           navigate({
-                            to: "/customers/$customerId",
-                            params: { customerId: customer.id },
+                            href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${customer.id}`,
                           })
                         }
                       >

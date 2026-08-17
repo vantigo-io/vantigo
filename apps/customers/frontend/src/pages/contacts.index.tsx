@@ -17,7 +17,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
@@ -37,6 +37,7 @@ interface ContactsSearch {
 export const ContactsPage = () => {
   const { t, formatters } = useI18n("customers");
   const { page, search } = useSearch({ strict: false }) as ContactsSearch;
+  const { tenantSlug } = useParams({ strict: false });
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
 
@@ -142,8 +143,7 @@ export const ContactsPage = () => {
                         style={{ cursor: "pointer" }}
                         onClick={() =>
                           navigate({
-                            to: "/contacts/$contactId",
-                            params: { contactId: item.contact.id },
+                            href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/contacts/${item.contact.id}`,
                           })
                         }
                       >
@@ -205,12 +205,18 @@ export const ContactsPage = () => {
  */
 const ContactCustomersCell = ({ item }: { item: ContactListItem }) => {
   const customer = item.customer;
+  const { tenantSlug } = useParams({ strict: false });
 
   if (customer) {
     return (
       <Anchor
         size="sm"
-        renderRoot={(props) => <Link to="/customers/$customerId" params={{ customerId: customer.id }} {...props} />}
+        renderRoot={(props) => (
+          <Link
+            to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${customer.id}` as never}
+            {...props}
+          />
+        )}
       >
         {customer.name}
       </Anchor>

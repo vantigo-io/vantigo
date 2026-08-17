@@ -46,6 +46,7 @@ const SupplyPeriodCell = ({
 export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[] }) => {
   const { t, formatters } = useI18n("energy");
   const navigate = useNavigate();
+  const tenantSlug = window.location.pathname.split("/")[1] || undefined;
   const formatPeriod = (period: SupplyPeriod) =>
     `${formatters.formatDate(period.start, { dateStyle: "medium", timeZone: "UTC" })} – ${period.end ? formatters.formatDate(period.end, { dateStyle: "medium", timeZone: "UTC" }) : t("openEnded")}`;
   const formatKwh = (value: number | undefined | null) =>
@@ -81,8 +82,7 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
               style={{ cursor: "pointer" }}
               onClick={() =>
                 void navigate({
-                  to: "/energy/metering-points/$meteringPointId",
-                  params: { meteringPointId: meteringPoint.id },
+                  href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/energy/metering-points/${meteringPoint.id}`,
                 })
               }
             >
