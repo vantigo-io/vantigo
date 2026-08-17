@@ -30,19 +30,24 @@ var clamav = builder.AddContainer("clamav", "clamav/clamav-debian:stable")
     .WithEndpoint(targetPort: 3310, name: "clamav");
 
 // Host lifecycle: database → migrate → seed → API.
+// Development runs multi-tenant so the /admin tenant control plane is usable.
+const string tenancyMode = "multi";
 var vantigoMigrate = builder
     .AddProject<Vantigo_Host>("vantigo-migrate", "migrate")
+    .WithEnvironment("Tenancy__Mode", tenancyMode)
     .WithReference(vantigoDb, connectionName: "vantigo")
     .WaitFor(vantigoDb);
 
 var vantigoSeed = builder
     .AddProject<Vantigo_Host>("vantigo-seed", "seed")
+    .WithEnvironment("Tenancy__Mode", tenancyMode)
     .WithReference(vantigoDb, connectionName: "vantigo")
     .WaitForCompletion(vantigoMigrate);
 
 var vantigoApi = builder
     .AddProject<Vantigo_Host>("vantigo-api", "api")
     .WithOtlpExporter()
+    .WithEnvironment("Tenancy__Mode", tenancyMode)
     .WithReference(vantigoDb, connectionName: "vantigo")
     .WithEnvironment("Storage__Provider", "s3")
     .WithEnvironment("Storage__Authentication", "access-key")
