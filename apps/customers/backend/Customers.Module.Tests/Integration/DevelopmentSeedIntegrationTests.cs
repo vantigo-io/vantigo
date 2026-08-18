@@ -27,8 +27,6 @@ public sealed class DevelopmentSeedIntegrationTests
     private const string AdminDisplayName = "Administrator";
 
     private static readonly Guid AdminId = new("7f4d1e5b-8a62-4b7e-9c13-2d5f6a708194");
-    private static readonly Guid OwnerRoleId = new("8e5c2f6c-9b73-4c8f-ad24-3e607b8192a5");
-    private static readonly Guid UserRoleId = new("9f6d307d-ac84-4d90-be35-4f718c92a3b6");
 
     [Fact]
     public async Task DefaultDevelopmentStartupSeedsFixturesOnceAndConsumesBootstrap()
@@ -153,18 +151,19 @@ public sealed class DevelopmentSeedIntegrationTests
         Assert.Equal(AdminDisplayName, admin.DisplayName);
         Assert.True(admin.EmailConfirmed);
         Assert.True(await users.CheckPasswordAsync(admin, AdminPassword));
-        Assert.Equal(new[] { "Owner", "User" }, (await users.GetRolesAsync(admin)).Order());
+        Assert.Equal(new[] { "Owner", "SystemAdmin", "User" }, (await users.GetRolesAsync(admin)).Order());
 
         Assert.Equal(1, await accounts.Users.CountAsync());
-        Assert.Equal(2, await accounts.Roles.CountAsync());
-        Assert.Equal(2, await accounts.UserRoles.CountAsync());
-        Assert.Equal(2, await roles.Roles.CountAsync());
+        Assert.Equal(3, await accounts.Roles.CountAsync());
+        Assert.Equal(3, await accounts.UserRoles.CountAsync());
+        Assert.Equal(3, await roles.Roles.CountAsync());
 
         var roleIds = await accounts.Roles
             .ToDictionaryAsync(role => role.Name!, role => role.Id);
         Assert.True(roleIds["Owner"] != Guid.Empty);
+        Assert.True(roleIds["SystemAdmin"] != Guid.Empty);
         Assert.True(roleIds["User"] != Guid.Empty);
-        Assert.NotEqual(roleIds["Owner"], roleIds["User"]);
+        Assert.Equal(3, roleIds.Values.Distinct().Count());
 
         Assert.Equal(1, await accounts.BootstrapStates.CountAsync());
         Assert.Equal(customerCount, await customers.Customers.CountAsync());

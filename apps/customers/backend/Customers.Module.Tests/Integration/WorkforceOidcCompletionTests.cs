@@ -70,7 +70,10 @@ public sealed class WorkforceOidcCompletionTests
             var user = new ApplicationUser { UserName = email, Email = email, DisplayName = "Existing Local" };
             Assert.True((await users.CreateAsync(user, "ExistingPassword123")).Succeeded);
             var role = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-            Assert.True((await role.CreateAsync(new IdentityRole<Guid>(AuthRoles.User))).Succeeded);
+            if (!await role.RoleExistsAsync(AuthRoles.User))
+            {
+                Assert.True((await role.CreateAsync(new IdentityRole<Guid>(AuthRoles.User))).Succeeded);
+            }
             Assert.True((await users.AddToRoleAsync(user, AuthRoles.User)).Succeeded);
         }
 
