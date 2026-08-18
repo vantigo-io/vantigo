@@ -63,15 +63,32 @@ internal static class CreateCustomerEndpoint
             errors["name"] = [nameError!];
         }
 
+        var status = (CustomerStatus)CustomerStatus.Active;
+        if (request.Status is not null)
+        {
+            if (CustomerStatus.TryCreate(request.Status, out var parsedStatus, out var statusError))
+            {
+                status = parsedStatus;
+            }
+            else
+            {
+                errors["status"] = [statusError!];
+            }
+        }
+
         if (errors.Count > 0)
         {
             return TypedResults.ValidationProblem(errors, title: "Invalid customer");
         }
 
+        var now = DateTimeOffset.UtcNow;
         var customer = new Customer
         {
             Name = name,
             Identity = customerIdentity,
+            Status = status,
+            CreatedAt = now,
+            UpdatedAt = now,
         };
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
@@ -95,6 +112,9 @@ internal static class CreateCustomerEndpoint
     {
         public required string Name { get; init; }
         public LegalIdentityRequest? Identity { get; init; }
+
+        /// <summary>The initial status, either "active" or "disabled". Defaults to "active".</summary>
+        public string? Status { get; init; }
     }
 
     internal readonly record struct Response

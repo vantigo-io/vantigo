@@ -11,6 +11,7 @@ public interface ICustomerTimelineRecorder
 {
     void RecordCustomerCreated(Customer customer);
     void RecordCustomerUpdated(Customer customer, CustomerSnapshot before);
+    void RecordCustomerStatusChanged(Customer customer, string previousStatus);
     void RecordContactAttached(Customer customer, CustomerContact association);
     void RecordContactRelationshipUpdated(Customer customer, CustomerContact association);
     void RecordContactDetached(CustomerContact association);
@@ -67,6 +68,20 @@ internal sealed class CustomerTimelineRecorder(CustomersDbContext dbContext) : I
             after = afterPayload,
             changes = changesPayload,
         }, payloadVersion: 2);
+    }
+
+    public void RecordCustomerStatusChanged(Customer customer, string previousStatus)
+    {
+        string currentStatus = customer.Status;
+        Add(customer.Id, "customer.status_changed",
+            $"Customer status changed: {previousStatus} → {currentStatus}",
+            new
+            {
+                customerId = customer.Id,
+                before = new { status = previousStatus },
+                after = new { status = currentStatus },
+                changes = new { status = new { before = previousStatus, after = currentStatus } },
+            });
     }
 
     public void RecordContactAttached(Customer customer, CustomerContact association) =>

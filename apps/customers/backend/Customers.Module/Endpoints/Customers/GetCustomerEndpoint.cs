@@ -1,6 +1,9 @@
-using Microsoft.AspNetCore.Http.HttpResults;
+using System.Security.Claims;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
+using Vantigo.Customers.Authorization;
 using Vantigo.Customers.Database.Customers;
 using Vantigo.Customers.Endpoints.Customers.Dtos;
 
@@ -13,30 +16,62 @@ internal static class GetCustomerEndpoint
 {
     internal static async Task<IResult> Handler(
         int id,
+        ClaimsPrincipal principal,
+        IAuthorizationService authorization,
         CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        var customer = await dbContext.Customers
+        var row = await dbContext.Customers
             .AsNoTracking()
             .Where(c => c.Id == id)
-            .Select(customer => (SafeCustomerResponse?)new SafeCustomerResponse
+            .Select(customer => new
             {
-                Id = customer.Id,
-                CustomerNumber = customer.CustomerNumber,
-                Name = customer.Name,
-                TimelineSummary = new SafeTimelineSummary
-                {
-                    EntryCount = dbContext.CustomerTimelineEntries.Count(entry =>
-                        entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active),
-                    LatestOccurredOn = dbContext.CustomerTimelineEntries
-                        .Where(entry => entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active)
-                        .OrderByDescending(entry => entry.OccurredOn)
-                        .Select(entry => (DateOnly?)entry.OccurredOn)
-                        .FirstOrDefault(),
-                },
+                customer.Id,
+                customer.CustomerNumber,
+                customer.Name,
+                customer.Status,
+                customer.CreatedAt,
+                customer.UpdatedAt,
+                customer.Identity,
+                EntryCount = dbContext.CustomerTimelineEntries.Count(entry =>
+                    entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active),
+                LatestOccurredOn = dbContext.CustomerTimelineEntries
+                    .Where(entry => entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active)
+                    .OrderByDescending(entry => entry.OccurredOn)
+                    .Select(entry => (DateOnly?)entry.OccurredOn)
+                    .FirstOrDefault(),
             })
             .FirstOrDefaultAsync(cancellationToken);
 
-        return customer is null ? TypedResults.NotFound() : TypedResults.Ok(customer);
+        if (row is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        var includeIdentity = await CustomerAuthorization.HasPermissionAsync(
+            authorization, principal, CustomerPermissions.LegalIdentityView);
+
+        return TypedResults.Ok(new SafeCustomerResponse
+        {
+            Id = row.Id,
+            CustomerNumber = row.CustomerNumber,
+            Name = row.Name,
+            Status = row.Status,
+            CreatedAt = row.CreatedAt,
+            UpdatedAt = row.UpdatedAt,
+            Identity = includeIdentity && row.Identity is { } identity
+                ? new SafeCustomerIdentity
+                {
+                    Country = identity.Country,
+                    Type = identity.Type,
+                    Id = identity.Id,
+                }
+                : null,
+            TimelineSummary = new SafeTimelineSummary
+            {
+                EntryCount = row.EntryCount,
+                LatestOccurredOn = row.LatestOccurredOn,
+            },
+        });
     }
 }

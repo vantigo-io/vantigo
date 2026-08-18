@@ -75,7 +75,7 @@ public static class DevelopmentDataSeeder
         var customersByKey = new Dictionary<string, Customer>(StringComparer.Ordinal);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        foreach (var seed in customerSeeds)
+        foreach (var (seed, seedIndex) in customerSeeds.Select((seed, index) => (seed, index)))
         {
             var customer = await dbContext.Customers.FirstOrDefaultAsync(
                 item => item.Identity != null && (string)item.Identity.Value.Id == seed.LegalId,
@@ -83,17 +83,32 @@ public static class DevelopmentDataSeeder
 
             if (customer is null)
             {
+                // Deterministic variety so the customer overview has meaningful key figures:
+                // a mix of business/person types, a few countries, some disabled customers
+                // and creation dates spread over roughly the last year (the first customer
+                // is always recent so the "new last 30 days" figure is non-zero).
+                var number = seedIndex + 1;
+                var createdAt = DateTimeOffset.UtcNow.AddDays(-((number - 1) * 45 % 365)).AddHours(-number);
+                var updatedAt = createdAt.AddDays(number % 3 * 7);
+                if (updatedAt > DateTimeOffset.UtcNow)
+                {
+                    updatedAt = DateTimeOffset.UtcNow;
+                }
+
                 customer = new Customer
                 {
                     Name = seed.FriendlyName,
                     Identity = new LegalIdentity
                     {
-                        Country = "no",
-                        Type = LegalType.Business,
+                        Country = number % 4 == 0 ? "se" : number % 5 == 0 ? "dk" : "no",
+                        Type = number % 3 == 0 ? LegalType.Person : LegalType.Business,
                         Id = seed.LegalId,
                         Name = seed.LegalName,
                         Source = LegalSource.Manual,
                     },
+                    Status = number % 5 == 0 ? CustomerStatus.Disabled : CustomerStatus.Active,
+                    CreatedAt = createdAt,
+                    UpdatedAt = updatedAt,
                     CustomerNumber = await tenantCounterService.NextAsync(
                         dbContext, "customer-number", cancellationToken),
                 };

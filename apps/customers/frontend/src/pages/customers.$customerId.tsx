@@ -1,4 +1,4 @@
-import { Anchor, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
+import { Anchor, Badge, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -20,7 +20,7 @@ import { CustomerTimeline } from "./-customer-timeline";
 import "../i18n";
 
 export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => {
-  const { t } = useI18n("customers");
+  const { t, formatters } = useI18n("customers");
   const { tenantSlug } = useParams({ strict: false });
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
@@ -67,6 +67,9 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
           }
           actions={
             <Group gap="sm">
+              <Badge variant="light" size="lg" color={customer.status === "active" ? "teal" : "gray"}>
+                {customer.status === "active" ? t("statusActive") : t("statusDisabled")}
+              </Badge>
               <CopyableBadge variant="light" size="lg" tooltip={t("customerIdTooltip")} copyValue={String(customer.id)}>
                 #{customer.id}
               </CopyableBadge>
@@ -80,6 +83,11 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
             </Group>
           }
         />
+        <Text size="sm" c="dimmed">
+          {t("createdOnDate", { date: formatters.formatDate(customer.createdAt) })}
+          {" · "}
+          {t("updatedOnDate", { date: formatters.formatDate(customer.updatedAt) })}
+        </Text>
       </Stack>
 
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />

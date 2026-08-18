@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
+import { customerStatsQueryOptions, customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { CustomersPage } from "@vantigo/customers-ui/pages/customers.index";
 export const Route = createFileRoute("/$tenantSlug/customers/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -8,8 +8,11 @@ export const Route = createFileRoute("/$tenantSlug/customers/")({
   }),
   loaderDeps: ({ search }) => search,
   loader: ({ context: { queryClient }, deps }) =>
-    queryClient.ensureQueryData(
-      customersQueryOptions({ page: deps.page, pageSize: 25, search: deps.search || undefined }),
-    ),
+    Promise.all([
+      queryClient.ensureQueryData(
+        customersQueryOptions({ page: deps.page, pageSize: 25, search: deps.search || undefined }),
+      ),
+      queryClient.ensureQueryData(customerStatsQueryOptions()),
+    ]),
   component: CustomersPage,
 });

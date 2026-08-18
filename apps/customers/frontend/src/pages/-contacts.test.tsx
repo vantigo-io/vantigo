@@ -127,6 +127,10 @@ describe("customer contacts card", () => {
   const customer = {
     id: 2002,
     name: "Refsdal Holding",
+    status: "active",
+    createdAt: "2026-06-01T10:00:00Z",
+    updatedAt: "2026-07-01T10:00:00Z",
+    identity: null,
     timelineSummary: { entryCount: 0, latestOccurredOn: null },
   };
 

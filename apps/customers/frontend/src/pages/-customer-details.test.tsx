@@ -48,6 +48,10 @@ describe("customer details page", () => {
           jsonResponse(200, {
             id: 1001,
             name: "Equinor",
+            status: "active",
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-07-01T10:00:00Z",
+            identity: null,
             timelineSummary: { entryCount: 0, latestOccurredOn: null },
           }),
         );
@@ -81,7 +85,15 @@ describe("customer details page", () => {
     stubFetch((url: RequestInfo | URL) =>
       String(url) === "/api/v1/customers/1002"
         ? Promise.resolve(
-            jsonResponse(200, { id: 1002, name: "Acme", timelineSummary: { entryCount: 0, latestOccurredOn: null } }),
+            jsonResponse(200, {
+              id: 1002,
+              name: "Acme",
+              status: "active",
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-07-01T10:00:00Z",
+              identity: null,
+              timelineSummary: { entryCount: 0, latestOccurredOn: null },
+            }),
           )
         : String(url) === "/api/v1/customers/1002/legal-identity"
           ? Promise.resolve(new Response(null, { status: 403 }))

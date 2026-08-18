@@ -1,6 +1,10 @@
+using System.Security.Claims;
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 
+using Vantigo.Customers.Authorization;
 using Vantigo.Customers.Database.Customers;
 using Vantigo.Customers.Domain.Customers;
 using Vantigo.Customers.Endpoints.Customers.Dtos;
@@ -18,6 +22,8 @@ internal static class GetCustomersEndpoint
 
     internal static async Task<Results<Ok<PaginatedResponse<SafeCustomerResponse>>, ProblemHttpResult>> Handler(
         [AsParameters] Request request,
+        ClaimsPrincipal principal,
+        IAuthorizationService authorization,
         CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
@@ -25,6 +31,11 @@ internal static class GetCustomersEndpoint
         {
             return problem;
         }
+
+        // The legal identity summary is only projected for callers that are allowed to
+        // view legal identities; everyone else receives a null identity.
+        var includeIdentity = await CustomerAuthorization.HasPermissionAsync(
+            authorization, principal, CustomerPermissions.LegalIdentityView);
 
         var page = request.Page ?? 1;
         var pageSize = request.PageSize ?? DefaultPageSize;
@@ -40,26 +51,50 @@ internal static class GetCustomersEndpoint
 
         var totalCount = await query.CountAsync(cancellationToken);
 
-        var customers = await ApplySorting(query, request)
+        var rows = await ApplySorting(query, request)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(customer => new SafeCustomerResponse
+            .Select(customer => new
             {
-                Id = customer.Id,
-                CustomerNumber = customer.CustomerNumber,
-                Name = customer.Name,
-                TimelineSummary = new SafeTimelineSummary
-                {
-                    EntryCount = dbContext.CustomerTimelineEntries.Count(entry =>
-                        entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active),
-                    LatestOccurredOn = dbContext.CustomerTimelineEntries
-                        .Where(entry => entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active)
-                        .OrderByDescending(entry => entry.OccurredOn)
-                        .Select(entry => (DateOnly?)entry.OccurredOn)
-                        .FirstOrDefault(),
-                },
+                customer.Id,
+                customer.CustomerNumber,
+                customer.Name,
+                customer.Status,
+                customer.CreatedAt,
+                customer.UpdatedAt,
+                customer.Identity,
+                EntryCount = dbContext.CustomerTimelineEntries.Count(entry =>
+                    entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active),
+                LatestOccurredOn = dbContext.CustomerTimelineEntries
+                    .Where(entry => entry.CustomerId == customer.Id && entry.State == Domain.Timeline.TimelineState.Active)
+                    .OrderByDescending(entry => entry.OccurredOn)
+                    .Select(entry => (DateOnly?)entry.OccurredOn)
+                    .FirstOrDefault(),
             })
             .ToListAsync(cancellationToken);
+
+        var customers = rows.Select(row => new SafeCustomerResponse
+        {
+            Id = row.Id,
+            CustomerNumber = row.CustomerNumber,
+            Name = row.Name,
+            Status = row.Status,
+            CreatedAt = row.CreatedAt,
+            UpdatedAt = row.UpdatedAt,
+            Identity = includeIdentity && row.Identity is { } identity
+                ? new SafeCustomerIdentity
+                {
+                    Country = identity.Country,
+                    Type = identity.Type,
+                    Id = identity.Id,
+                }
+                : null,
+            TimelineSummary = new SafeTimelineSummary
+            {
+                EntryCount = row.EntryCount,
+                LatestOccurredOn = row.LatestOccurredOn,
+            },
+        }).ToList();
 
         return TypedResults.Ok(PaginatedResponse<SafeCustomerResponse>.Create(
             customers,

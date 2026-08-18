@@ -42,6 +42,19 @@ internal static class UpdateCustomerEndpoint
             errors["name"] = [nameError!];
         }
 
+        CustomerStatus? requestedStatus = null;
+        if (request.Status is not null)
+        {
+            if (CustomerStatus.TryCreate(request.Status, out var parsedStatus, out var statusError))
+            {
+                requestedStatus = parsedStatus;
+            }
+            else
+            {
+                errors["status"] = [statusError!];
+            }
+        }
+
         if (errors.Count > 0)
         {
             return TypedResults.ValidationProblem(errors, title: "Invalid customer");
@@ -74,12 +87,24 @@ internal static class UpdateCustomerEndpoint
         }
 
         var before = CustomerSnapshot.From(customer);
+        var previousStatus = customer.Status;
+        var status = requestedStatus ?? customer.Status;
+        var statusChanged = status != previousStatus;
         var changed = customer.Name != name || customer.Identity != customerIdentity;
         customer.Name = name;
         customer.Identity = customerIdentity;
+        customer.Status = status;
         if (changed)
         {
             timelineRecorder.RecordCustomerUpdated(customer, before);
+        }
+        if (statusChanged)
+        {
+            timelineRecorder.RecordCustomerStatusChanged(customer, previousStatus);
+        }
+        if (changed || statusChanged)
+        {
+            customer.UpdatedAt = DateTimeOffset.UtcNow;
         }
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -88,6 +113,18 @@ internal static class UpdateCustomerEndpoint
             Id = customer.Id,
             CustomerNumber = customer.CustomerNumber,
             Name = customer.Name,
+            Status = customer.Status,
+            CreatedAt = customer.CreatedAt,
+            UpdatedAt = customer.UpdatedAt,
+            Identity = customer.Identity is { } updatedIdentity && await CustomerAuthorization.HasPermissionAsync(
+                    authorization, principal, CustomerPermissions.LegalIdentityView)
+                ? new SafeCustomerIdentity
+                {
+                    Country = updatedIdentity.Country,
+                    Type = updatedIdentity.Type,
+                    Id = updatedIdentity.Id,
+                }
+                : null,
             TimelineSummary = await SafeCustomerProjection.TimelineSummaryAsync(dbContext, customer.Id, cancellationToken),
         });
     }
@@ -96,5 +133,8 @@ internal static class UpdateCustomerEndpoint
     {
         public required string Name { get; init; }
         public LegalIdentityRequest? Identity { get; init; }
+
+        /// <summary>The desired status, either "active" or "disabled". Unchanged when omitted.</summary>
+        public string? Status { get; init; }
     }
 }

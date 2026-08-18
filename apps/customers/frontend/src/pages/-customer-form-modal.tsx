@@ -1,4 +1,4 @@
-import { Button, Combobox, Group, Loader, Modal, Stack, Text, TextInput, useCombobox } from "@mantine/core";
+import { Button, Combobox, Group, Loader, Modal, Select, Stack, Text, TextInput, useCombobox } from "@mantine/core";
 import { type UseFormReturnType, useForm } from "@mantine/form";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
@@ -12,7 +12,7 @@ import "../i18n";
 export type CustomerModalState = { mode: "create" } | { mode: "edit"; customer: CustomerResponse };
 
 type CustomerIdentity = { country: string; type: string; id: string; name: string; source: string };
-type CustomerFormValues = { name: string; identity: CustomerIdentity | undefined };
+type CustomerFormValues = { name: string; identity: CustomerIdentity | undefined; status: string };
 
 export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalState | null; onClose: () => void }) => {
   const queryClient = useQueryClient();
@@ -22,19 +22,24 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
     initialValues: {
       name: "",
       identity: undefined as { country: string; type: string; id: string; name: string; source: string } | undefined,
+      status: "active",
     },
     validate: { name: (value: string) => (value.trim() ? null : t("customerNameRequired")) },
   });
   useEffect(() => {
     if (state) {
-      form.setValues({ name: state.mode === "edit" ? state.customer.name : "", identity: undefined });
+      form.setValues({
+        name: state.mode === "edit" ? state.customer.name : "",
+        identity: undefined,
+        status: state.mode === "edit" ? state.customer.status : "active",
+      });
       form.resetDirty();
       form.clearErrors();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
   const mutation = useMutation({
-    mutationFn: (values: { name: string; identity?: typeof form.values.identity }) =>
+    mutationFn: (values: { name: string; status: string; identity?: typeof form.values.identity }) =>
       isEdit ? updateCustomer(state.customer.id, values) : createCustomer(values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
@@ -58,12 +63,21 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
       centered
     >
       <form
-        onSubmit={form.onSubmit(({ name, identity }) =>
-          mutation.mutate({ name: name.trim(), ...(identity ? { identity } : {}) }),
+        onSubmit={form.onSubmit(({ name, identity, status }) =>
+          mutation.mutate({ name: name.trim(), status, ...(identity ? { identity } : {}) }),
         )}
       >
         <Stack>
           <CompanyLookupInput form={form} t={t} />
+          <Select
+            label={t("status")}
+            data={[
+              { value: "active", label: t("statusActive") },
+              { value: "disabled", label: t("statusDisabled") },
+            ]}
+            allowDeselect={false}
+            {...form.getInputProps("status")}
+          />
           <Text size="sm" c="dimmed">
             {t("legalIdentityPermission")}
           </Text>

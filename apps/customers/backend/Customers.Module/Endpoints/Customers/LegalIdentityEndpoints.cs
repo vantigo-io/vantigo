@@ -51,6 +51,7 @@ internal static class LegalIdentityEndpoints
         if (before.Identity != CustomerSnapshot.From(customer).Identity)
         {
             timelineRecorder.RecordCustomerUpdated(customer, before);
+            customer.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -73,6 +74,7 @@ internal static class LegalIdentityEndpoints
         {
             var before = CustomerSnapshot.From(customer);
             customer.Identity = null;
+            customer.UpdatedAt = DateTimeOffset.UtcNow;
             timelineRecorder.RecordCustomerUpdated(customer, before);
             await dbContext.SaveChangesAsync(cancellationToken);
         }

@@ -8,6 +8,7 @@ import {
   Group,
   Loader,
   Pagination,
+  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -19,7 +20,7 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
-import { customersQueryOptions } from "../api/customers";
+import { customerStatsQueryOptions, customersQueryOptions } from "../api/customers";
 import "../i18n";
 import { CustomerFormModal, type CustomerModalState } from "./-customer-form-modal";
 
@@ -29,6 +30,17 @@ interface CustomersSearch {
   page: number;
   search: string;
 }
+
+const StatCard = ({ label, value }: { label: string; value: string }) => (
+  <Card withBorder padding="md" radius="md">
+    <Text size="sm" c="dimmed">
+      {label}
+    </Text>
+    <Text size="xl" fw={700}>
+      {value}
+    </Text>
+  </Card>
+);
 
 export const CustomersPage = () => {
   const { t, formatters } = useI18n("customers");
@@ -49,6 +61,12 @@ export const CustomersPage = () => {
       search: search || undefined,
     }),
   );
+  const { data: stats } = useQuery(customerStatsQueryOptions());
+
+  // Identity-derived figures are null when this account lacks the legal-identity
+  // view permission; hide the related cards and table columns entirely in that case.
+  const showIdentity = stats?.businessCount != null;
+  const formatCount = (value: number | null | undefined) => (value == null ? "—" : formatters.formatNumber(value));
 
   return (
     <Stack gap="lg">
@@ -71,6 +89,22 @@ export const CustomersPage = () => {
       />
 
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
+
+      {stats && (
+        <SimpleGrid cols={{ base: 2, sm: 3, lg: showIdentity ? 7 : 3 }} spacing="sm">
+          <StatCard label={t("statTotalCustomers")} value={formatCount(stats.totalCount)} />
+          <StatCard label={t("statActiveCustomers")} value={formatCount(stats.activeCount)} />
+          <StatCard label={t("statNewLast30Days")} value={formatCount(stats.newLast30DaysCount)} />
+          {showIdentity && (
+            <>
+              <StatCard label={t("statBusinessCustomers")} value={formatCount(stats.businessCount)} />
+              <StatCard label={t("statPrivateCustomers")} value={formatCount(stats.personCount)} />
+              <StatCard label={t("statMissingIdentity")} value={formatCount(stats.missingIdentityCount)} />
+              <StatCard label={t("statCountries")} value={formatCount(stats.distinctCountryCount)} />
+            </>
+          )}
+        </SimpleGrid>
+      )}
 
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
@@ -96,12 +130,20 @@ export const CustomersPage = () => {
 
           {data && (
             <>
-              <Table.ScrollContainer minWidth={640}>
+              <Table.ScrollContainer minWidth={showIdentity ? 920 : 640}>
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{t("id")}</Table.Th>
                       <Table.Th>{t("name")}</Table.Th>
+                      <Table.Th>{t("status")}</Table.Th>
+                      {showIdentity && (
+                        <>
+                          <Table.Th>{t("customerType")}</Table.Th>
+                          <Table.Th>{t("countryColumn")}</Table.Th>
+                          <Table.Th>{t("legalId")}</Table.Th>
+                        </>
+                      )}
                       <Table.Th w={48} aria-label={t("actions")} />
                     </Table.Tr>
                   </Table.Thead>
@@ -118,6 +160,49 @@ export const CustomersPage = () => {
                       >
                         <Table.Td>{customer.id}</Table.Td>
                         <Table.Td>{customer.name}</Table.Td>
+                        <Table.Td>
+                          <Badge variant="light" color={customer.status === "active" ? "teal" : "gray"}>
+                            {customer.status === "active" ? t("statusActive") : t("statusDisabled")}
+                          </Badge>
+                        </Table.Td>
+                        {showIdentity && (
+                          <>
+                            <Table.Td>
+                              {customer.identity ? (
+                                <Badge
+                                  variant="light"
+                                  color={customer.identity.type === "business" ? "indigo" : "grape"}
+                                >
+                                  {customer.identity.type === "business"
+                                    ? t("legalTypeBusiness")
+                                    : t("legalTypePerson")}
+                                </Badge>
+                              ) : (
+                                <Badge variant="light" color="gray">
+                                  {t("identityUnknown")}
+                                </Badge>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              {customer.identity ? (
+                                customer.identity.country.toUpperCase()
+                              ) : (
+                                <Text c="dimmed" component="span">
+                                  —
+                                </Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>
+                              {customer.identity ? (
+                                customer.identity.id
+                              ) : (
+                                <Text c="dimmed" component="span">
+                                  —
+                                </Text>
+                              )}
+                            </Table.Td>
+                          </>
+                        )}
                         <Table.Td onClick={(event) => event.stopPropagation()}>
                           <ActionIcon
                             variant="subtle"

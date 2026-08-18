@@ -34,7 +34,7 @@ describe("CustomerFormModal", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Acme" }),
+      body: JSON.stringify({ name: "Acme", status: "active" }),
     });
   });
   it("does not render aggregate legal identity fields", () => {
@@ -52,7 +52,15 @@ describe("CustomerFormModal", () => {
     stubFetch(fetchMock);
     const { onClose } = renderModal({
       mode: "edit",
-      customer: { id: 1001, name: "Initech", timelineSummary: { entryCount: 0, latestOccurredOn: null } },
+      customer: {
+        id: 1001,
+        name: "Initech",
+        status: "active",
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+        identity: null,
+        timelineSummary: { entryCount: 0, latestOccurredOn: null },
+      },
     });
     const input = screen.getByLabelText(/name/i);
     await userEvent.clear(input);
@@ -62,7 +70,7 @@ describe("CustomerFormModal", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Initrode" }),
+      body: JSON.stringify({ name: "Initrode", status: "active" }),
     });
   });
 });

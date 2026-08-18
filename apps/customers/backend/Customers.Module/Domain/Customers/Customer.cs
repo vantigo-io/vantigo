@@ -40,4 +40,24 @@ public sealed class Customer : ITenantOwned
     /// the business. Same is true for persons.
     /// </summary>
     public LegalIdentity? Identity { get; set; }
+
+    /// <summary>
+    /// The lifecycle status of the customer. Customers are active by default and can be
+    /// disabled when they should no longer be used in day-to-day workflows. The status is
+    /// currently informational and is not enforced by other modules.
+    /// </summary>
+    public CustomerStatus Status { get; set; } = CustomerStatus.Active;
+
+    /// <summary>
+    /// When the customer was first persisted. This is denormalized row metadata; the full
+    /// audit history lives in the customer timeline.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// When the customer row itself was last changed (name, legal identity or status).
+    /// Contact associations and timeline activity do not bump this value; use the timeline
+    /// summary for "last activity" semantics.
+    /// </summary>
+    public DateTimeOffset UpdatedAt { get; set; }
 }

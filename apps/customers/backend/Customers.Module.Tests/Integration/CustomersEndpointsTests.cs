@@ -50,7 +50,12 @@ public sealed class CustomersEndpointsTests
         var customer = await _client.GetFromJsonAsync<Customer>($"/api/v1/customers/{created.Id}");
 
         Assert.Equal("Acme", customer.Name);
-        Assert.Null(customer.Identity);
+        // The caller has the legal-identity view permission, so the safe projection carries
+        // an identity summary (country, type and legal id only).
+        Assert.NotNull(customer.Identity);
+        Assert.Equal("no", customer.Identity.Value.Country);
+        Assert.Equal("business", customer.Identity.Value.Type);
+        Assert.Equal("923609016", customer.Identity.Value.Id);
         var identity = await _client.GetFromJsonAsync<LegalIdentity>(
             $"/api/v1/customers/{created.Id}/legal-identity");
         Assert.Equal("no", identity.Country);

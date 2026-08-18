@@ -41,6 +41,25 @@ internal sealed class CustomerEntityTypeConfiguration : IEntityTypeConfiguration
             .IsUnicode(true)
             .IsRequired();
 
+        builder.Property(c => c.Status)
+            .HasColumnName("status")
+            .HasComment("The lifecycle status of the customer")
+            .HasConversion(status => status.ToPersistence(), value => CustomerStatus.FromPersistence(value))
+            .HasMaxLength(20)
+            .IsUnicode(false)
+            .HasDefaultValue((CustomerStatus)CustomerStatus.Active)
+            .IsRequired();
+
+        builder.Property(c => c.CreatedAt)
+            .HasColumnName("created_at")
+            .HasComment("When the customer was first persisted")
+            .IsRequired();
+
+        builder.Property(c => c.UpdatedAt)
+            .HasColumnName("updated_at")
+            .HasComment("When the customer row itself was last changed")
+            .IsRequired();
+
         builder.ComplexProperty(c => c.Identity, identity =>
         {
             identity.Property(i => i.Country)

@@ -43,8 +43,11 @@ public sealed class CustomersPermissionIntegrationTests(CustomersApiFactory fact
         using var viewer = await factory.CreateUserClientAsync("Viewer", ["customers:view"]);
         var response = await viewer.GetFromJsonAsync<SafeCustomer>($"/api/v1/customers/{id}");
         Assert.Equal("Safe Customer", response!.Name);
+        // Without the legal-identity-view permission the identity summary must be null and
+        // no legal identity data (such as the legal id) may leak into the safe projection.
         var safeJson = await (await viewer.GetAsync($"/api/v1/customers/{id}")).Content.ReadAsStringAsync();
-        Assert.DoesNotContain("identity", safeJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"identity\":null", safeJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("923609016", safeJson, StringComparison.OrdinalIgnoreCase);
 
         Assert.Equal(HttpStatusCode.Forbidden,
             (await viewer.GetAsync($"/api/v1/customers/{id}/legal-identity")).StatusCode);

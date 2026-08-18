@@ -11,10 +11,32 @@ export interface LegalIdentityResponse {
   source: string;
 }
 
+export interface CustomerIdentitySummary {
+  country: string;
+  type: string;
+  id: string;
+}
+
 export interface CustomerResponse {
   id: number;
   name: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Null when the customer has no legal identity or the caller lacks permission to view it. */
+  identity: CustomerIdentitySummary | null;
   timelineSummary: { entryCount: number; latestOccurredOn: string | null };
+}
+
+export interface CustomerStatsResponse {
+  totalCount: number;
+  activeCount: number;
+  newLast30DaysCount: number;
+  /** Null when the caller lacks the legal-identity view permission. */
+  businessCount: number | null;
+  personCount: number | null;
+  missingIdentityCount: number | null;
+  distinctCountryCount: number | null;
 }
 
 export interface PaginationMetadata {
@@ -61,6 +83,12 @@ export const customersQueryOptions = (params: CustomersQueryParams) =>
     placeholderData: keepPreviousData,
   });
 
+export const customerStatsQueryOptions = () =>
+  queryOptions({
+    queryKey: ["customers", "stats"],
+    queryFn: ({ signal }) => request<CustomerStatsResponse>("/api/v1/customers/stats", { signal }),
+  });
+
 /** The requested resource does not exist (HTTP 404). */
 async function fetchCustomer(id: number, signal?: AbortSignal): Promise<CustomerResponse> {
   try {
@@ -92,6 +120,7 @@ export interface LegalIdentityInput {
 export interface CustomerInput {
   name: string;
   identity?: LegalIdentityInput;
+  status?: string;
 }
 
 export async function createCustomer(input: CustomerInput): Promise<{ id: number }> {
