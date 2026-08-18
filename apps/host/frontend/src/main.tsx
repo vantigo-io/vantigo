@@ -22,19 +22,30 @@ import {
   setUnauthorizedHandler,
 } from "./api/request";
 import { AccountLanguagePreference } from "./components/account-language-preference";
+import { NotFoundPage, RouterError } from "./components/errors";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
 import { wireNavigationProgress } from "./lib/navigation-progress";
+import { publicPaths } from "./lib/public-paths";
 import { routeTree } from "./routeTree.gen";
 
 const queryClient = new QueryClient();
 initAppConfig({ title: "Vantigo" });
 document.title = appConfig().title;
-const router = createRouter({ routeTree, basepath: "/", context: { queryClient } });
+const router = createRouter({
+  routeTree,
+  basepath: "/",
+  context: { queryClient },
+  defaultNotFoundComponent: NotFoundPage,
+  defaultErrorComponent: RouterError,
+});
 setAuthStateClearer(() => queryClient.removeQueries({ queryKey: ["auth", "session"], exact: true }));
 setActiveTenantSlug(undefined);
 setTenantRoutingEnabled(true);
 setUnauthorizedHandler(() => {
-  if (window.location.pathname !== "/sign-in") void router.navigate({ to: "/sign-in", search: { error: undefined } });
+  const pathname = window.location.pathname;
+  if (publicPaths.has(pathname)) return;
+  const returnTo = `${pathname}${window.location.search}${window.location.hash}`;
+  void router.navigate({ to: "/session-expired", search: { returnTo } });
 });
 wireNavigationProgress(router);
 declare module "@tanstack/react-router" {

@@ -6,6 +6,7 @@ import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { listSystemTenants, systemTenantError } from "../../api/system-tenants";
 import { translateSystemModule } from "../../i18n";
+import { MaintenanceControls } from "./-maintenance-controls";
 import "../../i18n";
 
 const Status = ({ status, t }: { status: string; t: (key: string) => string }) => (
@@ -18,10 +19,11 @@ export const Route = createFileRoute("/admin/")({
   component: AdminOverview,
 });
 
-function AdminOverview() {
+export function AdminOverview() {
   const { t } = useI18n("host");
   const tenants = useQuery({ queryKey: ["system-tenants"], queryFn: listSystemTenants });
   const [search, setSearch] = useState("");
+
   if (tenants.isError)
     return (
       <Alert color="yellow" title={t("systemAdmin.tenantControlPlaneUnavailable")}>
@@ -60,6 +62,7 @@ function AdminOverview() {
           <Title c="yellow">{(tenants.data ?? []).length - active}</Title>
         </Card>
       </SimpleGrid>
+      <MaintenanceControls />
       <Card withBorder>
         <Group justify="space-between" mb="md">
           <Title order={3}>{t("systemAdmin.tenants")}</Title>

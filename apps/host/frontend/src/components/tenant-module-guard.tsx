@@ -6,7 +6,7 @@ import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { enabledModuleKeys, fetchTenantCapabilities, tenantCapabilitiesQueryKey } from "../api/tenant-capabilities";
 import { hasPermissions, navSections } from "../navigation";
-import { AccessDenied } from "./access-denied";
+import { ForbiddenPage } from "./errors";
 
 interface ModuleAccessRule {
   prefix: string;
@@ -63,5 +63,12 @@ export const TenantModuleGuard = ({ tenantSlug, children }: { tenantSlug: string
   const enabledModules = enabledModuleKeys(capabilities.data) ?? [];
   const allowed =
     enabledModules.includes(rule.module) && hasPermissions(authorization.data?.permissions, rule.requiredPermissions);
-  return allowed ? children : <AccessDenied />;
+  return allowed ? (
+    children
+  ) : (
+    <ForbiddenPage
+      requiredModule={rule.module}
+      requiredPermissions={rule.requiredPermissions ? [...rule.requiredPermissions] : undefined}
+    />
+  );
 };

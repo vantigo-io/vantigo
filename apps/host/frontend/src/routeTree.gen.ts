@@ -16,6 +16,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as SessionExpiredRouteImport } from './routes/session-expired'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
@@ -80,6 +81,11 @@ const PasswordResetRoute = PasswordResetRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SessionExpiredRoute = SessionExpiredRouteImport.update({
+  id: '/session-expired',
+  path: '/session-expired',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -255,6 +261,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/session-expired': typeof SessionExpiredRoute
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
@@ -292,6 +299,7 @@ export interface FileRoutesByTo {
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/session-expired': typeof SessionExpiredRoute
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
@@ -331,6 +339,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/session-expired': typeof SessionExpiredRoute
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
@@ -372,6 +381,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/password-reset'
     | '/reset-password'
+    | '/session-expired'
     | '/settings'
     | '/setup'
     | '/sign-in'
@@ -409,6 +419,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/password-reset'
     | '/reset-password'
+    | '/session-expired'
     | '/settings'
     | '/setup'
     | '/sign-in'
@@ -447,6 +458,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/password-reset'
     | '/reset-password'
+    | '/session-expired'
     | '/settings'
     | '/setup'
     | '/sign-in'
@@ -487,6 +499,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   PasswordResetRoute: typeof PasswordResetRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  SessionExpiredRoute: typeof SessionExpiredRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
@@ -542,6 +555,13 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/session-expired': {
+      id: '/session-expired'
+      path: '/session-expired'
+      fullPath: '/session-expired'
+      preLoaderRoute: typeof SessionExpiredRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -872,6 +892,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   PasswordResetRoute: PasswordResetRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  SessionExpiredRoute: SessionExpiredRoute,
   SettingsRoute: SettingsRouteWithChildren,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,

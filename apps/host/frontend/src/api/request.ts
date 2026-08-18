@@ -1,26 +1,11 @@
 import { createApiClient } from "@vantigo/frontend-api-client";
 import { appUrl } from "@vantigo/frontend-shell";
 
-let activeTenantSlug: string | undefined;
-let tenantRoutingEnabled = false;
+const client = createApiClient({ resolveUrl: appUrl });
 
-/** Sets the tenant prefix for business API calls. Identity stays global. */
-export const setActiveTenantSlug = (slug: string | undefined) => {
-  activeTenantSlug = slug;
-};
-
-/** Enables tenant-prefixed API mode. Identity endpoints are always global. */
-export const setTenantRoutingEnabled = (enabled: boolean) => {
-  tenantRoutingEnabled = enabled;
-};
-
-const tenantAwareUrl = (url: string) => {
-  if (!tenantRoutingEnabled || !activeTenantSlug || !url.startsWith("/api/") || url.startsWith("/api/v1/identity/"))
-    return url;
-  return `/api/v1/t/${encodeURIComponent(activeTenantSlug)}${url.slice(7)}`;
-};
-
-const client = createApiClient({ resolveUrl: appUrl, transformUrl: tenantAwareUrl });
+// Tenant-prefixed API routing is shared package state so that every module's
+// API client (customers, products, energy, ...) applies the same prefix.
+export { setActiveTenantSlug, setTenantRoutingEnabled } from "@vantigo/frontend-api-client";
 
 export const { clearCsrfToken, ensureCsrfToken, getCsrfToken, request, setAuthStateClearer, setUnauthorizedHandler } =
   client;

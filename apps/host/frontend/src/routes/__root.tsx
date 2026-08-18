@@ -13,28 +13,21 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { AppShellLayout, appUrl, SpotlightSearchBox, useI18n } from "@vantigo/frontend-shell";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import "../i18n";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut, switchTenant } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { setActiveTenantSlug } from "../api/request";
+import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
 import { enabledModuleKeys, fetchTenantCapabilities, tenantCapabilitiesQueryKey } from "../api/tenant-capabilities";
 import { AppSpotlight } from "../components/app-spotlight";
+import { MaintenancePage } from "../components/errors";
 import { TenantSelector } from "../components/tenant-selector";
+import { publicPaths } from "../lib/public-paths";
 import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
 import { activeTenantForSession, legacyTenantPath } from "./-tenant-routing";
-
-const publicPaths = new Set([
-  "/sign-in",
-  "/setup",
-  "/forgot-password",
-  "/reset-password",
-  "/password-reset",
-  "/accept-invitation",
-  "/invitations/accept",
-]);
 
 const renderNavSections = (
   sections: readonly NavSection[],
@@ -76,12 +69,19 @@ const RootLayout = () => {
   const pathname = location.pathname;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [maintenanceWarningDismissed, setMaintenanceWarningDismissed] = useState(false);
   const isPublic = publicPaths.has(pathname);
   const { data: session, isPending } = useQuery({
     queryKey: sessionQueryKey,
     queryFn: fetchSession,
     enabled: !isPublic,
     staleTime: 300_000,
+  });
+  const systemStatus = useQuery({
+    queryKey: systemStatusQueryKey,
+    queryFn: fetchSystemStatus,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
   });
   const authorization = useQuery({
     queryKey: ["authorization", "me", session?.activeTenantId ?? "none"],
@@ -164,6 +164,9 @@ const RootLayout = () => {
   // System admins may use the control plane (/admin) without any tenant
   // membership, e.g. during first onboarding before tenants exist.
   const isAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
+  if (shouldShowMaintenance(systemStatus.data, session.isSystemAdmin)) {
+    return <MaintenancePage message={systemStatus.data?.message} />;
+  }
   if (tenantUnavailable && !(isAdminArea && session.isSystemAdmin)) {
     // With memberships available, offer a workspace picker instead of a dead end.
     if (tenants.length > 0)
@@ -209,7 +212,19 @@ const RootLayout = () => {
         nav={(close) => renderNavSections(primarySections, pathname, close, t)}
         navLower={(close) => renderNavSections(lowerSections, pathname, close, t)}
       >
-        <Outlet />
+        <Stack gap="md">
+          {session.isSystemAdmin && systemStatus.data?.maintenance && !maintenanceWarningDismissed && (
+            <Alert
+              color="yellow"
+              title={t("systemAdmin.maintenanceActive")}
+              withCloseButton
+              onClose={() => setMaintenanceWarningDismissed(true)}
+            >
+              {systemStatus.data.message || t("systemAdmin.maintenanceActiveBody")}
+            </Alert>
+          )}
+          <Outlet />
+        </Stack>
       </AppShellLayout>
       <AppSpotlight
         permissions={permissions}

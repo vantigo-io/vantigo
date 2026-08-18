@@ -51,6 +51,8 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
 
     public DbSet<OperationalEvent> OperationalEvents => Set<OperationalEvent>();
 
+    public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -84,5 +86,6 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
         modelBuilder.ApplyConfiguration(new AccessGroupEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AccessGroupMembershipEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AccessGroupRoleMappingEntityTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new SystemSettingEntityTypeConfiguration());
     }
 }

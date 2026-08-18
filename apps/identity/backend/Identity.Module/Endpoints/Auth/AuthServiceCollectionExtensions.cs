@@ -20,6 +20,7 @@ public static class AuthServiceCollectionExtensions
         this IServiceCollection services,
         IHostEnvironment environment)
     {
+        services.AddMemoryCache();
         services
             .AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
             {
