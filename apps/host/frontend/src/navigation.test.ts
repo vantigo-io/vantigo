@@ -37,6 +37,7 @@ describe("navigation permissions", () => {
     );
 
     expect(sections.flatMap((section) => section.items.map((item) => item.label))).toEqual([
+      "navigation.dashboard",
       "navigation.customers",
       "navigation.inbox",
       "navigation.settings",
@@ -68,7 +69,7 @@ describe("navigation permissions", () => {
       section.items.map((item) => item.label),
     );
 
-    expect(labels).toEqual(["navigation.settings"]);
+    expect(labels).toEqual(["navigation.dashboard", "navigation.settings"]);
   });
 
   it("hides tenant-scoped destinations when no tenant is selected", () => {
@@ -106,10 +107,9 @@ describe("navigation permissions", () => {
         .find((section) => section.placement === "lower")
         ?.items.map((item) => item.label),
     ).toEqual(["navigation.settings"]);
-    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: ["customers:view"] }))).toBe(
-      "/acme/customers",
-    );
-    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: [] }))).toBeUndefined();
+    // The dashboard requires no permissions, so it is always the first destination for tenant users.
+    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: ["customers:view"] }))).toBe("/acme");
+    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: [] }))).toBe("/acme");
   });
 
   it("shows the admin dashboard in lower navigation only to owners", () => {

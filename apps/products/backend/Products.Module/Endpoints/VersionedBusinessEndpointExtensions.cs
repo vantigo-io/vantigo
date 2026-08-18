@@ -14,6 +14,7 @@ public static class VersionedBusinessEndpointExtensions
             .RequireAuthorization();
 
         api.MapProductsEndpoints();
+        api.MapProductStatsEndpoints();
         api.MapCategoriesEndpoints();
         api.MapTaxCategoriesEndpoints();
 

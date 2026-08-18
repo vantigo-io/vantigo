@@ -24,9 +24,9 @@ public sealed class DevelopmentSeedAdminOptions
 
 public sealed class DevelopmentSeedDataOptions
 {
-    public int Customers { get; set; } = 50;
-    public int Contacts { get; set; } = 150;
-    public int Messages { get; set; } = 50;
+    public int Customers { get; set; } = 250;
+    public int Contacts { get; set; } = 300;
+    public int Messages { get; set; } = 400;
     public int Products { get; set; } = 100;
 }
 

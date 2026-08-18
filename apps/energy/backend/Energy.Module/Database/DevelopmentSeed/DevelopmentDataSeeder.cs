@@ -12,6 +12,7 @@ namespace Vantigo.Energy.Database.DevelopmentSeed;
 
 internal static class DevelopmentDataSeeder
 {
+    private const int SeedIntervalHours = 24 * 90;
     private static readonly DateTimeOffset SeedNow = new(2026, 8, 10, 0, 0, 0, TimeSpan.Zero);
 
     internal static async Task SeedEnergyAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
@@ -73,23 +74,36 @@ internal static class DevelopmentDataSeeder
                 });
             }
 
-            if (!await db.ConsumptionIntervals.AnyAsync(item => item.MeteringPointId == point.Id, cancellationToken))
+            var existingStarts = await db.ConsumptionIntervals
+                .Where(item => item.MeteringPointId == point.Id)
+                .Select(item => item.Start)
+                .ToHashSetAsync(cancellationToken);
+            var intervals = new List<ConsumptionInterval>(SeedIntervalHours);
+            for (var hour = SeedIntervalHours; hour > 0; hour--)
             {
-                for (var hour = 72; hour > 0; hour--)
+                var start = SeedNow.AddHours(-hour);
+                if (existingStarts.Contains(start)) continue;
+
+                var localHour = start.UtcDateTime.Hour;
+                var isWeekend = start.UtcDateTime.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+                var nightFactor = localHour is >= 0 and < 6 ? 0.58m : localHour is >= 18 and < 23 ? 1.18m : 1m;
+                var workdayFactor = isWeekend ? 0.78m : localHour is >= 8 and < 17 ? 1.22m : 0.9m;
+                var seasonalFactor = 1m + (decimal)Math.Sin((start - SeedNow.AddDays(-365)).TotalDays / 365d * Math.PI * 2d) * 0.08m;
+                var baseConsumption = 0.72m + point.Id % 3 * 0.16m;
+                var variation = 1m + (decimal)((hour * 17 + point.Id * 13) % 11 - 5) / 100m;
+                intervals.Add(new ConsumptionInterval
                 {
-                    db.ConsumptionIntervals.Add(new ConsumptionInterval
-                    {
-                        MeteringPointId = point.Id,
-                        Start = SeedNow.AddHours(-hour),
-                        End = SeedNow.AddHours(-hour + 1),
-                        QuantityKwh = 0.8m + (hour % 5) * 0.1m,
-                        Quality = ConsumptionQuality.Measured,
-                        Source = ConsumptionSource.Elhub,
-                        ReceivedAt = SeedNow.AddHours(-hour + 1),
-                        IsCurrent = true,
-                    });
-                }
+                    MeteringPointId = point.Id,
+                    Start = start,
+                    End = start.AddHours(1),
+                    QuantityKwh = Math.Round(baseConsumption * nightFactor * workdayFactor * seasonalFactor * variation, 3),
+                    Quality = ConsumptionQuality.Measured,
+                    Source = ConsumptionSource.Elhub,
+                    ReceivedAt = start.AddHours(1),
+                    IsCurrent = true,
+                });
             }
+            db.ConsumptionIntervals.AddRange(intervals);
         }
 
         await db.SaveChangesAsync(cancellationToken);

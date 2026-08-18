@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Vantigo.Customers.Database.Customers.Migrations
 {
     /// <inheritdoc />
-    public partial class AddCustomerStatusAndTimestamps : Migration
+    internal partial class AddCustomerStatusAndTimestamps : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

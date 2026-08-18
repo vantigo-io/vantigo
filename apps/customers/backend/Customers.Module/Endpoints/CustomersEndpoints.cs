@@ -23,6 +23,8 @@ internal static class CustomersEndpoints
             .WithSummary("Get tenant-wide customer key figures")
             .RequirePermission(CustomerPermissions.View);
 
+        group.MapCustomerStatsEndpoints();
+
         group.MapPost("/", CreateCustomerEndpoint.Handler)
             .WithSummary("Create a new customer")
             .RequirePermission(CustomerPermissions.Create);

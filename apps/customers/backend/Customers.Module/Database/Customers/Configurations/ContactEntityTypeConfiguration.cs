@@ -75,5 +75,10 @@ internal sealed class ContactEntityTypeConfiguration : IEntityTypeConfiguration<
             .HasConversion(email => email!.Value.ToPersistence(), value => EmailAddress.FromPersistence(value))
             .HasMaxLength(EmailAddress.MaxLength)
             .IsUnicode(false);
+
+        builder.Property(c => c.CreatedAt)
+            .HasColumnName("created_at")
+            .HasComment("When the contact was first persisted")
+            .IsRequired();
     }
 }

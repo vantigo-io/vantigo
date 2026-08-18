@@ -17,7 +17,7 @@ import {
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import { KpiCard, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import { customerStatsQueryOptions, customersQueryOptions } from "../api/customers";
@@ -30,17 +30,6 @@ interface CustomersSearch {
   page: number;
   search: string;
 }
-
-const StatCard = ({ label, value }: { label: string; value: string }) => (
-  <Card withBorder padding="md" radius="md">
-    <Text size="sm" c="dimmed">
-      {label}
-    </Text>
-    <Text size="xl" fw={700}>
-      {value}
-    </Text>
-  </Card>
-);
 
 export const CustomersPage = () => {
   const { t, formatters } = useI18n("customers");
@@ -92,15 +81,15 @@ export const CustomersPage = () => {
 
       {stats && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: showIdentity ? 7 : 3 }} spacing="sm">
-          <StatCard label={t("statTotalCustomers")} value={formatCount(stats.totalCount)} />
-          <StatCard label={t("statActiveCustomers")} value={formatCount(stats.activeCount)} />
-          <StatCard label={t("statNewLast30Days")} value={formatCount(stats.newLast30DaysCount)} />
+          <KpiCard label={t("statTotalCustomers")} value={formatCount(stats.totalCount)} />
+          <KpiCard label={t("statActiveCustomers")} value={formatCount(stats.activeCount)} />
+          <KpiCard label={t("statNewLast30Days")} value={formatCount(stats.newLast30DaysCount)} />
           {showIdentity && (
             <>
-              <StatCard label={t("statBusinessCustomers")} value={formatCount(stats.businessCount)} />
-              <StatCard label={t("statPrivateCustomers")} value={formatCount(stats.personCount)} />
-              <StatCard label={t("statMissingIdentity")} value={formatCount(stats.missingIdentityCount)} />
-              <StatCard label={t("statCountries")} value={formatCount(stats.distinctCountryCount)} />
+              <KpiCard label={t("statBusinessCustomers")} value={formatCount(stats.businessCount)} />
+              <KpiCard label={t("statPrivateCustomers")} value={formatCount(stats.personCount)} />
+              <KpiCard label={t("statMissingIdentity")} value={formatCount(stats.missingIdentityCount)} />
+              <KpiCard label={t("statCountries")} value={formatCount(stats.distinctCountryCount)} />
             </>
           )}
         </SimpleGrid>

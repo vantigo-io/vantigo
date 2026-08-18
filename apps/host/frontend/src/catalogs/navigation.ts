@@ -1,6 +1,7 @@
 import type { CatalogResources } from "@vantigo/frontend-shell";
 
 const en = {
+  "navigation.dashboard": "Dashboard",
   "navigation.customerWorkspace": "Customer workspace",
   "navigation.customers": "Customers",
   "navigation.contacts": "Contacts",
@@ -24,9 +25,11 @@ const en = {
   "navigation.customer": "Customer",
   "navigation.noContactDetails": "No contact details",
   "navigation.nothingFound": "Nothing found...",
+  "navigation.quickActions": "Quick actions",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
+  "navigation.dashboard": "Kontrollpanel",
   "navigation.customerWorkspace": "Kundeområde",
   "navigation.customers": "Kunder",
   "navigation.contacts": "Kontakter",
@@ -50,6 +53,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "navigation.customer": "Kunde",
   "navigation.noContactDetails": "Ingen kontaktdetaljer",
   "navigation.nothingFound": "Ingenting funnet...",
+  "navigation.quickActions": "Hurtighandlinger",
 };
 
 export const navigationCatalog = { en, nb } as const satisfies CatalogResources;

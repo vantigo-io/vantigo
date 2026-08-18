@@ -20,7 +20,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCategory, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { KpiCard, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
 import {
@@ -43,22 +43,6 @@ interface CategoryFormValues {
   name: string;
   parentId: string | null;
 }
-
-const StatCard = ({ label, value, hint }: { label: string; value: string | number; hint?: string }) => (
-  <Card withBorder padding="md" radius="md">
-    <Text size="sm" c="dimmed">
-      {label}
-    </Text>
-    <Text size="xl" fw={700}>
-      {value}
-    </Text>
-    {hint && (
-      <Text size="xs" c="dimmed">
-        {hint}
-      </Text>
-    )}
-  </Card>
-);
 
 export const CategoriesPage = () => {
   const { t } = useI18n("products");
@@ -173,19 +157,15 @@ export const CategoriesPage = () => {
       />
       {categories && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: 5 }}>
-          <StatCard label={t("categories.totalCategories")} value={categories.length} />
-          <StatCard label={t("categories.rootCategories")} value={rootCount} />
-          <StatCard
-            label={t("categories.maxDepth")}
-            value={maxDepth(categories)}
-            hint={t("categories.nestingLevels")}
-          />
-          <StatCard
+          <KpiCard label={t("categories.totalCategories")} value={categories.length} />
+          <KpiCard label={t("categories.rootCategories")} value={rootCount} />
+          <KpiCard label={t("categories.maxDepth")} value={maxDepth(categories)} hint={t("categories.nestingLevels")} />
+          <KpiCard
             label={t("categories.emptyCategories")}
             value={emptyCount}
             hint={t("categories.noProductsInSubtree")}
           />
-          <StatCard
+          <KpiCard
             label={t("categories.uncategorisedProducts")}
             value={uncategorizedCount ?? t("common.noValue")}
             hint={t("categories.withoutCategory")}

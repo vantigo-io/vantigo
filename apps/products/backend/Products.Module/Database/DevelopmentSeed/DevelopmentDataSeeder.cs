@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
+using Vantigo.Configuration;
 using Vantigo.Products.Database.Products;
 using Vantigo.Products.Domain.Products;
 
@@ -8,28 +10,50 @@ namespace Vantigo.Products.Database.DevelopmentSeed;
 /// <summary>Creates a small, repeatable local dataset outside the migration model.</summary>
 internal static class DevelopmentDataSeeder
 {
+    private const int DefaultProductCount = 100;
+    private const int MaximumSeedCount = 500;
+    private static readonly DateTimeOffset SeedNow = new(2026, 8, 10, 0, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset CampaignStart = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset CampaignEnd = new(2027, 8, 1, 0, 0, 0, TimeSpan.Zero);
 
     internal static async Task SeedProductsAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
         await using var scope = services.CreateAsyncScope();
-        await SeedProductsAsync(scope.ServiceProvider.GetRequiredService<ProductsDbContext>(), cancellationToken);
+        var configuredCount = scope.ServiceProvider.GetRequiredService<IOptions<DevelopmentSeedOptions>>().Value.Data.Products;
+        var productCount = configuredCount == 0 ? DefaultProductCount : Math.Clamp(configuredCount, 0, MaximumSeedCount);
+        await SeedProductsAsync(scope.ServiceProvider.GetRequiredService<ProductsDbContext>(), productCount, cancellationToken);
     }
 
-    private static async Task SeedProductsAsync(ProductsDbContext dbContext, CancellationToken cancellationToken)
+    private static async Task SeedProductsAsync(ProductsDbContext dbContext, int productCount, CancellationToken cancellationToken)
     {
         var categoryIdsByName = await SeedCategoriesAsync(dbContext, cancellationToken);
         var taxCategoryIdsByName = await SeedTaxCategoriesAsync(dbContext, cancellationToken);
-        foreach (var seed in CreateProductSeeds(categoryIdsByName, taxCategoryIdsByName))
+        var addedProducts = new List<Product>();
+        foreach (var seed in CreateProductSeeds(productCount, categoryIdsByName, taxCategoryIdsByName))
         {
             if (!await dbContext.ProductVariants.AnyAsync(variant => variant.Sku == seed.Variants[0].Sku, cancellationToken))
             {
                 dbContext.Products.Add(seed);
+                addedProducts.Add(seed);
             }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        foreach (var (product, index) in addedProducts.Select((item, itemIndex) => (item, itemIndex)))
+        {
+            var ageDays = (int)Math.Round(365 * Math.Pow((double)index / Math.Max(addedProducts.Count - 1, 1), 1.55));
+            product.CreatedAt = SeedNow.AddDays(-ageDays).AddHours(-(index % 12));
+            product.UpdatedAt = product.CreatedAt;
+            foreach (var variant in product.Variants)
+            {
+                variant.CreatedAt = product.CreatedAt;
+                variant.UpdatedAt = product.UpdatedAt;
+            }
+        }
+        if (addedProducts.Count > 0)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private static async Task<IReadOnlyDictionary<string, int>> SeedTaxCategoriesAsync(
@@ -86,9 +110,12 @@ internal static class DevelopmentDataSeeder
     }
 
     private static IReadOnlyList<Product> CreateProductSeeds(
+        int count,
         IReadOnlyDictionary<string, int> categoryIdsByName,
-        IReadOnlyDictionary<string, int> taxCategoryIdsByName) =>
-    [
+        IReadOnlyDictionary<string, int> taxCategoryIdsByName)
+    {
+        var products = new List<Product>
+        {
         new Product
         {
             Name = "Aurora Desk Lamp", Type = ProductType.Goods, Status = ProductStatus.Active,
@@ -146,5 +173,33 @@ internal static class DevelopmentDataSeeder
             TaxCategoryId = taxCategoryIdsByName["Standard 25%"], CategoryId = categoryIdsByName["Furniture"],
             Variants = [new ProductVariant { Sku = "MDW-2025", Barcode = "7350053850040", StandardCost = 900m, WeightKg = 14m, Prices = [new ProductPrice { Currency = "NOK", Amount = 2490m }] }],
         },
-    ];
+        };
+        for (var index = products.Count; index < count; index++)
+        {
+            var number = index + 1;
+            var status = number % 17 == 0
+                ? ProductStatus.Discontinued
+                : number % 13 == 0 ? ProductStatus.Draft : ProductStatus.Active;
+            products.Add(new Product
+            {
+                Name = $"Development Product {number:000}",
+                Type = number % 5 == 0 ? ProductType.Service : ProductType.Goods,
+                Status = status,
+                TaxCategoryId = taxCategoryIdsByName["Standard 25%"],
+                CategoryId = number % 4 == 0 ? categoryIdsByName["Services"] : categoryIdsByName["Furniture"],
+                Description = "A representative development catalogue item for dashboard and workflow demonstrations.",
+                Variants =
+                [
+                    new ProductVariant
+                    {
+                        Sku = $"DEV-{number:000}",
+                        Unit = number % 5 == 0 ? "hour" : ProductVariant.DefaultUnit,
+                        StandardCost = 100m + number * 7m,
+                        Prices = [new ProductPrice { Currency = "NOK", Amount = 250m + number * 13m }],
+                    },
+                ],
+            });
+        }
+        return products.Take(count).ToArray();
+    }
 }

@@ -13,6 +13,7 @@ public static class VersionedBusinessEndpointExtensions
             .HasApiVersion(new ApiVersion(1));
         api.MapMeteringPointEndpoints();
         api.MapCustomerEnergyEndpoints();
+        api.MapEnergyStatsEndpoints();
         return endpoints;
     }
 }

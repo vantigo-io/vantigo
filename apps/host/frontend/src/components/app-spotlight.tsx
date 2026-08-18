@@ -1,7 +1,7 @@
 import { Center, Loader, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Spotlight } from "@mantine/spotlight";
-import { IconBuilding, IconSearch, IconUser } from "@tabler/icons-react";
+import { IconBuilding, IconMail, IconPackage, IconPlus, IconSearch, IconUser } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { contactsQueryOptions } from "@vantigo/customers-ui/api/contacts";
@@ -67,6 +67,19 @@ export const AppSpotlight = ({
     onNavigate?.();
     action();
   };
+  const quickActions = [
+    ...(tenantSlug && enabledModules?.includes("customers") && hasPermissions(permissions, ["customers:create"])
+      ? [{ label: t("dashboard.createCustomer"), icon: IconPlus, path: "/customers" }]
+      : []),
+    ...(tenantSlug &&
+    enabledModules?.includes("communications") &&
+    hasPermissions(permissions, ["communications:conversations-view"])
+      ? [{ label: t("dashboard.composeMessage"), icon: IconMail, path: "/inbox" }]
+      : []),
+    ...(tenantSlug && enabledModules?.includes("products") && hasPermissions(permissions, ["products:products-manage"])
+      ? [{ label: t("dashboard.addProduct"), icon: IconPackage, path: "/products" }]
+      : []),
+  ];
 
   const customers = useQuery({
     ...customersQueryOptions({ search, pageSize: MAX_RESULTS }),
@@ -94,6 +107,22 @@ export const AppSpotlight = ({
         rightSection={isSearching && <Loader size="xs" />}
       />
       <Spotlight.ActionsList>
+        {quickActions.length > 0 && (
+          <Spotlight.ActionsGroup label={t("navigation.quickActions")}>
+            {quickActions.map((action) => (
+              <Spotlight.Action
+                key={action.label}
+                label={action.label}
+                leftSection={<action.icon size={20} stroke={1.5} />}
+                onClick={() =>
+                  handleNavigate(
+                    () => void navigate({ to: `/${encodeURIComponent(tenantSlug ?? "")}${action.path}` as never }),
+                  )
+                }
+              />
+            ))}
+          </Spotlight.ActionsGroup>
+        )}
         {matchingNavigation.length > 0 && (
           <Spotlight.ActionsGroup label={t("navigation.navigation")}>
             {matchingNavigation.map((action) => (

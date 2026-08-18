@@ -270,6 +270,7 @@
       "name": "@vantigo/frontend-shell",
       "version": "0.0.0",
       "dependencies": {
+        "@mantine/charts": "catalog:",
         "i18next": "catalog:",
         "react-i18next": "catalog:",
       },

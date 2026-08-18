@@ -56,4 +56,9 @@ public sealed class Contact : ITenantOwned
     /// customers can carry their own connection-specific email address.
     /// </summary>
     public EmailAddress? Email { get; set; }
+
+    /// <summary>
+    /// When the contact was first persisted.
+    /// </summary>
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

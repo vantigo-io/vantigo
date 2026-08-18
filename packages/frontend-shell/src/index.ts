@@ -43,6 +43,7 @@ export { vantigoLogo } from "./logo";
 export { PageHeader, type PageHeaderProps } from "./page-header";
 export { SpotlightSearchBox } from "./spotlight-search-box";
 export { vantigoTheme } from "./theme";
+export * from "./ui";
 export {
   type DebouncedListSearchNavigate,
   type DebouncedListSearchNavigationOptions,

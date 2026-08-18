@@ -31,12 +31,23 @@ export interface NavItem {
   searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list";
 }
 export interface NavSection {
-  label: string;
+  /** Optional section heading; unlabeled sections render items only. */
+  label?: string;
   items: readonly NavItem[];
   placement?: "lower";
 }
 
 export const navSections: readonly NavSection[] = [
+  {
+    items: [
+      {
+        label: "navigation.dashboard",
+        to: "/",
+        icon: IconLayoutDashboard,
+        tenantScoped: true,
+      },
+    ],
+  },
   {
     label: "navigation.customerWorkspace",
     items: [
@@ -157,7 +168,7 @@ export const navSections: readonly NavSection[] = [
 ];
 
 export const tenantPath = (tenantSlug: string | undefined, path: string) =>
-  tenantSlug && path !== "/" ? `/${encodeURIComponent(tenantSlug)}${path}` : path;
+  tenantSlug ? `/${encodeURIComponent(tenantSlug)}${path === "/" ? "" : path}` : path;
 
 export const navSectionsForTenant = (tenantSlug?: string): readonly NavSection[] =>
   navSections.map((section) => ({

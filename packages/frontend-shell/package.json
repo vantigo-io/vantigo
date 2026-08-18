@@ -6,9 +6,11 @@
   "description": "Shared application shell, theme and branding for Vantigo frontend apps.",
   "exports": {
     ".": "./src/index.ts",
+    "./ui": "./src/ui/index.ts",
     "./theme.css": "./src/theme.css"
   },
   "dependencies": {
+    "@mantine/charts": "catalog:",
     "i18next": "catalog:",
     "react-i18next": "catalog:"
   },

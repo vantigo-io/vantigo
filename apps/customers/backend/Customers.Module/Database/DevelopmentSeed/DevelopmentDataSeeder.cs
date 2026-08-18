@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using Bogus;
 
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +11,7 @@ using Vantigo.Customers.Domain.Contacts;
 using Vantigo.Customers.Domain.Customers;
 using Vantigo.Customers.Domain.Customers.Common;
 using Vantigo.Customers.Domain.Customers.ValueObjects;
+using Vantigo.Customers.Domain.Timeline;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
 using Vantigo.Tenancy.EntityFramework;
@@ -23,9 +26,11 @@ namespace Vantigo.Customers.Database.DevelopmentSeed;
 public static class DevelopmentDataSeeder
 {
     private const int FakerSeed = 20260804;
-    private const int DefaultCustomerCount = 6;
-    private const int DefaultContactCount = 6;
-    private const int MaximumSeedCount = 100;
+    private static readonly DateTimeOffset SeedNow = new(2026, 8, 10, 0, 0, 0, TimeSpan.Zero);
+    private const int DefaultCustomerCount = 250;
+    private const int DefaultContactCount = 300;
+    private const int MaximumSeedCount = 500;
+    private const string TimelineProducer = "development.seed";
     private static readonly IReadOnlyList<CustomerDefinition> CustomerDefinitions =
     [
         new("aurora", "990000001"),
@@ -85,14 +90,15 @@ public static class DevelopmentDataSeeder
             {
                 // Deterministic variety so the customer overview has meaningful key figures:
                 // a mix of business/person types, a few countries, some disabled customers
-                // and creation dates spread over roughly the last year (the first customer
-                // is always recent so the "new last 30 days" figure is non-zero).
+                // and creation dates spread over roughly the last year, weighted toward
+                // recent customers (the first customer is always recent).
                 var number = seedIndex + 1;
-                var createdAt = DateTimeOffset.UtcNow.AddDays(-((number - 1) * 45 % 365)).AddHours(-number);
+                var ageDays = (int)Math.Round(365 * Math.Pow((double)seedIndex / Math.Max(customerSeeds.Count - 1, 1), 1.7));
+                var createdAt = SeedNow.AddDays(-ageDays).AddHours(-(number % 12));
                 var updatedAt = createdAt.AddDays(number % 3 * 7);
-                if (updatedAt > DateTimeOffset.UtcNow)
+                if (updatedAt > SeedNow)
                 {
-                    updatedAt = DateTimeOffset.UtcNow;
+                    updatedAt = SeedNow;
                 }
 
                 customer = new Customer
@@ -169,7 +175,96 @@ public static class DevelopmentDataSeeder
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await SeedCustomerTimelineAsync(dbContext, customerSeeds, customersByKey, contactSeeds, contactsByKey, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task SeedCustomerTimelineAsync(
+        CustomersDbContext dbContext,
+        IReadOnlyList<CustomerSeed> customerSeeds,
+        IReadOnlyDictionary<string, Customer> customersByKey,
+        IReadOnlyList<ContactSeed> contactSeeds,
+        IReadOnlyDictionary<string, Contact> contactsByKey,
+        CancellationToken cancellationToken)
+    {
+        var customerIds = customersByKey.Values.Select(customer => customer.Id).ToArray();
+        var existing = await dbContext.CustomerTimelineEntries
+            .Where(entry => customerIds.Contains(entry.CustomerId) && entry.Producer == TimelineProducer)
+            .Select(entry => new { entry.CustomerId, entry.EventType })
+            .ToListAsync(cancellationToken);
+        var existingKeys = existing
+            .Select(entry => $"{entry.CustomerId}:{entry.EventType}")
+            .ToHashSet(StringComparer.Ordinal);
+        var entries = new List<CustomerTimelineEntry>();
+
+        foreach (var (seed, index) in customerSeeds.Select((item, itemIndex) => (item, itemIndex)))
+        {
+            var customer = customersByKey[seed.Key];
+            AddTimelineEntry(entries, existingKeys, customer, "customer.created", customer.CreatedAt,
+                $"Customer onboarded: {(string)customer.Name}",
+                new { customerId = customer.Id, customerName = (string)customer.Name });
+
+            var linkedContact = contactSeeds.FirstOrDefault(contact => contact.CustomerKeys.Contains(seed.Key, StringComparer.Ordinal));
+            if (linkedContact is not null && contactsByKey.TryGetValue(linkedContact.Key, out var contact))
+            {
+                var activityAt = customer.CreatedAt.AddDays(2 + index % 29);
+                if (activityAt > SeedNow) activityAt = SeedNow.AddHours(-(index % 6));
+                AddTimelineEntry(entries, existingKeys, customer, "customer.contact_attached", activityAt,
+                    $"Contact added: {linkedContact.FirstName} {linkedContact.LastName}",
+                    new { customerId = customer.Id, contactId = contact.Id, role = linkedContact.Role });
+            }
+        }
+
+        dbContext.CustomerTimelineEntries.AddRange(entries);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void AddTimelineEntry(
+        ICollection<CustomerTimelineEntry> entries,
+        IReadOnlySet<string> existingKeys,
+        Customer customer,
+        string eventType,
+        DateTimeOffset occurredAt,
+        string summary,
+        object payload)
+    {
+        if (existingKeys.Contains($"{customer.Id}:{eventType}")) return;
+        var payloadJson = JsonSerializer.Serialize(payload);
+        var entry = new CustomerTimelineEntry
+        {
+            CustomerId = customer.Id,
+            Provenance = TimelineProvenance.Generated,
+            Producer = TimelineProducer,
+            EventType = eventType,
+            OccurredOn = DateOnly.FromDateTime(occurredAt.UtcDateTime),
+            OccurredAt = occurredAt,
+            Summary = summary,
+            PayloadJson = payloadJson,
+            PayloadVersion = 1,
+            CurrentRevision = 1,
+            State = TimelineState.Active,
+            ActorKind = TimelineActorKind.System,
+            ActorDisplay = "Development seed",
+            CreatedAt = occurredAt,
+            UpdatedAt = occurredAt,
+        };
+        entry.Revisions.Add(new CustomerTimelineEntryRevision
+        {
+            RevisionNumber = 1,
+            Provenance = entry.Provenance,
+            Producer = entry.Producer,
+            EventType = entry.EventType,
+            OccurredOn = entry.OccurredOn,
+            OccurredAt = entry.OccurredAt,
+            Summary = entry.Summary,
+            PayloadJson = payloadJson,
+            PayloadVersion = entry.PayloadVersion,
+            State = entry.State,
+            ActorKind = entry.ActorKind,
+            ActorDisplay = entry.ActorDisplay,
+            CreatedAt = occurredAt,
+        });
+        entries.Add(entry);
     }
 
     private static IReadOnlyList<CustomerSeed> CreateCustomerSeeds(int count)
