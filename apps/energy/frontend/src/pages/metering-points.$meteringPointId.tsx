@@ -18,7 +18,7 @@ import { IconBolt, IconCalendar, IconPencil, IconPlus } from "@tabler/icons-reac
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { customersQueryOptions } from "../api/customers";
 import {
   type ConsumptionResolution,
@@ -29,6 +29,7 @@ import {
   metersQueryOptions,
   supplyPeriodsQueryOptions,
 } from "../api/energy";
+import { MARKET_TIME_ZONE, marketDayKey } from "../lib/market-time";
 import { ConsumptionChart } from "./-consumption-chart";
 import { ManualReadingModal } from "./-manual-reading-modal";
 import { MeteringPointFormModal, type MeteringPointModalState } from "./-metering-point-form-modal";
@@ -72,10 +73,24 @@ export const MeteringPointDetailsPage = () => {
   const customerName = (id: number) =>
     customers?.data.find((customer) => customer.id === id)?.name ?? t("customerNumber", { id });
   const supplyPeriodDate = (value: string | null | undefined) =>
-    value ? formatters.formatDate(value, { dateStyle: "medium", timeZone: "UTC" }) : t("openEnded");
+    value ? formatters.formatDate(value, { dateStyle: "medium", timeZone: MARKET_TIME_ZONE }) : t("openEnded");
   const meterTimestamp = (value: string | null | undefined) =>
-    value ? formatters.formatDate(value, { dateStyle: "medium", timeStyle: "short" }) : t("openEnded");
-  const timestampDate = (value: string | null | undefined) => (value ? formatters.formatDate(value) : t("openEnded"));
+    value
+      ? formatters.formatDate(value, { dateStyle: "medium", timeStyle: "short", timeZone: MARKET_TIME_ZONE })
+      : t("openEnded");
+  const timestampDate = (value: string | null | undefined) =>
+    value ? formatters.formatDate(value, { dateStyle: "medium", timeZone: MARKET_TIME_ZONE }) : t("openEnded");
+  const timestampTime = (value: string | null | undefined) =>
+    value
+      ? formatters.formatDate(value, {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: MARKET_TIME_ZONE,
+        })
+      : t("openEnded");
+  const consumptionDayHeader = (value: string) =>
+    formatters.formatDate(value, { dateStyle: "long", timeZone: MARKET_TIME_ZONE });
   const hasActivePeriod = periods?.some((period) => period.status === "Active") ?? false;
   return (
     <Stack gap="lg">
@@ -255,27 +270,86 @@ export const MeteringPointDetailsPage = () => {
             ]}
           />
           <ConsumptionChart aggregates={aggregates ?? []} resolution={resolution} />
-          {consumption && consumption.length > 0 ? (
+          {resolution === "hour" ? (
+            consumption && consumption.length > 0 ? (
+              <Table>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("start")}</Table.Th>
+                    <Table.Th>{t("end")}</Table.Th>
+                    <Table.Th>{t("quantityKwh")}</Table.Th>
+                    <Table.Th>{t("quality")}</Table.Th>
+                    <Table.Th>{t("source")}</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {consumption.map((item, index) => {
+                    const previousItem = consumption[index - 1];
+                    const startsNewDay =
+                      resolution === "hour" &&
+                      (!previousItem || marketDayKey(previousItem.start) !== marketDayKey(item.start));
+                    return (
+                      <Fragment key={item.id}>
+                        {startsNewDay && (
+                          <Table.Tr key={`${item.id}-day`}>
+                            <Table.Td colSpan={5} bg="gray.0">
+                              <Text size="sm" fw={600} c="dimmed">
+                                {consumptionDayHeader(item.start)}
+                              </Text>
+                            </Table.Td>
+                          </Table.Tr>
+                        )}
+                        <Table.Tr>
+                          <Table.Td>
+                            {resolution === "hour" ? timestampTime(item.start) : timestampDate(item.start)}
+                          </Table.Td>
+                          <Table.Td>
+                            {resolution === "hour" ? timestampTime(item.end) : timestampDate(item.end)}
+                          </Table.Td>
+                          <Table.Td>{formatters.formatNumber(item.quantityKwh)}</Table.Td>
+                          <Table.Td>{t(`quality${item.quality}`)}</Table.Td>
+                          <Table.Td>{t(`source${item.source}`)}</Table.Td>
+                        </Table.Tr>
+                      </Fragment>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            ) : (
+              <Alert color="gray">{t("noReadingsForRange")}</Alert>
+            )
+          ) : aggregates && aggregates.length > 0 ? (
             <Table>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("start")}</Table.Th>
                   <Table.Th>{t("end")}</Table.Th>
                   <Table.Th>{t("quantityKwh")}</Table.Th>
+                  <Table.Th>{t("intervals")}</Table.Th>
                   <Table.Th>{t("quality")}</Table.Th>
-                  <Table.Th>{t("source")}</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {consumption.map((item) => (
-                  <Table.Tr key={item.id}>
-                    <Table.Td>{timestampDate(item.start)}</Table.Td>
-                    <Table.Td>{timestampDate(item.end)}</Table.Td>
-                    <Table.Td>{formatters.formatNumber(item.quantityKwh)}</Table.Td>
-                    <Table.Td>{t(`quality${item.quality}`)}</Table.Td>
-                    <Table.Td>{t(`source${item.source}`)}</Table.Td>
-                  </Table.Tr>
-                ))}
+                {aggregates.map((item) => {
+                  const dateOptions =
+                    resolution === "day"
+                      ? { dateStyle: "medium" as const, timeZone: MARKET_TIME_ZONE }
+                      : { year: "numeric" as const, month: "long" as const, timeZone: MARKET_TIME_ZONE };
+                  const formatBucket = (value: string) => formatters.formatDate(value, dateOptions);
+                  return (
+                    <Table.Tr key={item.bucketStart}>
+                      <Table.Td>{formatBucket(item.bucketStart)}</Table.Td>
+                      <Table.Td>{formatBucket(item.bucketEnd)}</Table.Td>
+                      <Table.Td>{formatters.formatNumber(item.quantityKwh)}</Table.Td>
+                      <Table.Td>{formatters.formatNumber(item.intervalCount)}</Table.Td>
+                      <Table.Td>
+                        <Badge color={item.hasEstimated ? "yellow" : "gray"} variant="light">
+                          {item.hasEstimated ? t("qualityAggregateEstimated") : t("qualityAggregateMeasured")}
+                        </Badge>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
               </Table.Tbody>
             </Table>
           ) : (

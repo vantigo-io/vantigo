@@ -26,7 +26,11 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
       <div>
         <Text style={eyebrowStyle}>{eyebrow}</Text>
         <Title order={2}>{title}</Title>
-        {description && <Text c="dimmed">{description}</Text>}
+        {description && (
+          <Text c="dimmed" component="div">
+            {description}
+          </Text>
+        )}
       </div>
       {actions}
     </Group>

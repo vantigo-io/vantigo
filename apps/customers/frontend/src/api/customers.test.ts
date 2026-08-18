@@ -129,4 +129,13 @@ describe("legalIdentityQueryOptions", () => {
     await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers/1001/legal-identity", { signal: undefined });
   });
+
+  it("returns null when the customer has no legal identity", async () => {
+    stubFetch(vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+
+    const options = legalIdentityQueryOptions(1001);
+    const result = await (options.queryFn as (context: unknown) => Promise<unknown>)({ signal: undefined });
+
+    expect(result).toBeNull();
+  });
 });

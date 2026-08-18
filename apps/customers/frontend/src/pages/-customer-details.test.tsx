@@ -62,7 +62,6 @@ describe("customer details page", () => {
     await renderRoute("/customers/1001", "Equinor");
 
     expect(await screen.findByRole("heading", { name: "Equinor" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Legal identity" })).toBeInTheDocument();
     expect(screen.getByText("#1001")).toBeInTheDocument();
     expect(screen.getByText("EQUINOR ASA")).toBeInTheDocument();
     expect(screen.getByText("923609016")).toBeInTheDocument();

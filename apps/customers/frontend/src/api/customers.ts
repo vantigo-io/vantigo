@@ -91,6 +91,7 @@ export interface LegalIdentityInput {
 
 export interface CustomerInput {
   name: string;
+  identity?: LegalIdentityInput;
 }
 
 export async function createCustomer(input: CustomerInput): Promise<{ id: number }> {
@@ -114,7 +115,7 @@ export const legalIdentityQueryOptions = (id: number) =>
     queryKey: ["customers", id, "legal-identity"],
     queryFn: async ({ signal }) => {
       try {
-        return await request<LegalIdentityResponse>(`/api/v1/customers/${id}/legal-identity`, { signal });
+        return (await request<LegalIdentityResponse>(`/api/v1/customers/${id}/legal-identity`, { signal })) ?? null;
       } catch (error) {
         if ([403, 404].includes((error as { status?: number }).status ?? 0)) return null;
         throw error;

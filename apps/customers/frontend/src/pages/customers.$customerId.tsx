@@ -1,4 +1,4 @@
-import { Anchor, Breadcrumbs, Button, Card, Group, Stack, Text, Title } from "@mantine/core";
+import { Anchor, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
@@ -44,7 +44,27 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
         <PageHeader
           eyebrow={t("customers")}
           title={customer.name}
-          description={t("customerDetailsDescription")}
+          description={
+            identity ? (
+              <Group gap="xs" mt={4}>
+                <LegalValueBadge type={identity.type} tooltip={t("tooltipLegalName")} copyable>
+                  {identity.name}
+                </LegalValueBadge>
+                <LegalValueBadge type={identity.type} tooltip={t("tooltipLegalId")} copyable>
+                  {identity.id}
+                </LegalValueBadge>
+                <LegalCountryBadge country={identity.country} tooltip={t("tooltipCountry")} copyable />
+                <LegalTypeBadge type={identity.type} tooltip={t("tooltipType")} copyable />
+                <LegalSourceBadge
+                  source={identity.source}
+                  legalId={identity.id}
+                  tooltip={getLegalSource(identity.source).logo ? undefined : t("tooltipManualSource")}
+                />
+              </Group>
+            ) : (
+              t("legalIdentityUnavailable")
+            )
+          }
           actions={
             <Group gap="sm">
               <CopyableBadge variant="light" size="lg" tooltip={t("customerIdTooltip")} copyValue={String(customer.id)}>
@@ -60,33 +80,6 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
             </Group>
           }
         />
-
-        {identity ? (
-          <Stack gap="xs">
-            <Title order={3}>{t("legalIdentity")}</Title>
-            <Group gap="xs">
-              <LegalValueBadge type={identity.type} tooltip={t("tooltipLegalName")} copyable>
-                {identity.name}
-              </LegalValueBadge>
-              <LegalValueBadge type={identity.type} tooltip={t("tooltipLegalId")} copyable>
-                {identity.id}
-              </LegalValueBadge>
-              <LegalCountryBadge country={identity.country} tooltip={t("tooltipCountry")} copyable />
-              <LegalTypeBadge type={identity.type} tooltip={t("tooltipType")} copyable />
-              <LegalSourceBadge
-                source={identity.source}
-                legalId={identity.id}
-                tooltip={getLegalSource(identity.source).logo ? undefined : t("tooltipManualSource")}
-              />
-            </Group>
-          </Stack>
-        ) : (
-          <Card withBorder padding="sm">
-            <Text size="sm" c="dimmed">
-              {t("legalIdentityUnavailable")}
-            </Text>
-          </Card>
-        )}
       </Stack>
 
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />

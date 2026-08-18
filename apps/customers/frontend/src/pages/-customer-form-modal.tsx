@@ -1,32 +1,41 @@
-import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
-import { useForm } from "@mantine/form";
+import { Button, Combobox, Group, Loader, Modal, Stack, Text, TextInput, useCombobox } from "@mantine/core";
+import { type UseFormReturnType, useForm } from "@mantine/form";
+import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
 import { ApiValidationError, type CustomerResponse, createCustomer, updateCustomer } from "../api/customers";
+import { brregLookupQueryOptions, type LookupResult } from "../api/lookup";
 import "../i18n";
 
 export type CustomerModalState = { mode: "create" } | { mode: "edit"; customer: CustomerResponse };
+
+type CustomerIdentity = { country: string; type: string; id: string; name: string; source: string };
+type CustomerFormValues = { name: string; identity: CustomerIdentity | undefined };
 
 export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalState | null; onClose: () => void }) => {
   const queryClient = useQueryClient();
   const { t } = useI18n("customers");
   const isEdit = state?.mode === "edit";
-  const form = useForm({
-    initialValues: { name: "" },
+  const form = useForm<CustomerFormValues>({
+    initialValues: {
+      name: "",
+      identity: undefined as { country: string; type: string; id: string; name: string; source: string } | undefined,
+    },
     validate: { name: (value: string) => (value.trim() ? null : t("customerNameRequired")) },
   });
   useEffect(() => {
     if (state) {
-      form.setValues({ name: state.mode === "edit" ? state.customer.name : "" });
+      form.setValues({ name: state.mode === "edit" ? state.customer.name : "", identity: undefined });
       form.resetDirty();
       form.clearErrors();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
   const mutation = useMutation({
-    mutationFn: (name: string) => (isEdit ? updateCustomer(state.customer.id, { name }) : createCustomer({ name })),
+    mutationFn: (values: { name: string; identity?: typeof form.values.identity }) =>
+      isEdit ? updateCustomer(state.customer.id, values) : createCustomer(values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       onClose();
@@ -48,16 +57,13 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
       title={isEdit ? t("editCustomer") : t("createNewCustomer")}
       centered
     >
-      <form onSubmit={form.onSubmit(({ name }) => mutation.mutate(name.trim()))}>
+      <form
+        onSubmit={form.onSubmit(({ name, identity }) =>
+          mutation.mutate({ name: name.trim(), ...(identity ? { identity } : {}) }),
+        )}
+      >
         <Stack>
-          <TextInput
-            label={t("name")}
-            description={t("customerNameDescription")}
-            placeholder={t("customerNamePlaceholder")}
-            withAsterisk
-            data-autofocus
-            {...form.getInputProps("name")}
-          />
+          <CompanyLookupInput form={form} t={t} />
           <Text size="sm" c="dimmed">
             {t("legalIdentityPermission")}
           </Text>
@@ -72,5 +78,69 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
         </Stack>
       </form>
     </Modal>
+  );
+};
+
+type CustomerForm = UseFormReturnType<CustomerFormValues>;
+
+const CompanyLookupInput = ({ form, t }: { form: CustomerForm; t: (key: string) => string }) => {
+  const combobox = useCombobox();
+  const [search] = useDebouncedValue(form.values.name, 300);
+  const lookup = useQuery(brregLookupQueryOptions(search));
+  const results = lookup.data?.data ?? [];
+  const inputProps = form.getInputProps("name");
+
+  const selectResult = (result: LookupResult) => {
+    form.setValues({
+      name: result.legalName,
+      identity: { country: "no", type: "business", id: result.legalId, name: result.legalName, source: "brreg" },
+    });
+    combobox.closeDropdown();
+  };
+
+  return (
+    <Combobox
+      store={combobox}
+      onOptionSubmit={(id) => {
+        const result = results.find((item) => item.legalId === id);
+        if (result) selectResult(result);
+      }}
+    >
+      <Combobox.Target>
+        <TextInput
+          label={t("name")}
+          description={t("customerLookupDescription")}
+          placeholder={t("customerNamePlaceholder")}
+          withAsterisk
+          data-autofocus
+          rightSection={lookup.isFetching ? <Loader size="xs" /> : undefined}
+          {...inputProps}
+          onChange={(event) => {
+            inputProps.onChange(event);
+            if (form.values.identity && event.currentTarget.value !== form.values.identity.name) {
+              form.setFieldValue("identity", undefined);
+            }
+            combobox.openDropdown();
+          }}
+          onFocus={() => combobox.openDropdown()}
+          onBlur={(event) => {
+            inputProps.onBlur?.(event);
+            combobox.closeDropdown();
+          }}
+        />
+      </Combobox.Target>
+      <Combobox.Dropdown hidden={results.length === 0}>
+        <Combobox.Options>
+          {results.map((result) => (
+            <Combobox.Option key={result.legalId} value={result.legalId}>
+              <Text size="sm">{result.legalName}</Text>
+              <Text size="xs" c="dimmed">
+                {result.legalId}
+              </Text>
+            </Combobox.Option>
+          ))}
+        </Combobox.Options>
+      </Combobox.Dropdown>
+    </Combobox>
   );
 };
