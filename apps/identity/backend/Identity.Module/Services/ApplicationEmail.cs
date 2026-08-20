@@ -9,28 +9,12 @@ using Vantigo.Configuration;
 
 namespace Vantigo.Identity.Services;
 
-public sealed class EmailOptions
-{
-    public string Provider { get; set; } = "Logging";
-    public string From { get; set; } = "no-reply@localhost";
-    public SmtpEmailOptions Smtp { get; set; } = new();
-}
-
-public sealed class SmtpEmailOptions
-{
-    public string? Host { get; set; }
-    public int Port { get; set; } = 587;
-    public string? UserName { get; set; }
-    public string? Password { get; set; }
-    public bool EnableSsl { get; set; } = true;
-    public int TimeoutSeconds { get; set; } = 30;
-}
-
 /// <summary>
-/// Temporary pre-production fallback sender. It deliberately logs the complete
-/// sensitive message body, including invitation and password-reset bearer links,
-/// so those workflows remain usable before a real mail provider is configured.
-/// Replace this sender or configure SMTP before production use.
+/// Development-only fallback sender, rejected outside Development by
+/// <c>EmailOptionsValidator</c>. It never logs the message body, subject, or any
+/// token/link the body may contain (invitation and password-reset workflows embed
+/// bearer links there) - only the recipient and a generated correlation id, so it
+/// remains safe to leave enabled locally without leaking credentials into logs.
 /// </summary>
 public sealed class LoggingApplicationEmailSender(ILogger<LoggingApplicationEmailSender> logger)
     : IApplicationEmailSender
@@ -39,10 +23,9 @@ public sealed class LoggingApplicationEmailSender(ILogger<LoggingApplicationEmai
     {
         cancellationToken.ThrowIfCancellationRequested();
         logger.LogInformation(
-            "Application email queued to {Recipient}, subject {Subject}, body {Body}.",
-            email.To,
-            email.Subject,
-            email.TextBody);
+            "Application email {MessageId} queued to {Recipient}.",
+            Guid.NewGuid(),
+            email.To);
         return Task.CompletedTask;
     }
 }
