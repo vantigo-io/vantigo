@@ -7,6 +7,7 @@ public enum VantigoCommand
     Migrate,
     Seed,
     ResetCommunications,
+    HealthCheck,
     Invalid,
 }
 
@@ -17,7 +18,7 @@ public readonly record struct VantigoCommandLineResult(
 
 public static class VantigoCommandLine
 {
-    public const string Usage = "Usage: Vantigo.Host <api|migrate|seed|reset-communications> [arguments]";
+    public const string Usage = "Usage: Vantigo.Host <api|migrate|seed|reset-communications|healthcheck> [arguments]";
 
     public static VantigoCommandLineResult Parse(IReadOnlyList<string> arguments)
     {
@@ -41,6 +42,7 @@ public static class VantigoCommandLine
             "migrate" => VantigoCommand.Migrate,
             "seed" => VantigoCommand.Seed,
             "reset-communications" => VantigoCommand.ResetCommunications,
+            "healthcheck" => VantigoCommand.HealthCheck,
             _ => VantigoCommand.Invalid,
         };
 
