@@ -87,6 +87,9 @@ request or background-job iteration. If no tenant is resolved, storage fails
 closed before calling the provider. This is a logical object key, not a provider
 URL, and the storage contract never exposes provider URLs.
 
+Multi-tenant mode itself is not production-ready and refuses to start outside
+Development; see [Tenancy and tenant isolation](tenancy.md).
+
 Modules define a marker type implementing `IStorageScope` from
 `Vantigo.Storage.Abstractions`, for example `CommunicationsStorageScope : IStorageScope`
 with `Name => "communications"`,

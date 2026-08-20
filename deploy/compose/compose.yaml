@@ -8,6 +8,12 @@ name: vantigo
 #   3. docker compose up -d
 #
 # See README.md next to this file for details.
+#
+# Database roles: POSTGRES_USER owns the schemas and runs the migration job.
+# POSTGRES_APP_USER is a least-privilege runtime role (NOSUPERUSER NOBYPASSRLS,
+# table DML only, owns nothing). VANTIGO_DB_USER selects which of the two the API
+# connects as; it still defaults to the owner because row-level security is not
+# yet usable for ordinary reads. See README.md and docs/tenancy.md, issue #6.
 
 services:
   postgres:
@@ -44,7 +50,7 @@ services:
     command: ["api"]
     env_file: vantigo.env
     environment:
-      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
+      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${VANTIGO_DB_USER:-${POSTGRES_USER:-vantigo}};Password=${VANTIGO_DB_PASSWORD:-${POSTGRES_PASSWORD}}
     ports:
       - "${VANTIGO_PORT:-8080}:8080"
     depends_on:
@@ -54,8 +60,30 @@ services:
 
 configs:
   create-databases:
+    # Runs once, only when the postgres-data volume is first initialized.
+    # Existing installations must apply the role statements by hand; the exact
+    # SQL is reproduced in README.md.
     content: |
       CREATE DATABASE vantigo;
+
+      \connect vantigo
+
+      -- Least-privilege runtime role. It is not a superuser, cannot bypass
+      -- row-level security, and owns no schema or table, so the tenant RLS
+      -- policies actually apply to it. Default privileges are attached to the
+      -- owner role so the tables the migration job creates later are covered.
+      CREATE ROLE "${POSTGRES_APP_USER:-vantigo_app}"
+          LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT
+          PASSWORD '${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD}}';
+
+      GRANT CONNECT ON DATABASE vantigo TO "${POSTGRES_APP_USER:-vantigo_app}";
+
+      ALTER DEFAULT PRIVILEGES FOR ROLE "${POSTGRES_USER:-vantigo}"
+          GRANT USAGE ON SCHEMAS TO "${POSTGRES_APP_USER:-vantigo_app}";
+      ALTER DEFAULT PRIVILEGES FOR ROLE "${POSTGRES_USER:-vantigo}"
+          GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${POSTGRES_APP_USER:-vantigo_app}";
+      ALTER DEFAULT PRIVILEGES FOR ROLE "${POSTGRES_USER:-vantigo}"
+          GRANT USAGE, SELECT ON SEQUENCES TO "${POSTGRES_APP_USER:-vantigo_app}";
 
 volumes:
   postgres-data:
