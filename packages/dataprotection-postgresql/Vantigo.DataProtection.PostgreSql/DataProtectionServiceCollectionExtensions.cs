@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
+using Vantigo.Azure.Identity;
 using Vantigo.Configuration;
 
 namespace Vantigo.DataProtection.PostgreSql;
@@ -33,12 +34,21 @@ public static class DataProtectionServiceCollectionExtensions
     /// or an explicit override. Throws when the key context is first used if no
     /// connection string is configured.
     /// </summary>
+    /// <remarks>
+    /// PostgreSQL remains the key repository (required for multi-replica
+    /// deployments). When <see cref="DataProtectionKeyWrappingOptions.KeyVaultKeyUri"/> is
+    /// configured, the persisted keys are additionally wrapped with that Azure
+    /// Key Vault key, so a database dump alone can no longer decrypt protected
+    /// payloads. See docs/data-protection-key-wrapping.md for rotation and
+    /// recovery.
+    /// </remarks>
     public static IServiceCollection AddVantigoDataProtection(
         this IServiceCollection services,
         IConfiguration configuration,
         IHostEnvironment environment)
     {
         services.AddDataProtectionPostgreSqlOptions(configuration);
+        services.AddDataProtectionOptions(configuration);
 
         services.AddDbContext<DataProtectionKeyDbContext>((serviceProvider, options) =>
         {
@@ -53,9 +63,15 @@ public static class DataProtectionServiceCollectionExtensions
 
         var applicationName = ResolveApplicationName(configuration, environment);
 
-        services.AddDataProtection()
+        var dataProtectionBuilder = services.AddDataProtection()
             .SetApplicationName(applicationName)
             .PersistKeysToDbContext<DataProtectionKeyDbContext>();
+
+        var keyVaultKeyUri = ResolveKeyVaultKeyUri(configuration);
+        if (!string.IsNullOrWhiteSpace(keyVaultKeyUri))
+        {
+            dataProtectionBuilder.ProtectKeysWithAzureKeyVault(new Uri(keyVaultKeyUri), AzureIdentityCredentialFactory.Create());
+        }
 
         return services;
     }
@@ -90,4 +106,7 @@ public static class DataProtectionServiceCollectionExtensions
 
         return environment.ApplicationName ?? "Vantigo";
     }
+
+    private static string? ResolveKeyVaultKeyUri(IConfiguration configuration) =>
+        configuration.GetSection("DataProtection").Get<DataProtectionKeyWrappingOptions>()?.KeyVaultKeyUri;
 }

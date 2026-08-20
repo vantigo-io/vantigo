@@ -35,7 +35,7 @@ public static class AzureIdentityServiceCollectionExtensions
         // DefaultAzureCredential itself is lazy and does not acquire a token here.
         if (AzureIdentityOptionsBinder.ReadEnabled(configuration, section) &&
             !services.Any(descriptor => descriptor.ServiceType == typeof(global::Azure.Core.TokenCredential)))
-            services.AddSingleton<global::Azure.Core.TokenCredential, global::Azure.Identity.DefaultAzureCredential>();
+            services.AddSingleton(_ => AzureIdentityCredentialFactory.Create());
 
         return services;
     }

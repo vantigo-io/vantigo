@@ -244,6 +244,7 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 | `DataProtection__PostgreSql__Schema` | PostgreSQL schema for the Data Protection key table | `dataprotection` |
 | `DataProtection__PostgreSql__TableName` | PostgreSQL Data Protection key table | `Keys` |
 | `DataProtection__PostgreSql__ApplicationName` | Shared Data Protection application discriminator | host application name |
+| `DataProtection__KeyVaultKeyUri` | Azure Key Vault key identifier that wraps the Data Protection key ring; **required outside Development** (startup fails if unset) | unset |
 | `ForwardedHeaders__KnownProxies` | Trusted proxy IP(s), comma-separated or indexed | ASP.NET Core safe defaults |
 | `ForwardedHeaders__KnownNetworks__0` | Trusted proxy network in IPv4/IPv6 CIDR form | ASP.NET Core safe defaults |
 | `Email__Provider` | `Smtp` selects SMTP; any other value selects logging | `Logging` |
@@ -264,11 +265,13 @@ application name) so cookies, antiforgery tokens, and protected Identity tokens
 remain compatible across restarts and replicas. The key ring is managed through the
 PostgreSQL-backed Data Protection context rather than an application file volume.
 
-For higher-assurance deployments, external at-rest wrapping of the database or key
-material is recommended. Vantigo does not currently provide a product-level
-configuration for that wrapping; it must be implemented and operated by the
-deployment or an extension. Do not represent external wrapping as a built-in
-Vantigo feature.
+By default that key material is stored **unwrapped**: a PostgreSQL dump then
+contains both encrypted payloads and the keys to decrypt them. Configure
+`DataProtection__KeyVaultKeyUri` to wrap the key ring with an Azure Key Vault
+key; this is **required outside Development** (startup fails otherwise, with
+no opt-out — see [Data Protection key wrapping](data-protection-key-wrapping.md)
+for configuration, the Production requirement, and rotation/recovery,
+including the consequence of losing the Key Vault key).
 
 ### Forwarded headers and HTTPS
 

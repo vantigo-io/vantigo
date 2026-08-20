@@ -8,11 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Keys" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\azure-identity\Vantigo.Azure.Identity\Vantigo.Azure.Identity.csproj" />
     <ProjectReference Include="..\..\configuration\Vantigo.Configuration\Vantigo.Configuration.csproj" />
   </ItemGroup>
 

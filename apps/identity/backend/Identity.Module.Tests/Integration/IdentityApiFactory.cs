@@ -8,6 +8,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -250,6 +251,12 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             // factory stubs IApplicationEmailSender anyway, so any real provider
             // satisfies startup validation without sending anything.
             if (HostEnvironmentName != Environments.Development) values["Email:Provider"] = EmailOptions.SmtpProvider;
+            // An unwrapped Data Protection key ring is rejected outside Development.
+            // This value only satisfies that startup validation; ConfigureServices
+            // below neutralizes the resulting Azure Key Vault encryptor so the test
+            // host never contacts Azure to wrap or unwrap a key.
+            if (HostEnvironmentName != Environments.Development)
+                values["DataProtection:KeyVaultKeyUri"] = "https://identity-integration-test.vault.azure.net/keys/dataprotection/test";
             if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;
             if (PublicOrigin is not null) values["App:PublicOrigin"] = PublicOrigin;
             if (EnableWorkforceOidc)
@@ -270,6 +277,13 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             services.AddSingleton<TestEmailSender>();
             services.AddSingleton<IApplicationEmailSender>(serviceProvider =>
                 serviceProvider.GetRequiredService<TestEmailSender>());
+            if (HostEnvironmentName != Environments.Development)
+            {
+                // Undo the Azure Key Vault wrapping that DataProtection:KeyVaultKeyUri
+                // (set above, to satisfy startup validation) configures, so keys stay
+                // unwrapped locally and the test host never contacts Azure.
+                services.PostConfigure<KeyManagementOptions>(options => options.XmlEncryptor = null);
+            }
             if (EnableWorkforceOidc)
             {
                 services.AddTransient<IStartupFilter, ControlledExternalCookieStartupFilter>();

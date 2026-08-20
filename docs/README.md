@@ -7,6 +7,9 @@ Operator and contributor documentation for Vantigo:
   PostgreSQL Data Protection keys, and migrations.
 - [Static identity operations](sso-scim-operations.md) — production static-only
   OIDC/SCIM configuration, rotation, migration, lifecycle, and recovery.
+- [Data Protection key wrapping](data-protection-key-wrapping.md) — wrapping the
+  PostgreSQL-persisted Data Protection key ring with Azure Key Vault, the
+  Production requirement, and rotation/recovery.
 - [Tenancy and tenant isolation](tenancy.md) — single- and multi-tenant modes,
   what each guarantees, and the database roles behind row-level security.
 - [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
