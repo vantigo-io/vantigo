@@ -46,11 +46,6 @@ public sealed class IdentityTenantControlPlaneIntegrationTests(MultiTenantIdenti
             () => owner.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{id}", new { name = "Denied" }),
             () => owner.PostAsync($"/api/v1/identity/admin/tenants/{id}/suspend", null),
             () => owner.PostAsync($"/api/v1/identity/admin/tenants/{id}/reactivate", null),
-            () => owner.GetAsync($"/api/v1/identity/admin/tenants/{id}/sso"),
-            () => owner.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{id}/sso", new { entraTenantId = Guid.NewGuid() }),
-            () => owner.GetAsync($"/api/v1/identity/admin/tenants/{id}/offboarding"),
-            () => owner.PostAsync($"/api/v1/identity/admin/tenants/{id}/offboarding/export", null),
-            () => owner.PostAsJsonAsync($"/api/v1/identity/admin/tenants/{id}/offboarding/purge", new { }),
         };
 
         for (var index = 0; index < requests.Length; index++)
@@ -123,57 +118,33 @@ public sealed class IdentityTenantControlPlaneIntegrationTests(MultiTenantIdenti
     }
 
     [Fact]
-    public async Task OffboardingStateIsAvailableFromANewServiceAndDbContext()
+    public async Task RemovedTenantSsoAndOffboardingEndpointsAreNotMapped()
     {
         using var systemAdmin = await factory.CreateOwnerClientAsync();
-        var tenantId = await CreateTenant(systemAdmin, "Offboarding Persistence");
-        var export = await systemAdmin.PostAsync(
-            $"/api/v1/identity/admin/tenants/{tenantId}/offboarding/export", null);
-        Assert.Equal(HttpStatusCode.Accepted, export.StatusCode);
-        using var exportDocument = JsonDocument.Parse(await export.Content.ReadAsStringAsync());
-        var exportId = exportDocument.RootElement.GetProperty("exportId").GetGuid();
-        var token = exportDocument.RootElement.GetProperty("purgeToken").GetString();
-        Assert.False(string.IsNullOrWhiteSpace(token));
+        var tenantId = await CreateTenant(systemAdmin, "Removed Control Plane");
+        var requests = new Func<Task<HttpResponseMessage>>[]
+        {
+            () => systemAdmin.GetAsync($"/api/v1/identity/admin/tenants/{tenantId}/sso"),
+            () => systemAdmin.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{tenantId}/sso",
+                new { entraTenantId = Guid.NewGuid(), allowedEmailDomain = "integration.test", jitProvisioningEnabled = true }),
+            () => systemAdmin.GetAsync($"/api/v1/identity/admin/tenants/{tenantId}/offboarding"),
+            () => systemAdmin.PostAsync($"/api/v1/identity/admin/tenants/{tenantId}/offboarding/export", null),
+            () => systemAdmin.PostAsJsonAsync($"/api/v1/identity/admin/tenants/{tenantId}/offboarding/purge", new { }),
+        };
+
+        for (var index = 0; index < requests.Length; index++)
+        {
+            var response = await requests[index]();
+            Assert.True(response.StatusCode == HttpStatusCode.NotFound,
+                $"request {index} was {response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+        }
 
         await using var scope = factory.Services.CreateAsyncScope();
-        var offboarding = scope.ServiceProvider.GetRequiredService<TenantOffboardingService>();
-        var state = await offboarding.GetAsync(tenantId);
-        Assert.NotNull(state);
-        Assert.Equal(exportId, state!.ExportId);
-        Assert.True(await offboarding.ValidatePurgeAsync(tenantId, exportId, token!));
-    }
-
-    [Fact]
-    public async Task SsoConfigIsGloballyUniqueAndDomainIsValidated()
-    {
-        using var owner = await factory.CreateOwnerClientAsync();
-        var first = await CreateTenant(owner, "SSO One");
-        var second = await CreateTenant(owner, "SSO Two");
-        var entraId = Guid.NewGuid();
-
-        var invalid = await owner.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{first}/sso", new
-        {
-            entraTenantId = entraId,
-            allowedEmailDomain = "not a domain",
-            jitProvisioningEnabled = true,
-        });
-        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
-
-        var configured = await owner.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{first}/sso", new
-        {
-            entraTenantId = entraId,
-            allowedEmailDomain = "integration.test",
-            jitProvisioningEnabled = true,
-        });
-        Assert.Equal(HttpStatusCode.OK, configured.StatusCode);
-
-        var duplicate = await owner.PutAsJsonAsync($"/api/v1/identity/admin/tenants/{second}/sso", new
-        {
-            entraTenantId = entraId,
-            allowedEmailDomain = "other.test",
-            jitProvisioningEnabled = false,
-        });
-        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
+        var tables = await db.Database.SqlQuery<string>(
+            $"select table_name from information_schema.tables where table_schema = 'identity'").ToListAsync();
+        Assert.DoesNotContain("tenant_sso_configurations", tables);
+        Assert.DoesNotContain("tenant_offboarding_states", tables);
     }
 
     [Fact]

@@ -17,10 +17,6 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
 
     public DbSet<TenantMembership> TenantMemberships => Set<TenantMembership>();
 
-    public DbSet<TenantSsoConfiguration> TenantSsoConfigurations => Set<TenantSsoConfiguration>();
-
-    public DbSet<TenantOffboardingState> TenantOffboardingStates => Set<TenantOffboardingState>();
-
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
     public DbSet<RoleMetadata> RoleMetadata => Set<RoleMetadata>();
@@ -61,8 +57,6 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
         modelBuilder.ApplyConfiguration(new ApplicationUserEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new TenantEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new TenantMembershipEntityTypeConfiguration());
-        modelBuilder.ApplyConfiguration(new TenantSsoConfigurationEntityTypeConfiguration());
-        modelBuilder.ApplyConfiguration(new TenantOffboardingStateEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityRoleEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityUserClaimEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ApplicationUserRoleEntityTypeConfiguration());

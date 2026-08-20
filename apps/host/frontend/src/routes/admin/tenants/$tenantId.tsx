@@ -1,14 +1,11 @@
-import { Alert, Badge, Button, Card, Group, Modal, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Modal, Stack, Text, Title } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
-  getOffboarding,
   getSystemTenant,
   reactivateSystemTenant,
-  requestExport,
-  requestPurge,
   suspendSystemTenant,
   systemTenantError,
 } from "../../../api/system-tenants";
@@ -22,14 +19,7 @@ function TenantDetail() {
   const { tenantId } = Route.useParams();
   const qc = useQueryClient();
   const tenant = useQuery({ queryKey: ["system-tenant", tenantId], queryFn: () => getSystemTenant(tenantId) });
-  const offboarding = useQuery({ queryKey: ["offboarding", tenantId], queryFn: () => getOffboarding(tenantId) });
   const [confirm, setConfirm] = useState(false);
-  const [purge, setPurge] = useState("");
-  const [token, setToken] = useState("");
-  const exportMutation = useMutation({
-    mutationFn: () => requestExport(tenantId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["offboarding", tenantId] }),
-  });
   const suspend = useMutation({
     mutationFn: () =>
       tenant.data?.status === "Active" ? suspendSystemTenant(tenantId) : reactivateSystemTenant(tenantId),
@@ -38,20 +28,9 @@ function TenantDetail() {
       void qc.invalidateQueries({ queryKey: ["system-tenant", tenantId] });
     },
   });
-  const purgeMutation = useMutation({
-    mutationFn: () =>
-      requestPurge(tenantId, {
-        exportRequestId: offboarding.data?.exportId ?? "",
-        purgeToken: token,
-        confirmation: purge,
-      }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["offboarding", tenantId] }),
-  });
   if (tenant.isError) return <Alert color="red">{systemTenantError(tenant.error)}</Alert>;
   if (!tenant.data) return <Text>{t("systemAdmin.loadingTenant")}</Text>;
-  const exact = purge === `PURGE ${tenant.data.slug}`;
   const statusKey = tenant.data.status === "Active" ? "systemAdmin.activeStatus" : "systemAdmin.suspendedStatus";
-  const sso = tenant.data.ssoConfigured ? t("systemAdmin.configured") : t("systemAdmin.notConfigured");
   return (
     <Stack maw={850}>
       <Group justify="space-between">
@@ -74,7 +53,7 @@ function TenantDetail() {
                 t("systemAdmin.none"),
             })}
           </Text>
-          <Text>{t("systemAdmin.membersAndSso", { members: tenant.data.membershipsCount, sso })}</Text>
+          <Text>{t("systemAdmin.membersCount", { members: tenant.data.membershipsCount })}</Text>
         </Stack>
       </Card>
       <Card withBorder>
@@ -88,45 +67,6 @@ function TenantDetail() {
           >
             {t(tenant.data.status === "Active" ? "systemAdmin.suspendTenant" : "systemAdmin.reactivateTenant")}
           </Button>
-        </Stack>
-      </Card>
-      <Card withBorder>
-        <Stack>
-          <Title order={3}>{t("systemAdmin.dangerZone")}</Title>
-          <Text c="dimmed">{t("systemAdmin.offboardingDescription")}</Text>
-          {offboarding.data?.status === "not_requested" && (
-            <Button onClick={() => exportMutation.mutate()} loading={exportMutation.isPending} w="fit-content">
-              {t("systemAdmin.requestExport")}
-            </Button>
-          )}
-          {offboarding.data?.purgeToken && (
-            <Alert color="yellow" title={t("systemAdmin.purgeToken")}>
-              {t("systemAdmin.saveToken", { token: offboarding.data.purgeToken })}
-            </Alert>
-          )}
-          {offboarding.data?.status !== "not_requested" && (
-            <>
-              <TextInput
-                label={t("systemAdmin.typePurge", { confirmation: `PURGE ${tenant.data.slug}` })}
-                value={purge}
-                onChange={(e) => setPurge(e.currentTarget.value)}
-              />
-              <TextInput
-                label={t("systemAdmin.purgeToken")}
-                value={token}
-                onChange={(e) => setToken(e.currentTarget.value)}
-              />
-              <Button
-                color="red"
-                disabled={!exact || !token}
-                loading={purgeMutation.isPending}
-                onClick={() => purgeMutation.mutate()}
-                w="fit-content"
-              >
-                {t("systemAdmin.requestPurge")}
-              </Button>
-            </>
-          )}
         </Stack>
       </Card>
       <Modal opened={confirm} onClose={() => setConfirm(false)} title={t("systemAdmin.confirmStatusChange")}>

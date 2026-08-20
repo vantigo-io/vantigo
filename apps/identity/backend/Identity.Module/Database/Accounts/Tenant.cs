@@ -32,15 +32,3 @@ public sealed class TenantMembership
 
     public DateTimeOffset CreatedAtUtc { get; set; }
 }
-
-/// <summary>Per-tenant workforce SSO configuration.</summary>
-public sealed class TenantSsoConfiguration
-{
-    public Guid TenantId { get; set; }
-
-    public Guid EntraTenantId { get; set; }
-
-    public string? AllowedEmailDomain { get; set; }
-
-    public bool JitProvisioningEnabled { get; set; }
-}

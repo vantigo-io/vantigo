@@ -35,18 +35,3 @@ internal sealed class TenantMembershipEntityTypeConfiguration : IEntityTypeConfi
         builder.HasIndex(membership => membership.TenantId).HasDatabaseName("ix_tenant_memberships_tenant_id");
     }
 }
-
-internal sealed class TenantSsoConfigurationEntityTypeConfiguration : IEntityTypeConfiguration<TenantSsoConfiguration>
-{
-    public void Configure(EntityTypeBuilder<TenantSsoConfiguration> builder)
-    {
-        builder.ToTable("tenant_sso_configurations", "identity");
-        builder.HasKey(configuration => configuration.TenantId).HasName("pk_tenant_sso_configurations");
-        builder.Property(configuration => configuration.TenantId).HasColumnName("tenant_id");
-        builder.Property(configuration => configuration.EntraTenantId).HasColumnName("entra_tenant_id").IsRequired();
-        builder.Property(configuration => configuration.AllowedEmailDomain).HasColumnName("allowed_email_domain").HasMaxLength(255);
-        builder.Property(configuration => configuration.JitProvisioningEnabled).HasColumnName("jit_provisioning_enabled").IsRequired();
-        builder.HasOne<Tenant>().WithMany().HasForeignKey(configuration => configuration.TenantId)
-            .HasConstraintName("fk_tenant_sso_configurations_tenants_tenant_id").OnDelete(DeleteBehavior.Cascade);
-    }
-}

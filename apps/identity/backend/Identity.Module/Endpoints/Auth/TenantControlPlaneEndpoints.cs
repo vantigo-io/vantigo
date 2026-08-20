@@ -32,11 +32,6 @@ internal static class TenantControlPlaneEndpoints
         tenants.MapPut("/{id:guid}", Update);
         tenants.MapPost("/{id:guid}/suspend", Suspend);
         tenants.MapPost("/{id:guid}/reactivate", Reactivate);
-        tenants.MapGet("/{id:guid}/sso", GetSso);
-        tenants.MapPut("/{id:guid}/sso", UpsertSso);
-        tenants.MapGet("/{id:guid}/offboarding", OffboardingStatus);
-        tenants.MapPost("/{id:guid}/offboarding/export", RequestExport);
-        tenants.MapPost("/{id:guid}/offboarding/purge", RequestPurge);
     }
 
     private static ValueTask<object?> MultiTenantOnly(
@@ -62,8 +57,7 @@ internal static class TenantControlPlaneEndpoints
                 tenant.Slug,
                 tenant.Status.ToString(),
                 tenant.EnabledModules,
-                dbContext.TenantMemberships.Count(membership => membership.TenantId == tenant.Id),
-                dbContext.TenantSsoConfigurations.Any(configuration => configuration.TenantId == tenant.Id)))
+                dbContext.TenantMemberships.Count(membership => membership.TenantId == tenant.Id)))
             .ToListAsync(cancellationToken);
         return TypedResults.Ok(tenants);
     }
@@ -101,10 +95,6 @@ internal static class TenantControlPlaneEndpoints
         if (adminUserId == Guid.Empty) adminUserId = actor.Id;
         var adminEmail = string.IsNullOrWhiteSpace(request.AdminEmail) ? null : request.AdminEmail.Trim();
         var normalizedAdminEmail = adminEmail is null ? null : NormalizeEmail(adminEmail);
-        var sso = request.Sso is null
-            ? (Configuration: (TenantSsoConfiguration?)null, Error: (IResult?)null)
-            : ValidateSso(request.Sso);
-        if (sso.Error is not null) return sso.Error;
 
         Tenant? tenant;
         Invitation? seededInvitation = null;
@@ -136,28 +126,6 @@ internal static class TenantControlPlaneEndpoints
                      !tenant.EnabledModules.SequenceEqual(modules, StringComparer.Ordinal))
             {
                 return Conflict("tenant_exists", "A tenant with this slug already exists with different provisioning data.");
-            }
-
-            if (sso.Configuration is not null)
-            {
-                var duplicateSso = await dbContext.TenantSsoConfigurations.AnyAsync(configuration =>
-                    configuration.TenantId != tenant.Id && configuration.EntraTenantId == sso.Configuration.EntraTenantId,
-                    cancellationToken);
-                if (duplicateSso)
-                    return Conflict("entra_tenant_exists", "The Entra tenant is already assigned to another tenant.");
-
-                var currentSso = await dbContext.TenantSsoConfigurations
-                    .SingleOrDefaultAsync(configuration => configuration.TenantId == tenant.Id, cancellationToken);
-                if (currentSso is null)
-                {
-                    sso.Configuration.TenantId = tenant.Id;
-                    dbContext.TenantSsoConfigurations.Add(sso.Configuration);
-                    changed = true;
-                }
-                else if (!SameSso(currentSso, sso.Configuration))
-                {
-                    return Conflict("tenant_exists", "The tenant already has different SSO configuration.");
-                }
             }
 
             if (adminEmail is null)
@@ -233,7 +201,6 @@ internal static class TenantControlPlaneEndpoints
                         tenant.EnabledModules,
                         AdminUserId = adminEmail is null ? adminUserId : (Guid?)null,
                         AdminInvitationId = seededInvitation?.Id,
-                        SsoConfigured = sso.Configuration is not null,
                     }, cancellationToken);
             }
 
@@ -344,165 +311,6 @@ internal static class TenantControlPlaneEndpoints
         return TypedResults.Ok(await FindTenant(dbContext, id, cancellationToken));
     }
 
-    private static async Task<IResult> GetSso(
-        Guid id,
-        AccountsDbContext dbContext,
-        CancellationToken cancellationToken)
-    {
-        if (!await dbContext.Tenants.AsNoTracking().AnyAsync(tenant => tenant.Id == id, cancellationToken))
-            return TypedResults.NotFound();
-        var configuration = await dbContext.TenantSsoConfigurations.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.TenantId == id, cancellationToken);
-        return configuration is null
-            ? TypedResults.NotFound()
-            : TypedResults.Ok(ToSsoResponse(configuration));
-    }
-
-    private static async Task<IResult> UpsertSso(
-        Guid id,
-        [FromBody] TenantSsoRequest? request,
-        ClaimsPrincipal principal,
-        HttpContext httpContext,
-        AccountsDbContext dbContext,
-        UserManager<ApplicationUser> userManager,
-        AuthorizationAuditWriter auditWriter,
-        CancellationToken cancellationToken)
-    {
-        var validation = ValidateSso(request);
-        if (validation.Error is not null) return validation.Error;
-        var actor = await userManager.GetUserAsync(principal);
-        if (actor is null) return Error(401, "unauthenticated", "Authentication is required.");
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(
-            System.Data.IsolationLevel.Serializable, cancellationToken);
-        var tenant = await dbContext.Tenants.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (tenant is null) return TypedResults.NotFound();
-
-        // The uniqueness check is global by design: one Entra organization maps
-        // to one Vantigo tenant. Serializable transactions make the application
-        // invariant race-safe even though Phase 1 did not add a database index.
-        var configuration = await dbContext.TenantSsoConfigurations
-            .SingleOrDefaultAsync(item => item.TenantId == id, cancellationToken);
-        var requestedConfiguration = validation.Configuration!;
-        if (await dbContext.TenantSsoConfigurations.AnyAsync(item =>
-                item.TenantId != id && item.EntraTenantId == requestedConfiguration.EntraTenantId, cancellationToken))
-            return Conflict("entra_tenant_exists", "The Entra tenant is already assigned to another tenant.");
-
-        var before = configuration is null ? null : ToSsoResponse(configuration);
-        if (configuration is null)
-        {
-            requestedConfiguration.TenantId = id;
-            dbContext.TenantSsoConfigurations.Add(requestedConfiguration);
-            configuration = requestedConfiguration;
-        }
-        else
-        {
-            configuration.EntraTenantId = requestedConfiguration.EntraTenantId;
-            configuration.AllowedEmailDomain = requestedConfiguration.AllowedEmailDomain;
-            configuration.JitProvisioningEnabled = requestedConfiguration.JitProvisioningEnabled;
-        }
-
-        await auditWriter.WriteAsync(dbContext, httpContext, actor.Id, null, null, "tenant.sso-upserted",
-            new { TenantId = id, Sso = before }, new { TenantId = id, Sso = ToSsoResponse(configuration) }, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return TypedResults.Ok(ToSsoResponse(configuration));
-    }
-
-    private static async Task<IResult> OffboardingStatus(
-        Guid id,
-        AccountsDbContext dbContext,
-        TenantOffboardingService offboarding,
-        CancellationToken cancellationToken)
-    {
-        if (!await dbContext.Tenants.AsNoTracking().AnyAsync(tenant => tenant.Id == id, cancellationToken))
-            return TypedResults.NotFound();
-        return TypedResults.Ok(ToOffboardingResponse(await offboarding.GetAsync(id, cancellationToken)));
-    }
-
-    private static async Task<IResult> RequestExport(
-        Guid id,
-        ClaimsPrincipal principal,
-        HttpContext httpContext,
-        AccountsDbContext dbContext,
-        UserManager<ApplicationUser> userManager,
-        AuthorizationAuditWriter auditWriter,
-        TenantOffboardingService offboarding,
-        CancellationToken cancellationToken)
-    {
-        var actor = await userManager.GetUserAsync(principal);
-        if (actor is null) return Error(401, "unauthenticated", "Authentication is required.");
-        var tenant = await dbContext.Tenants.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (tenant is null) return TypedResults.NotFound();
-
-        var requested = await offboarding.RequestExportAsync(id, cancellationToken);
-        if (requested.Created)
-        {
-            try
-            {
-                await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-                await auditWriter.WriteAsync(dbContext, httpContext, actor.Id, null, null, "tenant.offboarding-export-requested",
-                    new { TenantId = id }, new { TenantId = id, requested.State.ExportId, Status = "export_requested" }, cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-            }
-            catch
-            {
-                await offboarding.RemoveAsync(id, requested.State.ExportId, cancellationToken);
-                throw;
-            }
-        }
-
-        return TypedResults.Accepted($"/api/v1/identity/admin/tenants/{id}/offboarding", new
-        {
-            tenantId = id,
-            exportId = requested.State.ExportId,
-            exportRequestId = requested.State.ExportId,
-            status = "export_requested",
-            purgeToken = requested.State.PurgeToken,
-            purgeConfirmation = $"PURGE {tenant.Slug}",
-            deferred = "Cross-module export and purge are deferred to system orchestration; no tenant data was deleted.",
-        });
-    }
-
-    private static async Task<IResult> RequestPurge(
-        Guid id,
-        [FromBody] TenantPurgeRequest? request,
-        ClaimsPrincipal principal,
-        HttpContext httpContext,
-        AccountsDbContext dbContext,
-        UserManager<ApplicationUser> userManager,
-        AuthorizationAuditWriter auditWriter,
-        TenantOffboardingService offboarding,
-        CancellationToken cancellationToken)
-    {
-        var actor = await userManager.GetUserAsync(principal);
-        if (actor is null) return Error(401, "unauthenticated", "Authentication is required.");
-        var tenant = await dbContext.Tenants.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (tenant is null) return TypedResults.NotFound();
-        if (!Guid.TryParse(request?.ExportRequestId, out var exportId) || string.IsNullOrWhiteSpace(request?.PurgeToken) ||
-            !await offboarding.ValidatePurgeAsync(id, exportId, request.PurgeToken, cancellationToken) ||
-            !string.Equals(request.Confirmation, $"PURGE {tenant.Slug}", StringComparison.Ordinal))
-            return Error(400, "purge_confirmation_required", "A prior export request, its two-step token, and the exact purge confirmation are required.");
-
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-        await auditWriter.WriteAsync(dbContext, httpContext, actor.Id, null, null, "tenant.offboarding-purge-requested",
-            new { TenantId = id, ExportId = exportId }, new
-            {
-                TenantId = id,
-                ExportId = exportId,
-                Status = "deferred_cross_module_orchestration",
-            }, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        await offboarding.MarkPurgeRequestedAsync(id, cancellationToken);
-
-        return TypedResults.Accepted($"/api/v1/identity/admin/tenants/{id}/offboarding", new
-        {
-            tenantId = id,
-            exportId,
-            status = "deferred_cross_module_orchestration",
-            message = "Purge was acknowledged but not executed. Cross-module deletion is deferred to system orchestration.",
-        });
-    }
-
     private static async Task<TenantControlPlaneResponse?> FindTenant(
         AccountsDbContext dbContext,
         Guid id,
@@ -515,8 +323,7 @@ internal static class TenantControlPlaneEndpoints
                 tenant.Slug,
                 tenant.Status.ToString(),
                 tenant.EnabledModules,
-                dbContext.TenantMemberships.Count(membership => membership.TenantId == tenant.Id),
-                dbContext.TenantSsoConfigurations.Any(configuration => configuration.TenantId == tenant.Id)))
+                dbContext.TenantMemberships.Count(membership => membership.TenantId == tenant.Id)))
             .SingleOrDefaultAsync(cancellationToken);
 
     private static IResult? ValidateCreate(TenantCreateRequest? request)
@@ -545,21 +352,6 @@ internal static class TenantControlPlaneEndpoints
         return null;
     }
 
-    private static (TenantSsoConfiguration? Configuration, IResult? Error) ValidateSso(TenantSsoRequest? request)
-    {
-        if (request is null || !Guid.TryParse(request.EntraTenantId, out var entraTenantId) || entraTenantId == Guid.Empty)
-            return (null, Error(400, "invalid_sso", "A valid Entra tenant id is required."));
-        var domain = NormalizeDomain(request.AllowedEmailDomain);
-        if (request.AllowedEmailDomain is not null && domain is null)
-            return (null, Error(400, "invalid_email_domain", "Allowed email domain must be a valid DNS domain."));
-        return (new TenantSsoConfiguration
-        {
-            EntraTenantId = entraTenantId,
-            AllowedEmailDomain = domain,
-            JitProvisioningEnabled = request.JitProvisioningEnabled,
-        }, null);
-    }
-
     private static string[]? NormalizeModules(IReadOnlyCollection<string> modules, out string? error)
     {
         if (TenantModuleCatalog.TryNormalize(modules, out var normalized, out var invalidKey))
@@ -574,11 +366,6 @@ internal static class TenantControlPlaneEndpoints
 
     private static TenantStatus? ParseStatus(string status) =>
         Enum.TryParse<TenantStatus>(status.Trim(), true, out var value) ? value : null;
-
-    private static bool SameSso(TenantSsoConfiguration left, TenantSsoConfiguration right) =>
-        left.EntraTenantId == right.EntraTenantId &&
-        string.Equals(left.AllowedEmailDomain, right.AllowedEmailDomain, StringComparison.Ordinal) &&
-        left.JitProvisioningEnabled == right.JitProvisioningEnabled;
 
     private static string? NormalizeDomain(string? value)
     {
@@ -598,13 +385,6 @@ internal static class TenantControlPlaneEndpoints
         NormalizeDomain(value[(value.LastIndexOf('@') + 1)..]) is not null;
 
     private static string NormalizeEmail(string value) => value.Trim().ToUpperInvariant();
-
-    private static TenantSsoResponse ToSsoResponse(TenantSsoConfiguration configuration) =>
-        new(configuration.EntraTenantId, configuration.AllowedEmailDomain, configuration.JitProvisioningEnabled);
-
-    private static object ToOffboardingResponse(OffboardingState? state) => state is null
-        ? new { status = "not_requested", exportId = (Guid?)null, requestedAtUtc = (DateTimeOffset?)null, purgeRequestedAtUtc = (DateTimeOffset?)null }
-        : new { status = state.PurgeRequestedAtUtc.HasValue ? "deferred_cross_module_orchestration" : "export_requested", exportId = (Guid?)state.ExportId, requestedAtUtc = (DateTimeOffset?)state.RequestedAtUtc, purgeRequestedAtUtc = state.PurgeRequestedAtUtc };
 
     private static bool IsTenantConflict(Exception exception)
     {
@@ -628,24 +408,13 @@ internal sealed record TenantCreateRequest(
     IReadOnlyCollection<string>? EnabledModules,
     Guid? AdminUserId = null,
     string? AdminEmail = null,
-    string? AdminDisplayName = null,
-    TenantSsoRequest? Sso = null);
+    string? AdminDisplayName = null);
 
 internal sealed record TenantUpdateRequest(
     string? Name,
     string? Slug,
     string? Status,
     IReadOnlyCollection<string>? EnabledModules);
-
-internal sealed record TenantSsoRequest(
-    string? EntraTenantId,
-    string? AllowedEmailDomain,
-    bool JitProvisioningEnabled);
-
-internal sealed record TenantPurgeRequest(
-    string? ExportRequestId,
-    string? PurgeToken,
-    string? Confirmation);
 
 internal sealed record TenantControlPlaneResponse(
     Guid Id,
@@ -654,11 +423,5 @@ internal sealed record TenantControlPlaneResponse(
     string Status,
     IReadOnlyCollection<string> EnabledModules,
     int MembershipsCount,
-    bool SsoConfigured,
     Guid? SeededAdminInvitationId = null,
     string? SeededAdminInvitationToken = null);
-
-internal sealed record TenantSsoResponse(
-    Guid EntraTenantId,
-    string? AllowedEmailDomain,
-    bool JitProvisioningEnabled);
