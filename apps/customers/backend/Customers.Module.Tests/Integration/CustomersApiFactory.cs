@@ -40,6 +40,13 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
 
     public StubBrregHandler BrregHandler { get; } = new();
 
+    /// <summary>
+    /// The container connection string, which uses the PostgreSQL superuser and
+    /// therefore bypasses row-level security. Tests that need a role RLS applies
+    /// to must create one; see <see cref="LeastPrivilegeDatabaseRoleIntegrationTests"/>.
+    /// </summary>
+    internal string SuperuserConnectionString => _postgres.GetConnectionString();
+
     internal CapturingEmailSender EmailSender { get; } = new();
 
     public async Task InitializeAsync()

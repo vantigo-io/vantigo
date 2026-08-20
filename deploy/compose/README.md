@@ -63,9 +63,59 @@ bootstrap secret. Owners can invite further users from `/settings`.
 
 The complete configuration reference is in
 [docs/customers-authentication.md](../../docs/customers-authentication.md).
+Tenancy modes and the database roles below are described in
+[docs/tenancy.md](../../docs/tenancy.md).
 For startup-configured workforce OIDC, static SCIM provisioning, and recovery procedures, see
 the [SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
 Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`.
+
+## Database roles and tenant isolation
+
+The stack creates two PostgreSQL roles on first initialization:
+
+| Variable | Default | Role |
+| --- | --- | --- |
+| `POSTGRES_USER` | `vantigo` | Superuser. Owns every schema and table and runs the `vantigo-migrate` job. |
+| `POSTGRES_APP_USER` | `vantigo_app` | `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`, table DML only, owns nothing. |
+
+`VANTIGO_DB_USER` and `VANTIGO_DB_PASSWORD` choose the role the API connects as.
+They **default to the owner role**, so the API still runs as a superuser and the
+tenant row-level security policies do not apply to it.
+
+That default is deliberate and is a known gap, not an oversight. The RLS policies
+match on a transaction-local `app.tenant_id` setting that the application only
+applies inside explicit transactions, while ordinary endpoint reads run without
+one. Pointing `VANTIGO_DB_USER` at `vantigo_app` therefore makes tenant-owned
+reads return **no rows** rather than the wrong rows. Do not switch it in a real
+deployment until [issue #6](https://github.com/vantigo-io/vantigo/issues/6) is
+fixed. Details are in [docs/tenancy.md](../../docs/tenancy.md).
+
+The role statements run from the PostgreSQL init script, which executes **only
+when the `postgres-data` volume is created**. An existing installation can add
+the role by hand:
+
+```sql
+\connect vantigo
+
+CREATE ROLE "vantigo_app"
+    LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT
+    PASSWORD '<password>';
+
+GRANT CONNECT ON DATABASE vantigo TO "vantigo_app";
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE ON SCHEMAS TO "vantigo_app";
+ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "vantigo_app";
+ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO "vantigo_app";
+
+-- Default privileges only cover objects created afterwards; grant on the
+-- schemas the enabled modules already created.
+GRANT USAGE ON SCHEMA identity, customers, communications, products TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, communications, products TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, communications, products TO "vantigo_app";
+```
+
+Multi-tenant mode (`Tenancy__Mode=multi`) is not production-ready and refuses to
+start outside Development. See [docs/tenancy.md](../../docs/tenancy.md).
 
 ## Base path and reverse proxy
 

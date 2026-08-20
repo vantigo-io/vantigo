@@ -7,6 +7,8 @@ Operator and contributor documentation for Vantigo:
   PostgreSQL Data Protection keys, and migrations.
 - [Static identity operations](sso-scim-operations.md) — production static-only
   OIDC/SCIM configuration, rotation, migration, lifecycle, and recovery.
+- [Tenancy and tenant isolation](tenancy.md) — single- and multi-tenant modes,
+  what each guarantees, and the database roles behind row-level security.
 - [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
   quick start, proxy example, upgrades, and production notes.
 - [Products module](products.md) — product domain and API reference.
