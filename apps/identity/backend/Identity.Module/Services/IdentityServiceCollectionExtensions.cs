@@ -13,7 +13,7 @@ public static class IdentityServiceCollectionExtensions
         services.AddSingleton<IApplicationEmailSender>(serviceProvider =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<EmailOptions>>().Value;
-            return string.Equals(options.Provider, "Smtp", StringComparison.OrdinalIgnoreCase)
+            return string.Equals(options.Provider, EmailOptions.SmtpProvider, StringComparison.OrdinalIgnoreCase)
                 ? new SmtpApplicationEmailSender(
                     serviceProvider.GetRequiredService<IOptions<EmailOptions>>(),
                     serviceProvider.GetRequiredService<ILogger<SmtpApplicationEmailSender>>())
