@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore.Metadata;
 
 using Vantigo.Communications.Database.Communications;
 using Vantigo.Customers.Database.Customers;
+using Vantigo.Energy.Database.Energy;
 using Vantigo.Products.Database.Products;
+using Vantigo.Tenancy.Abstractions;
 
 namespace Vantigo.Architecture.Tests;
 
@@ -26,6 +28,11 @@ public sealed class DatabaseBoundaryTests
             "communications",
             "apps/communications/backend/Communications.Module/Database/Communications",
             () => BuildModel<CommunicationsDbContext>(options => new CommunicationsDbContext(options))),
+        new(
+            "Energy",
+            "energy",
+            "apps/energy/backend/Energy.Module/Database/Energy",
+            () => BuildModel<EnergyDbContext>(options => new EnergyDbContext(options, new UnresolvedTenantContext()))),
     ];
 
     public static IEnumerable<object[]> ModuleData =>
@@ -92,6 +99,13 @@ public sealed class DatabaseBoundaryTests
         Assert.True(
             violations.Count == 0,
             $"{module.Name} migrations reference another module's schema: {string.Join(", ", violations)}");
+    }
+
+    private sealed class UnresolvedTenantContext : ITenantContext
+    {
+        public bool IsResolved => false;
+
+        public TenantId Current => throw new TenantUnresolvedException();
     }
 
     private static IModel BuildModel<TContext>(Func<DbContextOptions<TContext>, TContext> createContext)

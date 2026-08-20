@@ -15,4 +15,8 @@ describe("resolveLocale", () => {
   it("falls back to English when no browser language is supported", () => {
     expect(resolveLocale("auto", ["fr-FR", "de-DE"])).toBe("en");
   });
+
+  it("falls back to English when the runtime reports no languages", () => {
+    expect(resolveLocale("auto", [])).toBe("en");
+  });
 });

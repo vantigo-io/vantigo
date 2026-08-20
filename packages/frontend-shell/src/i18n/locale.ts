@@ -11,7 +11,9 @@ const supportedLocale = (value: string): SupportedLocale | undefined => {
 
 const browserLanguages = (): readonly string[] => {
   if (typeof navigator === "undefined") return [];
-  return navigator.languages?.length ? navigator.languages : [navigator.language];
+  if (navigator.languages?.length) return navigator.languages;
+  // Non-browser runtimes expose `navigator` without a `language`.
+  return navigator.language ? [navigator.language] : [];
 };
 
 export const resolveLocale = (

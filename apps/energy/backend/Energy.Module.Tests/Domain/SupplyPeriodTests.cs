@@ -12,7 +12,7 @@ public sealed class SupplyPeriodTests
     }
 
     [Fact]
-    public void Open_ended_period_overlaps_later_period() 
+    public void Open_ended_period_overlaps_later_period()
     {
         var start = DateTimeOffset.UtcNow;
         Assert.True(SupplyPeriod.Overlaps(start, null, start.AddDays(1), null));

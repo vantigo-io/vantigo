@@ -10,9 +10,9 @@ using Testcontainers.PostgreSql;
 
 using Vantigo.Contracts;
 using Vantigo.Host;
+using Vantigo.Identity.Services;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
-using Vantigo.Identity.Services;
 
 namespace Vantigo.Energy.Module.Tests.Integration;
 
