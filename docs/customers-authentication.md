@@ -18,12 +18,17 @@ Cross-origin SPA/API hosting is not the supported deployment shape.
 
 There is one deliberate, one-time bootstrap path:
 
-1. The deployment operator may set `Authentication__Bootstrap__Secret` in the
-   environment or a secret store before starting a blank install. When configured,
-   that secret is used and is never logged.
-   If it is unset, the app generates a temporary high-entropy startup-only secret and
-   prints it once at backend `Warning` log level for the operator to use at `/setup`.
-   It is not persisted; restarting before setup generates a new secret.
+1. Outside Development, the deployment operator **must** set
+   `Authentication__Bootstrap__Secret` (Key Vault-backed via an ACA secret reference,
+   or an equivalent secret store) before starting a blank install. The configured
+   secret is used exactly and is never logged. If it is unset, startup fails
+   immediately with a configuration error instead of starting the API: with multiple
+   replicas, a per-process generated secret would be unpredictable to reach behind a
+   load balancer, and every replica would additionally log its own value.
+   In Development only, an unset secret is generated in memory and printed once at
+   backend `Warning` log level for the operator to use at `/setup`; it is not
+   persisted, and restarting before setup generates a new secret. Never rely on this
+   fallback outside Development.
 2. Visit `/setup`, enter the bootstrap secret manually, and provide the first Owner's
    email, display name, and password. The secret is never sent to the browser
    automatically; it is submitted only when the operator completes setup.
@@ -212,7 +217,7 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 | --- | --- | --- |
 | `App__BasePath` | Path prefix the app is served under on a shared domain (empty value serves from the root) | empty |
 | `App__PublicOrigin` | Public scheme + host used to derive mailed links and the logged OIDC callback URI (no path; invalid values fail startup) | unset |
-| `Authentication__Bootstrap__Secret` | One-time Owner bootstrap secret | unset; generated once at startup and logged at Warning |
+| `Authentication__Bootstrap__Secret` | One-time Owner bootstrap secret | **required outside Development** (startup fails if unset); in Development only, generated once at startup and logged at Warning |
 | `Authentication__Owners__RequireMfa` | Require local MFA for Owner access/management | `false` |
 | `Authentication__Owners__MfaIssuer` | Issuer label in authenticator apps | `Vantigo` |
 | `Authentication__Invitations__Lifetime` | Invitation lifetime as a .NET `TimeSpan` (`1`–`30` days) | `7.00:00:00` |
