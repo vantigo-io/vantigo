@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-
 using Microsoft.Net.Http.Headers;
 
 namespace Vantigo.Communications.Services;
@@ -26,28 +24,4 @@ internal static class AttachmentSafety
         var normalized = value.Trim().Trim('<', '>');
         return normalized.Length == 0 || normalized.Any(char.IsWhiteSpace) ? null : normalized;
     }
-}
-
-internal sealed class HashingReadStream(Stream inner, IncrementalHash hash, long limit) : Stream
-{
-    private long total;
-    public override bool CanRead => inner.CanRead;
-    public override bool CanSeek => false;
-    public override bool CanWrite => false;
-    public override long Length => total;
-    public override long Position { get => total; set => throw new NotSupportedException(); }
-    public override int Read(byte[] buffer, int offset, int count) => ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
-    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-    {
-        var read = await inner.ReadAsync(buffer, cancellationToken);
-        total += read;
-        if (total > limit) throw new InvalidDataException("Attachment exceeds the configured limit.");
-        if (read > 0) hash.AppendData(buffer.Span[..read]);
-        return read;
-    }
-    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
-    public override void Flush() => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-    public override void SetLength(long value) => throw new NotSupportedException();
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }

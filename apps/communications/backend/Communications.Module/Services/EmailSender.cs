@@ -183,8 +183,6 @@ internal sealed class SmtpDeliveryProvider(IOptions<SmtpOptions> options, IOptio
         await operation(client, timeoutCts.Token);
     }
 
-    internal static MimeMessage CreateMessage(EmailEnvelope envelope) => CreateMessageAsync(envelope, null, CancellationToken.None).GetAwaiter().GetResult();
-
     internal static async Task<MimeMessage> CreateMessageAsync(EmailEnvelope envelope, IObjectStore<CommunicationsStorageScope>? objectStore, CancellationToken cancellationToken)
     {
         var message = new MimeMessage { MessageId = EmailMessageId.For(envelope.MessageId) };
