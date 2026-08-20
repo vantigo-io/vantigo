@@ -250,6 +250,12 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             // factory stubs IApplicationEmailSender anyway, so any real provider
             // satisfies startup validation without sending anything.
             if (HostEnvironmentName != Environments.Development) values["Email:Provider"] = EmailOptions.SmtpProvider;
+            // An unwrapped Data Protection key ring is rejected outside Development
+            // unless AllowUnwrappedKeys explicitly accepts it. There is no Key
+            // Vault to wrap keys with in this test host, so opt in deliberately
+            // rather than configuring a fake key URI the host would try to use.
+            if (HostEnvironmentName != Environments.Development)
+                values["DataProtection:AllowUnwrappedKeys"] = "true";
             if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;
             if (PublicOrigin is not null) values["App:PublicOrigin"] = PublicOrigin;
             if (EnableWorkforceOidc)

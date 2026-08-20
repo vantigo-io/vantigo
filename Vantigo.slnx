@@ -52,5 +52,6 @@
     <Project Path="packages/tenancy/Vantigo.Tenancy.EntityFramework/Vantigo.Tenancy.EntityFramework.csproj" />
     <Project Path="packages/tenancy/Vantigo.Tenancy.Tests/Vantigo.Tenancy.Tests.csproj" />
     <Project Path="packages/dataprotection-postgresql/Vantigo.DataProtection.PostgreSql/Vantigo.DataProtection.PostgreSql.csproj" />
+    <Project Path="packages/dataprotection-postgresql/Vantigo.DataProtection.PostgreSql.Tests/Vantigo.DataProtection.PostgreSql.Tests.csproj" />
   </Folder>
 </Solution>

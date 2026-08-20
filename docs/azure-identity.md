@@ -19,3 +19,9 @@ Azure Blob uses the global credential only with
 mode is selected, startup/DI configuration fails with an actionable message;
 choose `connection-string` or `sas` instead. Those modes do not resolve the
 global credential.
+
+Data Protection key wrapping (`DataProtection__KeyVaultKeyUri`) constructs its
+own `DefaultAzureCredential` through the same `AzureIdentityCredentialFactory`
+rather than resolving the shared DI singleton, since it must be configured
+before the container is built; see
+[Data Protection key wrapping](data-protection-key-wrapping.md).

@@ -64,7 +64,10 @@ bootstrap secret. Owners can invite further users from `/settings`.
 The complete configuration reference is in
 [docs/customers-authentication.md](../../docs/customers-authentication.md).
 Tenancy modes and the database roles below are described in
-[docs/tenancy.md](../../docs/tenancy.md).
+[docs/tenancy.md](../../docs/tenancy.md). Data Protection key wrapping — why
+`vantigo.env.example` ships with `DataProtection__AllowUnwrappedKeys=true`,
+and how to move to an Azure Key Vault key instead — is described in
+[docs/data-protection-key-wrapping.md](../../docs/data-protection-key-wrapping.md).
 For startup-configured workforce OIDC, static SCIM provisioning, and recovery procedures, see
 the [SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
 Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`.
@@ -179,8 +182,14 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `Authentication__Scim__PreviousBearerTokenExpiresAtUtc` (future and no more
   than 24 hours after startup).
 - The Compose `postgres-data` volume contains the PostgreSQL-backed Data Protection
-  keys as well as application data. Back up the database before upgrades and keep
-  one migration job only; do not run `seed` in production.
+  keys as well as application data. `vantigo.env.example` ships with
+  `DataProtection__AllowUnwrappedKeys=true` so the stack can start without an
+  Azure Key Vault (Vantigo does not yet provision one), but that means the keys
+  are stored **unwrapped**: anyone with the volume or a database dump has both
+  the encrypted secrets and the keys to decrypt them. Back up the database
+  before upgrades, keep one migration job only, and provision a Key Vault key
+  and set `DataProtection__KeyVaultKeyUri` instead as soon as one is available
+  — see [Data Protection key wrapping](../../docs/data-protection-key-wrapping.md).
 - Never run `seed` in production; it is Development-only.
 
 The static identity cleanup migration is intentionally destructive for old

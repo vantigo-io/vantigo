@@ -25,6 +25,7 @@ public static class VantigoConfigurationServiceCollectionExtensions
         services.AddVantigoAuthenticationOptions(configuration);
         services.AddEmailOptions(configuration);
         services.AddDataProtectionPostgreSqlOptions(configuration);
+        services.AddDataProtectionOptions(configuration);
         services.AddVantigoForwardedHeaders();
         services.AddObservabilityOptions(configuration);
         services.AddModuleHostingOptions(configuration);
