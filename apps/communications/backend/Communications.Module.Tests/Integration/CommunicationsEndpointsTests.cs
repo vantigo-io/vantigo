@@ -239,6 +239,54 @@ public sealed class CommunicationsEndpointsTests(CommunicationsModuleFactory fac
     }
 
     [Fact]
+    public async Task Attachment_download_separates_a_missing_object_from_a_storage_outage()
+    {
+        await factory.ResetChannelStateAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>();
+        var channel = await db.Channels.SingleAsync();
+        var now = DateTimeOffset.UtcNow;
+        var conversation = new Conversation { Id = Guid.NewGuid(), ChannelId = channel.Id, Subject = "Outage", LastActivityAt = now, CreatedAt = now };
+        var message = new ConversationMessage { Id = Guid.NewGuid(), ConversationId = conversation.Id, Direction = "inbound", TextBody = "body", OccurredAt = now, CreatedAt = now };
+        var attachment = new MessageAttachment
+        {
+            Id = Guid.NewGuid(),
+            MessageId = message.Id,
+            FileName = "invoice.pdf",
+            ContentType = "application/pdf",
+            SizeBytes = 11,
+            ContentHash = "hash",
+            StorageKey = $"attachments/{message.Id:N}/{Guid.NewGuid():N}",
+            ScanStatus = "clean",
+            CreatedAt = now,
+        };
+        message.Attachments.Add(attachment);
+        conversation.Messages.Add(message);
+        db.Conversations.Add(conversation);
+        await db.SaveChangesAsync();
+
+        using var client = await factory.CreateAuthenticatedClientAsync();
+
+        // The row exists but the object does not: that is a genuine not-found.
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/communications/attachments/{attachment.Id}/download")).StatusCode);
+
+        await factory.CommunicationsStore.PutAsync(attachment.StorageKey, new MemoryStream("attachment!"u8.ToArray()), attachment.ContentType);
+        factory.ObjectStore.GetFailure = new IOException("object storage is unreachable");
+        try
+        {
+            using var response = await client.GetAsync($"/api/v1/communications/attachments/{attachment.Id}/download");
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("attachment_storage_unavailable", payload.GetProperty("error").GetProperty("code").GetString());
+        }
+        finally
+        {
+            factory.ObjectStore.GetFailure = null;
+        }
+    }
+
+    [Fact]
     public async Task Reply_rejects_when_latest_sender_is_suppressed()
     {
         await factory.ResetChannelStateAsync();

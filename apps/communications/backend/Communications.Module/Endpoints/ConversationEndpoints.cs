@@ -208,7 +208,7 @@ internal static class ConversationEndpoints
         return TypedResults.Ok(ToUploadResponse(upload));
     }
 
-    private static async Task<IResult> DownloadAttachment(Guid id, HttpContext http, IObjectStore<CommunicationsStorageScope> objectStore, CommunicationsDbContext db, CancellationToken ct)
+    private static async Task<IResult> DownloadAttachment(Guid id, HttpContext http, IObjectStore<CommunicationsStorageScope> objectStore, CommunicationsDbContext db, ILoggerFactory loggerFactory, CancellationToken ct)
     {
         var attachment = await db.MessageAttachments.AsNoTracking().Where(item => item.Id == id && item.ScanStatus == "clean")
             .Where(item => item.Message!.Conversation != null).Select(item => new { item.StorageKey, item.FileName, item.ContentType, item.SizeBytes }).SingleOrDefaultAsync(ct);
@@ -222,7 +222,15 @@ internal static class ConversationEndpoints
             if (attachment.SizeBytes >= 0) http.Response.ContentLength = attachment.SizeBytes;
             return TypedResults.Stream(content, contentType, fileName, enableRangeProcessing: false);
         }
-        catch (Exception) when (!ct.IsCancellationRequested) { return TypedResults.NotFound(); }
+        catch (Exception exception) when (!ct.IsCancellationRequested)
+        {
+            // A storage outage is a server-side failure. Reporting it as 404 tells the
+            // caller the attachment is gone for good and hides the incident from operators,
+            // so the failure is logged and reported as a temporary unavailability instead.
+            loggerFactory.CreateLogger(nameof(ConversationEndpoints))
+                .LogError(exception, "Attachment {AttachmentId} could not be read from object storage.", id);
+            return Error(StatusCodes.Status503ServiceUnavailable, "attachment_storage_unavailable", "Attachment storage is unavailable.");
+        }
     }
 
     private static async Task<IResult> CreateConversation(CreateConversationRequest? request, HttpContext http, IAntiforgery antiforgery, ICustomerDirectory customerDirectory, CommunicationsDbContext db, CancellationToken ct)

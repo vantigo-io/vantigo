@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -296,7 +297,7 @@ public sealed class CustomersEndpointsTests
     }
 
     [Fact]
-    public async Task UpdateCustomer_WithInvalidIdentityFields_ReportsAllErrorsAtOnce()
+    public async Task UpdateCustomer_WithUnreadableIdentityPayload_ReturnsSanitizedProblemDetails()
     {
         var createResponse = await _client.PostAsJsonAsync("/api/v1/customers", new
         {
@@ -319,7 +320,14 @@ public sealed class CustomersEndpointsTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        Assert.Contains("BadHttpRequestException", await response.Content.ReadAsStringAsync());
+        // The payload cannot be bound, so the framework raises the failure instead of
+        // the endpoint. The centralized handler reports it as Problem Details; the
+        // exception type must never reach the caller.
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("BadHttpRequestException", body);
+        var problem = JsonDocument.Parse(body).RootElement;
+        Assert.Equal(400, problem.GetProperty("status").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("traceId").GetString()));
     }
 
     [Theory]
