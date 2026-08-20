@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Vantigo.Configuration;
 
@@ -38,6 +40,10 @@ public sealed class OwnerAuthenticationOptions
     public string MfaIssuer { get; set; } = "Vantigo";
 }
 
+/// <summary>
+/// Outside Development, <see cref="Secret"/> must be explicitly configured
+/// (for example, via Key Vault); it is never generated or logged there.
+/// </summary>
 public sealed class BootstrapSecretOptions
 {
     public string? Secret { get; set; }
@@ -99,7 +105,29 @@ public static class VantigoAuthenticationConfigurationExtensions
 {
     public static IServiceCollection AddVantigoAuthenticationOptions(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<VantigoAuthenticationOptions>(configuration.GetSection("Authentication"));
+        services.AddOptions<VantigoAuthenticationOptions>()
+            .Bind(configuration.GetSection("Authentication"))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<VantigoAuthenticationOptions>, BootstrapSecretOptionsValidator>();
         return services;
+    }
+
+    /// <summary>
+    /// Fails startup outside Development when no bootstrap secret is configured.
+    /// A missing secret is otherwise generated per-process and logged, which is
+    /// acceptable only for local Development.
+    /// </summary>
+    private sealed class BootstrapSecretOptionsValidator(IHostEnvironment environment) : IValidateOptions<VantigoAuthenticationOptions>
+    {
+        public ValidateOptionsResult Validate(string? name, VantigoAuthenticationOptions options)
+        {
+            if (environment.IsDevelopment() || !string.IsNullOrWhiteSpace(options.Bootstrap.Secret))
+                return ValidateOptionsResult.Success;
+
+            return ValidateOptionsResult.Fail(
+                "Authentication configuration error: Bootstrap:Secret is required outside Development. " +
+                "Configure an explicit high-entropy secret (for example, via Key Vault) before starting; " +
+                "it is never generated or logged outside Development.");
+        }
     }
 }

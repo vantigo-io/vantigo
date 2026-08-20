@@ -41,15 +41,18 @@ share one PostgreSQL database named `vantigo`, with independent `identity`,
 
 ## First sign-in
 
-Visit <http://localhost:8080/setup> to create the first Owner account. The setup
-page asks for a one-time bootstrap secret:
+This Compose stack runs Vantigo outside Development, so `vantigo.env` must set
+`Authentication__Bootstrap__Secret` before you first run `docker compose up -d`; the
+API refuses to start without it rather than generating and logging one for you.
+Generate a high-entropy value yourself, for example:
 
-- If you set `Authentication__Bootstrap__Secret` in `vantigo.env`, use that value.
-- Otherwise a secret is generated at startup and printed once in the logs:
-  `docker compose logs vantigo | grep -i bootstrap`
+```bash
+openssl rand -base64 32
+```
 
-After the Owner account is created, remove or rotate the bootstrap secret. Owners
-can invite further users from `/settings`.
+Visit <http://localhost:8080/setup> to create the first Owner account, and enter
+that same secret value. After the Owner account is created, remove or rotate the
+bootstrap secret. Owners can invite further users from `/settings`.
 
 ## Configuration
 
