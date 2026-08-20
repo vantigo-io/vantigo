@@ -412,6 +412,9 @@ FodyWeavers.xsd
 *.sln.iml
 .idea/
 
+# Claude Code local agent worktrees
+.claude/worktrees/
+
 ##
 ## Visual studio for Mac
 ##

@@ -67,7 +67,9 @@ const renderRoute = async (path: string, heading: string) => {
     </MantineProvider>,
   );
 
-  await screen.findByRole("heading", { name: heading });
+  // Rendering the route resolves the contact and its customer, which can exceed
+  // the one-second default when the suite runs workers in parallel.
+  await screen.findByRole("heading", { name: heading }, { timeout: 5000 });
 };
 
 describe("contact details page", () => {
