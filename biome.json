@@ -23,7 +23,7 @@
       "**/*.tsx",
       "**/*.json",
       "**/*.css",
-      "!!**/.claude",
+      "!!.claude",
       "!!**/node_modules",
       "!!**/dist",
       "!!**/bin",
