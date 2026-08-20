@@ -66,12 +66,28 @@ public sealed class DataProtectionServiceCollectionExtensionsTests
         Assert.NotNull(options.KeyVaultKeyUri);
     }
 
-    private static ServiceProvider BuildProvider(string environmentName, string? keyVaultKeyUri)
+    [Fact]
+    public void Unwrapped_keys_outside_development_with_the_escape_hatch_pass_startup_validation()
+    {
+        using var provider = BuildProvider(environmentName: "Production", keyVaultKeyUri: null, allowUnwrappedKeys: true);
+
+        var options = provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value;
+        var keyManagementOptions = provider.GetRequiredService<IOptions<KeyManagementOptions>>().Value;
+
+        Assert.True(options.AllowUnwrappedKeys);
+        Assert.Null(keyManagementOptions.XmlEncryptor);
+    }
+
+    private static ServiceProvider BuildProvider(string environmentName, string? keyVaultKeyUri, bool allowUnwrappedKeys = false)
     {
         var configurationValues = new Dictionary<string, string?>();
         if (keyVaultKeyUri is not null)
         {
             configurationValues["DataProtection:KeyVaultKeyUri"] = keyVaultKeyUri;
+        }
+        if (allowUnwrappedKeys)
+        {
+            configurationValues["DataProtection:AllowUnwrappedKeys"] = "true";
         }
 
         var configuration = new ConfigurationBuilder()

@@ -18,6 +18,7 @@ share one key ring); Key Vault only wraps the key material stored there.
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `DataProtection__KeyVaultKeyUri` | Azure Key Vault key identifier used to wrap the key ring, for example `https://vantigo.vault.azure.net/keys/dataprotection/<version>` | unset |
+| `DataProtection__AllowUnwrappedKeys` | Escape hatch that allows an unwrapped key ring outside Development; see [Production requirement](#production-requirement) | `false` |
 
 When set, Vantigo calls `ProtectKeysWithAzureKeyVault` using the process-wide
 Azure credential (`Vantigo.Azure.Identity`, a `DefaultAzureCredential`); see
@@ -34,13 +35,36 @@ first failure surfaces when a key is actually wrapped or unwrapped.
 ### Production requirement
 
 Outside the Development environment, startup fails unless
-`DataProtection__KeyVaultKeyUri` is configured. There is no opt-out flag: this
-follows the same fail-closed pattern Vantigo already uses for other
-security-critical configuration with no legitimate unconfigured production
-state (see `EmailOptionsValidator` and `BootstrapSecretOptionsValidator` in
-`packages/configuration`, which fail the same way with no bypass). In
-Development, leave the variable unset; keys are then persisted unwrapped so
-local setup does not require a Key Vault.
+`DataProtection__KeyVaultKeyUri` is configured **or**
+`DataProtection__AllowUnwrappedKeys=true` is set. In Development, leave both
+unset; keys are then persisted unwrapped so local setup does not require a
+Key Vault.
+
+This is deliberately fail-closed by default, but — unlike
+`EmailOptionsValidator` or `BootstrapSecretOptionsValidator` in
+`packages/configuration`, which demand a value any operator can supply
+locally (an SMTP host, a random string) — a Key Vault key requires an actual
+Azure subscription and a provisioned vault. Vantigo does not yet provision
+Azure infrastructure ([issue #8](https://github.com/vantigo-io/vantigo/issues/8)),
+so today most deployments, including the documented
+[Docker Compose stack](../deploy/compose/README.md), have no Key Vault to
+point at. A validator with no escape hatch would make those deployments
+impossible to start at all.
+
+The precedent this follows instead is `Tenancy:AllowUnsafeMultiTenant` (see
+[Tenancy and tenant isolation](tenancy.md#multi-tenant-mode-is-not-production-ready)):
+a loudly-named, documented flag that must be set *deliberately*, so an
+unwrapped key ring can never happen *by accident* in a real deployment, but a
+deployment without Key Vault access can still start knowingly.
+
+```dotenv
+DataProtection__AllowUnwrappedKeys=true
+```
+
+Setting this accepts that a database dump exposes both encrypted secrets and
+the keys that decrypt them, exactly as described at the top of this document.
+Unset it — and configure `DataProtection__KeyVaultKeyUri` instead — the moment
+a Key Vault key is available for the deployment.
 
 ## Rotation
 
@@ -109,7 +133,8 @@ exists once it is gone.
 
 This was implemented and unit-tested against the dependency-injection wiring
 only (configuration binding, the Production-without-wrapping startup
-validator, and that `ProtectKeysWithAzureKeyVault` is invoked and sets
+validator and its `AllowUnwrappedKeys` escape hatch, and that
+`ProtectKeysWithAzureKeyVault` is invoked and sets
 `KeyManagementOptions.XmlEncryptor`). There is no Azure subscription available
 in this environment, so wrapping/unwrapping against a real Key Vault key,
 managed-identity authentication, and Key Vault RBAC were **not** exercised

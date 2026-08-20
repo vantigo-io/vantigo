@@ -8,62 +8,110 @@ namespace Vantigo.Configuration.Tests;
 
 public sealed class DataProtectionKeyWrappingOptionsTests
 {
-    [Theory]
-    [InlineData("Production")]
-    [InlineData("Staging")]
-    public void Unwrapped_OutsideDevelopment_FailsStartupValidation(string environmentName)
+    [Fact]
+    public void Validate_AllowsUnwrappedKeysInDevelopment()
     {
-        var provider = BuildProvider(environmentName, keyVaultKeyUri: null);
+        DataProtectionKeyWrappingOptions options = new();
 
-        var exception = Assert.Throws<OptionsValidationException>(
-            () => provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value);
-
-        Assert.Contains("DataProtection:KeyVaultKeyUri is required outside Development", exception.Message, StringComparison.Ordinal);
+        options.Validate(isDevelopment: true);
     }
 
     [Fact]
-    public void Unwrapped_InDevelopment_PassesStartupValidation()
+    public void Validate_RejectsUnwrappedKeysOutsideDevelopmentWithoutTheEscapeHatch()
     {
-        var provider = BuildProvider("Development", keyVaultKeyUri: null);
+        DataProtectionKeyWrappingOptions options = new();
 
-        var options = provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value;
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => options.Validate(isDevelopment: false));
 
+        Assert.Contains("not production-ready", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("DataProtection:KeyVaultKeyUri", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("DataProtection:AllowUnwrappedKeys", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_AllowsConfiguredKeyVaultUriOutsideDevelopment()
+    {
+        DataProtectionKeyWrappingOptions options = new() { KeyVaultKeyUri = "https://vantigo.vault.azure.net/keys/dataprotection/abc123" };
+
+        options.Validate(isDevelopment: false);
+    }
+
+    [Fact]
+    public void Validate_WhitespaceOnlyKeyVaultUri_StillRejectsOutsideDevelopment()
+    {
+        DataProtectionKeyWrappingOptions options = new() { KeyVaultKeyUri = "   " };
+
+        Assert.Throws<InvalidOperationException>(() => options.Validate(isDevelopment: false));
+    }
+
+    [Fact]
+    public void Validate_AllowsUnwrappedKeysOutsideDevelopmentWithTheEscapeHatch()
+    {
+        DataProtectionKeyWrappingOptions options = new() { AllowUnwrappedKeys = true };
+
+        options.Validate(isDevelopment: false);
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public void AddDataProtectionOptions_FailsClosedOutsideDevelopmentWithoutTheEscapeHatch(string environmentName)
+    {
+        using ServiceProvider provider = BuildProvider(environmentName, new Dictionary<string, string?>());
+
+        OptionsValidationException exception = Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value);
+
+        Assert.Contains(exception.Failures, failure => failure.Contains("not production-ready", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AddDataProtectionOptions_AllowsUnwrappedKeysOutsideDevelopmentWithTheEscapeHatch()
+    {
+        using ServiceProvider provider = BuildProvider("Production", new Dictionary<string, string?>
+        {
+            ["DataProtection:AllowUnwrappedKeys"] = "true",
+        });
+
+        DataProtectionKeyWrappingOptions options = provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value;
+
+        Assert.True(options.AllowUnwrappedKeys);
         Assert.Null(options.KeyVaultKeyUri);
     }
 
     [Fact]
-    public void Wrapped_InProduction_PassesStartupValidation()
+    public void AddDataProtectionOptions_AllowsConfiguredKeyVaultUriInProduction()
     {
         const string keyVaultKeyUri = "https://vantigo.vault.azure.net/keys/dataprotection/abc123";
-        var provider = BuildProvider("Production", keyVaultKeyUri);
+        using ServiceProvider provider = BuildProvider("Production", new Dictionary<string, string?>
+        {
+            ["DataProtection:KeyVaultKeyUri"] = keyVaultKeyUri,
+        });
 
-        var options = provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value;
+        DataProtectionKeyWrappingOptions options = provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value;
 
         Assert.Equal(keyVaultKeyUri, options.KeyVaultKeyUri);
     }
 
     [Fact]
-    public void Whitespace_OnlyKeyVaultKeyUri_OutsideDevelopment_FailsStartupValidation()
+    public void AddDataProtectionOptions_AllowsUnwrappedKeysInDevelopment()
     {
-        var provider = BuildProvider("Production", "   ");
+        using ServiceProvider provider = BuildProvider("Development", new Dictionary<string, string?>());
 
-        Assert.Throws<OptionsValidationException>(
-            () => provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value);
+        DataProtectionKeyWrappingOptions options = provider.GetRequiredService<IOptions<DataProtectionKeyWrappingOptions>>().Value;
+
+        Assert.Null(options.KeyVaultKeyUri);
+        Assert.False(options.AllowUnwrappedKeys);
     }
 
-    private static ServiceProvider BuildProvider(string environmentName, string? keyVaultKeyUri)
+    private static ServiceProvider BuildProvider(string environmentName, Dictionary<string, string?> settings)
     {
-        var configurationValues = new Dictionary<string, string?>();
-        if (keyVaultKeyUri is not null)
-        {
-            configurationValues["DataProtection:KeyVaultKeyUri"] = keyVaultKeyUri;
-        }
-
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configurationValues)
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(settings)
             .Build();
 
-        var services = new ServiceCollection();
+        ServiceCollection services = new();
         services.AddSingleton<IHostEnvironment>(new TestHostEnvironment(environmentName));
         services.AddDataProtectionOptions(configuration);
         return services.BuildServiceProvider();
