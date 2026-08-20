@@ -12,15 +12,6 @@ public sealed class RoleMetadata
     public required string ConcurrencyStamp { get; set; }
 }
 
-public sealed class TenantOffboardingState
-{
-    public Guid TenantId { get; set; }
-    public Guid ExportId { get; set; }
-    public required string PurgeToken { get; set; }
-    public DateTimeOffset RequestedAtUtc { get; set; }
-    public DateTimeOffset? PurgeRequestedAtUtc { get; set; }
-}
-
 public sealed class RolePermission
 {
     public Guid RoleId { get; set; }

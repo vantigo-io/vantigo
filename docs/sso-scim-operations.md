@@ -10,6 +10,15 @@ There is no dynamic SSO or SCIM configuration API, and there is no Owner admin U
 for adding providers, editing provider metadata, issuing SCIM tokens, or changing
 SCIM scope. Use deployment configuration and the release procedure below instead.
 
+This also holds in multi-tenant deployments: the workforce OIDC provider is
+deployment-wide, not per tenant. There is no per-tenant SSO, allowed-email-domain,
+or just-in-time provisioning setting, and the tenant control plane
+(`/api/v1/identity/admin/tenants`) does not expose one. A per-tenant surface used
+to exist but persisted settings that login never consulted, so it was removed
+rather than left as a false assurance of a tenant identity boundary. There is
+likewise no tenant export or purge API; tenant offboarding is a manual
+operational procedure today.
+
 ## Configuration sources
 
 Vantigo accepts the normal ASP.NET Core configuration sources. Use either:

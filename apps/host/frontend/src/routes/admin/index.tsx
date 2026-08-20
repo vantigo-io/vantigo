@@ -81,7 +81,6 @@ export function AdminOverview() {
                 <Table.Th>{t("systemAdmin.status")}</Table.Th>
                 <Table.Th>{t("systemAdmin.modules")}</Table.Th>
                 <Table.Th>{t("systemAdmin.members")}</Table.Th>
-                <Table.Th>{t("systemAdmin.sso")}</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -108,7 +107,6 @@ export function AdminOverview() {
                     ))}
                   </Table.Td>
                   <Table.Td>{tenant.membershipsCount}</Table.Td>
-                  <Table.Td>{tenant.ssoConfigured ? t("systemAdmin.configured") : "—"}</Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
