@@ -165,11 +165,21 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 
 ## Production notes
 
+- **Remove `Security__AllowInsecureTransport=true` from `vantigo.env`.** The
+  quick-start stack ships with it because it serves `http://localhost:8080` and
+  reaches the bundled PostgreSQL container with no certificate authority
+  available. Left in place on a network you do not control, session cookies,
+  invitation and password-reset bearer links, and database credentials all travel
+  in the clear. See [transport security](../../docs/transport-security.md).
 - Put the application behind a TLS-terminating reverse proxy and configure the
   `ForwardedHeaders__*` settings to trust exactly that proxy.
-- Set `App__PublicOrigin` to the public origin; mailed links and the static OIDC
-  callback are derived from it. The callback is fixed at
-  `/api/v1/identity/oidc/callback`.
+- Set `App__PublicOrigin` to the public `https://` origin; mailed links, the
+  accepted `Host` header values and the static OIDC callback are all derived from
+  it. The callback is fixed at `/api/v1/identity/oidc/callback`.
+- Point `ConnectionStrings__vantigo` at a PostgreSQL server that presents a
+  certificate and add `SSL Mode=VerifyFull`. `compose.yaml` sets this variable
+  for both the `vantigo-migrate` and `vantigo` services, so it must be edited
+  there rather than only in `vantigo.env`.
 - The `vantigo.env.example` file documents the static OIDC and SCIM settings.
   Configuration is deployment-bound and changes require a restart. Do not put
   provider or SCIM secrets in source-controlled files.
