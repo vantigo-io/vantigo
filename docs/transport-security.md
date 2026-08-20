@@ -14,7 +14,8 @@ out of it deliberately.
 | Application SMTP (`Email__Smtp__*`) | plaintext allowed with an opt-in | **STARTTLS or implicit TLS required** |
 | HSTS | not sent | sent (`UseHsts`, loopback excluded) |
 | Security headers, including CSP | sent | sent |
-| Host header filtering | derived from `App__PublicOrigin` | derived from `App__PublicOrigin` |
+| Host header filtering | derived from `App__PublicOrigin` + loopback | derived from `App__PublicOrigin` + loopback |
+| HTTPS redirection | none | none (HSTS header only) |
 | OpenAPI document at `/openapi/v{n}.json` | served | **not mapped in Production** |
 
 ## Fail-closed transport
@@ -83,13 +84,28 @@ its own — the header only helps a browser that has already been there once.
 ## Host header filtering
 
 `AllowedHosts` is no longer `*`. When it is unset the host derives the allowlist
-from `App__PublicOrigin` and adds `localhost` and `127.0.0.1` so container and
-load-balancer probes keep working; a request carrying any other `Host` header is
-answered with 400 before it reaches the application. An explicit
-`AllowedHosts=vantigo.example.com;vantigo.internal` always wins, and is what to
-use when probes reach the app on a name that is not the public origin. With no
-public origin configured there is nothing to derive, and the permissive framework
-default remains.
+from `App__PublicOrigin` and adds `localhost`, `127.0.0.1` and `[::1]`; a request
+carrying any other `Host` header is answered with 400 before it reaches the
+application. An explicit `AllowedHosts=vantigo.example.com;vantigo.internal`
+always wins, and is what to use when probes reach the app on a name that is not
+the public origin. With no public origin configured there is nothing to derive,
+and the permissive framework default remains.
+
+Loopback is in that list on purpose. Container health probes reach the
+application on loopback with the literal address in the `Host` header — the
+published image is chiseled and has no shell, so the probe is an in-process
+plain-HTTP request to `http://127.0.0.1:8080/health/ready`. Host filtering is a
+startup-filter middleware that runs *before* routing, so unlike tenancy,
+antiforgery and rate limiting it cannot exempt endpoints by metadata; permitting
+loopback outright is what keeps the probe working without teaching the middleware
+any paths. A 400 there would mark the container permanently unhealthy, and on
+Azure Container Apps the revision would never become ready.
+
+Nothing in the pipeline redirects plain HTTP, either. There is no HTTPS
+redirection middleware, and `UseHsts()` only ever adds a response header — and
+only when the request is already https — so a probe that treats any non-2xx as
+failure is never handed a 307. Terminate TLS and reject plaintext at the ingress
+instead.
 
 ## Browser security headers
 

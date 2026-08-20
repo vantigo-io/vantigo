@@ -70,6 +70,45 @@ public sealed class SecurityHeadersIntegrationTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    /// <summary>
+    /// The container health probe is an in-process plain-HTTP request to
+    /// http://127.0.0.1:8080/health/ready, because the chiseled image has no shell
+    /// to run curl in. Host filtering runs before routing, so it cannot exempt
+    /// those endpoints by metadata the way tenancy, antiforgery and rate limiting
+    /// do -- the loopback Host header has to be accepted outright, port and all.
+    /// A 400 here marks the container permanently unhealthy.
+    /// </summary>
+    [Theory]
+    [InlineData("127.0.0.1:8080")]
+    [InlineData("127.0.0.1")]
+    [InlineData("localhost:8080")]
+    [InlineData("[::1]:8080")]
+    public async Task ALoopbackProbeHostHeader_ReachesTheApplication(string host)
+    {
+        using HttpRequestMessage request = new(HttpMethod.Get, "/api/v1/customers");
+        request.Headers.Host = host;
+
+        HttpResponseMessage response = await _client.SendAsync(request);
+
+        Assert.NotEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Nothing in this pipeline redirects plain HTTP. A health probe treats any
+    /// non-2xx as a failure, so a 307 to https would fail it just as hard as a
+    /// 400. UseHsts only ever adds a response header, and only over https; this
+    /// pins that no HTTPS-redirection middleware creeps in beside it.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Responses))]
+    public async Task PlainHttpIsNeverRedirected(string path)
+    {
+        HttpResponseMessage response = await _client.GetAsync(path);
+
+        Assert.NotInRange((int)response.StatusCode, 300, 399);
+        Assert.False(response.Headers.Contains("Strict-Transport-Security"));
+    }
+
     private static string Single(HttpResponseMessage response, string name) =>
         Assert.Single(response.Headers.TryGetValues(name, out IEnumerable<string>? values)
             ? values

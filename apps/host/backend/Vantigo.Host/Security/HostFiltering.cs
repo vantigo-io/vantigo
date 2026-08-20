@@ -17,8 +17,17 @@ public static class HostFiltering
     /// <summary>The configuration key ASP.NET Core reads the host allowlist from.</summary>
     public const string AllowedHostsConfigurationKey = "AllowedHosts";
 
-    /// <summary>Loopback names kept allowed so container and load-balancer probes still reach the app.</summary>
-    public static readonly string[] LoopbackHosts = ["localhost", "127.0.0.1"];
+    /// <summary>
+    /// Loopback names that stay allowed whatever the public origin is. Container
+    /// and orchestrator health probes reach the application on loopback with the
+    /// literal address in the <c>Host</c> header (the chiseled image has no shell,
+    /// so the probe is an in-process request to
+    /// <c>http://127.0.0.1:8080/health/ready</c>), and host filtering runs before
+    /// routing, so it cannot see endpoint metadata and exempt those paths the way
+    /// tenancy, antiforgery and rate limiting do. Keeping loopback permitted is
+    /// what makes the probe work without teaching this middleware any paths.
+    /// </summary>
+    public static readonly string[] LoopbackHosts = ["localhost", "127.0.0.1", "[::1]"];
 
     /// <summary>
     /// Restricts host filtering to the configured <c>App:PublicOrigin</c> plus

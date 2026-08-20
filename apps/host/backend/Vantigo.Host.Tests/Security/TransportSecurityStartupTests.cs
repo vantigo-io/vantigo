@@ -77,7 +77,7 @@ public sealed class TransportSecurityStartupTests
 
         HostFilteringOptions options = app.Services.GetRequiredService<IOptions<HostFilteringOptions>>().Value;
 
-        Assert.Equal(["vantigo.example.com", "localhost", "127.0.0.1"], options.AllowedHosts);
+        Assert.Equal(["vantigo.example.com", "localhost", "127.0.0.1", "[::1]"], options.AllowedHosts);
     }
 
     [Fact]
