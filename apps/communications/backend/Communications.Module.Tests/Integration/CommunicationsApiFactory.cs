@@ -127,6 +127,7 @@ public sealed class CommunicationsModuleFactory : WebApplicationFactory<global::
         var db = scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>();
         await db.MessageEvents.ExecuteDeleteAsync(); await db.MessageDeliveries.ExecuteDeleteAsync(); await db.MessageAttachments.ExecuteDeleteAsync(); await db.AttachmentUploads.ExecuteDeleteAsync(); await db.AttachmentCleanupRecords.ExecuteDeleteAsync(); await db.InboundEmailJobs.ExecuteDeleteAsync(); await db.InboundReceipts.ExecuteDeleteAsync(); await db.OutboxJobs.ExecuteDeleteAsync(); await db.IdempotencyRecords.ExecuteDeleteAsync(); await db.ConversationMessages.ExecuteDeleteAsync(); await db.ConversationTags.ExecuteDeleteAsync(); await db.ConversationCustomerCandidates.ExecuteDeleteAsync(); await db.ConversationReadStates.ExecuteDeleteAsync(); await db.Conversations.ExecuteDeleteAsync(); await db.Participants.ExecuteDeleteAsync(); await db.Tags.ExecuteDeleteAsync();
         ObjectStore.Clear();
+        CustomerDirectory.FindCustomerFailure = null;
         AttachmentScanner.BeforeResult = null;
         AttachmentScanner.Result = new(AttachmentScanVerdict.Clean);
         AttachmentScanner.ScanStarted = null;
@@ -155,10 +156,15 @@ internal sealed class StubCustomerDirectory : ICustomerDirectory
     public ContactEmailResolution? Resolution { get; set; }
     public string? LastEmail { get; private set; }
 
+    /// <summary>Makes customer lookups fault, so unhandled failures can be exercised end to end.</summary>
+    public Exception? FindCustomerFailure { get; set; }
+
     public Task<CustomerDirectoryEntry?> FindCustomerAsync(int customerId, CancellationToken cancellationToken = default) =>
-        Task.FromResult<CustomerDirectoryEntry?>(customerId is 7 or 8 or 9 or 12 or 77 or 123
-            ? new CustomerDirectoryEntry(customerId, $"Customer {customerId}")
-            : null);
+        FindCustomerFailure is not null
+            ? Task.FromException<CustomerDirectoryEntry?>(FindCustomerFailure)
+            : Task.FromResult<CustomerDirectoryEntry?>(customerId is 7 or 8 or 9 or 12 or 77 or 123
+                ? new CustomerDirectoryEntry(customerId, $"Customer {customerId}")
+                : null);
 
     public Task<ContactDirectoryEntry?> FindContactAsync(int contactId, CancellationToken cancellationToken = default) =>
         Task.FromResult<ContactDirectoryEntry?>(null);
@@ -199,6 +205,7 @@ internal sealed class InMemoryObjectStore
 
     internal Task<Stream?> GetAsync(string key, CancellationToken cancellationToken = default)
     {
+        if (GetFailure is not null) return Task.FromException<Stream?>(GetFailure);
         lock (sync) return Task.FromResult<Stream?>(objects.TryGetValue(key, out var value) ? new MemoryStream(value, writable: false) : null);
     }
 
@@ -216,10 +223,13 @@ internal sealed class InMemoryObjectStore
 
     internal Exception? DeleteFailure { get; set; }
 
+    internal Exception? GetFailure { get; set; }
+
     public void Clear()
     {
         lock (sync) objects.Clear();
         DeleteFailure = null;
+        GetFailure = null;
     }
 
     public IReadOnlyCollection<string> PhysicalKeys

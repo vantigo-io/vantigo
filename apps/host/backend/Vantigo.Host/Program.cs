@@ -15,6 +15,7 @@ using Vantigo.Energy.Database;
 using Vantigo.Energy.Endpoints;
 using Vantigo.Host;
 using Vantigo.Host.Antiforgery;
+using Vantigo.Host.Diagnostics;
 using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database;
 using Vantigo.Identity.Endpoints.Auth;
@@ -90,6 +91,7 @@ if (configuresApi)
 
     await Program.InitializeApiAsync(app);
     app.MapOpenApi().WithDocumentPerVersion();
+    app.UseExceptionHandler();
     app.UseForwardedHeaders();
     app.UseAppBasePath();
     app.UseSpaIndexRewrite();
@@ -121,7 +123,12 @@ public partial class Program
         // telemetry extension reads observability options during composition.
         builder.Services.AddVantigoConfiguration(builder.Configuration);
         if (configuresApi)
+        {
             builder.AddVantigoTelemetry("vantigo");
+            // Unhandled exceptions become sanitized Problem Details instead of
+            // leaking stack traces or an empty body.
+            builder.Services.AddVantigoExceptionHandling();
+        }
 
         builder.Services.AddVantigoTenancy();
         // Tenant directory services are needed by every command path: API traffic,
