@@ -56,6 +56,16 @@ services:
     depends_on:
       vantigo-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      # The image is chiseled and distroless (no shell, curl, or wget), so the
+      # app execs itself with its own "healthcheck" command instead of a
+      # CMD-SHELL script. It probes /health/ready: startup complete,
+      # PostgreSQL reachable, and object storage reachable if configured.
+      test: ["CMD", "/app/Vantigo.Host", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     restart: unless-stopped
 
 configs:

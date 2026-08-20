@@ -38,6 +38,15 @@ if (commandLine.Command == VantigoCommand.NoArguments && args.Length == 0)
     return;
 }
 
+if (commandLine.Command == VantigoCommand.HealthCheck)
+{
+    // Deliberately skips WebApplication.CreateBuilder: the chiseled container
+    // has no shell for a CMD-SHELL healthcheck, so Docker/ACA exec this
+    // process itself and it must stay a cheap, dependency-free HTTP probe.
+    Environment.ExitCode = await VantigoHealthCheckClient.RunAsync() ? 0 : 1;
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(commandLine.RemainingArguments);
 var configuresApi = Program.IsApiCommand(commandLine.Command);
 Program.RegisterHostServices(builder, commandLine.Command);
@@ -97,6 +106,7 @@ if (configuresApi)
     app.UseSpaIndexRewrite();
     app.UseStaticFiles();
     app.UseRouting();
+    app.MapVantigoHealthChecks();
     app.UseRateLimiter();
     app.UseAuthentication();
     app.UseVantigoTenancy();
@@ -138,6 +148,7 @@ public partial class Program
         builder.Services.AddHostDatabases();
         builder.Services.AddVantigoDataProtection(builder.Configuration, builder.Environment);
         builder.Services.AddVantigoObjectStorage(builder.Configuration);
+        builder.Services.AddVantigoHealthChecks();
         builder.Services.AddSingleton<BootstrapSecretProvider>();
         builder.Services.AddVantigoIdentity(builder.Environment);
         builder.Services.AddWorkforceOidc(builder.Environment);

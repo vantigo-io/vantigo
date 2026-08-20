@@ -25,6 +25,12 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         IOptions<TenancyOptions> tenancyOptions,
         ITenantDirectory tenantDirectory)
     {
+        if (context.GetEndpoint()?.Metadata.GetMetadata<SkipTenantResolutionAttribute>() is not null)
+        {
+            await next(context);
+            return;
+        }
+
         if (!tenancyOptions.Value.IsMultiTenant)
         {
             var defaultTenant = await tenantDirectory.GetDefaultTenantAsync(context.RequestAborted);
