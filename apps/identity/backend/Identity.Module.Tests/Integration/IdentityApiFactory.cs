@@ -246,6 +246,10 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Authentication:SystemAdmin:Email"] = OwnerEmail,
                 ["Authentication:Scim:Enabled"] = EnableStaticScim.ToString(),
             };
+            // The Logging email provider is rejected outside Development, and this
+            // factory stubs IApplicationEmailSender anyway, so any real provider
+            // satisfies startup validation without sending anything.
+            if (HostEnvironmentName != Environments.Development) values["Email:Provider"] = EmailOptions.SmtpProvider;
             if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;
             if (PublicOrigin is not null) values["App:PublicOrigin"] = PublicOrigin;
             if (EnableWorkforceOidc)
