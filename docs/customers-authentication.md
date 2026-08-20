@@ -122,7 +122,11 @@ Email__Smtp__TimeoutSeconds=30
 ```
 
 `Email__Smtp__Host` is required for SMTP. With TLS enabled, the sender uses STARTTLS;
-the username is optional for servers that do not require authentication. Do not use
+port 465 selects implicit TLS instead. The sender no longer negotiates
+opportunistically: a server that offers no TLS produces an error rather than a
+plaintext delivery, and outside Development that combination already fails startup.
+See [transport security](transport-security.md) for the rule and its escape hatch.
+The username is optional for servers that do not require authentication. Do not use
 real credentials in configuration examples.
 
 ## Optional static workforce OIDC

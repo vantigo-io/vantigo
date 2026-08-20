@@ -16,6 +16,7 @@ using Vantigo.Energy.Endpoints;
 using Vantigo.Host;
 using Vantigo.Host.Antiforgery;
 using Vantigo.Host.Diagnostics;
+using Vantigo.Host.Security;
 using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database;
 using Vantigo.Identity.Endpoints.Auth;
@@ -99,9 +100,18 @@ if (configuresApi)
         await Program.PrepareHostForTestsAsync(app, testPreparation);
 
     await Program.InitializeApiAsync(app);
-    app.MapOpenApi().WithDocumentPerVersion();
+    // The OpenAPI document enumerates every endpoint and shape in the
+    // installation; it stays a development and staging aid, not public
+    // reconnaissance material.
+    if (!app.Environment.IsProduction())
+        app.MapOpenApi().WithDocumentPerVersion();
     app.UseExceptionHandler();
+    app.UseVantigoSecurityHeaders();
     app.UseForwardedHeaders();
+    // After forwarded headers so a TLS-terminating proxy's scheme is the one HSTS
+    // sees; the middleware skips loopback hosts on its own.
+    if (!app.Environment.IsDevelopment())
+        app.UseHsts();
     app.UseAppBasePath();
     app.UseSpaIndexRewrite();
     app.UseStaticFiles();
@@ -138,6 +148,9 @@ public partial class Program
             // Unhandled exceptions become sanitized Problem Details instead of
             // leaking stack traces or an empty body.
             builder.Services.AddVantigoExceptionHandling();
+            // Accept only the configured public origin's host header instead of
+            // the framework default of every host.
+            builder.Services.AddVantigoHostFiltering(builder.Configuration);
         }
 
         builder.Services.AddVantigoTenancy();

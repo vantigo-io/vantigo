@@ -52,6 +52,18 @@ public sealed class SmtpApplicationEmailSender(
         message.Subject = email.Subject;
         message.Body = new TextPart("plain") { Text = email.TextBody };
 
+        // Fail closed rather than negotiating opportunistically: SecureSocketOptions.Auto
+        // silently falls back to plaintext against a server that advertises no STARTTLS,
+        // and the body being sent is an invitation or password-reset bearer link.
+        SecureSocketOptions socketOptions = smtp.Port == SmtpEmailOptions.ImplicitTlsPort
+            ? SecureSocketOptions.SslOnConnect
+            : smtp.EnableSsl ? SecureSocketOptions.StartTls
+            : smtp.AllowInsecurePlaintext ? SecureSocketOptions.None
+            : throw new InvalidOperationException(
+                "SMTP TLS is required. Set Email:Smtp:EnableSsl for STARTTLS, use port " +
+                $"{SmtpEmailOptions.ImplicitTlsPort} for implicit TLS, or set " +
+                "Email:Smtp:AllowInsecurePlaintext for a local mail catcher.");
+
         using var client = new SmtpClient
         {
             Timeout = Math.Clamp(smtp.TimeoutSeconds, 1, 300) * 1000,
@@ -59,7 +71,6 @@ public sealed class SmtpApplicationEmailSender(
 
         try
         {
-            var socketOptions = smtp.EnableSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto;
             await client.ConnectAsync(smtp.Host, smtp.Port, socketOptions, cancellationToken);
             if (!string.IsNullOrWhiteSpace(smtp.UserName))
             {

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Vantigo.Configuration;
 
@@ -41,6 +43,29 @@ public sealed class DataProtectionPostgreSqlOptions
     public string? ApplicationName { get; set; }
 }
 
+/// <summary>
+/// Applies the same certificate-verified TLS requirement to the optional
+/// key-ring connection-string override, so it cannot be used to reach a database
+/// over plaintext once <see cref="ConnectionStringsOptions"/> is locked down.
+/// </summary>
+internal sealed class DataProtectionPostgreSqlOptionsValidator(
+    IHostEnvironment environment,
+    IOptions<TransportSecurityOptions> transportSecurity) : IValidateOptions<DataProtectionPostgreSqlOptions>
+{
+    public ValidateOptionsResult Validate(string? name, DataProtectionPostgreSqlOptions options)
+    {
+        if (environment.IsDevelopment() || transportSecurity.Value.AllowInsecureTransport)
+        {
+            return ValidateOptionsResult.Success;
+        }
+
+        string? failure = TransportSecurityOptions.DescribeInsecurePostgresTransport(
+            options.ConnectionString, "DataProtection:PostgreSql:ConnectionString");
+
+        return failure is null ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failure);
+    }
+}
+
 public static class DataProtectionPostgreSqlConfigurationExtensions
 {
     /// <summary>
@@ -49,7 +74,10 @@ public static class DataProtectionPostgreSqlConfigurationExtensions
     /// </summary>
     public static IServiceCollection AddDataProtectionPostgreSqlOptions(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<DataProtectionPostgreSqlOptions>(configuration.GetSection("DataProtection:PostgreSql"));
+        services.AddOptions<DataProtectionPostgreSqlOptions>()
+            .Bind(configuration.GetSection("DataProtection:PostgreSql"))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<DataProtectionPostgreSqlOptions>, DataProtectionPostgreSqlOptionsValidator>();
         return services;
     }
 }

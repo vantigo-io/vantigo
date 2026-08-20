@@ -249,13 +249,20 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             // The Logging email provider is rejected outside Development, and this
             // factory stubs IApplicationEmailSender anyway, so any real provider
             // satisfies startup validation without sending anything.
-            if (HostEnvironmentName != Environments.Development) values["Email:Provider"] = EmailOptions.SmtpProvider;
-            // An unwrapped Data Protection key ring is rejected outside Development
-            // unless AllowUnwrappedKeys explicitly accepts it. There is no Key
-            // Vault to wrap keys with in this test host, so opt in deliberately
-            // rather than configuring a fake key URI the host would try to use.
             if (HostEnvironmentName != Environments.Development)
+            {
+                values["Email:Provider"] = EmailOptions.SmtpProvider;
+                // An unwrapped Data Protection key ring is rejected outside Development
+                // unless AllowUnwrappedKeys explicitly accepts it. There is no Key
+                // Vault to wrap keys with in this test host, so opt in deliberately
+                // rather than configuring a fake key URI the host would try to use.
                 values["DataProtection:AllowUnwrappedKeys"] = "true";
+                // The Testcontainers PostgreSQL instance serves no certificate, so the
+                // non-Development boot path is only reachable through the documented
+                // transport escape hatch. The rules it relaxes have their own tests in
+                // Vantigo.Host.Tests and Vantigo.Configuration.Tests.
+                values["Security:AllowInsecureTransport"] = bool.TrueString;
+            }
             if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;
             if (PublicOrigin is not null) values["App:PublicOrigin"] = PublicOrigin;
             if (EnableWorkforceOidc)

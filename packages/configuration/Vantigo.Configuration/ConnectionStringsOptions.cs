@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Vantigo.Configuration;
 
@@ -29,11 +31,37 @@ public sealed class ConnectionStringsOptions
     }
 }
 
+/// <summary>
+/// Fails startup when a configured PostgreSQL connection string does not require
+/// certificate-verified TLS outside Development.
+/// </summary>
+internal sealed class ConnectionStringsOptionsValidator(
+    IHostEnvironment environment,
+    IOptions<TransportSecurityOptions> transportSecurity) : IValidateOptions<ConnectionStringsOptions>
+{
+    public ValidateOptionsResult Validate(string? name, ConnectionStringsOptions options)
+    {
+        if (environment.IsDevelopment() || transportSecurity.Value.AllowInsecureTransport)
+        {
+            return ValidateOptionsResult.Success;
+        }
+
+        string? failure =
+            TransportSecurityOptions.DescribeInsecurePostgresTransport(options.Vantigo, "ConnectionStrings:vantigo")
+            ?? TransportSecurityOptions.DescribeInsecurePostgresTransport(options.Postgresql, "ConnectionStrings:postgresql");
+
+        return failure is null ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failure);
+    }
+}
+
 public static class ConnectionStringsConfigurationExtensions
 {
     public static IServiceCollection AddConnectionStringsOptions(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<ConnectionStringsOptions>(configuration.GetSection("ConnectionStrings"));
+        services.AddOptions<ConnectionStringsOptions>()
+            .Bind(configuration.GetSection("ConnectionStrings"))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ConnectionStringsOptions>, ConnectionStringsOptionsValidator>();
         return services;
     }
 }

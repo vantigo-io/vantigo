@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace Vantigo.Configuration;
 
@@ -57,6 +59,49 @@ public sealed class AppPublicOriginOptions
     }
 }
 
+/// <summary>
+/// Fails startup when the public origin is not reachable over TLS outside
+/// Development. Session cookies and the bearer links mailed by the invitation
+/// and password-recovery workflows are only as confidential as the origin they
+/// are issued for, so an http origin there is a credential leak waiting for a
+/// misconfigured ingress rather than a cosmetic detail.
+/// </summary>
+internal sealed class AppPublicOriginOptionsValidator(
+    IHostEnvironment environment,
+    IOptions<TransportSecurityOptions> transportSecurity) : IValidateOptions<AppPublicOriginOptions>
+{
+    public ValidateOptionsResult Validate(string? name, AppPublicOriginOptions options)
+    {
+        string? normalized;
+        try
+        {
+            normalized = options.Normalized;
+        }
+        catch (InvalidOperationException exception)
+        {
+            return ValidateOptionsResult.Fail(exception.Message);
+        }
+
+        if (normalized is null || environment.IsDevelopment() || transportSecurity.Value.AllowInsecureTransport)
+        {
+            return ValidateOptionsResult.Success;
+        }
+
+        if (!normalized.StartsWith($"{Uri.UriSchemeHttps}://", StringComparison.Ordinal))
+        {
+            return ValidateOptionsResult.Fail(
+                $"Transport security error: {AppPublicOriginOptions.ConfigurationKey} must use https outside " +
+                $"Development, but was '{options.PublicOrigin}'. Session cookies and the bearer links mailed for " +
+                "invitations and password recovery are derived from this origin, so an http origin exposes them to " +
+                $"anyone on the network path. Set {TransportSecurityOptions.ConfigurationSectionName}:" +
+                $"{nameof(TransportSecurityOptions.AllowInsecureTransport)}=true to knowingly serve the application " +
+                "over plaintext http, for local and evaluation use only.");
+        }
+
+        return ValidateOptionsResult.Success;
+    }
+}
+
 public static class AppPublicOriginConfigurationExtensions
 {
     /// <summary>
@@ -65,10 +110,10 @@ public static class AppPublicOriginConfigurationExtensions
     /// </summary>
     public static IServiceCollection AddAppPublicOriginOptions(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<AppPublicOriginOptions>(options =>
-        {
-            options.PublicOrigin = configuration[AppPublicOriginOptions.ConfigurationKey];
-        });
+        services.AddOptions<AppPublicOriginOptions>()
+            .Configure(options => options.PublicOrigin = configuration[AppPublicOriginOptions.ConfigurationKey])
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<AppPublicOriginOptions>, AppPublicOriginOptionsValidator>();
         return services;
     }
 }

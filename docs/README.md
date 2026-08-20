@@ -12,6 +12,9 @@ Operator and contributor documentation for Vantigo:
   Production requirement, and rotation/recovery.
 - [Tenancy and tenant isolation](tenancy.md) — single- and multi-tenant modes,
   what each guarantees, and the database roles behind row-level security.
+- [Transport security and browser hardening](transport-security.md) — the
+  fail-closed https, PostgreSQL TLS and SMTP TLS rules and their escape hatch,
+  HSTS, host filtering, the content security policy, and OpenAPI exposure.
 - [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
   quick start, proxy example, upgrades, and production notes.
 - [Products module](products.md) — product domain and API reference.

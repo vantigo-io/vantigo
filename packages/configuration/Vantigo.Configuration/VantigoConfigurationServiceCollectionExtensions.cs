@@ -14,6 +14,9 @@ public static class VantigoConfigurationServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddVantigoConfiguration(this IServiceCollection services, IConfiguration configuration)
     {
+        // Registered first: the transport-security escape hatch is read by the
+        // option validators that follow.
+        services.AddTransportSecurityOptions(configuration);
         services.AddConnectionStringsOptions(configuration);
         services.AddAppBasePathOptions(configuration);
         services.AddAppPublicOriginOptions(configuration);

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -35,6 +37,14 @@ public sealed partial class SpaIndexDocument
     /// </summary>
     public string? Html { get; }
 
+    /// <summary>
+    /// The CSP <c>'sha256-...'</c> source expression for the runtime-configuration
+    /// script this document injects. It is derived from the very same string the
+    /// document embeds, so the content security policy cannot drift away from the
+    /// script it is meant to allow.
+    /// </summary>
+    public string InlineScriptSha256 { get; }
+
     public SpaIndexDocument(
         SpaIndexDocumentOptions options,
         IWebHostEnvironment environment,
@@ -42,6 +52,10 @@ public sealed partial class SpaIndexDocument
         IOptions<AppBrandingOptions> brandingOptions)
     {
         BuildTimeBasePath = options.BuildTimeBasePath;
+        InlineScriptSha256 = ComputeInlineScriptHash(
+            basePathOptions.Value.Normalized,
+            brandingOptions.Value,
+            options.DefaultTitle);
 
         var file = environment.WebRootFileProvider.GetFileInfo("index.html");
         if (!file.Exists)
@@ -73,20 +87,7 @@ public sealed partial class SpaIndexDocument
     {
         var title = brandingOptions.GetTitle(defaultTitle);
         var effectiveBase = $"{basePath ?? string.Empty}/";
-        var config = JsonSerializer.Serialize(
-            new
-            {
-                BasePath = effectiveBase,
-                title,
-                brandingOptions.LogoUrl,
-                Support = new
-                {
-                    Email = brandingOptions.Support.Email,
-                    Phone = brandingOptions.Support.Phone,
-                    Url = brandingOptions.Support.Url,
-                },
-            },
-            JsonOptions);
+        var script = RuntimeConfigurationScript(effectiveBase, brandingOptions, defaultTitle);
 
         if (buildTimeBasePath is "" or "/")
         {
@@ -105,13 +106,55 @@ public sealed partial class SpaIndexDocument
         html = html
             .Replace(
                 "<head>",
-                $"<head><script>window.__VANTIGO_APP__={config};</script>",
+                $"<head><script>{script}</script>",
                 StringComparison.Ordinal);
 
         return TitleElement().Replace(
             html,
             $"<title>{System.Net.WebUtility.HtmlEncode(title)}</title>",
             count: 1);
+    }
+
+    /// <summary>
+    /// Returns the CSP <c>'sha256-...'</c> source expression covering the script
+    /// <see cref="Render"/> injects for the same inputs.
+    /// </summary>
+    public static string ComputeInlineScriptHash(
+        string? basePath,
+        AppBrandingOptions brandingOptions,
+        string defaultTitle)
+    {
+        var script = RuntimeConfigurationScript($"{basePath ?? string.Empty}/", brandingOptions, defaultTitle);
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(script));
+        return $"'sha256-{Convert.ToBase64String(digest)}'";
+    }
+
+    /// <summary>
+    /// The exact text of the injected inline script. Both the rendered document
+    /// and the content-security-policy hash are derived from this one method, so
+    /// they cannot disagree.
+    /// </summary>
+    private static string RuntimeConfigurationScript(
+        string effectiveBase,
+        AppBrandingOptions brandingOptions,
+        string defaultTitle)
+    {
+        var config = JsonSerializer.Serialize(
+            new
+            {
+                BasePath = effectiveBase,
+                Title = brandingOptions.GetTitle(defaultTitle),
+                brandingOptions.LogoUrl,
+                Support = new
+                {
+                    Email = brandingOptions.Support.Email,
+                    Phone = brandingOptions.Support.Phone,
+                    Url = brandingOptions.Support.Url,
+                },
+            },
+            JsonOptions);
+
+        return $"window.__VANTIGO_APP__={config};";
     }
 
     [GeneratedRegex("<title>.*?</title>", RegexOptions.Singleline)]
