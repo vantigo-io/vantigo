@@ -325,9 +325,11 @@ public sealed class EnergyEndpointsTests
 
     private static object NewMeteringPoint(string gsrn, string meterNumber = "Test meter") => new
     {
-        gsrn, meterNumber,
+        gsrn,
+        meterNumber,
         address = new { streetAddress = "Testgata 1", postalCode = "0001", city = "Oslo", countryCode = "NO" },
-        priceArea = "NO1", connectionStatus = "Connected",
+        priceArea = "NO1",
+        connectionStatus = "Connected",
     };
 
     private static string Gsrn() => $"7070575{Random.Shared.NextInt64(10000000000, 99999999999)}"[..18];

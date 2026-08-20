@@ -1,0 +1,6 @@
+# Single source of truth for the toolchain, used identically by developers and CI.
+# Keep in sync with global.json (dotnet) and .bun-version (bun) — enforced by
+# `bun run toolchain:check`, which runs in the pre-commit hook and in CI.
+[tools]
+dotnet = "10.0.302"
+bun = "1.3.14"

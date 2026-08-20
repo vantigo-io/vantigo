@@ -77,6 +77,7 @@ public sealed class ModuleArchitectureTests
                      "Vantigo.Products",
                      "Vantigo.Customers",
                      "Vantigo.Communications",
+                     "Vantigo.Energy",
                      "Microsoft.EntityFrameworkCore",
                      "Microsoft.AspNetCore",
                  })
