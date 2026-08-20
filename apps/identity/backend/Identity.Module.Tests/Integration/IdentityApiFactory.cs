@@ -43,12 +43,36 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected bool RequireOwnerMfa { get; set; }
     protected bool EnableWorkforceOidc { get; set; }
     protected bool EnableMultiTenant { get; set; }
+
+    /// <summary>The ASP.NET Core environment the host boots under. Overridden by
+    /// <see cref="ProductionIdentityApiFactory"/> to exercise non-Development startup.</summary>
+    protected virtual string HostEnvironmentName => Environments.Development;
+
+    /// <summary>Enabled state for each module's <c>Modules:*:Enabled</c> configuration key.</summary>
+    protected virtual bool CustomersModuleEnabled => true;
+    protected virtual bool CommunicationsModuleEnabled => false;
+    protected virtual bool ProductsModuleEnabled => false;
+    protected virtual bool EnergyModuleEnabled => false;
+
+    /// <summary>The <c>App:PublicOrigin</c> override, required once the host leaves
+    /// Development (password/cookie/passkey policy all tighten outside it).</summary>
+    protected virtual string? PublicOrigin => null;
+
+    /// <summary>
+    /// Client base address used by every request this factory issues. Outside
+    /// Development, auth/antiforgery cookies are marked Secure, so clients must use
+    /// https for TestServer to round-trip them.
+    /// </summary>
+    protected Uri ClientBaseAddress => new(HostEnvironmentName == Environments.Development
+        ? "http://localhost"
+        : "https://localhost");
+
     public Guid OwnerId { get; private set; }
 
     public async Task InitializeAsync()
     {
         await postgres.StartAsync();
-        using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = ClientBaseAddress });
         var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
         var bootstrap = await client.PostAsJsonAsync("/api/v1/identity/bootstrap", new { secret = BootstrapSecret, email = OwnerEmail, displayName = "Integration Owner", password = OwnerPassword });
@@ -57,7 +81,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         OwnerId = (await scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>().FindByEmailAsync(OwnerEmail))!.Id;
     }
 
-    public HttpClient CreateCookieClient() => CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+    public HttpClient CreateCookieClient() => CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = ClientBaseAddress });
     public async Task<HttpClient> CreateAntiforgeryClientAsync()
     {
         var client = CreateCookieClient();
@@ -112,7 +136,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public async Task BootstrapOwnerAsync()
     {
-        using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
+        using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = ClientBaseAddress });
         var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
         var response = await client.PostAsJsonAsync("/api/v1/identity/bootstrap", new
@@ -196,7 +220,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment(Environments.Development);
+        builder.UseEnvironment(HostEnvironmentName);
         if (EnableWorkforceOidc)
         {
             builder.UseSetting("Authentication:Oidc:Enabled", "true");
@@ -211,10 +235,10 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             var values = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:vantigo"] = postgres.GetConnectionString(),
-                ["Modules:Customers:Enabled"] = "true",
-                ["Modules:Communications:Enabled"] = "false",
-                ["Modules:Products:Enabled"] = "false",
-                ["Modules:Energy:Enabled"] = "false",
+                ["Modules:Customers:Enabled"] = CustomersModuleEnabled.ToString(),
+                ["Modules:Communications:Enabled"] = CommunicationsModuleEnabled.ToString(),
+                ["Modules:Products:Enabled"] = ProductsModuleEnabled.ToString(),
+                ["Modules:Energy:Enabled"] = EnergyModuleEnabled.ToString(),
                 ["Tenancy:Mode"] = EnableMultiTenant ? "multi" : "single",
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
@@ -223,6 +247,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Authentication:Scim:Enabled"] = EnableStaticScim.ToString(),
             };
             if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;
+            if (PublicOrigin is not null) values["App:PublicOrigin"] = PublicOrigin;
             if (EnableWorkforceOidc)
             {
                 values["Authentication:Oidc:Enabled"] = "true";
@@ -292,6 +317,19 @@ public sealed class StaticScimIdentityApiFactory : IdentityApiFactory
 public sealed class OidcIdentityApiFactory : IdentityApiFactory { public OidcIdentityApiFactory() => EnableWorkforceOidc = true; }
 public sealed class MfaIdentityApiFactory : IdentityApiFactory { public MfaIdentityApiFactory() => RequireOwnerMfa = true; }
 public sealed class MultiTenantIdentityApiFactory : IdentityApiFactory { public MultiTenantIdentityApiFactory() => EnableMultiTenant = true; }
+
+/// <summary>
+/// Boots the host outside Development against a clean database, mirroring a fresh
+/// production deploy, with several modules host-enabled so the tenant bootstrap fix
+/// can be verified end to end via the tenant capabilities endpoint.
+/// </summary>
+public sealed class ProductionIdentityApiFactory : IdentityApiFactory
+{
+    protected override string HostEnvironmentName => Environments.Production;
+    protected override bool ProductsModuleEnabled => true;
+    protected override bool EnergyModuleEnabled => true;
+    protected override string? PublicOrigin => "https://vantigo.integration.test";
+}
 
 internal sealed record AntiforgeryToken(string Token);
 internal sealed class TestEmailSender : IApplicationEmailSender
@@ -520,3 +558,4 @@ internal sealed class DeterministicOidcBackchannelHandler(
 [CollectionDefinition(Name)] public sealed class IdentityOidcApiCollection : ICollectionFixture<OidcIdentityApiFactory> { public const string Name = "IdentityOidcApi"; }
 [CollectionDefinition(Name)] public sealed class IdentityMfaApiCollection : ICollectionFixture<MfaIdentityApiFactory> { public const string Name = "IdentityMfaApi"; }
 [CollectionDefinition(Name)] public sealed class MultiTenantIdentityApiCollection : ICollectionFixture<MultiTenantIdentityApiFactory> { public const string Name = "MultiTenantIdentityApi"; }
+[CollectionDefinition(Name)] public sealed class ProductionIdentityApiCollection : ICollectionFixture<ProductionIdentityApiFactory> { public const string Name = "ProductionIdentityApi"; }
