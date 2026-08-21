@@ -76,6 +76,7 @@ public static class AuthEndpoints
         AuthorizationManagementEndpoints.MapAuthorizationManagementEndpoints(app);
         TenantCapabilitiesEndpoints.MapTenantCapabilitiesEndpoints(app);
         SystemMaintenanceEndpoints.Map(app);
+        SessionEndpoints.Map(app);
         ScimProtocolEndpoints.Map(app);
 
         return app;
@@ -329,6 +330,9 @@ public static class AuthEndpoints
             return IdentityFailure(cleanupResult, "The sign-in could not be completed.");
         }
 
+        // Presenting credentials earns a new session: never inherit the absolute
+        // lifetime of a session that happens to still be live on this browser.
+        SessionValidationService.BeginFreshSession(httpContext);
         await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, isPersistent: false,
             cancellationToken: cancellationToken);
         var roles = await userManager.GetRolesAsync(user);
@@ -391,6 +395,7 @@ public static class AuthEndpoints
         }
 
         await signInManager.SignOutAsync();
+        SessionValidationService.BeginFreshSession(httpContext);
         await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, isPersistent: request.RememberMe,
             priorPrincipal: new ClaimsPrincipal(new ClaimsIdentity(MfaClaims())), cancellationToken: cancellationToken);
         var roles = await userManager.GetRolesAsync(user);
