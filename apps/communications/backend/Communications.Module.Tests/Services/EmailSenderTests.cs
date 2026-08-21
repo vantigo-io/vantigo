@@ -1,3 +1,5 @@
+using System.Net;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -36,10 +38,40 @@ public sealed class EmailSenderTests
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
         var smtpOptions = Options.Create(configuration.GetSection("Smtp").Get<SmtpOptions>() ?? new());
         var outboxOptions = Options.Create(configuration.GetSection("Outbox").Get<OutboxOptions>() ?? new());
-        var provider = new SmtpDeliveryProvider(smtpOptions, outboxOptions, environment, new MailboxCredentialProtector(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider()), new EmptyObjectStore());
+        var provider = new SmtpDeliveryProvider(smtpOptions, outboxOptions, environment, new MailboxCredentialProtector(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider()), new EmptyObjectStore(), new NeverCalledDestinationGuard());
         var envelope = new EmailEnvelope(Guid.NewGuid(), "sender@example.test", null, "subject", "body", null, ["recipient@example.test"], [], []);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => provider.SendAsync(envelope, null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Destination_rejected_by_guard_is_rejected_before_network_connect()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "internal-relay.invalid",
+            ["Smtp:Port"] = "465",
+            ["Smtp:UseSsl"] = "true",
+            ["Smtp:TimeoutSeconds"] = "5",
+            ["Outbox:LeaseSeconds"] = "60",
+        }).Build();
+        var environment = new TestHostEnvironment { EnvironmentName = Environments.Production };
+        var smtpOptions = Options.Create(configuration.GetSection("Smtp").Get<SmtpOptions>() ?? new());
+        var outboxOptions = Options.Create(configuration.GetSection("Outbox").Get<OutboxOptions>() ?? new());
+        var provider = new SmtpDeliveryProvider(smtpOptions, outboxOptions, environment, new MailboxCredentialProtector(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider()), new EmptyObjectStore(), new RejectingDestinationGuard());
+        var envelope = new EmailEnvelope(Guid.NewGuid(), "sender@example.test", null, "subject", "body", null, ["recipient@example.test"], [], []);
+
+        await Assert.ThrowsAsync<SmtpDestinationRejectedException>(() => provider.SendAsync(envelope, null, CancellationToken.None));
+    }
+
+    private sealed class NeverCalledDestinationGuard : ISmtpDestinationGuard
+    {
+        public Task<IPAddress> VetAsync(string host, CancellationToken cancellationToken) => throw new InvalidOperationException("The destination guard should not be reached for this test.");
+    }
+
+    private sealed class RejectingDestinationGuard : ISmtpDestinationGuard
+    {
+        public Task<IPAddress> VetAsync(string host, CancellationToken cancellationToken) => throw new SmtpDestinationRejectedException($"SMTP host '{host}' is not a permitted destination.");
     }
 
     private sealed class TestHostEnvironment : IHostEnvironment

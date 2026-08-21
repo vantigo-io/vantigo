@@ -13,6 +13,38 @@ public sealed class CommunicationsOptions
     public CommunicationsRetentionOptions Retention { get; set; } = new();
 
     public CommunicationsBootstrapMailboxOptions BootstrapMailbox { get; set; } = new();
+
+    public CommunicationsSmtpOptions Smtp { get; set; } = new();
+}
+
+/// <summary>
+/// Controls which SMTP destinations a channel is allowed to connect to. A
+/// delegated channel administrator only needs the module's
+/// <c>ChannelsManage</c> permission to point outbound SMTP delivery at any
+/// host, so by default private, link-local, loopback, and reserved address
+/// ranges - including the cloud metadata address 169.254.169.254 - are
+/// rejected, wherever the host resolves.
+/// </summary>
+public sealed class CommunicationsSmtpOptions
+{
+    /// <summary>
+    /// Optional allowlist of approved SMTP hostnames. When non-empty, only
+    /// hosts on this list may be used as an SMTP destination; a listed host is
+    /// exempt from the private/reserved-range check below, since an installer
+    /// who names it here has explicitly approved it (for example, an internal
+    /// relay). Hosts are matched case-insensitively against the configured
+    /// destination hostname, not the resolved address.
+    /// </summary>
+    public string[] AllowedHosts { get; set; } = [];
+
+    /// <summary>
+    /// Permits SMTP destinations that resolve to a private, link-local,
+    /// loopback, or reserved address. Defaults to false; set true only for
+    /// local development or a deployment where SMTP intentionally targets a
+    /// host on a private network (for example, an internal relay reachable
+    /// only from the deployment's own network).
+    /// </summary>
+    public bool AllowPrivateNetworks { get; set; }
 }
 
 public sealed class OutboxOptions
