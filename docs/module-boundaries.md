@@ -30,6 +30,33 @@ use the transactional-outbox event pattern described in `ROADMAP.md`.
    instance `@vantigo/products-ui`) never imports from another module's package
    or from the host app; only the host composes them.
 
+## Turning a module off
+
+`Modules:<Name>:Enabled` (`Modules__<Name>__Enabled` as an environment
+variable) is a single startup decision, taken once before any module registers
+anything and then read back out of the container by every later stage. A
+disabled module registers no services and no background workers, maps no
+endpoints, contributes no permissions to the authorization catalog, and is
+neither migrated nor seeded. Its routes fall through to the host's `/api`
+catch-all and answer `404`.
+
+Because the decision is taken once, a module can never end up with endpoints
+mapped whose permissions were never contributed — that combination fails the
+host's `ValidatePermissionCatalog` check and refuses to start. The flags are read
+while the service collection is still being populated, so a test host supplies
+them as host configuration (`IWebHostBuilder.UseSetting`); a `Modules` section
+that only arrives with `ConfigureAppConfiguration` is applied after the modules
+are composed and the host rejects the mismatch instead of acting on it.
+
+Some modules cannot be hosted alone. Communications and Energy read customer and
+contact data through `ICustomerDirectory`, which only Customers implements, so
+enabling either of them with `Modules:Customers:Enabled=false` is rejected at
+startup with a message naming both flags. `ModuleCompositionValidator` in
+`Vantigo.Host` owns that list; a module that starts requiring another module's
+contract adds itself there. Optional cross-module reads (Communications asking
+`IProductCatalog` for product context) stay optional and must tolerate the
+implementation being absent.
+
 ## How they are enforced
 
 - **Backend rules (1–6)**: `packages/architecture/Vantigo.Architecture.Tests`

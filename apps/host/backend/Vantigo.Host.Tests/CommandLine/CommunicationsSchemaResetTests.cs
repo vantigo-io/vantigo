@@ -3,7 +3,6 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 
 using Vantigo.Communications.Services;
-using Vantigo.Configuration;
 using Vantigo.Host;
 
 namespace Vantigo.Host.Tests.CommandLine;
@@ -55,7 +54,7 @@ public sealed class CommunicationsSchemaResetTests
         var migration = new RecordingMigrationRunner();
         var purger = new RecordingObjectPurger();
         var serviceCollection = new ServiceCollection();
-        serviceCollection.AddOptions<ModuleHostingOptions>().Configure(options => options.Communications.Enabled = true);
+        serviceCollection.AddSingleton(new ModuleActivation(customers: true, communications: true, products: false, energy: false));
         serviceCollection.AddSingleton<ICommunicationsSchemaResetter>(resetter);
         serviceCollection.AddSingleton<ICommunicationsObjectPurger>(purger);
         serviceCollection.AddSingleton<ICommunicationsMigrationRunner>(migration);
@@ -80,7 +79,7 @@ public sealed class CommunicationsSchemaResetTests
     {
         var recorder = new ScopedPurgerRecorder();
         var serviceCollection = new ServiceCollection();
-        serviceCollection.AddOptions<ModuleHostingOptions>().Configure(options => options.Communications.Enabled = true);
+        serviceCollection.AddSingleton(new ModuleActivation(customers: true, communications: true, products: false, energy: false));
         serviceCollection.AddSingleton(recorder);
         serviceCollection.AddScoped<ICommunicationsObjectPurger, ScopedRecordingObjectPurger>();
         serviceCollection.AddSingleton<ICommunicationsSchemaResetter, RecordingResetter>();
@@ -118,7 +117,7 @@ public sealed class CommunicationsSchemaResetTests
         var resetter = new RecordingResetter();
         var migration = new RecordingMigrationRunner();
         var services = new ServiceCollection();
-        services.AddOptions<ModuleHostingOptions>().Configure(options => options.Communications.Enabled = true);
+        services.AddSingleton(new ModuleActivation(customers: true, communications: true, products: false, energy: false));
         services.AddSingleton<ICommunicationsSchemaResetter>(resetter);
         services.AddSingleton<ICommunicationsMigrationRunner>(migration);
         services.AddSingleton<ICommunicationsObjectPurger>(new FailingObjectPurger());
@@ -161,7 +160,7 @@ public sealed class CommunicationsSchemaResetTests
         resetter ??= new RecordingResetter();
         migration ??= new RecordingMigrationRunner();
         var serviceCollection = new ServiceCollection();
-        serviceCollection.AddOptions<ModuleHostingOptions>().Configure(options => options.Communications.Enabled = communicationsEnabled);
+        serviceCollection.AddSingleton(new ModuleActivation(customers: true, communications: communicationsEnabled, products: false, energy: false));
         serviceCollection.AddSingleton<ICommunicationsSchemaResetter>(resetter);
         serviceCollection.AddSingleton<ICommunicationsMigrationRunner>(migration);
         serviceCollection.AddSingleton<ICommunicationsObjectPurger, RecordingObjectPurger>();

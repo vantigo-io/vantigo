@@ -228,6 +228,13 @@ public sealed class DevelopmentSeedIntegrationTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment(Environments.Development);
+            // Host configuration, so the module flags are in place before the host
+            // composes its modules. ConfigureAppConfiguration is applied while the
+            // host is built, which is after the modules have been registered.
+            builder.UseSetting("Modules:Customers:Enabled", "true");
+            builder.UseSetting("Modules:Communications:Enabled", "false");
+            builder.UseSetting("Modules:Energy:Enabled", "false");
+            builder.UseSetting("Modules:Products:Enabled", "false");
             builder.ConfigureServices(services =>
                 services.AddSingleton(new HostTestStartupPreparation(
                     ApplyMigrations: true,
@@ -237,10 +244,6 @@ public sealed class DevelopmentSeedIntegrationTests
                 var values = new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:vantigo"] = connectionString,
-                    ["Modules:Customers:Enabled"] = "true",
-                    ["Modules:Communications:Enabled"] = "false",
-                    ["Modules:Energy:Enabled"] = "false",
-                    ["Modules:Products:Enabled"] = "false",
                 };
                 if (customerCount is not null)
                 {

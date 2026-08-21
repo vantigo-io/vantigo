@@ -170,6 +170,10 @@ public partial class Program
         builder.Services.AddVantigoAuthenticationRateLimiting();
         builder.Services.AddApplicationEmail();
         builder.Services.AddSpaIndexDocument(buildTimeBasePath: "/", defaultTitle: "Vantigo");
+        // API versioning and the versioned OpenAPI documents are host
+        // infrastructure: the modules that used to be the only callers can all be
+        // switched off, and MapOpenApi still has to resolve.
+        builder.Services.AddVantigoApiVersioning();
 
         AddEnabledModules(builder.Services, builder.Configuration);
 
@@ -190,7 +194,7 @@ public partial class Program
         {
             await app.Services.MigrateDataProtectionAsync();
             await MigrateEnabledModulesAsync(app.Services);
-            if (app.Services.GetRequiredService<IOptions<ModuleHostingOptions>>().Value.Communications.Enabled)
+            if (ModuleActivation.Resolve(app.Services).Communications)
                 await app.Services.SeedCommunicationsAsync();
         }
 
@@ -216,39 +220,62 @@ public partial class Program
             .EnsureAsync();
     }
 
+    /// <summary>
+    /// Takes the one hosting decision the rest of the process reads back out of
+    /// the container. A disabled module contributes no services, no workers, no
+    /// permissions, and no endpoints; every later stage asks
+    /// <see cref="ModuleActivation"/> rather than the configuration again.
+    /// </summary>
     private static void AddEnabledModules(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddCustomersModule();
-        services.AddCommunicationsModule(configuration);
-        services.AddProductsModule();
-        services.AddEnergyModule();
+        ModuleActivation activation = ModuleActivation.FromConfiguration(configuration);
+        services.AddSingleton(activation);
+
+        if (activation.Customers) services.AddCustomersModule();
+        // The Communications background workers are registered by this call, so
+        // they are switched off by the same decision as its endpoints.
+        if (activation.Communications) services.AddCommunicationsModule(configuration);
+        if (activation.Products) services.AddProductsModule();
+        if (activation.Energy) services.AddEnergyModule();
+
+        // Rejected here, before the container is built, so the error names the
+        // two module flags that disagree instead of a missing service.
+        ModuleCompositionValidator.Validate(activation, services);
     }
 
     private static async Task MigrateEnabledModulesAsync(IServiceProvider services)
     {
-        var modules = services.GetRequiredService<IOptions<ModuleHostingOptions>>().Value;
-        if (modules.Customers.Enabled) await services.MigrateAsync();
-        if (modules.Communications.Enabled) await services.MigrateCommunicationsAsync();
-        if (modules.Products.Enabled) await services.MigrateProductsAsync();
-        if (modules.Energy.Enabled) await services.MigrateEnergyAsync();
+        ModuleActivation activation = ModuleActivation.Resolve(services);
+        if (activation.Customers) await services.MigrateAsync();
+        if (activation.Communications) await services.MigrateCommunicationsAsync();
+        if (activation.Products) await services.MigrateProductsAsync();
+        if (activation.Energy) await services.MigrateEnergyAsync();
         await services.MigrateIdentityAsync();
     }
 
     private static async Task SeedEnabledModulesAsync(IServiceProvider services, CancellationToken cancellationToken = default)
     {
-        var modules = services.GetRequiredService<IOptions<ModuleHostingOptions>>().Value;
+        ModuleActivation activation = ModuleActivation.Resolve(services);
         await IdentityDevelopmentSeeder.SeedAsync(services, cancellationToken);
-        if (modules.Customers.Enabled) await services.SeedAsync();
-        if (modules.Communications.Enabled) await services.SeedCommunicationsAsync();
-        if (modules.Products.Enabled) await services.SeedProductsAsync();
-        if (modules.Energy.Enabled) await services.SeedEnergyAsync(cancellationToken);
+        if (activation.Customers) await services.SeedAsync();
+        if (activation.Communications) await services.SeedCommunicationsAsync();
+        if (activation.Products) await services.SeedProductsAsync();
+        if (activation.Energy) await services.SeedEnergyAsync(cancellationToken);
     }
 
-    private static void MapEnabledModules(WebApplication app)
+    /// <summary>
+    /// Maps the endpoints of the modules this process composed. Public so the
+    /// composition tests can map every module combination and run the permission
+    /// catalog validation the API pipeline runs immediately afterwards.
+    /// </summary>
+    public static void MapEnabledModules(WebApplication app)
     {
-        app.MapCustomersModule();
-        app.MapCommunicationsModule();
-        app.MapProductsModule();
-        app.MapEnergyModule();
+        // The same decision that registered the modules, so a mapped endpoint can
+        // never outlive the permission catalog contributor it depends on.
+        ModuleActivation activation = ModuleActivation.Resolve(app.Services);
+        if (activation.Customers) app.MapCustomersModule();
+        if (activation.Communications) app.MapCommunicationsModule();
+        if (activation.Products) app.MapProductsModule();
+        if (activation.Energy) app.MapEnergyModule();
     }
 }

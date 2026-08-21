@@ -145,15 +145,18 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
+        // Host configuration, so the module flags are in place before the host
+        // composes its modules. ConfigureAppConfiguration is applied while the
+        // host is built, which is after the modules have been registered.
+        builder.UseSetting("Modules:Customers:Enabled", "true");
+        builder.UseSetting("Modules:Communications:Enabled", "false");
+        builder.UseSetting("Modules:Products:Enabled", "false");
 
         builder.ConfigureAppConfiguration((_, configuration) =>
         {
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:vantigo"] = _postgres.GetConnectionString(),
-                ["Modules:Customers:Enabled"] = "true",
-                ["Modules:Communications:Enabled"] = "false",
-                ["Modules:Products:Enabled"] = "false",
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
                 ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",

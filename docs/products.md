@@ -62,7 +62,8 @@ Identity cookie and antiforgery model:
 | `DELETE /api/v1/products/tax-categories/{id}` | Delete an unused tax category |
 
 The OpenAPI document is exposed at `/openapi/v1.json` and through Scalar during
-development. Disable the module with `Modules__Products__Enabled=false`.
+development. Disable the module with `Modules__Products__Enabled=false`; the
+module then registers nothing and its routes answer `404`.
 
 ## Development
 

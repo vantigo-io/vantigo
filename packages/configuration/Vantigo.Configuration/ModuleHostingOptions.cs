@@ -9,6 +9,9 @@ namespace Vantigo.Configuration;
 /// </summary>
 public sealed class ModuleHostingOptions
 {
+    /// <summary>The configuration section the per-module flags are bound from.</summary>
+    public const string SectionName = "Modules";
+
     public ModuleToggleOptions Customers { get; set; } = new();
 
     public ModuleToggleOptions Communications { get; set; } = new();
@@ -31,7 +34,7 @@ public static class ModuleHostingConfigurationExtensions
     /// </summary>
     public static IServiceCollection AddModuleHostingOptions(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<ModuleHostingOptions>(configuration.GetSection("Modules"));
+        services.Configure<ModuleHostingOptions>(configuration.GetSection(ModuleHostingOptions.SectionName));
         return services;
     }
 }
