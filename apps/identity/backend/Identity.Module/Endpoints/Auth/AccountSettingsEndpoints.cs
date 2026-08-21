@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 
 using Vantigo.Identity.Database.Accounts;
+using Vantigo.Identity.Services;
 
 namespace Vantigo.Identity.Endpoints.Auth;
 
@@ -595,6 +596,9 @@ internal static class AccountSettingsEndpoints
         }
 
         await signInManager.SignOutAsync();
+        // A passkey assertion is a credential sign-in: it starts a new absolute
+        // session lifetime instead of inheriting one already on this browser.
+        SessionValidationService.BeginFreshSession(httpContext);
         await signInManager.SignInWithClaimsAsync(user,
             new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = false },
             [new Claim("amr", "mfa"), new Claim(ClaimTypes.AuthenticationMethod, "mfa")]);

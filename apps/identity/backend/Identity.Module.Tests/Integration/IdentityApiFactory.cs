@@ -58,6 +58,10 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// Development (password/cookie/passkey policy all tighten outside it).</summary>
     protected virtual string? PublicOrigin => null;
 
+    /// <summary>Configuration merged over this factory's defaults.</summary>
+    protected virtual IReadOnlyDictionary<string, string?> ExtraConfiguration =>
+        new Dictionary<string, string?>();
+
     /// <summary>
     /// Client base address used by every request this factory issues. Outside
     /// Development, auth/antiforgery cookies are marked Secure, so clients must use
@@ -266,6 +270,10 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 // Vantigo.Host.Tests and Vantigo.Configuration.Tests.
                 values["Security:AllowInsecureTransport"] = bool.TrueString;
             }
+            foreach (var setting in ExtraConfiguration)
+            {
+                values[setting.Key] = setting.Value;
+            }
             if (EnableStaticScim) values["Authentication:Scim:BearerToken"] = StaticScimToken;
             if (PublicOrigin is not null) values["App:PublicOrigin"] = PublicOrigin;
             if (EnableWorkforceOidc)
@@ -349,6 +357,26 @@ public sealed class ProductionIdentityApiFactory : IdentityApiFactory
     protected override bool ProductsModuleEnabled => true;
     protected override bool EnergyModuleEnabled => true;
     protected override string? PublicOrigin => "https://vantigo.integration.test";
+}
+
+/// <summary>
+/// Boots with second-scale session bounds so the absolute lifetime and the tighter
+/// privileged idle window can be observed inside a test. The standard idle window
+/// stays long on purpose: it is the cookie's own expiry span, and keeping it long
+/// proves the privileged timeout is what ends a privileged session.
+/// </summary>
+public sealed class ShortSessionIdentityApiFactory : IdentityApiFactory
+{
+    public static readonly TimeSpan PrivilegedIdleTimeout = TimeSpan.FromSeconds(4);
+    public static readonly TimeSpan AbsoluteLifetime = TimeSpan.FromSeconds(12);
+
+    protected override IReadOnlyDictionary<string, string?> ExtraConfiguration => new Dictionary<string, string?>
+    {
+        ["Authentication:Sessions:IdleTimeout"] = "08:00:00",
+        ["Authentication:Sessions:PrivilegedIdleTimeout"] = "00:00:04",
+        ["Authentication:Sessions:AbsoluteLifetime"] = "00:00:12",
+        ["Authentication:Sessions:PrivilegedAbsoluteLifetime"] = "00:00:12",
+    };
 }
 
 internal sealed record AntiforgeryToken(string Token);
@@ -579,3 +607,4 @@ internal sealed class DeterministicOidcBackchannelHandler(
 [CollectionDefinition(Name)] public sealed class IdentityMfaApiCollection : ICollectionFixture<MfaIdentityApiFactory> { public const string Name = "IdentityMfaApi"; }
 [CollectionDefinition(Name)] public sealed class MultiTenantIdentityApiCollection : ICollectionFixture<MultiTenantIdentityApiFactory> { public const string Name = "MultiTenantIdentityApi"; }
 [CollectionDefinition(Name)] public sealed class ProductionIdentityApiCollection : ICollectionFixture<ProductionIdentityApiFactory> { public const string Name = "ProductionIdentityApi"; }
+[CollectionDefinition(Name)] public sealed class ShortSessionIdentityApiCollection : ICollectionFixture<ShortSessionIdentityApiFactory> { public const string Name = "ShortSessionIdentityApi"; }

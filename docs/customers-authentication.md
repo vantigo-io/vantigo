@@ -64,6 +64,43 @@ MFA enrollment/status remains available to let a new Owner enroll. Recovery code
 shown once; an MFA-authenticated Owner can reset another Owner's local MFA, which
 invalidates that account's existing session and requires re-enrollment.
 
+## Session lifetime and revocation
+
+The application cookie slides while a session is in use, but the slide is bounded. On
+every cookie validation the backend checks, in this order, an absolute lifetime
+measured from sign-in, an idle window since the last request, and the account's
+current security stamp. Privileged sessions (Owner, SystemAdmin) get the tighter
+lifetime and idle window; presenting credentials again is the only thing that starts a
+new absolute lifetime, so re-issuing the cookie for a tenant switch, a profile update,
+or an MFA change keeps the original deadline.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `Authentication__Sessions__IdleTimeout` | `08:00:00` | Idle window for a standard session; also the cookie's expiry span. |
+| `Authentication__Sessions__PrivilegedIdleTimeout` | `02:00:00` | Idle window for an Owner or SystemAdmin session. |
+| `Authentication__Sessions__AbsoluteLifetime` | `24:00:00` | Hard cap on a standard session, measured from sign-in. |
+| `Authentication__Sessions__PrivilegedAbsoluteLifetime` | `08:00:00` | Hard cap on an Owner or SystemAdmin session. |
+| `Authentication__Sessions__RevocationCacheDuration` | `00:00:30` | How long the per-user revocation state may be served from memory. |
+| `Authentication__Sessions__PrincipalRefreshInterval` | `00:15:00` | How often Identity rebuilds the cookie principal from the database. |
+
+A non-positive lifetime or a negative interval fails startup rather than locking every
+user out at run time.
+
+Revocation is server-side and rotates the account's security stamp, which invalidates
+every cookie already issued to it:
+
+- `POST /api/v1/identity/account/sessions/revoke` signs the calling account out
+  everywhere, including the browser that made the request.
+- `POST /api/v1/identity/system/users/{userId}/sessions/revoke` does the same for any
+  account and requires the SystemAdmin role.
+
+Password changes, MFA changes, disablement, and role changes already rotate the stamp,
+so they end the account's other sessions too. The revocation state each request checks
+is cached briefly, but the cache is only ever used to admit a request: any negative
+outcome is re-read from the database before a session is rejected, and every write to
+the account row drops the entry. In a multi-instance deployment, an instance that did
+not perform the write converges within `RevocationCacheDuration`.
+
 ## Invitation and recovery URLs
 
 The current frontend routes are:

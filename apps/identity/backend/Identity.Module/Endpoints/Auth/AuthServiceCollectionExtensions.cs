@@ -68,9 +68,15 @@ public static class AuthServiceCollectionExtensions
         {
             options.TokenLifespan = TimeSpan.FromHours(24);
         });
-        services.Configure<SecurityStampValidatorOptions>(options =>
+        services.AddOptions<SecurityStampValidatorOptions>().Configure<IOptions<VantigoAuthenticationOptions>>((options, authentication) =>
         {
-            options.ValidationInterval = TimeSpan.Zero;
+            // This interval only governs how often Identity rebuilds the cookie
+            // principal from the database. It used to be zero, which meant a database
+            // round trip and a Set-Cookie on every single request. Revocation no
+            // longer depends on it: SessionValidationService checks the security
+            // stamp itself on every validation, off a briefly cached read that is
+            // always re-verified before a session is rejected.
+            options.ValidationInterval = authentication.Value.Sessions.PrincipalRefreshInterval;
             options.OnRefreshingPrincipal = context =>
             {
                 var currentMfa = context.CurrentPrincipal?.Claims.Where(IsMfaClaim).ToArray() ?? [];
@@ -101,7 +107,8 @@ public static class AuthServiceCollectionExtensions
             options.Cookie.SecurePolicy = environment.IsDevelopment()
                 ? CookieSecurePolicy.SameAsRequest
                 : CookieSecurePolicy.Always;
-            options.ExpireTimeSpan = TimeSpan.FromHours(8);
+            // ExpireTimeSpan is set from configuration by SessionCookiePostConfigure,
+            // which also bounds the session beyond this sliding window.
             options.SlidingExpiration = true;
             options.Events.OnRedirectToLogin = context =>
             {
@@ -116,7 +123,8 @@ public static class AuthServiceCollectionExtensions
                     new AuthErrorResponse(new AuthError("forbidden", "You do not have permission to access this resource.")));
             };
         });
-        services.AddSingleton<IPostConfigureOptions<CookieAuthenticationOptions>, DisabledAccountCookiePostConfigure>();
+        services.AddScoped<SessionValidationService>();
+        services.AddSingleton<IPostConfigureOptions<CookieAuthenticationOptions>, SessionCookiePostConfigure>();
 
         return services;
     }
@@ -308,8 +316,17 @@ public static class AuthServiceCollectionExtensions
         return services;
     }
 
-    private sealed class DisabledAccountCookiePostConfigure(
-        IServiceScopeFactory scopeFactory) : IPostConfigureOptions<CookieAuthenticationOptions>
+    /// <summary>
+    /// Owns everything the application cookie has to check on validation: the
+    /// account's effective disabled state, the security stamp that server-side
+    /// revocation turns over, and the absolute and idle session bounds. It extends
+    /// the event chain rather than replacing it, so Identity's own security stamp
+    /// validation still runs first, and it opens one request scope for a single
+    /// consolidated database read instead of one per check.
+    /// </summary>
+    private sealed class SessionCookiePostConfigure(
+        IServiceScopeFactory scopeFactory,
+        IOptions<VantigoAuthenticationOptions> authenticationOptions) : IPostConfigureOptions<CookieAuthenticationOptions>
     {
         public void PostConfigure(string? name, CookieAuthenticationOptions options)
         {
@@ -318,6 +335,19 @@ public static class AuthServiceCollectionExtensions
             {
                 return;
             }
+
+            options.ExpireTimeSpan = authenticationOptions.Value.Sessions.IdleTimeout;
+
+            var priorSigningIn = options.Events.OnSigningIn;
+            options.Events.OnSigningIn = async context =>
+            {
+                if (priorSigningIn is not null)
+                {
+                    await priorSigningIn(context);
+                }
+
+                SessionValidationService.CarryForwardSessionStart(context);
+            };
 
             var priorValidation = options.Events.OnValidatePrincipal;
             options.Events.OnValidatePrincipal = async context =>
@@ -332,22 +362,9 @@ public static class AuthServiceCollectionExtensions
                     return;
                 }
 
-                var userIdValue = context.Principal.FindFirst(
-                    System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (!Guid.TryParse(userIdValue, out var userId))
-                {
-                    context.RejectPrincipal();
-                    return;
-                }
-
                 await using var scope = scopeFactory.CreateAsyncScope();
-                var lifecycle = scope.ServiceProvider.GetRequiredService<ScimLifecycleService>();
-                var accountIsActive = !await lifecycle.IsEffectivelyDisabledAsync(userId, context.HttpContext.RequestAborted);
-                if (!accountIsActive)
-                {
-                    context.RejectPrincipal();
-                    await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
-                }
+                var sessions = scope.ServiceProvider.GetRequiredService<SessionValidationService>();
+                await sessions.ValidateAsync(context);
             };
         }
     }

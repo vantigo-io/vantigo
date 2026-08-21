@@ -76,6 +76,10 @@ internal static class WorkforceOidcEndpoints
             return await Failure(httpContext, "oidc_identity_invalid");
         }
 
+        // A federated sign-in is a credential sign-in: the cookie it issues starts a
+        // new absolute session lifetime rather than inheriting an existing one.
+        SessionValidationService.BeginFreshSession(httpContext);
+
         try
         {
             var existingUser = await userManager.FindByLoginAsync(identity.LoginProvider, identity.Subject);

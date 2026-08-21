@@ -191,7 +191,9 @@ internal static class ConversationEndpoints
     private static async Task<IResult> GetAttachmentUploadStatus(Guid conversationId, Guid attachmentId,
         HttpContext http, CommunicationsDbContext db, CancellationToken ct)
     {
-        http.Response.Headers.CacheControl = "no-store, private";
+        // Spelled out rather than relying on the cookie handler, which only emits its
+        // own no-cache,no-store when it happens to reissue the session cookie.
+        http.Response.Headers.CacheControl = "no-store, no-cache, private";
         http.Response.Headers.Pragma = "no-cache";
         http.Response.Headers["X-Content-Type-Options"] = "nosniff";
         var userId = CurrentUserId(http);
