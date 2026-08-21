@@ -1,4 +1,6 @@
+using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 
@@ -145,7 +147,13 @@ internal static class MailgunCredentialSecretReader
     }
 }
 
-internal sealed class SmtpDeliveryProvider(IOptions<SmtpOptions> options, IOptions<OutboxOptions> outboxOptions, IHostEnvironment environment, MailboxCredentialProtector protector, IObjectStore<CommunicationsStorageScope> objectStore) : IEmailDeliveryProvider
+internal sealed class SmtpDeliveryProvider(
+    IOptions<SmtpOptions> options,
+    IOptions<OutboxOptions> outboxOptions,
+    IHostEnvironment environment,
+    MailboxCredentialProtector protector,
+    IObjectStore<CommunicationsStorageScope> objectStore,
+    ISmtpDestinationGuard destinationGuard) : IEmailDeliveryProvider
 {
     private readonly SmtpOptions smtp = options.Value;
     private readonly OutboxOptions outbox = outboxOptions.Value;
@@ -177,7 +185,17 @@ internal sealed class SmtpDeliveryProvider(IOptions<SmtpOptions> options, IOptio
         SecureSocketOptions socketOptions = environment.IsDevelopment() && smtp.AllowInsecurePlaintext ? SecureSocketOptions.None
             : settings.UseSsl ? SecureSocketOptions.SslOnConnect : settings.Port == 587 ? SecureSocketOptions.StartTls
             : throw new InvalidOperationException("SMTP TLS is required. Use Smtp:UseSsl for implicit TLS or Smtp:AllowInsecurePlaintext only in Development.");
-        await client.ConnectAsync(settings.Host, settings.Port, socketOptions, timeoutCts.Token);
+
+        // Vet the destination as the very last step before connecting, and connect
+        // the socket to the vetted IPAddress directly - never by hostname - so a
+        // DNS answer that changes between the check and the connect (a rebinding
+        // attack) cannot slip a private address past this guard. The hostname is
+        // still handed to MailKit here so it drives TLS SNI and certificate
+        // validation as normal.
+        IPAddress destination = await destinationGuard.VetAsync(settings.Host, timeoutCts.Token);
+        using Socket socket = new(destination.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        await socket.ConnectAsync(new IPEndPoint(destination, settings.Port), timeoutCts.Token);
+        await client.ConnectAsync(socket, settings.Host, settings.Port, socketOptions, timeoutCts.Token);
         var password = credential is null ? smtp.Password ?? string.Empty : protector.Unprotect(credential.SecretCiphertext);
         if (!string.IsNullOrWhiteSpace(settings.Username)) await client.AuthenticateAsync(settings.Username, password, timeoutCts.Token);
         await operation(client, timeoutCts.Token);

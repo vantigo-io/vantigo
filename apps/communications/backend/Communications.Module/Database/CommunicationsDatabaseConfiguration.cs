@@ -54,6 +54,8 @@ public static class CommunicationsDatabaseConfiguration
         }
         services.AddScoped<ICommunicationsAiService, CommunicationsAiService>();
         services.AddSingleton<MailboxCredentialProtector>();
+        services.AddSingleton<IDnsResolver, SystemDnsResolver>();
+        services.AddSingleton<ISmtpDestinationGuard, SmtpDestinationGuard>();
         services.AddSingleton<SmtpDeliveryProvider>();
         services.AddSingleton<MailgunDeliveryProvider>();
         services.AddSingleton<IEmailDeliveryProvider>(provider => provider.GetRequiredService<SmtpDeliveryProvider>());
