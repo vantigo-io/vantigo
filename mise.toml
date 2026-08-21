@@ -4,3 +4,5 @@
 [tools]
 dotnet = "10.0.302"
 bun = "1.3.14"
+# Used by CI to scan the published container image and generate its SBOM.
+trivy = "0.74.0"
