@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 
 using Vantigo.Configuration;
 using Vantigo.Contracts.Authorization;
+using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
 
 namespace Vantigo.Identity.Endpoints.Auth;
@@ -67,17 +68,13 @@ internal sealed class BusinessAccessHandler(IOptions<VantigoAuthenticationOption
         {
             context.Succeed(requirement);
         }
-        else if (context.User.Claims.Any(IsMfaClaim))
+        else if (MfaClaims.Any(context.User.Claims))
         {
             context.Succeed(requirement);
         }
 
         return Task.CompletedTask;
     }
-
-    private static bool IsMfaClaim(System.Security.Claims.Claim claim) =>
-        (claim.Type == "amr" || claim.Type == System.Security.Claims.ClaimTypes.AuthenticationMethod) &&
-        string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
 }
 
 internal sealed class MfaAuthenticatedHandler(IOptions<VantigoAuthenticationOptions> options)
@@ -90,17 +87,13 @@ internal sealed class MfaAuthenticatedHandler(IOptions<VantigoAuthenticationOpti
         MfaAuthenticatedRequirement requirement)
     {
         if (!authentication.Owners.RequireMfa ||
-            context.User.Claims.Any(IsMfaClaim))
+            MfaClaims.Any(context.User.Claims))
         {
             context.Succeed(requirement);
         }
 
         return Task.CompletedTask;
     }
-
-    private static bool IsMfaClaim(System.Security.Claims.Claim claim) =>
-        (claim.Type == "amr" || claim.Type == System.Security.Claims.ClaimTypes.AuthenticationMethod) &&
-        string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

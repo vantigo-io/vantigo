@@ -57,12 +57,20 @@ generic request response so it does not disclose whether an email exists. The re
 operation only reports password-policy details after the token has been validated.
 
 Owner MFA uses Identity's authenticator provider (six-digit TOTP) and one-use recovery
-codes. It is disabled by default. Set `Authentication__Owners__RequireMfa=true` to
-require MFA for Owner business access and invitation management. Assisted Owner-MFA
-reset always requires a separately verified local MFA session.
-MFA enrollment/status remains available to let a new Owner enroll. Recovery codes are
-shown once; an MFA-authenticated Owner can reset another Owner's local MFA, which
-invalidates that account's existing session and requires re-enrollment.
+codes. Set `Authentication__Owners__RequireMfa=true` to require MFA for the `Owner`
+and `SystemAdmin` policies, including Owner business access and invitation management.
+Assisted Owner-MFA reset always requires a separately verified local MFA session.
+MFA enrollment/status remains available to let a new Owner enroll even before their
+own session has completed MFA - only enrollment stays reachable, nothing else - so
+turning the requirement on never locks out the account that must enable it.
+Recovery codes are shown once; an MFA-authenticated Owner can reset another Owner's
+local MFA, which invalidates that account's existing session and requires
+re-enrollment.
+
+Outside Development, the API refuses to start unless `Authentication__Owners__RequireMfa=true`
+or `Authentication__Owners__AllowInsecureNoMfa=true` is set: a password alone must
+never be enough to reach every identity and tenant control-plane endpoint. The
+opt-out flag exists for demo deployments only; set it deliberately, not by default.
 
 ## Session lifetime and revocation
 
@@ -259,7 +267,8 @@ Environment variables use ASP.NET Core's standard double-underscore mapping:
 | `App__BasePath` | Path prefix the app is served under on a shared domain (empty value serves from the root) | empty |
 | `App__PublicOrigin` | Public scheme + host used to derive mailed links and the logged OIDC callback URI (no path; invalid values fail startup) | unset |
 | `Authentication__Bootstrap__Secret` | One-time Owner bootstrap secret | **required outside Development** (startup fails if unset); in Development only, generated once at startup and logged at Warning |
-| `Authentication__Owners__RequireMfa` | Require local MFA for Owner access/management | `false` |
+| `Authentication__Owners__RequireMfa` | Require local MFA for the `Owner` and `SystemAdmin` policies | `false`; **required outside Development** unless `AllowInsecureNoMfa=true` (startup fails otherwise) |
+| `Authentication__Owners__AllowInsecureNoMfa` | Escape hatch: allow `RequireMfa=false` outside Development (demo deployments only) | `false` |
 | `Authentication__Owners__MfaIssuer` | Issuer label in authenticator apps | `Vantigo` |
 | `Authentication__Invitations__Lifetime` | Invitation lifetime as a .NET `TimeSpan` (`1`–`30` days) | `7.00:00:00` |
 | `Authentication__Invitations__AcceptUrl` | Invitation URL template with `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/invitations/accept?token={token}` |

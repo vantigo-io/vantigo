@@ -76,8 +76,23 @@ public sealed class SystemAdminAuthenticationOptions
 
 public sealed class OwnerAuthenticationOptions
 {
+    /// <summary>
+    /// Requires MFA (TOTP or a passkey) for the Owner and SystemAdmin policies.
+    /// Without it, a password alone grants full identity or tenant
+    /// control-plane access (https://github.com/vantigo-io/vantigo/issues/15).
+    /// </summary>
     public bool RequireMfa { get; set; }
+
     public string MfaIssuer { get; set; } = "Vantigo";
+
+    /// <summary>
+    /// Escape hatch that allows <see cref="RequireMfa"/> to stay false outside
+    /// the Development environment. It exists for demo deployments only: with
+    /// it set, a compromised Owner or SystemAdmin password alone is enough to
+    /// reach every identity and tenant control-plane endpoint. Unset it the
+    /// moment MFA can be required.
+    /// </summary>
+    public bool AllowInsecureNoMfa { get; set; }
 }
 
 /// <summary>
@@ -150,6 +165,7 @@ public static class VantigoAuthenticationConfigurationExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<VantigoAuthenticationOptions>, BootstrapSecretOptionsValidator>();
         services.AddSingleton<IValidateOptions<VantigoAuthenticationOptions>, SessionAuthenticationOptionsValidator>();
+        services.AddSingleton<IValidateOptions<VantigoAuthenticationOptions>, MfaEnforcementOptionsValidator>();
         return services;
     }
 
@@ -169,6 +185,29 @@ public static class VantigoAuthenticationConfigurationExtensions
                 "Authentication configuration error: Bootstrap:Secret is required outside Development. " +
                 "Configure an explicit high-entropy secret (for example, via Key Vault) before starting; " +
                 "it is never generated or logged outside Development.");
+        }
+    }
+
+    /// <summary>
+    /// Fails startup outside Development unless privileged MFA is enabled, or the
+    /// escape hatch explicitly accepts running without it. Without
+    /// Owners:RequireMfa, a compromised Owner or SystemAdmin password alone is
+    /// enough to reach every identity and tenant control-plane endpoint
+    /// (https://github.com/vantigo-io/vantigo/issues/15).
+    /// </summary>
+    private sealed class MfaEnforcementOptionsValidator(IHostEnvironment environment) : IValidateOptions<VantigoAuthenticationOptions>
+    {
+        public ValidateOptionsResult Validate(string? name, VantigoAuthenticationOptions options)
+        {
+            if (environment.IsDevelopment() || options.Owners.RequireMfa || options.Owners.AllowInsecureNoMfa)
+                return ValidateOptionsResult.Success;
+
+            return ValidateOptionsResult.Fail(
+                "Authentication configuration error: privileged MFA is not enabled and refuses to start outside " +
+                "Development. Without Authentication:Owners:RequireMfa=true, a compromised Owner or SystemAdmin " +
+                "password alone grants full identity or tenant control-plane access. Configure " +
+                "Authentication:Owners:RequireMfa=true, or set Authentication:Owners:AllowInsecureNoMfa=true to " +
+                "accept that exposure knowingly (for example, for a demo deployment).");
         }
     }
 

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 
+using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
 
@@ -601,7 +602,7 @@ internal static class AccountSettingsEndpoints
         SessionValidationService.BeginFreshSession(httpContext);
         await signInManager.SignInWithClaimsAsync(user,
             new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = false },
-            [new Claim("amr", "mfa"), new Claim(ClaimTypes.AuthenticationMethod, "mfa")]);
+            MfaClaims.Issue());
         var roles = await userManager.GetRolesAsync(user);
         return TypedResults.Ok(new AuthSuccessResponse(
             new AuthUserResponse(user.Id, user.DisplayName, user.Email, AuthRoleOrdering.Ordered(roles)),
@@ -690,7 +691,7 @@ internal static class AccountSettingsEndpoints
         ApplicationUser user,
         ClaimsPrincipal principal)
     {
-        var claims = principal.Claims.Where(claim => claim.Type is "amr" or ClaimTypes.AuthenticationMethod).ToArray();
+        var claims = principal.Claims.Where(MfaClaims.Is).ToArray();
         await signInManager.SignInWithClaimsAsync(user,
             new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = false }, claims);
     }

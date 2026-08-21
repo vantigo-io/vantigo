@@ -31,11 +31,66 @@ public sealed class VantigoAuthenticationOptionsTests
     [Fact]
     public void ConfiguredBootstrapSecret_OutsideDevelopment_PassesOptionsValidation()
     {
-        using var provider = BuildProvider(Environments.Production, ("Authentication:Bootstrap:Secret", "configured-secret"));
+        using var provider = BuildProvider(
+            Environments.Production,
+            ("Authentication:Bootstrap:Secret", "configured-secret"),
+            ("Authentication:Owners:AllowInsecureNoMfa", "true"));
 
         var options = provider.GetRequiredService<IOptions<VantigoAuthenticationOptions>>().Value;
 
         Assert.Equal("configured-secret", options.Bootstrap.Secret);
+    }
+
+    [Fact]
+    public void MfaNotRequired_OutsideDevelopment_FailsOptionsValidation()
+    {
+        using var provider = BuildProvider(
+            Environments.Production,
+            ("Authentication:Bootstrap:Secret", "configured-secret"));
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<VantigoAuthenticationOptions>>().Value);
+
+        Assert.Contains("privileged MFA is not enabled", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Authentication:Owners:RequireMfa", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Authentication:Owners:AllowInsecureNoMfa", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MfaNotRequired_InDevelopment_PassesOptionsValidation()
+    {
+        using var provider = BuildProvider(Environments.Development);
+
+        var options = provider.GetRequiredService<IOptions<VantigoAuthenticationOptions>>().Value;
+
+        Assert.False(options.Owners.RequireMfa);
+    }
+
+    [Fact]
+    public void MfaRequired_OutsideDevelopment_PassesOptionsValidation()
+    {
+        using var provider = BuildProvider(
+            Environments.Production,
+            ("Authentication:Bootstrap:Secret", "configured-secret"),
+            ("Authentication:Owners:RequireMfa", "true"));
+
+        var options = provider.GetRequiredService<IOptions<VantigoAuthenticationOptions>>().Value;
+
+        Assert.True(options.Owners.RequireMfa);
+    }
+
+    [Fact]
+    public void MfaNotRequired_OutsideDevelopment_PassesOptionsValidationWithTheEscapeHatch()
+    {
+        using var provider = BuildProvider(
+            Environments.Production,
+            ("Authentication:Bootstrap:Secret", "configured-secret"),
+            ("Authentication:Owners:AllowInsecureNoMfa", "true"));
+
+        var options = provider.GetRequiredService<IOptions<VantigoAuthenticationOptions>>().Value;
+
+        Assert.False(options.Owners.RequireMfa);
+        Assert.True(options.Owners.AllowInsecureNoMfa);
     }
 
     [Fact]
