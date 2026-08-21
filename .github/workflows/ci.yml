@@ -66,6 +66,13 @@ jobs:
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: 🛡️ Audit frontend dependencies (informational)
+        run: bun audit
+        continue-on-error: true
+
+      - name: 🛡️ Audit frontend dependencies (fail on High/Critical)
+        run: bun audit --audit-level=high
+
       - name: 🔧 Check toolchain pinning
         run: bun run toolchain:check
 
@@ -106,6 +113,15 @@ jobs:
       - name: 🧰 Restore .NET dependencies
         run: dotnet restore Vantigo.slnx
 
+      - name: 🛡️ Check NuGet packages for known vulnerabilities
+        run: |
+          set -o pipefail
+          dotnet list Vantigo.slnx package --vulnerable --include-transitive 2>&1 | tee "${RUNNER_TEMP}/nuget-vulnerable.txt"
+          if grep -qE "NU190[34]:" "${RUNNER_TEMP}/nuget-vulnerable.txt"; then
+            echo "::error::High or Critical severity vulnerable NuGet packages detected (see NU1903/NU1904 warnings above)."
+            exit 1
+          fi
+
       - name: Build .NET 🏗️
         run: dotnet build Vantigo.slnx --no-restore --configuration Release
 
@@ -128,6 +144,53 @@ jobs:
           cp .env.example .env
           cp vantigo.env.example vantigo.env
           docker compose config -q
+
+  codeql:
+    needs: metadata
+    # Dormant until GitHub Advanced Security is enabled on this repository (it
+    # is a private org repo without GHAS, so code scanning API calls 403).
+    # Flip the `ENABLE_CODE_SCANNING` repository variable to `true` once GHAS
+    # is turned on to activate this job — everything else is already wired.
+    if: vars.ENABLE_CODE_SCANNING == 'true'
+    name: 🔎 CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: 💾 Set up toolchain
+        if: matrix.build-mode == 'manual'
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+
+      - name: 🔍 Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: 🏗️ Build solution for CodeQL
+        if: matrix.build-mode == 'manual'
+        run: |
+          dotnet restore Vantigo.slnx
+          dotnet build Vantigo.slnx --no-restore --configuration Release
+
+      - name: 🔎 Perform CodeQL analysis
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: /language:${{ matrix.language }}
 
   build_images:
     needs: [metadata, build_and_test_solution, build_and_test_frontend]
@@ -171,6 +234,35 @@ jobs:
             echo "$platforms" | grep -qx "$expected" || { echo "::error::Image index is missing $expected."; exit 1; }
           done
 
+      - name: 🛡️ Scan container image for vulnerabilities
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/container-extracted"
+          tar -xf "${RUNNER_TEMP}/container/vantigo-io/vantigo.tar.gz" -C "${RUNNER_TEMP}/container-extracted"
+          trivy image \
+            --input "${RUNNER_TEMP}/container-extracted" \
+            --platform linux/amd64 \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format table
+
+      - name: 📋 Generate SBOM for the container image
+        run: |
+          trivy image \
+            --input "${RUNNER_TEMP}/container-extracted" \
+            --platform linux/amd64 \
+            --scanners vuln \
+            --format cyclonedx \
+            --output "${RUNNER_TEMP}/vantigo-sbom.cdx.json"
+
+      - name: 📤 Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-sbom
+          path: ${{ runner.temp }}/vantigo-sbom.cdx.json
+          retention-days: 14
+
   publish_images:
     needs: [metadata, build_and_test_frontend, build_and_test_solution]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -206,6 +298,36 @@ jobs:
             --configuration Release \
             -p:ContainerImageFormat=OCI \
             -p:ContainerRegistry=ghcr.io
+
+      - name: 🛡️ Scan published container image for vulnerabilities
+        run: |
+          set -euo pipefail
+          tag="v${{ needs.metadata.outputs.majorMinorPatch }}"
+          trivy image \
+            "ghcr.io/vantigo-io/vantigo:${tag}" \
+            --platform linux/amd64 \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format table
+
+      - name: 📋 Generate SBOM for the published container image
+        run: |
+          set -euo pipefail
+          tag="v${{ needs.metadata.outputs.majorMinorPatch }}"
+          trivy image \
+            "ghcr.io/vantigo-io/vantigo:${tag}" \
+            --platform linux/amd64 \
+            --scanners vuln \
+            --format cyclonedx \
+            --output "${RUNNER_TEMP}/vantigo-sbom.cdx.json"
+
+      - name: 📤 Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-sbom
+          path: ${{ runner.temp }}/vantigo-sbom.cdx.json
+          retention-days: 90
 
       - name: 🔏 Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
