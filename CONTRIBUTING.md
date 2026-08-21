@@ -85,8 +85,13 @@ into its own deployable without a rewrite.
   infrastructure (telemetry, SPA serving, command-line parsing) lives in
   `Vantigo.Host`.
 - Every module can be turned off per deployment with
-  `Modules:<Name>:Enabled` — code consuming another module's contract must
-  tolerate the implementation being absent.
+  `Modules:<Name>:Enabled`. The flag is one immutable startup decision: a
+  disabled module registers no services and no workers, maps no endpoints,
+  contributes no permissions, and is neither migrated nor seeded. Combinations
+  whose enabled modules would leave a required contract unimplemented are
+  rejected at startup, so code consuming another module's *optional* contract
+  must tolerate the implementation being absent, and code that cannot work
+  without one declares it in `ModuleCompositionValidator`.
 
 ### Cross-module communication
 

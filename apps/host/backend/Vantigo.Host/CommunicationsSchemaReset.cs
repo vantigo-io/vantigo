@@ -1,12 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 
 using Npgsql;
 
 using Vantigo.Communications.Database;
 using Vantigo.Communications.Services;
-using Vantigo.Configuration;
 
 namespace Vantigo.Host;
 
@@ -77,8 +75,9 @@ public static class CommunicationsSchemaResetCommand
             return false;
         }
 
-        var modules = services.GetRequiredService<IOptions<ModuleHostingOptions>>().Value;
-        if (!modules.Communications.Enabled)
+        // The same hosting decision the module registration used, so the command
+        // can never run against a module this process did not compose.
+        if (!ModuleActivation.Resolve(services).Communications)
         {
             await error.WriteLineAsync("The reset-communications command cannot run because the Communications module is disabled.");
             return false;

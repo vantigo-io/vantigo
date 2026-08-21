@@ -92,14 +92,17 @@ public sealed class CommunicationsModuleFactory : WebApplicationFactory<global::
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
+        // Host configuration, so the module flags are in place before the host
+        // composes its modules. ConfigureAppConfiguration is applied while the
+        // host is built, which is after the modules have been registered.
+        builder.UseSetting("Modules:Customers:Enabled", "true");
+        builder.UseSetting("Modules:Communications:Enabled", "true");
+        builder.UseSetting("Modules:Products:Enabled", "false");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:vantigo"] = postgres.GetConnectionString(),
             ["Authentication:Bootstrap:Secret"] = "integration-bootstrap-secret",
             ["Development:Seed:Enabled"] = "false",
-            ["Modules:Customers:Enabled"] = "true",
-            ["Modules:Communications:Enabled"] = "true",
-            ["Modules:Products:Enabled"] = "false",
             ["Communications:BootstrapMailbox:Enabled"] = "true",
             ["Communications:BootstrapMailbox:FromAddress"] = BootstrapChannelAddress,
             ["Communications:BootstrapMailbox:DisplayName"] = "Integration Channel",

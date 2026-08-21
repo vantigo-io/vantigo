@@ -19,7 +19,10 @@ VANTIGO_CONFIRM_RESET_COMMUNICATIONS=true dotnet run --project apps/host/backend
 
 `migrate` applies all enabled module migrations and exits. `seed` is
 Development-only. `api` hosts the application and does not migrate or seed.
-Enable or disable the module with `Modules__Communications__Enabled`.
+Enable or disable the module with `Modules__Communications__Enabled`. Disabling
+it removes the module completely: no services, no outbox/inbound/retention/
+attachment workers, no endpoints (its routes answer `404`), no permissions, and
+no migrations or seeding.
 
 Normal `migrate` does not reset or repair a retired Communications schema. There
 is no production Communications data migration in this release. Development
@@ -36,7 +39,8 @@ Communications accesses customer data through the in-process
 `Vantigo.Contracts.ICustomerDirectory` contract. There is no Customers service URL,
 S2S API key or `X-Vantigo-Api-Key` environment variable. The host registers the
 Customers module and its contract implementation when
-`Modules__Customers__Enabled=true`.
+`Modules__Customers__Enabled=true`, and refuses to start when Communications is
+enabled without it.
 
 Customer and Contact link values remain opaque domain values. Preserve them exactly;
 do not derive meaning from them or use them as authorization credentials. The

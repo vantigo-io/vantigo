@@ -82,13 +82,20 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(Environments.Development);
+        // Host configuration, so the module flags are in place before the host
+        // composes its modules. ConfigureAppConfiguration is applied while the
+        // host is built, which is after the modules have been registered.
+        //
+        // Energy reads customer and contact data through ICustomerDirectory, so the
+        // host refuses to compose Energy without Customers. The fake below still
+        // serves the reads; the module only has to be part of the combination.
+        builder.UseSetting("Modules:Customers:Enabled", "true");
+        builder.UseSetting("Modules:Communications:Enabled", "false");
+        builder.UseSetting("Modules:Products:Enabled", "false");
+        builder.UseSetting("Modules:Energy:Enabled", "true");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:vantigo"] = _postgres.GetConnectionString(),
-            ["Modules:Customers:Enabled"] = "false",
-            ["Modules:Communications:Enabled"] = "false",
-            ["Modules:Products:Enabled"] = "false",
-            ["Modules:Energy:Enabled"] = "true",
             ["Development:Seed:Enabled"] = "false",
             ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
             ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",
@@ -96,6 +103,8 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
         }));
         builder.ConfigureServices(services =>
         {
+            // Registered after the Customers module, so this is the implementation
+            // the Energy endpoints resolve.
             services.AddSingleton<ICustomerDirectory, FakeCustomerDirectory>();
             services.AddSingleton(new HostTestStartupPreparation(ApplyMigrations: true, SeedDevelopmentData: false));
         });

@@ -221,6 +221,13 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(HostEnvironmentName);
+        // Host configuration, so the module flags are in place before the host
+        // composes its modules. ConfigureAppConfiguration is applied while the
+        // host is built, which is after the modules have been registered.
+        builder.UseSetting("Modules:Customers:Enabled", CustomersModuleEnabled.ToString());
+        builder.UseSetting("Modules:Communications:Enabled", CommunicationsModuleEnabled.ToString());
+        builder.UseSetting("Modules:Products:Enabled", ProductsModuleEnabled.ToString());
+        builder.UseSetting("Modules:Energy:Enabled", EnergyModuleEnabled.ToString());
         if (EnableWorkforceOidc)
         {
             builder.UseSetting("Authentication:Oidc:Enabled", "true");
@@ -235,10 +242,6 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             var values = new Dictionary<string, string?>
             {
                 ["ConnectionStrings:vantigo"] = postgres.GetConnectionString(),
-                ["Modules:Customers:Enabled"] = CustomersModuleEnabled.ToString(),
-                ["Modules:Communications:Enabled"] = CommunicationsModuleEnabled.ToString(),
-                ["Modules:Products:Enabled"] = ProductsModuleEnabled.ToString(),
-                ["Modules:Energy:Enabled"] = EnergyModuleEnabled.ToString(),
                 ["Tenancy:Mode"] = EnableMultiTenant ? "multi" : "single",
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
