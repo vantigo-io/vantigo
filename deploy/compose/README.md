@@ -200,6 +200,14 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   before upgrades, keep one migration job only, and provision a Key Vault key
   and set `DataProtection__KeyVaultKeyUri` instead as soon as one is available
   — see [Data Protection key wrapping](../../docs/data-protection-key-wrapping.md).
+- **Remove `Authentication__Owners__AllowInsecureNoMfa=true` from `vantigo.env`.**
+  The quick-start stack ships with it because a fresh installation has no enrolled
+  authenticator, and requiring MFA before one exists would leave no way to sign in
+  at all. Left in place, a compromised Owner or SystemAdmin password alone is enough
+  for full control of identity and the tenant control plane. Enrol an authenticator
+  for every privileged account, then set `Authentication__Owners__RequireMfa=true`
+  and drop this flag — see
+  [customer authentication](../../docs/customers-authentication.md).
 - Never run `seed` in production; it is Development-only.
 
 The static identity cleanup migration is intentionally destructive for old
