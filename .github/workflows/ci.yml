@@ -147,6 +147,11 @@ jobs:
 
   codeql:
     needs: metadata
+    # Dormant until GitHub Advanced Security is enabled on this repository (it
+    # is a private org repo without GHAS, so code scanning API calls 403).
+    # Flip the `ENABLE_CODE_SCANNING` repository variable to `true` once GHAS
+    # is turned on to activate this job — everything else is already wired.
+    if: vars.ENABLE_CODE_SCANNING == 'true'
     name: 🔎 CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
