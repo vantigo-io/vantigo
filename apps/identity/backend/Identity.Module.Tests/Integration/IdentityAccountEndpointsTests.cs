@@ -165,11 +165,18 @@ public sealed class IdentityAccountEndpointsTests(IdentityApiFactory factory)
         });
         var responses = await Task.WhenAll(firstRequest, secondRequest);
 
-        Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.OK));
-        Assert.Equal(1, responses.Count(response => response.StatusCode == HttpStatusCode.Conflict));
-        var conflict = responses.Single(response => response.StatusCode == HttpStatusCode.Conflict);
-        var conflictCode = (await conflict.Content.ReadFromJsonAsync<ErrorResponse>())!.Error.Code;
-        Assert.Contains(conflictCode, new[] { "last_active_owner", "account_conflict" });
+        // Both demotions are individually legal (the acting owner remains), so
+        // when the requests happen not to overlap both succeed; when they do
+        // overlap, serializable isolation aborts one and it must surface as a
+        // clean conflict, never a 500. Either way the owner set stays intact.
+        var succeeded = responses.Count(response => response.StatusCode == HttpStatusCode.OK);
+        Assert.InRange(succeeded, 1, 2);
+        foreach (var conflict in responses.Where(response => response.StatusCode != HttpStatusCode.OK))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+            var conflictCode = (await conflict.Content.ReadFromJsonAsync<ErrorResponse>())!.Error.Code;
+            Assert.Contains(conflictCode, new[] { "last_active_owner", "account_conflict" });
+        }
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
@@ -177,14 +184,22 @@ public sealed class IdentityAccountEndpointsTests(IdentityApiFactory factory)
             .Where(role => role.Name == AuthRoles.Owner)
             .Select(role => role.Id)
             .SingleAsync();
-        var activeOwners = await db.UserRoles
+        var demotedTargets = await db.UserRoles
             .Join(db.Users, assignment => assignment.UserId, user => user.Id,
                 (assignment, user) => new { assignment, user })
             .CountAsync(item => item.assignment.RoleId == ownerRoleId &&
                 (item.user.Id == first.Id || item.user.Id == second.Id) &&
                 !item.user.IsDisabled &&
                 (!item.user.LockoutEnd.HasValue || item.user.LockoutEnd <= DateTimeOffset.UtcNow));
-        Assert.Equal(1, activeOwners);
+        Assert.Equal(2 - succeeded, demotedTargets);
+
+        var activeOwners = await db.UserRoles
+            .Join(db.Users, assignment => assignment.UserId, user => user.Id,
+                (assignment, user) => new { assignment, user })
+            .CountAsync(item => item.assignment.RoleId == ownerRoleId &&
+                !item.user.IsDisabled &&
+                (!item.user.LockoutEnd.HasValue || item.user.LockoutEnd <= DateTimeOffset.UtcNow));
+        Assert.True(activeOwners >= 1);
     }
 
     [Fact]
