@@ -23,8 +23,6 @@ namespace Vantigo.Communications.Endpoints;
 internal static class MailgunInboundEndpoints
 {
     private const string Provider = "mailgun";
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Window> Windows = new(StringComparer.Ordinal);
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
 
     internal static void MapMailgunInboundEndpoint(this IEndpointRouteBuilder endpoints)
     {
@@ -35,7 +33,8 @@ internal static class MailgunInboundEndpoints
     }
 
     private static async Task<IResult> ReceiveAsync(Guid channelId, HttpContext http, CommunicationsDbContext db,
-        MailboxCredentialProtector protector, IObjectStore<CommunicationsStorageScope> objectStore, IOptions<MailgunInboundOptions> options, CancellationToken cancellationToken)
+        MailboxCredentialProtector protector, IObjectStore<CommunicationsStorageScope> objectStore, IOptions<MailgunInboundOptions> options,
+        MailgunInboundThrottle throttle, CancellationToken cancellationToken)
     {
         var limit = options.Value;
         if (!HttpMethods.IsPost(http.Request.Method) ||
@@ -44,9 +43,22 @@ internal static class MailgunInboundEndpoints
         if (http.Request.ContentLength is > 0 and var contentLength && contentLength > limit.MaxRequestBytes)
             return TypedResults.StatusCode(StatusCodes.Status406NotAcceptable);
         var remote = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        // A per-IP probe limit runs before anything keyed by the caller-chosen
+        // channel id, and per-channel throttle state is only allocated for
+        // channels that actually exist, so unknown-channel floods can neither
+        // grow limiter state nor turn into a database lookup per request.
+        if (!throttle.TryTake($"probe|{remote}", 60, TimeSpan.FromMinutes(1)))
+            return TypedResults.StatusCode(StatusCodes.Status429TooManyRequests);
+        var channelIsKnown = await throttle.IsKnownChannelAsync(channelId, () =>
+            db.Channels.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(item => item.Id == channelId && item.IsActive && item.Type == "email" && item.Provider == Provider, cancellationToken));
+        if (!channelIsKnown)
+            return TypedResults.StatusCode(StatusCodes.Status406NotAcceptable);
+
         var gateKey = $"{channelId:N}|{remote}";
-        if (!TryTake(gateKey, 20, TimeSpan.FromMinutes(1))) return TypedResults.StatusCode(StatusCodes.Status429TooManyRequests);
-        var gate = Gates.GetOrAdd(gateKey, _ => new SemaphoreSlim(1, 1));
+        if (!throttle.TryTake(gateKey, 20, TimeSpan.FromMinutes(1))) return TypedResults.StatusCode(StatusCodes.Status429TooManyRequests);
+        var gate = throttle.GetGate(gateKey);
         if (!await gate.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken)) return TypedResults.StatusCode(StatusCodes.Status429TooManyRequests);
         try { return await ReceiveCoreAsync(channelId, http, db, protector, objectStore, limit, cancellationToken); }
         finally { gate.Release(); }
@@ -347,15 +359,6 @@ internal static class MailgunInboundEndpoints
     {
         internal static ReceiptReservationResult Ack { get; } = new(null, null, true, false);
     }
-
-    private static bool TryTake(string key, int limit, TimeSpan window)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var current = Windows.AddOrUpdate(key, _ => new Window(now, 1), (_, old) => old.Start + window <= now ? new Window(now, 1) : new Window(old.Start, old.Count + 1));
-        return current.Count <= limit;
-    }
-
-    private sealed record Window(DateTimeOffset Start, int Count);
 
     private static string? TryReadMessageId(string? encodedHeaders)
     {

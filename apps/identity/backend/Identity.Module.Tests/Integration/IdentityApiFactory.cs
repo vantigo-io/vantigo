@@ -93,7 +93,20 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         OwnerId = (await scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>().FindByEmailAsync(OwnerEmail))!.Id;
     }
 
-    public HttpClient CreateCookieClient() => CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = ClientBaseAddress });
+    private static int nextClientAddress;
+
+    /// <summary>
+    /// Gives every test client its own synthetic address so rate-limit
+    /// partitions (IP backstop, per-account throttle) never couple unrelated
+    /// tests through the shared "unknown" partition of the test server.
+    /// </summary>
+    public HttpClient CreateCookieClient()
+    {
+        var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = ClientBaseAddress });
+        var next = Interlocked.Increment(ref nextClientAddress);
+        client.DefaultRequestHeaders.TryAddWithoutValidation("X-Test-Client-Address", $"10.1.{next / 250 % 250 + 1}.{next % 250 + 1}");
+        return client;
+    }
     public async Task<HttpClient> CreateAntiforgeryClientAsync()
     {
         var client = CreateCookieClient();
@@ -319,6 +332,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.ConfigureServices(services =>
         {
             services.AddSingleton(new HostTestStartupPreparation(true, false));
+            services.AddTransient<IStartupFilter, IdentityTestClientAddressStartupFilter>();
             services.RemoveAll<IApplicationEmailSender>();
             services.AddSingleton<TestEmailSender>();
             services.AddSingleton<IApplicationEmailSender>(serviceProvider =>
@@ -628,6 +642,22 @@ internal sealed class DeterministicOidcBackchannelHandler(
         if (disposing) signingKey.Dispose();
         base.Dispose(disposing);
     }
+}
+
+internal sealed class IdentityTestClientAddressStartupFilter : IStartupFilter
+{
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use(async (context, continuation) =>
+        {
+            var address = context.Request.Headers["X-Test-Client-Address"].FirstOrDefault();
+            context.Connection.RemoteIpAddress = System.Net.IPAddress.TryParse(address, out var parsed)
+                ? parsed
+                : System.Net.IPAddress.Parse("10.1.0.1");
+            await continuation(context);
+        });
+        next(app);
+    };
 }
 
 [CollectionDefinition(Name)] public sealed class IdentityApiCollection : ICollectionFixture<IdentityApiFactory> { public const string Name = "IdentityApi"; }

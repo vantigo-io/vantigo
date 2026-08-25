@@ -21,6 +21,7 @@ public static class AuthServiceCollectionExtensions
         IHostEnvironment environment)
     {
         services.AddMemoryCache();
+        services.AddSingleton<LoginAttemptThrottle>();
         services
             .AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
             {
