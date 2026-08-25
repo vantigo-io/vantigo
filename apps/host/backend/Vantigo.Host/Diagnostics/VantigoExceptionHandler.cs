@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+using Npgsql;
 
 namespace Vantigo.Host.Diagnostics;
 
@@ -16,6 +19,8 @@ internal sealed class VantigoExceptionHandler(
     internal const string UnexpectedErrorDetail =
         "The request could not be completed. Quote the trace id when reporting this problem.";
     internal const string MalformedRequestDetail = "The request could not be read.";
+    internal const string ConflictDetail =
+        "The request conflicts with data that already exists. Verify the values and try again.";
 
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
@@ -78,6 +83,17 @@ internal sealed class VantigoExceptionHandler(
     private static (int StatusCode, string Detail) Map(Exception exception) => exception switch
     {
         BadHttpRequestException badRequest => (badRequest.StatusCode, MalformedRequestDetail),
+        // Unique and exclusion violations are the database backstop behind the
+        // endpoints' friendly pre-checks: two concurrent requests can both pass
+        // the pre-check, and the loser's constraint violation is an expected
+        // conflict, not a server fault.
+        DbUpdateException { InnerException: PostgresException inner } when IsConstraintConflict(inner) =>
+            (StatusCodes.Status409Conflict, ConflictDetail),
+        PostgresException postgres when IsConstraintConflict(postgres) =>
+            (StatusCodes.Status409Conflict, ConflictDetail),
         _ => (StatusCodes.Status500InternalServerError, UnexpectedErrorDetail),
     };
+
+    private static bool IsConstraintConflict(PostgresException exception) =>
+        exception.SqlState is PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ExclusionViolation;
 }
