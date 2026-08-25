@@ -105,7 +105,7 @@ public sealed class CustomerStatsAndStatusTests(CustomersApiFactory factory)
         var update = await client.PutAsJsonAsync($"/api/v1/customers/{id}", new
         {
             name = "Status Invalid",
-            status = "archived",
+            status = "deleted",
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);

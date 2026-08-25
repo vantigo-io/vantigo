@@ -40,7 +40,7 @@ internal static class CustomersEndpoints
             .RequirePermission(CustomerPermissions.View);
 
         group.MapDelete("/{id:int}", DeleteCustomerEndpoint.Handler)
-            .WithSummary("Delete a customer")
+            .WithSummary("Archive a customer (customers are never hard-deleted)")
             .RequirePermission(CustomerPermissions.Delete);
 
         group.MapGet("/{id:int}/legal-identity", LegalIdentityEndpoints.Get)

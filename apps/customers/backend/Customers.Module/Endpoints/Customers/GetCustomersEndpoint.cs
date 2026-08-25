@@ -42,6 +42,12 @@ internal static class GetCustomersEndpoint
 
         var query = dbContext.Customers.AsNoTracking();
 
+        if (request.IncludeArchived is not true)
+        {
+            query = query.Where(customer =>
+                customer.Status != (Domain.Customers.Common.CustomerStatus)Domain.Customers.Common.CustomerStatus.Archived);
+        }
+
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var pattern = $"%{EscapeLikePattern(request.Search.Trim())}%";
@@ -169,6 +175,12 @@ internal static class GetCustomersEndpoint
 
         /// <summary>The sort direction, either "asc" or "desc". Defaults to "asc".</summary>
         public string? SortDirection { get; init; }
+
+        /// <summary>
+        /// Includes archived customers in the listing. Archived customers are
+        /// excluded by default and remain resolvable by id.
+        /// </summary>
+        public bool? IncludeArchived { get; init; }
 
         /// <summary>Case-insensitive free-text search matching the customer name, legal name and legal id.</summary>
         public string? Search { get; init; }

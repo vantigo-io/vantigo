@@ -23,7 +23,11 @@ internal static class GetCustomerStatsEndpoint
         CustomersDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        var customers = dbContext.Customers.AsNoTracking();
+        // Archived customers are excluded from every key figure: the overview
+        // reports the working customer base, and archival is this module's
+        // delete semantics.
+        var customers = dbContext.Customers.AsNoTracking()
+            .Where(c => c.Status != (CustomerStatus)CustomerStatus.Archived);
 
         var totalCount = await customers.CountAsync(cancellationToken);
         var activeCount = await customers.CountAsync(
