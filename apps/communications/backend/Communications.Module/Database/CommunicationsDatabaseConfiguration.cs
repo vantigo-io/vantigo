@@ -35,6 +35,9 @@ public static class CommunicationsDatabaseConfiguration
             provider.GetRequiredService<NpgsqlDataSource>(), npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "communications"))
             .UseTenancy(provider));
         services.AddCommunicationsModuleVersioning();
+        // Deliberately no HTTP-level retry: a Mailgun send is not idempotent
+        // (an ambiguous timeout may already have delivered the message), and
+        // the outbox worker owns at-least-once retries with its own dedupe.
         services.AddHttpClient("mailgun", client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddOptions<MailgunInboundOptions>().BindConfiguration("Communications:Inbound");
         services.AddOptions<ClamAvOptions>().BindConfiguration("Communications:Scanner");

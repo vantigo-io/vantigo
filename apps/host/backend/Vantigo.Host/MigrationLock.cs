@@ -32,7 +32,25 @@ internal static class MigrationLock
         var connection = new NpgsqlConnection(connectionString);
         await using (connection.ConfigureAwait(false))
         {
-            await connection.OpenAsync().ConfigureAwait(false);
+            // PostgreSQL may still be coming up when the migrator starts; a
+            // short bounded retry keeps a racing container start from failing
+            // the whole rollout.
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    await connection.OpenAsync().ConfigureAwait(false);
+                    break;
+                }
+                catch (NpgsqlException exception) when (attempt < 6)
+                {
+                    logger.LogWarning(
+                        exception,
+                        "PostgreSQL is not reachable yet (attempt {Attempt}); retrying.",
+                        attempt);
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2)).ConfigureAwait(false);
+                }
+            }
 
             logger.LogInformation("Acquiring the migration advisory lock.");
             var acquire = new NpgsqlCommand("SELECT pg_advisory_lock(@key);", connection);
