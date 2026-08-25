@@ -381,9 +381,13 @@ roll back the application binary across the schema cleanup. Before upgrading:
    credentials supplied by the secret manager, then verify it with
    `pg_restore --list`. Restore-test the dump in a safe environment and keep the
    backup outside the database volume; do not put the password in shell history.
-3. Stop or drain the API so no application instance races the migration. Run
-   exactly one terminating `migrate` job with the new image and the same database
-   configuration. The host `api` command does not apply migrations.
+3. Run a terminating `migrate` job with the new image and the same database
+   configuration. The host `api` command does not apply migrations. Migrators
+   serialize on an installation-wide PostgreSQL advisory lock, so an
+   accidentally concurrent migrator waits for the first and then re-runs
+   idempotently rather than corrupting the schema; still prefer running exactly
+   one job, and for destructive cleanup releases (like this one) stop or drain
+   the API first so no old binary serves requests against the new schema.
 4. Wait for the migration job to exit successfully before starting the API. Do
    not run the Development-only `seed` command in production.
 5. Start the new API, verify local Owner login, the fixed OIDC callback (if
