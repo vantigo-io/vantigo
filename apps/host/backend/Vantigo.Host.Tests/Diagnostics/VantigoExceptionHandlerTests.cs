@@ -39,6 +39,42 @@ public sealed class VantigoExceptionHandlerTests
     }
 
     [Fact]
+    public async Task Unique_violations_from_savechanges_become_conflict_problem_details()
+    {
+        using ServiceProvider provider = BuildProvider();
+        IExceptionHandler handler = provider.GetServices<IExceptionHandler>().Single();
+        HttpContext context = CreateContext(provider);
+
+        var exception = new Microsoft.EntityFrameworkCore.DbUpdateException(
+            "Save failed.",
+            new Npgsql.PostgresException("duplicate key value violates unique constraint", "ERROR", "ERROR", "23505"));
+        bool handled = await handler.TryHandleAsync(context, exception, CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        string body = ReadBody(context);
+        Assert.DoesNotContain("duplicate key", body, StringComparison.Ordinal);
+        JsonElement problem = JsonDocument.Parse(body).RootElement;
+        Assert.Equal(StatusCodes.Status409Conflict, problem.GetProperty("status").GetInt32());
+    }
+
+    [Fact]
+    public async Task Exclusion_violations_from_raw_sql_become_conflict_problem_details()
+    {
+        using ServiceProvider provider = BuildProvider();
+        IExceptionHandler handler = provider.GetServices<IExceptionHandler>().Single();
+        HttpContext context = CreateContext(provider);
+
+        var exception = new Npgsql.PostgresException(
+            "conflicting key value violates exclusion constraint", "ERROR", "ERROR", "23P01");
+        bool handled = await handler.TryHandleAsync(context, exception, CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        Assert.DoesNotContain("exclusion constraint", ReadBody(context), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Problem_details_carry_the_current_activity_trace_id()
     {
         using ServiceProvider provider = BuildProvider();

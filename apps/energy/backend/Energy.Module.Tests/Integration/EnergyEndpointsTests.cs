@@ -86,6 +86,25 @@ public sealed class EnergyEndpointsTests
     }
 
     [Fact]
+    public async Task Concurrent_overlapping_supply_period_creates_yield_one_success_and_conflicts()
+    {
+        var point = await CreatePointAsync();
+        var start = UtcDate().AddHours(1);
+
+        // Every request passes the friendly pre-check simultaneously; the
+        // database exclusion constraint decides the winner and the losers must
+        // surface as conflicts, not server errors.
+        var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+            _client.PostAsJsonAsync($"/api/v1/energy/metering-points/{point.Id}/supply-periods", new { customerId = 1001, start })));
+
+        var outcomes = string.Join(", ", await Task.WhenAll(responses.Select(async response =>
+            $"{(int)response.StatusCode}:{await response.Content.ReadAsStringAsync()}")));
+        Assert.True(responses.Count(response => response.StatusCode == HttpStatusCode.Created) == 1, outcomes);
+        Assert.All(responses.Where(response => response.StatusCode != HttpStatusCode.Created),
+            response => Assert.Equal(HttpStatusCode.Conflict, response.StatusCode));
+    }
+
+    [Fact]
     public async Task Supply_period_switch_ends_current_period_and_creates_contiguous_period()
     {
         var point = await CreatePointAsync();
