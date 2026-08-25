@@ -234,6 +234,18 @@ jobs:
             echo "$platforms" | grep -qx "$expected" || { echo "::error::Image index is missing $expected."; exit 1; }
           done
 
+      - name: 🔒 Assert the image runs as a non-root user
+        run: |
+          archive="${RUNNER_TEMP}/container/vantigo-io/vantigo.tar.gz"
+          index=$(tar -xOf "$archive" index.json | jq -r '.manifests[0].digest | sub("^sha256:"; "")')
+          manifest=$(tar -xOf "$archive" "blobs/sha256/${index}" | jq -r '.manifests[0].digest | sub("^sha256:"; "")')
+          config=$(tar -xOf "$archive" "blobs/sha256/${manifest}" | jq -r '.config.digest | sub("^sha256:"; "")')
+          user=$(tar -xOf "$archive" "blobs/sha256/${config}" | jq -r '.config.User // empty')
+          echo "OCI config User: '${user}'"
+          case "$user" in
+            ""|"root"|"0"|"0:"*) echo "::error::The image must declare a non-root OCI User."; exit 1 ;;
+          esac
+
       - name: 🛡️ Scan container image for vulnerabilities
         run: |
           set -euo pipefail
