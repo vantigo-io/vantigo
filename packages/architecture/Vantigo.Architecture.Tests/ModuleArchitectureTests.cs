@@ -149,17 +149,20 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Products.Database.Products.ProductsDbContextFactory",
             "Vantigo.Products.Database.ProductsDatabaseConfiguration",
             "Vantigo.Products.Database.Products.Migrations.Initial",
+            "Vantigo.Products.Database.Products.Migrations.TenantRlsPolicyNullSafe",
             "Vantigo.Products.Endpoints.VersionedBusinessEndpointExtensions",
             "Vantigo.Customers.Database.Customers.CustomersDbContext",
             "Vantigo.Customers.Database.Customers.CustomersDbContextFactory",
             "Vantigo.Customers.Database.CustomersDatabaseConfiguration",
             "Vantigo.Customers.Database.DevelopmentSeed.DevelopmentDataSeeder",
             "Vantigo.Customers.Database.Customers.Migrations.Initial",
+            "Vantigo.Customers.Database.Customers.Migrations.TenantRlsPolicyNullSafe",
             "Vantigo.Customers.Endpoints.VersionedBusinessEndpointExtensions",
             "Vantigo.Communications.Database.Communications.CommunicationsDbContext",
             "Vantigo.Communications.Database.Communications.CommunicationsDbContextFactory",
             "Vantigo.Communications.Database.CommunicationsDatabaseConfiguration",
             "Vantigo.Communications.Database.Communications.Migrations.Initial",
+            "Vantigo.Communications.Database.Communications.Migrations.TenantRlsPolicyNullSafe",
             "Vantigo.Communications.Endpoints.VersionedBusinessEndpointExtensions",
             // Communications currently exposes its HTTP request/response contracts and EF entities;
             // the endpoint binder and EF model builder consume these public types.
@@ -197,6 +200,7 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Energy.Database.Energy.EnergyDbContext",
             "Vantigo.Energy.Database.Energy.EnergyDbContextFactory",
             "Vantigo.Energy.Database.Energy.Migrations.Initial",
+            "Vantigo.Energy.Database.Energy.Migrations.TenantRlsPolicyNullSafe",
             "Vantigo.Energy.Database.EnergyDatabaseConfiguration",
             "Vantigo.Energy.Endpoints.VersionedBusinessEndpointExtensions",
         };

@@ -7,65 +7,48 @@ using Vantigo.Tenancy.Abstractions;
 namespace Vantigo.Tenancy.EntityFramework;
 
 /// <summary>
-/// Sets the transaction-local PostgreSQL tenant GUC after a transaction begins.
-/// An unresolved tenant deliberately leaves the GUC unset, allowing RLS to fail
+/// Applies the session-scoped PostgreSQL tenant setting every time EF Core opens
+/// a connection, so row-level security covers transaction-less reads as well as
+/// transactional work. An unresolved tenant explicitly clears the setting: a
+/// pooled physical connection can never carry a previous request's tenant, and
+/// the RLS policies treat an empty setting as "match nothing", so access fails
 /// closed.
 /// </summary>
-public sealed class TenantConnectionInterceptor(ITenantContext tenantContext) : DbTransactionInterceptor
+public sealed class TenantConnectionInterceptor(ITenantContext tenantContext) : DbConnectionInterceptor
 {
-    /// <inheritdoc />
-    public override DbTransaction TransactionStarted(
-        DbConnection connection,
-        TransactionEndEventData eventData,
-        DbTransaction result)
-    {
-        SetTenantGuc(connection, result);
-        return result;
-    }
+    private const string ApplyTenantSettingSql = "SELECT set_config('app.tenant_id', @tenant_id, false);";
 
     /// <inheritdoc />
-    public override async ValueTask<DbTransaction> TransactionStartedAsync(
-        DbConnection connection,
-        TransactionEndEventData eventData,
-        DbTransaction result,
-        CancellationToken cancellationToken = default)
+    public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData)
     {
-        await SetTenantGucAsync(connection, result, cancellationToken);
-        return result;
-    }
-
-    private void SetTenantGuc(DbConnection connection, DbTransaction transaction)
-    {
-        if (!tenantContext.IsResolved)
-            return;
-
-        using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "SELECT set_config('app.tenant_id', @tenant_id, true);";
-
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "tenant_id";
-        parameter.Value = tenantContext.Current.Value.ToString();
-        command.Parameters.Add(parameter);
+        using var command = CreateApplyCommand(connection);
         command.ExecuteNonQuery();
     }
 
-    private async Task SetTenantGucAsync(
+    /// <inheritdoc />
+    public override async Task ConnectionOpenedAsync(
         DbConnection connection,
-        DbTransaction transaction,
-        CancellationToken cancellationToken)
+        ConnectionEndEventData eventData,
+        CancellationToken cancellationToken = default)
     {
-        if (!tenantContext.IsResolved)
-            return;
+        var command = CreateApplyCommand(connection);
+        await using (command.ConfigureAwait(false))
+        {
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
 
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
-        command.CommandText = "SELECT set_config('app.tenant_id', @tenant_id, true);";
+    private DbCommand CreateApplyCommand(DbConnection connection)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = ApplyTenantSettingSql;
 
         var parameter = command.CreateParameter();
         parameter.ParameterName = "tenant_id";
-        parameter.Value = tenantContext.Current.Value.ToString();
+        parameter.Value = tenantContext.IsResolved
+            ? tenantContext.Current.Value.ToString()
+            : string.Empty;
         command.Parameters.Add(parameter);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        return command;
     }
 }

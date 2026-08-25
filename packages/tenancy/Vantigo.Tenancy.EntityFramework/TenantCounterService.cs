@@ -26,8 +26,10 @@ public sealed class TenantCounterService(ITenantContext tenantContext) : ITenant
         var connection = db.Database.GetDbConnection();
         var openedConnection = connection.State != ConnectionState.Open;
 
+        // Open through EF so the tenant connection interceptor runs; a raw
+        // ADO.NET open would skip it and RLS would reject the upsert.
         if (openedConnection)
-            await connection.OpenAsync(cancellationToken);
+            await db.Database.OpenConnectionAsync(cancellationToken);
 
         try
         {
@@ -63,7 +65,7 @@ public sealed class TenantCounterService(ITenantContext tenantContext) : ITenant
         finally
         {
             if (openedConnection)
-                await connection.CloseAsync();
+                await db.Database.CloseConnectionAsync();
         }
     }
 }

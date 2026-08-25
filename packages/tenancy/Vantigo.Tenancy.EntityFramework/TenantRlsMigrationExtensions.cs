@@ -8,7 +8,23 @@ namespace Vantigo.Tenancy.EntityFramework;
 public static class TenantRlsMigrationExtensions
 {
     /// <summary>
-    /// Enables and forces tenant RLS, with an unset tenant GUC matching no rows.
+    /// The policy predicate: an unset or empty tenant setting matches no rows.
+    /// NULLIF guards the uuid cast because a pooled connection reset (DISCARD
+    /// ALL) leaves a previously-set custom GUC as an empty string, not unset.
+    /// </summary>
+    internal const string TenantPolicyPredicate =
+        "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid";
+
+    /// <summary>
+    /// The predicate emitted before the empty-string guard existed; kept only so
+    /// policy-upgrade migrations can revert in Down().
+    /// </summary>
+    internal const string LegacyTenantPolicyPredicate =
+        "tenant_id = current_setting('app.tenant_id', true)::uuid";
+
+    /// <summary>
+    /// Enables and forces tenant RLS, with an unset or empty tenant GUC matching
+    /// no rows.
     /// </summary>
     public static MigrationBuilder EnableTenantRls(
         this MigrationBuilder migrationBuilder,
@@ -22,7 +38,46 @@ public static class TenantRlsMigrationExtensions
             ALTER TABLE {qualifiedTable} ENABLE ROW LEVEL SECURITY;
             ALTER TABLE {qualifiedTable} FORCE ROW LEVEL SECURITY;
             CREATE POLICY tenant_isolation ON {qualifiedTable}
-                USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+                USING ({TenantPolicyPredicate});
+            """);
+        return migrationBuilder;
+    }
+
+    /// <summary>
+    /// Upgrades a table's tenant policy created before the empty-string guard to
+    /// the null-safe predicate. Without it, a query on a reset pooled connection
+    /// fails on the uuid cast instead of matching no rows.
+    /// </summary>
+    public static MigrationBuilder MakeTenantRlsPolicyNullSafe(
+        this MigrationBuilder migrationBuilder,
+        string schema,
+        string table)
+    {
+        ArgumentNullException.ThrowIfNull(migrationBuilder);
+        var qualifiedTable = TenantSqlIdentifiers.QuoteQualifiedTable(schema, table);
+
+        migrationBuilder.Sql($"""
+            ALTER POLICY tenant_isolation ON {qualifiedTable}
+                USING ({TenantPolicyPredicate});
+            """);
+        return migrationBuilder;
+    }
+
+    /// <summary>
+    /// Reverts a table's tenant policy to the pre-guard predicate; the Down()
+    /// counterpart of <see cref="MakeTenantRlsPolicyNullSafe"/>.
+    /// </summary>
+    public static MigrationBuilder RevertTenantRlsPolicyNullSafe(
+        this MigrationBuilder migrationBuilder,
+        string schema,
+        string table)
+    {
+        ArgumentNullException.ThrowIfNull(migrationBuilder);
+        var qualifiedTable = TenantSqlIdentifiers.QuoteQualifiedTable(schema, table);
+
+        migrationBuilder.Sql($"""
+            ALTER POLICY tenant_isolation ON {qualifiedTable}
+                USING ({LegacyTenantPolicyPredicate});
             """);
         return migrationBuilder;
     }
