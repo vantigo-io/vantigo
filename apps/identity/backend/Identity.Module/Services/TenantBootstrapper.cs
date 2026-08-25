@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using Npgsql;
+
 using Vantigo.Configuration;
 using Vantigo.Identity.Database.Accounts;
 
@@ -12,8 +14,32 @@ public sealed class TenantBootstrapper(
     IOptions<TenancyOptions> tenancyOptions,
     IOptions<ModuleHostingOptions> moduleHostingOptions)
 {
-    /// <summary>Ensures the default tenant and single-mode memberships exist.</summary>
+    private const int MaxEnsureAttempts = 4;
+
+    /// <summary>
+    /// Ensures the default tenant and single-mode memberships exist. Several
+    /// replicas can start concurrently, so a serializable conflict or a
+    /// duplicate insert from a sibling replica is retried; the rerun then
+    /// takes the already-provisioned path.
+    /// </summary>
     public async Task EnsureAsync(CancellationToken cancellationToken = default)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await EnsureCoreAsync(cancellationToken);
+                return;
+            }
+            catch (Exception exception) when (IsRetryableConflict(exception) && attempt < MaxEnsureAttempts)
+            {
+                dbContext.ChangeTracker.Clear();
+                await Task.Delay(TimeSpan.FromMilliseconds(25 * attempt), cancellationToken);
+            }
+        }
+    }
+
+    private async Task EnsureCoreAsync(CancellationToken cancellationToken)
     {
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             System.Data.IsolationLevel.Serializable, cancellationToken);
@@ -65,5 +91,19 @@ public sealed class TenantBootstrapper(
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static bool IsRetryableConflict(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException postgres && postgres.SqlState is
+                PostgresErrorCodes.UniqueViolation or
+                PostgresErrorCodes.SerializationFailure or
+                PostgresErrorCodes.DeadlockDetected)
+                return true;
+        }
+
+        return false;
     }
 }

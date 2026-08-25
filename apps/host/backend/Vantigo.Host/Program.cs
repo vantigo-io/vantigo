@@ -64,11 +64,7 @@ if (commandLine.Command is VantigoCommand.Migrate or VantigoCommand.ResetCommuni
 {
     var commandSucceeded = await VantigoCommandDispatcher.ExecuteDatabaseCommandAsync(
         commandLine.Command,
-        async () =>
-        {
-            await app.Services.MigrateDataProtectionAsync();
-            await Program.MigrateEnabledModulesAsync(app.Services);
-        },
+        () => Program.MigrateAllAsync(app.Services),
         () => CommunicationsSchemaResetCommand.ExecuteAsync(
             app.Services,
             app.Environment,
@@ -192,8 +188,7 @@ public partial class Program
     {
         if (testPreparation.ApplyMigrations)
         {
-            await app.Services.MigrateDataProtectionAsync();
-            await MigrateEnabledModulesAsync(app.Services);
+            await MigrateAllAsync(app.Services);
             if (ModuleActivation.Resolve(app.Services).Communications)
                 await app.Services.SeedCommunicationsAsync();
         }
@@ -243,13 +238,43 @@ public partial class Program
         ModuleCompositionValidator.Validate(activation, services);
     }
 
+    /// <summary>
+    /// Runs every enabled context's migrations under one installation-wide
+    /// advisory lock, so concurrent migrators (multi-replica rollouts, retried
+    /// jobs) serialize instead of corrupting a half-upgraded schema.
+    /// </summary>
+    private static Task MigrateAllAsync(IServiceProvider services) =>
+        MigrationLock.RunAsync(services, async () =>
+        {
+            await services.MigrateDataProtectionAsync();
+            await MigrateEnabledModulesAsync(services);
+        });
+
     private static async Task MigrateEnabledModulesAsync(IServiceProvider services)
     {
+        var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("Vantigo.Migrations");
         ModuleActivation activation = ModuleActivation.Resolve(services);
-        if (activation.Customers) await services.MigrateAsync();
-        if (activation.Communications) await services.MigrateCommunicationsAsync();
-        if (activation.Products) await services.MigrateProductsAsync();
-        if (activation.Energy) await services.MigrateEnergyAsync();
+        if (activation.Customers)
+        {
+            logger.LogInformation("Migrating the customers schema.");
+            await services.MigrateAsync();
+        }
+        if (activation.Communications)
+        {
+            logger.LogInformation("Migrating the communications schema.");
+            await services.MigrateCommunicationsAsync();
+        }
+        if (activation.Products)
+        {
+            logger.LogInformation("Migrating the products schema.");
+            await services.MigrateProductsAsync();
+        }
+        if (activation.Energy)
+        {
+            logger.LogInformation("Migrating the energy schema.");
+            await services.MigrateEnergyAsync();
+        }
+        logger.LogInformation("Migrating the identity schema.");
         await services.MigrateIdentityAsync();
     }
 
