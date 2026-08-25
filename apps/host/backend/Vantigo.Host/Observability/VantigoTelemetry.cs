@@ -70,7 +70,10 @@ public static class VantigoTelemetry
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddNpgsqlInstrumentation();
+                    .AddNpgsqlInstrumentation()
+                    // Module meters; registered by name so disabled modules
+                    // simply emit nothing.
+                    .AddMeter("Vantigo.Communications");
 
                 if (exporterConfigured)
                 {

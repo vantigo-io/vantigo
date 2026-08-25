@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Vantigo.Communications.Database.Communications;
@@ -11,9 +12,11 @@ using Vantigo.Communications.Database.Communications;
 namespace Vantigo.Communications.Database.Communications.Migrations
 {
     [DbContext(typeof(CommunicationsDbContext))]
-    partial class CommunicationsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260825130658_OutboxDeliveryAttemptMarker")]
+    partial class OutboxDeliveryAttemptMarker
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

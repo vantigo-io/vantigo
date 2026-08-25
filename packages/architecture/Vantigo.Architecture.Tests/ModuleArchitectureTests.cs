@@ -163,6 +163,7 @@ public sealed class ModuleArchitectureTests
             "Vantigo.Communications.Database.CommunicationsDatabaseConfiguration",
             "Vantigo.Communications.Database.Communications.Migrations.Initial",
             "Vantigo.Communications.Database.Communications.Migrations.TenantRlsPolicyNullSafe",
+            "Vantigo.Communications.Database.Communications.Migrations.OutboxDeliveryAttemptMarker",
             "Vantigo.Communications.Endpoints.VersionedBusinessEndpointExtensions",
             // Communications currently exposes its HTTP request/response contracts and EF entities;
             // the endpoint binder and EF model builder consume these public types.

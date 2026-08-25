@@ -68,6 +68,30 @@ files. Mailgun credentials are not a service-to-service integration.
 SMTP credentials must be kept in a secret store. SMTP is for outbound mail;
 inbound mail synchronization and IMAP support are not implemented.
 
+### Delivery semantics
+
+Outbound email is **at-least-once**. The outbox worker claims a job with a
+lease, performs the external send, and only then commits completion. If the
+process dies between provider acceptance and the completion commit, the lease
+expires and another worker resends the message — a duplicate email is
+possible after a crash or deployment in exactly that window, and that
+trade-off is deliberate: the alternative (at-most-once) silently loses mail.
+
+Three mechanisms keep this honest:
+
+- Every send uses a **deterministic `Message-Id`** derived from the message's
+  id (both SMTP and Mailgun), so a resent message carries the same identity
+  and receiving mail systems can collapse duplicates.
+- Immediately before the external call, the job is stamped with
+  `DeliveryAttemptedAt` in its own committed write. A job re-claimed with
+  that stamp set may already have been delivered; the resend still happens,
+  but it is logged as a possible duplicate and counted on the
+  `communications.outbox.possible_duplicate_sends` metric
+  (meter `Vantigo.Communications`) — alert on it rather than discovering
+  duplicates from customer reports.
+- There is deliberately **no HTTP-level retry** on the Mailgun send call: an
+  ambiguous timeout may already have delivered, and the outbox owns retries.
+
 ### Mailgun Routes inbound
 
 Configure a Mailgun Route with `forward("https://your-host/api/v1/communications/inbound/mailgun/{channelId}")`

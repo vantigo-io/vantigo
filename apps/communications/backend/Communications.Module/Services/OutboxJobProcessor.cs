@@ -79,6 +79,22 @@ internal sealed class OutboxJobProcessor(
                     .FirstOrDefaultAsync(cancellationToken);
                 if (candidate is null) break;
 
+                // A job whose lease expired after the external call was marked
+                // imminent may already be delivered: the crash window sits
+                // between provider acceptance and the completion commit.
+                // Delivery is at-least-once, so it is resent deliberately — the
+                // deterministic Message-Id lets receivers collapse duplicates —
+                // but the occurrence must be observable, never silent.
+                if (candidate.Status == "processing" && candidate.DeliveryAttemptedAt is not null)
+                {
+                    logger.LogWarning(
+                        "Outbox job {JobId} for message {MessageId} is re-claimed after a send was already attempted at {AttemptedAt}; the previous attempt may have delivered, so this resend is a possible duplicate.",
+                        candidate.Id,
+                        candidate.MessageId,
+                        candidate.DeliveryAttemptedAt);
+                    CommunicationsMetrics.PossibleDuplicateSends.Add(1);
+                }
+
                 // The conditional update is the claim lock. It avoids raw SQL that
                 // depends on provider-specific quoted PascalCase column names.
                 var claimed = await db.OutboxJobs.Where(item => item.Id == candidate.Id &&
@@ -90,6 +106,7 @@ internal sealed class OutboxJobProcessor(
                         .SetProperty(item => item.Status, "processing")
                         .SetProperty(item => item.LeaseId, leaseId)
                         .SetProperty(item => item.LeaseUntil, leaseUntil)
+                        .SetProperty(item => item.DeliveryAttemptedAt, (DateTimeOffset?)null)
                         .SetProperty(item => item.Attempts, item => item.Attempts + 1), cancellationToken);
                 if (claimed == 0) continue;
 
@@ -142,6 +159,14 @@ internal sealed class OutboxJobProcessor(
                 await CancelSuppressedAsync(job.Id, leaseId, message, cancellationToken);
                 return true;
             }
+
+            // The imminent-send marker commits before the external call, so a
+            // crash between the two leaves evidence that the send may have
+            // happened; post-crash recovery flags the resend instead of
+            // silently duplicating.
+            await db.OutboxJobs.Where(item => item.Id == job.Id && item.LeaseId == leaseId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.DeliveryAttemptedAt, DateTimeOffset.UtcNow), cancellationToken);
 
             await adapters.Get(message.Conversation.Channel.Type).SendAsync(message, message.Conversation, message.Conversation.Channel, cancellationToken);
             var now = DateTimeOffset.UtcNow;
