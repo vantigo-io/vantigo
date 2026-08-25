@@ -40,9 +40,8 @@ internal static class IdentityControlPlaneEndpoints
     private static async Task<IResult> ListGroups(AccessGroupManagementService service, CancellationToken token)
     {
         var groups = await service.ListAsync(token);
-        var result = new List<AccessGroupResponse>(groups.Count);
-        foreach (var group in groups) result.Add(await ToResponse(service, group, token));
-        return TypedResults.Ok(result.ToArray());
+        var details = await service.DetailsForManyAsync(groups, token);
+        return TypedResults.Ok(groups.Select(group => ToResponse(group, details[group.Id])).ToArray());
     }
 
     private static async Task<IResult> GetGroup(Guid id, AccessGroupManagementService service, CancellationToken token)
@@ -123,10 +122,10 @@ internal static class IdentityControlPlaneEndpoints
     }
 
     private static async Task<AccessGroupResponse> ToResponse(AccessGroupManagementService service, AccessGroup group, CancellationToken token)
-    {
-        var details = await service.DetailsAsync(group, token);
-        return new(group.Id, group.DisplayName, group.Source.ToString(), group.ScimConnectionId, group.IsActive, group.CreatedAt, group.UpdatedAt, group.ConcurrencyStamp, details.MemberUserIds, details.RoleIds);
-    }
+        => ToResponse(group, await service.DetailsAsync(group, token));
+
+    private static AccessGroupResponse ToResponse(AccessGroup group, AccessGroupDetails details)
+        => new(group.Id, group.DisplayName, group.Source.ToString(), group.ScimConnectionId, group.IsActive, group.CreatedAt, group.UpdatedAt, group.ConcurrencyStamp, details.MemberUserIds, details.RoleIds);
 
     private static string? Normalize(string? value)
     {
