@@ -70,7 +70,21 @@ and how to move to an Azure Key Vault key instead — is described in
 [docs/data-protection-key-wrapping.md](../../docs/data-protection-key-wrapping.md).
 For startup-configured workforce OIDC, static SCIM provisioning, and recovery procedures, see
 the [SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
-Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`.
+Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`. For reproducible
+production deployments, pin by digest instead of tag — tags are mutable,
+digests are not:
+
+```dotenv
+VANTIGO_TAG=v1.2.3@sha256:<digest from the release>
+```
+
+Release images are cosign-signed; verify a digest before deploying it:
+
+```bash
+cosign verify ghcr.io/vantigo-io/vantigo@sha256:<digest> \
+    --certificate-identity-regexp 'https://github.com/vantigo-io/vantigo/.*' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
 ## Database roles and tenant isolation
 

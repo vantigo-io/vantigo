@@ -7,6 +7,10 @@
     <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
     <PublishProfile>DefaultContainer</PublishProfile>
     <ContainerRepository>vantigo-io/vantigo</ContainerRepository>
+    <!-- The chiseled base provides the unprivileged 'app' user (UID 1654);
+         setting it explicitly makes non-root a stated guarantee CI asserts
+         instead of an inherited default a base-image change could undo. -->
+    <ContainerUser>app</ContainerUser>
     <ContainerPort>8080</ContainerPort>
     <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
     <ContainerRuntimeIdentifiers>linux-x64;linux-arm64</ContainerRuntimeIdentifiers>
