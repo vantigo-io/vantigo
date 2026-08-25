@@ -41,7 +41,14 @@ public sealed class FreshCustomersApiFactory : WebApplicationFactory<Program>, I
 
     internal CapturingEmailSender EmailSender { get; } = new();
 
-    public async Task StartAsync() => await _postgres.StartAsync();
+    internal string RuntimeConnectionString { get; private set; } = string.Empty;
+
+    public async Task StartAsync()
+    {
+        await _postgres.StartAsync();
+        RuntimeConnectionString = await Vantigo.Tenancy.EntityFramework.TenantRuntimeRoleSql
+            .ProvisionAsync(_postgres.GetConnectionString());
+    }
 
     public HttpClient CreateCookieClient()
     {
@@ -78,7 +85,8 @@ public sealed class FreshCustomersApiFactory : WebApplicationFactory<Program>, I
         {
             var values = new Dictionary<string, string?>
             {
-                ["ConnectionStrings:vantigo"] = _postgres.GetConnectionString(),
+                ["ConnectionStrings:vantigo"] = RuntimeConnectionString,
+                ["ConnectionStrings:migrations"] = _postgres.GetConnectionString(),
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Owners:RequireMfa"] = RequireOwnerMfa.ToString(),
                 ["Authentication:Invitations:AcceptUrl"] = "http://test.local/invitations?token={token}",

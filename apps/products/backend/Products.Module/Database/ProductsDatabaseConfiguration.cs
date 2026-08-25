@@ -49,6 +49,22 @@ public static class ProductsDatabaseConfiguration
     public static async Task MigrateProductsAsync(this IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
+        var connectionStrings = scope.ServiceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+        if (connectionStrings.ResolveMigrationsOverride("products") is { } migrations)
+        {
+            // Migrations run as the schema-owner role while the runtime pool
+            // stays on the least-privilege role; see docs/tenancy.md.
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(migrations);
+            dataSourceBuilder.EnableDynamicJson();
+            await using var dataSource = dataSourceBuilder.Build();
+            var options = new DbContextOptionsBuilder<ProductsDbContext>()
+                .UseNpgsql(dataSource, npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "products"))
+                .Options;
+            await using var migrationContext = new ProductsDbContext(options);
+            await migrationContext.Database.MigrateAsync();
+            return;
+        }
+
         var dbContext = scope.ServiceProvider.GetRequiredService<ProductsDbContext>();
         await dbContext.Database.MigrateAsync();
     }

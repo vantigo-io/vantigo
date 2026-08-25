@@ -73,9 +73,17 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public Guid OwnerId { get; private set; }
 
+    /// <summary>
+    /// Least-privilege runtime role connection string the application connects
+    /// with; migrations use the container superuser.
+    /// </summary>
+    internal string RuntimeConnectionString { get; private set; } = string.Empty;
+
     public async Task InitializeAsync()
     {
         await postgres.StartAsync();
+        RuntimeConnectionString = await Vantigo.Tenancy.EntityFramework.TenantRuntimeRoleSql
+            .ProvisionAsync(postgres.GetConnectionString());
         using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = ClientBaseAddress });
         var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
@@ -121,21 +129,35 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     public async Task ResetIdentityStateAsync()
     {
+        await ResetIdentitySchemaAsAdminAsync();
         await using var scope = Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
-        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS identity CASCADE");
-        await db.Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<StaticScimStateInitializer>().EnsureAsync();
         await BootstrapOwnerAsync();
     }
 
     public async Task ResetIdentityStateWithoutBootstrapAsync()
     {
+        await ResetIdentitySchemaAsAdminAsync();
         await using var scope = Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
-        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS identity CASCADE");
-        await db.Database.MigrateAsync();
         await scope.ServiceProvider.GetRequiredService<StaticScimStateInitializer>().EnsureAsync();
+    }
+
+    /// <summary>
+    /// Dropping and re-migrating the schema is owner-only DDL, so it runs over
+    /// the container superuser rather than the app's least-privilege role. The
+    /// re-created objects are covered by the owner's default privileges, so the
+    /// runtime role keeps its DML access.
+    /// </summary>
+    private async Task ResetIdentitySchemaAsAdminAsync()
+    {
+        var options = new DbContextOptionsBuilder<AccountsDbContext>()
+            .UseNpgsql(
+                postgres.GetConnectionString(),
+                npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "identity"))
+            .Options;
+        await using var admin = new AccountsDbContext(options);
+        await admin.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS identity CASCADE");
+        await admin.Database.MigrateAsync();
     }
 
     public async Task BootstrapOwnerAsync()
@@ -245,7 +267,8 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             var values = new Dictionary<string, string?>
             {
-                ["ConnectionStrings:vantigo"] = postgres.GetConnectionString(),
+                ["ConnectionStrings:vantigo"] = RuntimeConnectionString,
+                ["ConnectionStrings:migrations"] = postgres.GetConnectionString(),
                 ["Tenancy:Mode"] = EnableMultiTenant ? "multi" : "single",
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,

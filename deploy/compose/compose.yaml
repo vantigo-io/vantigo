@@ -11,9 +11,9 @@ name: vantigo
 #
 # Database roles: POSTGRES_USER owns the schemas and runs the migration job.
 # POSTGRES_APP_USER is a least-privilege runtime role (NOSUPERUSER NOBYPASSRLS,
-# table DML only, owns nothing). VANTIGO_DB_USER selects which of the two the API
-# connects as; it still defaults to the owner because row-level security is not
-# yet usable for ordinary reads. See README.md and docs/tenancy.md, issue #6.
+# table DML only, owns nothing). VANTIGO_DB_USER selects which of the two the
+# API connects as and defaults to the runtime role, so the tenant row-level
+# security policies apply to the application. See README.md and docs/tenancy.md.
 
 services:
   postgres:
@@ -50,7 +50,7 @@ services:
     command: ["api"]
     env_file: vantigo.env
     environment:
-      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${VANTIGO_DB_USER:-${POSTGRES_USER:-vantigo}};Password=${VANTIGO_DB_PASSWORD:-${POSTGRES_PASSWORD}}
+      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${VANTIGO_DB_USER:-${POSTGRES_APP_USER:-vantigo_app}};Password=${VANTIGO_DB_PASSWORD:-${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD}}}
     ports:
       - "${VANTIGO_PORT:-8080}:8080"
     depends_on:

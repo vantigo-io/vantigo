@@ -34,7 +34,8 @@ public sealed class ModuleEndpointActivationTests(ModuleEndpointActivationDataba
     public async Task A_disabled_module_is_neither_reachable_nor_running_workers(string module)
     {
         ModuleActivation activation = Without(module);
-        await using ModuleActivationApiFactory factory = new(database.ConnectionString, activation);
+        await using ModuleActivationApiFactory factory = new(
+            database.ConnectionString, database.MigrationsConnectionString, activation);
         using HttpClient client = factory.CreateClient();
 
         HttpResponseMessage disabled = await client.GetAsync(RouteOf(module));
@@ -62,6 +63,7 @@ public sealed class ModuleEndpointActivationTests(ModuleEndpointActivationDataba
     {
         await using ModuleActivationApiFactory factory = new(
             database.ConnectionString,
+            database.MigrationsConnectionString,
             new ModuleActivation(customers: false, communications: true, products: false, energy: false));
 
         Exception exception = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
@@ -93,7 +95,10 @@ public sealed class ModuleEndpointActivationTests(ModuleEndpointActivationDataba
     };
 }
 
-internal sealed class ModuleActivationApiFactory(string connectionString, ModuleActivation activation)
+internal sealed class ModuleActivationApiFactory(
+    string connectionString,
+    string migrationsConnectionString,
+    ModuleActivation activation)
     : WebApplicationFactory<global::Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -108,6 +113,7 @@ internal sealed class ModuleActivationApiFactory(string connectionString, Module
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:vantigo"] = connectionString,
+            ["ConnectionStrings:migrations"] = migrationsConnectionString,
             ["Development:Seed:Enabled"] = "false",
             ["Authentication:Bootstrap:Secret"] = "module-activation-bootstrap-secret",
             ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",
@@ -133,9 +139,16 @@ public sealed class ModuleEndpointActivationDatabase : IAsyncLifetime
         .WithDatabase("vantigo")
         .Build();
 
-    public string ConnectionString => _postgres.GetConnectionString();
+    public string ConnectionString { get; private set; } = string.Empty;
 
-    public Task InitializeAsync() => _postgres.StartAsync();
+    public string MigrationsConnectionString => _postgres.GetConnectionString();
+
+    public async Task InitializeAsync()
+    {
+        await _postgres.StartAsync();
+        ConnectionString = await Vantigo.Tenancy.EntityFramework.TenantRuntimeRoleSql
+            .ProvisionAsync(_postgres.GetConnectionString());
+    }
 
     public async Task DisposeAsync() => await _postgres.DisposeAsync();
 }

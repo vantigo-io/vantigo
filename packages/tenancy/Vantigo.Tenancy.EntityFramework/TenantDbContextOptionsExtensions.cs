@@ -9,12 +9,10 @@ namespace Vantigo.Tenancy.EntityFramework;
 public static class TenantDbContextOptionsExtensions
 {
     /// <summary>
-    /// Adds tenant stamping and transaction-local GUC interceptors to a DbContext.
-    /// SaveChanges uses an EF-created transaction, while queries that rely on RLS
-    /// must run inside an explicit transaction (or another EF-created transaction).
-    /// Transaction-less reads therefore never receive the tenant setting, so RLS
-    /// matches no rows for a role it applies to. See docs/tenancy.md and
-    /// https://github.com/vantigo-io/vantigo/issues/6.
+    /// Adds the tenant stamping and connection interceptors to a DbContext. The
+    /// connection interceptor applies the session-scoped tenant setting on every
+    /// connection open, so RLS covers transaction-less reads and transactional
+    /// work alike. See docs/tenancy.md.
     /// </summary>
     public static DbContextOptionsBuilder UseTenancy(
         this DbContextOptionsBuilder optionsBuilder,

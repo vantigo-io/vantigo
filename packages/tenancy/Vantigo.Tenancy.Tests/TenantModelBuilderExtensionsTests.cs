@@ -28,6 +28,35 @@ public sealed class TenantModelBuilderExtensionsTests
         Assert.Equal([1], db.Notes.AsNoTracking().Select(note => note.Id).ToArray());
     }
 
+    [Fact]
+    public void Query_filters_are_evaluated_per_context_instance_not_per_compiled_query()
+    {
+        var tenantA = TenantId.New();
+        var tenantB = TenantId.New();
+        var databaseName = "per-context-" + Guid.NewGuid();
+
+        using (var seedDb = CreateDbContext(databaseName, new MutableTenantContext(tenantA)))
+        {
+            seedDb.Orders.Add(new TestOrder { Id = 1, TenantId = tenantA.Value });
+            seedDb.Orders.Add(new TestOrder { Id = 2, TenantId = tenantB.Value });
+            seedDb.SaveChanges();
+        }
+
+        // The same query shape runs for tenant A first, so its compiled plan is
+        // cached; tenant B's context must still see tenant B's rows. A filter
+        // capturing anything but the DbContext instance bakes tenant A into the
+        // cached plan and silently serves it to every later tenant.
+        using (var dbA = CreateDbContext(databaseName, new MutableTenantContext(tenantA)))
+        {
+            Assert.Equal([1], dbA.Orders.AsNoTracking().Select(order => order.Id).ToArray());
+        }
+
+        using (var dbB = CreateDbContext(databaseName, new MutableTenantContext(tenantB)))
+        {
+            Assert.Equal([2], dbB.Orders.AsNoTracking().Select(order => order.Id).ToArray());
+        }
+    }
+
     private static FilterDbContext CreateDbContext(string databaseName, ITenantContext tenantContext) =>
         new(new DbContextOptionsBuilder<FilterDbContext>()
             .UseInMemoryDatabase(databaseName)
@@ -35,14 +64,17 @@ public sealed class TenantModelBuilderExtensionsTests
 
     private sealed class FilterDbContext(
         DbContextOptions<FilterDbContext> options,
-        ITenantContext tenantContext) : DbContext(options)
+        ITenantContext tenantContext) : DbContext(options), ITenantDbContext
     {
         private readonly ITenantContext _tenantContext = tenantContext;
+
+        public Guid CurrentTenantId => _tenantContext.Current.Value;
+
         public DbSet<TestOrder> Orders => Set<TestOrder>();
         public DbSet<TestNote> Notes => Set<TestNote>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
-            => modelBuilder.ApplyTenantOwnership(_tenantContext);
+            => modelBuilder.ApplyTenantOwnership(this);
     }
 
     private sealed class TestOrder : ITenantOwned

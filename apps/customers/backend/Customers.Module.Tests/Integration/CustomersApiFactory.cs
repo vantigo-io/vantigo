@@ -19,6 +19,7 @@ using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -42,16 +43,25 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
 
     /// <summary>
     /// The container connection string, which uses the PostgreSQL superuser and
-    /// therefore bypasses row-level security. Tests that need a role RLS applies
-    /// to must create one; see <see cref="LeastPrivilegeDatabaseRoleIntegrationTests"/>.
+    /// therefore bypasses row-level security. The application under test never
+    /// uses it at runtime; it applies migrations with it and connects as the
+    /// least-privilege role from <see cref="RuntimeConnectionString"/>.
     /// </summary>
     internal string SuperuserConnectionString => _postgres.GetConnectionString();
+
+    /// <summary>
+    /// The least-privilege runtime role connection string the application under
+    /// test uses: NOSUPERUSER NOBYPASSRLS, table DML only, owns nothing — the
+    /// same shape production runs, so tenant RLS is exercised for real.
+    /// </summary>
+    internal string RuntimeConnectionString { get; private set; } = string.Empty;
 
     internal CapturingEmailSender EmailSender { get; } = new();
 
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        RuntimeConnectionString = await TenantRuntimeRoleSql.ProvisionAsync(SuperuserConnectionString);
 
         using var tenantScope = AmbientTenantContext.Enter(
             new TenantId(new Guid("00000000-0000-0000-0000-000000000001")));
@@ -156,7 +166,8 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
         {
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:vantigo"] = _postgres.GetConnectionString(),
+                ["ConnectionStrings:vantigo"] = RuntimeConnectionString,
+                ["ConnectionStrings:migrations"] = _postgres.GetConnectionString(),
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
                 ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",

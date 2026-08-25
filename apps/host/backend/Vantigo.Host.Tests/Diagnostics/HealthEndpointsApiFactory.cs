@@ -21,9 +21,13 @@ public sealed class HealthEndpointsApiFactory : WebApplicationFactory<Program>, 
         .WithDatabase("vantigo")
         .Build();
 
+    private string _runtimeConnectionString = string.Empty;
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        _runtimeConnectionString = await Vantigo.Tenancy.EntityFramework.TenantRuntimeRoleSql
+            .ProvisionAsync(_postgres.GetConnectionString());
 
         // Forces the host to build (migrations, tenant bootstrap, system admin
         // bootstrap) while PostgreSQL is still reachable.
@@ -50,7 +54,8 @@ public sealed class HealthEndpointsApiFactory : WebApplicationFactory<Program>, 
         builder.UseSetting("Modules:Energy:Enabled", "false");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["ConnectionStrings:vantigo"] = _postgres.GetConnectionString(),
+            ["ConnectionStrings:vantigo"] = _runtimeConnectionString,
+            ["ConnectionStrings:migrations"] = _postgres.GetConnectionString(),
             ["Development:Seed:Enabled"] = "false",
             ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
             ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",

@@ -13,6 +13,7 @@ using Vantigo.Host;
 using Vantigo.Identity.Services;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Energy.Module.Tests.Integration;
 
@@ -25,9 +26,16 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
 
     public Guid CurrentTenantId { get; private set; }
 
+    /// <summary>
+    /// Least-privilege runtime role connection string the application connects
+    /// with; migrations use the container superuser.
+    /// </summary>
+    internal string RuntimeConnectionString { get; private set; } = string.Empty;
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        RuntimeConnectionString = await TenantRuntimeRoleSql.ProvisionAsync(_postgres.GetConnectionString());
         using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
         var token = await client.GetFromJsonAsync<AntiforgeryToken>("/api/v1/identity/antiforgery");
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token!.Token);
@@ -95,7 +103,8 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
         builder.UseSetting("Modules:Energy:Enabled", "true");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["ConnectionStrings:vantigo"] = _postgres.GetConnectionString(),
+            ["ConnectionStrings:vantigo"] = RuntimeConnectionString,
+            ["ConnectionStrings:migrations"] = _postgres.GetConnectionString(),
             ["Development:Seed:Enabled"] = "false",
             ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
             ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",

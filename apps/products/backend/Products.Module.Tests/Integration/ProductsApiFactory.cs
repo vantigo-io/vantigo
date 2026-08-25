@@ -19,6 +19,7 @@ using Vantigo.Products.Database.Products;
 using Vantigo.Products.Domain.Products;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Products.Module.Tests.Integration;
 
@@ -37,9 +38,16 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
 
     public Guid DefaultTenantId { get; private set; }
 
+    /// <summary>
+    /// Least-privilege runtime role connection string the application connects
+    /// with; migrations use the container superuser.
+    /// </summary>
+    internal string RuntimeConnectionString { get; private set; } = string.Empty;
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
+        RuntimeConnectionString = await TenantRuntimeRoleSql.ProvisionAsync(_postgres.GetConnectionString());
 
         using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
         var tokenResponse = await client.GetAsync("/api/v1/identity/antiforgery");
@@ -160,7 +168,8 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
         {
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:vantigo"] = _postgres.GetConnectionString(),
+                ["ConnectionStrings:vantigo"] = RuntimeConnectionString,
+                ["ConnectionStrings:migrations"] = _postgres.GetConnectionString(),
                 ["Development:Seed:Enabled"] = "false",
                 ["Authentication:Bootstrap:Secret"] = BootstrapSecret,
                 ["Authentication:PasswordReset:ResetUrl"] = "http://test.local/reset?email={email}&token={token}",

@@ -14,6 +14,14 @@ public sealed class ConnectionStringsOptions
     public string? Postgresql { get; set; }
 
     /// <summary>
+    /// Optional connection string for applying schema migrations
+    /// (<c>ConnectionStrings:migrations</c>). Deployments that run the API as a
+    /// least-privilege role point this at the schema-owner role; when unset,
+    /// migrations use the runtime connection string.
+    /// </summary>
+    public string? Migrations { get; set; }
+
+    /// <summary>
     /// Returns the effective connection string. Falls back through module-specific
     /// legacy keys for transitional compatibility.
     /// </summary>
@@ -29,6 +37,15 @@ public sealed class ConnectionStringsOptions
 
         throw new InvalidOperationException("ConnectionStrings:vantigo is required.");
     }
+
+    /// <summary>
+    /// Returns the migrations connection string when it differs from the runtime
+    /// one, or null when migrations should run over the runtime connection.
+    /// </summary>
+    public string? ResolveMigrationsOverride(params string[] legacyKeys) =>
+        !string.IsNullOrWhiteSpace(Migrations) && Migrations != Resolve(legacyKeys)
+            ? Migrations
+            : null;
 }
 
 /// <summary>
@@ -48,7 +65,8 @@ internal sealed class ConnectionStringsOptionsValidator(
 
         string? failure =
             TransportSecurityOptions.DescribeInsecurePostgresTransport(options.Vantigo, "ConnectionStrings:vantigo")
-            ?? TransportSecurityOptions.DescribeInsecurePostgresTransport(options.Postgresql, "ConnectionStrings:postgresql");
+            ?? TransportSecurityOptions.DescribeInsecurePostgresTransport(options.Postgresql, "ConnectionStrings:postgresql")
+            ?? TransportSecurityOptions.DescribeInsecurePostgresTransport(options.Migrations, "ConnectionStrings:migrations");
 
         return failure is null ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failure);
     }

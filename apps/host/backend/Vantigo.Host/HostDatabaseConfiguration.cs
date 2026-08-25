@@ -29,6 +29,19 @@ internal static class HostDatabaseConfiguration
     internal static async Task MigrateIdentityAsync(this IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
+        var connectionStrings = scope.ServiceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+        if (connectionStrings.ResolveMigrationsOverride() is { } migrations)
+        {
+            // Migrations run as the schema-owner role while the runtime pool
+            // stays on the least-privilege role; see docs/tenancy.md.
+            var options = new DbContextOptionsBuilder<AccountsDbContext>()
+                .UseNpgsql(migrations, npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "identity"))
+                .Options;
+            await using var migrationContext = new AccountsDbContext(options);
+            await migrationContext.Database.MigrateAsync();
+            return;
+        }
+
         var dbContext = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
         await dbContext.Database.MigrateAsync();
     }
