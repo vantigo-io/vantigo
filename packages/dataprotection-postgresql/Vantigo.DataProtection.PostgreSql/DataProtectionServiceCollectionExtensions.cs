@@ -25,6 +25,20 @@ public static class DataProtectionServiceCollectionExtensions
     public static async Task MigrateDataProtectionAsync(this IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
+        var connectionStrings = scope.ServiceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+        if (connectionStrings.ResolveMigrationsOverride() is { } migrations)
+        {
+            // Migrations run as the schema-owner role while the runtime pool
+            // stays on the least-privilege role; see docs/tenancy.md.
+            var dataProtectionOptions = scope.ServiceProvider.GetRequiredService<IOptions<DataProtectionPostgreSqlOptions>>().Value;
+            var options = new DbContextOptionsBuilder<DataProtectionKeyDbContext>()
+                .UseNpgsql(migrations, npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", dataProtectionOptions.Schema))
+                .Options;
+            await using var migrationContext = new DataProtectionKeyDbContext(options);
+            await migrationContext.Database.MigrateAsync();
+            return;
+        }
+
         await scope.ServiceProvider.GetRequiredService<DataProtectionKeyDbContext>().Database.MigrateAsync();
     }
 

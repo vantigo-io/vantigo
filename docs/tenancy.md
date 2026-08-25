@@ -10,7 +10,7 @@ guarantees today, and where the isolation story is still incomplete.
 | Single-tenant mode (`Tenancy__Mode=single`, the default) | Supported |
 | Multi-tenant mode (`Tenancy__Mode=multi`) | **Not production-ready**, refuses to start outside Development |
 | EF Core global query filters per tenant | Enforced |
-| PostgreSQL row-level security as defense in depth | **Not enforced at runtime** |
+| PostgreSQL row-level security as defense in depth | Enforced when running as the least-privilege role (the Compose default) |
 
 ## Single-tenant mode is the default
 
@@ -49,71 +49,50 @@ customer's data. Development (`ASPNETCORE_ENVIRONMENT=Development`, which is wha
 the Aspire AppHost uses) still runs multi-tenant without the flag so the tenant
 control plane stays usable locally.
 
-## Database-level tenant isolation is not enforced
+## Database-level tenant isolation
 
-Tenant-owned tables have PostgreSQL row-level security enabled and forced, with a
-policy that matches on the `app.tenant_id` setting:
+Tenant-owned tables have PostgreSQL row-level security enabled and forced, with
+a policy that matches on the session-scoped `app.tenant_id` setting:
 
 ```sql
 CREATE POLICY tenant_isolation ON <table>
-    USING (tenant_id = current_setting('app.tenant_id', true)::uuid);
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 ```
 
-That policy is **inert in every shipped configuration**, for two compounding
-reasons:
+`TenantConnectionInterceptor` applies the setting with
+`set_config('app.tenant_id', …, false)` every time EF Core opens a connection,
+so it covers transaction-less endpoint reads as well as transactional work.
+When no tenant is resolved the interceptor explicitly writes an empty string,
+which the `NULLIF` guard turns into "match no rows": a pooled physical
+connection can never carry a previous request's tenant, and access without a
+tenant fails closed instead of failing the uuid cast. (A pooled-connection
+reset — `DISCARD ALL` — leaves a previously-set custom setting as an empty
+string rather than unset, which is why the guard exists.)
 
-1. **The application connects as a superuser.** Superusers bypass row-level
-   security entirely, including `FORCE ROW LEVEL SECURITY`. The Docker Compose
-   stack has always connected the API as `POSTGRES_USER`, which the PostgreSQL
-   image creates as a superuser. The integration-test containers do the same.
-2. **The tenant setting is transaction-local.** `TenantConnectionInterceptor`
-   writes it with `set_config('app.tenant_id', …, true)` and only on
-   `TransactionStarted`. Ordinary endpoint reads do not open an explicit
-   transaction, so the setting is never applied to them.
-
-Point 2 means the two problems cannot be fixed independently: switching the
-application to a role that row-level security *does* apply to makes ordinary
-reads return **zero rows** instead of leaking, because an unset `app.tenant_id`
-makes the policy match nothing. This is measured, not assumed — see
-`LeastPrivilegeDatabaseRoleIntegrationTests` in `Customers.Module.Tests`, which
-asserts exactly that behaviour against the real migrated schema.
-
-Tenant isolation today therefore rests entirely on the EF Core global query
-filters and the manual predicates in the modules. Row-level security is intended
-as defense in depth and currently provides none. Tracked in
-[issue #6](https://github.com/vantigo-io/vantigo/issues/6).
-
-### The least-privilege runtime role
-
-The Compose stack now creates a second database role so the least-privilege
-configuration exists and is testable, but it is **not the default** — enabling it
-would break the application as described above.
+Row-level security is defense in depth behind the EF Core global query filters,
+and it only applies to roles without `BYPASSRLS`. The application therefore
+runs as a least-privilege role by default:
 
 | Role | Created as | Used by |
 | --- | --- | --- |
-| `POSTGRES_USER` (default `vantigo`) | Superuser, owns every schema and table | `vantigo-migrate`, and the API by default |
-| `POSTGRES_APP_USER` (default `vantigo_app`) | `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`, table DML only, owns nothing | Nothing yet; opt in with `VANTIGO_DB_USER` |
+| `POSTGRES_USER` (default `vantigo`) | Superuser, owns every schema and table | The `vantigo-migrate` job |
+| `POSTGRES_APP_USER` (default `vantigo_app`) | `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`, table DML only, owns nothing | The API (`VANTIGO_DB_USER` defaults to it) |
 
-`VANTIGO_DB_USER` / `VANTIGO_DB_PASSWORD` in `.env` select the role the API
-connects as, and default to the owner role. Pointing them at
-`POSTGRES_APP_USER` is only useful for reproducing issue #6.
+Deployments that apply migrations from the API process (rather than a separate
+migrate job) can set `ConnectionStrings__migrations` to the owner role's
+connection string; the application then applies migrations over that connection
+while all runtime traffic stays on the least-privilege role.
 
-The role is created by the PostgreSQL init script, which runs **only when the
+The roles are created by the PostgreSQL init script, which runs **only when the
 `postgres-data` volume is first initialized**. Existing installations must apply
 the same statements by hand; the SQL is reproduced in
 [the Compose README](../deploy/compose/README.md).
 
-### What the full fix requires
-
-1. Make the tenant setting cover every query, not just transactional ones —
-   either a connection-scoped `SET app.tenant_id` applied on connection open and
-   reset on return to the pool, or a tenant unit-of-work that wraps all
-   tenant-owned work in a transaction.
-2. Move the schema-owner and migrator responsibilities onto a non-superuser role
-   and run the API as `POSTGRES_APP_USER`.
-3. Add integration tests that cover transaction-less reads, `IgnoreQueryFilters`,
-   raw SQL, and interleaved requests for two tenants over a shared connection
-   pool, all with the least-privilege role.
-
-Until then, treat the EF query filters as the only tenant isolation mechanism,
-and run one tenant per installation.
+The integration-test factories provision the same role shape
+(`TenantRuntimeRoleSql`) and boot the API with it, so every integration test
+exercises RLS the way production runs it.
+`LeastPrivilegeDatabaseRoleIntegrationTests` in `Customers.Module.Tests`
+additionally verifies the properties directly: transaction-less reads are
+tenant-filtered, `IgnoreQueryFilters` and raw SQL still cannot cross tenants,
+interleaved requests over the shared pool do not bleed, and an unresolved
+tenant sees nothing.

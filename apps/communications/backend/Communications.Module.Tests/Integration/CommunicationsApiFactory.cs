@@ -22,6 +22,7 @@ using Vantigo.Identity.Database.Accounts;
 using Vantigo.Storage.Abstractions;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
+using Vantigo.Tenancy.EntityFramework;
 
 namespace Vantigo.Communications.Module.Tests.Integration;
 
@@ -36,9 +37,16 @@ public sealed class CommunicationsModuleFactory : WebApplicationFactory<global::
     internal StubCustomerDirectory CustomerDirectory { get; } = new();
     public FailingMailgunHandler MailgunHandler { get; } = new();
 
+    /// <summary>
+    /// Least-privilege runtime role connection string the application connects
+    /// with; migrations use the container superuser.
+    /// </summary>
+    internal string RuntimeConnectionString { get; private set; } = string.Empty;
+
     public async Task InitializeAsync()
     {
         await postgres.StartAsync();
+        RuntimeConnectionString = await TenantRuntimeRoleSql.ProvisionAsync(postgres.GetConnectionString());
         using var client = CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
         var token = await GetAntiforgeryToken(client);
         client.DefaultRequestHeaders.Add("X-XSRF-TOKEN", token);
@@ -100,7 +108,8 @@ public sealed class CommunicationsModuleFactory : WebApplicationFactory<global::
         builder.UseSetting("Modules:Products:Enabled", "false");
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["ConnectionStrings:vantigo"] = postgres.GetConnectionString(),
+            ["ConnectionStrings:vantigo"] = RuntimeConnectionString,
+            ["ConnectionStrings:migrations"] = postgres.GetConnectionString(),
             ["Authentication:Bootstrap:Secret"] = "integration-bootstrap-secret",
             ["Development:Seed:Enabled"] = "false",
             ["Communications:BootstrapMailbox:Enabled"] = "true",

@@ -87,6 +87,19 @@ public static class CommunicationsDatabaseConfiguration
     public static async Task MigrateCommunicationsAsync(this IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
+        var connectionStrings = scope.ServiceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+        if (connectionStrings.ResolveMigrationsOverride("communications") is { } migrations)
+        {
+            // Migrations run as the schema-owner role while the runtime pool
+            // stays on the least-privilege role; see docs/tenancy.md.
+            var options = new DbContextOptionsBuilder<CommunicationsDbContext>()
+                .UseNpgsql(migrations, npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "communications"))
+                .Options;
+            await using var migrationContext = new CommunicationsDbContext(options);
+            await migrationContext.Database.MigrateAsync();
+            return;
+        }
+
         await scope.ServiceProvider.GetRequiredService<CommunicationsDbContext>().Database.MigrateAsync();
     }
 

@@ -51,6 +51,19 @@ public static class CustomersDatabaseConfiguration
     public static async Task MigrateAsync(this IServiceProvider services)
     {
         await using var scope = services.CreateAsyncScope();
+        var connectionStrings = scope.ServiceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
+        if (connectionStrings.ResolveMigrationsOverride("customers") is { } migrations)
+        {
+            // Migrations run as the schema-owner role while the runtime pool
+            // stays on the least-privilege role; see docs/tenancy.md.
+            var options = new DbContextOptionsBuilder<CustomersDbContext>()
+                .UseNpgsql(migrations, npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "customers"))
+                .Options;
+            await using var migrationContext = new CustomersDbContext(options);
+            await migrationContext.Database.MigrateAsync();
+            return;
+        }
+
         var dbContext = scope.ServiceProvider.GetRequiredService<CustomersDbContext>();
         await dbContext.Database.MigrateAsync();
     }
