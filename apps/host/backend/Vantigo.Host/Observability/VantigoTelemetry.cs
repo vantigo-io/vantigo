@@ -18,10 +18,12 @@ namespace Vantigo.Host;
 
 /// <summary>
 /// Shared OpenTelemetry setup for the Vantigo host: traces, metrics and logs
-/// with ASP.NET Core, HttpClient, runtime and Npgsql instrumentation. The OTLP
-/// exporter is driven entirely by the standard <c>OTEL_EXPORTER_OTLP_*</c>
-/// environment variables; when no endpoint is configured, no exporter is
-/// registered and telemetry is a silent no-op.
+/// with ASP.NET Core, HttpClient, runtime and Npgsql instrumentation. Each
+/// signal's OTLP exporter is registered only when that signal has an endpoint
+/// configured — <c>Observability:*</c> configuration keys or the standard
+/// <c>OTEL_EXPORTER_OTLP_*</c> environment variables, with signal-specific
+/// endpoints overriding the shared one. With no endpoint, telemetry is a
+/// silent no-op.
 /// </summary>
 public static class VantigoTelemetry
 {
@@ -37,11 +39,10 @@ public static class VantigoTelemetry
     {
         var resolvedServiceName = ResolveServiceName(serviceName);
         var serviceVersion = ResolveServiceVersion(Assembly.GetEntryAssembly());
-        var observabilityOptions = builder.Services
-            .BuildServiceProvider()
-            .GetRequiredService<IOptions<ObservabilityOptions>>()
-            .Value;
-        var exporterConfigured = observabilityOptions.HasAnyOtlpEndpoint;
+        // Resolved straight from configuration: this runs before the container
+        // is built, and building a throwaway provider here would leak every
+        // singleton registered so far.
+        var observabilityOptions = ObservabilityConfigurationExtensions.Resolve(builder.Configuration);
 
         builder.Services
             .AddOpenTelemetry()
@@ -59,9 +60,12 @@ public static class VantigoTelemetry
                     .AddHttpClientInstrumentation()
                     .AddNpgsql();
 
-                if (exporterConfigured)
+                // Each signal gets its own exporter only when that signal has
+                // an endpoint (specific or shared); configuring one signal must
+                // not silently point the others at exporter defaults.
+                if (observabilityOptions.EffectiveTracesEndpoint is { } tracesEndpoint)
                 {
-                    tracing.AddOtlpExporter();
+                    tracing.AddOtlpExporter(options => options.Endpoint = new Uri(tracesEndpoint));
                 }
             })
             .WithMetrics(metrics =>
@@ -70,19 +74,22 @@ public static class VantigoTelemetry
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddNpgsqlInstrumentation();
+                    .AddNpgsqlInstrumentation()
+                    // Module meters; registered by name so disabled modules
+                    // simply emit nothing.
+                    .AddMeter("Vantigo.Communications");
 
-                if (exporterConfigured)
+                if (observabilityOptions.EffectiveMetricsEndpoint is { } metricsEndpoint)
                 {
-                    metrics.AddOtlpExporter();
+                    metrics.AddOtlpExporter(options => options.Endpoint = new Uri(metricsEndpoint));
                 }
             })
             .WithLogging(
                 logging =>
                 {
-                    if (exporterConfigured)
+                    if (observabilityOptions.EffectiveLogsEndpoint is { } logsEndpoint)
                     {
-                        logging.AddOtlpExporter();
+                        logging.AddOtlpExporter(options => options.Endpoint = new Uri(logsEndpoint));
                     }
                 },
                 options =>

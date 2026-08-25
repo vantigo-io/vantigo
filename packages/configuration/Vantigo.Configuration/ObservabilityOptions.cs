@@ -29,6 +29,23 @@ public sealed class ObservabilityOptions
         || !string.IsNullOrWhiteSpace(OtlpExporterTracesEndpoint)
         || !string.IsNullOrWhiteSpace(OtlpExporterMetricsEndpoint)
         || !string.IsNullOrWhiteSpace(OtlpExporterLogsEndpoint);
+
+    /// <summary>
+    /// The endpoint the traces exporter should use: the signal-specific value
+    /// when set, otherwise the shared endpoint, otherwise null (no exporter).
+    /// </summary>
+    public string? EffectiveTracesEndpoint => Effective(OtlpExporterTracesEndpoint);
+
+    /// <summary>The metrics exporter endpoint; see <see cref="EffectiveTracesEndpoint"/>.</summary>
+    public string? EffectiveMetricsEndpoint => Effective(OtlpExporterMetricsEndpoint);
+
+    /// <summary>The logs exporter endpoint; see <see cref="EffectiveTracesEndpoint"/>.</summary>
+    public string? EffectiveLogsEndpoint => Effective(OtlpExporterLogsEndpoint);
+
+    private string? Effective(string? signalSpecific) =>
+        !string.IsNullOrWhiteSpace(signalSpecific) ? signalSpecific
+        : !string.IsNullOrWhiteSpace(OtlpExporterEndpoint) ? OtlpExporterEndpoint
+        : null;
 }
 
 public static class ObservabilityConfigurationExtensions
@@ -40,14 +57,29 @@ public static class ObservabilityConfigurationExtensions
     /// </summary>
     public static IServiceCollection AddObservabilityOptions(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<ObservabilityOptions>(options =>
-        {
-            options.OtlpExporterEndpoint = Read(configuration, "Observability:OtlpExporterEndpoint", "OTEL_EXPORTER_OTLP_ENDPOINT");
-            options.OtlpExporterTracesEndpoint = Read(configuration, "Observability:OtlpExporterTracesEndpoint", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT");
-            options.OtlpExporterMetricsEndpoint = Read(configuration, "Observability:OtlpExporterMetricsEndpoint", "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT");
-            options.OtlpExporterLogsEndpoint = Read(configuration, "Observability:OtlpExporterLogsEndpoint", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT");
-        });
+        services.Configure<ObservabilityOptions>(options => Apply(options, configuration));
         return services;
+    }
+
+    /// <summary>
+    /// Resolves the options directly from configuration for composition-time
+    /// consumers (telemetry registration happens before the container is
+    /// built, and building a throwaway provider just to read options leaks
+    /// singletons).
+    /// </summary>
+    public static ObservabilityOptions Resolve(IConfiguration configuration)
+    {
+        var options = new ObservabilityOptions();
+        Apply(options, configuration);
+        return options;
+    }
+
+    private static void Apply(ObservabilityOptions options, IConfiguration configuration)
+    {
+        options.OtlpExporterEndpoint = Read(configuration, "Observability:OtlpExporterEndpoint", "OTEL_EXPORTER_OTLP_ENDPOINT");
+        options.OtlpExporterTracesEndpoint = Read(configuration, "Observability:OtlpExporterTracesEndpoint", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT");
+        options.OtlpExporterMetricsEndpoint = Read(configuration, "Observability:OtlpExporterMetricsEndpoint", "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT");
+        options.OtlpExporterLogsEndpoint = Read(configuration, "Observability:OtlpExporterLogsEndpoint", "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT");
     }
 
     private static string? Read(IConfiguration configuration, string configKey, string environmentKey)

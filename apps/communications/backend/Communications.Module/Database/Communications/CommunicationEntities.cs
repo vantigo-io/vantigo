@@ -304,6 +304,16 @@ internal sealed class OutboxJob : ITenantOwned
     public DateTimeOffset NextAttemptAt { get; set; }
     public string? LeaseId { get; set; }
     public DateTimeOffset? LeaseUntil { get; set; }
+
+    /// <summary>
+    /// Stamped immediately before the external send. A job re-claimed with
+    /// this set may already have been delivered (the crash happened between
+    /// send and completion commit); recovery still resends — delivery is
+    /// at-least-once — but flags the possible duplicate instead of staying
+    /// silent.
+    /// </summary>
+    public DateTimeOffset? DeliveryAttemptedAt { get; set; }
+
     public DateTimeOffset? CompletedAt { get; set; }
     public string? LastError { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

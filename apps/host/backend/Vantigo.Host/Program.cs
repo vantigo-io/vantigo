@@ -174,6 +174,13 @@ public partial class Program
         builder.Services.AddVantigoDataProtection(builder.Configuration, builder.Environment);
         builder.Services.AddVantigoObjectStorage(builder.Configuration);
         builder.Services.AddVantigoHealthChecks();
+        // Graceful drain must outlast the longest single worker operation (an
+        // SMTP send is capped at 20 s), so an in-flight external send finishes
+        // and commits completion instead of becoming a crash-window resend.
+        // The container platform's termination grace period must exceed this.
+        builder.Services.Configure<HostOptions>(options =>
+            options.ShutdownTimeout = TimeSpan.FromSeconds(
+                builder.Configuration.GetValue<int?>("Host:ShutdownTimeoutSeconds") ?? 30));
         builder.Services.AddSingleton<BootstrapSecretProvider>();
         builder.Services.AddVantigoIdentity(builder.Environment);
         builder.Services.AddWorkforceOidc(builder.Environment);

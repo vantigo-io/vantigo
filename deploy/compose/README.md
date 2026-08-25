@@ -134,6 +134,13 @@ pollers:
 Whichever topology is used, retention cleanup takes an installation-wide
 advisory lease, so it runs on exactly one instance per cycle.
 
+On shutdown the host drains for up to 30 seconds
+(`Host__ShutdownTimeoutSeconds`), enough for the longest single worker
+operation (an SMTP send is capped at 20 s) to finish and commit. Give the
+container platform a termination grace period **above** that value —
+`stop_grace_period` in Compose, `terminationGracePeriodSeconds` on ACA —
+or an in-flight send can be killed mid-way and resent after restart.
+
 ## Database connection budget
 
 Each API replica caps its PostgreSQL pool at 25 connections unless the
