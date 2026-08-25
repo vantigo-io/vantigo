@@ -12,11 +12,14 @@ namespace Vantigo.Customers.Database.Customers;
 
 public sealed class CustomersDbContext(
     DbContextOptions<CustomersDbContext> options,
-    ITenantContext? tenantContext = null) : DbContext(options)
+    ITenantContext? tenantContext = null) : DbContext(options), ITenantDbContext
 {
     internal ITenantContext TenantContext => _tenantContext;
 
     private readonly ITenantContext _tenantContext = tenantContext ?? new UnresolvedTenantContext();
+
+    /// <inheritdoc />
+    public Guid CurrentTenantId => _tenantContext.Current.Value;
 
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Contact> Contacts => Set<Contact>();
@@ -35,7 +38,7 @@ public sealed class CustomersDbContext(
         modelBuilder.ApplyConfiguration(new CustomerContactEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new CustomerTimelineEntryEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new CustomerTimelineEntryRevisionEntityTypeConfiguration());
-        modelBuilder.ApplyTenantOwnership(_tenantContext);
+        modelBuilder.ApplyTenantOwnership(this);
     }
 
     private sealed class UnresolvedTenantContext : ITenantContext

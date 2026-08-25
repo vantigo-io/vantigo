@@ -9,9 +9,12 @@ namespace Vantigo.Products.Database.Products;
 
 public sealed class ProductsDbContext(
     DbContextOptions<ProductsDbContext> options,
-    ITenantContext? tenantContext = null) : DbContext(options)
+    ITenantContext? tenantContext = null) : DbContext(options), ITenantDbContext
 {
     private readonly ITenantContext _tenantContext = tenantContext ?? new UnresolvedTenantContext();
+
+    /// <inheritdoc />
+    public Guid CurrentTenantId => _tenantContext.Current.Value;
 
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
@@ -29,7 +32,7 @@ public sealed class ProductsDbContext(
         modelBuilder.ApplyConfiguration(new ProductPriceEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ProductCategoryEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new TaxCategoryEntityTypeConfiguration());
-        modelBuilder.ApplyTenantOwnership(_tenantContext);
+        modelBuilder.ApplyTenantOwnership(this);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

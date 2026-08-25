@@ -12,8 +12,11 @@ namespace Vantigo.Energy.Database.Energy;
 
 public sealed class EnergyDbContext(
     DbContextOptions<EnergyDbContext> options,
-    ITenantContext tenantContext) : DbContext(options)
+    ITenantContext tenantContext) : DbContext(options), ITenantDbContext
 {
+    /// <inheritdoc />
+    public Guid CurrentTenantId => tenantContext.Current.Value;
+
     public DbSet<MeteringPoint> MeteringPoints => Set<MeteringPoint>();
     public DbSet<Meter> Meters => Set<Meter>();
     public DbSet<ConsumptionInterval> ConsumptionIntervals => Set<ConsumptionInterval>();
@@ -26,7 +29,7 @@ public sealed class EnergyDbContext(
         modelBuilder.ApplyConfiguration(new MeterEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new ConsumptionIntervalEntityTypeConfiguration());
         modelBuilder.ApplyConfiguration(new SupplyPeriodEntityTypeConfiguration());
-        modelBuilder.ApplyTenantOwnership(tenantContext);
+        modelBuilder.ApplyTenantOwnership(this);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

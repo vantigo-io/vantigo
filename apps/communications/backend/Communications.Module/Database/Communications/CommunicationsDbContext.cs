@@ -8,9 +8,12 @@ namespace Vantigo.Communications.Database.Communications;
 
 public sealed class CommunicationsDbContext(
     DbContextOptions<CommunicationsDbContext> options,
-    ITenantContext? tenantContext = null) : DbContext(options)
+    ITenantContext? tenantContext = null) : DbContext(options), ITenantDbContext
 {
     private readonly ITenantContext _tenantContext = tenantContext ?? UnresolvedTenantContext.Instance;
+
+    /// <inheritdoc />
+    public Guid CurrentTenantId => _tenantContext.Current.Value;
     internal DbSet<Channel> Channels => Set<Channel>();
     internal DbSet<ChannelCredential> ChannelCredentials => Set<ChannelCredential>();
     internal DbSet<Participant> Participants => Set<Participant>();
@@ -296,7 +299,7 @@ public sealed class CommunicationsDbContext(
             entity.HasIndex(item => new { item.TenantId, item.Operation });
         });
 
-        modelBuilder.ApplyTenantOwnership(_tenantContext);
+        modelBuilder.ApplyTenantOwnership(this);
         foreach (var entityType in modelBuilder.Model.GetEntityTypes()
                      .Where(item => typeof(ITenantOwned).IsAssignableFrom(item.ClrType)))
         {

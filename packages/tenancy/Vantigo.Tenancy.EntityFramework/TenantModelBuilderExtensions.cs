@@ -19,23 +19,33 @@ public static class TenantModelBuilderExtensions
 
     /// <summary>
     /// Requires a tenant id and adds a tenant query filter to every entity that
-    /// implements <see cref="ITenantOwned"/>. The context instance is captured,
-    /// rather than its current value, so the tenant is resolved when each query
-    /// is evaluated.
+    /// implements <see cref="ITenantOwned"/>. The filter references the tenant
+    /// through the <paramref name="context"/> instance, which EF Core rewrites
+    /// to the executing context and evaluates per query as a parameter. Any
+    /// other capture (a tenant context service, an ambient accessor) would be
+    /// baked into the cached query plan as a constant — every later query of
+    /// the same shape would silently run with the first tenant's id.
     /// </summary>
-    public static ModelBuilder ApplyTenantOwnership(
+    public static ModelBuilder ApplyTenantOwnership<TContext>(
         this ModelBuilder modelBuilder,
-        ITenantContext tenantContext)
+        TContext context)
+        where TContext : DbContext, ITenantDbContext
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
-        ArgumentNullException.ThrowIfNull(tenantContext);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var currentTenantProperty = context.GetType().GetProperty(
+            nameof(ITenantDbContext.CurrentTenantId),
+            BindingFlags.Public | BindingFlags.Instance)
+            ?? throw new InvalidOperationException(
+                $"{context.GetType().Name} must implement {nameof(ITenantDbContext)}.{nameof(ITenantDbContext.CurrentTenantId)} as a public property.");
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes()
                      .Where(entityType => typeof(ITenantOwned).IsAssignableFrom(entityType.ClrType)))
         {
             ApplyTenantOwnershipMethod
                 .MakeGenericMethod(entityType.ClrType)
-                .Invoke(null, [modelBuilder, tenantContext]);
+                .Invoke(null, [modelBuilder, context, currentTenantProperty]);
         }
 
         return modelBuilder;
@@ -43,17 +53,22 @@ public static class TenantModelBuilderExtensions
 
     private static void ApplyTenantOwnershipForEntity<TEntity>(
         ModelBuilder modelBuilder,
-        ITenantContext tenantContext)
+        DbContext context,
+        PropertyInfo currentTenantProperty)
         where TEntity : class, ITenantOwned
     {
         var entityBuilder = modelBuilder.Entity<TEntity>();
         entityBuilder.Property(entity => entity.TenantId).IsRequired();
 
-        // Capturing the context object (not Current.Value) lets EF parameterize
-        // the property access and evaluate the active tenant for each query.
-        Expression<Func<TEntity, bool>> filter =
-            entity => entity.TenantId == tenantContext.Current.Value;
+        // entity => entity.TenantId == <context>.CurrentTenantId, with the
+        // context appearing as a constant of its own type so EF's query-filter
+        // rewriting convention re-binds it to the executing context instance.
+        var parameter = Expression.Parameter(typeof(TEntity), "entity");
+        var filter = Expression.Lambda<Func<TEntity, bool>>(
+            Expression.Equal(
+                Expression.Property(parameter, nameof(ITenantOwned.TenantId)),
+                Expression.Property(Expression.Constant(context), currentTenantProperty)),
+            parameter);
         entityBuilder.HasQueryFilter(filter);
     }
-
 }

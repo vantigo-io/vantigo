@@ -60,12 +60,14 @@ public sealed class TenantStampingInterceptorTests
 
     private sealed class TestDbContext(
         DbContextOptions<TestDbContext> options,
-        ITenantContext tenantContext) : DbContext(options)
+        ITenantContext tenantContext) : DbContext(options), ITenantDbContext
     {
+        public Guid CurrentTenantId => tenantContext.Current.Value;
+
         public DbSet<TestTenantEntity> Entities => Set<TestTenantEntity>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder) =>
-            modelBuilder.ApplyTenantOwnership(tenantContext);
+            modelBuilder.ApplyTenantOwnership(this);
     }
 
     private sealed class TestTenantEntity : ITenantOwned
