@@ -179,7 +179,7 @@ internal static class AuthAccountEndpoints
             user,
             new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = false },
             principal.Claims.Where(claim => claim.Type is "amr" or ClaimTypes.AuthenticationMethod)
-                .Where(claim => !IsMfaClaim(claim)).ToArray());
+                .Where(claim => !MfaClaims.Is(claim)).ToArray());
 
         var issuer = Uri.EscapeDataString(options.Value.Owners.MfaIssuer);
         var account = Uri.EscapeDataString(user.Email ?? user.UserName ?? user.Id.ToString());
@@ -219,7 +219,7 @@ internal static class AuthAccountEndpoints
         }
 
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
-        var historicalMfaClaims = (await userManager.GetClaimsAsync(user)).Where(IsMfaClaim).ToArray();
+        var historicalMfaClaims = (await userManager.GetClaimsAsync(user)).Where(MfaClaims.Is).ToArray();
         if (historicalMfaClaims.Length > 0)
         {
             var cleanup = await userManager.RemoveClaimsAsync(user, historicalMfaClaims);
@@ -232,7 +232,7 @@ internal static class AuthAccountEndpoints
         await signInManager.SignInWithClaimsAsync(
             user,
             new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = false },
-            [new Claim("amr", "mfa"), new Claim(ClaimTypes.AuthenticationMethod, "mfa")]);
+            MfaClaims.Issue());
         return TypedResults.Ok(new MfaEnableResponse(true, codes?.ToArray() ?? []));
     }
 
@@ -275,7 +275,7 @@ internal static class AuthAccountEndpoints
             return IdentityFailure(result, "MFA could not be disabled.");
         }
 
-        var existingClaims = (await userManager.GetClaimsAsync(user)).Where(IsMfaClaim).ToArray();
+        var existingClaims = (await userManager.GetClaimsAsync(user)).Where(MfaClaims.Is).ToArray();
         if (existingClaims.Length > 0)
         {
             var removeClaimsResult = await userManager.RemoveClaimsAsync(user, existingClaims);
@@ -332,7 +332,7 @@ internal static class AuthAccountEndpoints
         IOptions<VantigoAuthenticationOptions> options)
     {
         var caller = await userManager.GetUserAsync(principal);
-        if (caller is null || !await userManager.IsInRoleAsync(caller, AuthRoles.Owner) || !HasMfaClaim(principal))
+        if (caller is null || !await userManager.IsInRoleAsync(caller, AuthRoles.Owner) || !MfaClaims.Any(principal.Claims))
         {
             return Error(StatusCodes.Status403Forbidden, "forbidden", "Only an Owner can reset Owner MFA.");
         }
@@ -363,7 +363,7 @@ internal static class AuthAccountEndpoints
         // Recovery capability is immediately restored by a fresh recovery-code set;
         // the target must enroll a new authenticator before MFA is enabled again.
         var codes = await userManager.GenerateNewTwoFactorRecoveryCodesAsync(target, 10);
-        var targetClaims = (await userManager.GetClaimsAsync(target)).Where(IsMfaClaim).ToArray();
+        var targetClaims = (await userManager.GetClaimsAsync(target)).Where(MfaClaims.Is).ToArray();
         if (targetClaims.Length > 0)
         {
             var removeClaimsResult = await userManager.RemoveClaimsAsync(target, targetClaims);
@@ -381,13 +381,6 @@ internal static class AuthAccountEndpoints
 
         return TypedResults.Ok(new MfaResetResponse(target.Id, codes?.ToArray() ?? []));
     }
-
-    private static bool HasMfaClaim(ClaimsPrincipal principal) => principal.Claims.Any(claim =>
-        claim.Type == "amr" && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
-
-    private static bool IsMfaClaim(Claim claim) =>
-        (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
-        string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<IResult?> RequireLocalPassword(
         ApplicationUser user,

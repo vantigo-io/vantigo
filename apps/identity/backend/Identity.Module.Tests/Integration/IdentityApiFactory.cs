@@ -269,6 +269,12 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
                 // transport escape hatch. The rules it relaxes have their own tests in
                 // Vantigo.Host.Tests and Vantigo.Configuration.Tests.
                 values["Security:AllowInsecureTransport"] = bool.TrueString;
+                // Outside Development, privileged MFA is required unless this escape
+                // hatch is set; RequireOwnerMfa defaults to false for most factories,
+                // so opt in deliberately rather than forcing every non-Development
+                // factory to also configure RequireMfa. The rule itself has its own
+                // tests in Vantigo.Configuration.Tests.
+                values["Authentication:Owners:AllowInsecureNoMfa"] = bool.TrueString;
             }
             foreach (var setting in ExtraConfiguration)
             {

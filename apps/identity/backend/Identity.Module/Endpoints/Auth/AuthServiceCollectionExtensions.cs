@@ -79,7 +79,7 @@ public static class AuthServiceCollectionExtensions
             options.ValidationInterval = authentication.Value.Sessions.PrincipalRefreshInterval;
             options.OnRefreshingPrincipal = context =>
             {
-                var currentMfa = context.CurrentPrincipal?.Claims.Where(IsMfaClaim).ToArray() ?? [];
+                var currentMfa = context.CurrentPrincipal?.Claims.Where(MfaClaims.Is).ToArray() ?? [];
                 if (currentMfa.Length == 0)
                 {
                     return Task.CompletedTask;
@@ -282,10 +282,16 @@ public static class AuthServiceCollectionExtensions
         services.AddAuthorization(options =>
         {
             options.AddPolicy("ActiveAccount", policy => policy.AddRequirements(new ActiveAccountRequirement()));
+            // Owner and SystemAdmin are the two privileged roles: a password
+            // alone must never be enough to reach identity or tenant
+            // control-plane endpoints (https://github.com/vantigo-io/vantigo/issues/15).
+            // The MFA enrollment endpoints deliberately require only
+            // "ActiveAccount" so a session that has not enrolled yet can still
+            // reach them; see AuthAccountEndpoints.selfMfa/accountMfa.
             options.AddPolicy(AuthPolicies.SystemAdmin, policy => policy.RequireRole(AuthRoles.SystemAdmin)
-                .AddRequirements(new ActiveAccountRequirement()));
+                .AddRequirements(new ActiveAccountRequirement(), new MfaAuthenticatedRequirement()));
             options.AddPolicy(AuthPolicies.Owner, policy => policy.RequireRole(AuthRoles.Owner)
-                .AddRequirements(new ActiveAccountRequirement()));
+                .AddRequirements(new ActiveAccountRequirement(), new MfaAuthenticatedRequirement()));
             options.AddPolicy(AuthPolicies.OwnerManagement, policy =>
                 policy.RequireRole(AuthRoles.Owner)
                     .AddRequirements(new ActiveAccountRequirement(), new MfaAuthenticatedRequirement()));
@@ -368,10 +374,6 @@ public static class AuthServiceCollectionExtensions
             };
         }
     }
-
-    private static bool IsMfaClaim(Claim claim) =>
-        (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
-        string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
 
     public static IServiceCollection AddVantigoAntiforgery(
         this IServiceCollection services,

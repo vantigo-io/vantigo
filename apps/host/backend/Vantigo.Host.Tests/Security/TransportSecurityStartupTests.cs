@@ -111,6 +111,8 @@ public sealed class TransportSecurityStartupTests
         // There is no Key Vault to wrap the Data Protection key ring with in this
         // test host, and wrapping is not what these tests are about.
         ["DataProtection:AllowUnwrappedKeys"] = "true",
+        // Privileged MFA enforcement is not what these tests are about either.
+        ["Authentication:Owners:AllowInsecureNoMfa"] = "true",
         ["Modules:Customers:Enabled"] = "true",
         ["Modules:Communications:Enabled"] = "false",
         ["Modules:Products:Enabled"] = "false",

@@ -37,6 +37,67 @@ public sealed class IdentityMfaIntegrationTests(MfaIdentityApiFactory factory)
     }
 
     [Fact]
+    public async Task OwnerPolicy_RequiresMfaWhenConfigured()
+    {
+        // A dedicated Owner-role user, not the shared bootstrap Owner this
+        // collection fixture reuses across every test in this class - enrolling
+        // MFA on that shared account would leak into every other test here.
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.Owner);
+        using var owner = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+
+        var response = await owner.GetAsync("/api/v1/identity/owner/system-status");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SystemAdminPolicy_RequiresMfaWhenConfigured()
+    {
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.SystemAdmin);
+        using var systemAdmin = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+
+        var response = await systemAdmin.PostAsync(
+            $"/api/v1/identity/system/users/{credentials.Id}/sessions/revoke", null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnenrolledOwnerCanReachMfaEnrollmentAndGainsPrivilegedAccessAfterEnrolling()
+    {
+        // Regression coverage for the bootstrap chicken-and-egg: a privileged
+        // session that has not completed MFA must still be able to reach the
+        // enrollment endpoints - otherwise requiring MFA for Owner/SystemAdmin
+        // would make a fresh installation unusable. Uses a dedicated Owner-role
+        // user rather than the shared bootstrap Owner so enrolling MFA here does
+        // not leak into the other tests in this class.
+        var credentials = await factory.CreateUserWithCredentialsAsync(AuthRoles.Owner);
+        using var owner = await factory.CreateAuthenticatedClientAsync(credentials.Email, credentials.Password);
+
+        var statusBeforeEnrollment = await owner.GetAsync("/api/v1/identity/owner/mfa");
+        Assert.Equal(HttpStatusCode.OK, statusBeforeEnrollment.StatusCode);
+
+        var lockedOut = await owner.GetAsync("/api/v1/identity/owner/system-status");
+        Assert.Equal(HttpStatusCode.Forbidden, lockedOut.StatusCode);
+
+        var setup = await owner.PostAsJsonAsync(
+            "/api/v1/identity/owner/mfa/setup", new { password = credentials.Password });
+        Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
+        var setupBody = await setup.Content.ReadFromJsonAsync<SetupResponse>();
+        Assert.NotNull(setupBody?.SharedKey);
+
+        var enable = await owner.PostAsJsonAsync("/api/v1/identity/owner/mfa/enable", new
+        {
+            code = IdentityApiFactory.CreateTotpCode(setupBody!.SharedKey!),
+            password = credentials.Password,
+        });
+        Assert.Equal(HttpStatusCode.OK, enable.StatusCode);
+
+        var afterEnrollment = await owner.GetAsync("/api/v1/identity/owner/system-status");
+        Assert.Equal(HttpStatusCode.OK, afterEnrollment.StatusCode);
+    }
+
+    [Fact]
     public async Task OrdinaryAuthenticatedUserCanEnrollMfaAndCrossUserResetRemainsDenied()
     {
         var credentials = await factory.CreateUserWithCredentialsAsync("MfaDelegate");

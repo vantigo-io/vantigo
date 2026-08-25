@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using Vantigo.Configuration;
+using Vantigo.Identity.Authorization;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Tenancy.Abstractions;
 
@@ -87,9 +88,7 @@ public sealed class TenantMembershipService(
     {
         var tenantId = await ResolveActiveTenantIdAsync(user, priorPrincipal, cancellationToken);
         user.ActiveTenantId = tenantId;
-        var claims = (priorPrincipal?.Claims ?? []).Where(claim =>
-                claim.Type is "amr" or ClaimTypes.AuthenticationMethod)
-            .ToList();
+        var claims = (priorPrincipal?.Claims ?? []).Where(MfaClaims.Is).ToList();
         if (tenantId is Guid value) claims.Add(ActiveTenantClaimFor(value));
         user.ActiveTenantId = tenantId;
         await dbContext.SaveChangesAsync(cancellationToken);

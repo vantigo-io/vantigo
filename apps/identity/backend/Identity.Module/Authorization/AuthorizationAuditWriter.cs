@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Text.Json;
 
 using Microsoft.EntityFrameworkCore;
@@ -35,7 +34,7 @@ public sealed class AuthorizationAuditWriter
             BeforeJson = JsonSerializer.Serialize(before),
             AfterJson = JsonSerializer.Serialize(after),
             CorrelationId = httpContext.TraceIdentifier,
-            MfaAuthenticated = httpContext.User.Claims.Any(IsMfaClaim),
+            MfaAuthenticated = MfaClaims.Any(httpContext.User.Claims),
             OccurredAt = DateTimeOffset.UtcNow,
         });
 
@@ -124,10 +123,6 @@ public sealed class AuthorizationAuditWriter
             permissions,
             roles);
     }
-
-    private static bool IsMfaClaim(Claim claim) =>
-        (claim.Type is "amr" or ClaimTypes.AuthenticationMethod) &&
-        string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record UserAuthorizationSnapshot(

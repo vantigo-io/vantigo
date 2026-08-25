@@ -397,7 +397,7 @@ public static class AuthEndpoints
         await signInManager.SignOutAsync();
         SessionValidationService.BeginFreshSession(httpContext);
         await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, isPersistent: request.RememberMe,
-            priorPrincipal: new ClaimsPrincipal(new ClaimsIdentity(MfaClaims())), cancellationToken: cancellationToken);
+            priorPrincipal: new ClaimsPrincipal(new ClaimsIdentity(MfaClaims.Issue())), cancellationToken: cancellationToken);
         var roles = await userManager.GetRolesAsync(user);
         var response = new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles));
         var requiresEnrollment = await userManager.IsInRoleAsync(user, AuthRoles.Owner) &&
@@ -427,9 +427,7 @@ public static class AuthEndpoints
         var roles = await userManager.GetRolesAsync(user);
         var tenants = await tenantMembershipService.GetTenantsAsync(user.Id, cancellationToken);
         var activeTenantId = await tenantMembershipService.ResolveActiveTenantIdAsync(user, principal, cancellationToken);
-        var mfaAuthenticated = principal.Claims.Any(claim =>
-            (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
-            string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+        var mfaAuthenticated = MfaClaims.Any(principal.Claims);
         var owner = roles.Contains(AuthRoles.Owner, StringComparer.Ordinal);
         var isSystemAdmin = roles.Contains(AuthRoles.SystemAdmin, StringComparer.Ordinal);
         return TypedResults.Ok(new AuthSessionResponse(
@@ -465,9 +463,7 @@ public static class AuthEndpoints
         await tenantMembershipService.SignInWithActiveTenantAsync(signInManager, user, principal, cancellationToken: cancellationToken);
         var roles = await userManager.GetRolesAsync(user);
         var activeTenants = tenants.Select(tenant => new TenantSessionResponse(tenant.Id, tenant.Name, tenant.Slug)).ToArray();
-        var mfaAuthenticated = principal.Claims.Any(claim =>
-            (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
-            string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+        var mfaAuthenticated = MfaClaims.Any(principal.Claims);
         var isSystemAdmin = roles.Contains(AuthRoles.SystemAdmin, StringComparer.Ordinal);
         return TypedResults.Ok(new AuthSessionResponse(
             new AuthUserResponse(user.Id, user.DisplayName, PublicEmail(user.Email), AuthRoleOrdering.Ordered(roles)),
@@ -555,16 +551,11 @@ public static class AuthEndpoints
             postgres.ConstraintName is "pk_bootstrap_states" or "ux_roles_normalized_name" or
                 "ux_users_normalized_user_name" or "pk_user_roles";
 
-    private static IEnumerable<Claim> MfaClaims() =>
-        [new Claim("amr", "mfa"), new Claim(ClaimTypes.AuthenticationMethod, "mfa")];
-
     private static async Task<IdentityResult> RemoveHistoricalMfaClaims(
         ApplicationUser user,
         UserManager<ApplicationUser> userManager)
     {
-        var claims = (await userManager.GetClaimsAsync(user)).Where(claim =>
-            (claim.Type == "amr" || claim.Type == ClaimTypes.AuthenticationMethod) &&
-            string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var claims = (await userManager.GetClaimsAsync(user)).Where(MfaClaims.Is).ToArray();
         if (claims.Length > 0)
         {
             return await userManager.RemoveClaimsAsync(user, claims);
