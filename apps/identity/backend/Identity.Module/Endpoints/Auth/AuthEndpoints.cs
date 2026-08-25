@@ -274,6 +274,7 @@ public static class AuthEndpoints
         UserManager<ApplicationUser> userManager,
         ScimLifecycleService lifecycleService,
         TenantMembershipService tenantMembershipService,
+        LoginAttemptThrottle loginThrottle,
         IOptions<VantigoAuthenticationOptions> options,
         CancellationToken cancellationToken)
     {
@@ -293,7 +294,16 @@ public static class AuthEndpoints
             return Error(StatusCodes.Status400BadRequest, "invalid_request", "The login request is invalid.", errors);
         }
 
-        var user = await userManager.FindByEmailAsync(request!.Email!.Trim());
+        // Account-scoped throttle in front of any credential work. The IP-only
+        // rate-limit policy is a broad backstop; this stops focused stuffing
+        // against a single account, including accounts that do not exist.
+        var clientAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        if (loginThrottle.IsBlocked(request!.Email!, clientAddress))
+        {
+            return Error(StatusCodes.Status429TooManyRequests, "rate_limited", "Too many authentication attempts. Please try again later.");
+        }
+
+        var user = await userManager.FindByEmailAsync(request.Email!.Trim());
         if (user is not null && await lifecycleService.IsEffectivelyDisabledAsync(user.Id, cancellationToken))
         {
             return Error(StatusCodes.Status429TooManyRequests, "account_locked", "The account is temporarily unavailable. Please try again later.");
@@ -308,8 +318,11 @@ public static class AuthEndpoints
         }
         if (user is null || !passwordResult.Succeeded)
         {
+            loginThrottle.RecordFailure(request.Email!, clientAddress);
             return Error(StatusCodes.Status401Unauthorized, "invalid_credentials", "Invalid email or password.");
         }
+
+        loginThrottle.RecordSuccess(request.Email!, clientAddress);
 
         if (user.TwoFactorEnabled)
         {
