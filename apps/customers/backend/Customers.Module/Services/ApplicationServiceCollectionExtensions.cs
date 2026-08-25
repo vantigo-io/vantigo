@@ -21,7 +21,10 @@ internal static class ApplicationServiceCollectionExtensions
     {
         public async Task<CustomerDirectoryEntry?> FindCustomerAsync(int customerId, CancellationToken cancellationToken = default)
             => await db.Customers.AsNoTracking().Where(customer => customer.Id == customerId)
-                .Select(customer => new CustomerDirectoryEntry(customer.Id, (string)customer.Name))
+                .Select(customer => new CustomerDirectoryEntry(
+                    customer.Id,
+                    (string)customer.Name,
+                    customer.Status == (Domain.Customers.Common.CustomerStatus)Domain.Customers.Common.CustomerStatus.Archived))
                 .SingleOrDefaultAsync(cancellationToken);
 
         public async Task<ContactDirectoryEntry?> FindContactAsync(int contactId, CancellationToken cancellationToken = default)

@@ -3,9 +3,12 @@ using Vantigo.Customers.Domain.Exceptions;
 namespace Vantigo.Customers.Domain.Customers.Common;
 
 /// <summary>
-/// The lifecycle status of a customer. A customer is <see cref="Active"/> by default and can
-/// be <see cref="Disabled"/> when it should no longer be used in day-to-day workflows. The
-/// status is currently informational only; it is not enforced by other modules.
+/// The lifecycle status of a customer. A customer is <see cref="Active"/> by default, can be
+/// <see cref="Disabled"/> when it should no longer be used in day-to-day workflows, and
+/// becomes <see cref="Archived"/> instead of ever being hard-deleted: Communications and
+/// Energy keep historical references to customer ids, so the row must survive for those
+/// views and for the audit timeline. Archived customers are hidden from default listings
+/// but stay resolvable by id.
 /// </summary>
 public readonly record struct CustomerStatus
 {
@@ -13,8 +16,9 @@ public readonly record struct CustomerStatus
 
     public const string Active = "active";
     public const string Disabled = "disabled";
+    public const string Archived = "archived";
 
-    private static readonly string[] AllowedValues = [Active, Disabled];
+    private static readonly string[] AllowedValues = [Active, Disabled, Archived];
 
     public CustomerStatus(string value)
     {
@@ -46,7 +50,7 @@ public readonly record struct CustomerStatus
 
         return AllowedValues.Contains(value.Trim().ToLower())
             ? null
-            : $"A customer status must be one of '{Active}' or '{Disabled}', but was '{value}'";
+            : $"A customer status must be one of '{Active}', '{Disabled}' or '{Archived}', but was '{value}'";
     }
 
     public static implicit operator CustomerStatus(string value) => new(value);

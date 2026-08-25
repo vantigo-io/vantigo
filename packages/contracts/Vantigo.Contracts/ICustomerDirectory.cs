@@ -24,7 +24,12 @@ public interface ICustomerDirectory
         throw new NotSupportedException("This customer directory does not support email resolution.");
 }
 
-public sealed record CustomerDirectoryEntry(int Id, string Name);
+/// <summary>
+/// The safe cross-module projection for one customer. Archived customers still
+/// resolve — Communications and Energy keep historical references to customer
+/// ids — and the flag lets consumers mark them as archived in their views.
+/// </summary>
+public sealed record CustomerDirectoryEntry(int Id, string Name, bool Archived = false);
 public sealed record ContactDirectoryEntry(int Id, string FirstName, string LastName, string? Email);
 
 /// <summary>

@@ -74,6 +74,7 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
             data={[
               { value: "active", label: t("statusActive") },
               { value: "disabled", label: t("statusDisabled") },
+              { value: "archived", label: t("statusArchived") },
             ]}
             allowDeselect={false}
             {...form.getInputProps("status")}

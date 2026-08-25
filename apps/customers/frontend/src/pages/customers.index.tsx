@@ -151,7 +151,11 @@ export const CustomersPage = () => {
                         <Table.Td>{customer.name}</Table.Td>
                         <Table.Td>
                           <Badge variant="light" color={customer.status === "active" ? "teal" : "gray"}>
-                            {customer.status === "active" ? t("statusActive") : t("statusDisabled")}
+                            {customer.status === "active"
+                              ? t("statusActive")
+                              : customer.status === "archived"
+                                ? t("statusArchived")
+                                : t("statusDisabled")}
                           </Badge>
                         </Table.Td>
                         {showIdentity && (
