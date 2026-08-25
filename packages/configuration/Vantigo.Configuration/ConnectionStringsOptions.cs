@@ -46,6 +46,34 @@ public sealed class ConnectionStringsOptions
         !string.IsNullOrWhiteSpace(Migrations) && Migrations != Resolve(legacyKeys)
             ? Migrations
             : null;
+
+    /// <summary>
+    /// The per-replica pool ceiling applied when the connection string does not
+    /// set one. Npgsql's default of 100 per replica exhausts a modest
+    /// PostgreSQL max_connections once a deployment scales out; deployments
+    /// size their own budget with MaxPoolSize in the connection string
+    /// (replicas × pool size must stay under max_connections with headroom).
+    /// </summary>
+    public const int DefaultMaxPoolSize = 25;
+
+    /// <summary>
+    /// Returns the runtime connection string with the pool budget applied.
+    /// Values set explicitly in the connection string always win; migrations
+    /// deliberately do not use this (schema changes may legitimately run
+    /// longer and never need a pool).
+    /// </summary>
+    public string ResolveRuntime(params string[] legacyKeys)
+    {
+        var builder = new Npgsql.NpgsqlConnectionStringBuilder(Resolve(legacyKeys));
+        // ShouldSerialize reports whether the keyword was explicitly present in
+        // the connection string (ContainsKey only reports keyword validity).
+        if (!builder.ShouldSerialize("Maximum Pool Size"))
+        {
+            builder.MaxPoolSize = DefaultMaxPoolSize;
+        }
+
+        return builder.ConnectionString;
+    }
 }
 
 /// <summary>

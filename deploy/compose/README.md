@@ -118,6 +118,23 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, communicatio
 Multi-tenant mode (`Tenancy__Mode=multi`) is not production-ready and refuses to
 start outside Development. See [docs/tenancy.md](../../docs/tenancy.md).
 
+## Database connection budget
+
+Each API replica caps its PostgreSQL pool at 25 connections unless the
+connection string sets `Maximum Pool Size` explicitly (Npgsql's own default of
+100 per replica exhausts a modest `max_connections` once you scale out). Size
+the budget so that
+
+```
+replicas × Maximum Pool Size  ≤  max_connections − headroom (reserve ~10 for
+                                 migrations, monitoring, and manual sessions)
+```
+
+Connect and command timeouts keep Npgsql's defaults (15 s / 30 s); override
+them in the connection string (`Timeout`, `Command Timeout`) if your
+environment needs different bounds. Migrations run without the pool cap, since
+schema changes may legitimately run longer.
+
 ## Base path and reverse proxy
 
 The whole application can be served below one configurable path prefix. Set

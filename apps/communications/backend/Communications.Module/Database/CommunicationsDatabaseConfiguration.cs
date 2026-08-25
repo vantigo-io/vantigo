@@ -28,7 +28,7 @@ public static class CommunicationsDatabaseConfiguration
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
-            var connectionString = connectionStrings.Resolve("communications");
+            var connectionString = connectionStrings.ResolveRuntime("communications");
             return NpgsqlDataSource.Create(connectionString);
         });
         services.AddDbContext<CommunicationsDbContext>((provider, options) => options.UseNpgsql(

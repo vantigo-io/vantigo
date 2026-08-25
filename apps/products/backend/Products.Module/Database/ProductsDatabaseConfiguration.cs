@@ -26,7 +26,7 @@ public static class ProductsDatabaseConfiguration
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
-            var connectionString = connectionStrings.Resolve("products");
+            var connectionString = connectionStrings.ResolveRuntime("products");
 
             // One application-level data source gives both EF contexts the same ADO.NET
             // pool while retaining separate DbContext lifetimes and migration histories.
