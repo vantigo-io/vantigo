@@ -128,25 +128,43 @@ internal sealed class AuthorizationManagementHandler(AccountsDbContext dbContext
                 delegation.GranteeUserId == userId && delegation.RevokedAt == null &&
                 (delegation.ExpiresAt == null || delegation.ExpiresAt > DateTimeOffset.UtcNow))
             .ToListAsync();
-        foreach (var delegation in activeDelegations)
-        {
-            var roleIds = await dbContext.AuthorizationDelegationRoles.AsNoTracking()
-                .Where(item => item.DelegationId == delegation.Id)
-                .Select(item => item.RoleId)
+        if (activeDelegations.Count == 0)
+            return;
+
+        // Validity is evaluated for every active delegation in three queries
+        // total; this handler runs on every management-authorized request, so
+        // per-delegation round-trips would grow latency linearly.
+        var delegationIds = activeDelegations.Select(delegation => delegation.Id).ToArray();
+        var rolesByDelegation = (await dbContext.AuthorizationDelegationRoles.AsNoTracking()
+                .Where(item => delegationIds.Contains(item.DelegationId))
+                .Select(item => new { item.DelegationId, item.RoleId })
                 .Distinct()
-                .ToListAsync();
-            var validRoleCount = await dbContext.Roles.AsNoTracking()
+                .ToListAsync())
+            .GroupBy(item => item.DelegationId)
+            .ToDictionary(byDelegation => byDelegation.Key, byDelegation => byDelegation.Select(item => item.RoleId).ToArray());
+        var referencedRoleIds = rolesByDelegation.Values.SelectMany(roleIds => roleIds).Distinct().ToArray();
+        var validRoleIds = (await dbContext.Roles.AsNoTracking()
                 .Join(dbContext.RoleMetadata.AsNoTracking(), role => role.Id, metadata => metadata.RoleId,
                     (role, metadata) => new { role.Id, metadata.IsSystem, metadata.IsBuiltIn })
-                .CountAsync(item => roleIds.Contains(item.Id) && !item.IsSystem && !item.IsBuiltIn);
-            if (validRoleCount != roleIds.Count)
+                .Where(item => referencedRoleIds.Contains(item.Id) && !item.IsSystem && !item.IsBuiltIn)
+                .Select(item => item.Id)
+                .ToListAsync())
+            .ToHashSet();
+        var keysByDelegation = (await dbContext.AuthorizationDelegationPermissions.AsNoTracking()
+                .Where(item => delegationIds.Contains(item.DelegationId))
+                .Select(item => new { item.DelegationId, item.PermissionKey })
+                .Distinct()
+                .ToListAsync())
+            .GroupBy(item => item.DelegationId)
+            .ToDictionary(byDelegation => byDelegation.Key, byDelegation => byDelegation.Select(item => item.PermissionKey).ToArray());
+
+        foreach (var delegation in activeDelegations)
+        {
+            var roleIds = rolesByDelegation.GetValueOrDefault(delegation.Id, []);
+            if (!roleIds.All(validRoleIds.Contains))
                 continue;
 
-            var permissionKeys = await dbContext.AuthorizationDelegationPermissions.AsNoTracking()
-                .Where(item => item.DelegationId == delegation.Id)
-                .Select(item => item.PermissionKey)
-                .Distinct()
-                .ToListAsync();
+            var permissionKeys = keysByDelegation.GetValueOrDefault(delegation.Id, []);
             if (permissionKeys.All(key => catalog.Contains(key) && catalog.GetRequired(key).Delegable))
             {
                 context.Succeed(requirement);

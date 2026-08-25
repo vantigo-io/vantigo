@@ -22,6 +22,23 @@ public sealed class LookupEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task BrregLookup_RetriesTransientUpstreamFailures()
+    {
+        // The first two upstream attempts fail with a retryable 503; the
+        // resilience pipeline must absorb them and the caller still gets data.
+        var attempts = 0;
+        _factory.BrregHandler.OnRequest = request =>
+            Interlocked.Increment(ref attempts) <= 2
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : null!;
+
+        var response = await _client.GetFromJsonAsync<LookupResponse>("/api/v1/customers/lookup/brreg?search=equinor");
+
+        Assert.Equal(2, response!.Data.Count);
+        Assert.Equal(3, attempts);
+    }
+
+    [Fact]
     public async Task BrregLookup_BySearch_ReturnsMappedEntities()
     {
         var response = await _client.GetFromJsonAsync<LookupResponse>("/api/v1/customers/lookup/brreg?search=equinor");

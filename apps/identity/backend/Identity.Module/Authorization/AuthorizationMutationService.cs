@@ -170,22 +170,69 @@ public sealed class AuthorizationMutationService(AccountsDbContext dbContext, IP
         CancellationToken cancellationToken)
     {
         if (await IsOwnerAsync(userId, cancellationToken)) return [];
-        var scopes = new List<AuthorizationScope>();
         var delegations = await dbContext.AuthorizationDelegations.AsNoTracking()
             .Where(item => item.GranteeUserId == userId && item.RevokedAt == null &&
                 (item.ExpiresAt == null || item.ExpiresAt > DateTimeOffset.UtcNow))
             .ToListAsync(cancellationToken);
+        if (delegations.Count == 0) return [];
+
+        // Roles, permission keys, and role validity are batched over all active
+        // delegations, so evaluating N delegations stays a fixed number of
+        // queries — this runs on the hot path of every authorized request.
+        var delegationIds = delegations.Select(delegation => delegation.Id).ToArray();
+        var rolesByDelegation = (await dbContext.AuthorizationDelegationRoles.AsNoTracking()
+                .Where(item => delegationIds.Contains(item.DelegationId))
+                .Select(item => new { item.DelegationId, item.RoleId })
+                .ToListAsync(cancellationToken))
+            .GroupBy(item => item.DelegationId)
+            .ToDictionary(byDelegation => byDelegation.Key, byDelegation => byDelegation.Select(item => item.RoleId).ToArray());
+        var keysByDelegation = (await dbContext.AuthorizationDelegationPermissions.AsNoTracking()
+                .Where(item => delegationIds.Contains(item.DelegationId))
+                .Select(item => new { item.DelegationId, item.PermissionKey })
+                .ToListAsync(cancellationToken))
+            .GroupBy(item => item.DelegationId)
+            .ToDictionary(byDelegation => byDelegation.Key, byDelegation => byDelegation.Select(item => item.PermissionKey).ToArray());
+        var referencedRoleIds = rolesByDelegation.Values.SelectMany(roleIds => roleIds).Distinct().ToArray();
+        var validRoleIds = (await dbContext.Roles.AsNoTracking()
+                .Join(dbContext.RoleMetadata.AsNoTracking(), role => role.Id, metadata => metadata.RoleId,
+                    (role, metadata) => new { role.Id, metadata.IsSystem, metadata.IsBuiltIn })
+                .Where(item => referencedRoleIds.Contains(item.Id) && !item.IsSystem && !item.IsBuiltIn)
+                .Select(item => item.Id)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        var scopes = new List<AuthorizationScope>();
         foreach (var delegation in delegations)
         {
-            if (!await IsValidDelegationAsync(delegation.Id, cancellationToken)) continue;
-            var keys = await dbContext.AuthorizationDelegationPermissions.AsNoTracking()
-                .Where(item => item.DelegationId == delegation.Id).Select(item => item.PermissionKey).ToListAsync(cancellationToken);
-            var roleIds = await dbContext.AuthorizationDelegationRoles.AsNoTracking()
-                .Where(item => item.DelegationId == delegation.Id).Select(item => item.RoleId).ToListAsync(cancellationToken);
-            var scope = new AuthorizationScope(delegation.Id, delegation.CanCreateRoles, keys, roleIds, []);
-            scopes.Add(scope with { AssignableRoleIds = await AssignableRoleIdsForScopeAsync(scope, cancellationToken) });
+            var roleIds = rolesByDelegation.GetValueOrDefault(delegation.Id, []);
+            var keys = keysByDelegation.GetValueOrDefault(delegation.Id, []);
+            if (!roleIds.All(validRoleIds.Contains)) continue;
+            if (!keys.All(key => catalog.Contains(key) && catalog.GetRequired(key).Delegable)) continue;
+            scopes.Add(new AuthorizationScope(delegation.Id, delegation.CanCreateRoles, keys, roleIds, []));
         }
-        return scopes;
+
+        if (scopes.Count == 0) return scopes;
+
+        // Assignable roles are likewise resolved for every scope at once.
+        var stewardedRoleIds = scopes.SelectMany(scope => scope.StewardedRoleIds).Distinct().ToArray();
+        var eligibleRoleIds = (await dbContext.RoleMetadata.AsNoTracking()
+                .Where(item => !item.IsSystem && !item.IsBuiltIn && stewardedRoleIds.Contains(item.RoleId))
+                .Select(item => item.RoleId)
+                .ToListAsync(cancellationToken))
+            .ToHashSet();
+        var permissionsByRole = (await dbContext.RolePermissions.AsNoTracking()
+                .Where(item => eligibleRoleIds.Contains(item.RoleId))
+                .ToListAsync(cancellationToken))
+            .GroupBy(item => item.RoleId)
+            .ToDictionary(byRole => byRole.Key, byRole => byRole.Select(item => item.PermissionKey).ToArray());
+
+        return scopes.Select(scope => scope with
+        {
+            AssignableRoleIds = scope.StewardedRoleIds.Distinct()
+                .Where(eligibleRoleIds.Contains)
+                .Where(roleId => !permissionsByRole.TryGetValue(roleId, out var keys) || KeysWithinScope(scope, keys))
+                .ToArray(),
+        }).ToArray();
     }
 
     public async Task<bool> HasActiveDelegationAsync(Guid userId, CancellationToken cancellationToken) =>

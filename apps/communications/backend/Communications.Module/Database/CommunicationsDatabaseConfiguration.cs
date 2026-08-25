@@ -28,13 +28,16 @@ public static class CommunicationsDatabaseConfiguration
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
-            var connectionString = connectionStrings.Resolve("communications");
+            var connectionString = connectionStrings.ResolveRuntime("communications");
             return NpgsqlDataSource.Create(connectionString);
         });
         services.AddDbContext<CommunicationsDbContext>((provider, options) => options.UseNpgsql(
             provider.GetRequiredService<NpgsqlDataSource>(), npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "communications"))
             .UseTenancy(provider));
         services.AddCommunicationsModuleVersioning();
+        // Deliberately no HTTP-level retry: a Mailgun send is not idempotent
+        // (an ambiguous timeout may already have delivered the message), and
+        // the outbox worker owns at-least-once retries with its own dedupe.
         services.AddHttpClient("mailgun", client => client.Timeout = TimeSpan.FromSeconds(10));
         services.AddOptions<MailgunInboundOptions>().BindConfiguration("Communications:Inbound");
         services.AddOptions<ClamAvOptions>().BindConfiguration("Communications:Scanner");
@@ -72,16 +75,24 @@ public static class CommunicationsDatabaseConfiguration
         services.AddScoped<ICommunicationsObjectPurger, CommunicationsObjectPurger>();
         services.AddScoped<AttachmentScanProcessor>();
         services.AddScoped<InboundEmailJobProcessor>();
-        services.AddHostedService<CommunicationsOutboxWorker>();
-        services.AddHostedService<CommunicationsInboundWorker>();
-        services.AddHostedService<CommunicationsRetentionWorker>();
-        services.AddHostedService<CommunicationsAttachmentCleanupWorker>();
         var scannerSection = configuration.GetSection("Communications:Scanner");
         if (scannerSection?.GetValue<string>("Host") is { Length: > 0 })
             services.AddSingleton<IAttachmentScanner, ClamAvAttachmentScanner>();
         else
             services.AddSingleton<IAttachmentScanner, DisabledAttachmentScanner>();
-        services.AddHostedService<CommunicationsAttachmentScannerWorker>();
+
+        // Workers:InProcess=false moves the background services out of the API
+        // replicas and into a dedicated `worker` process, so scaling HTTP does
+        // not multiply pollers; the single-container default keeps them here.
+        if (configuration.GetValue<bool?>("Workers:InProcess") ?? true)
+        {
+            services.AddHostedService<CommunicationsOutboxWorker>();
+            services.AddHostedService<CommunicationsInboundWorker>();
+            services.AddHostedService<CommunicationsRetentionWorker>();
+            services.AddHostedService<CommunicationsAttachmentCleanupWorker>();
+            services.AddHostedService<CommunicationsAttachmentScannerWorker>();
+        }
+
         return services;
     }
 

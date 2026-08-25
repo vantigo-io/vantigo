@@ -16,7 +16,7 @@ internal static class HostDatabaseConfiguration
         services.AddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
-            var connectionString = connectionStrings.Resolve();
+            var connectionString = connectionStrings.ResolveRuntime();
             return NpgsqlDataSource.Create(connectionString);
         });
         services.AddSingleton<ICommunicationsSchemaResetSqlExecutor, NpgsqlCommunicationsSchemaResetSqlExecutor>();

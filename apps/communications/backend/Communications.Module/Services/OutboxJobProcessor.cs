@@ -22,14 +22,24 @@ internal sealed class OutboxJobProcessor(
     private static bool IsSendable(MessageDelivery delivery) =>
         delivery.Status is not ("relay_accepted" or "cancelled" or "suppressed");
 
+    // Advances the tenant the scan starts from, one step per invocation, so a
+    // busy early tenant cannot permanently starve later ones: every tenant is
+    // periodically first in line. Shared across processor instances since each
+    // poll iteration gets its own scope.
+    private static int tenantRotation = -1;
+
     public Task<bool> ProcessOneAsync(CancellationToken cancellationToken) => ProcessOneAsync(null, cancellationToken);
 
     public async Task<bool> ProcessOneAsync(Guid? onlyMessageId, CancellationToken cancellationToken)
     {
         // System-context discovery; tenant scope is entered before processing.
         // The directory provides the bounded tenant work list without scanning a
-        // tenant-owned table from an unresolved context.
-        foreach (var tenant in await tenantDirectory.GetActiveTenantsAsync(cancellationToken))
+        // tenant-owned table from an unresolved context. A global cross-tenant
+        // claim is not an option here: row-level security scopes every query to
+        // the tenant whose setting the session carries.
+        foreach (var tenant in TenantWorkRotation.Rotate(
+            await tenantDirectory.GetActiveTenantsAsync(cancellationToken),
+            Interlocked.Increment(ref tenantRotation)))
         {
             try
             {

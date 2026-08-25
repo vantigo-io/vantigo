@@ -23,7 +23,7 @@ public static class CustomersDatabaseConfiguration
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
-            var connectionString = connectionStrings.Resolve("customers");
+            var connectionString = connectionStrings.ResolveRuntime("customers");
 
             // One application-level data source gives both EF contexts the same ADO.NET
             // pool while retaining separate DbContext lifetimes and migration histories.
@@ -42,8 +42,20 @@ public static class CustomersDatabaseConfiguration
         {
             var brreg = serviceProvider.GetRequiredService<IOptions<BrregLookupOptions>>().Value;
             client.BaseAddress = new Uri(brreg.BaseUrl);
-            client.Timeout = TimeSpan.FromSeconds(5);
-        });
+            // The resilience pipeline owns the timeouts: short attempts with a
+            // bounded total, so a flaky registry costs retries, not minutes.
+            client.Timeout = TimeSpan.FromSeconds(20);
+        })
+            // Brønnøysundregisteret lookups are idempotent GETs, so transient
+            // faults (5xx, 408, timeouts) are retried with jitter behind a
+            // circuit breaker instead of surfacing as user-facing errors.
+            .AddStandardResilienceHandler(options =>
+            {
+                options.Retry.MaxRetryAttempts = 3;
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(4);
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(15);
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+            });
 
         return services;
     }

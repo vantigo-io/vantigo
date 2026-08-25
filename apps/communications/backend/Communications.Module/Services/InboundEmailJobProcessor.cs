@@ -27,13 +27,19 @@ internal sealed class InboundEmailJobProcessor(
 {
     private readonly MailgunInboundOptions inbound = options.Value;
 
+    // See TenantWorkRotation: every invocation starts the scan one tenant
+    // further, so early tenants cannot starve later ones.
+    private static int tenantRotation = -1;
+
     public Task<bool> ProcessOneAsync(CancellationToken cancellationToken) => ProcessOneAsync(null, cancellationToken);
 
     public async Task<bool> ProcessOneAsync(Guid? onlyJobId, CancellationToken cancellationToken)
     {
         // System-context discovery; tenant scope is entered before processing.
         // The active tenant directory bounds the discovery pass.
-        foreach (var tenant in await tenantDirectory.GetActiveTenantsAsync(cancellationToken))
+        foreach (var tenant in TenantWorkRotation.Rotate(
+            await tenantDirectory.GetActiveTenantsAsync(cancellationToken),
+            Interlocked.Increment(ref tenantRotation)))
         {
             try
             {

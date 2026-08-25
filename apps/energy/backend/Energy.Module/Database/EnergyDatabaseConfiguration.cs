@@ -22,7 +22,7 @@ public static class EnergyDatabaseConfiguration
         services.TryAddSingleton<NpgsqlDataSource>(serviceProvider =>
         {
             var connectionStrings = serviceProvider.GetRequiredService<IOptions<ConnectionStringsOptions>>().Value;
-            var connectionString = connectionStrings.Resolve("energy");
+            var connectionString = connectionStrings.ResolveRuntime("energy");
             var builder = new NpgsqlDataSourceBuilder(connectionString);
             builder.EnableDynamicJson();
             return builder.Build();

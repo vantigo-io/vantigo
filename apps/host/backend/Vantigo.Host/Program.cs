@@ -49,6 +49,13 @@ if (commandLine.Command == VantigoCommand.HealthCheck)
 }
 
 var builder = WebApplication.CreateBuilder(commandLine.RemainingArguments);
+if (commandLine.Command == VantigoCommand.Worker)
+{
+    // The dedicated worker process always hosts the background services, even
+    // when the shared environment disables in-process workers for the API.
+    builder.Configuration["Workers:InProcess"] = "true";
+}
+
 var configuresApi = Program.IsApiCommand(commandLine.Command);
 Program.RegisterHostServices(builder, commandLine.Command);
 
@@ -74,6 +81,15 @@ if (commandLine.Command is VantigoCommand.Migrate or VantigoCommand.ResetCommuni
         Environment.ExitCode = 2;
     }
 
+    return;
+}
+
+if (commandLine.Command == VantigoCommand.Worker)
+{
+    // Background services only: no API surface, no SPA, just the health
+    // endpoints a container platform needs to probe the worker.
+    app.MapVantigoHealthChecks();
+    app.Run();
     return;
 }
 

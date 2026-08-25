@@ -246,6 +246,39 @@ public sealed class AccessGroupManagementService(
         return group;
     }
 
+    /// <summary>
+    /// Loads member and role details for every group in two queries total, so
+    /// listing N groups stays O(1) in database round-trips instead of running
+    /// two queries per group.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, AccessGroupDetails>> DetailsForManyAsync(
+        IReadOnlyCollection<AccessGroup> groups,
+        CancellationToken cancellationToken)
+    {
+        var groupIds = groups.Select(group => group.Id).ToArray();
+        var membersByGroup = (await dbContext.AccessGroupMemberships.AsNoTracking()
+                .Where(item => groupIds.Contains(item.GroupId) &&
+                    (item.Override == AccessGroupMembershipOverride.ForceMember ||
+                     item.Override == null && item.IsUpstreamPresent))
+                .Select(item => new { item.GroupId, item.UserId })
+                .ToListAsync(cancellationToken))
+            .GroupBy(item => item.GroupId)
+            .ToDictionary(byGroup => byGroup.Key, byGroup => byGroup.Select(item => item.UserId).Order().ToArray());
+        var rolesByGroup = (await dbContext.AccessGroupRoleMappings.AsNoTracking()
+                .Where(item => groupIds.Contains(item.GroupId))
+                .Select(item => new { item.GroupId, item.RoleId })
+                .ToListAsync(cancellationToken))
+            .GroupBy(item => item.GroupId)
+            .ToDictionary(byGroup => byGroup.Key, byGroup => byGroup.Select(item => item.RoleId).Order().ToArray());
+
+        return groups.ToDictionary(
+            group => group.Id,
+            group => new AccessGroupDetails(
+                group,
+                membersByGroup.GetValueOrDefault(group.Id, []),
+                rolesByGroup.GetValueOrDefault(group.Id, [])));
+    }
+
     public async Task<AccessGroupDetails> DetailsAsync(AccessGroup group, CancellationToken cancellationToken)
     {
         var memberIds = await dbContext.AccessGroupMemberships.AsNoTracking()

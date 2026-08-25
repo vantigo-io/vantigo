@@ -4,6 +4,7 @@ public enum VantigoCommand
 {
     NoArguments,
     Api,
+    Worker,
     Migrate,
     Seed,
     ResetCommunications,
@@ -18,7 +19,7 @@ public readonly record struct VantigoCommandLineResult(
 
 public static class VantigoCommandLine
 {
-    public const string Usage = "Usage: Vantigo.Host <api|migrate|seed|reset-communications|healthcheck> [arguments]";
+    public const string Usage = "Usage: Vantigo.Host <api|worker|migrate|seed|reset-communications|healthcheck> [arguments]";
 
     public static VantigoCommandLineResult Parse(IReadOnlyList<string> arguments)
     {
@@ -39,6 +40,7 @@ public static class VantigoCommandLine
         var command = arguments[0].ToLowerInvariant() switch
         {
             "api" => VantigoCommand.Api,
+            "worker" => VantigoCommand.Worker,
             "migrate" => VantigoCommand.Migrate,
             "seed" => VantigoCommand.Seed,
             "reset-communications" => VantigoCommand.ResetCommunications,
