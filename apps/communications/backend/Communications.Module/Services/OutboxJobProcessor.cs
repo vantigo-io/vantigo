@@ -174,6 +174,7 @@ internal sealed class OutboxJobProcessor(
             var current = await db.OutboxJobs.SingleAsync(item => item.Id == job.Id, cancellationToken);
             if (current.LeaseId != leaseId) return true;
             current.Status = "completed";
+            CommunicationsMetrics.OutboxJobsCompleted.Add(1);
             current.CompletedAt = now;
             current.LeaseId = null;
             current.LeaseUntil = null;
@@ -209,6 +210,7 @@ internal sealed class OutboxJobProcessor(
         var current = await db.OutboxJobs.SingleOrDefaultAsync(item => item.Id == jobId, cancellationToken);
         if (current is null || current.LeaseId != leaseId) return;
         current.Status = "completed";
+        CommunicationsMetrics.OutboxJobsCompleted.Add(1);
         current.CompletedAt = DateTimeOffset.UtcNow;
         current.LeaseId = null;
         current.LeaseUntil = null;
@@ -252,6 +254,10 @@ internal sealed class OutboxJobProcessor(
         var maxAttempts = Math.Max(1, outbox.MaxAttempts);
         var terminal = current.Attempts >= maxAttempts;
         current.Status = terminal ? "failed" : "retry";
+        if (terminal)
+            CommunicationsMetrics.OutboxJobsFailed.Add(1);
+        else
+            CommunicationsMetrics.OutboxJobsRetried.Add(1);
         current.LastError = "Outbound delivery failed.";
         current.NextAttemptAt = DateTimeOffset.UtcNow.AddSeconds(Math.Min(3600, Math.Pow(2, Math.Min(current.Attempts, 10))));
         current.LeaseId = null;

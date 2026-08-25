@@ -33,7 +33,9 @@ public sealed class AuthorizationAuditWriter
             Details = JsonSerializer.Serialize(new { action }),
             BeforeJson = JsonSerializer.Serialize(before),
             AfterJson = JsonSerializer.Serialize(after),
-            CorrelationId = httpContext.TraceIdentifier,
+            // The OTel trace id (with the ASP.NET request id as the fallback)
+            // is what correlates an audit row with exported traces and logs.
+            CorrelationId = System.Diagnostics.Activity.Current?.TraceId.ToString() ?? httpContext.TraceIdentifier,
             MfaAuthenticated = MfaClaims.Any(httpContext.User.Claims),
             OccurredAt = DateTimeOffset.UtcNow,
         });
