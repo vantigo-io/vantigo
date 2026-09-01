@@ -18,6 +18,16 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 const customer = { id: 7, name: "Acme Corporation" };
+const meteringPoint = {
+  id: 12,
+  gsrn: "707057500000000012",
+  meterNumber: "M-1200",
+  address: { streetAddress: "Storgata 1", postalCode: "0155", city: "Oslo", countryCode: "NO" },
+  priceArea: "NO1",
+  connectionStatus: "Connected",
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
 const contact = {
   id: 8,
   firstName: "Ada",
@@ -166,8 +176,61 @@ describe("AppSpotlight navigation authorization", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/contacts"))).toBe(false);
+    expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/metering-points"))).toBe(
+      false,
+    );
     expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/api/v1/customers?"))).toBe(
       true,
+    );
+  });
+
+  it("finds metering points by search for users with the energy view permission", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      return Promise.resolve(
+        new Response(
+          url.includes("/metering-points") ? JSON.stringify(paginated([meteringPoint])) : JSON.stringify(paginated([])),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onNavigate = vi.fn();
+    renderSpotlight(["energy:metering-points-view"], false, false, onNavigate);
+
+    await enterSearch("7070");
+
+    await waitFor(() => expect(screen.getByText(meteringPoint.gsrn, { exact: true })).toBeInTheDocument());
+    expect(screen.getByText("M-1200 · Storgata 1, Oslo", { exact: true })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(meteringPoint.gsrn, { exact: true }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/$tenantSlug/energy/metering-points/$meteringPointId",
+        params: { tenantSlug: "acme", meteringPointId: meteringPoint.id },
+      }),
+    );
+  });
+
+  it("does not search metering points when the energy module is disabled", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      return Promise.resolve(
+        new Response(JSON.stringify(url.includes("/metering-points") ? paginated([meteringPoint]) : paginated([])), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderSpotlight(["*"], true, true, undefined, "acme", ["customers", "communications", "products"]);
+
+    await enterSearch("7070");
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/metering-points"))).toBe(
+      false,
     );
   });
 
@@ -197,16 +260,17 @@ describe("AppSpotlight navigation authorization", () => {
   });
 
   it("invokes onNavigate for navigation, customer, and contact actions", async () => {
-    const fetchMock = vi.fn((input: RequestInfo | URL) =>
-      Promise.resolve(
-        new Response(
-          String(input).includes("/contacts")
-            ? JSON.stringify(paginated([{ contact, customer: null, customerCount: 0 }]))
-            : JSON.stringify(paginated([customer])),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      ),
-    );
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes("/contacts")
+        ? paginated([{ contact, customer: null, customerCount: 0 }])
+        : url.includes("/metering-points")
+          ? paginated([])
+          : paginated([customer]);
+      return Promise.resolve(
+        new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }),
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
     const onNavigate = vi.fn();
     renderSpotlight(["*"], true, true, onNavigate);

@@ -48,10 +48,15 @@ producing contiguous supply periods).
 *Unblocks:* correct daily/monthly figures for charts and invoicing, meter swap
 workflows, and leverandørbytte-style customer changes.
 
-### Phase 3 — Customer context (in progress)
+### Phase 3 — Customer context (done)
 
 Customer detail page gets an Energy tab (host-composed, reusing the energy
-module's meter listing) so day-to-day work happens in the customer's context.
+module's meter listing) so day-to-day work happens in the customer's context:
+consumption stats over the last twelve months, the customer's metering points
+with attach/detach, all behind the tenant's enabled modules and the caller's
+permissions (the tab row follows the same visibility rules as the sidebar).
+Metering points are also searchable from the global spotlight by GSRN, meter
+number, or address.
 
 *Unblocks:* the composition pattern future modules (Invoices) reuse to extend
 the customer page.
@@ -85,8 +90,6 @@ connection status) against Elhub with drift flagging. Adds
   customers; audit logging of back-office access to consumption data.
 - **Customer self-service** — the supply-period authorization query is the
   foundation if end customers ever get a portal.
-- **Spotlight search** — live metering-point search (GSRN/meter number/address)
-  in the global search; backend support already exists.
 
 ## Products
 
