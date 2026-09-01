@@ -1,12 +1,13 @@
 import { Center, Loader, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Spotlight } from "@mantine/spotlight";
-import { IconBuilding, IconMail, IconPackage, IconPlus, IconSearch, IconUser } from "@tabler/icons-react";
+import { IconBolt, IconBuilding, IconMail, IconPackage, IconPlus, IconSearch, IconUser } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { contactsQueryOptions } from "@vantigo/customers-ui/api/contacts";
 import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
+import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
@@ -63,6 +64,8 @@ export const AppSpotlight = ({
   const canSearchCustomers = customersEnabled && hasPermissions(permissions, ["customers:view"]);
   const canSearchContacts =
     customersEnabled && hasPermissions(permissions, ["customers:contacts-view", "customers:associations-view"]);
+  const canSearchMeteringPoints =
+    enabledModules?.includes("energy") === true && hasPermissions(permissions, ["energy:metering-points-view"]);
   const handleNavigate = (action: () => void) => {
     onNavigate?.();
     action();
@@ -89,15 +92,24 @@ export const AppSpotlight = ({
     ...contactsQueryOptions({ search, pageSize: MAX_RESULTS }),
     enabled: searchEnabled && canSearchContacts,
   });
+  const meteringPoints = useQuery({
+    ...meteringPointsQueryOptions({ search, pageSize: MAX_RESULTS }),
+    enabled: searchEnabled && canSearchMeteringPoints,
+  });
 
   const matchingNavigation = navigationActions.filter((action) =>
     t(action.label).toLowerCase().includes(query.trim().toLowerCase()),
   );
   const customerResults = searchEnabled && canSearchCustomers ? (customers.data?.data ?? []) : [];
   const contactResults = searchEnabled && canSearchContacts ? (contacts.data?.data ?? []) : [];
+  const meteringPointResults = searchEnabled && canSearchMeteringPoints ? (meteringPoints.data?.data ?? []) : [];
 
-  const isSearching = searchEnabled && (customers.isFetching || contacts.isFetching);
-  const isEmpty = matchingNavigation.length === 0 && customerResults.length === 0 && contactResults.length === 0;
+  const isSearching = searchEnabled && (customers.isFetching || contacts.isFetching || meteringPoints.isFetching);
+  const isEmpty =
+    matchingNavigation.length === 0 &&
+    customerResults.length === 0 &&
+    contactResults.length === 0 &&
+    meteringPointResults.length === 0;
 
   return (
     <Spotlight.Root shortcut="mod + K" query={query} onQueryChange={setQuery} onSpotlightClose={() => setQuery("")}>
@@ -183,6 +195,32 @@ export const AppSpotlight = ({
                       void navigate({
                         to: "/$tenantSlug/contacts/$contactId",
                         params: { tenantSlug, contactId: item.contact.id },
+                      });
+                  })
+                }
+              />
+            ))}
+          </Spotlight.ActionsGroup>
+        )}
+
+        {meteringPointResults.length > 0 && (
+          <Spotlight.ActionsGroup label={t("navigation.meteringPoints")}>
+            {meteringPointResults.map((point) => (
+              <Spotlight.Action
+                key={point.id}
+                label={point.gsrn}
+                description={
+                  [point.meterNumber, [point.address.streetAddress, point.address.city].filter(Boolean).join(", ")]
+                    .filter(Boolean)
+                    .join(" · ") || t("navigation.meteringPoint")
+                }
+                leftSection={<IconBolt size={20} stroke={1.5} />}
+                onClick={() =>
+                  handleNavigate(() => {
+                    if (tenantSlug)
+                      void navigate({
+                        to: "/$tenantSlug/energy/metering-points/$meteringPointId",
+                        params: { tenantSlug, meteringPointId: point.id },
                       });
                   })
                 }
