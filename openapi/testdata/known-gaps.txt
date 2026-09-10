@@ -11,9 +11,6 @@ deleteIdentityAccountPasskeysByCredentialId
 deleteIdentityOwnerUsersById
 deleteIdentityScimV2GroupsById
 deleteIdentityScimV2UsersById
-deleteProductsByIdVariantsByVariantId
-deleteProductsCategoriesById
-deleteProductsTaxCategoriesById
 getCommunicationsAttachmentsByIdDownload
 getCommunicationsChannels
 getCommunicationsChannelsById
@@ -64,8 +61,6 @@ getIdentityScimV2Users
 getIdentityScimV2UsersById
 getIdentitySession
 getIdentitySystemStatus
-getProduct
-getProducts
 patchCommunicationsConversationsById
 patchIdentityAccountProfile
 patchIdentityScimV2GroupsById
@@ -124,11 +119,6 @@ postIdentityPasswordRecoveryReset
 postIdentityScimV2Groups
 postIdentityScimV2Users
 postIdentitySystemUsersByUserIdSessionsRevoke
-postProducts
-postProductsByIdVariants
-postProductsByIdVariantsByVariantIdPrices
-postProductsCategories
-postProductsTaxCategories
 putCommunicationsChannelsById
 putCommunicationsConversationsByIdTagsByTagId
 putCustomersById
@@ -147,5 +137,3 @@ putIdentityAccountProfile
 putIdentityOwnerUsersById
 putIdentityScimV2UsersById
 putIdentitySystemMaintenance
-putProductsByIdVariantsByVariantId
-putProductsCategoriesById
