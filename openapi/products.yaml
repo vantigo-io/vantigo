@@ -7,7 +7,7 @@ components:
                 parentId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - name
             type: object
@@ -15,16 +15,16 @@ components:
             properties:
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 name:
                     type: string
                 parentId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 productCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - id
                 - name
@@ -35,15 +35,15 @@ components:
                 categoryId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 page:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 pageSize:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 search:
                     nullable: true
                     type: string
@@ -77,7 +77,7 @@ components:
             properties:
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 name:
                     type: string
             required:
@@ -88,7 +88,7 @@ components:
             properties:
                 amount:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 currency:
                     type: string
                 validFrom:
@@ -107,12 +107,12 @@ components:
             properties:
                 amount:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 currency:
                     type: string
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 validFrom:
                     format: date-time
                     nullable: true
@@ -131,7 +131,7 @@ components:
                 categoryId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 description:
                     nullable: true
                     type: string
@@ -142,7 +142,7 @@ components:
                     type: string
                 taxCategoryId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 type:
                     type: string
                 variants:
@@ -161,10 +161,9 @@ components:
                     nullable: true
                     type: string
                 category:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/ProductCategoryResponse'
-                    type: object
+                    nullable: true
                 createdAt:
                     format: date-time
                     type: string
@@ -178,14 +177,14 @@ components:
                 heightCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 lengthCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 name:
                     type: string
                 sku:
@@ -194,7 +193,7 @@ components:
                 standardCost:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 status:
                     type: string
                 taxCategory:
@@ -214,11 +213,11 @@ components:
                 weightKg:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 widthCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - id
                 - name
@@ -257,7 +256,7 @@ components:
                     type: string
                 value:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             type: object
         ProductStatsSummaryResponse:
             properties:
@@ -266,29 +265,29 @@ components:
                     type: string
                 newProducts:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 newProductsDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 statusCountDeltas:
                     additionalProperties:
                         format: int64
-                        pattern: ^-?(?:0|[1-9]\d*)$
+                        type: integer
                     type: object
                 statusCounts:
                     additionalProperties:
                         format: int64
-                        pattern: ^-?(?:0|[1-9]\d*)$
+                        type: integer
                     type: object
                 to:
                     format: date-time
                     type: string
                 totalActiveProducts:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalActiveProductsDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - from
                 - to
@@ -303,14 +302,14 @@ components:
             properties:
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 kind:
                     type: string
                 name:
                     type: string
                 rate:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - id
                 - name
@@ -332,14 +331,14 @@ components:
                 heightCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 lengthCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 optionValues:
                     additionalProperties:
                         type: string
@@ -349,7 +348,7 @@ components:
                 standardCost:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 unit:
                     type: string
                 updatedAt:
@@ -358,11 +357,11 @@ components:
                 weightKg:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 widthCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - id
                 - sku
@@ -380,16 +379,16 @@ components:
                     type: boolean
                 page:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 pageSize:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalPages:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - page
                 - pageSize
@@ -406,7 +405,7 @@ components:
                     type: string
                 rate:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - name
                 - kind
@@ -416,14 +415,14 @@ components:
             properties:
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 kind:
                     type: string
                 name:
                     type: string
                 rate:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - id
                 - name
@@ -438,11 +437,11 @@ components:
                 heightCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 lengthCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 optionValues:
                     additionalProperties:
                         type: string
@@ -458,18 +457,18 @@ components:
                 standardCost:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 unit:
                     nullable: true
                     type: string
                 weightKg:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 widthCm:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - sku
             type: object
@@ -486,12 +485,12 @@ paths:
                   name: Page
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: PageSize
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: SortBy
                   schema:
@@ -512,7 +511,7 @@ paths:
                   name: CategoryId
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: Uncategorized
                   schema:

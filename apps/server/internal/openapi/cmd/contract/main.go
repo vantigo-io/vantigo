@@ -1,28 +1,35 @@
 // Command contract maintains the Go port's OpenAPI contract files:
 //
-//	contract split    -in <dump.json> -out <dir>     split the .NET dump into per-module files
-//	contract corpus   -in <dir> -spec <dir> -out <dir>  deduplicate recorded exchanges (Task 4)
-//	contract coverage -spec <dir> -corpus <dir> -out <file>  list operations without exchanges (Task 4)
+//	contract split     -in <dump.json> -out <dir>  split the .NET dump into per-module files
+//	contract normalize -dir <dir>                  type numeric schemas and rewrite nullable references in place
+//	contract corpus    -in <dir> -out <dir>         deduplicate recorded exchanges (Task 4)
+//	contract coverage  -corpus <dir> -out <file>    list operations without exchanges (Task 4)
 //
 // Run from apps/server. See docs/superpowers/plans/2026-09-10-api-contract.md.
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+
+	"github.com/oasdiff/yaml"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: contract <split|corpus|coverage> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: contract <split|normalize|corpus|coverage> [flags]")
 		os.Exit(2)
 	}
 	var err error
 	switch os.Args[1] {
 	case "split":
 		err = runSplit(os.Args[2:])
+	case "normalize":
+		err = runNormalize(os.Args[2:])
 	case "corpus":
 		err = runCorpus(os.Args[2:])
 	case "coverage":
@@ -58,4 +65,60 @@ func runSplit(args []string) error {
 		}
 	}
 	return nil
+}
+
+// runNormalize rewrites every *.yaml file in dir in place: it types the
+// numeric schemas the 3.1 -> 3.0 downgrade left untyped and rewrites
+// nullable single-$ref oneOf schemas into the allOf idiom, using the same
+// YAML<->JSON round trip as split so the files stay sorted and 4-space
+// indented.
+func runNormalize(args []string) error {
+	fs := flag.NewFlagSet("normalize", flag.ContinueOnError)
+	dir := fs.String("dir", "", "the directory of *.yaml contract files to rewrite in place")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	files, err := filepath.Glob(filepath.Join(*dir, "*.yaml"))
+	if err != nil {
+		return err
+	}
+	sort.Strings(files)
+	var totalNumbers, totalRefs int
+	for _, path := range files {
+		numbers, refs, err := normalizeFile(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		totalNumbers += numbers
+		totalRefs += refs
+		fmt.Printf("%s: %d numeric schema(s) typed, %d nullable reference(s) rewritten\n", filepath.Base(path), numbers, refs)
+	}
+	fmt.Printf("total: %d numeric schema(s) typed, %d nullable reference(s) rewritten\n", totalNumbers, totalRefs)
+	return nil
+}
+
+func normalizeFile(path string) (numbers, refs int, err error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	j, err := yaml.YAMLToJSON(data)
+	if err != nil {
+		return 0, 0, err
+	}
+	var doc obj
+	if err := json.Unmarshal(j, &doc); err != nil {
+		return 0, 0, err
+	}
+	numbers = normalizeNumbers(doc)
+	refs = normalizeNullableRefs(doc)
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return 0, 0, err
+	}
+	y, err := yaml.JSONToYAML(out)
+	if err != nil {
+		return 0, 0, err
+	}
+	return numbers, refs, os.WriteFile(path, y, 0o644)
 }

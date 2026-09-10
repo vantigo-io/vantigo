@@ -37,39 +37,39 @@ type AddressResponse struct {
 
 // ConsumptionAggregateResponse defines model for ConsumptionAggregateResponse.
 type ConsumptionAggregateResponse struct {
-	BucketEnd     time.Time   `json:"bucketEnd"`
-	BucketStart   time.Time   `json:"bucketStart"`
-	HasEstimated  bool        `json:"hasEstimated"`
-	IntervalCount interface{} `json:"intervalCount"`
-	QuantityKwh   interface{} `json:"quantityKwh"`
+	BucketEnd     time.Time `json:"bucketEnd"`
+	BucketStart   time.Time `json:"bucketStart"`
+	HasEstimated  bool      `json:"hasEstimated"`
+	IntervalCount int64     `json:"intervalCount"`
+	QuantityKwh   float64   `json:"quantityKwh"`
 }
 
 // ConsumptionResponse defines model for ConsumptionResponse.
 type ConsumptionResponse struct {
-	End             time.Time   `json:"end"`
-	Id              interface{} `json:"id"`
-	MeteringPointId interface{} `json:"meteringPointId"`
-	Quality         string      `json:"quality"`
-	QuantityKwh     interface{} `json:"quantityKwh"`
-	ReceivedAt      time.Time   `json:"receivedAt"`
-	Source          string      `json:"source"`
-	Start           time.Time   `json:"start"`
+	End             time.Time `json:"end"`
+	Id              int64     `json:"id"`
+	MeteringPointId int32     `json:"meteringPointId"`
+	Quality         string    `json:"quality"`
+	QuantityKwh     float64   `json:"quantityKwh"`
+	ReceivedAt      time.Time `json:"receivedAt"`
+	Source          string    `json:"source"`
+	Start           time.Time `json:"start"`
 }
 
 // CreateSupplyPeriodRequest defines model for CreateSupplyPeriodRequest.
 type CreateSupplyPeriodRequest struct {
-	CustomerId interface{} `json:"customerId"`
-	Start      time.Time   `json:"start"`
+	CustomerId int32     `json:"customerId"`
+	Start      time.Time `json:"start"`
 }
 
 // CustomerConsumptionAggregateResponse defines model for CustomerConsumptionAggregateResponse.
 type CustomerConsumptionAggregateResponse struct {
-	BucketEnd       time.Time   `json:"bucketEnd"`
-	BucketStart     time.Time   `json:"bucketStart"`
-	HasEstimated    bool        `json:"hasEstimated"`
-	IntervalCount   interface{} `json:"intervalCount"`
-	MeteringPointId interface{} `json:"meteringPointId"`
-	QuantityKwh     interface{} `json:"quantityKwh"`
+	BucketEnd       time.Time `json:"bucketEnd"`
+	BucketStart     time.Time `json:"bucketStart"`
+	HasEstimated    bool      `json:"hasEstimated"`
+	IntervalCount   int64     `json:"intervalCount"`
+	MeteringPointId int32     `json:"meteringPointId"`
+	QuantityKwh     float64   `json:"quantityKwh"`
 }
 
 // CustomerMeteringPointResponse defines model for CustomerMeteringPointResponse.
@@ -85,10 +85,10 @@ type EndSupplyPeriodRequest struct {
 
 // EnergyPaginationMetadata defines model for EnergyPaginationMetadata.
 type EnergyPaginationMetadata struct {
-	Page       interface{} `json:"page"`
-	PageSize   interface{} `json:"pageSize"`
-	TotalCount interface{} `json:"totalCount"`
-	TotalPages interface{} `json:"totalPages"`
+	Page       int32 `json:"page"`
+	PageSize   int32 `json:"pageSize"`
+	TotalCount int32 `json:"totalCount"`
+	TotalPages int32 `json:"totalPages"`
 }
 
 // EnergyStatsAttentionItem defines model for EnergyStatsAttentionItem.
@@ -103,61 +103,56 @@ type EnergyStatsAttentionItem struct {
 // EnergyStatsDailyBucket defines model for EnergyStatsDailyBucket.
 type EnergyStatsDailyBucket struct {
 	Date  *openapi_types.Date `json:"date,omitempty"`
-	Value interface{}         `json:"value,omitempty"`
+	Value *float64            `json:"value,omitempty"`
 }
 
 // EnergyStatsSummaryResponse defines model for EnergyStatsSummaryResponse.
 type EnergyStatsSummaryResponse struct {
-	ActiveSupplyPeriods      interface{} `json:"activeSupplyPeriods"`
-	ActiveSupplyPeriodsDelta interface{} `json:"activeSupplyPeriodsDelta"`
-	ConsumptionKwh           interface{} `json:"consumptionKwh"`
-	ConsumptionKwhDelta      interface{} `json:"consumptionKwhDelta"`
-	From                     time.Time   `json:"from"`
-	MeteringPointCount       interface{} `json:"meteringPointCount"`
-	MeteringPointCountDelta  interface{} `json:"meteringPointCountDelta"`
-	PreviousConsumptionKwh   interface{} `json:"previousConsumptionKwh"`
-	To                       time.Time   `json:"to"`
+	ActiveSupplyPeriods      int32     `json:"activeSupplyPeriods"`
+	ActiveSupplyPeriodsDelta int32     `json:"activeSupplyPeriodsDelta"`
+	ConsumptionKwh           float64   `json:"consumptionKwh"`
+	ConsumptionKwhDelta      float64   `json:"consumptionKwhDelta"`
+	From                     time.Time `json:"from"`
+	MeteringPointCount       int32     `json:"meteringPointCount"`
+	MeteringPointCountDelta  int32     `json:"meteringPointCountDelta"`
+	PreviousConsumptionKwh   float64   `json:"previousConsumptionKwh"`
+	To                       time.Time `json:"to"`
 }
 
 // GetMeteringPointsRequest defines model for GetMeteringPointsRequest.
 type GetMeteringPointsRequest struct {
-	Page     interface{} `json:"page,omitempty"`
-	PageSize interface{} `json:"pageSize,omitempty"`
-	Search   *string     `json:"search,omitempty"`
+	Page     *int32  `json:"page,omitempty"`
+	PageSize *int32  `json:"pageSize,omitempty"`
+	Search   *string `json:"search,omitempty"`
 }
 
 // ManualConsumptionRequest defines model for ManualConsumptionRequest.
 type ManualConsumptionRequest struct {
-	End         time.Time   `json:"end"`
-	QuantityKwh interface{} `json:"quantityKwh"`
-	Start       time.Time   `json:"start"`
+	End         time.Time `json:"end"`
+	QuantityKwh float64   `json:"quantityKwh"`
+	Start       time.Time `json:"start"`
 }
 
 // MeterResponse defines model for MeterResponse.
 type MeterResponse struct {
-	Id              interface{} `json:"id"`
-	InstalledAt     time.Time   `json:"installedAt"`
-	MeterNumber     string      `json:"meterNumber"`
-	MeteringPointId interface{} `json:"meteringPointId"`
-	RemovedAt       *time.Time  `json:"removedAt"`
+	Id              int32      `json:"id"`
+	InstalledAt     time.Time  `json:"installedAt"`
+	MeterNumber     string     `json:"meterNumber"`
+	MeteringPointId int32      `json:"meteringPointId"`
+	RemovedAt       *time.Time `json:"removedAt"`
 }
 
 // MeteringPointRequest defines model for MeteringPointRequest.
 type MeteringPointRequest struct {
-	Address                      *MeteringPointRequest_Address `json:"address"`
-	ConnectionStatus             *string                       `json:"connectionStatus"`
-	ExpectedAnnualConsumptionKwh interface{}                   `json:"expectedAnnualConsumptionKwh"`
-	GridArea                     *string                       `json:"gridArea"`
-	Gsrn                         *string                       `json:"gsrn"`
-	Latitude                     interface{}                   `json:"latitude"`
-	Longitude                    interface{}                   `json:"longitude"`
-	MeterNumber                  *string                       `json:"meterNumber"`
-	PriceArea                    *string                       `json:"priceArea"`
-}
-
-// MeteringPointRequest_Address defines model for MeteringPointRequest.Address.
-type MeteringPointRequest_Address struct {
-	union json.RawMessage
+	Address                      *AddressRequest `json:"address"`
+	ConnectionStatus             *string         `json:"connectionStatus"`
+	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh"`
+	GridArea                     *string         `json:"gridArea"`
+	Gsrn                         *string         `json:"gsrn"`
+	Latitude                     *float64        `json:"latitude"`
+	Longitude                    *float64        `json:"longitude"`
+	MeterNumber                  *string         `json:"meterNumber"`
+	PriceArea                    *string         `json:"priceArea"`
 }
 
 // MeteringPointResponse defines model for MeteringPointResponse.
@@ -165,12 +160,12 @@ type MeteringPointResponse struct {
 	Address                      AddressResponse `json:"address"`
 	ConnectionStatus             string          `json:"connectionStatus"`
 	CreatedAt                    time.Time       `json:"createdAt"`
-	ExpectedAnnualConsumptionKwh interface{}     `json:"expectedAnnualConsumptionKwh"`
+	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh"`
 	GridArea                     *string         `json:"gridArea"`
 	Gsrn                         string          `json:"gsrn"`
-	Id                           interface{}     `json:"id"`
-	Latitude                     interface{}     `json:"latitude"`
-	Longitude                    interface{}     `json:"longitude"`
+	Id                           int32           `json:"id"`
+	Latitude                     *float64        `json:"latitude"`
+	Longitude                    *float64        `json:"longitude"`
 	MeterNumber                  *string         `json:"meterNumber"`
 	PriceArea                    string          `json:"priceArea"`
 	UpdatedAt                    time.Time       `json:"updatedAt"`
@@ -178,19 +173,14 @@ type MeteringPointResponse struct {
 
 // MeteringPointUpdateRequest defines model for MeteringPointUpdateRequest.
 type MeteringPointUpdateRequest struct {
-	Address                      *MeteringPointUpdateRequest_Address `json:"address"`
-	ConnectionStatus             *string                             `json:"connectionStatus"`
-	ExpectedAnnualConsumptionKwh interface{}                         `json:"expectedAnnualConsumptionKwh"`
-	GridArea                     *string                             `json:"gridArea"`
-	Gsrn                         *string                             `json:"gsrn"`
-	Latitude                     interface{}                         `json:"latitude"`
-	Longitude                    interface{}                         `json:"longitude"`
-	PriceArea                    *string                             `json:"priceArea"`
-}
-
-// MeteringPointUpdateRequest_Address defines model for MeteringPointUpdateRequest.Address.
-type MeteringPointUpdateRequest_Address struct {
-	union json.RawMessage
+	Address                      *AddressRequest `json:"address"`
+	ConnectionStatus             *string         `json:"connectionStatus"`
+	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh"`
+	GridArea                     *string         `json:"gridArea"`
+	Gsrn                         *string         `json:"gsrn"`
+	Latitude                     *float64        `json:"latitude"`
+	Longitude                    *float64        `json:"longitude"`
+	PriceArea                    *string         `json:"priceArea"`
 }
 
 // PaginatedResponseOfMeteringPointResponse defines model for PaginatedResponseOfMeteringPointResponse.
@@ -207,51 +197,46 @@ type ReplaceMeterRequest struct {
 
 // SupplyPeriodResponse defines model for SupplyPeriodResponse.
 type SupplyPeriodResponse struct {
-	CustomerId      interface{} `json:"customerId"`
-	End             *time.Time  `json:"end"`
-	Id              interface{} `json:"id"`
-	MeteringPointId interface{} `json:"meteringPointId"`
-	Start           time.Time   `json:"start"`
-	Status          string      `json:"status"`
+	CustomerId      int32      `json:"customerId"`
+	End             *time.Time `json:"end"`
+	Id              int32      `json:"id"`
+	MeteringPointId int32      `json:"meteringPointId"`
+	Start           time.Time  `json:"start"`
+	Status          string     `json:"status"`
 }
 
 // SwitchSupplyPeriodRequest defines model for SwitchSupplyPeriodRequest.
 type SwitchSupplyPeriodRequest struct {
-	CustomerId interface{} `json:"customerId"`
-	SwitchAt   time.Time   `json:"switchAt"`
+	CustomerId int32     `json:"customerId"`
+	SwitchAt   time.Time `json:"switchAt"`
 }
 
 // SwitchSupplyPeriodResponse defines model for SwitchSupplyPeriodResponse.
 type SwitchSupplyPeriodResponse struct {
-	EndedPeriod *SwitchSupplyPeriodResponse_EndedPeriod `json:"endedPeriod"`
-	NewPeriod   SupplyPeriodResponse                    `json:"newPeriod"`
-}
-
-// SwitchSupplyPeriodResponse_EndedPeriod defines model for SwitchSupplyPeriodResponse.EndedPeriod.
-type SwitchSupplyPeriodResponse_EndedPeriod struct {
-	union json.RawMessage
+	EndedPeriod *SupplyPeriodResponse `json:"endedPeriod"`
+	NewPeriod   SupplyPeriodResponse  `json:"newPeriod"`
 }
 
 // GetEnergyCustomersByCustomerIdConsumptionParams defines parameters for GetEnergyCustomersByCustomerIdConsumption.
 type GetEnergyCustomersByCustomerIdConsumptionParams struct {
-	MeteringPointId interface{} `form:"meteringPointId,omitempty" json:"meteringPointId,omitempty"`
-	From            *time.Time  `form:"from,omitempty" json:"from,omitempty"`
-	To              *time.Time  `form:"to,omitempty" json:"to,omitempty"`
+	MeteringPointId *int32     `form:"meteringPointId,omitempty" json:"meteringPointId,omitempty"`
+	From            *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To              *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // GetEnergyCustomersByCustomerIdConsumptionAggregateParams defines parameters for GetEnergyCustomersByCustomerIdConsumptionAggregate.
 type GetEnergyCustomersByCustomerIdConsumptionAggregateParams struct {
-	MeteringPointId interface{} `form:"meteringPointId,omitempty" json:"meteringPointId,omitempty"`
-	From            *time.Time  `form:"from,omitempty" json:"from,omitempty"`
-	To              *time.Time  `form:"to,omitempty" json:"to,omitempty"`
-	Resolution      *string     `form:"resolution,omitempty" json:"resolution,omitempty"`
+	MeteringPointId *int32     `form:"meteringPointId,omitempty" json:"meteringPointId,omitempty"`
+	From            *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To              *time.Time `form:"to,omitempty" json:"to,omitempty"`
+	Resolution      *string    `form:"resolution,omitempty" json:"resolution,omitempty"`
 }
 
 // GetEnergyMeteringPointsParams defines parameters for GetEnergyMeteringPoints.
 type GetEnergyMeteringPointsParams struct {
-	Search   *string     `form:"Search,omitempty" json:"Search,omitempty"`
-	Page     interface{} `form:"Page,omitempty" json:"Page,omitempty"`
-	PageSize interface{} `form:"PageSize,omitempty" json:"PageSize,omitempty"`
+	Search   *string `form:"Search,omitempty" json:"Search,omitempty"`
+	Page     *int32  `form:"Page,omitempty" json:"Page,omitempty"`
+	PageSize *int32  `form:"PageSize,omitempty" json:"PageSize,omitempty"`
 }
 
 // GetEnergyMeteringPointsByIdConsumptionParams defines parameters for GetEnergyMeteringPointsByIdConsumption.
@@ -300,114 +285,6 @@ type PostEnergyMeteringPointsByIdSupplyPeriodsSwitchJSONRequestBody = SwitchSupp
 
 // PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndJSONRequestBody defines body for PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd for application/json ContentType.
 type PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndJSONRequestBody = EndSupplyPeriodRequest
-
-// AsAddressRequest returns the union data inside the MeteringPointRequest_Address as a AddressRequest
-func (t MeteringPointRequest_Address) AsAddressRequest() (AddressRequest, error) {
-	var body AddressRequest
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromAddressRequest overwrites any union data inside the MeteringPointRequest_Address as the provided AddressRequest
-func (t *MeteringPointRequest_Address) FromAddressRequest(v AddressRequest) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeAddressRequest performs a merge with any union data inside the MeteringPointRequest_Address, using the provided AddressRequest
-func (t *MeteringPointRequest_Address) MergeAddressRequest(v AddressRequest) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t MeteringPointRequest_Address) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *MeteringPointRequest_Address) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
-
-// AsAddressRequest returns the union data inside the MeteringPointUpdateRequest_Address as a AddressRequest
-func (t MeteringPointUpdateRequest_Address) AsAddressRequest() (AddressRequest, error) {
-	var body AddressRequest
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromAddressRequest overwrites any union data inside the MeteringPointUpdateRequest_Address as the provided AddressRequest
-func (t *MeteringPointUpdateRequest_Address) FromAddressRequest(v AddressRequest) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeAddressRequest performs a merge with any union data inside the MeteringPointUpdateRequest_Address, using the provided AddressRequest
-func (t *MeteringPointUpdateRequest_Address) MergeAddressRequest(v AddressRequest) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t MeteringPointUpdateRequest_Address) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *MeteringPointUpdateRequest_Address) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
-
-// AsSupplyPeriodResponse returns the union data inside the SwitchSupplyPeriodResponse_EndedPeriod as a SupplyPeriodResponse
-func (t SwitchSupplyPeriodResponse_EndedPeriod) AsSupplyPeriodResponse() (SupplyPeriodResponse, error) {
-	var body SupplyPeriodResponse
-	err := json.Unmarshal(t.union, &body)
-	return body, err
-}
-
-// FromSupplyPeriodResponse overwrites any union data inside the SwitchSupplyPeriodResponse_EndedPeriod as the provided SupplyPeriodResponse
-func (t *SwitchSupplyPeriodResponse_EndedPeriod) FromSupplyPeriodResponse(v SupplyPeriodResponse) error {
-	b, err := json.Marshal(v)
-	t.union = b
-	return err
-}
-
-// MergeSupplyPeriodResponse performs a merge with any union data inside the SwitchSupplyPeriodResponse_EndedPeriod, using the provided SupplyPeriodResponse
-func (t *SwitchSupplyPeriodResponse_EndedPeriod) MergeSupplyPeriodResponse(v SupplyPeriodResponse) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	merged, err := runtime.JSONMerge(t.union, b)
-	t.union = merged
-	return err
-}
-
-func (t SwitchSupplyPeriodResponse_EndedPeriod) MarshalJSON() ([]byte, error) {
-	b, err := t.union.MarshalJSON()
-	return b, err
-}
-
-func (t *SwitchSupplyPeriodResponse_EndedPeriod) UnmarshalJSON(b []byte) error {
-	err := t.union.UnmarshalJSON(b)
-	return err
-}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -502,7 +379,7 @@ func (siw *ServerInterfaceWrapper) GetEnergyCustomersByCustomerIdConsumption(w h
 
 	// ------------- Optional query parameter "meteringPointId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "meteringPointId", r.URL.Query(), &params.MeteringPointId, runtime.BindQueryParameterOptions{Type: "", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "meteringPointId", r.URL.Query(), &params.MeteringPointId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
@@ -570,7 +447,7 @@ func (siw *ServerInterfaceWrapper) GetEnergyCustomersByCustomerIdConsumptionAggr
 
 	// ------------- Optional query parameter "meteringPointId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "meteringPointId", r.URL.Query(), &params.MeteringPointId, runtime.BindQueryParameterOptions{Type: "", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "meteringPointId", r.URL.Query(), &params.MeteringPointId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
@@ -681,7 +558,7 @@ func (siw *ServerInterfaceWrapper) GetEnergyMeteringPoints(w http.ResponseWriter
 
 	// ------------- Optional query parameter "Page" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "Page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "Page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
@@ -694,7 +571,7 @@ func (siw *ServerInterfaceWrapper) GetEnergyMeteringPoints(w http.ResponseWriter
 
 	// ------------- Optional query parameter "PageSize" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "PageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "PageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {

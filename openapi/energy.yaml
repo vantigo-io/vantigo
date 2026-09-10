@@ -48,10 +48,10 @@ components:
                     type: boolean
                 intervalCount:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 quantityKwh:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - bucketStart
                 - bucketEnd
@@ -66,15 +66,15 @@ components:
                     type: string
                 id:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 meteringPointId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 quality:
                     type: string
                 quantityKwh:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 receivedAt:
                     format: date-time
                     type: string
@@ -97,7 +97,7 @@ components:
             properties:
                 customerId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 start:
                     format: date-time
                     type: string
@@ -117,13 +117,13 @@ components:
                     type: boolean
                 intervalCount:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 meteringPointId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 quantityKwh:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             required:
                 - meteringPointId
                 - bucketStart
@@ -156,16 +156,16 @@ components:
             properties:
                 page:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 pageSize:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalPages:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - page
                 - pageSize
@@ -199,34 +199,34 @@ components:
                     type: string
                 value:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
             type: object
         EnergyStatsSummaryResponse:
             properties:
                 activeSupplyPeriods:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 activeSupplyPeriodsDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 consumptionKwh:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 consumptionKwhDelta:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 from:
                     format: date-time
                     type: string
                 meteringPointCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 meteringPointCountDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 previousConsumptionKwh:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 to:
                     format: date-time
                     type: string
@@ -246,11 +246,11 @@ components:
                 page:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 pageSize:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 search:
                     nullable: true
                     type: string
@@ -263,7 +263,7 @@ components:
                     type: string
                 quantityKwh:
                     format: double
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 start:
                     format: date-time
                     type: string
@@ -276,7 +276,7 @@ components:
             properties:
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 installedAt:
                     format: date-time
                     type: string
@@ -284,7 +284,7 @@ components:
                     type: string
                 meteringPointId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 removedAt:
                     format: date-time
                     nullable: true
@@ -299,17 +299,16 @@ components:
         MeteringPointRequest:
             properties:
                 address:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/AddressRequest'
-                    type: object
+                    nullable: true
                 connectionStatus:
                     nullable: true
                     type: string
                 expectedAnnualConsumptionKwh:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 gridArea:
                     nullable: true
                     type: string
@@ -319,11 +318,11 @@ components:
                 latitude:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 longitude:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 meterNumber:
                     nullable: true
                     type: string
@@ -353,7 +352,7 @@ components:
                 expectedAnnualConsumptionKwh:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 gridArea:
                     nullable: true
                     type: string
@@ -361,15 +360,15 @@ components:
                     type: string
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 latitude:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 longitude:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 meterNumber:
                     nullable: true
                     type: string
@@ -395,17 +394,16 @@ components:
         MeteringPointUpdateRequest:
             properties:
                 address:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/AddressRequest'
-                    type: object
+                    nullable: true
                 connectionStatus:
                     nullable: true
                     type: string
                 expectedAnnualConsumptionKwh:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                    type: number
                 gridArea:
                     nullable: true
                     type: string
@@ -415,11 +413,11 @@ components:
                 latitude:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 longitude:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 priceArea:
                     nullable: true
                     type: string
@@ -462,17 +460,17 @@ components:
             properties:
                 customerId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 end:
                     format: date-time
                     nullable: true
                     type: string
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 meteringPointId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 start:
                     format: date-time
                     type: string
@@ -490,7 +488,7 @@ components:
             properties:
                 customerId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 switchAt:
                     format: date-time
                     type: string
@@ -501,10 +499,9 @@ components:
         SwitchSupplyPeriodResponse:
             properties:
                 endedPeriod:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/SupplyPeriodResponse'
-                    type: object
+                    nullable: true
                 newPeriod:
                     $ref: '#/components/schemas/SupplyPeriodResponse'
             required:
@@ -531,7 +528,7 @@ paths:
                   name: meteringPointId
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: from
                   schema:
@@ -570,7 +567,7 @@ paths:
                   name: meteringPointId
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: from
                   schema:
@@ -640,12 +637,12 @@ paths:
                   name: Page
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: PageSize
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             responses:
                 "200":
                     content:

@@ -3,6 +3,8 @@ package openapi
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oasdiff/yaml"
 )
 
 const repoContract = "../../../../openapi"
@@ -120,5 +123,82 @@ var accessRule = regexp.MustCompile(`^(anonymous|session|scim|permission:[a-z]+:
 func TestAccessRuleIsTheContractGrammar(t *testing.T) {
 	if accessRule.String() != AccessRule.String() {
 		t.Fatalf("AccessRule drifted from the grammar in the plan's Global Constraints")
+	}
+}
+
+// numericFormats are the schema formats .NET's web JSON defaults
+// (NumberHandling = AllowReadingFromString) can leave untyped in the 3.0
+// downgrade — see internal/openapi/cmd/contract/normalize.go.
+var numericFormats = map[string]bool{"int32": true, "int64": true, "float": true, "double": true}
+
+// TestNumericSchemasAreTyped guards against the contract regressing to
+// untyped numbers (which oapi-codegen turns into interface{}): every schema
+// with a numeric `format` must carry `type: integer` or `type: number`.
+// `contract normalize` is what fixes a violation.
+func TestNumericSchemasAreTyped(t *testing.T) {
+	walkContract(t, func(file, path string, node map[string]any) {
+		if _, hasType := node["type"]; hasType {
+			return
+		}
+		if format, _ := node["format"].(string); numericFormats[format] {
+			t.Errorf("%s: %s has format %q but no type — run contract normalize", file, path, format)
+		}
+	})
+}
+
+// TestNullableRefsUseAllOf guards against the contract regressing to the
+// one-element-oneOf spelling of a nullable reference, which generates a
+// json.RawMessage union wrapper instead of a pointer. `contract normalize`
+// is what fixes a violation.
+func TestNullableRefsUseAllOf(t *testing.T) {
+	walkContract(t, func(file, path string, node map[string]any) {
+		nullable, _ := node["nullable"].(bool)
+		oneOf, ok := node["oneOf"].([]any)
+		if !nullable || !ok || len(oneOf) != 1 {
+			return
+		}
+		elem, ok := oneOf[0].(map[string]any)
+		if !ok {
+			return
+		}
+		if _, ok := elem["$ref"]; ok && len(elem) == 1 {
+			t.Errorf("%s: %s is a nullable single-$ref oneOf — use allOf instead (run contract normalize)", file, path)
+		}
+	})
+}
+
+// walkContract decodes common.yaml and every module file from the embedded
+// contract and calls visit on every JSON object node, including nested
+// inline schemas (properties, items, allOf, request/response bodies, ...).
+func walkContract(t *testing.T, visit func(file, path string, node map[string]any)) {
+	t.Helper()
+	for _, name := range append([]string{"common"}, Modules...) {
+		data, err := fs.ReadFile(Files(), name+".yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		j, err := yaml.YAMLToJSON(data)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var doc any
+		if err := json.Unmarshal(j, &doc); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var walk func(string, any)
+		walk = func(path string, v any) {
+			switch t := v.(type) {
+			case map[string]any:
+				visit(name+".yaml", path, t)
+				for k, child := range t {
+					walk(path+"/"+k, child)
+				}
+			case []any:
+				for i, child := range t {
+					walk(fmt.Sprintf("%s[%d]", path, i), child)
+				}
+			}
+		}
+		walk("", doc)
 	}
 }

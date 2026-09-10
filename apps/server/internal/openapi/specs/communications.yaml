@@ -5,11 +5,11 @@ components:
                 confidence:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 customerId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 interactionId:
                     format: uuid
                     type: string
@@ -85,7 +85,7 @@ components:
                     type: string
                 sizeBytes:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - id
                 - fileName
@@ -119,7 +119,7 @@ components:
                     type: string
                 sizeBytes:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - id
                 - fileName
@@ -139,7 +139,7 @@ components:
                 contactId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 participantId:
                     format: uuid
                     nullable: true
@@ -184,7 +184,7 @@ components:
                         port:
                             format: int32
                             nullable: true
-                            pattern: ^-?(?:0|[1-9]\d*)$
+                            type: integer
                         region:
                             nullable: true
                             type: string
@@ -267,37 +267,37 @@ components:
                     type: string
                 value:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             type: object
         CommunicationsStatsSummaryResponse:
             properties:
                 closedConversations:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 closedConversationsDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 from:
                     format: date-time
                     type: string
                 messages:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 messagesDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 newConversations:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 newConversationsDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 openConversations:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 openConversationsDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 to:
                     format: date-time
                     type: string
@@ -322,7 +322,7 @@ components:
                 candidateCustomerIds:
                     items:
                         format: int32
-                        pattern: ^-?(?:0|[1-9]\d*)$
+                        type: integer
                     type: array
                 channelId:
                     format: uuid
@@ -336,7 +336,7 @@ components:
                 customerId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 id:
                     format: uuid
                     type: string
@@ -376,7 +376,7 @@ components:
                                             type: string
                                         sizeBytes:
                                             format: int64
-                                            pattern: ^-?(?:0|[1-9]\d*)$
+                                            type: integer
                                     required:
                                         - id
                                         - fileName
@@ -406,7 +406,7 @@ components:
                                             type: string
                                         attempts:
                                             format: int32
-                                            pattern: ^-?(?:0|[1-9]\d*)$
+                                            type: integer
                                         destination:
                                             type: string
                                         error:
@@ -450,7 +450,7 @@ components:
                                     contactId:
                                         format: int32
                                         nullable: true
-                                        pattern: ^-?(?:0|[1-9]\d*)$
+                                        type: integer
                                     displayName:
                                         nullable: true
                                         type: string
@@ -495,7 +495,7 @@ components:
                             contactId:
                                 format: int32
                                 nullable: true
-                                pattern: ^-?(?:0|[1-9]\d*)$
+                                type: integer
                             displayName:
                                 nullable: true
                                 type: string
@@ -530,7 +530,7 @@ components:
                                     contactId:
                                         format: int32
                                         nullable: true
-                                        pattern: ^-?(?:0|[1-9]\d*)$
+                                        type: integer
                                     displayName:
                                         nullable: true
                                         type: string
@@ -562,11 +562,11 @@ components:
                 suggestedCustomerConfidence:
                     format: double
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                    type: number
                 suggestedCustomerId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 suggestedCustomerReasoning:
                     nullable: true
                     type: string
@@ -637,7 +637,7 @@ components:
                                 type: string
                             sizeBytes:
                                 format: int64
-                                pattern: ^-?(?:0|[1-9]\d*)$
+                                type: integer
                         required:
                             - id
                             - fileName
@@ -667,7 +667,7 @@ components:
                                 type: string
                             attempts:
                                 format: int32
-                                pattern: ^-?(?:0|[1-9]\d*)$
+                                type: integer
                             destination:
                                 type: string
                             error:
@@ -711,7 +711,7 @@ components:
                         contactId:
                             format: int32
                             nullable: true
-                            pattern: ^-?(?:0|[1-9]\d*)$
+                            type: integer
                         displayName:
                             nullable: true
                             type: string
@@ -778,19 +778,17 @@ components:
                     nullable: true
                     type: boolean
                 mailgun:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/MailgunChannelCredentialRequest'
-                    type: object
+                    nullable: true
                 provider:
                     default: smtp
                     nullable: true
                     type: string
                 smtp:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/SmtpChannelCredentialRequest'
-                    type: object
+                    nullable: true
                 type:
                     nullable: true
                     type: string
@@ -813,7 +811,7 @@ components:
                 customerId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 htmlBody:
                     nullable: true
                     type: string
@@ -880,7 +878,7 @@ components:
                     type: string
                 attempts:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 destination:
                     type: string
                 error:
@@ -948,7 +946,7 @@ components:
                 contactId:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 displayName:
                     nullable: true
                     type: string
@@ -980,7 +978,7 @@ components:
                             contactId:
                                 format: int32
                                 nullable: true
-                                pattern: ^-?(?:0|[1-9]\d*)$
+                                type: integer
                             displayName:
                                 nullable: true
                                 type: string
@@ -1041,7 +1039,7 @@ components:
                 port:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 useSsl:
                     nullable: true
                     type: boolean
@@ -1103,18 +1101,16 @@ components:
                     nullable: true
                     type: boolean
                 mailgun:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/MailgunChannelCredentialRequest'
-                    type: object
+                    nullable: true
                 provider:
                     nullable: true
                     type: string
                 smtp:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/SmtpChannelCredentialRequest'
-                    type: object
+                    nullable: true
             required:
                 - displayName
                 - isActive
@@ -1122,9 +1118,9 @@ components:
         UpdateConversationRequest:
             properties:
                 assignedUserId:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: common.yaml#/components/schemas/JsonElement
+                    nullable: true
                 customerId:
                     $ref: common.yaml#/components/schemas/JsonElement
                 status:
@@ -1171,10 +1167,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/CreateChannelRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1210,10 +1205,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/UpdateChannelRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1244,12 +1238,12 @@ paths:
                   name: page
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: pageSize
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: status
                   schema:
@@ -1268,7 +1262,7 @@ paths:
                   name: customerId
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: unreadOnly
                   schema:
@@ -1285,10 +1279,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/CreateConversationRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1346,10 +1339,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/UpdateConversationRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1386,10 +1378,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/AiDraftRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1426,10 +1417,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/NoteRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1466,10 +1456,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/ReplyRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1618,10 +1607,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/CreateSuppressionRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK
@@ -1674,10 +1662,9 @@ paths:
                 content:
                     application/json:
                         schema:
-                            nullable: true
-                            oneOf:
+                            allOf:
                                 - $ref: '#/components/schemas/CreateTagRequest'
-                            type: object
+                            nullable: true
             responses:
                 "200":
                     description: OK

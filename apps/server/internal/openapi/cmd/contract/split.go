@@ -33,6 +33,10 @@ func split(dump []byte) (map[string]string, error) {
 	if err := json.Unmarshal(dump, &doc); err != nil {
 		return nil, fmt.Errorf("parse dump: %w", err)
 	}
+	// Restore what the 3.1 -> 3.0 downgrade lost, so a future re-split stays
+	// right: numeric `type` and the pointer-shaped nullable-ref idiom.
+	normalizeNumbers(doc)
+	normalizeNullableRefs(doc)
 	schemas, _ := dig(doc, "components", "schemas").(obj)
 
 	moduleOf := map[string]string{}
