@@ -7,6 +7,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/mail"
@@ -101,10 +102,10 @@ func Load(env map[string]string) (*Config, error) {
 	c.AllowInsecureTransport = flag(&p, env, "ALLOW_INSECURE_TRANSPORT")
 	c.CSPReportOnly = flag(&p, env, "CSP_REPORT_ONLY")
 
-	c.DatabaseURL = databaseURL(&p, env, "DATABASE_URL", true)
-	c.MigrationsDatabaseURL = databaseURL(&p, env, "MIGRATIONS_DATABASE_URL", false)
-	migrationsURLSet := c.MigrationsDatabaseURL != ""
-	if !migrationsURLSet {
+	var dbConn, migrationsConn *pgconn.Config
+	c.DatabaseURL, dbConn = databaseURL(&p, env, "DATABASE_URL", true)
+	c.MigrationsDatabaseURL, migrationsConn = databaseURL(&p, env, "MIGRATIONS_DATABASE_URL", false)
+	if c.MigrationsDatabaseURL == "" {
 		c.MigrationsDatabaseURL = c.DatabaseURL
 	}
 
@@ -120,11 +121,11 @@ func Load(env map[string]string) (*Config, error) {
 		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
 			p.add("APP_URL", "must use https outside development; set ALLOW_INSECURE_TRANSPORT=1 to knowingly accept plaintext (local and evaluation use only)")
 		}
-		if c.DatabaseURL != "" {
-			requireVerifiedTLS(&p, env, "DATABASE_URL", c.DatabaseURL)
+		if dbConn != nil {
+			requireVerifiedTLS(&p, "DATABASE_URL", dbConn)
 		}
-		if migrationsURLSet {
-			requireVerifiedTLS(&p, env, "MIGRATIONS_DATABASE_URL", c.MigrationsDatabaseURL)
+		if migrationsConn != nil {
+			requireVerifiedTLS(&p, "MIGRATIONS_DATABASE_URL", migrationsConn)
 		}
 	}
 
@@ -152,55 +153,48 @@ func (p *problems) add(field, format string, args ...any) {
 	*p = append(*p, field+": "+fmt.Sprintf(format, args...))
 }
 
-func databaseURL(p *problems, env map[string]string, field string, required bool) string {
+// databaseURL returns the connection string together with pgx's own parse of
+// it, so the transport check judges exactly what pgx will connect with. Like
+// pgx, the parse reads PG* variables (PGSSLMODE, a service file) from the
+// process environment, which in production is the env Load was given.
+func databaseURL(p *problems, env map[string]string, field string, required bool) (string, *pgconn.Config) {
 	v := env[field]
 	if v == "" {
 		if required {
 			p.add(field, "is required")
 		}
-		return ""
+		return "", nil
 	}
 	// The parser's own error is not echoed: it can quote the connection string.
-	if _, err := pgconn.ParseConfig(v); err != nil {
+	cfg, err := pgconn.ParseConfig(v)
+	if err != nil {
 		p.add(field, "is not a valid PostgreSQL connection string")
-		return ""
+		return "", nil
 	}
-	return v
+	return v, cfg
 }
 
-// requireVerifiedTLS rejects any sslmode that does not authenticate the
-// server. libpq's default, "prefer", silently falls back to plaintext and
-// never checks a certificate even when TLS is used.
-func requireVerifiedTLS(p *problems, env map[string]string, field, dsn string) {
-	switch mode := sslMode(dsn, env["PGSSLMODE"]); mode {
-	case "verify-full", "verify-ca":
-	default:
-		p.add(field, "must require certificate-verified TLS outside development (sslmode=verify-full, or verify-ca when the server certificate does not name the host); %q does not authenticate the server. Set ALLOW_INSECURE_TRANSPORT=1 to knowingly accept an unauthenticated database connection (local and evaluation use only)", mode)
+// requireVerifiedTLS rejects a connection that would not authenticate the
+// server, judged on pgx's parsed configuration rather than a re-parse of the
+// string (pgx takes the last of duplicate settings and honours quoting).
+// Every fallback must pass too: libpq's default, "prefer", and "allow" add a
+// plaintext fallback, and neither checks a certificate even over TLS. The
+// message never quotes the connection string: it can carry a password.
+func requireVerifiedTLS(p *problems, field string, cfg *pgconn.Config) {
+	verified := verifiesServer(cfg.TLSConfig)
+	for _, fb := range cfg.Fallbacks {
+		verified = verified && verifiesServer(fb.TLSConfig)
+	}
+	if !verified {
+		p.add(field, "must require certificate-verified TLS outside development (sslmode=verify-full, or verify-ca when the server certificate does not name the host); this connection string would not authenticate the server. Set ALLOW_INSECURE_TRANSPORT=1 to knowingly accept an unauthenticated database connection (local and evaluation use only)")
 	}
 }
 
-// sslMode extracts the sslmode a connection string requests, in URL
-// (postgres://…?sslmode=…) or keyword/value (host=… sslmode=…) form, falling
-// back to PGSSLMODE and then libpq's default. Anything unrecognised reads as
-// the default, which the caller rejects: the parser fails closed.
-func sslMode(dsn, pgsslmode string) string {
-	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
-		if u, err := url.Parse(dsn); err == nil {
-			if m := u.Query().Get("sslmode"); m != "" {
-				return strings.ToLower(m)
-			}
-		}
-	} else {
-		for _, field := range strings.Fields(dsn) {
-			if k, v, ok := strings.Cut(field, "="); ok && k == "sslmode" {
-				return strings.ToLower(strings.Trim(v, "'"))
-			}
-		}
-	}
-	if pgsslmode != "" {
-		return strings.ToLower(pgsslmode)
-	}
-	return "prefer"
+// verifiesServer reports whether a pgx TLS configuration authenticates the
+// server: verify-full keeps Go's own verification, verify-ca skips it but
+// installs a chain verifier, and require (or no TLS at all) does neither.
+func verifiesServer(c *tls.Config) bool {
+	return c != nil && (!c.InsecureSkipVerify || c.VerifyPeerCertificate != nil)
 }
 
 func appOrigin(p *problems, env map[string]string) (origin, hostname string) {

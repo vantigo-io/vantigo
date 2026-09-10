@@ -125,17 +125,36 @@ func TestLoad_AppURL(t *testing.T) {
 	}
 }
 
+// unverified is the rejection every connection string that would not
+// authenticate the database server gets.
+const unverified = "DATABASE_URL: must require certificate-verified TLS outside development (sslmode=verify-full, or verify-ca when the server certificate does not name the host); this connection string would not authenticate the server"
+
 func TestLoad_TransportRules(t *testing.T) {
+	// pgconn reads PGSSLMODE from the process environment; a developer's
+	// shell must not change what these cases mean.
+	t.Setenv("PGSSLMODE", "")
+
 	tests := []struct {
 		name    string
 		env     map[string]string
 		wantErr string // empty: must load
 	}{
 		{"production requires https", with(validEnv(), "APP_URL", "http://vantigo.example.com"), "APP_URL: must use https"},
-		{"sslmode=require does not authenticate the server", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=require"), "DATABASE_URL: must require certificate-verified TLS"},
-		{"no sslmode means libpq's prefer", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v"), `"prefer"`},
+		{"sslmode=require does not authenticate the server", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=require"), unverified},
+		{"keyword sslmode=require does not authenticate the server", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=require"), unverified},
+		{"no sslmode means libpq's prefer", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v"), unverified},
+		{"sslmode=prefer falls back to plaintext", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=prefer"), unverified},
+		{"sslmode=allow tries plaintext first", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=allow"), unverified},
 		{"keyword form with verify-ca is accepted", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=verify-ca"), ""},
-		{"PGSSLMODE supplies a missing mode", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v", "PGSSLMODE", "verify-full"), ""},
+		{"keyword form with verify-full is accepted", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=verify-full"), ""},
+		{"URL form with verify-ca is accepted", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=verify-ca"), ""},
+		{"URL form with verify-full is accepted", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=verify-full"), ""},
+		// pgx takes the last sslmode; judging the first would fail open.
+		{"a later duplicate sslmode wins", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=verify-full sslmode=disable"), unverified},
+		// A quoted value is one token to pgx, not to a whitespace split.
+		{"an sslmode inside a quoted value is not a setting", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v password='x sslmode=verify-full' sslmode=disable"), unverified},
+		// Every host pgx may fall back to must be verified too.
+		{"an unverified fallback host is rejected", with(validEnv(), "DATABASE_URL", "host=db,/var/run/postgresql user=v dbname=v sslmode=verify-full"), unverified},
 		{"an insecure migrations URL is reported by name", with(validEnv(), "MIGRATIONS_DATABASE_URL", "postgres://o:s@db/v?sslmode=disable"), "MIGRATIONS_DATABASE_URL: must require certificate-verified TLS"},
 		{"ALLOW_INSECURE_TRANSPORT accepts plaintext", with(validEnv(), "APP_URL", "http://localhost:8080", "DATABASE_URL", "postgres://v:s@db/v?sslmode=disable", "ALLOW_INSECURE_TRANSPORT", "1"), ""},
 		{"development accepts plaintext", with(validEnv(), "APP_ENV", "development", "APP_URL", "http://localhost:8080", "DATABASE_URL", "postgres://v:s@db/v?sslmode=disable"), ""},
@@ -150,6 +169,30 @@ func TestLoad_TransportRules(t *testing.T) {
 				t.Fatalf("error = %v, want it to contain %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// pgconn reads PGSSLMODE from the process environment, not from the map
+// Load is given; in production the two are the same environment.
+func TestLoad_PGSSLMODEFromTheProcessEnvironment(t *testing.T) {
+	t.Setenv("PGSSLMODE", "verify-full")
+	mustLoad(t, with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v"))
+
+	t.Setenv("PGSSLMODE", "disable")
+	if msg := loadError(t, with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v")); !strings.Contains(msg, unverified) {
+		t.Errorf("error = %q, want %q", msg, unverified)
+	}
+}
+
+func TestLoad_UnverifiedDatabaseURLNeverEchoesTheSecret(t *testing.T) {
+	t.Setenv("PGSSLMODE", "")
+	msg := loadError(t, with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v password='hunter2 sslmode=verify-full' sslmode=disable"))
+
+	if !strings.Contains(msg, unverified) {
+		t.Errorf("error = %q, want %q", msg, unverified)
+	}
+	if strings.Contains(msg, "hunter2") {
+		t.Errorf("error leaks the password: %q", msg)
 	}
 }
 
