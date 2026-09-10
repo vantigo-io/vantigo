@@ -56,7 +56,7 @@ func New(o Options) http.Handler {
 	return httpx.Chain(mux,
 		httpx.Forwarded(o.Config.TrustedProxyHops),
 		httpx.RequestID,
-		httpx.RequestLog(o.Logger),
+		httpx.RequestLog(o.Logger, o.Config.BasePath),
 		httpx.Recover(o.Logger),
 		security.Headers(security.HeaderOptions{
 			InlineScriptHash: o.Index.InlineScriptHash,

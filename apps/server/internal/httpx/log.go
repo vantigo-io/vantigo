@@ -10,7 +10,9 @@ import (
 // RequestLog writes one line per request. It logs the path, never the query
 // string: invitation, recovery and OIDC callback URLs carry secrets there.
 // Health probes log at debug so a 10-second probe does not bury real traffic.
-func RequestLog(logger *slog.Logger) func(http.Handler) http.Handler {
+// It runs outside StripBasePath, so a probe is recognised both under
+// basePath and at the root (container probes bypass the prefix).
+func RequestLog(logger *slog.Logger, basePath string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -22,7 +24,7 @@ func RequestLog(logger *slog.Logger) func(http.Handler) http.Handler {
 				status = http.StatusOK
 			}
 			level := slog.LevelInfo
-			if strings.HasPrefix(r.URL.Path, "/health/") {
+			if strings.HasPrefix(strings.TrimPrefix(r.URL.Path, basePath), "/health/") {
 				level = slog.LevelDebug
 			}
 			logger.LogAttrs(r.Context(), level, "http request",
