@@ -1370,6 +1370,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 const (
@@ -1431,6 +1433,64 @@ func TestRecordedExchangesMatchTheContract(t *testing.T) {
 	for id := range known {
 		if _, still := failing[id]; !still {
 			t.Errorf("%s now matches the contract — remove it from openapi/testdata/known-gaps.txt", id)
+		}
+	}
+}
+
+const validateSpec = `
+openapi: 3.0.3
+info: {title: t, version: "1"}
+servers: [{url: /}]
+paths:
+  /api/v1/things:
+    post:
+      operationId: postThings
+      x-vantigo-access: session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [name], properties: {name: {type: string}}}
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: {type: object, required: [id], properties: {id: {type: integer}}}
+        "400":
+          description: invalid
+          content:
+            application/problem+json:
+              schema: {type: object, required: [title], properties: {title: {type: string}}}
+`
+
+func TestValidate(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(validateSpec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	str := func(s string) *string { return &s }
+	appJSON, problem := str("application/json"), str("application/problem+json")
+	post := func(body string, status int, contentType *string, response string) Exchange {
+		return Exchange{Method: "POST", Path: "/api/v1/things", RequestContentType: appJSON, RequestBody: str(body),
+			Status: status, ResponseContentType: contentType, ResponseBody: str(response)}
+	}
+	cases := []struct {
+		name string
+		ex   Exchange
+		ok   bool
+	}{
+		{"valid exchange", post(`{"name":"a"}`, 201, appJSON, `{"id":1}`), true},
+		{"undocumented status", post(`{"name":"a"}`, 409, problem, `{"title":"conflict"}`), false},
+		{"response off contract", post(`{"name":"a"}`, 201, appJSON, `{"id":"x"}`), false},
+		{"invalid request the server rejected", post(`{}`, 400, problem, `{"title":"bad"}`), true},
+		{"invalid request the server accepted", post(`{}`, 201, appJSON, `{"id":1}`), false},
+		{"rejection off contract", post(`{}`, 400, problem, `{}`), false},
+		{"no matching operation", Exchange{Method: "GET", Path: "/api/v1/nothing", Status: 404}, false},
+	}
+	for _, c := range cases {
+		if _, err := Validate(context.Background(), doc, c.ex); (err == nil) != c.ok {
+			t.Errorf("%s: err = %v, want ok = %v", c.name, err, c.ok)
 		}
 	}
 }
@@ -1670,8 +1730,12 @@ func Validate(ctx context.Context, doc *openapi3.T, ex Exchange) (string, error)
 	}
 	input := &openapi3filter.RequestValidationInput{Request: req, PathParams: params, Route: route, Options: options}
 	id := route.Operation.OperationID
-	if err := openapi3filter.ValidateRequest(ctx, input); err != nil {
-		return id, fmt.Errorf("request: %w", err)
+	// The .NET suites send invalid requests on purpose. A request the contract
+	// rejects is consistent only when the server rejected it too (4xx); the
+	// rejection response must then still match what the contract documents.
+	// Never loosen a schema to make such an exchange pass.
+	if err := openapi3filter.ValidateRequest(ctx, input); err != nil && (ex.Status < 400 || ex.Status >= 500) {
+		return id, fmt.Errorf("request the contract rejects was answered %d: %w", ex.Status, err)
 	}
 	header := http.Header{}
 	if ex.ResponseContentType != nil {
@@ -1703,8 +1767,8 @@ Building a router per exchange is slow for thousands of exchanges; if the test t
 
 - [ ] **Step 5: Run the package tests (the corpus is still empty)**
 
-Run: `cd apps/server && go test ./internal/openapi/ -run 'TestEmbedded|TestEveryModule|TestOperationIDs|TestLint|TestAccessRule' -v -count=1`
-Expected: all PASS. If `TestEveryModuleLoadsAndValidates` fails on the raw split files, fix the *splitter* (Task 3 code) or add the smallest structural fix to the YAML, and say which in the report — the raw dump must at least be a valid OpenAPI 3.0 document set before curation starts.
+Run: `cd apps/server && go test ./internal/openapi/ -run 'TestEmbedded|TestEveryModule|TestOperationIDs|TestLint|TestAccessRule|TestValidate' -v -count=1`
+Expected: all PASS (if kin-openapi has no body decoder for `application/problem+json`, register `openapi3filter.JSONBodyDecoder` for it in an `init()` in exchanges.go — the .NET host answers errors with that content type). If `TestEveryModuleLoadsAndValidates` fails on the raw split files, fix the *splitter* (Task 3 code) or add the smallest structural fix to the YAML, and say which in the report — the raw dump must at least be a valid OpenAPI 3.0 document set before curation starts.
 
 - [ ] **Step 6: Add the corpus and coverage commands**
 
@@ -1736,8 +1800,10 @@ const perKey = 3
 
 // runCorpus deduplicates the raw recordings into one committed JSONL file
 // per module: at most perKey exchanges per (operation, status), 5xx dropped,
-// exchanges on dropped operations discarded. Any other exchange that matches
-// no operation is an error.
+// exchanges on dropped operations discarded, and requests to routes that do
+// not exist (matching no operation, answered 4xx — the suites probe unknown
+// paths and API versions) discarded. Any other exchange that matches no
+// operation is an error: a path the contract lost.
 func runCorpus(args []string) error {
 	fs := flag.NewFlagSet("corpus", flag.ContinueOnError)
 	in := fs.String("in", "", "directory of raw *.jsonl recordings")
@@ -1783,14 +1849,19 @@ func runCorpus(args []string) error {
 			if ex.Status >= 500 || isDropped(ex.Path) {
 				continue
 			}
+			rejected := ex.Status >= 400 && ex.Status < 500
 			match := modulePath.FindStringSubmatch(ex.Path)
 			if match == nil || routersByModule[match[1]] == nil {
-				unmatched = append(unmatched, ex.Method+" "+ex.Path)
+				if !rejected {
+					unmatched = append(unmatched, ex.Method+" "+ex.Path)
+				}
 				continue
 			}
 			route, _, err := routersByModule[match[1]].FindRoute(httptest.NewRequest(ex.Method, ex.Path, nil))
 			if err != nil {
-				unmatched = append(unmatched, ex.Method+" "+ex.Path)
+				if !rejected {
+					unmatched = append(unmatched, ex.Method+" "+ex.Path)
+				}
 				continue
 			}
 			key := fmt.Sprintf("%s|%s|%d", match[1], route.Operation.OperationID, ex.Status)
