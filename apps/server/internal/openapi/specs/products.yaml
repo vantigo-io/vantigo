@@ -1,0 +1,1228 @@
+components:
+    schemas:
+        CategoryRequest:
+            properties:
+                name:
+                    type: string
+                parentId:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - name
+            type: object
+        CategoryResponse:
+            properties:
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                name:
+                    type: string
+                parentId:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                productCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - id
+                - name
+                - productCount
+            type: object
+        GetProductsRequest:
+            properties:
+                categoryId:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                page:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                pageSize:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                search:
+                    nullable: true
+                    type: string
+                sortBy:
+                    nullable: true
+                    type: string
+                sortDirection:
+                    nullable: true
+                    type: string
+                status:
+                    nullable: true
+                    type: string
+                uncategorized:
+                    nullable: true
+                    type: boolean
+            type: object
+            x-vantigo-source: Vantigo.Products
+        PaginatedResponseOfProductResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/ProductResponse'
+                    type: array
+                pagination:
+                    $ref: '#/components/schemas/ProductsPaginationMetadata'
+            required:
+                - data
+                - pagination
+            type: object
+        ProductCategoryResponse:
+            properties:
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+        ProductPriceRequest:
+            properties:
+                amount:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                currency:
+                    type: string
+                validFrom:
+                    format: date-time
+                    nullable: true
+                    type: string
+                validTo:
+                    format: date-time
+                    nullable: true
+                    type: string
+            required:
+                - currency
+                - amount
+            type: object
+        ProductPriceResponse:
+            properties:
+                amount:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                currency:
+                    type: string
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                validFrom:
+                    format: date-time
+                    nullable: true
+                    type: string
+                validTo:
+                    format: date-time
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - currency
+                - amount
+            type: object
+        ProductRequest:
+            properties:
+                categoryId:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                description:
+                    nullable: true
+                    type: string
+                name:
+                    type: string
+                status:
+                    nullable: true
+                    type: string
+                taxCategoryId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                type:
+                    type: string
+                variants:
+                    items:
+                        $ref: '#/components/schemas/VariantRequest'
+                    nullable: true
+                    type: array
+            required:
+                - name
+                - type
+                - taxCategoryId
+            type: object
+        ProductResponse:
+            properties:
+                barcode:
+                    nullable: true
+                    type: string
+                category:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/ProductCategoryResponse'
+                    type: object
+                createdAt:
+                    format: date-time
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                effectivePrices:
+                    items:
+                        $ref: '#/components/schemas/ProductPriceResponse'
+                    type: array
+                heightCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                lengthCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                name:
+                    type: string
+                sku:
+                    nullable: true
+                    type: string
+                standardCost:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                status:
+                    type: string
+                taxCategory:
+                    $ref: '#/components/schemas/ProductTaxCategoryResponse'
+                type:
+                    type: string
+                unit:
+                    nullable: true
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                variants:
+                    items:
+                        $ref: '#/components/schemas/ProductVariantResponse'
+                    type: array
+                weightKg:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                widthCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - id
+                - name
+                - type
+                - status
+                - taxCategory
+                - effectivePrices
+                - variants
+                - createdAt
+                - updatedAt
+            type: object
+        ProductStatsAttentionItem:
+            properties:
+                entityId:
+                    type: string
+                id:
+                    type: string
+                occurredAt:
+                    format: date-time
+                    type: string
+                title:
+                    type: string
+                type:
+                    type: string
+            required:
+                - id
+                - type
+                - title
+                - occurredAt
+                - entityId
+            type: object
+        ProductStatsDailyBucket:
+            properties:
+                date:
+                    format: date
+                    type: string
+                value:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            type: object
+        ProductStatsSummaryResponse:
+            properties:
+                from:
+                    format: date-time
+                    type: string
+                newProducts:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                newProductsDelta:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                statusCountDeltas:
+                    additionalProperties:
+                        format: int64
+                        pattern: ^-?(?:0|[1-9]\d*)$
+                    type: object
+                statusCounts:
+                    additionalProperties:
+                        format: int64
+                        pattern: ^-?(?:0|[1-9]\d*)$
+                    type: object
+                to:
+                    format: date-time
+                    type: string
+                totalActiveProducts:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalActiveProductsDelta:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - from
+                - to
+                - totalActiveProducts
+                - totalActiveProductsDelta
+                - newProducts
+                - newProductsDelta
+                - statusCounts
+                - statusCountDeltas
+            type: object
+        ProductTaxCategoryResponse:
+            properties:
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                kind:
+                    type: string
+                name:
+                    type: string
+                rate:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - id
+                - name
+                - kind
+                - rate
+            type: object
+        ProductVariantResponse:
+            properties:
+                barcode:
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                effectivePrices:
+                    items:
+                        $ref: '#/components/schemas/ProductPriceResponse'
+                    type: array
+                heightCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                lengthCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                optionValues:
+                    additionalProperties:
+                        type: string
+                    type: object
+                sku:
+                    type: string
+                standardCost:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                unit:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                weightKg:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                widthCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - id
+                - sku
+                - unit
+                - optionValues
+                - effectivePrices
+                - createdAt
+                - updatedAt
+            type: object
+        ProductsPaginationMetadata:
+            properties:
+                hasNextPage:
+                    type: boolean
+                hasPreviousPage:
+                    type: boolean
+                page:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                pageSize:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalPages:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - page
+                - pageSize
+                - totalCount
+                - totalPages
+                - hasNextPage
+                - hasPreviousPage
+            type: object
+        TaxCategoryRequest:
+            properties:
+                kind:
+                    type: string
+                name:
+                    type: string
+                rate:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - name
+                - kind
+                - rate
+            type: object
+        TaxCategoryResponse:
+            properties:
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                kind:
+                    type: string
+                name:
+                    type: string
+                rate:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - id
+                - name
+                - kind
+                - rate
+            type: object
+        VariantRequest:
+            properties:
+                barcode:
+                    nullable: true
+                    type: string
+                heightCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                lengthCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                optionValues:
+                    additionalProperties:
+                        type: string
+                    nullable: true
+                    type: object
+                prices:
+                    items:
+                        $ref: '#/components/schemas/ProductPriceRequest'
+                    nullable: true
+                    type: array
+                sku:
+                    type: string
+                standardCost:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                unit:
+                    nullable: true
+                    type: string
+                weightKg:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                widthCm:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - sku
+            type: object
+info:
+    title: Vantigo Products API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/products:
+        get:
+            operationId: getProducts
+            parameters:
+                - in: query
+                  name: Page
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: PageSize
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: SortBy
+                  schema:
+                    type: string
+                - in: query
+                  name: SortDirection
+                  schema:
+                    type: string
+                - in: query
+                  name: Search
+                  schema:
+                    type: string
+                - in: query
+                  name: Status
+                  schema:
+                    type: string
+                - in: query
+                  name: CategoryId
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: Uncategorized
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfProductResponse'
+                    description: OK
+            summary: List all products
+            tags:
+                - Products
+            x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-view+products:tax-categories-view+products:variants-view
+        post:
+            operationId: postProducts
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProductRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+            summary: Create a new product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-manage+products:tax-categories-view+products:variants-manage+products:variants-view
+    /api/v1/products/{id}:
+        delete:
+            description: Marks the product as discontinued. Products are never hard-deleted because other services reference them.
+            operationId: deleteProductsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Archive a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:products-manage
+        get:
+            operationId: getProduct
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: Get a product by id
+            tags:
+                - Products
+            x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-view+products:tax-categories-view+products:variants-view
+        put:
+            operationId: putProductsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProductRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-manage+products:tax-categories-view+products:variants-view
+    /api/v1/products/{id}/variants:
+        get:
+            operationId: getProductsByIdVariants
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProductVariantResponse'
+                                type: array
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List variants of a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-view+products:variants-view
+        post:
+            operationId: postProductsByIdVariants
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/VariantRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+            summary: Add a variant to a product
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-view+products:variants-manage+products:variants-view
+    /api/v1/products/{id}/variants/{variantId}:
+        delete:
+            operationId: deleteProductsByIdVariantsByVariantId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Remove a product variant
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-manage+products:variants-manage
+        put:
+            operationId: putProductsByIdVariantsByVariantId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/VariantRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductVariantResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a product variant
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-manage+products:pricing-view+products:variants-manage+products:variants-view
+    /api/v1/products/{id}/variants/{variantId}/prices:
+        get:
+            operationId: getProductsByIdVariantsByVariantIdPrices
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProductPriceResponse'
+                                type: array
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List prices of a variant
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-view
+        post:
+            operationId: postProductsByIdVariantsByVariantIdPrices
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProductPriceRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductPriceResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Add a price to a variant
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-manage+products:pricing-view
+    /api/v1/products/{id}/variants/{variantId}/prices/{priceId}:
+        delete:
+            operationId: deleteProductsByIdVariantsByVariantIdPricesByPriceId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: priceId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Remove a variant price
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-manage
+        put:
+            operationId: putProductsByIdVariantsByVariantIdPricesByPriceId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: variantId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: priceId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProductPriceRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductPriceResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a variant price
+            tags:
+                - Products
+            x-vantigo-access: permission:products:pricing-manage+products:pricing-view
+    /api/v1/products/categories:
+        get:
+            description: Returns the flat adjacency list; clients build the tree from parentId.
+            operationId: getProductsCategories
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CategoryResponse'
+                                type: array
+                    description: OK
+            summary: List all categories
+            tags:
+                - Categories
+            x-vantigo-access: permission:products:categories-view
+        post:
+            operationId: postProductsCategories
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CategoryRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CategoryResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+            summary: Create a new category
+            tags:
+                - Categories
+            x-vantigo-access: permission:products:categories-manage+products:categories-view
+    /api/v1/products/categories/{id}:
+        delete:
+            description: Restricted while the category has subcategories or assigned products.
+            operationId: deleteProductsCategoriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Delete a category
+            tags:
+                - Categories
+            x-vantigo-access: permission:products:categories-manage
+        get:
+            operationId: getCategory
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CategoryResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: Get a category by id
+            tags:
+                - Categories
+            x-vantigo-access: permission:products:categories-view
+        put:
+            description: Renames and/or re-parents the category. Moves that would create a cycle are rejected.
+            operationId: putProductsCategoriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CategoryRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CategoryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a category
+            tags:
+                - Categories
+            x-vantigo-access: permission:products:categories-manage+products:categories-view
+    /api/v1/products/stats/attention:
+        get:
+            operationId: getProductsStatsAttention
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProductStatsAttentionItem'
+                                type: array
+                    description: OK
+            summary: Get products dashboard attention items
+            tags:
+                - ProductStatsEndpoints
+            x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-view+products:tax-categories-view+products:variants-view
+    /api/v1/products/stats/summary:
+        get:
+            operationId: getProductsStatsSummary
+            parameters:
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductStatsSummaryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+            summary: Get products dashboard summary
+            tags:
+                - ProductStatsEndpoints
+            x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-view+products:tax-categories-view+products:variants-view
+    /api/v1/products/stats/timeseries:
+        get:
+            operationId: getProductsStatsTimeseries
+            parameters:
+                - in: query
+                  name: metric
+                  schema:
+                    type: string
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProductStatsDailyBucket'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+            summary: Get products dashboard time series
+            tags:
+                - ProductStatsEndpoints
+            x-vantigo-access: permission:products:categories-view+products:pricing-view+products:products-view+products:tax-categories-view+products:variants-view
+    /api/v1/products/tax-categories:
+        get:
+            operationId: getProductsTaxCategories
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TaxCategoryResponse'
+                                type: array
+                    description: OK
+            summary: List all tax categories
+            tags:
+                - Tax categories
+            x-vantigo-access: permission:products:tax-categories-view
+        post:
+            operationId: postProductsTaxCategories
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TaxCategoryRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaxCategoryResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+            summary: Create a tax category
+            tags:
+                - Tax categories
+            x-vantigo-access: permission:products:tax-categories-manage+products:tax-categories-view
+    /api/v1/products/tax-categories/{id}:
+        delete:
+            description: Restricted while products reference the tax category.
+            operationId: deleteProductsTaxCategoriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Delete a tax category
+            tags:
+                - Tax categories
+            x-vantigo-access: permission:products:tax-categories-manage
+        get:
+            operationId: getTaxCategory
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaxCategoryResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: Get a tax category by id
+            tags:
+                - Tax categories
+            x-vantigo-access: permission:products:tax-categories-view
+        put:
+            operationId: putProductsTaxCategoriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TaxCategoryRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaxCategoryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a tax category
+            tags:
+                - Tax categories
+            x-vantigo-access: permission:products:tax-categories-manage+products:tax-categories-view
+servers:
+    - url: /

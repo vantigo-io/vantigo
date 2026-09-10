@@ -1,0 +1,68 @@
+package openapi
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/getkin/kin-openapi/openapi3"
+)
+
+// AccessRule is the grammar of x-vantigo-access.
+var AccessRule = regexp.MustCompile(`^(anonymous|session|scim|permission:[a-z]+:[a-z-]+(\+[a-z]+:[a-z-]+)*|policy:(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement)(\+(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement))*)$`)
+
+// Problem is one structural rule an operation breaks.
+type Problem struct {
+	OperationID string
+	Message     string
+}
+
+// Lint checks the rules every operation must meet: an operationId, a valid
+// x-vantigo-access, and a documented success response (see
+// hasSuccessResponse).
+func Lint(doc *openapi3.T) []Problem {
+	var problems []Problem
+	for _, op := range operations(doc) {
+		where := strings.ToUpper(op.Method) + " " + op.Path
+		if op.OperationID == "" {
+			problems = append(problems, Problem{"", where + ": no operationId"})
+		}
+		access, _ := op.Op.Extensions["x-vantigo-access"].(string)
+		if !AccessRule.MatchString(access) {
+			problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: x-vantigo-access %q is not valid", where, access)})
+		}
+		if !hasSuccessResponse(op.Op) {
+			problems = append(problems, Problem{op.OperationID, where + ": no 2xx response with a body schema, 204, or 3xx with a Location header"})
+		}
+	}
+	return problems
+}
+
+// hasSuccessResponse reports whether op documents how it succeeds: a 2xx with
+// a body schema, a 204, or — for redirect endpoints such as the OIDC flow — a
+// 3xx that declares its Location header.
+func hasSuccessResponse(op *openapi3.Operation) bool {
+	if op.Responses == nil {
+		return false
+	}
+	for code, ref := range op.Responses.Map() {
+		if ref == nil || ref.Value == nil {
+			continue
+		}
+		switch {
+		case code == "204":
+			return true
+		case strings.HasPrefix(code, "2"):
+			for _, media := range ref.Value.Content {
+				if media != nil && media.Schema != nil {
+					return true
+				}
+			}
+		case strings.HasPrefix(code, "3"):
+			if _, ok := ref.Value.Headers["Location"]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}

@@ -1329,6 +1329,15 @@ paths:
       responses: {"204": {description: ok}}
     delete:
       responses: {"204": {description: ok}}
+    patch:
+      operationId: redirects
+      x-vantigo-access: anonymous
+      responses: {"302": {description: found, headers: {Location: {schema: {type: string}}}}}
+  /b:
+    get:
+      operationId: redirectsNowhere
+      x-vantigo-access: anonymous
+      responses: {"302": {description: found}}
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -1337,10 +1346,12 @@ paths:
 	for _, p := range Lint(doc) {
 		got[p.OperationID] = p.Message
 	}
-	if _, bad := got["good"]; bad {
-		t.Errorf("good operation flagged: %v", got["good"])
+	for _, id := range []string{"good", "redirects"} {
+		if _, bad := got[id]; bad {
+			t.Errorf("%s flagged: %v", id, got[id])
+		}
 	}
-	for _, id := range []string{"noBody", "badAccess", ""} {
+	for _, id := range []string{"noBody", "badAccess", "redirectsNowhere", ""} {
 		if _, ok := got[id]; !ok {
 			t.Errorf("operation %q not flagged (got %v)", id, got)
 		}
@@ -1631,8 +1642,7 @@ type Problem struct {
 }
 
 // Lint checks the rules every operation must meet: an operationId, a valid
-// x-vantigo-access, and a 2xx response that is either a 204 or carries a
-// body schema.
+// x-vantigo-access, and a documented success response (see hasSuccessResponse).
 func Lint(doc *openapi3.T) []Problem {
 	var problems []Problem
 	for _, op := range operations(doc) {
@@ -1644,26 +1654,35 @@ func Lint(doc *openapi3.T) []Problem {
 		if !AccessRule.MatchString(access) {
 			problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: x-vantigo-access %q is not valid", where, access)})
 		}
-		if !hasSuccessBody(op.Op) {
-			problems = append(problems, Problem{op.OperationID, where + ": no 2xx response with a body schema (or 204)"})
+		if !hasSuccessResponse(op.Op) {
+			problems = append(problems, Problem{op.OperationID, where + ": no 2xx response with a body schema, 204, or 3xx with a Location header"})
 		}
 	}
 	return problems
 }
 
-func hasSuccessBody(op *openapi3.Operation) bool {
+// hasSuccessResponse reports whether op documents how it succeeds: a 2xx with
+// a body schema, a 204, or — for redirect endpoints such as the OIDC flow — a
+// 3xx that declares its Location header.
+func hasSuccessResponse(op *openapi3.Operation) bool {
 	if op.Responses == nil {
 		return false
 	}
 	for code, ref := range op.Responses.Map() {
-		if !strings.HasPrefix(code, "2") || ref == nil || ref.Value == nil {
+		if ref == nil || ref.Value == nil {
 			continue
 		}
-		if code == "204" {
+		switch {
+		case code == "204":
 			return true
-		}
-		for _, media := range ref.Value.Content {
-			if media != nil && media.Schema != nil {
+		case strings.HasPrefix(code, "2"):
+			for _, media := range ref.Value.Content {
+				if media != nil && media.Schema != nil {
+					return true
+				}
+			}
+		case strings.HasPrefix(code, "3"):
+			if _, ok := ref.Value.Headers["Location"]; ok {
 				return true
 			}
 		}
@@ -2325,7 +2344,7 @@ Expected: FAIL, listing each operation in this slice that breaks a lint rule or 
 For each failing operation:
 1. Find the handler in the files named above and read it to the end. Identity handlers return `Task<IResult>` with `TypedResults.Ok(<Record>)`, `TypedResults.Json(…, statusCode: …)` and an `Error(status, code, message)` helper; the records live in `AuthModels.cs` and their generated schemas are already in `identity.yaml`.
 2. Document every status: 2xx with the record schema, `204` with no content, and each error status with the body the `Error` helper actually writes — check its implementation and the recordings; if it is the `{"error":{"code","message"}}` shape rather than a problem document, add that shape once to `common.yaml` as `ErrorResponse` and reference it — plus 429 rate-limit responses where the endpoint has a rate-limit policy (body `{"error":{"code":"rate_limited","message":…}}`, header `Retry-After`).
-3. The OIDC challenge/complete endpoints redirect: document `302` with a `Location` header. Avatar download is binary (`image/*`, `type: string, format: binary`); avatar upload is whatever content type the handler reads.
+3. The OIDC challenge/complete endpoints redirect: document `302` with a `Location` header (Task 4 added the middleware-served `GET`/`POST /api/v1/identity/oidc/callback` the same way; refine its description if needed). Avatar download is binary (`image/*`, `type: string, format: binary`); avatar upload is whatever content type the handler reads.
 4. Request bodies and parameters with the types .NET binds; where code and a recording disagree, the recording wins; note it.
 
 Rules: never change a path, property name, status code or enum value. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas only once Task 11 is done too (they may be shared) — leave them for now. A recorded exchange whose request the contract rejects passes when the server answered 4xx and the documented rejection response matches; never loosen a request schema, parameter or `required` list to accept an invalid recorded request — document the rejection response instead.

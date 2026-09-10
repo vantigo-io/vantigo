@@ -1,0 +1,158 @@
+package openapi
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/getkin/kin-openapi/openapi3"
+)
+
+const (
+	corpusDir = "../../../../openapi/testdata/exchanges"
+	gapsFile  = "../../../../openapi/testdata/known-gaps.txt"
+)
+
+// TestRecordedExchangesMatchTheContract validates every exchange recorded
+// from the .NET suites against the module that owns its path, and checks
+// every module against the structural lint. Operations listed in
+// known-gaps.txt may fail; anything else failing — or a listed operation
+// that now passes — fails the test. CONTRACT_UPDATE_GAPS=1 rewrites the list.
+func TestRecordedExchangesMatchTheContract(t *testing.T) {
+	ctx := context.Background()
+	failing := map[string][]string{} // operationId (or path) -> reasons
+
+	for _, name := range Modules {
+		doc, err := Load(ctx, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range Lint(doc) {
+			failing[p.OperationID] = append(failing[p.OperationID], p.Message)
+		}
+		for _, ex := range readCorpus(t, filepath.Join(corpusDir, name+".jsonl")) {
+			if id, err := Validate(ctx, doc, ex); err != nil {
+				failing[id] = append(failing[id], ex.Method+" "+ex.Path+" "+err.Error())
+			}
+		}
+	}
+
+	var ids []string
+	for id := range failing {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	if os.Getenv("CONTRACT_UPDATE_GAPS") == "1" {
+		if err := os.WriteFile(gapsFile, []byte(strings.Join(ids, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("wrote %d known gaps", len(ids))
+		return
+	}
+
+	known := map[string]bool{}
+	if data, err := os.ReadFile(gapsFile); err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if line != "" {
+				known[line] = true
+			}
+		}
+	}
+	for _, id := range ids {
+		if !known[id] {
+			t.Errorf("%s does not match the contract:\n  %s", id, strings.Join(failing[id], "\n  "))
+		}
+	}
+	for id := range known {
+		if _, still := failing[id]; !still {
+			t.Errorf("%s now matches the contract — remove it from openapi/testdata/known-gaps.txt", id)
+		}
+	}
+}
+
+const validateSpec = `
+openapi: 3.0.3
+info: {title: t, version: "1"}
+servers: [{url: /}]
+paths:
+  /api/v1/things:
+    post:
+      operationId: postThings
+      x-vantigo-access: session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [name], properties: {name: {type: string}}}
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema: {type: object, required: [id], properties: {id: {type: integer}}}
+        "400":
+          description: invalid
+          content:
+            application/problem+json:
+              schema: {type: object, required: [title], properties: {title: {type: string}}}
+`
+
+func TestValidate(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData([]byte(validateSpec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	str := func(s string) *string { return &s }
+	appJSON, problem := str("application/json"), str("application/problem+json")
+	post := func(body string, status int, contentType *string, response string) Exchange {
+		return Exchange{Method: "POST", Path: "/api/v1/things", RequestContentType: appJSON, RequestBody: str(body),
+			Status: status, ResponseContentType: contentType, ResponseBody: str(response)}
+	}
+	cases := []struct {
+		name string
+		ex   Exchange
+		ok   bool
+	}{
+		{"valid exchange", post(`{"name":"a"}`, 201, appJSON, `{"id":1}`), true},
+		{"undocumented status", post(`{"name":"a"}`, 409, problem, `{"title":"conflict"}`), false},
+		{"response off contract", post(`{"name":"a"}`, 201, appJSON, `{"id":"x"}`), false},
+		{"invalid request the server rejected", post(`{}`, 400, problem, `{"title":"bad"}`), true},
+		{"invalid request the server accepted", post(`{}`, 201, appJSON, `{"id":1}`), false},
+		{"rejection off contract", post(`{}`, 400, problem, `{}`), false},
+		{"no matching operation", Exchange{Method: "GET", Path: "/api/v1/nothing", Status: 404}, false},
+	}
+	for _, c := range cases {
+		if _, err := Validate(context.Background(), doc, c.ex); (err == nil) != c.ok {
+			t.Errorf("%s: err = %v, want ok = %v", c.name, err, c.ok)
+		}
+	}
+}
+
+func readCorpus(t *testing.T, path string) []Exchange {
+	t.Helper()
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	var out []Exchange
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 1<<20), 1<<22)
+	for scanner.Scan() {
+		var ex Exchange
+		if err := json.Unmarshal(scanner.Bytes(), &ex); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		out = append(out, ex)
+	}
+	return out
+}
