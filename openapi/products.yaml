@@ -30,37 +30,6 @@ components:
                 - name
                 - productCount
             type: object
-        GetProductsRequest:
-            properties:
-                categoryId:
-                    format: int32
-                    nullable: true
-                    type: integer
-                page:
-                    format: int32
-                    nullable: true
-                    type: integer
-                pageSize:
-                    format: int32
-                    nullable: true
-                    type: integer
-                search:
-                    nullable: true
-                    type: string
-                sortBy:
-                    nullable: true
-                    type: string
-                sortDirection:
-                    nullable: true
-                    type: string
-                status:
-                    nullable: true
-                    type: string
-                uncategorized:
-                    nullable: true
-                    type: boolean
-            type: object
-            x-vantigo-source: Vantigo.Products
         PaginatedResponseOfProductResponse:
             properties:
                 data:
@@ -523,6 +492,24 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/PaginatedResponseOfProductResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: List all products
             tags:
                 - Products
@@ -536,8 +523,36 @@ paths:
                             $ref: '#/components/schemas/ProductRequest'
                 required: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Create a new product
             tags:
                 - Products
@@ -557,6 +572,18 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Archive a product
@@ -580,6 +607,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ProductResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Get a product by id
@@ -615,6 +654,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Update a product
@@ -641,6 +692,18 @@ paths:
                                     $ref: '#/components/schemas/ProductVariantResponse'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List variants of a product
@@ -664,8 +727,38 @@ paths:
                             $ref: '#/components/schemas/VariantRequest'
                 required: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProductVariantResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Add a variant to a product
             tags:
                 - Products
@@ -691,8 +784,26 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Remove a product variant
             tags:
                 - Products
@@ -733,8 +844,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Update a product variant
             tags:
                 - Products
@@ -766,6 +895,18 @@ paths:
                                     $ref: '#/components/schemas/ProductPriceResponse'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List prices of a variant
@@ -808,8 +949,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Add a price to a variant
             tags:
                 - Products
@@ -842,6 +1001,18 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Remove a variant price
@@ -891,8 +1062,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Update a variant price
             tags:
                 - Products
@@ -910,6 +1099,18 @@ paths:
                                     $ref: '#/components/schemas/CategoryResponse'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: List all categories
             tags:
                 - Categories
@@ -935,6 +1136,24 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Create a new category
             tags:
                 - Categories
@@ -954,8 +1173,26 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Delete a category
             tags:
                 - Categories
@@ -977,6 +1214,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CategoryResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Get a category by id
@@ -1013,8 +1262,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Update a category
             tags:
                 - Categories
@@ -1031,6 +1298,18 @@ paths:
                                     $ref: '#/components/schemas/ProductStatsAttentionItem'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get products dashboard attention items
             tags:
                 - ProductStatsEndpoints
@@ -1062,6 +1341,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get products dashboard summary
             tags:
                 - ProductStatsEndpoints
@@ -1099,6 +1390,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get products dashboard time series
             tags:
                 - ProductStatsEndpoints
@@ -1115,6 +1418,18 @@ paths:
                                     $ref: '#/components/schemas/TaxCategoryResponse'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: List all tax categories
             tags:
                 - Tax categories
@@ -1140,6 +1455,24 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Create a tax category
             tags:
                 - Tax categories
@@ -1159,8 +1492,26 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Delete a tax category
             tags:
                 - Tax categories
@@ -1182,6 +1533,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/TaxCategoryResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Get a tax category by id
@@ -1217,8 +1580,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Update a tax category
             tags:
                 - Tax categories
