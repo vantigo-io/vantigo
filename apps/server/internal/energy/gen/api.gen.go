@@ -119,13 +119,6 @@ type EnergyStatsSummaryResponse struct {
 	To                       time.Time `json:"to"`
 }
 
-// GetMeteringPointsRequest defines model for GetMeteringPointsRequest.
-type GetMeteringPointsRequest struct {
-	Page     *int32  `json:"page,omitempty"`
-	PageSize *int32  `json:"pageSize,omitempty"`
-	Search   *string `json:"search,omitempty"`
-}
-
 // ManualConsumptionRequest defines model for ManualConsumptionRequest.
 type ManualConsumptionRequest struct {
 	End         time.Time `json:"end"`
@@ -145,12 +138,12 @@ type MeterResponse struct {
 // MeteringPointRequest defines model for MeteringPointRequest.
 type MeteringPointRequest struct {
 	Address                      *AddressRequest `json:"address"`
-	ConnectionStatus             *string         `json:"connectionStatus"`
-	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh"`
-	GridArea                     *string         `json:"gridArea"`
+	ConnectionStatus             *string         `json:"connectionStatus,omitempty"`
+	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh,omitempty"`
+	GridArea                     *string         `json:"gridArea,omitempty"`
 	Gsrn                         *string         `json:"gsrn"`
-	Latitude                     *float64        `json:"latitude"`
-	Longitude                    *float64        `json:"longitude"`
+	Latitude                     *float64        `json:"latitude,omitempty"`
+	Longitude                    *float64        `json:"longitude,omitempty"`
 	MeterNumber                  *string         `json:"meterNumber"`
 	PriceArea                    *string         `json:"priceArea"`
 }
@@ -174,12 +167,12 @@ type MeteringPointResponse struct {
 // MeteringPointUpdateRequest defines model for MeteringPointUpdateRequest.
 type MeteringPointUpdateRequest struct {
 	Address                      *AddressRequest `json:"address"`
-	ConnectionStatus             *string         `json:"connectionStatus"`
-	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh"`
-	GridArea                     *string         `json:"gridArea"`
+	ConnectionStatus             *string         `json:"connectionStatus,omitempty"`
+	ExpectedAnnualConsumptionKwh *float64        `json:"expectedAnnualConsumptionKwh,omitempty"`
+	GridArea                     *string         `json:"gridArea,omitempty"`
 	Gsrn                         *string         `json:"gsrn"`
-	Latitude                     *float64        `json:"latitude"`
-	Longitude                    *float64        `json:"longitude"`
+	Latitude                     *float64        `json:"latitude,omitempty"`
+	Longitude                    *float64        `json:"longitude,omitempty"`
 	PriceArea                    *string         `json:"priceArea"`
 }
 
@@ -1294,6 +1287,48 @@ func (response GetEnergyCustomersByCustomerIdConsumption200JSONResponse) VisitGe
 	return err
 }
 
+type GetEnergyCustomersByCustomerIdConsumption400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetEnergyCustomersByCustomerIdConsumption400ApplicationProblemPlusJSONResponse) VisitGetEnergyCustomersByCustomerIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyCustomersByCustomerIdConsumption401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyCustomersByCustomerIdConsumption401JSONResponse) VisitGetEnergyCustomersByCustomerIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyCustomersByCustomerIdConsumption403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyCustomersByCustomerIdConsumption403JSONResponse) VisitGetEnergyCustomersByCustomerIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyCustomersByCustomerIdConsumptionAggregateRequestObject struct {
 	CustomerId int32 `json:"customerId"`
 	Params     GetEnergyCustomersByCustomerIdConsumptionAggregateParams
@@ -1331,6 +1366,34 @@ func (response GetEnergyCustomersByCustomerIdConsumptionAggregate400ApplicationP
 	return err
 }
 
+type GetEnergyCustomersByCustomerIdConsumptionAggregate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyCustomersByCustomerIdConsumptionAggregate401JSONResponse) VisitGetEnergyCustomersByCustomerIdConsumptionAggregateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyCustomersByCustomerIdConsumptionAggregate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyCustomersByCustomerIdConsumptionAggregate403JSONResponse) VisitGetEnergyCustomersByCustomerIdConsumptionAggregateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyCustomersByCustomerIdMeteringPointsRequestObject struct {
 	CustomerId int32 `json:"customerId"`
 }
@@ -1349,6 +1412,34 @@ func (response GetEnergyCustomersByCustomerIdMeteringPoints200JSONResponse) Visi
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyCustomersByCustomerIdMeteringPoints401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyCustomersByCustomerIdMeteringPoints401JSONResponse) VisitGetEnergyCustomersByCustomerIdMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyCustomersByCustomerIdMeteringPoints403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyCustomersByCustomerIdMeteringPoints403JSONResponse) VisitGetEnergyCustomersByCustomerIdMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1373,6 +1464,56 @@ func (response GetEnergyMeteringPoints200JSONResponse) VisitGetEnergyMeteringPoi
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type GetEnergyMeteringPoints400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetEnergyMeteringPoints400ApplicationProblemPlusJSONResponse) VisitGetEnergyMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPoints401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPoints401JSONResponse) VisitGetEnergyMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPoints403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPoints403JSONResponse) VisitGetEnergyMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPoints404Response struct {
+}
+
+func (response GetEnergyMeteringPoints404Response) VisitGetEnergyMeteringPointsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type PostEnergyMeteringPointsRequestObject struct {
@@ -1411,6 +1552,48 @@ func (response PostEnergyMeteringPoints400ApplicationProblemPlusJSONResponse) Vi
 	return err
 }
 
+type PostEnergyMeteringPoints401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPoints401JSONResponse) VisitPostEnergyMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPoints403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPoints403JSONResponse) VisitPostEnergyMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPoints409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostEnergyMeteringPoints409ApplicationProblemPlusJSONResponse) VisitPostEnergyMeteringPointsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyMeteringPointRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -1429,6 +1612,34 @@ func (response GetEnergyMeteringPoint200JSONResponse) VisitGetEnergyMeteringPoin
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPoint401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPoint401JSONResponse) VisitGetEnergyMeteringPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPoint403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPoint403JSONResponse) VisitGetEnergyMeteringPointResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1478,12 +1689,54 @@ func (response PutEnergyMeteringPointsById400ApplicationProblemPlusJSONResponse)
 	return err
 }
 
+type PutEnergyMeteringPointsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyMeteringPointsById401JSONResponse) VisitPutEnergyMeteringPointsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutEnergyMeteringPointsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutEnergyMeteringPointsById403JSONResponse) VisitPutEnergyMeteringPointsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutEnergyMeteringPointsById404Response struct {
 }
 
 func (response PutEnergyMeteringPointsById404Response) VisitPutEnergyMeteringPointsByIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PutEnergyMeteringPointsById409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutEnergyMeteringPointsById409ApplicationProblemPlusJSONResponse) VisitPutEnergyMeteringPointsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetEnergyMeteringPointsByIdConsumptionRequestObject struct {
@@ -1505,6 +1758,48 @@ func (response GetEnergyMeteringPointsByIdConsumption200JSONResponse) VisitGetEn
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdConsumption400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetEnergyMeteringPointsByIdConsumption400ApplicationProblemPlusJSONResponse) VisitGetEnergyMeteringPointsByIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdConsumption401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdConsumption401JSONResponse) VisitGetEnergyMeteringPointsByIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdConsumption403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdConsumption403JSONResponse) VisitGetEnergyMeteringPointsByIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1554,6 +1849,34 @@ func (response PostEnergyMeteringPointsByIdConsumption400ApplicationProblemPlusJ
 	return err
 }
 
+type PostEnergyMeteringPointsByIdConsumption401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdConsumption401JSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdConsumption403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdConsumption403JSONResponse) VisitPostEnergyMeteringPointsByIdConsumptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostEnergyMeteringPointsByIdConsumption404Response struct {
 }
 
@@ -1599,6 +1922,34 @@ func (response GetEnergyMeteringPointsByIdConsumptionAggregate400ApplicationProb
 	return err
 }
 
+type GetEnergyMeteringPointsByIdConsumptionAggregate401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdConsumptionAggregate401JSONResponse) VisitGetEnergyMeteringPointsByIdConsumptionAggregateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdConsumptionAggregate403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdConsumptionAggregate403JSONResponse) VisitGetEnergyMeteringPointsByIdConsumptionAggregateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyMeteringPointsByIdConsumptionAggregate404Response struct {
 }
 
@@ -1625,6 +1976,34 @@ func (response GetEnergyMeteringPointsByIdMeters200JSONResponse) VisitGetEnergyM
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdMeters401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdMeters401JSONResponse) VisitGetEnergyMeteringPointsByIdMetersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdMeters403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdMeters403JSONResponse) VisitGetEnergyMeteringPointsByIdMetersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1674,6 +2053,34 @@ func (response PostEnergyMeteringPointsByIdMeters400ApplicationProblemPlusJSONRe
 	return err
 }
 
+type PostEnergyMeteringPointsByIdMeters401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdMeters401JSONResponse) VisitPostEnergyMeteringPointsByIdMetersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdMeters403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdMeters403JSONResponse) VisitPostEnergyMeteringPointsByIdMetersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostEnergyMeteringPointsByIdMeters404Response struct {
 }
 
@@ -1700,6 +2107,34 @@ func (response GetEnergyMeteringPointsByIdSupplyPeriods200JSONResponse) VisitGet
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdSupplyPeriods401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdSupplyPeriods401JSONResponse) VisitGetEnergyMeteringPointsByIdSupplyPeriodsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyMeteringPointsByIdSupplyPeriods403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyMeteringPointsByIdSupplyPeriods403JSONResponse) VisitGetEnergyMeteringPointsByIdSupplyPeriodsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1749,12 +2184,54 @@ func (response PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlu
 	return err
 }
 
+type PostEnergyMeteringPointsByIdSupplyPeriods401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriods401JSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdSupplyPeriods403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriods403JSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostEnergyMeteringPointsByIdSupplyPeriods404Response struct {
 }
 
 func (response PostEnergyMeteringPointsByIdSupplyPeriods404Response) VisitPostEnergyMeteringPointsByIdSupplyPeriodsResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PostEnergyMeteringPointsByIdSupplyPeriods409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriods409ApplicationProblemPlusJSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostEnergyMeteringPointsByIdSupplyPeriodsSwitchRequestObject struct {
@@ -1794,12 +2271,54 @@ func (response PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProb
 	return err
 }
 
+type PostEnergyMeteringPointsByIdSupplyPeriodsSwitch401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriodsSwitch401JSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsSwitchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdSupplyPeriodsSwitch403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriodsSwitch403JSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsSwitchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostEnergyMeteringPointsByIdSupplyPeriodsSwitch404Response struct {
 }
 
 func (response PostEnergyMeteringPointsByIdSupplyPeriodsSwitch404Response) VisitPostEnergyMeteringPointsByIdSupplyPeriodsSwitchResponse(w http.ResponseWriter) error {
 	w.WriteHeader(404)
 	return nil
+}
+
+type PostEnergyMeteringPointsByIdSupplyPeriodsSwitch409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriodsSwitch409ApplicationProblemPlusJSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsSwitchResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject struct {
@@ -1817,6 +2336,34 @@ type DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId204Response struct {
 func (response DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId204Response) VisitDeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId401JSONResponse) VisitDeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId403JSONResponse) VisitDeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId404Response struct {
@@ -1865,6 +2412,34 @@ func (response PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd400Applicat
 	return err
 }
 
+type PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd401JSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd403JSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd404Response struct {
 }
 
@@ -1890,6 +2465,34 @@ func (response GetEnergyStatsAttention200JSONResponse) VisitGetEnergyStatsAttent
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyStatsAttention401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyStatsAttention401JSONResponse) VisitGetEnergyStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyStatsAttention403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyStatsAttention403JSONResponse) VisitGetEnergyStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1930,6 +2533,34 @@ func (response GetEnergyStatsSummary400ApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type GetEnergyStatsSummary401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyStatsSummary401JSONResponse) VisitGetEnergyStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyStatsSummary403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyStatsSummary403JSONResponse) VisitGetEnergyStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyStatsTimeseriesRequestObject struct {
 	Params GetEnergyStatsTimeseriesParams
 }
@@ -1962,6 +2593,34 @@ func (response GetEnergyStatsTimeseries400ApplicationProblemPlusJSONResponse) Vi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyStatsTimeseries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyStatsTimeseries401JSONResponse) VisitGetEnergyStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetEnergyStatsTimeseries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetEnergyStatsTimeseries403JSONResponse) VisitGetEnergyStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
