@@ -1,0 +1,2506 @@
+components:
+    schemas:
+        AccessGroupRequest:
+            properties:
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+                displayName:
+                    nullable: true
+                    type: string
+                isActive:
+                    type: boolean
+            required:
+                - displayName
+                - isActive
+            type: object
+        AccessGroupResponse:
+            properties:
+                concurrencyStamp:
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                isActive:
+                    type: boolean
+                memberUserIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                roleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                scimConnectionId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                source:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - displayName
+                - source
+                - scimConnectionId
+                - isActive
+                - createdAt
+                - updatedAt
+                - concurrencyStamp
+                - memberUserIds
+                - roleIds
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AccountPasswordRequest:
+            properties:
+                currentPassword:
+                    nullable: true
+                    type: string
+                newPassword:
+                    nullable: true
+                    type: string
+            required:
+                - currentPassword
+                - newPassword
+            type: object
+        AccountProfileRequest:
+            properties:
+                displayName:
+                    nullable: true
+                    type: string
+                preferredLanguage:
+                    nullable: true
+                    type: string
+            required:
+                - displayName
+                - preferredLanguage
+            type: object
+        AccountResponse:
+            properties:
+                avatarUrl:
+                    nullable: true
+                    type: string
+                displayName:
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                preferredLanguage:
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - displayName
+                - email
+                - preferredLanguage
+                - avatarUrl
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AntiforgeryResponse:
+            properties:
+                token:
+                    type: string
+            required:
+                - token
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AuthSessionResponse:
+            properties:
+                activeTenantId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                isSystemAdmin:
+                    type: boolean
+                mfaAuthenticated:
+                    type: boolean
+                mfaEnrollmentRequired:
+                    type: boolean
+                tenants:
+                    items:
+                        properties:
+                            id:
+                                format: uuid
+                                type: string
+                            name:
+                                type: string
+                            slug:
+                                type: string
+                        required:
+                            - id
+                            - name
+                            - slug
+                        type: object
+                    type: array
+                twoFactorEnabled:
+                    type: boolean
+                user:
+                    properties:
+                        displayName:
+                            type: string
+                        email:
+                            nullable: true
+                            type: string
+                        id:
+                            format: uuid
+                            type: string
+                        roles:
+                            items:
+                                type: string
+                            type: array
+                    required:
+                        - id
+                        - displayName
+                        - email
+                        - roles
+                    type: object
+            required:
+                - user
+                - twoFactorEnabled
+                - mfaEnrollmentRequired
+                - mfaAuthenticated
+                - isSystemAdmin
+                - tenants
+                - activeTenantId
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AuthSuccessResponse:
+            properties:
+                activeTenantId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                mfaEnrollmentRequired:
+                    type: boolean
+                requiresTwoFactor:
+                    type: boolean
+                tenants:
+                    items:
+                        properties:
+                            id:
+                                format: uuid
+                                type: string
+                            name:
+                                type: string
+                            slug:
+                                type: string
+                        required:
+                            - id
+                            - name
+                            - slug
+                        type: object
+                    nullable: true
+                    type: array
+                twoFactorEnabled:
+                    type: boolean
+                user:
+                    properties:
+                        displayName:
+                            type: string
+                        email:
+                            nullable: true
+                            type: string
+                        id:
+                            format: uuid
+                            type: string
+                        roles:
+                            items:
+                                type: string
+                            type: array
+                    required:
+                        - id
+                        - displayName
+                        - email
+                        - roles
+                    type: object
+            required:
+                - user
+                - requiresTwoFactor
+                - twoFactorEnabled
+                - mfaEnrollmentRequired
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AuthUserResponse:
+            properties:
+                displayName:
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                roles:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - id
+                - displayName
+                - email
+                - roles
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AvatarResponse:
+            properties:
+                uploaded:
+                    type: boolean
+                url:
+                    type: string
+            required:
+                - uploaded
+                - url
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        BootstrapRequest:
+            properties:
+                displayName:
+                    nullable: true
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                password:
+                    nullable: true
+                    type: string
+                secret:
+                    nullable: true
+                    type: string
+            required:
+                - secret
+                - email
+                - displayName
+                - password
+            type: object
+        BootstrapStatusResponse:
+            properties:
+                available:
+                    type: boolean
+            required:
+                - available
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        DelegationMutationRequest:
+            properties:
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+            required:
+                - concurrencyStamp
+            type: object
+        DelegationRequest:
+            properties:
+                canCreateRoles:
+                    type: boolean
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+                expiresAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                granteeUserId:
+                    format: uuid
+                    type: string
+                permissionKeys:
+                    items:
+                        type: string
+                    nullable: true
+                    type: array
+                stewardedRoleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    nullable: true
+                    type: array
+            required:
+                - granteeUserId
+                - expiresAt
+                - permissionKeys
+                - stewardedRoleIds
+                - canCreateRoles
+            type: object
+        IdentitySystemStatusResponse:
+            properties:
+                active:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                disabled:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                lastAuthenticatedScimRequestAtUtc:
+                    format: date-time
+                    nullable: true
+                    type: string
+                lastStaticOidcSignInAtUtc:
+                    format: date-time
+                    nullable: true
+                    type: string
+                pendingInvitations:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                staticOidcEnabled:
+                    type: boolean
+                staticOidcProvider:
+                    nullable: true
+                    type: string
+                staticScimEnabled:
+                    type: boolean
+                total:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - total
+                - active
+                - disabled
+                - pendingInvitations
+                - staticOidcEnabled
+                - staticOidcProvider
+                - staticScimEnabled
+                - lastStaticOidcSignInAtUtc
+                - lastAuthenticatedScimRequestAtUtc
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        InvitationAcceptanceRequest:
+            properties:
+                displayName:
+                    nullable: true
+                    type: string
+                password:
+                    nullable: true
+                    type: string
+                token:
+                    nullable: true
+                    type: string
+            required:
+                - token
+                - displayName
+                - password
+            type: object
+        InvitationAcceptanceResponse:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+                expiresAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                role:
+                    nullable: true
+                    type: string
+                valid:
+                    type: boolean
+            required:
+                - valid
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        InvitationRequest:
+            properties:
+                displayName:
+                    nullable: true
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                role:
+                    nullable: true
+                    type: string
+            required:
+                - email
+                - displayName
+                - role
+            type: object
+        InvitationResponse:
+            properties:
+                acceptedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                displayName:
+                    nullable: true
+                    type: string
+                email:
+                    type: string
+                expiresAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                revokedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                role:
+                    type: string
+            required:
+                - id
+                - email
+                - role
+                - displayName
+                - createdAt
+                - expiresAt
+                - revokedAt
+                - acceptedAt
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        LoginRequest:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+                password:
+                    nullable: true
+                    type: string
+            required:
+                - email
+                - password
+            type: object
+        LogoutResponse:
+            properties:
+                success:
+                    type: boolean
+            required:
+                - success
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        MfaCodeRequest:
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                password:
+                    nullable: true
+                    type: string
+            required:
+                - code
+            type: object
+        MfaEnableResponse:
+            properties:
+                recoveryCodes:
+                    items:
+                        type: string
+                    type: array
+                twoFactorEnabled:
+                    type: boolean
+            required:
+                - twoFactorEnabled
+                - recoveryCodes
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        MfaRecoveryCodesResponse:
+            properties:
+                recoveryCodes:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - recoveryCodes
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        MfaResetResponse:
+            properties:
+                recoveryCodes:
+                    items:
+                        type: string
+                    type: array
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - recoveryCodes
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        MfaSetupResponse:
+            properties:
+                authenticatorUri:
+                    nullable: true
+                    type: string
+                initialized:
+                    type: boolean
+                sharedKey:
+                    nullable: true
+                    type: string
+            required:
+                - sharedKey
+                - authenticatorUri
+                - initialized
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        MfaStatusResponse:
+            properties:
+                mfaEnrollmentRequired:
+                    type: boolean
+                twoFactorEnabled:
+                    type: boolean
+            required:
+                - twoFactorEnabled
+                - mfaEnrollmentRequired
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        MutationRequest:
+            properties:
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+                scimConnectionId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - concurrencyStamp
+            type: object
+        OidcProviderResponse:
+            properties:
+                displayName:
+                    type: string
+            required:
+                - displayName
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        OidcProvidersResponse:
+            properties:
+                oidc:
+                    properties:
+                        displayName:
+                            type: string
+                    required:
+                        - displayName
+                    type: object
+            required:
+                - oidc
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        OwnerMfaResetRequest:
+            properties:
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        OwnerUserCreateRequest:
+            properties:
+                displayName:
+                    nullable: true
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                password:
+                    nullable: true
+                    type: string
+                role:
+                    nullable: true
+                    type: string
+                temporaryPassword:
+                    nullable: true
+                    type: string
+            required:
+                - displayName
+                - email
+                - role
+                - password
+            type: object
+        OwnerUserPasswordRequest:
+            properties:
+                password:
+                    nullable: true
+                    type: string
+            required:
+                - password
+            type: object
+        OwnerUserResponse:
+            properties:
+                active:
+                    type: boolean
+                avatarUrl:
+                    nullable: true
+                    type: string
+                disabled:
+                    type: boolean
+                displayName:
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                lockedOut:
+                    type: boolean
+                lockoutEnd:
+                    format: date-time
+                    nullable: true
+                    type: string
+                role:
+                    type: string
+                ssoEnabled:
+                    default: false
+                    type: boolean
+                twoFactorEnabled:
+                    type: boolean
+            required:
+                - id
+                - displayName
+                - email
+                - role
+                - active
+                - disabled
+                - lockedOut
+                - lockoutEnd
+                - twoFactorEnabled
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        OwnerUserUpdateRequest:
+            properties:
+                displayName:
+                    nullable: true
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                role:
+                    nullable: true
+                    type: string
+            required:
+                - displayName
+                - email
+                - role
+            type: object
+        PasskeyBeginRequest:
+            properties:
+                currentPassword:
+                    nullable: true
+                    type: string
+                name:
+                    nullable: true
+                    type: string
+            required:
+                - name
+                - currentPassword
+            type: object
+        PasskeyCompleteRequest:
+            properties:
+                ceremonyId:
+                    format: uuid
+                    type: string
+                credentialJson:
+                    nullable: true
+                    type: string
+                currentPassword:
+                    nullable: true
+                    type: string
+            required:
+                - ceremonyId
+                - credentialJson
+            type: object
+        PasskeyLoginBeginRequest:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+            required:
+                - email
+            type: object
+        PasskeyMutationResponse:
+            properties:
+                success:
+                    type: boolean
+            required:
+                - success
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        PasskeyOptionsResponse:
+            properties:
+                ceremonyId:
+                    format: uuid
+                    type: string
+                options: {}
+            required:
+                - ceremonyId
+                - options
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        PasskeyRemoveRequest:
+            properties:
+                currentPassword:
+                    nullable: true
+                    type: string
+            required:
+                - currentPassword
+            type: object
+        PasskeyResponse:
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                credentialId:
+                    type: string
+                isBackedUp:
+                    type: boolean
+                isBackupEligible:
+                    type: boolean
+                isUserVerified:
+                    type: boolean
+                name:
+                    type: string
+                transports:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - credentialId
+                - name
+                - createdAt
+                - transports
+                - isUserVerified
+                - isBackupEligible
+                - isBackedUp
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        PasswordRecoveryRequest:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+            required:
+                - email
+            type: object
+        PasswordRecoveryResponse:
+            properties:
+                accepted:
+                    type: boolean
+            required:
+                - accepted
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        PasswordResetRequest:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+                newPassword:
+                    nullable: true
+                    type: string
+                token:
+                    nullable: true
+                    type: string
+            required:
+                - email
+                - token
+                - newPassword
+            type: object
+        PasswordResetResponse:
+            properties:
+                success:
+                    type: boolean
+            required:
+                - success
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        PermissionReplacementRequest:
+            properties:
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                displayName:
+                    nullable: true
+                    type: string
+                name:
+                    nullable: true
+                    type: string
+                permissionKeys:
+                    items:
+                        type: string
+                    nullable: true
+                    type: array
+            required:
+                - name
+                - displayName
+                - description
+                - permissionKeys
+            type: object
+        RoleAssignmentRequest:
+            properties:
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+                delegationId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                roleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    nullable: true
+                    type: array
+            required:
+                - roleIds
+                - concurrencyStamp
+            type: object
+        RoleMutationRequest:
+            properties:
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+            required:
+                - concurrencyStamp
+            type: object
+        RoleUpsertRequest:
+            properties:
+                concurrencyStamp:
+                    nullable: true
+                    type: string
+                delegationId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                displayName:
+                    nullable: true
+                    type: string
+                name:
+                    nullable: true
+                    type: string
+                permissionKeys:
+                    items:
+                        type: string
+                    nullable: true
+                    type: array
+            required:
+                - name
+                - displayName
+                - description
+                - permissionKeys
+            type: object
+        SessionRevocationResponse:
+            properties:
+                revoked:
+                    type: boolean
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - revoked
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        SystemMaintenanceRequest:
+            properties:
+                enabled:
+                    type: boolean
+                message:
+                    nullable: true
+                    type: string
+            required:
+                - enabled
+                - message
+            type: object
+        TenantControlPlaneResponse:
+            properties:
+                enabledModules:
+                    items:
+                        type: string
+                    type: array
+                id:
+                    format: uuid
+                    type: string
+                membershipsCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                name:
+                    type: string
+                seededAdminInvitationId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                seededAdminInvitationToken:
+                    nullable: true
+                    type: string
+                slug:
+                    type: string
+                status:
+                    type: string
+            required:
+                - id
+                - name
+                - slug
+                - status
+                - enabledModules
+                - membershipsCount
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        TenantSessionResponse:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    type: string
+                slug:
+                    type: string
+            required:
+                - id
+                - name
+                - slug
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        TwoFactorRequest:
+            properties:
+                code:
+                    nullable: true
+                    type: string
+                rememberMe:
+                    default: false
+                    type: boolean
+            required:
+                - code
+            type: object
+info:
+    title: Vantigo Identity API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/identity/access/audit:
+        get:
+            operationId: getIdentityAccessAudit
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/catalog:
+        get:
+            operationId: getIdentityAccessCatalog
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+    /api/v1/identity/access/delegations:
+        get:
+            operationId: getIdentityAccessDelegations
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:OwnerManagement
+        post:
+            operationId: postIdentityAccessDelegations
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/DelegationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/delegations/{id}:
+        put:
+            operationId: putIdentityAccessDelegationsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/DelegationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/delegations/{id}/revoke:
+        post:
+            operationId: postIdentityAccessDelegationsByIdRevoke
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/DelegationMutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/groups:
+        get:
+            operationId: getIdentityAccessGroups
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+        post:
+            operationId: postIdentityAccessGroups
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/AccessGroupRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/groups/{groupId}/members/{userId}:
+        delete:
+            operationId: deleteIdentityAccessGroupsByGroupIdMembersByUserId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+        post:
+            operationId: postIdentityAccessGroupsByGroupIdMembersByUserId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+        put:
+            operationId: putIdentityAccessGroupsByGroupIdMembersByUserId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/groups/{groupId}/role-mappings/{roleId}:
+        delete:
+            operationId: deleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: roleId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+        post:
+            operationId: postIdentityAccessGroupsByGroupIdRoleMappingsByRoleId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: roleId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+        put:
+            operationId: putIdentityAccessGroupsByGroupIdRoleMappingsByRoleId
+            parameters:
+                - in: path
+                  name: groupId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+                - in: path
+                  name: roleId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/groups/{id}:
+        delete:
+            operationId: deleteIdentityAccessGroupsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+        get:
+            operationId: getIdentityAccessGroupsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+        put:
+            operationId: putIdentityAccessGroupsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/AccessGroupRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Identity control plane
+            x-vantigo-access: policy:OwnerManagement
+    /api/v1/identity/access/me:
+        get:
+            operationId: getIdentityAccessMe
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthorizationManagementEndpoints
+            x-vantigo-access: session
+    /api/v1/identity/access/roles:
+        get:
+            operationId: getIdentityAccessRoles
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+        post:
+            operationId: postIdentityAccessRoles
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/RoleUpsertRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+    /api/v1/identity/access/roles/{id}:
+        delete:
+            operationId: deleteIdentityAccessRolesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/RoleMutationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+        put:
+            operationId: putIdentityAccessRolesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/RoleUpsertRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+    /api/v1/identity/access/roles/{id}/permissions:
+        put:
+            operationId: putIdentityAccessRolesByIdPermissions
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PermissionReplacementRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+    /api/v1/identity/access/users:
+        get:
+            operationId: getIdentityAccessUsers
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+    /api/v1/identity/access/users/{id}:
+        get:
+            operationId: getIdentityAccessUsersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+    /api/v1/identity/access/users/{id}/roles:
+        put:
+            operationId: putIdentityAccessUsersByIdRoles
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/RoleAssignmentRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Authorization
+            x-vantigo-access: policy:AuthorizationManagement
+    /api/v1/identity/account:
+        get:
+            operationId: getIdentityAccount
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+        put:
+            operationId: putIdentityAccount
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/AccountProfileRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/avatar:
+        delete:
+            operationId: deleteIdentityAccountAvatar
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+        get:
+            operationId: getIdentityAccountAvatar
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+        post:
+            operationId: postIdentityAccountAvatar
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+        put:
+            operationId: putIdentityAccountAvatar
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/mfa:
+        get:
+            operationId: getIdentityAccountMfa
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/mfa/disable:
+        post:
+            operationId: postIdentityAccountMfaDisable
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/mfa/enable:
+        post:
+            operationId: postIdentityAccountMfaEnable
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/mfa/recovery-codes:
+        post:
+            operationId: postIdentityAccountMfaRecoveryCodes
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/mfa/setup:
+        get:
+            operationId: getIdentityAccountMfaSetup
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+        post:
+            operationId: postIdentityAccountMfaSetup
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/passkeys:
+        get:
+            operationId: getIdentityAccountPasskeys
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/passkeys/{credentialId}:
+        delete:
+            operationId: deleteIdentityAccountPasskeysByCredentialId
+            parameters:
+                - in: path
+                  name: credentialId
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PasskeyRemoveRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/passkeys/begin:
+        post:
+            operationId: postIdentityAccountPasskeysBegin
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PasskeyBeginRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/passkeys/complete:
+        post:
+            operationId: postIdentityAccountPasskeysComplete
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PasskeyCompleteRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/password:
+        post:
+            operationId: postIdentityAccountPassword
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/AccountPasswordRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/profile:
+        patch:
+            operationId: patchIdentityAccountProfile
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/AccountProfileRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+        put:
+            operationId: putIdentityAccountProfile
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/AccountProfileRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/account/sessions/revoke:
+        post:
+            operationId: postIdentityAccountSessionsRevoke
+            responses:
+                "200":
+                    description: OK
+            summary: Sign out of every session for the current account
+            tags:
+                - Personal account settings
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/bootstrap:
+        post:
+            operationId: postIdentityBootstrap
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/BootstrapRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            summary: Create the single local Owner account
+            tags:
+                - Authentication
+            x-vantigo-access: anonymous
+    /api/v1/identity/bootstrap-status:
+        get:
+            operationId: getIdentityBootstrapStatus
+            responses:
+                "200":
+                    description: OK
+            summary: Get whether one-time local Owner bootstrap is available
+            tags:
+                - Authentication
+            x-vantigo-access: anonymous
+    /api/v1/identity/invitations/accept:
+        post:
+            operationId: postIdentityInvitationsAccept
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/InvitationAcceptanceRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: anonymous
+    /api/v1/identity/invitations/validate:
+        get:
+            operationId: getIdentityInvitationsValidate
+            parameters:
+                - in: query
+                  name: token
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: anonymous
+    /api/v1/identity/login:
+        post:
+            operationId: postIdentityLogin
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/LoginRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            summary: Sign in with the application cookie
+            tags:
+                - Authentication
+            x-vantigo-access: anonymous
+    /api/v1/identity/login/2fa:
+        post:
+            operationId: postIdentityLogin2fa
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/TwoFactorRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            summary: Complete an Owner authenticator or recovery-code login
+            tags:
+                - Authentication
+            x-vantigo-access: anonymous
+    /api/v1/identity/logout:
+        post:
+            operationId: postIdentityLogout
+            responses:
+                "200":
+                    description: OK
+            summary: Sign out of the application cookie
+            tags:
+                - Authentication
+            x-vantigo-access: session
+    /api/v1/identity/oidc/challenge:
+        get:
+            operationId: getIdentityOidcChallenge
+            responses:
+                "200":
+                    description: OK
+            summary: Start workforce OpenID Connect sign-in
+            tags:
+                - Authentication
+            x-vantigo-access: anonymous
+    /api/v1/identity/oidc/complete:
+        get:
+            operationId: getIdentityOidcComplete
+            responses:
+                "200":
+                    description: OK
+            summary: Complete workforce OpenID Connect sign-in
+            tags:
+                - Authentication
+            x-vantigo-access: anonymous
+    /api/v1/identity/owner/invitations:
+        get:
+            operationId: getIdentityOwnerInvitations
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+        post:
+            operationId: postIdentityOwnerInvitations
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/InvitationRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/invitations/{id}/resend:
+        post:
+            operationId: postIdentityOwnerInvitationsByIdResend
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/invitations/{id}/revoke:
+        post:
+            operationId: postIdentityOwnerInvitationsByIdRevoke
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/mfa:
+        get:
+            operationId: getIdentityOwnerMfa
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/owner/mfa/disable:
+        post:
+            operationId: postIdentityOwnerMfaDisable
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/owner/mfa/enable:
+        post:
+            operationId: postIdentityOwnerMfaEnable
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/owner/mfa/recovery-codes:
+        post:
+            operationId: postIdentityOwnerMfaRecoveryCodes
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/owner/mfa/reset/{userId}:
+        post:
+            operationId: postIdentityOwnerMfaResetByUserId
+            parameters:
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/mfa/setup:
+        get:
+            operationId: getIdentityOwnerMfaSetup
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+        post:
+            operationId: postIdentityOwnerMfaSetup
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/MfaCodeRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: policy:ActiveAccount
+    /api/v1/identity/owner/system-status:
+        get:
+            operationId: getIdentityOwnerSystemStatus
+            responses:
+                "200":
+                    description: OK
+            summary: Get non-sensitive static identity and account status
+            tags:
+                - Authentication
+            x-vantigo-access: policy:Owner
+    /api/v1/identity/owner/users:
+        get:
+            operationId: getIdentityOwnerUsers
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+        post:
+            operationId: postIdentityOwnerUsers
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/OwnerUserCreateRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}:
+        delete:
+            operationId: deleteIdentityOwnerUsersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+        put:
+            operationId: putIdentityOwnerUsersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/OwnerUserUpdateRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}/avatar:
+        get:
+            operationId: getIdentityOwnerUsersByIdAvatar
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}/disable:
+        post:
+            operationId: postIdentityOwnerUsersByIdDisable
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}/enable:
+        post:
+            operationId: postIdentityOwnerUsersByIdEnable
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}/password:
+        post:
+            operationId: postIdentityOwnerUsersByIdPassword
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/OwnerUserPasswordRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/owner/users/{id}/password-reset:
+        post:
+            operationId: postIdentityOwnerUsersByIdPasswordReset
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Owner account management
+            x-vantigo-access: policy:Owner+OwnerManagement
+    /api/v1/identity/passkeys/login/begin:
+        post:
+            operationId: postIdentityPasskeysLoginBegin
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PasskeyLoginBeginRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Passkey sign-in
+            x-vantigo-access: anonymous
+    /api/v1/identity/passkeys/login/complete:
+        post:
+            operationId: postIdentityPasskeysLoginComplete
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PasskeyCompleteRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - Passkey sign-in
+            x-vantigo-access: anonymous
+    /api/v1/identity/password-recovery/request:
+        post:
+            operationId: postIdentityPasswordRecoveryRequest
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PasswordRecoveryRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: anonymous
+    /api/v1/identity/password-recovery/reset:
+        post:
+            operationId: postIdentityPasswordRecoveryReset
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/PasswordResetRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - AuthAccountEndpoints
+            x-vantigo-access: anonymous
+    /api/v1/identity/providers:
+        get:
+            operationId: getIdentityProviders
+            responses:
+                "200":
+                    description: OK
+            summary: Get the configured workforce sign-in providers
+            tags:
+                - Authentication
+            x-vantigo-access: anonymous
+    /api/v1/identity/scim/v2/Groups:
+        get:
+            operationId: getIdentityScimV2Groups
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+        post:
+            operationId: postIdentityScimV2Groups
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+    /api/v1/identity/scim/v2/Groups/{id}:
+        delete:
+            operationId: deleteIdentityScimV2GroupsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+        get:
+            operationId: getIdentityScimV2GroupsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+        patch:
+            operationId: patchIdentityScimV2GroupsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+    /api/v1/identity/scim/v2/ResourceTypes:
+        get:
+            operationId: getIdentityScimV2ResourceTypes
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+    /api/v1/identity/scim/v2/Schemas:
+        get:
+            operationId: getIdentityScimV2Schemas
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+    /api/v1/identity/scim/v2/ServiceProviderConfig:
+        get:
+            operationId: getIdentityScimV2ServiceProviderConfig
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+    /api/v1/identity/scim/v2/Users:
+        get:
+            operationId: getIdentityScimV2Users
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+        post:
+            operationId: postIdentityScimV2Users
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+    /api/v1/identity/scim/v2/Users/{id}:
+        delete:
+            operationId: deleteIdentityScimV2UsersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+        get:
+            operationId: getIdentityScimV2UsersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+        patch:
+            operationId: patchIdentityScimV2UsersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+        put:
+            operationId: putIdentityScimV2UsersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            tags:
+                - SCIM 2.0
+            x-vantigo-access: scim
+    /api/v1/identity/session:
+        get:
+            operationId: getIdentitySession
+            responses:
+                "200":
+                    description: OK
+            summary: Get the authenticated browser session
+            tags:
+                - Authentication
+            x-vantigo-access: session
+    /api/v1/identity/system/maintenance:
+        put:
+            operationId: putIdentitySystemMaintenance
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            nullable: true
+                            oneOf:
+                                - $ref: '#/components/schemas/SystemMaintenanceRequest'
+                            type: object
+            responses:
+                "200":
+                    description: OK
+            summary: Update system maintenance mode
+            tags:
+                - Identity system
+            x-vantigo-access: policy:SystemAdmin
+    /api/v1/identity/system/status:
+        get:
+            operationId: getIdentitySystemStatus
+            responses:
+                "200":
+                    description: OK
+            summary: Get the current system maintenance status
+            tags:
+                - Identity system
+            x-vantigo-access: anonymous
+    /api/v1/identity/system/users/{userId}/sessions/revoke:
+        post:
+            operationId: postIdentitySystemUsersByUserIdSessionsRevoke
+            parameters:
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    description: OK
+            summary: Revoke every session for an account
+            tags:
+                - Identity system
+            x-vantigo-access: policy:SystemAdmin
+servers:
+    - url: /
