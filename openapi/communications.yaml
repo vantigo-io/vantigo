@@ -1732,11 +1732,8 @@ paths:
                     type: string
             responses:
                 "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/JsonElement
                     description: OK
+                    x-vantigo-empty-body: true
                 "401":
                     content:
                         application/json:
