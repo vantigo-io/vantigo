@@ -161,7 +161,10 @@ public sealed class CommunicationsEndpointsTests(CommunicationsModuleFactory fac
             ContentHash = "hash",
             StorageKey = "opaque/not-in-response",
             ScanStatus = "pending",
-            NextScanAt = now,
+            // Not due yet: the in-process scanner worker claims pending uploads
+            // whose NextScanAt has passed, and would race this test's reads by
+            // flipping the status to scanning/clean between insert and GET.
+            NextScanAt = now.AddHours(1),
             ExpiresAt = now.AddHours(1),
             CreatedAt = now,
         };
