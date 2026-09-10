@@ -1,0 +1,8 @@
+# oapi-codegen: the shared components in openapi/common.yaml. Other modules'
+# configs map common.yaml to this package via import-mapping.
+package: gen
+output: internal/apicommon/gen/api.gen.go
+generate:
+  models: true
+output-options:
+  skip-prune: true
