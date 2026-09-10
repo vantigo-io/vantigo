@@ -43,10 +43,17 @@ const connectAttempts = 6
 
 var retryDelay = func(attempt int) time.Duration { return time.Duration(attempt) * 2 * time.Second }
 
+// pingTimeout bounds one attempt. Without it a black-holed host makes every
+// attempt wait out the kernel's connect timeout (minutes), not seconds.
+var pingTimeout = 5 * time.Second
+
 func waitForDatabase(ctx context.Context, ping func(context.Context) error) error {
 	var err error
 	for attempt := 1; attempt <= connectAttempts; attempt++ {
-		if err = ping(ctx); err == nil {
+		attemptCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+		err = ping(attemptCtx)
+		cancel()
+		if err == nil {
 			return nil
 		}
 		if attempt == connectAttempts {

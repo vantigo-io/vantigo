@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -129,6 +130,38 @@ func TestOpen_GivesUpOnAnUnreachableServer(t *testing.T) {
 	_, err := db.Open(context.Background(), "postgres://nobody:secret@127.0.0.1:1/none?sslmode=disable&connect_timeout=1")
 	if err == nil || !strings.Contains(err.Error(), "unreachable after 6 attempts") {
 		t.Fatalf("err = %v, want it to give up after 6 attempts", err)
+	}
+}
+
+// A black-holed host never answers; each attempt must give up on its own
+// rather than wait for the kernel's connect timeout.
+func TestWaitForDatabase_BoundsEachAttempt(t *testing.T) {
+	defer db.SetRetryDelay(func(int) time.Duration { return 0 })()
+	defer db.SetPingTimeout(20 * time.Millisecond)()
+
+	var attempts atomic.Int32
+	blackHole := func(ctx context.Context) error {
+		attempts.Add(1)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() { done <- db.WaitForDatabase(context.Background(), blackHole) }()
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "unreachable after 6 attempts") {
+			t.Fatalf("err = %v, want it to give up after 6 attempts", err)
+		}
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Errorf("took %v, want each attempt bounded by the ping timeout", elapsed)
+		}
+		if got := attempts.Load(); got != 6 {
+			t.Errorf("%d attempts, want 6", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waitForDatabase is still waiting on a ping that never answers; each attempt must be bounded")
 	}
 }
 
