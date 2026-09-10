@@ -37,7 +37,7 @@ components:
                         $ref: '#/components/schemas/ProductResponse'
                     type: array
                 pagination:
-                    $ref: '#/components/schemas/ProductsPaginationMetadata'
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
             required:
                 - data
                 - pagination
@@ -339,32 +339,6 @@ components:
                 - effectivePrices
                 - createdAt
                 - updatedAt
-            type: object
-        ProductsPaginationMetadata:
-            properties:
-                hasNextPage:
-                    type: boolean
-                hasPreviousPage:
-                    type: boolean
-                page:
-                    format: int32
-                    type: integer
-                pageSize:
-                    format: int32
-                    type: integer
-                totalCount:
-                    format: int32
-                    type: integer
-                totalPages:
-                    format: int32
-                    type: integer
-            required:
-                - page
-                - pageSize
-                - totalCount
-                - totalPages
-                - hasNextPage
-                - hasPreviousPage
             type: object
         TaxCategoryRequest:
             properties:

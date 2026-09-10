@@ -27,16 +27,6 @@ components:
                 - legalId
                 - legalName
             type: object
-        BrregLookupRequest:
-            properties:
-                legalId:
-                    nullable: true
-                    type: string
-                search:
-                    nullable: true
-                    type: string
-            type: object
-            x-vantigo-source: Vantigo.Customers
         BrregLookupResponse:
             properties:
                 data:
@@ -171,41 +161,6 @@ components:
                 - customerNumber
                 - name
             type: object
-        CustomerResponse:
-            properties:
-                customerNumber:
-                    format: int64
-                    type: integer
-                id:
-                    format: int32
-                    type: integer
-                identity:
-                    properties:
-                        country:
-                            type: string
-                        id:
-                            type: string
-                        name:
-                            type: string
-                        source:
-                            type: string
-                        type:
-                            type: string
-                    required:
-                        - country
-                        - type
-                        - id
-                        - name
-                        - source
-                    type: object
-                name:
-                    type: string
-            required:
-                - id
-                - customerNumber
-                - name
-            type: object
-            x-vantigo-source: Vantigo.Customers
         CustomerStatsAttentionItem:
             properties:
                 entityId:
@@ -271,32 +226,6 @@ components:
                 - newContacts
                 - newContactsDelta
             type: object
-        CustomersPaginationMetadata:
-            properties:
-                hasNextPage:
-                    type: boolean
-                hasPreviousPage:
-                    type: boolean
-                page:
-                    format: int32
-                    type: integer
-                pageSize:
-                    format: int32
-                    type: integer
-                totalCount:
-                    format: int32
-                    type: integer
-                totalPages:
-                    format: int32
-                    type: integer
-            required:
-                - page
-                - pageSize
-                - totalCount
-                - totalPages
-                - hasNextPage
-                - hasPreviousPage
-            type: object
         GetContactCustomersContactCustomerResponse:
             properties:
                 customer:
@@ -337,27 +266,6 @@ components:
             required:
                 - data
             type: object
-        GetContactsRequest:
-            properties:
-                page:
-                    format: int32
-                    nullable: true
-                    type: integer
-                pageSize:
-                    format: int32
-                    nullable: true
-                    type: integer
-                search:
-                    nullable: true
-                    type: string
-                sortBy:
-                    nullable: true
-                    type: string
-                sortDirection:
-                    nullable: true
-                    type: string
-            type: object
-            x-vantigo-source: Vantigo.Customers
         GetContactsResponse:
             properties:
                 contact:
@@ -414,30 +322,6 @@ components:
                 - activeCount
                 - newLast30DaysCount
             type: object
-        GetCustomersRequest:
-            properties:
-                includeArchived:
-                    nullable: true
-                    type: boolean
-                page:
-                    format: int32
-                    nullable: true
-                    type: integer
-                pageSize:
-                    format: int32
-                    nullable: true
-                    type: integer
-                search:
-                    nullable: true
-                    type: string
-                sortBy:
-                    nullable: true
-                    type: string
-                sortDirection:
-                    nullable: true
-                    type: string
-            type: object
-            x-vantigo-source: Vantigo.Customers
         LegalIdentityRequest:
             properties:
                 country:
@@ -484,7 +368,7 @@ components:
                         $ref: '#/components/schemas/GetContactsResponse'
                     type: array
                 pagination:
-                    $ref: '#/components/schemas/CustomersPaginationMetadata'
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
             required:
                 - data
                 - pagination
@@ -496,7 +380,7 @@ components:
                         $ref: '#/components/schemas/SafeCustomerResponse'
                     type: array
                 pagination:
-                    $ref: '#/components/schemas/CustomersPaginationMetadata'
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
             required:
                 - data
                 - pagination
@@ -592,6 +476,10 @@ components:
                 sourceUrl:
                     nullable: true
                     type: string
+            required:
+                - eventType
+                - occurredOn
+                - note
             type: object
         TimelineResponse:
             properties:
@@ -775,6 +663,24 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/PaginatedResponseOfSafeCustomerResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: List all customers
             tags:
                 - Customers
@@ -788,8 +694,30 @@ paths:
                             $ref: '#/components/schemas/CreateCustomerRequest'
                 required: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateCustomerResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Create a new customer
             tags:
                 - Customers
@@ -808,6 +736,18 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Archive a customer (customers are never hard-deleted)
@@ -826,7 +766,25 @@ paths:
                     type: integer
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SafeCustomerResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             summary: Get a customer by id
             tags:
                 - Customers
@@ -849,7 +807,31 @@ paths:
                 required: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SafeCustomerResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             summary: Update a customer
             tags:
                 - Customers
@@ -872,6 +854,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/GetCustomerContactsResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List the contacts associated with a customer
@@ -907,8 +901,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Associate a contact with a customer
             tags:
                 - Customers
@@ -934,6 +946,18 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Remove a contact association from a customer
@@ -976,6 +1000,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Update a customer's contact association
@@ -994,8 +1030,22 @@ paths:
                     pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             summary: Remove a customer's legal identity
             tags:
                 - Customers
@@ -1012,7 +1062,27 @@ paths:
                     type: integer
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LegalIdentityResponse'
                     description: OK
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             summary: Get a customer's legal identity
             tags:
                 - Customers
@@ -1035,7 +1105,31 @@ paths:
                 required: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LegalIdentityResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             summary: Replace a customer's legal identity
             tags:
                 - Customers
@@ -1090,8 +1184,20 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List a customer's timeline
@@ -1125,8 +1231,20 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Create a manual customer timeline entry
@@ -1159,6 +1277,18 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
                 "409":
@@ -1195,6 +1325,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/TimelineResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Get a customer timeline entry
@@ -1235,8 +1377,20 @@ paths:
                     content:
                         application/problem+json:
                             schema:
-                                $ref: common.yaml#/components/schemas/ProblemDetails
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
                 "409":
@@ -1274,6 +1428,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/TimelineRevisionListResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List timeline entry revisions
@@ -1313,6 +1479,24 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/PaginatedResponseOfResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: List all contacts
             tags:
                 - Contacts
@@ -1338,6 +1522,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Create a new contact
             tags:
                 - Contacts
@@ -1356,6 +1552,18 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Delete a contact
@@ -1379,6 +1587,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/ContactResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Get a contact by id
@@ -1414,6 +1634,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Update a contact
@@ -1438,6 +1670,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/GetContactCustomersResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List the customers a contact is associated with
@@ -1463,6 +1707,30 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/BrregLookupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "502":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Gateway
             summary: Look up business entities in Brønnøysundregisteret
             tags:
                 - Lookup
@@ -1477,6 +1745,20 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/GetCustomerStatsResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             summary: Get tenant-wide customer key figures
             tags:
                 - Customers
@@ -1493,6 +1775,18 @@ paths:
                                     $ref: '#/components/schemas/CustomerStatsAttentionItem'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get customer dashboard attention items
             tags:
                 - Customers
@@ -1518,6 +1812,24 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CustomerStatsSummaryResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get customer dashboard summary
             tags:
                 - Customers
@@ -1555,6 +1867,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get customer dashboard time series
             tags:
                 - Customers

@@ -49,6 +49,32 @@ components:
                     type: string
             type: object
         JsonElement: {}
+        PaginationMetadata:
+            properties:
+                hasNextPage:
+                    type: boolean
+                hasPreviousPage:
+                    type: boolean
+                page:
+                    format: int32
+                    type: integer
+                pageSize:
+                    format: int32
+                    type: integer
+                totalCount:
+                    format: int32
+                    type: integer
+                totalPages:
+                    format: int32
+                    type: integer
+            required:
+                - page
+                - pageSize
+                - totalCount
+                - totalPages
+                - hasNextPage
+                - hasPreviousPage
+            type: object
         ProblemDetails:
             properties:
                 detail:

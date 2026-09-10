@@ -29,6 +29,16 @@ type HttpValidationProblemDetails struct {
 // JsonElement defines model for JsonElement.
 type JsonElement = interface{}
 
+// PaginationMetadata defines model for PaginationMetadata.
+type PaginationMetadata struct {
+	HasNextPage     bool  `json:"hasNextPage"`
+	HasPreviousPage bool  `json:"hasPreviousPage"`
+	Page            int32 `json:"page"`
+	PageSize        int32 `json:"pageSize"`
+	TotalCount      int32 `json:"totalCount"`
+	TotalPages      int32 `json:"totalPages"`
+}
+
 // ProblemDetails defines model for ProblemDetails.
 type ProblemDetails struct {
 	Detail   *string `json:"detail,omitempty"`
