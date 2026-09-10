@@ -26,6 +26,7 @@ using Vantigo.Configuration;
 using Vantigo.Host;
 using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
+using Vantigo.Testing;
 
 namespace Vantigo.Identity.Tests.Integration;
 
@@ -331,6 +332,7 @@ public class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         });
         builder.ConfigureServices(services =>
         {
+            services.AddContractRecording();
             services.AddSingleton(new HostTestStartupPreparation(true, false));
             services.AddTransient<IStartupFilter, IdentityTestClientAddressStartupFilter>();
             services.RemoveAll<IApplicationEmailSender>();

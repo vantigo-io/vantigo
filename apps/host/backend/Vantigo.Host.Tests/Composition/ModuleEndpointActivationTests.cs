@@ -9,6 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Testcontainers.PostgreSql;
 
 using Vantigo.Host;
+using Vantigo.Testing;
 
 namespace Vantigo.Host.Tests.Composition;
 
@@ -124,7 +125,10 @@ internal sealed class ModuleActivationApiFactory(
             ["Communications:Inbound:PollSeconds"] = "3600",
         }));
         builder.ConfigureServices(services =>
-            services.AddSingleton(new HostTestStartupPreparation(ApplyMigrations: true, SeedDevelopmentData: false)));
+        {
+            services.AddContractRecording();
+            services.AddSingleton(new HostTestStartupPreparation(ApplyMigrations: true, SeedDevelopmentData: false));
+        });
     }
 }
 

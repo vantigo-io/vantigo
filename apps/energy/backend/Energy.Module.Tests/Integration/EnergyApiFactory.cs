@@ -14,6 +14,7 @@ using Vantigo.Identity.Services;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
 using Vantigo.Tenancy.EntityFramework;
+using Vantigo.Testing;
 
 namespace Vantigo.Energy.Module.Tests.Integration;
 
@@ -112,6 +113,7 @@ public sealed class EnergyApiFactory : WebApplicationFactory<global::Program>, I
         }));
         builder.ConfigureServices(services =>
         {
+            services.AddContractRecording();
             // Registered after the Customers module, so this is the implementation
             // the Energy endpoints resolve.
             services.AddSingleton<ICustomerDirectory, FakeCustomerDirectory>();

@@ -20,6 +20,7 @@ using Vantigo.Identity.Services;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
 using Vantigo.Tenancy.EntityFramework;
+using Vantigo.Testing;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -177,6 +178,7 @@ public sealed class CustomersApiFactory : WebApplicationFactory<Program>, IAsync
 
         builder.ConfigureServices(services =>
         {
+            services.AddContractRecording();
             services.AddSingleton(new HostTestStartupPreparation(
                 ApplyMigrations: true,
                 SeedDevelopmentData: false));
