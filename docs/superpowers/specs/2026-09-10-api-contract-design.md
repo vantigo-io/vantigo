@@ -29,11 +29,11 @@ A test in `Vantigo.Host.Tests`, run only when `VANTIGO_OPENAPI_DUMP` names an ou
 - `x-vantigo-access` on every operation, from endpoint metadata:
   - `IAllowAnonymous`, or no authorization metadata at all → `anonymous`
   - a SCIM path (`/api/v1/identity/scim/v2/…`) → `scim`
-  - `PermissionMetadata` → `permission:<key>`
+  - `PermissionMetadata` → `permission:<key>[+<key>…]` (every key on the endpoint, sorted, all required)
   - one or more authorization policies → `policy:<Name>[+<Name>…]` (sorted, all required)
   - `RequireAuthorization()` with no policy → `session`
 - an `operationId` on every operation: the endpoint name when one is set, otherwise derived deterministically from the method and route (`GET /api/v1/customers/{id}` → `getCustomer…`-style camelCase built from the path segments), unique across the document.
-- component schemas for every public or internal `*Request`/`*Response` type in the module assemblies (via the document transformer's schema generation), so curation can reference generated schemas rather than hand-writing them.
+- component schemas for every public or internal `*Request`/`*Response` type in the module assemblies (via the document transformer's schema generation), so curation can reference generated schemas rather than hand-writing them. Schema ids are unique per CLR type: a nested type's id carries its declaring types' names (`AttachCustomerContactEndpoint.Request` → `AttachCustomerContactRequest`), because the framework's bare type name would merge every endpoint-local `Request` into one schema; the harness fails if two types still claim one id.
 
 The harness output is an input to curation, not a build artefact. After curation the YAML is hand-maintained.
 
@@ -51,7 +51,7 @@ openapi/
 
 Each module file holds that module's paths and the schemas only it uses; anything used by two or more modules lives in `common.yaml` and is referenced with a relative `$ref` (`common.yaml#/components/schemas/Problem`). OpenAPI version 3.0.x throughout.
 
-`x-vantigo-access` is required on every operation. Allowed values: `anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` with names from the identity policy set (`ActiveAccount`, `SystemAdmin`, `Owner`, `OwnerManagement`, `Business`, `AuthorizationManagement`), and `permission:<module>:<verb>`.
+`x-vantigo-access` is required on every operation. Allowed values: `anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` with names from the identity policy set (`ActiveAccount`, `SystemAdmin`, `Owner`, `OwnerManagement`, `Business`, `AuthorizationManagement`), and `permission:<module>:<verb>[+<module>:<verb>…]` (every listed permission is required, sorted, joined with `+`; endpoints chain `RequirePermission`, and the calls AND together).
 
 ### What is dropped while curating
 

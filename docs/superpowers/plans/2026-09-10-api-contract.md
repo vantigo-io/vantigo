@@ -14,7 +14,7 @@
 
 - OpenAPI **3.0.x** in every file under `openapi/` (oapi-codegen v2.8.0 does not support 3.1). The harness sets `OpenApiVersion = OpenApi3_0`.
 - Files: `openapi/common.yaml`, `openapi/identity.yaml`, `openapi/customers.yaml`, `openapi/products.yaml`, `openapi/energy.yaml`, `openapi/communications.yaml`. Cross-file references are relative: `common.yaml#/components/schemas/<Name>`.
-- Every operation has `operationId` (unique across all files) and `x-vantigo-access` with one of: `anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` (names from `ActiveAccount`, `SystemAdmin`, `Owner`, `OwnerManagement`, `Business`, `AuthorizationManagement`, sorted, joined with `+`), `permission:<module>:<verb>`.
+- Every operation has `operationId` (unique across all files) and `x-vantigo-access` with one of: `anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` (names from `ActiveAccount`, `SystemAdmin`, `Owner`, `OwnerManagement`, `Business`, `AuthorizationManagement`, sorted, joined with `+`), `permission:<module>:<verb>[+<module>:<verb>…]` (every listed permission is required — chained `RequirePermission` calls AND together; sorted, joined with `+`).
 - Dropped operations (never in `openapi/`): `/api/v1/identity/admin/tenants` and everything under it, `GET /api/v1/identity/tenants/current/capabilities`, `POST /api/v1/identity/session/tenant`, `GET /api/v1/identity/antiforgery`, `POST /api/v1/communications/inbound/mailgun/{channelId}`.
 - Paths and JSON shapes are the .NET host's, unchanged. Curation describes; it never redesigns.
 - Tool pins: oapi-codegen **v2.8.0**, openapi-typescript **7.13.0**, kin-openapi **v0.149.0**, oapi-codegen runtime **v1.7.0**. CI invokes Go tools with `go run …@<version>`, never through mise's `go:` backend.
@@ -188,7 +188,7 @@ public static class ContractAnnotations
     private const string PermissionPolicyPrefix = "permission:";
 
     /// <summary>
-    /// anonymous | session | scim | policy:A[+B] | permission:module:verb.
+    /// anonymous | session | scim | policy:A[+B] | permission:module:verb[+module:verb].
     /// SCIM endpoints authenticate with a static bearer token, not a session,
     /// whatever their metadata says. Endpoints with no authorization metadata
     /// at all are public (the host sets no fallback policy).
@@ -1347,7 +1347,7 @@ paths:
 	}
 }
 
-var accessRule = regexp.MustCompile(`^(anonymous|session|scim|permission:[a-z]+:[a-z-]+|policy:(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement)(\+(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement))*)$`)
+var accessRule = regexp.MustCompile(`^(anonymous|session|scim|permission:[a-z]+:[a-z-]+(\+[a-z]+:[a-z-]+)*|policy:(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement)(\+(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement))*)$`)
 
 func TestAccessRuleIsTheContractGrammar(t *testing.T) {
 	if accessRule.String() != AccessRule.String() {
@@ -1562,7 +1562,7 @@ import (
 )
 
 // AccessRule is the grammar of x-vantigo-access.
-var AccessRule = regexp.MustCompile(`^(anonymous|session|scim|permission:[a-z]+:[a-z-]+|policy:(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement)(\+(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement))*)$`)
+var AccessRule = regexp.MustCompile(`^(anonymous|session|scim|permission:[a-z]+:[a-z-]+(\+[a-z]+:[a-z-]+)*|policy:(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement)(\+(ActiveAccount|SystemAdmin|Owner|OwnerManagement|Business|AuthorizationManagement))*)$`)
 
 // Problem is one structural rule an operation breaks.
 type Problem struct {
