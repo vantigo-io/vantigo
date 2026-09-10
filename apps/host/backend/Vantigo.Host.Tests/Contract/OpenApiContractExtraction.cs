@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 
 using Microsoft.AspNetCore.Hosting;
@@ -92,6 +93,23 @@ internal sealed class ContractExtractionFactory : WebApplicationFactory<Program>
                 options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_0;
                 options.ShouldInclude = _ => true;
 
+                var schemaRegistry = new ContractAnnotations.SchemaIdRegistry();
+                var ambiguousSchemaIds = new Lazy<IReadOnlySet<string>>(() => ContractAnnotations.AmbiguousSchemaIds(CandidateSchemaTypes()));
+
+                options.CreateSchemaReferenceId = info =>
+                {
+                    var id = OpenApiOptions.CreateDefaultSchemaReferenceId(info);
+                    if (id is null)
+                    {
+                        return null;
+                    }
+                    var final = ModuleAssemblies.Contains(info.Type.Assembly.GetName().Name)
+                        ? ContractAnnotations.SchemaId(info.Type, id, ambiguousSchemaIds.Value)
+                        : id;
+                    schemaRegistry.Claim(info.Type, final);
+                    return final;
+                };
+
                 options.AddOperationTransformer((operation, context, _) =>
                 {
                     var description = context.Description;
@@ -120,9 +138,7 @@ internal sealed class ContractExtractionFactory : WebApplicationFactory<Program>
                     document.Components.Schemas ??= new Dictionary<string, IOpenApiSchema>();
                     foreach (var type in RecordTypes())
                     {
-                        var key = document.Components.Schemas.ContainsKey(type.Name)
-                            ? type.Assembly.GetName().Name!.Replace("Vantigo.", string.Empty, StringComparison.Ordinal) + type.Name
-                            : type.Name;
+                        var key = ContractAnnotations.SchemaId(type, type.Name, ambiguousSchemaIds.Value);
                         if (!document.Components.Schemas.ContainsKey(key))
                         {
                             var schema = await context.GetOrCreateSchemaAsync(type, null, cancellationToken);
@@ -142,11 +158,46 @@ internal sealed class ContractExtractionFactory : WebApplicationFactory<Program>
         });
     }
 
-    private static IEnumerable<Type> RecordTypes() => AppDomain.CurrentDomain.GetAssemblies()
+    /// <summary>
+    /// Every type in the module assemblies that can produce a schema — the
+    /// population <see cref="ContractAnnotations.AmbiguousSchemaIds"/> scans to
+    /// decide which nested-type schema ids still collide after the declaring-type
+    /// prefix and need a module prefix too. Excludes generic type definitions and
+    /// compiler-generated types (closures, iterator/async state machines, etc.),
+    /// which the JSON/OpenAPI pipeline never turns into schemas.
+    /// </summary>
+    private static IEnumerable<Type> CandidateSchemaTypes() => AppDomain.CurrentDomain.GetAssemblies()
         .Where(assembly => ModuleAssemblies.Contains(assembly.GetName().Name))
         .SelectMany(assembly => assembly.GetTypes())
-        .Where(type => type is { IsClass: true, IsAbstract: false, IsGenericTypeDefinition: false } or { IsValueType: true, IsEnum: false, IsGenericTypeDefinition: false })
+        .Where(type => !type.IsGenericTypeDefinition)
+        .Where(type => type.IsClass || type.IsValueType)
+        .Where(type => !typeof(Delegate).IsAssignableFrom(type))
+        .Where(type => !IsCompilerGenerated(type))
+        .Where(IsPublicOrInternalAtEveryNestingLevel);
+
+    private static IEnumerable<Type> RecordTypes() => CandidateSchemaTypes()
+        .Where(type => type is { IsClass: true, IsAbstract: false } or { IsValueType: true, IsEnum: false })
         .Where(type => type.Name.EndsWith("Response", StringComparison.Ordinal) || type.Name.EndsWith("Request", StringComparison.Ordinal))
-        .Where(type => !type.IsNested || type.DeclaringType?.IsPublic != false)
         .OrderBy(type => type.FullName, StringComparer.Ordinal);
+
+    /// <summary>
+    /// True for a top-level type (whatever its own visibility) and for a nested
+    /// type that, together with every type it is nested in, is internal or
+    /// public — i.e. reachable from the module's own code, which is true of
+    /// nearly every endpoint-local Request/Response DTO since endpoint classes
+    /// are declared `internal static`.
+    /// </summary>
+    private static bool IsPublicOrInternalAtEveryNestingLevel(Type type)
+    {
+        for (var current = type; current is not null && current.IsNested; current = current.DeclaringType)
+        {
+            if (!(current.IsNestedPublic || current.IsNestedAssembly || current.IsNestedFamORAssem))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool IsCompilerGenerated(Type type) => Attribute.IsDefined(type, typeof(CompilerGeneratedAttribute));
 }
