@@ -139,6 +139,7 @@ internal sealed class ContractExtractionFactory : WebApplicationFactory<Program>
                     foreach (var type in RecordTypes())
                     {
                         var key = ContractAnnotations.SchemaId(type, type.Name, ambiguousSchemaIds.Value);
+                        schemaRegistry.Claim(type, key);
                         if (!document.Components.Schemas.ContainsKey(key))
                         {
                             var schema = await context.GetOrCreateSchemaAsync(type, null, cancellationToken);
