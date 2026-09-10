@@ -21,7 +21,7 @@ type HttpValidationProblemDetails struct {
 	Detail   *string              `json:"detail,omitempty"`
 	Errors   *map[string][]string `json:"errors,omitempty"`
 	Instance *string              `json:"instance,omitempty"`
-	Status   interface{}          `json:"status,omitempty"`
+	Status   *int32               `json:"status,omitempty"`
 	Title    *string              `json:"title,omitempty"`
 	Type     *string              `json:"type,omitempty"`
 }
@@ -31,11 +31,11 @@ type JsonElement = interface{}
 
 // ProblemDetails defines model for ProblemDetails.
 type ProblemDetails struct {
-	Detail   *string     `json:"detail,omitempty"`
-	Instance *string     `json:"instance,omitempty"`
-	Status   interface{} `json:"status,omitempty"`
-	Title    *string     `json:"title,omitempty"`
-	Type     *string     `json:"type,omitempty"`
+	Detail   *string `json:"detail,omitempty"`
+	Instance *string `json:"instance,omitempty"`
+	Status   *int32  `json:"status,omitempty"`
+	Title    *string `json:"title,omitempty"`
+	Type     *string `json:"type,omitempty"`
 }
 
 // TenantCreateRequest defines model for TenantCreateRequest.

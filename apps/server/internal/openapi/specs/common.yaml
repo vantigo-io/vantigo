@@ -40,7 +40,7 @@ components:
                 status:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 title:
                     nullable: true
                     type: string
@@ -60,7 +60,7 @@ components:
                 status:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 title:
                     nullable: true
                     type: string

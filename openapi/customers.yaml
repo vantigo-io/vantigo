@@ -4,7 +4,7 @@ components:
             properties:
                 contactId:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 email:
                     nullable: true
                     type: string
@@ -80,7 +80,7 @@ components:
                     type: string
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 lastName:
                     type: string
                 middleName:
@@ -103,10 +103,9 @@ components:
         CreateCustomerRequest:
             properties:
                 identity:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/LegalIdentityRequest'
-                    type: object
+                    nullable: true
                 name:
                     type: string
                 status:
@@ -119,10 +118,10 @@ components:
             properties:
                 customerNumber:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - id
                 - customerNumber
@@ -161,10 +160,10 @@ components:
             properties:
                 customerNumber:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 name:
                     type: string
             required:
@@ -176,10 +175,10 @@ components:
             properties:
                 customerNumber:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 identity:
                     properties:
                         country:
@@ -234,7 +233,7 @@ components:
                     type: string
                 value:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             type: object
         CustomerStatsSummaryResponse:
             properties:
@@ -243,25 +242,25 @@ components:
                     type: string
                 newContacts:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 newContactsDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 newCustomers:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 newCustomersDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 to:
                     format: date-time
                     type: string
                 totalActiveCustomers:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalActiveCustomersDelta:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - from
                 - to
@@ -280,16 +279,16 @@ components:
                     type: boolean
                 page:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 pageSize:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalPages:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - page
                 - pageSize
@@ -318,10 +317,10 @@ components:
             properties:
                 customerNumber:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 name:
                     type: string
             required:
@@ -343,11 +342,11 @@ components:
                 page:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 pageSize:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 search:
                     nullable: true
                     type: string
@@ -364,13 +363,12 @@ components:
                 contact:
                     $ref: '#/components/schemas/ContactResponse'
                 customer:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/CustomerReference'
-                    type: object
+                    nullable: true
                 customerCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - contact
                 - customerCount
@@ -388,29 +386,29 @@ components:
             properties:
                 activeCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 businessCount:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 distinctCountryCount:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 missingIdentityCount:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 newLast30DaysCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 personCount:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 totalCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             required:
                 - totalCount
                 - activeCount
@@ -424,11 +422,11 @@ components:
                 page:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 pageSize:
                     format: int32
                     nullable: true
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 search:
                     nullable: true
                     type: string
@@ -523,15 +521,14 @@ components:
                     type: string
                 customerNumber:
                     format: int64
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 identity:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/SafeCustomerIdentity'
-                    type: object
+                    nullable: true
                 name:
                     type: string
                 status:
@@ -554,7 +551,7 @@ components:
             properties:
                 entryCount:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 latestOccurredOn:
                     format: date
                     nullable: true
@@ -581,7 +578,7 @@ components:
                     type: string
                 expectedRevision:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 note:
                     nullable: true
                     type: string
@@ -608,12 +605,12 @@ components:
                     type: string
                 currentRevision:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 eventType:
                     type: string
                 id:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 note:
                     nullable: true
                     type: string
@@ -625,9 +622,9 @@ components:
                     format: date
                     type: string
                 payload:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: common.yaml#/components/schemas/JsonElement
+                    nullable: true
                 producer:
                     type: string
                 provenance:
@@ -692,16 +689,16 @@ components:
                     format: date
                     type: string
                 payload:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: common.yaml#/components/schemas/JsonElement
+                    nullable: true
                 producer:
                     type: string
                 provenance:
                     type: string
                 revision:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 sourceUrl:
                     nullable: true
                     type: string
@@ -725,10 +722,9 @@ components:
         UpdateCustomerRequest:
             properties:
                 identity:
-                    nullable: true
-                    oneOf:
+                    allOf:
                         - $ref: '#/components/schemas/LegalIdentityRequest'
-                    type: object
+                    nullable: true
                 name:
                     type: string
                 status:
@@ -750,12 +746,12 @@ paths:
                   name: Page
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: PageSize
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: SortBy
                   schema:
@@ -1060,7 +1056,7 @@ paths:
                   name: limit
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: cursor
                   schema:
@@ -1159,7 +1155,7 @@ paths:
                   name: expectedRevision
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
             responses:
                 "204":
                     description: No Content
@@ -1292,12 +1288,12 @@ paths:
                   name: Page
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: PageSize
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
                 - in: query
                   name: SortBy
                   schema:
