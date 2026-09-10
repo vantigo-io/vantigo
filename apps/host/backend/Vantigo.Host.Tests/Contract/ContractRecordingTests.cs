@@ -72,6 +72,52 @@ public sealed class ContractRecordingTests
     }
 
     [Fact]
+    public async Task Calling_AddContractRecording_twice_still_records_each_exchange_once()
+    {
+        var dir = Directory.CreateTempSubdirectory("contract-recording-").FullName;
+        var previous = Environment.GetEnvironmentVariable("VANTIGO_CONTRACT_RECORD");
+        Environment.SetEnvironmentVariable("VANTIGO_CONTRACT_RECORD", dir);
+        try
+        {
+            var host = new HostBuilder().ConfigureWebHost(web => web
+                .UseTestServer()
+                .ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    // A factory wrapped with WithWebHostBuilder replays its parent's
+                    // ConfigureWebHost (which already hooked AddContractRecording), so
+                    // a second call here is a realistic double registration, not a
+                    // contrived one.
+                    services.AddContractRecording();
+                    services.AddContractRecording();
+                })
+                .Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapPost("/api/v1/echo", async (HttpRequest request) =>
+                            Results.Json(new { received = await new StreamReader(request.Body).ReadToEndAsync() }, statusCode: 201));
+                    });
+                })).Build();
+            using var _ = host;
+            await host.StartAsync();
+            var client = host.GetTestClient();
+            var response = await client.PostAsJsonAsync("/api/v1/echo", new { name = "Acme" });
+            Assert.Equal(201, (int)response.StatusCode);
+            await host.StopAsync();
+
+            var lines = Directory.GetFiles(dir, "*.jsonl").SelectMany(File.ReadAllLines).ToList();
+            Assert.Single(lines);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("VANTIGO_CONTRACT_RECORD", previous);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Does_nothing_without_the_environment_variable()
     {
         var previous = Environment.GetEnvironmentVariable("VANTIGO_CONTRACT_RECORD");

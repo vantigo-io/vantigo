@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Vantigo.Testing;
 
@@ -25,7 +26,11 @@ public static class ContractRecording
     {
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(EnvironmentVariable)))
         {
-            services.AddTransient<IStartupFilter, RecordingStartupFilter>();
+            // A factory wrapped with WithWebHostBuilder replays its parent's
+            // ConfigureWebHost, so AddContractRecording can legitimately run more
+            // than once against the same IServiceCollection. TryAddEnumerable keeps
+            // the filter registered exactly once so each exchange is recorded once.
+            services.TryAddEnumerable(ServiceDescriptor.Transient<IStartupFilter, RecordingStartupFilter>());
         }
         return services;
     }
