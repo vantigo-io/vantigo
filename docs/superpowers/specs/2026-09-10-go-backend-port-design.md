@@ -143,15 +143,15 @@ Core:
 
 | Variable | Meaning |
 |---|---|
-| `DATABASE_URL` | Runtime connection string. `sslmode=verify-full` required unless `ALLOW_INSECURE_TRANSPORT=1`. |
+| `DATABASE_URL` | Runtime connection string. With `APP_ENV=production` it must verify the server certificate (`sslmode=verify-full`, or `verify-ca` as the .NET host accepts) unless `ALLOW_INSECURE_TRANSPORT=1`. |
 | `MIGRATIONS_DATABASE_URL` | Optional owner-role connection for `migrate`; defaults to `DATABASE_URL`. |
-| `APP_URL` | Public origin (`https://…`). Drives host filtering, cookie `Secure`, the WebAuthn RP ID, OIDC redirect URIs, the `Origin` check, and email links. Must be https unless `ALLOW_INSECURE_TRANSPORT=1`. |
+| `APP_URL` | Public origin (`https://…`). Drives host filtering, cookie `Secure`, the WebAuthn RP ID, OIDC redirect URIs, the `Origin` check, and email links. With `APP_ENV=production` it must be https unless `ALLOW_INSECURE_TRANSPORT=1`. |
 | `APP_BASE_PATH` | Optional path prefix the SPA and API are served under. |
 | `APP_SECRET` | ≥32 bytes. Root secret; per-purpose keys are derived with HKDF (§3.7, §3.9). |
 | `APP_ENV` | `production` (default) or `development`. Gates `seed`, dev-only behaviour, and the HSTS header. |
 | `PORT` | Listen port, default `8080`. |
 | `TRUSTED_PROXY_HOPS` | How many `X-Forwarded-*` hops to trust; `0` (default) trusts none. |
-| `ALLOW_INSECURE_TRANSPORT` | Single escape hatch for plain-http `APP_URL`, non-verify-full Postgres and non-TLS SMTP. Logged loudly at boot. |
+| `ALLOW_INSECURE_TRANSPORT` | Single production escape hatch for plain-http `APP_URL`, Postgres without certificate verification and non-TLS SMTP. Logged loudly at boot. `APP_ENV=development` relaxes the same rules, as .NET did. |
 | `MODULES` | Comma-separated enabled modules; default `customers,communications,products,energy`. Communications and Energy require Customers; violations fail startup naming both. |
 | `WORKERS_IN_PROCESS` | `1`/`0`; see §3.2. |
 | `SHUTDOWN_TIMEOUT` | Duration, default `30s`. |
@@ -398,13 +398,22 @@ type Storage interface {
   development, after forwarded headers are applied.
 - Host filtering: only the `APP_URL` host and loopback are accepted.
 - Forwarded headers honoured only for `TRUSTED_PROXY_HOPS` hops.
+  Forwarded-header trust: `TRUSTED_PROXY_HOPS=N` trusts the rightmost N
+  `X-Forwarded-For` hops from any peer, so when N>0 the container port must
+  be reachable only through the proxy. (.NET by default trusted only
+  loopback peers.) A peer CIDR allowlist arrives with the first
+  rate-limited route (sub-project 3).
 - Transport fail-closed rules from `docs/transport-security.md` are
-  enforced at config validation with the single `ALLOW_INSECURE_TRANSPORT`
-  escape hatch.
-- CSRF: unsafe methods require an `Origin` header (or
-  `Sec-Fetch-Site: same-origin`) matching `APP_URL`; otherwise 403. Combined
-  with `SameSite=Strict` this replaces the antiforgery cookie/header pair.
-  The `GET /api/v1/identity/antiforgery` endpoint is removed from the spec.
+  enforced at config validation when `APP_ENV=production`, with the single
+  `ALLOW_INSECURE_TRANSPORT` escape hatch; development relaxes them, as the
+  .NET host does.
+- CSRF: Go's `net/http.CrossOriginProtection`. Unsafe cross-site browser
+  requests are rejected with 403 (`Sec-Fetch-Site`, falling back to
+  `Origin` against `Host`); `APP_URL`'s origin is trusted explicitly;
+  requests with neither header (non-browser clients such as SCIM) pass.
+  `SameSite=Strict` cookies remain the second layer. Together they replace
+  the antiforgery cookie/header pair. The
+  `GET /api/v1/identity/antiforgery` endpoint is removed from the spec.
 
 ### 3.12 SPA serving
 
@@ -493,8 +502,9 @@ Three workflows, as in Pjokk:
 - `test.yml` (reusable): mise toolchain, `bun install --frozen-lockfile`,
   `bun audit --audit-level=high`, `bun run check` (biome, eslint, i18n
   gates, typecheck), spec drift (`go generate` + `gen:client` produce no
-  diff), `goreleaser check`, frontend tests, `golangci-lint`, `go test -p 1
-  -count=1 ./...` against a Postgres service container, `govulncheck`.
+  diff), `goreleaser check`, frontend tests, `golangci-lint`, `go test
+  -race -count=1 ./...` against a Postgres service container (every test
+  gets its own database, so packages run in parallel), `govulncheck`.
 - `ci.yml` (pull requests): `test.yml`, then `build-artifacts.sh`, a
   single-arch `docker build`, and a **smoke test of the image**: `migrate`
   runs from the image, the server answers `/health/ready` with `ok`, `/`
@@ -515,8 +525,9 @@ Three workflows, as in Pjokk:
 ## 7. Testing strategy
 
 - Go tests run in-process against a **real Postgres**
-  (`docker-compose.test.yml` locally, a service container in CI), `-p 1`
-  because packages truncate shared tables. Each module test builds its
+  (`docker-compose.test.yml` locally, a service container in CI). Every
+  test gets its own database (`internal/testdb`), so packages run in
+  parallel; CI runs `go test -race -count=1 ./...`. Each module test builds its
   `Deps` with the memory storage, the fake mail sender, and a real pool,
   then drives the module's `Handler` through `httptest`.
 - The 742 existing xunit tests are the behavioural reference. Each
@@ -584,7 +595,13 @@ Each gets its own spec and plan against this document.
 6. **Frontend de-tenanting.** Parallel track, any time after 2.
 7. **Cutover.** Rewrite `deploy/compose`, `docs/*.md`, `README.md`,
    `CONTRIBUTING.md`, `CLAUDE.md`; delete the .NET tree and its tooling;
-   switch the frontend dev proxy; remove the CSRF no-op.
+   switch the frontend dev proxy; remove the CSRF no-op. Two deployment
+   notes for the rewritten manifests: orchestrator liveness/readiness
+   probes must use the exec probe (`/app/vantigo healthcheck`), because an
+   `httpGet` probe sends the pod IP as `Host` and host filtering rejects it
+   (same as .NET); and the termination grace period (`stop_grace_period` /
+   `terminationGracePeriodSeconds`) must exceed `SHUTDOWN_TIMEOUT` (default
+   30 s, so at least 35 s).
 
 Until step 7 the .NET backend remains the one that is deployed; the Go
 server is built and smoke-tested by CI from step 1 but published only as
