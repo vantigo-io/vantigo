@@ -1,0 +1,15 @@
+# golangci-lint for the Go server. Run from apps/server:
+#
+#   golangci-lint run
+#
+# The standard linter set (errcheck, govet, ineffassign, staticcheck, unused)
+# plus gofmt: a gate that is green the day it lands is one that stays on.
+# Adding a linter is its own change with its own diff.
+version: "2"
+
+linters:
+  default: standard
+
+formatters:
+  enable:
+    - gofmt

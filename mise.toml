@@ -1,8 +1,20 @@
 # Single source of truth for the toolchain, used identically by developers and CI.
-# Keep in sync with global.json (dotnet) and .bun-version (bun) — enforced by
-# `bun run toolchain:check`, which runs in the pre-commit hook and in CI.
+# Keep in sync with global.json (dotnet), .bun-version (bun) and the go
+# directive in apps/server/go.mod — enforced by `bun run toolchain:check`,
+# which runs in the pre-commit hook and in CI.
 [tools]
 dotnet = "10.0.302"
 bun = "1.3.14"
-# Used by CI to scan the published container image and generate its SBOM.
+go = "1.27.0"
+# Used by CI to scan container images.
 trivy = "0.74.0"
+
+# Go server: lint, release and supply-chain tools. CI installs only the subset
+# each job needs (mise-action install_args).
+"aqua:golangci/golangci-lint" = "2.13.2"
+"aqua:goreleaser/goreleaser" = "2.18.0"
+"aqua:caarlos0/svu" = "3.4.1"
+"aqua:sigstore/cosign" = "3.1.3"
+"aqua:anchore/syft" = "1.51.1"
+"aqua:rhysd/actionlint" = "1.7.12"
+"aqua:koalaman/shellcheck" = "0.11.0"
