@@ -11,7 +11,8 @@ linters:
   default: standard
   exclusions:
     paths:
-      - internal/.*/gen
+      # Generated files only; hand-written tests in gen/ packages stay linted.
+      - '\.gen\.go$'
 
 formatters:
   enable:
