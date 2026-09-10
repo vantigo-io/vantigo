@@ -9,13 +9,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
@@ -123,6 +126,100 @@ func TestRun_MigrateAppliesTheSchema(t *testing.T) {
 	var present bool
 	if err := conn.QueryRow(context.Background(), "SELECT to_regclass('platform.rate_limit') IS NOT NULL").Scan(&present); err != nil || !present {
 		t.Errorf("platform.rate_limit present = %v (%v)", present, err)
+	}
+}
+
+// TestRun_SIGTERMDuringMigrationWaitsForItToFinish proves the fix for the
+// review finding: the signal handler must be installed before migrate()
+// runs, or a SIGTERM arriving mid-migration kills the process outright
+// (Go's default disposition for an unhandled SIGTERM) instead of waiting
+// for the migration to finish before exiting cleanly.
+func TestRun_SIGTERMDuringMigrationWaitsForItToFinish(t *testing.T) {
+	databaseURL := testdb.URL(t)
+
+	freeLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := freeLn.Addr().(*net.TCPAddr).Port
+	if err := freeLn.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	setEnv(t, "DATABASE_URL", databaseURL, "APP_URL", "http://localhost:8080",
+		"ALLOW_INSECURE_TRANSPORT", "1", "PORT", strconv.Itoa(port))
+
+	ctx := context.Background()
+	holder, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Close(ctx) }()
+	if _, err := holder.Exec(ctx, "SELECT pg_advisory_lock($1)", db.MigrationLockKey); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	done := make(chan int, 1)
+	go func() { done <- run([]string{"api"}, &stdout, &stderr) }()
+
+	// pg_stat_activity is the ground truth for "the migrator is waiting on
+	// the lock", not a sleep — same technique as internal/db's
+	// TestApplyMigrations_WaitsForTheAdvisoryLock.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting int
+		err := holder.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'`).Scan(&waiting)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if waiting > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the migrator never waited on the advisory lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// If the signal handler were not installed yet, this kills the test
+	// binary outright instead of being observed by run().
+	if err := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case code := <-done:
+		t.Fatalf("run returned %d before the migration finished", code)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	if _, err := holder.Exec(ctx, "SELECT pg_advisory_unlock($1)", db.MigrationLockKey); err != nil {
+		t.Fatal(err)
+	}
+
+	var code int
+	select {
+	case code = <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return after the migration finished")
+	}
+	if code != 0 {
+		t.Errorf("exit %d, want 0\nstdout %s\nstderr %s", code, stdout.String(), stderr.String())
+	}
+
+	conn, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	var present bool
+	if err := conn.QueryRow(ctx, "SELECT to_regclass('platform.rate_limit') IS NOT NULL").Scan(&present); err != nil || !present {
+		t.Errorf("platform.rate_limit present = %v (%v)", present, err)
+	}
+	if !strings.Contains(stdout.String(), "shutdown requested during migration") {
+		t.Errorf("stdout is missing the shutdown message: %s", stdout.String())
 	}
 }
 

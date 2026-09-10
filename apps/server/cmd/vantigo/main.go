@@ -111,6 +111,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	logger := slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	slog.SetDefault(logger)
 
+	// Installed before migrate() runs so a SIGTERM that arrives mid-migration
+	// waits for it to finish instead of killing the process outright (Go's
+	// default disposition for an unhandled SIGTERM is immediate termination).
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
 	switch m {
 	case modeMigrate:
 		return migrate(logger, cfg)
@@ -125,10 +131,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if code := migrate(logger, cfg); code != 0 {
 			return code
 		}
+		if ctx.Err() != nil {
+			logger.Info("shutdown requested during migration; exiting without serving")
+			return 0
+		}
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
@@ -150,7 +157,10 @@ func healthcheck(port string, stderr io.Writer) int {
 }
 
 // migrate runs on context.Background: aborting DDL halfway on SIGTERM is
-// worse than being killed after the grace period.
+// worse than being killed after the grace period. run installs the signal
+// handler before calling this precisely so that SIGTERM, instead of the
+// unhandled-signal default of killing the process immediately, waits for
+// this call to return.
 func migrate(logger *slog.Logger, cfg *config.Config) int {
 	if err := db.ApplyMigrations(context.Background(), cfg.MigrationsDatabaseURL); err != nil {
 		logger.Error("migration failed", "error", err)
