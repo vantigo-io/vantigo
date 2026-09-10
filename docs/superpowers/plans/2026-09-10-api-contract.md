@@ -2132,7 +2132,7 @@ For each failing operation:
 3. Add or fix the request body (`required: true` when the handler requires one) and the path/query parameters, with the types .NET binds (`format: uuid` for `Guid`, `format: date-time` for `DateTimeOffset`, `format: int64` for `long`).
 4. Where the endpoint code and a recorded exchange disagree, the recording wins; note the case in your report.
 
-Rules: never change a path, a property name, a status code or an enum value — the contract describes what .NET serves. Mark properties `nullable: true` when .NET serializes `null`. Keep `x-vantigo-access` and `operationId` exactly as extracted. Delete record schemas nothing references once you are done; keep `energy.yaml` in the key order the splitter produced (sorted) so diffs stay readable.
+Rules: never change a path, a property name, a status code or an enum value — the contract describes what .NET serves. Mark properties `nullable: true` when .NET serializes `null`. Keep `x-vantigo-access` and `operationId` exactly as extracted. Delete record schemas nothing references once you are done; keep `energy.yaml` in the key order the splitter produced (sorted) so diffs stay readable. A recorded exchange whose request the contract rejects passes when the server answered 4xx and the documented rejection response matches; never loosen a request schema, parameter or `required` list to accept an invalid recorded request — document the rejection response instead.
 
 - [ ] **Step 3: Verify**
 
@@ -2184,7 +2184,7 @@ For each failing operation:
 3. Add or fix request bodies (`required: true` when required) and parameters with the types .NET binds (`format: uuid`, `format: date-time`, `format: int64`, `format: decimal` is not OpenAPI — prices are `type: number`).
 4. Where code and a recorded exchange disagree, the recording wins; note it in your report.
 
-Rules: never change a path, property name, status code or enum value. Variant `optionValues` is a JSON object of string to string (`additionalProperties: {type: string}`), as `docs/products.md` describes. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas; keep keys sorted.
+Rules: never change a path, property name, status code or enum value. Variant `optionValues` is a JSON object of string to string (`additionalProperties: {type: string}`), as `docs/products.md` describes. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas; keep keys sorted. A recorded exchange whose request the contract rejects passes when the server answered 4xx and the documented rejection response matches; never loosen a request schema, parameter or `required` list to accept an invalid recorded request — document the rejection response instead.
 
 - [ ] **Step 3: Verify**
 
@@ -2228,11 +2228,11 @@ Expected: FAIL, listing each customers operation that breaks a lint rule or whos
 
 For each failing operation:
 1. Find the handler: `grep -rn '"<route fragment>"' apps/customers/backend/Customers.Module --include='*.cs'` and read it to the end, including every result it can return (the Brreg lookup endpoint also returns the upstream-unavailable status it maps to).
-2. Document every status: 2xx with the body schema (reference the generated record schema, or a `common.yaml` one — the paginated list envelope `{data, pagination}` is shared with products and belongs in `common.yaml`), `204` with no content, and each error status with `application/problem+json` referencing the shared problem schema, as the recorded exchanges show.
+2. Document every status: 2xx with the body schema (reference the generated record schema, or a `common.yaml` one — the paginated list envelope `{data, pagination}` is shared with products and belongs in `common.yaml`; the harness module-prefixed `PaginationMetadata` because three CLR types share the name — merge `CustomersPaginationMetadata`, `ProductsPaginationMetadata` and `EnergyPaginationMetadata` into one `common.yaml#/components/schemas/PaginationMetadata` if their JSON shapes are identical, otherwise keep them apart and say why), `204` with no content, and each error status with `application/problem+json` referencing the shared problem schema, as the recorded exchanges show.
 3. Add or fix request bodies and parameters with the types .NET binds (`format: int64` for customer numbers, `format: uuid` for contact ids).
 4. Where code and a recording disagree, the recording wins; note it.
 
-Rules: never change a path, property name, status code or enum value. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas; keep keys sorted.
+Rules: never change a path, property name, status code or enum value. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas; keep keys sorted. A recorded exchange whose request the contract rejects passes when the server answered 4xx and the documented rejection response matches; never loosen a request schema, parameter or `required` list to accept an invalid recorded request — document the rejection response instead.
 
 - [ ] **Step 3: Verify**
 
@@ -2280,7 +2280,7 @@ For each failing operation:
 3. Request bodies: attachment upload is `multipart/form-data` (document the parts the handler reads: the file part as `type: string, format: binary`, plus any fields); attachment download is `application/octet-stream` (`type: string, format: binary`). Parameters with the types .NET binds.
 4. Where code and a recording disagree, the recording wins; note it.
 
-Rules: never change a path, property name, status code or enum value. Attachment `scanStatus`/`ready` fields stay (sub-project 5 decides their future). `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas; keep keys sorted.
+Rules: never change a path, property name, status code or enum value. Attachment `scanStatus`/`ready` fields stay (sub-project 5 decides their future). `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas; keep keys sorted. A recorded exchange whose request the contract rejects passes when the server answered 4xx and the documented rejection response matches; never loosen a request schema, parameter or `required` list to accept an invalid recorded request — document the rejection response instead.
 
 - [ ] **Step 3: Verify**
 
@@ -2328,7 +2328,7 @@ For each failing operation:
 3. The OIDC challenge/complete endpoints redirect: document `302` with a `Location` header. Avatar download is binary (`image/*`, `type: string, format: binary`); avatar upload is whatever content type the handler reads.
 4. Request bodies and parameters with the types .NET binds; where code and a recording disagree, the recording wins; note it.
 
-Rules: never change a path, property name, status code or enum value. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas only once Task 11 is done too (they may be shared) — leave them for now.
+Rules: never change a path, property name, status code or enum value. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Delete unreferenced record schemas only once Task 11 is done too (they may be shared) — leave them for now. A recorded exchange whose request the contract rejects passes when the server answered 4xx and the documented rejection response matches; never loosen a request schema, parameter or `required` list to accept an invalid recorded request — document the rejection response instead.
 
 - [ ] **Step 3: Verify**
 
@@ -2373,10 +2373,10 @@ Expected: FAIL, listing each remaining identity operation that breaks a lint rul
 For each failing operation:
 1. Find the handler in the files named above and read it to the end, including every result it can return.
 2. Document every status: 2xx with the record schema, `204`, and each error status with the body it writes (`ErrorResponse` or the problem schema, as Task 10 established), 409s from the authorization mutation conflicts, and 429s where a rate-limit policy applies.
-3. SCIM endpoints speak SCIM, not the app's JSON: request and response media type `application/scim+json`, the SCIM resource schemas the handler builds (User, Group, ListResponse, PatchOp, Error with `schemas`, `detail`, `status`), `ETag`/`If-Match` headers where the handler reads or writes them. Document them from `ScimProtocolService.cs` and the recordings; keep `x-vantigo-access: scim`.
+3. SCIM endpoints speak SCIM, not the app's JSON: request and response media type `application/scim+json`, the SCIM resource schemas the handler builds (User, Group, ListResponse, PatchOp, Error with `schemas`, `detail`, `status`), `ETag`/`If-Match` headers where the handler reads or writes them. Document them from `ScimProtocolService.cs` and the recordings; keep `x-vantigo-access: scim`. If kin-openapi has no body decoder for `application/scim+json`, register `openapi3filter.JSONBodyDecoder` for it in exchanges.go (next to any `application/problem+json` registration) and add a `TestValidate` case for it.
 4. Request bodies and parameters with the types .NET binds; where code and a recording disagree, the recording wins; note it.
 
-Rules: never change a path, property name, status code or enum value. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Now that identity is complete, delete every schema in `identity.yaml` that nothing references.
+Rules: never change a path, property name, status code or enum value. `nullable: true` where .NET serializes `null`. Keep `x-vantigo-access` and `operationId` as extracted. Now that identity is complete, delete every schema in `identity.yaml` that nothing references. A recorded exchange whose request the contract rejects passes when the server answered 4xx and the documented rejection response matches; never loosen a request schema, parameter or `required` list to accept an invalid recorded request — document the rejection response instead.
 
 - [ ] **Step 3: Verify**
 
@@ -2711,7 +2711,7 @@ In `CONTRIBUTING.md`'s "Go server (port in progress)" section, add at its end:
 ````markdown
 ### The API contract
 
-`openapi/*.yaml` is the single source of truth for the API: one OpenAPI 3.0 file per module plus `common.yaml` for shared components. Every operation needs an `operationId` and an `x-vantigo-access` rule (`anonymous`, `session`, `scim`, `policy:<Name>[+<Name>]` or `permission:<module>:<verb>`).
+`openapi/*.yaml` is the single source of truth for the API: one OpenAPI 3.0 file per module plus `common.yaml` for shared components. Every operation needs an `operationId` and an `x-vantigo-access` rule (`anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` or `permission:<module>:<verb>[+<module>:<verb>…]`, every listed name required).
 
 To change the API, edit the YAML, then regenerate and test:
 
