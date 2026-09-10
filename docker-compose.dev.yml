@@ -1,0 +1,27 @@
+# PostgreSQL for running the Go server locally (`mise run server:dev`):
+#
+#   docker compose -f docker-compose.dev.yml up -d --wait
+#
+# Kept apart from docker-compose.test.yml, whose server is throwaway and
+# holds only per-test databases.
+name: vantigo-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: vantigo
+      POSTGRES_PASSWORD: vantigo
+      POSTGRES_DB: vantigo
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vantigo -d vantigo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:

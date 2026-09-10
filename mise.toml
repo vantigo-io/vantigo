@@ -18,3 +18,57 @@ trivy = "0.74.0"
 "aqua:anchore/syft" = "1.51.1"
 "aqua:rhysd/actionlint" = "1.7.12"
 "aqua:koalaman/shellcheck" = "0.11.0"
+
+# ─── Go server tasks: `mise run <task>` ─────────────────────────────────────
+
+[tasks."server:db"]
+description = "Start PostgreSQL for Go tests (127.0.0.1:55432) and local development (127.0.0.1:55433)"
+run = [
+  "docker compose -f docker-compose.test.yml up -d --wait",
+  "docker compose -f docker-compose.dev.yml up -d --wait",
+]
+
+[tasks."server:test"]
+description = "Go tests against docker-compose.test.yml's PostgreSQL (CI adds -race)"
+dir = "apps/server"
+run = "go test -count=1 ./..."
+
+[tasks."server:check"]
+description = "golangci-lint, govulncheck, shellcheck, actionlint and the GoReleaser config"
+run = [
+  "cd apps/server && golangci-lint run",
+  "cd apps/server && go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
+  "shellcheck scripts/*.sh",
+  "actionlint .github/workflows/server-*.yml",
+  "goreleaser check",
+]
+
+[tasks."server:dev"]
+description = "Run the api command against docker-compose.dev.yml on http://localhost:8080"
+dir = "apps/server"
+env = { APP_ENV = "development", APP_URL = "http://localhost:8080", LOG_LEVEL = "debug", DATABASE_URL = "postgres://vantigo:vantigo@127.0.0.1:55433/vantigo?sslmode=disable" }
+run = "go run ./cmd/vantigo api"
+
+[tasks.artifacts]
+description = "SPA + native server binaries → dist/server/linux/<arch>/vantigo"
+run = "bash scripts/build-artifacts.sh"
+
+[tasks.image]
+description = "Multi-arch image via buildx (verify only; PUSH=1 TAG=… publishes)"
+run = "bash scripts/build-image.sh"
+
+[tasks.smoke]
+description = "Build the artifacts and a local image, then smoke-test it end to end"
+run = [
+  "bash scripts/build-artifacts.sh",
+  "docker build -t vantigo:dev .",
+  "bash scripts/smoke-image.sh vantigo:dev",
+]
+
+[tasks.snapshot]
+description = "GoReleaser dry run: archives, SBOMs, local images (no publish, no signing)"
+run = """
+trap 'bash scripts/restore-embed-overlay.sh' EXIT
+docker buildx inspect vantigo >/dev/null 2>&1 || docker buildx create --name vantigo --driver docker-container
+BUILDX_BUILDER=vantigo goreleaser release --snapshot --clean --skip=sign
+"""

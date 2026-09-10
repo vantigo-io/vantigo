@@ -27,3 +27,10 @@ run bunx biome check .
 
 printf '%s\n' 'Running: dotnet format "Vantigo.slnx" --verify-no-changes --no-restore'
 run dotnet format "Vantigo.slnx" --verify-no-changes --no-restore
+
+printf '%s\n' 'Running: gofmt -l apps/server'
+unformatted=$(run gofmt -l apps/server)
+if [ -n "$unformatted" ]; then
+  printf 'These Go files need `gofmt -w`:\n%s\n' "$unformatted"
+  exit 1
+fi
