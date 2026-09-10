@@ -61,17 +61,20 @@ func New(pool *pgxpool.Pool) *Limiter {
 	return &Limiter{pool: pool, now: time.Now}
 }
 
-// hitSQL counts one hit atomically: a new key or a new window starts at 1,
-// otherwise the counter increments. Concurrent hits serialise on the row.
+// hitSQL counts one hit atomically: a new key or a newer window starts at 1,
+// otherwise the counter increments. A hit stamped with an older window (a
+// replica whose clock lags) counts toward the newest window recorded rather
+// than resetting the counter or moving the window back. It returns the
+// effective window start. Concurrent hits serialise on the row.
 const hitSQL = `
 INSERT INTO platform.rate_limit (key, window_start, hits)
 VALUES ($1, $2, 1)
 ON CONFLICT (key) DO UPDATE SET
-    hits = CASE WHEN platform.rate_limit.window_start = EXCLUDED.window_start
-                THEN platform.rate_limit.hits + 1
-                ELSE 1 END,
-    window_start = EXCLUDED.window_start
-RETURNING hits`
+    hits = CASE WHEN EXCLUDED.window_start > platform.rate_limit.window_start
+                THEN 1
+                ELSE platform.rate_limit.hits + 1 END,
+    window_start = GREATEST(platform.rate_limit.window_start, EXCLUDED.window_start)
+RETURNING hits, window_start`
 
 // Allow records one hit by client under p and reports whether it is within
 // the limit.
@@ -83,14 +86,15 @@ func (l *Limiter) Allow(ctx context.Context, p Policy, client string) (Decision,
 	windowStart := now.Truncate(p.Window)
 
 	var hits int
+	var effectiveStart time.Time
 	// Key construction: p.Name cannot contain ':' (validated above), so the first ':' is an unambiguous separator between policy and client.
-	if err := l.pool.QueryRow(ctx, hitSQL, p.Name+":"+client, windowStart).Scan(&hits); err != nil {
+	if err := l.pool.QueryRow(ctx, hitSQL, p.Name+":"+client, windowStart).Scan(&hits, &effectiveStart); err != nil {
 		return Decision{}, fmt.Errorf("ratelimit: record hit: %w", err)
 	}
 	if hits <= p.Limit {
 		return Decision{Allowed: true}, nil
 	}
-	return Decision{RetryAfter: windowStart.Add(p.Window).Sub(now)}, nil
+	return Decision{RetryAfter: effectiveStart.Add(p.Window).Sub(now)}, nil
 }
 
 // Middleware limits requests per client address (httpx.ClientIP, so it must
@@ -112,7 +116,8 @@ func (l *Limiter) Middleware(p Policy) func(http.Handler) http.Handler {
 				w.Header().Set("Retry-After", strconv.Itoa(max(seconds, 1)))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
-				_, _ = w.Write([]byte(`{"error":{"code":"rate_limited"}}` + "\n"))
+				// frontend-api-client displays error.message; the code is for callers that branch on it.
+				_, _ = w.Write([]byte(`{"error":{"code":"rate_limited","message":"Too many attempts. Please try again later."}}` + "\n"))
 				return
 			}
 			next.ServeHTTP(w, r)

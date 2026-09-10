@@ -62,6 +62,36 @@ func TestAllow_ANewWindowStartsAfresh(t *testing.T) {
 	}
 }
 
+// A replica whose clock lags must neither reset the counter nor move the
+// window back: its hit counts toward the newest window already recorded.
+func TestAllow_ALaggingClockCountsTowardTheCurrentWindow(t *testing.T) {
+	l, now := newLimiter(t)
+	lagging := *now                 // 12:00:10, window 12:00
+	*now = lagging.Add(time.Minute) // 12:01:10, window 12:01
+	for range 2 {
+		mustAllow(t, l, login, "203.0.113.7")
+	}
+
+	*now = lagging
+	d := mustAllow(t, l, login, "203.0.113.7")
+	if d.Allowed {
+		t.Error("a hit from a lagging clock reset the counter: third hit allowed with a limit of 2")
+	}
+	if want := 110 * time.Second; d.RetryAfter != want {
+		t.Errorf("RetryAfter = %v, want %v (until the current window ends, by this clock)", d.RetryAfter, want)
+	}
+
+	var windowStart time.Time
+	var hits int
+	if err := l.pool.QueryRow(context.Background(), "SELECT window_start, hits FROM platform.rate_limit WHERE key = $1",
+		"login:203.0.113.7").Scan(&windowStart, &hits); err != nil {
+		t.Fatal(err)
+	}
+	if want := time.Date(2026, 9, 10, 12, 1, 0, 0, time.UTC); !windowStart.Equal(want) || hits != 3 {
+		t.Errorf("row = %v with %d hits, want %v with 3 (the window never moves back)", windowStart.UTC(), hits, want)
+	}
+}
+
 func TestAllow_ClientsAndPoliciesAreCountedSeparately(t *testing.T) {
 	l, _ := newLimiter(t)
 	for range 3 {
@@ -137,7 +167,8 @@ func TestMiddleware_RejectsWith429AndRetryAfter(t *testing.T) {
 	if rec.Header().Get("Retry-After") != "50" {
 		t.Errorf("Retry-After = %q, want 50", rec.Header().Get("Retry-After"))
 	}
-	if rec.Body.String() != `{"error":{"code":"rate_limited"}}`+"\n" {
+	// frontend-api-client shows error.message; the code alone renders nothing.
+	if rec.Body.String() != `{"error":{"code":"rate_limited","message":"Too many attempts. Please try again later."}}`+"\n" {
 		t.Errorf("body = %q", rec.Body.String())
 	}
 	if calls != 1 {
