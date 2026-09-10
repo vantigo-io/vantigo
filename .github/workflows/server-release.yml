@@ -1,0 +1,81 @@
+name: Server release (dry run)
+
+# Runs the GoReleaser pipeline end to end — binaries, archives, checksums,
+# SBOMs and the multi-arch images — without tagging, pushing or signing, and
+# proves the cosign invocations on a throwaway blob (GoReleaser skips signing
+# in snapshot mode, which is how a flag incompatibility would otherwise first
+# show up during a real release). Releases stay with ci.yml's .NET pipeline
+# until the cutover, when this becomes Pjokk's push-to-main release.yml.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/server-test.yml
+    permissions:
+      contents: read
+
+  snapshot:
+    name: 📦 GoReleaser snapshot
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # keyless cosign for the flag smoke test
+    steps:
+      - name: 🛎️ Checkout codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 💾 Set up toolchain
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
+        with:
+          install_args: "go bun aqua:goreleaser/goreleaser aqua:sigstore/cosign aqua:anchore/syft"
+
+      - name: 💾 Cache Go modules and builds
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('apps/server/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - name: 🧰 Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      # Multi-platform builds with SBOM attestations need the docker-container driver.
+      - name: 🧱 Set up buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: 📦 GoReleaser (snapshot)
+        run: |
+          trap 'bash scripts/restore-embed-overlay.sh' EXIT
+          goreleaser release --snapshot --clean --skip=sign
+
+      - name: 🔏 Cosign flags smoke test
+        run: |
+          echo smoke > "$RUNNER_TEMP/cosign-smoke.txt"
+          cosign sign-blob --yes --bundle="$RUNNER_TEMP/cosign-smoke.sigstore.json" "$RUNNER_TEMP/cosign-smoke.txt"
+          cosign verify-blob \
+            --bundle "$RUNNER_TEMP/cosign-smoke.sigstore.json" \
+            --certificate-identity-regexp "https://github.com/${GITHUB_REPOSITORY}/\.github/workflows/server-release\.yml@.*" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$RUNNER_TEMP/cosign-smoke.txt"
+
+      - name: 📤 Upload the snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: goreleaser-snapshot
+          path: |
+            dist/goreleaser/*.tar.gz
+            dist/goreleaser/checksums.txt
+            dist/goreleaser/*.sbom.json
+          if-no-files-found: error
+          retention-days: 14
