@@ -82,7 +82,6 @@ components:
                     type: string
             required:
                 - displayName
-                - preferredLanguage
             type: object
         AccountResponse:
             properties:
@@ -130,42 +129,12 @@ components:
                     type: boolean
                 tenants:
                     items:
-                        properties:
-                            id:
-                                format: uuid
-                                type: string
-                            name:
-                                type: string
-                            slug:
-                                type: string
-                        required:
-                            - id
-                            - name
-                            - slug
-                        type: object
+                        $ref: '#/components/schemas/TenantSessionResponse'
                     type: array
                 twoFactorEnabled:
                     type: boolean
                 user:
-                    properties:
-                        displayName:
-                            type: string
-                        email:
-                            nullable: true
-                            type: string
-                        id:
-                            format: uuid
-                            type: string
-                        roles:
-                            items:
-                                type: string
-                            type: array
-                    required:
-                        - id
-                        - displayName
-                        - email
-                        - roles
-                    type: object
+                    $ref: '#/components/schemas/AuthUserResponse'
             required:
                 - user
                 - twoFactorEnabled
@@ -188,43 +157,15 @@ components:
                     type: boolean
                 tenants:
                     items:
-                        properties:
-                            id:
-                                format: uuid
-                                type: string
-                            name:
-                                type: string
-                            slug:
-                                type: string
-                        required:
-                            - id
-                            - name
-                            - slug
-                        type: object
+                        $ref: '#/components/schemas/TenantSessionResponse'
                     nullable: true
                     type: array
                 twoFactorEnabled:
                     type: boolean
                 user:
-                    properties:
-                        displayName:
-                            type: string
-                        email:
-                            nullable: true
-                            type: string
-                        id:
-                            format: uuid
-                            type: string
-                        roles:
-                            items:
-                                type: string
-                            type: array
-                    required:
-                        - id
-                        - displayName
-                        - email
-                        - roles
-                    type: object
+                    allOf:
+                        - $ref: '#/components/schemas/AuthUserResponse'
+                    nullable: true
             required:
                 - user
                 - requiresTwoFactor
@@ -284,6 +225,14 @@ components:
                 - displayName
                 - password
             type: object
+        BootstrapResponse:
+            properties:
+                user:
+                    $ref: '#/components/schemas/AuthUserResponse'
+            required:
+                - user
+            type: object
+            x-vantigo-source: Vantigo.Identity
         BootstrapStatusResponse:
             properties:
                 available:
@@ -292,6 +241,16 @@ components:
                 - available
             type: object
             x-vantigo-source: Vantigo.Identity
+        CodeMessageError:
+            properties:
+                code:
+                    type: string
+                message:
+                    type: string
+            required:
+                - code
+                - message
+            type: object
         DelegationMutationRequest:
             properties:
                 concurrencyStamp:
@@ -386,7 +345,6 @@ components:
                     type: string
             required:
                 - token
-                - displayName
                 - password
             type: object
         InvitationAcceptanceResponse:
@@ -489,7 +447,7 @@ components:
                     nullable: true
                     type: string
             required:
-                - code
+                - password
             type: object
         MfaEnableResponse:
             properties:
@@ -578,12 +536,9 @@ components:
         OidcProvidersResponse:
             properties:
                 oidc:
-                    properties:
-                        displayName:
-                            type: string
-                    required:
-                        - displayName
-                    type: object
+                    allOf:
+                        - $ref: '#/components/schemas/OidcProviderResponse'
+                    nullable: true
             required:
                 - oidc
             type: object
@@ -782,8 +737,6 @@ components:
                 email:
                     nullable: true
                     type: string
-            required:
-                - email
             type: object
         PasswordRecoveryResponse:
             properties:
@@ -917,10 +870,18 @@ components:
                 message:
                     nullable: true
                     type: string
-            required:
-                - enabled
-                - message
             type: object
+        SystemMaintenanceStatus:
+            properties:
+                maintenance:
+                    type: boolean
+                message:
+                    nullable: true
+                    type: string
+            required:
+                - maintenance
+            type: object
+            x-vantigo-source: Vantigo.Identity
         TenantControlPlaneResponse:
             properties:
                 enabledModules:
@@ -1482,7 +1443,23 @@ paths:
             operationId: getIdentityAccount
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1497,7 +1474,29 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1505,8 +1504,20 @@ paths:
         delete:
             operationId: deleteIdentityAccountAvatar
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1514,23 +1525,114 @@ paths:
             operationId: getIdentityAccountAvatar
             responses:
                 "200":
+                    content:
+                        image/jpeg:
+                            schema:
+                                format: binary
+                                type: string
+                        image/png:
+                            schema:
+                                format: binary
+                                type: string
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
         post:
             operationId: postIdentityAccountAvatar
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                avatar:
+                                    format: binary
+                                    type: string
+                            required:
+                                - avatar
+                            type: object
+                required: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AvatarResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
         put:
             operationId: putIdentityAccountAvatar
+            requestBody:
+                content:
+                    multipart/form-data:
+                        schema:
+                            properties:
+                                avatar:
+                                    format: binary
+                                    type: string
+                            required:
+                                - avatar
+                            type: object
+                required: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AvatarResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1539,7 +1641,33 @@ paths:
             operationId: getIdentityAccountMfa
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaStatusResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -1555,7 +1683,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaStatusResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -1571,7 +1737,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaEnableResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -1587,7 +1791,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaRecoveryCodesResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -1596,7 +1838,33 @@ paths:
             operationId: getIdentityAccountMfaSetup
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaSetupResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -1611,7 +1879,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaSetupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -1620,7 +1926,31 @@ paths:
             operationId: getIdentityAccountPasskeys
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/PasskeyResponse'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "501":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Implemented
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1641,8 +1971,44 @@ paths:
                                 - $ref: '#/components/schemas/PasskeyRemoveRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1658,7 +2024,51 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasskeyOptionsResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
+                "501":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Implemented
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1674,7 +2084,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasskeyMutationResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1690,7 +2138,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasswordResetResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1706,7 +2192,29 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1721,7 +2229,29 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccountResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Personal account settings
             x-vantigo-access: policy:ActiveAccount
@@ -1730,7 +2260,23 @@ paths:
             operationId: postIdentityAccountSessionsRevoke
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SessionRevocationResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Sign out of every session for the current account
             tags:
                 - Personal account settings
@@ -1746,8 +2292,40 @@ paths:
                                 - $ref: '#/components/schemas/BootstrapRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BootstrapResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Create the single local Owner account
             tags:
                 - Authentication
@@ -1757,6 +2335,10 @@ paths:
             operationId: getIdentityBootstrapStatus
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BootstrapStatusResponse'
                     description: OK
             summary: Get whether one-time local Owner bootstrap is available
             tags:
@@ -1773,8 +2355,28 @@ paths:
                                 - $ref: '#/components/schemas/InvitationAcceptanceRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AuthSuccessResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -1788,7 +2390,21 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvitationAcceptanceResponse'
                     description: OK
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -1804,7 +2420,33 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AuthSuccessResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Sign in with the application cookie
             tags:
                 - Authentication
@@ -1821,7 +2463,33 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AuthSuccessResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             summary: Complete an Owner authenticator or recovery-code login
             tags:
                 - Authentication
@@ -1831,7 +2499,23 @@ paths:
             operationId: postIdentityLogout
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LogoutResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
             summary: Sign out of the application cookie
             tags:
                 - Authentication
@@ -1895,8 +2579,14 @@ paths:
         get:
             operationId: getIdentityOidcChallenge
             responses:
-                "200":
-                    description: OK
+                "302":
+                    description: Redirect to the workforce OpenID Connect provider
+                    headers:
+                        Location:
+                            schema:
+                                type: string
+                "404":
+                    description: Not Found
             summary: Start workforce OpenID Connect sign-in
             tags:
                 - Authentication
@@ -1905,8 +2595,14 @@ paths:
         get:
             operationId: getIdentityOidcComplete
             responses:
-                "200":
-                    description: OK
+                "302":
+                    description: Redirect to / on success, or to /sign-in?error=… on failure.
+                    headers:
+                        Location:
+                            schema:
+                                type: string
+                "404":
+                    description: Not Found
             summary: Complete workforce OpenID Connect sign-in
             tags:
                 - Authentication
@@ -2235,7 +2931,27 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasskeyOptionsResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - Passkey sign-in
             x-vantigo-access: anonymous
@@ -2251,7 +2967,39 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AuthSuccessResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - Passkey sign-in
             x-vantigo-access: anonymous
@@ -2267,7 +3015,27 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasswordRecoveryResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -2283,7 +3051,27 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasswordResetResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: anonymous
@@ -2292,6 +3080,10 @@ paths:
             operationId: getIdentityProviders
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OidcProvidersResponse'
                     description: OK
             summary: Get the configured workforce sign-in providers
             tags:
@@ -2463,7 +3255,17 @@ paths:
             operationId: getIdentitySession
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AuthSessionResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
             summary: Get the authenticated browser session
             tags:
                 - Authentication
@@ -2480,7 +3282,29 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SystemMaintenanceStatus'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Update system maintenance mode
             tags:
                 - Identity system
@@ -2490,6 +3314,10 @@ paths:
             operationId: getIdentitySystemStatus
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SystemMaintenanceStatus'
                     description: OK
             summary: Get the current system maintenance status
             tags:
@@ -2507,7 +3335,29 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SessionRevocationResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Not Found
             summary: Revoke every session for an account
             tags:
                 - Identity system
