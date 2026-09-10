@@ -492,3 +492,6 @@ $RECYCLE.BIN/
 
 # TanStack Router temp files
 .tanstack/
+
+# Go server build outputs (scripts/build-artifacts.sh, GoReleaser)
+/dist/
