@@ -1,0 +1,1174 @@
+components:
+    schemas:
+        AddressRequest:
+            properties:
+                city:
+                    nullable: true
+                    type: string
+                countryCode:
+                    nullable: true
+                    type: string
+                postalCode:
+                    nullable: true
+                    type: string
+                streetAddress:
+                    nullable: true
+                    type: string
+            required:
+                - streetAddress
+                - postalCode
+                - city
+                - countryCode
+            type: object
+        AddressResponse:
+            properties:
+                city:
+                    type: string
+                countryCode:
+                    type: string
+                postalCode:
+                    type: string
+                streetAddress:
+                    type: string
+            required:
+                - streetAddress
+                - postalCode
+                - city
+                - countryCode
+            type: object
+        ConsumptionAggregateResponse:
+            properties:
+                bucketEnd:
+                    format: date-time
+                    type: string
+                bucketStart:
+                    format: date-time
+                    type: string
+                hasEstimated:
+                    type: boolean
+                intervalCount:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                quantityKwh:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - bucketStart
+                - bucketEnd
+                - quantityKwh
+                - intervalCount
+                - hasEstimated
+            type: object
+        ConsumptionResponse:
+            properties:
+                end:
+                    format: date-time
+                    type: string
+                id:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                meteringPointId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                quality:
+                    type: string
+                quantityKwh:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                receivedAt:
+                    format: date-time
+                    type: string
+                source:
+                    type: string
+                start:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - meteringPointId
+                - start
+                - end
+                - quantityKwh
+                - quality
+                - source
+                - receivedAt
+            type: object
+        CreateSupplyPeriodRequest:
+            properties:
+                customerId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                start:
+                    format: date-time
+                    type: string
+            required:
+                - customerId
+                - start
+            type: object
+        CustomerConsumptionAggregateResponse:
+            properties:
+                bucketEnd:
+                    format: date-time
+                    type: string
+                bucketStart:
+                    format: date-time
+                    type: string
+                hasEstimated:
+                    type: boolean
+                intervalCount:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                meteringPointId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                quantityKwh:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            required:
+                - meteringPointId
+                - bucketStart
+                - bucketEnd
+                - quantityKwh
+                - intervalCount
+                - hasEstimated
+            type: object
+        CustomerMeteringPointResponse:
+            properties:
+                meteringPoint:
+                    $ref: '#/components/schemas/MeteringPointResponse'
+                supplyPeriods:
+                    items:
+                        $ref: '#/components/schemas/SupplyPeriodResponse'
+                    type: array
+            required:
+                - meteringPoint
+                - supplyPeriods
+            type: object
+        EndSupplyPeriodRequest:
+            properties:
+                end:
+                    format: date-time
+                    type: string
+            required:
+                - end
+            type: object
+        EnergyPaginationMetadata:
+            properties:
+                page:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                pageSize:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalPages:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - page
+                - pageSize
+                - totalCount
+                - totalPages
+            type: object
+        EnergyStatsAttentionItem:
+            properties:
+                entityId:
+                    type: string
+                id:
+                    type: string
+                occurredAt:
+                    format: date-time
+                    type: string
+                title:
+                    type: string
+                type:
+                    type: string
+            required:
+                - id
+                - type
+                - title
+                - occurredAt
+                - entityId
+            type: object
+        EnergyStatsDailyBucket:
+            properties:
+                date:
+                    format: date
+                    type: string
+                value:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+            type: object
+        EnergyStatsSummaryResponse:
+            properties:
+                activeSupplyPeriods:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                activeSupplyPeriodsDelta:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                consumptionKwh:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                consumptionKwhDelta:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                from:
+                    format: date-time
+                    type: string
+                meteringPointCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                meteringPointCountDelta:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                previousConsumptionKwh:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                to:
+                    format: date-time
+                    type: string
+            required:
+                - from
+                - to
+                - meteringPointCount
+                - meteringPointCountDelta
+                - activeSupplyPeriods
+                - activeSupplyPeriodsDelta
+                - consumptionKwh
+                - consumptionKwhDelta
+                - previousConsumptionKwh
+            type: object
+        GetMeteringPointsRequest:
+            properties:
+                page:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                pageSize:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                search:
+                    nullable: true
+                    type: string
+            type: object
+            x-vantigo-source: Vantigo.Energy
+        ManualConsumptionRequest:
+            properties:
+                end:
+                    format: date-time
+                    type: string
+                quantityKwh:
+                    format: double
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                start:
+                    format: date-time
+                    type: string
+            required:
+                - start
+                - end
+                - quantityKwh
+            type: object
+        MeterResponse:
+            properties:
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                installedAt:
+                    format: date-time
+                    type: string
+                meterNumber:
+                    type: string
+                meteringPointId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                removedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - meteringPointId
+                - meterNumber
+                - installedAt
+                - removedAt
+            type: object
+        MeteringPointRequest:
+            properties:
+                address:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/AddressRequest'
+                    type: object
+                connectionStatus:
+                    nullable: true
+                    type: string
+                expectedAnnualConsumptionKwh:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                gridArea:
+                    nullable: true
+                    type: string
+                gsrn:
+                    nullable: true
+                    type: string
+                latitude:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                longitude:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                meterNumber:
+                    nullable: true
+                    type: string
+                priceArea:
+                    nullable: true
+                    type: string
+            required:
+                - gsrn
+                - meterNumber
+                - address
+                - priceArea
+                - gridArea
+                - expectedAnnualConsumptionKwh
+                - latitude
+                - longitude
+                - connectionStatus
+            type: object
+        MeteringPointResponse:
+            properties:
+                address:
+                    $ref: '#/components/schemas/AddressResponse'
+                connectionStatus:
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                expectedAnnualConsumptionKwh:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                gridArea:
+                    nullable: true
+                    type: string
+                gsrn:
+                    type: string
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                latitude:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                longitude:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                meterNumber:
+                    nullable: true
+                    type: string
+                priceArea:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - gsrn
+                - meterNumber
+                - address
+                - priceArea
+                - gridArea
+                - expectedAnnualConsumptionKwh
+                - latitude
+                - longitude
+                - connectionStatus
+                - createdAt
+                - updatedAt
+            type: object
+        MeteringPointUpdateRequest:
+            properties:
+                address:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/AddressRequest'
+                    type: object
+                connectionStatus:
+                    nullable: true
+                    type: string
+                expectedAnnualConsumptionKwh:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?$
+                gridArea:
+                    nullable: true
+                    type: string
+                gsrn:
+                    nullable: true
+                    type: string
+                latitude:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                longitude:
+                    format: double
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$
+                priceArea:
+                    nullable: true
+                    type: string
+            required:
+                - gsrn
+                - address
+                - priceArea
+                - gridArea
+                - expectedAnnualConsumptionKwh
+                - latitude
+                - longitude
+                - connectionStatus
+            type: object
+        PaginatedResponseOfMeteringPointResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/MeteringPointResponse'
+                    type: array
+                pagination:
+                    $ref: '#/components/schemas/EnergyPaginationMetadata'
+            required:
+                - data
+                - pagination
+            type: object
+        ReplaceMeterRequest:
+            properties:
+                installedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                meterNumber:
+                    nullable: true
+                    type: string
+            required:
+                - meterNumber
+                - installedAt
+            type: object
+        SupplyPeriodResponse:
+            properties:
+                customerId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                end:
+                    format: date-time
+                    nullable: true
+                    type: string
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                meteringPointId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                start:
+                    format: date-time
+                    type: string
+                status:
+                    type: string
+            required:
+                - id
+                - meteringPointId
+                - customerId
+                - start
+                - end
+                - status
+            type: object
+        SwitchSupplyPeriodRequest:
+            properties:
+                customerId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                switchAt:
+                    format: date-time
+                    type: string
+            required:
+                - customerId
+                - switchAt
+            type: object
+        SwitchSupplyPeriodResponse:
+            properties:
+                endedPeriod:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/SupplyPeriodResponse'
+                    type: object
+                newPeriod:
+                    $ref: '#/components/schemas/SupplyPeriodResponse'
+            required:
+                - endedPeriod
+                - newPeriod
+            type: object
+info:
+    title: Vantigo Energy API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/energy/customers/{customerId}/consumption:
+        get:
+            operationId: getEnergyCustomersByCustomerIdConsumption
+            parameters:
+                - in: path
+                  name: customerId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: query
+                  name: meteringPointId
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ConsumptionResponse'
+                                type: array
+                    description: OK
+            summary: List a customer's consumption
+            tags:
+                - Customer energy
+            x-vantigo-access: permission:energy:consumption-view
+    /api/v1/energy/customers/{customerId}/consumption/aggregate:
+        get:
+            operationId: getEnergyCustomersByCustomerIdConsumptionAggregate
+            parameters:
+                - in: path
+                  name: customerId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: query
+                  name: meteringPointId
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: resolution
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CustomerConsumptionAggregateResponse'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+            summary: Aggregate a customer's consumption
+            tags:
+                - Customer energy
+            x-vantigo-access: permission:energy:consumption-view
+    /api/v1/energy/customers/{customerId}/metering-points:
+        get:
+            operationId: getEnergyCustomersByCustomerIdMeteringPoints
+            parameters:
+                - in: path
+                  name: customerId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CustomerMeteringPointResponse'
+                                type: array
+                    description: OK
+            summary: List a customer's metering points
+            tags:
+                - Customer energy
+            x-vantigo-access: permission:energy:metering-points-view+energy:meters-view+energy:supply-periods-view
+    /api/v1/energy/metering-points:
+        get:
+            operationId: getEnergyMeteringPoints
+            parameters:
+                - in: query
+                  name: Search
+                  schema:
+                    type: string
+                - in: query
+                  name: Page
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: PageSize
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfMeteringPointResponse'
+                    description: OK
+            summary: List metering points
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:metering-points-view+energy:meters-view
+        post:
+            operationId: postEnergyMeteringPoints
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MeteringPointRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MeteringPointResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+            summary: Create a metering point
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:metering-points-manage+energy:metering-points-view+energy:meters-manage+energy:meters-view
+    /api/v1/energy/metering-points/{id}:
+        get:
+            operationId: getEnergyMeteringPoint
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MeteringPointResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: Get a metering point
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:metering-points-view+energy:meters-view
+        put:
+            operationId: putEnergyMeteringPointsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MeteringPointUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MeteringPointResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a metering point
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:metering-points-manage+energy:metering-points-view+energy:meters-view
+    /api/v1/energy/metering-points/{id}/consumption:
+        get:
+            operationId: getEnergyMeteringPointsByIdConsumption
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ConsumptionResponse'
+                                type: array
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List current consumption intervals
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:consumption-view
+        post:
+            operationId: postEnergyMeteringPointsByIdConsumption
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ManualConsumptionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ConsumptionResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Add a manual consumption interval
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:consumption-manage+energy:consumption-view
+    /api/v1/energy/metering-points/{id}/consumption/aggregate:
+        get:
+            operationId: getEnergyMeteringPointsByIdConsumptionAggregate
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: resolution
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ConsumptionAggregateResponse'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Aggregate consumption
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:consumption-view
+    /api/v1/energy/metering-points/{id}/meters:
+        get:
+            operationId: getEnergyMeteringPointsByIdMeters
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/MeterResponse'
+                                type: array
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List meter history
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:meters-view
+        post:
+            operationId: postEnergyMeteringPointsByIdMeters
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ReplaceMeterRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MeterResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Replace a meter
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:meters-manage+energy:meters-view
+    /api/v1/energy/metering-points/{id}/supply-periods:
+        get:
+            operationId: getEnergyMeteringPointsByIdSupplyPeriods
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/SupplyPeriodResponse'
+                                type: array
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List supply periods
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-view
+        post:
+            operationId: postEnergyMeteringPointsByIdSupplyPeriods
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateSupplyPeriodRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SupplyPeriodResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Create a supply period
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
+    /api/v1/energy/metering-points/{id}/supply-periods/{periodId}:
+        delete:
+            operationId: deleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: periodId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Cancel a supply period
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-manage
+    /api/v1/energy/metering-points/{id}/supply-periods/{periodId}/end:
+        post:
+            operationId: postEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: periodId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EndSupplyPeriodRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SupplyPeriodResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: End a supply period
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
+    /api/v1/energy/metering-points/{id}/supply-periods/switch:
+        post:
+            operationId: postEnergyMeteringPointsByIdSupplyPeriodsSwitch
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SwitchSupplyPeriodRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SwitchSupplyPeriodResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Switch supply period customer
+            tags:
+                - Energy metering points
+            x-vantigo-access: permission:energy:supply-periods-manage+energy:supply-periods-view
+    /api/v1/energy/stats/attention:
+        get:
+            operationId: getEnergyStatsAttention
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/EnergyStatsAttentionItem'
+                                type: array
+                    description: OK
+            summary: Get energy dashboard attention items
+            tags:
+                - EnergyStatsEndpoints
+            x-vantigo-access: permission:energy:supply-periods-view
+    /api/v1/energy/stats/summary:
+        get:
+            operationId: getEnergyStatsSummary
+            parameters:
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EnergyStatsSummaryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+            summary: Get energy dashboard summary
+            tags:
+                - EnergyStatsEndpoints
+            x-vantigo-access: permission:energy:consumption-view+energy:metering-points-view+energy:meters-view+energy:supply-periods-view
+    /api/v1/energy/stats/timeseries:
+        get:
+            operationId: getEnergyStatsTimeseries
+            parameters:
+                - in: query
+                  name: metric
+                  schema:
+                    type: string
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/EnergyStatsDailyBucket'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+            summary: Get energy dashboard time series
+            tags:
+                - EnergyStatsEndpoints
+            x-vantigo-access: permission:energy:consumption-view
+servers:
+    - url: /

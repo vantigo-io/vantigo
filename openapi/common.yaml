@@ -1,0 +1,135 @@
+components:
+    schemas:
+        AuthErrorResponse:
+            properties:
+                error:
+                    properties:
+                        code:
+                            type: string
+                        fields:
+                            additionalProperties:
+                                items:
+                                    type: string
+                                type: array
+                            nullable: true
+                            type: object
+                        message:
+                            type: string
+                    required:
+                        - code
+                        - message
+                    type: object
+            required:
+                - error
+            type: object
+            x-vantigo-source: Vantigo.Contracts
+        HttpValidationProblemDetails:
+            properties:
+                detail:
+                    nullable: true
+                    type: string
+                errors:
+                    additionalProperties:
+                        items:
+                            type: string
+                        type: array
+                    type: object
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        JsonElement: {}
+        ProblemDetails:
+            properties:
+                detail:
+                    nullable: true
+                    type: string
+                instance:
+                    nullable: true
+                    type: string
+                status:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                title:
+                    nullable: true
+                    type: string
+                type:
+                    nullable: true
+                    type: string
+            type: object
+        TenantCreateRequest:
+            properties:
+                adminDisplayName:
+                    nullable: true
+                    type: string
+                adminEmail:
+                    nullable: true
+                    type: string
+                adminUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                enabledModules:
+                    items:
+                        type: string
+                    nullable: true
+                    type: array
+                name:
+                    nullable: true
+                    type: string
+                slug:
+                    nullable: true
+                    type: string
+            required:
+                - name
+                - slug
+                - enabledModules
+            type: object
+        TenantSwitchRequest:
+            properties:
+                tenantId:
+                    format: uuid
+                    type: string
+            required:
+                - tenantId
+            type: object
+        TenantUpdateRequest:
+            properties:
+                enabledModules:
+                    items:
+                        type: string
+                    nullable: true
+                    type: array
+                name:
+                    nullable: true
+                    type: string
+                slug:
+                    nullable: true
+                    type: string
+                status:
+                    nullable: true
+                    type: string
+            required:
+                - name
+                - slug
+                - status
+                - enabledModules
+            type: object
+info:
+    title: Vantigo API — shared components
+    version: "1"
+openapi: 3.0.3
+paths: {}
+servers:
+    - url: /
