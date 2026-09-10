@@ -1,0 +1,57 @@
+// Package db owns PostgreSQL access: the request-traffic pool, the embedded
+// goose migrations, and the advisory-lock-guarded runner that applies them.
+package db
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Open returns a connection pool for request traffic. It pings before
+// returning, so a wrong DATABASE_URL fails startup instead of the first
+// request.
+func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("db: parse connection string: %w", err)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("db: open pool: %w", err)
+	}
+	if err := waitForDatabase(ctx, pool.Ping); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return pool, nil
+}
+
+// connectAttempts and retryDelay bound how long startup waits for a PostgreSQL
+// that is still coming up (a compose stack starting both at once): six
+// attempts with a growing pause, about 30 s in total.
+const connectAttempts = 6
+
+var retryDelay = func(attempt int) time.Duration { return time.Duration(attempt) * 2 * time.Second }
+
+func waitForDatabase(ctx context.Context, ping func(context.Context) error) error {
+	var err error
+	for attempt := 1; attempt <= connectAttempts; attempt++ {
+		if err = ping(ctx); err == nil {
+			return nil
+		}
+		if attempt == connectAttempts {
+			break
+		}
+		slog.WarnContext(ctx, "PostgreSQL is not reachable yet; retrying", "attempt", attempt, "error", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryDelay(attempt)):
+		}
+	}
+	return fmt.Errorf("db: PostgreSQL unreachable after %d attempts: %w", connectAttempts, err)
+}
