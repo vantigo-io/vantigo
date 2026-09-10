@@ -19,3 +19,11 @@ updates:
     directory: /.github/workflows
     multi-ecosystem-group: all-dependencies
     patterns: ['*']
+  - package-ecosystem: gomod
+    directory: /apps/server
+    multi-ecosystem-group: all-dependencies
+    patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    multi-ecosystem-group: all-dependencies
+    patterns: ['*']

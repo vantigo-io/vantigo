@@ -1,0 +1,5 @@
+# The image is COPY-only: scripts/build-artifacts.sh builds everything
+# natively first. The build context is an allowlist, which also keeps .env
+# files and secrets structurally out of reach.
+*
+!dist/server

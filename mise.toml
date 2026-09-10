@@ -1,8 +1,74 @@
 # Single source of truth for the toolchain, used identically by developers and CI.
-# Keep in sync with global.json (dotnet) and .bun-version (bun) — enforced by
-# `bun run toolchain:check`, which runs in the pre-commit hook and in CI.
+# Keep in sync with global.json (dotnet), .bun-version (bun) and the go
+# directive in apps/server/go.mod — enforced by `bun run toolchain:check`,
+# which runs in the pre-commit hook and in CI.
 [tools]
 dotnet = "10.0.302"
 bun = "1.3.14"
-# Used by CI to scan the published container image and generate its SBOM.
+go = "1.27.0"
+# Used by CI to scan container images.
 trivy = "0.74.0"
+
+# Go server: lint, release and supply-chain tools. CI installs only the subset
+# each job needs (mise-action install_args).
+"aqua:golangci/golangci-lint" = "2.13.2"
+"aqua:goreleaser/goreleaser" = "2.18.0"
+"aqua:caarlos0/svu" = "3.4.1"
+"aqua:sigstore/cosign" = "3.1.3"
+"aqua:anchore/syft" = "1.51.1"
+"aqua:rhysd/actionlint" = "1.7.12"
+"aqua:koalaman/shellcheck" = "0.11.0"
+
+# ─── Go server tasks: `mise run <task>` ─────────────────────────────────────
+
+[tasks."server:db"]
+description = "Start PostgreSQL for Go tests (127.0.0.1:55432) and local development (127.0.0.1:55433)"
+run = [
+  "docker compose -f docker-compose.test.yml up -d --wait",
+  "docker compose -f docker-compose.dev.yml up -d --wait",
+]
+
+[tasks."server:test"]
+description = "Go tests against docker-compose.test.yml's PostgreSQL (CI adds -race)"
+dir = "apps/server"
+run = "go test -count=1 ./..."
+
+[tasks."server:check"]
+description = "golangci-lint, govulncheck, shellcheck, actionlint and the GoReleaser config"
+run = [
+  "cd apps/server && golangci-lint run",
+  "cd apps/server && go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
+  "shellcheck scripts/*.sh",
+  "actionlint .github/workflows/server-*.yml",
+  "goreleaser check",
+]
+
+[tasks."server:dev"]
+description = "Run the api command against docker-compose.dev.yml on http://localhost:8080"
+dir = "apps/server"
+env = { APP_ENV = "development", APP_URL = "http://localhost:8080", LOG_LEVEL = "debug", DATABASE_URL = "postgres://vantigo:vantigo@127.0.0.1:55433/vantigo?sslmode=disable" }
+run = "go run ./cmd/vantigo api"
+
+[tasks.artifacts]
+description = "SPA + native server binaries → dist/server/linux/<arch>/vantigo"
+run = "bash scripts/build-artifacts.sh"
+
+[tasks.image]
+description = "Multi-arch image via buildx (verify only; PUSH=1 TAG=… publishes)"
+run = "bash scripts/build-image.sh"
+
+[tasks.smoke]
+description = "Build the artifacts and a local image, then smoke-test it end to end"
+run = [
+  "bash scripts/build-artifacts.sh",
+  "docker build -t vantigo:dev .",
+  "bash scripts/smoke-image.sh vantigo:dev",
+]
+
+[tasks.snapshot]
+description = "GoReleaser dry run: archives, SBOMs, local images (no publish, no signing)"
+run = """
+trap 'bash scripts/restore-embed-overlay.sh' EXIT
+docker buildx inspect vantigo >/dev/null 2>&1 || docker buildx create --name vantigo --driver docker-container
+BUILDX_BUILDER=vantigo goreleaser release --snapshot --clean --skip=sign
+"""

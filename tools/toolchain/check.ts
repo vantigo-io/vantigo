@@ -13,6 +13,11 @@ const readMiseVersion = (miseToml: string, tool: string): string | null => {
   return match?.[1] ?? null;
 };
 
+const readGoDirective = (goMod: string): string | null => {
+  const match = goMod.match(/^go\s+(\S+)\s*$/m);
+  return match?.[1] ?? null;
+};
+
 export const checkToolchain = async (repositoryRoot: string): Promise<ToolchainIssue[]> => {
   const issues: ToolchainIssue[] = [];
 
@@ -42,6 +47,19 @@ export const checkToolchain = async (repositoryRoot: string): Promise<ToolchainI
     });
   }
 
+  const miseGo = readMiseVersion(miseToml, "go");
+  const goMod = await readFile(resolve(repositoryRoot, "apps/server/go.mod"), "utf8");
+  const goDirective = readGoDirective(goMod);
+
+  if (miseGo === null) {
+    issues.push({ tool: "go", message: "mise.toml does not pin a go version." });
+  } else if (miseGo !== goDirective) {
+    issues.push({
+      tool: "go",
+      message: `mise.toml pins ${miseGo} but apps/server/go.mod declares go ${goDirective}.`,
+    });
+  }
+
   return issues;
 };
 
@@ -54,7 +72,7 @@ export const runCheck = async (repositoryRoot: string): Promise<number> => {
     return 1;
   }
 
-  console.log("Toolchain checks passed (mise.toml agrees with global.json and .bun-version).");
+  console.log("Toolchain checks passed (mise.toml agrees with global.json, .bun-version and apps/server/go.mod).");
   return 0;
 };
 

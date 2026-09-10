@@ -250,6 +250,34 @@ bun run --cwd apps/communications/frontend test
 bun run --cwd apps/products/frontend test
 ```
 
+## Go server (port in progress)
+
+The .NET backend is being replaced by a single Go binary in `apps/server`
+(design: `docs/superpowers/specs/2026-09-10-go-backend-port-design.md`). Until the
+cutover the .NET host is what ships; the Go server is built, smoke-tested and
+published as PR preview images by the `server-*.yml` workflows.
+
+```bash
+mise install              # Go, lint and release tools
+mise run server:db        # PostgreSQL for tests (55432) and development (55433)
+mise run server:test      # go test against a real PostgreSQL
+mise run server:check     # golangci-lint, govulncheck, shellcheck, actionlint, goreleaser check
+mise run server:dev       # the api command on http://localhost:8080
+mise run smoke            # build the image and smoke-test it end to end
+```
+
+Rules the code relies on:
+
+- `cmd/vantigo` is the only composition root. Nothing below it reads
+  `os.Getenv`; new settings go in `internal/config`, which reports every
+  problem at once.
+- Tests hit a real PostgreSQL. `internal/testdb` gives each test its own
+  database, so tests never share tables and packages run in parallel.
+- Error responses are RFC 7807 problems from `internal/httpx`. Nothing from an
+  internal error reaches a response body.
+- The image is COPY-only: `scripts/build-artifacts.sh` compiles natively and
+  embeds the SPA; the Dockerfile never compiles anything.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to

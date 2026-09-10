@@ -1,0 +1,128 @@
+# GoReleaser owns everything downstream of a version tag: binaries, archives,
+# checksums, SBOMs, cosign signatures, per-arch images plus the multi-arch
+# manifest, and the GitHub Release with a Conventional-Commits changelog. The
+# version decision stays outside (svu) — GoReleaser releases from the tag it
+# finds.
+#
+# Until the cutover this runs only as a dry run (server-release.yml,
+# `mise run snapshot`); releases are still the .NET pipeline's.
+version: 2
+
+project_name: vantigo
+
+# Not ./dist: build-artifacts.sh writes dist/server there, and the before
+# hook would trip GoReleaser's dist-must-be-empty check.
+dist: dist/goreleaser
+
+before:
+  hooks:
+    # The SPA must sit in the go:embed directory before the builds run.
+    # Callers restore the placeholder afterwards (scripts/restore-embed-overlay.sh):
+    # GoReleaser OSS has no after hooks.
+    - bash scripts/spa-embed-overlay.sh
+
+builds:
+  - id: vantigo
+    dir: apps/server
+    main: ./cmd/vantigo
+    binary: vantigo
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/vantigo-io/vantigo/server/internal/buildinfo.Version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    # vantigo_0.11.0_linux_amd64.tar.gz — the binary only; the SPA, the
+    # migrations and tzdata are embedded in it.
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+# One SBOM per archive (syft, SPDX JSON).
+sboms:
+  - artifacts: archive
+
+# Keyless cosign over the checksum file: verifying it plus the checksums
+# transitively verifies every archive.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --yes
+      - --bundle=${signature}
+      - ${artifact}
+
+dockers_v2:
+  - images:
+      - ghcr.io/vantigo-io/vantigo
+    # The full version never moves; major.minor moves with patches; major with
+    # minors; latest with every release. sha-<commit> stays for exact pinning.
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - "{{ .Major }}"
+      - latest
+      - sha-{{ .FullCommit }}
+    dockerfile: Dockerfile
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_ROOT: "."
+    labels:
+      org.opencontainers.image.source: https://github.com/vantigo-io/vantigo
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: AGPL-3.0-or-later
+
+docker_signs:
+  - cmd: cosign
+    artifacts: all
+    output: true
+    args:
+      - sign
+      - --yes
+      - "${artifact}@${digest}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs"
+      - "^test"
+      - "^chore"
+      - "^ci"
+      - "^style"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]-]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]-]+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\([[:word:]-]+\))??!?:.+$'
+      order: 2
+    - title: Other
+      order: 999
+
+release:
+  github:
+    owner: vantigo-io
+    name: vantigo
+  footer: |
+    **Container image:** `ghcr.io/vantigo-io/vantigo:{{ .Version }}` (linux/amd64 + linux/arm64, cosign-signed)
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot.{{ .ShortCommit }}"
