@@ -2192,7 +2192,7 @@ exchange validates."
 
 - [ ] **Step 1: Make products' gaps visible**
 
-Delete every products operationId from `openapi/testdata/known-gaps.txt` (they match `^(get|post|put|patch|delete)Products`; the test names any stragglers). Run: `cd apps/server && go generate ./... && go test ./internal/openapi/ -run TestRecordedExchanges -count=1`
+Delete every products operationId from `openapi/testdata/known-gaps.txt` (they match `^(get|post|put|patch|delete)Products`, plus the named operations `getProduct`, `getCategory` and `getTaxCategory`, whose operationIds come from endpoint names). Run: `cd apps/server && go generate ./... && go test ./internal/openapi/ -run TestRecordedExchanges -count=1`
 Expected: FAIL, listing each products operation that breaks a lint rule or has a recorded exchange that does not validate.
 
 - [ ] **Step 2: Curate, operation by operation**
@@ -2212,7 +2212,7 @@ Run:
 ```bash
 cd apps/server
 go generate ./... && go build ./... && go test ./internal/openapi/... -count=1 && golangci-lint run
-grep -cE '^(get|post|put|patch|delete)Products' ../../openapi/testdata/known-gaps.txt || true
+grep -cE '^((get|post|put|patch|delete)Products|getProduct$|getCategory$|getTaxCategory$)' ../../openapi/testdata/known-gaps.txt || true
 go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md
 ```
 
@@ -2240,7 +2240,7 @@ git commit -m "feat(contract): curate the products contract"
 
 - [ ] **Step 1: Make customers' gaps visible**
 
-Delete every customers operationId from `openapi/testdata/known-gaps.txt` (`^(get|post|put|patch|delete)Customers`; the test names any stragglers). Run: `cd apps/server && go generate ./... && go test ./internal/openapi/ -run TestRecordedExchanges -count=1`
+Delete every customers operationId from `openapi/testdata/known-gaps.txt` (`^(get|post|put|patch|delete)Customers`, plus the named operations `getCustomer` and `getContact`, whose operationIds come from endpoint names). Run: `cd apps/server && go generate ./... && go test ./internal/openapi/ -run TestRecordedExchanges -count=1`
 Expected: FAIL, listing each customers operation that breaks a lint rule or whose recorded exchanges do not validate.
 
 - [ ] **Step 2: Curate, operation by operation**
@@ -2260,7 +2260,7 @@ Run:
 ```bash
 cd apps/server
 go generate ./... && go build ./... && go test ./internal/openapi/... -count=1 && golangci-lint run
-grep -cE '^(get|post|put|patch|delete)Customers' ../../openapi/testdata/known-gaps.txt || true
+grep -cE '^((get|post|put|patch|delete)Customers|getCustomer$|getContact$)' ../../openapi/testdata/known-gaps.txt || true
 go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md
 ```
 
