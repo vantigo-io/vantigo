@@ -241,21 +241,6 @@ components:
                 - consumptionKwhDelta
                 - previousConsumptionKwh
             type: object
-        GetMeteringPointsRequest:
-            properties:
-                page:
-                    format: int32
-                    nullable: true
-                    type: integer
-                pageSize:
-                    format: int32
-                    nullable: true
-                    type: integer
-                search:
-                    nullable: true
-                    type: string
-            type: object
-            x-vantigo-source: Vantigo.Energy
         ManualConsumptionRequest:
             properties:
                 end:
@@ -334,11 +319,6 @@ components:
                 - meterNumber
                 - address
                 - priceArea
-                - gridArea
-                - expectedAnnualConsumptionKwh
-                - latitude
-                - longitude
-                - connectionStatus
             type: object
         MeteringPointResponse:
             properties:
@@ -425,11 +405,6 @@ components:
                 - gsrn
                 - address
                 - priceArea
-                - gridArea
-                - expectedAnnualConsumptionKwh
-                - latitude
-                - longitude
-                - connectionStatus
             type: object
         PaginatedResponseOfMeteringPointResponse:
             properties:
@@ -548,6 +523,24 @@ paths:
                                     $ref: '#/components/schemas/ConsumptionResponse'
                                 type: array
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: List a customer's consumption
             tags:
                 - Customer energy
@@ -597,6 +590,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Aggregate a customer's consumption
             tags:
                 - Customer energy
@@ -621,6 +626,18 @@ paths:
                                     $ref: '#/components/schemas/CustomerMeteringPointResponse'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: List a customer's metering points
             tags:
                 - Customer energy
@@ -650,6 +667,26 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/PaginatedResponseOfMeteringPointResponse'
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             summary: List metering points
             tags:
                 - Energy metering points
@@ -675,6 +712,24 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Create a metering point
             tags:
                 - Energy metering points
@@ -697,6 +752,18 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/MeteringPointResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Get a metering point
@@ -732,8 +799,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Update a metering point
             tags:
                 - Energy metering points
@@ -768,6 +853,24 @@ paths:
                                     $ref: '#/components/schemas/ConsumptionResponse'
                                 type: array
                     description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List current consumption intervals
@@ -803,6 +906,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Add a manual consumption interval
@@ -849,6 +964,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Aggregate consumption
@@ -875,6 +1002,18 @@ paths:
                                     $ref: '#/components/schemas/MeterResponse'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List meter history
@@ -910,6 +1049,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Replace a meter
@@ -936,6 +1087,18 @@ paths:
                                     $ref: '#/components/schemas/SupplyPeriodResponse'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: List supply periods
@@ -971,8 +1134,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Create a supply period
             tags:
                 - Energy metering points
@@ -998,6 +1179,18 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: Cancel a supply period
@@ -1041,6 +1234,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
             summary: End a supply period
@@ -1077,8 +1282,26 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: Switch supply period customer
             tags:
                 - Energy metering points
@@ -1095,6 +1318,18 @@ paths:
                                     $ref: '#/components/schemas/EnergyStatsAttentionItem'
                                 type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get energy dashboard attention items
             tags:
                 - EnergyStatsEndpoints
@@ -1126,6 +1361,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get energy dashboard summary
             tags:
                 - EnergyStatsEndpoints
@@ -1163,6 +1410,18 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get energy dashboard time series
             tags:
                 - EnergyStatsEndpoints
