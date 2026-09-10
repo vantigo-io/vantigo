@@ -28,6 +28,8 @@ import (
 type Options struct {
 	Version     string
 	Environment string
+	// Command is the vantigo command being run: "api", "server" or "worker".
+	Command string
 }
 
 // Signals reports which signals are being exported.
@@ -64,13 +66,9 @@ func Setup(ctx context.Context, o Options) (Signals, func(context.Context) error
 		}
 	}
 
-	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(
-		attribute.String("service.name", "vantigo"),
-		attribute.String("service.version", o.Version),
-		attribute.String("deployment.environment.name", o.Environment),
-	))
+	res, err := buildResource(ctx, o)
 	if err != nil {
-		return fail(fmt.Errorf("telemetry: resource: %w", err))
+		return fail(err)
 	}
 
 	if exporting("TRACES") {
@@ -108,6 +106,30 @@ func Setup(ctx context.Context, o Options) (Signals, func(context.Context) error
 		signals.Logs = true
 	}
 	return signals, shutdown, nil
+}
+
+// buildResource describes this process to every exported signal. The
+// operator's OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES are merged last,
+// so they override our defaults rather than the other way round.
+func buildResource(ctx context.Context, o Options) (*resource.Resource, error) {
+	ours, err := resource.Merge(resource.Default(), resource.NewSchemaless(
+		attribute.String("service.name", "vantigo"),
+		attribute.String("service.version", o.Version),
+		attribute.String("deployment.environment.name", o.Environment),
+		attribute.String("vantigo.command", o.Command),
+	))
+	if err != nil {
+		return nil, fmt.Errorf("telemetry: resource: %w", err)
+	}
+	fromEnv, err := resource.New(ctx, resource.WithFromEnv())
+	if err != nil {
+		return nil, fmt.Errorf("telemetry: resource from OTEL_SERVICE_NAME/OTEL_RESOURCE_ATTRIBUTES: %w", err)
+	}
+	res, err := resource.Merge(ours, fromEnv)
+	if err != nil {
+		return nil, fmt.Errorf("telemetry: resource: %w", err)
+	}
+	return res, nil
 }
 
 // exporting reports whether signal (TRACES, METRICS, LOGS) has an endpoint.

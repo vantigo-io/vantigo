@@ -145,7 +145,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	signals, shutdownTelemetry, err := telemetry.Setup(ctx, telemetry.Options{Version: buildinfo.Version, Environment: string(cfg.Env)})
+	// raw is "api", "server" or "worker" here: every other command has returned.
+	signals, shutdownTelemetry, err := telemetry.Setup(ctx, telemetry.Options{Version: buildinfo.Version, Environment: string(cfg.Env), Command: raw})
 	if err != nil {
 		logger.Error("telemetry setup failed", "error", err)
 		return 1

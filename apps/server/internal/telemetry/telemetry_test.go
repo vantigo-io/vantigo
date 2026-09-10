@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log/global"
 	lognoop "go.opentelemetry.io/otel/log/noop"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -28,7 +29,8 @@ import (
 // providers afterwards, so tests cannot leak into each other.
 func isolate(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"OTEL_SDK_DISABLED", "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_PROTOCOL"} {
+	for _, k := range []string{"OTEL_SDK_DISABLED", "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_PROTOCOL",
+		"OTEL_SERVICE_NAME", "OTEL_RESOURCE_ATTRIBUTES"} {
 		t.Setenv(k, "")
 	}
 	for _, s := range []string{"TRACES", "METRICS", "LOGS"} {
@@ -147,6 +149,51 @@ func TestSetup_OnlyTheSignalWithAnEndpointIsExported(t *testing.T) {
 	if signals != (Signals{Traces: true}) {
 		t.Errorf("signals = %+v, want traces only", signals)
 	}
+}
+
+func TestBuildResource(t *testing.T) {
+	o := Options{Version: "1.2.3", Environment: "production", Command: "worker"}
+	attr := func(t *testing.T, key string) string {
+		t.Helper()
+		res, err := buildResource(context.Background(), o)
+		if err != nil {
+			t.Fatalf("buildResource: %v", err)
+		}
+		v, ok := res.Set().Value(attribute.Key(key))
+		if !ok {
+			return "<missing>"
+		}
+		return v.String()
+	}
+
+	t.Run("our attributes by default", func(t *testing.T) {
+		isolate(t)
+		for key, want := range map[string]string{
+			"service.name":                "vantigo",
+			"service.version":             "1.2.3",
+			"deployment.environment.name": "production",
+			"vantigo.command":             "worker",
+		} {
+			if got := attr(t, key); got != want {
+				t.Errorf("%s = %q, want %q", key, got, want)
+			}
+		}
+	})
+	// The operator's environment is merged last so it wins.
+	t.Run("OTEL_SERVICE_NAME wins", func(t *testing.T) {
+		isolate(t)
+		t.Setenv("OTEL_SERVICE_NAME", "custom")
+		if got := attr(t, "service.name"); got != "custom" {
+			t.Errorf("service.name = %q, want custom", got)
+		}
+	})
+	t.Run("OTEL_RESOURCE_ATTRIBUTES wins", func(t *testing.T) {
+		isolate(t)
+		t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "deployment.environment.name=staging")
+		if got := attr(t, "deployment.environment.name"); got != "staging" {
+			t.Errorf("deployment.environment.name = %q, want staging", got)
+		}
+	})
 }
 
 func TestIsAPIPath(t *testing.T) {
