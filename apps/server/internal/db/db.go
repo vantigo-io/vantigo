@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -19,6 +20,11 @@ func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("db: parse connection string: %w", err)
 	}
+	// Query spans join the request's trace. With no tracer provider installed
+	// they go to the global no-op and cost next to nothing. otelpgx defaults
+	// to the bare operation name (e.g. "SELECT"); WithQuerySpanNamePrefix
+	// prefixes it with "query " per the OTel DB span-naming convention.
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithQuerySpanNamePrefix())
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("db: open pool: %w", err)

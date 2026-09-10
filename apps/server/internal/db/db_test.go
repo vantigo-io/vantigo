@@ -9,6 +9,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
@@ -126,6 +130,34 @@ func TestOpen_GivesUpOnAnUnreachableServer(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unreachable after 6 attempts") {
 		t.Fatalf("err = %v, want it to give up after 6 attempts", err)
 	}
+}
+
+// TestOpen_TracesQueries proves query spans join the request's trace.
+// otelpgx only starts a query span when the context already carries a
+// recording parent span (the request span telemetry.HTTPHandler installs in
+// production), so the query is issued inside one here rather than on a bare
+// context.Background(), matching how it is actually reached in serve.
+func TestOpen_TracesQueries(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)))
+	defer otel.SetTracerProvider(tracenoop.NewTracerProvider())
+
+	pool, err := db.Open(context.Background(), testdb.URL(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	ctx, span := otel.Tracer("test").Start(context.Background(), "request")
+	if _, err := pool.Exec(ctx, "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	span.End()
+	for _, s := range recorder.Ended() {
+		if strings.Contains(s.Name(), "query") {
+			return
+		}
+	}
+	t.Errorf("no query span among %d spans", len(recorder.Ended()))
 }
 
 var migrationName = regexp.MustCompile(`^\d{5}_[a-z]+_[a-z0-9_]+\.sql$`)

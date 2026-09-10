@@ -34,6 +34,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/server"
+	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"github.com/vantigo-io/vantigo/server/internal/web"
 )
 
@@ -108,7 +109,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
-	logger := slog.New(slog.NewJSONHandler(stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
+	logger := telemetry.NewLogger(stdout, cfg.LogLevel, false)
 	slog.SetDefault(logger)
 
 	// Installed before migrate() runs so a SIGTERM that arrives mid-migration
@@ -136,6 +137,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 0
 		}
 	}
+
+	signals, shutdownTelemetry, err := telemetry.Setup(ctx, telemetry.Options{Version: buildinfo.Version, Environment: string(cfg.Env)})
+	if err != nil {
+		logger.Error("telemetry setup failed", "error", err)
+		return 1
+	}
+	defer func() {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTelemetry(flushCtx); err != nil {
+			logger.Warn("telemetry did not flush", "error", err)
+		}
+	}()
+	if signals.Logs {
+		logger = telemetry.NewLogger(stdout, cfg.LogLevel, true)
+		slog.SetDefault(logger)
+	}
+	logger.Info("telemetry", "traces", signals.Traces, "metrics", signals.Metrics, "logs", signals.Logs)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
@@ -194,13 +213,13 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			logger.Error("startup failed", "error", err)
 			return 1
 		}
-		handler = server.New(server.Options{
+		handler = telemetry.HTTPHandler(server.New(server.Options{
 			Config: cfg,
 			Logger: logger,
 			Index:  index,
 			Assets: assets,
 			Health: healthHandler,
-		})
+		}), cfg.BasePath)
 	}
 
 	srv := &http.Server{
