@@ -68,8 +68,8 @@ func TestHandler_ServesOtherFilesWithoutImmutableCaching(t *testing.T) {
 
 func TestHandler_UnknownHashedAssetIs404NotTheIndex(t *testing.T) {
 	h, _ := testHandler(t)
-	if rec := get(h, http.MethodGet, "/assets/index-stale.js"); rec.Code != http.StatusNotFound {
-		t.Errorf("status %d, want 404", rec.Code)
+	if rec := get(h, http.MethodGet, "/assets/index-stale.js"); rec.Code != http.StatusNotFound || rec.Header().Get("Content-Type") != "application/problem+json" {
+		t.Errorf("status %d, want 404; Content-Type %q, want application/problem+json", rec.Code, rec.Header().Get("Content-Type"))
 	}
 }
 

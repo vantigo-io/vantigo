@@ -32,7 +32,7 @@ func Handler(assets fs.FS, index *Index) http.Handler {
 			return
 		}
 		if strings.HasPrefix(name, "assets/") {
-			http.NotFound(w, r)
+			httpx.NotFound(w, r)
 			return
 		}
 
