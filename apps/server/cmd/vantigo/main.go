@@ -117,6 +117,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// default disposition for an unhandled SIGTERM is immediate termination).
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+	// The first signal requests a graceful stop; once it arrives the default
+	// disposition is restored so a second signal terminates immediately — an
+	// operator's way out of a slow drain or a long migration.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	switch m {
 	case modeMigrate:
