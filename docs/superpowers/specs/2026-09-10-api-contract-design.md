@@ -63,7 +63,7 @@ Curation fills every missing response body (2xx and the error responses the endp
 
 Correctness is verified, not asserted: the existing .NET integration suites (about 740 tests) record every request/response exchange they make when `VANTIGO_CONTRACT_RECORD` names a directory, and a Go test validates each recorded exchange against the curated YAML with kin-openapi (`openapi3filter` request and response validation). Exchanges against dropped operations are ignored. The recorded corpus is committed under `openapi/testdata/exchanges/` so the check runs in CI without .NET, and later sub-projects can replay it against the Go handlers.
 
-Definition of done for curation: every operation has a success response — a 2xx with a schema, a 204, or, for a redirect endpoint (the OIDC flow), a 3xx declaring its `Location` header — and an `x-vantigo-access`; every recorded exchange validates; an operation with no recorded exchange is listed in a committed coverage report (`openapi/COVERAGE.md`) rather than silently trusted.
+Definition of done for curation: every operation has a success response — a 2xx with a schema, a 204, a 2xx the handler sends without a body and that is marked `x-vantigo-empty-body: true`, or, for a redirect endpoint (the OIDC flow), a 3xx declaring its `Location` header — and an `x-vantigo-access`; every recorded exchange validates; an operation with no recorded exchange is listed in a committed coverage report (`openapi/COVERAGE.md`) rather than silently trusted.
 
 ### Go
 
