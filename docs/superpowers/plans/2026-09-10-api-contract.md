@@ -278,7 +278,7 @@ public static class ContractAnnotations
 - [ ] **Step 4: Run the rule tests to verify they pass**
 
 Run: `mise exec -- dotnet test apps/host/backend/Vantigo.Host.Tests/Vantigo.Host.Tests.csproj --filter "FullyQualifiedName~ContractAnnotationsTests"`
-Expected: `Passed!  - Failed: 0, Passed: 12`.
+Expected: `Passed!  - Failed: 0, Passed: 13` (five facts, the seven-case theory, and the duplicates fact).
 
 - [ ] **Step 5: Write the harness**
 
