@@ -232,7 +232,7 @@ func startServe(t *testing.T, withAPI bool) (string, func() int) {
 		"DATABASE_URL":             databaseURL,
 		"APP_URL":                  "http://localhost:8080",
 		"ALLOW_INSECURE_TRANSPORT": "1",
-		"SHUTDOWN_TIMEOUT":         "5s",
+		"SHUTDOWN_TIMEOUT":         "10s",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -248,6 +248,14 @@ func startServe(t *testing.T, withAPI bool) (string, func() int) {
 	base := "http://" + ln.Addr().String()
 	waitReady(t, base)
 	return base, func() int {
+		// http.DefaultClient's transport can leave a spare connection dialed
+		// but idle in its pool without ever sending a request; the server
+		// sees that as StateNew, which Server.Shutdown waits out rather than
+		// closing immediately (only StateIdle connections are closed right
+		// away), so an unlucky dial can eat into the drain budget for no
+		// reason. Close it before cancelling so Shutdown only ever waits on
+		// connections the test actually used.
+		http.DefaultClient.CloseIdleConnections()
 		cancel()
 		select {
 		case code := <-done:
