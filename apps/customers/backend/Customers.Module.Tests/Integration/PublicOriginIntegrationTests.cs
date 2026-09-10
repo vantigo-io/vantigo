@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using Vantigo.Identity.Database.Accounts;
+using Vantigo.Testing;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -26,8 +27,11 @@ public sealed class PublicOriginIntegrationTests
 
     private WebApplicationFactory<Program> WithSettings(Dictionary<string, string?> settings) =>
         _factory.WithWebHostBuilder(builder =>
+        {
             builder.ConfigureAppConfiguration((_, configuration) =>
-                configuration.AddInMemoryCollection(settings)));
+                configuration.AddInMemoryCollection(settings));
+            builder.ConfigureServices(services => services.AddContractRecording());
+        });
 
     /// <summary>Password recovery only mails confirmed accounts with a password.</summary>
     private async Task<string> CreateConfirmedUserAsync()

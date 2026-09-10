@@ -23,6 +23,7 @@ using Vantigo.Storage.Abstractions;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
 using Vantigo.Tenancy.EntityFramework;
+using Vantigo.Testing;
 
 namespace Vantigo.Communications.Module.Tests.Integration;
 
@@ -120,6 +121,7 @@ public sealed class CommunicationsModuleFactory : WebApplicationFactory<global::
         }));
         builder.ConfigureServices(services =>
         {
+            services.AddContractRecording();
             services.AddSingleton<AmbientTenantContext>();
             services.RemoveAll<ITenantContext>();
             services.AddSingleton<TestTenantContext>();

@@ -17,6 +17,7 @@ using Vantigo.Identity.Database.Accounts;
 using Vantigo.Identity.Services;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
+using Vantigo.Testing;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -236,9 +237,12 @@ public sealed class DevelopmentSeedIntegrationTests
             builder.UseSetting("Modules:Energy:Enabled", "false");
             builder.UseSetting("Modules:Products:Enabled", "false");
             builder.ConfigureServices(services =>
+            {
+                services.AddContractRecording();
                 services.AddSingleton(new HostTestStartupPreparation(
                     ApplyMigrations: true,
-                    SeedDevelopmentData: true)));
+                    SeedDevelopmentData: true));
+            });
             builder.ConfigureAppConfiguration((_, configuration) =>
             {
                 var values = new Dictionary<string, string?>

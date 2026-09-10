@@ -20,6 +20,7 @@ using Vantigo.Products.Domain.Products;
 using Vantigo.Tenancy;
 using Vantigo.Tenancy.Abstractions;
 using Vantigo.Tenancy.EntityFramework;
+using Vantigo.Testing;
 
 namespace Vantigo.Products.Module.Tests.Integration;
 
@@ -179,6 +180,7 @@ public sealed class ProductsModuleFactory : WebApplicationFactory<global::Progra
 
         builder.ConfigureServices(services =>
         {
+            services.AddContractRecording();
             services.AddSingleton(new HostTestStartupPreparation(
                 ApplyMigrations: true,
                 SeedDevelopmentData: false));

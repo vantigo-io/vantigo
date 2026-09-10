@@ -18,6 +18,7 @@ using Vantigo.Configuration;
 using Vantigo.Host;
 using Vantigo.Identity.Endpoints.Auth;
 using Vantigo.Identity.Services;
+using Vantigo.Testing;
 
 namespace Vantigo.Customers.Module.Tests.Integration;
 
@@ -111,6 +112,7 @@ public sealed class FreshCustomersApiFactory : WebApplicationFactory<Program>, I
 
         builder.ConfigureServices(services =>
         {
+            services.AddContractRecording();
             services.AddSingleton(new HostTestStartupPreparation(
                 ApplyMigrations: true,
                 SeedDevelopmentData: false));
