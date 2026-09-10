@@ -17,6 +17,7 @@
 - Every operation has `operationId` (unique across all files) and `x-vantigo-access` with one of: `anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` (names from `ActiveAccount`, `SystemAdmin`, `Owner`, `OwnerManagement`, `Business`, `AuthorizationManagement`, sorted, joined with `+`), `permission:<module>:<verb>[+<module>:<verb>…]` (every listed permission is required — chained `RequirePermission` calls AND together; sorted, joined with `+`).
 - Dropped operations (never in `openapi/`): `/api/v1/identity/admin/tenants` and everything under it, `GET /api/v1/identity/tenants/current/capabilities`, `POST /api/v1/identity/session/tenant`, `GET /api/v1/identity/antiforgery`, `POST /api/v1/communications/inbound/mailgun/{channelId}`.
 - Paths and JSON shapes are the .NET host's, unchanged. Curation describes; it never redesigns.
+- A success response with no body is either a `204` or a 2xx that carries `x-vantigo-empty-body: true` and no `content` (the handler returns `Ok()` with no value). Never document an invented body for it.
 - Numeric schemas always carry `type` (`integer` for `int32`/`int64`, `number` for `float`/`double`) without the numeric-string `pattern` the .NET dump adds, and a nullable reference is `allOf: [{$ref: …}]` with `nullable: true` (never a one-element `oneOf`). `contract normalize` applies both; `TestNumericSchemasAreTyped` and the nullable-reference guard in `internal/openapi` enforce them.
 - Tool pins: oapi-codegen **v2.8.0**, openapi-typescript **7.13.0**, kin-openapi **v0.149.0**, oapi-codegen runtime **v1.7.0**. CI invokes Go tools with `go run …@<version>`, never through mise's `go:` backend.
 - Generated code is committed and never hand-edited; CI regenerates and fails on a diff. Generated `.d.ts` files are excluded from biome.
@@ -1339,6 +1340,10 @@ paths:
       operationId: redirectsNowhere
       x-vantigo-access: anonymous
       responses: {"302": {description: found}}
+    post:
+      operationId: emptyOk
+      x-vantigo-access: session
+      responses: {"200": {description: ok, x-vantigo-empty-body: true}}
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -1347,7 +1352,7 @@ paths:
 	for _, p := range Lint(doc) {
 		got[p.OperationID] = p.Message
 	}
-	for _, id := range []string{"good", "redirects"} {
+	for _, id := range []string{"good", "redirects", "emptyOk"} {
 		if _, bad := got[id]; bad {
 			t.Errorf("%s flagged: %v", id, got[id])
 		}
@@ -1663,8 +1668,10 @@ func Lint(doc *openapi3.T) []Problem {
 }
 
 // hasSuccessResponse reports whether op documents how it succeeds: a 2xx with
-// a body schema, a 204, or — for redirect endpoints such as the OIDC flow — a
-// 3xx that declares its Location header.
+// a body schema, a 204, a 2xx explicitly marked `x-vantigo-empty-body: true`
+// (the handler returns Ok() with no value — marked, so an uncurated bare
+// "200 OK" still fails), or — for redirect endpoints such as the OIDC flow —
+// a 3xx that declares its Location header.
 func hasSuccessResponse(op *openapi3.Operation) bool {
 	if op.Responses == nil {
 		return false
@@ -1677,6 +1684,9 @@ func hasSuccessResponse(op *openapi3.Operation) bool {
 		case code == "204":
 			return true
 		case strings.HasPrefix(code, "2"):
+			if len(ref.Value.Content) == 0 && ref.Value.Extensions["x-vantigo-empty-body"] == true {
+				return true
+			}
 			for _, media := range ref.Value.Content {
 				if media != nil && media.Schema != nil {
 					return true
@@ -2337,7 +2347,7 @@ git commit -m "feat(contract): curate the communications contract"
 
 - [ ] **Step 1: Make this slice's gaps visible**
 
-Delete from `openapi/testdata/known-gaps.txt` every identity operationId in this slice (identity entries match `^(get|post|put|patch|delete)Identity`; leave the `IdentityOwner…`, `IdentityAccess…`, `IdentityScim…`, invitation-management and authorization-management ones for Task 11). Run: `cd apps/server && go generate ./... && go test ./internal/openapi/ -run TestRecordedExchanges -count=1`
+Delete from `openapi/testdata/known-gaps.txt` every identity operationId in this slice (identity entries match `^(get|post|put|patch|delete)Identity`; leave every `…IdentityOwner…`, `…IdentityAccess…` and `…IdentityScim…` entry for Task 11 — invitation management lives under `/owner/invitations` and authorization management under `/access`, while the public `/invitations/accept` and `/invitations/validate` are this task's). Run: `cd apps/server && go generate ./... && go test ./internal/openapi/ -run TestRecordedExchanges -count=1`
 Expected: FAIL, listing each operation in this slice that breaks a lint rule or whose recorded exchanges do not validate.
 
 - [ ] **Step 2: Curate, operation by operation**
@@ -2357,11 +2367,11 @@ Run:
 ```bash
 cd apps/server
 go generate ./... && go build ./... && go test ./internal/openapi/... -count=1 && golangci-lint run
-grep -E '^(get|post|put|patch|delete)Identity' ../../openapi/testdata/known-gaps.txt | grep -vE 'IdentityOwner|IdentityAccess|IdentityScim|IdentityInvitations|IdentityAuthorization|IdentityRoles|IdentityGroups|IdentityDelegations' || echo "slice clean"
+grep -E '^(get|post|put|patch|delete)Identity' ../../openapi/testdata/known-gaps.txt | grep -vE '^(get|post|put|patch|delete)Identity(Owner|Access|Scim)' || echo "slice clean"
 go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md
 ```
 
-Expected: every test PASS, `slice clean`, `0 issues.` (Adjust the exclusion pattern to the actual operationIds of Task 11's slice if they are named differently — the goal is that no operation in *this* slice remains listed.)
+Expected: every test PASS, `slice clean`, `0 issues.` (The split is by path prefix: `/owner/…`, `/access/…` and `/scim/…` are Task 11's; the goal is that no operation in *this* slice remains listed.)
 
 - [ ] **Step 4: Commit**
 
