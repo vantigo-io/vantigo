@@ -135,3 +135,13 @@ jobs:
             echo
             echo "Also tagged \`$PINNED\` (immutable)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The smoke test ran the same amd64 binary and base digest built earlier; this step closes the gap for what was actually pushed, including arm64.
+      - name: 🛡️ Scan the pushed images
+        if: steps.gate.outputs.push == 'true'
+        env:
+          PINNED: ${{ steps.version.outputs.pinned }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            trivy image --platform "$platform" --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --format table "$IMAGE:$PINNED"
+          done
