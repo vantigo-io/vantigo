@@ -98,6 +98,10 @@ paths:
       operationId: redirectsNowhere
       x-vantigo-access: anonymous
       responses: {"302": {description: found}}
+    post:
+      operationId: emptyOk
+      x-vantigo-access: session
+      responses: {"200": {description: ok, x-vantigo-empty-body: true}}
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +110,7 @@ paths:
 	for _, p := range Lint(doc) {
 		got[p.OperationID] = p.Message
 	}
-	for _, id := range []string{"good", "redirects"} {
+	for _, id := range []string{"good", "redirects", "emptyOk"} {
 		if _, bad := got[id]; bad {
 			t.Errorf("%s flagged: %v", id, got[id])
 		}

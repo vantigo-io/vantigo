@@ -39,8 +39,10 @@ func Lint(doc *openapi3.T) []Problem {
 }
 
 // hasSuccessResponse reports whether op documents how it succeeds: a 2xx with
-// a body schema, a 204, or — for redirect endpoints such as the OIDC flow — a
-// 3xx that declares its Location header.
+// a body schema, a 204, a 2xx explicitly marked `x-vantigo-empty-body: true`
+// (the handler returns Ok() with no value — marked, so an uncurated bare
+// "200 OK" still fails), or — for redirect endpoints such as the OIDC flow —
+// a 3xx that declares its Location header.
 func hasSuccessResponse(op *openapi3.Operation) bool {
 	if op.Responses == nil {
 		return false
@@ -53,6 +55,9 @@ func hasSuccessResponse(op *openapi3.Operation) bool {
 		case code == "204":
 			return true
 		case strings.HasPrefix(code, "2"):
+			if len(ref.Value.Content) == 0 && ref.Value.Extensions["x-vantigo-empty-body"] == true {
+				return true
+			}
 			for _, media := range ref.Value.Content {
 				if media != nil && media.Schema != nil {
 					return true
