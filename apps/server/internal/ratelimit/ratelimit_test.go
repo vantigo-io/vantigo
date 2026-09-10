@@ -104,7 +104,7 @@ func TestAllow_IsAtomicUnderConcurrency(t *testing.T) {
 
 func TestAllow_RejectsAnInvalidPolicy(t *testing.T) {
 	l, _ := newLimiter(t)
-	for _, p := range []Policy{{Name: "", Limit: 1, Window: time.Minute}, {Name: "x", Limit: 0, Window: time.Minute}, {Name: "x", Limit: 1, Window: time.Millisecond}} {
+	for _, p := range []Policy{{Name: "", Limit: 1, Window: time.Minute}, {Name: "x", Limit: 0, Window: time.Minute}, {Name: "x", Limit: 1, Window: time.Millisecond}, {Name: "login:2001", Limit: 1, Window: time.Minute}} {
 		if _, err := l.Allow(context.Background(), p, "c"); err == nil {
 			t.Errorf("policy %+v accepted", p)
 		}
@@ -156,4 +156,31 @@ func TestMiddleware_PanicsOnAnInvalidPolicy(t *testing.T) {
 		}
 	}()
 	l.Middleware(Policy{Name: "x", Limit: 0, Window: time.Minute})
+}
+
+func TestMiddleware_FailsClosedWhenTheCounterCannotBeRecorded(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	l := New(pool)
+	pool.Close()
+
+	var handlerCalled bool
+	h := l.Middleware(Policy{Name: "login", Limit: 1, Window: time.Minute})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		handlerCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/identity/login", nil)
+	req.RemoteAddr = "203.0.113.7:1000"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json", ct)
+	}
+	if handlerCalled {
+		t.Error("handler was called despite database error")
+	}
 }

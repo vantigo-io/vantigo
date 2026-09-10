@@ -27,7 +27,20 @@ func (p Policy) validate() error {
 	if p.Name == "" || p.Limit < 1 || p.Window < time.Second {
 		return fmt.Errorf("ratelimit: invalid policy %+v (need a name, a limit of at least 1 and a window of at least 1s)", p)
 	}
+	if contains(p.Name, ':') {
+		return fmt.Errorf("ratelimit: invalid policy %+v (policy names may not contain ':')", p)
+	}
 	return nil
+}
+
+// contains reports whether the string s contains any byte equal to b.
+func contains(s string, b byte) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return true
+		}
+	}
+	return false
 }
 
 // Decision is the outcome of one hit.
@@ -70,6 +83,7 @@ func (l *Limiter) Allow(ctx context.Context, p Policy, client string) (Decision,
 	windowStart := now.Truncate(p.Window)
 
 	var hits int
+	// Key construction: p.Name cannot contain ':' (validated above), so the first ':' is an unambiguous separator between policy and client.
 	if err := l.pool.QueryRow(ctx, hitSQL, p.Name+":"+client, windowStart).Scan(&hits); err != nil {
 		return Decision{}, fmt.Errorf("ratelimit: record hit: %w", err)
 	}
