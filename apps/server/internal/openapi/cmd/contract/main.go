@@ -23,6 +23,10 @@ func main() {
 	switch os.Args[1] {
 	case "split":
 		err = runSplit(os.Args[2:])
+	case "corpus":
+		err = runCorpus(os.Args[2:])
+	case "coverage":
+		err = runCoverage(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n", os.Args[1])
 		os.Exit(2)

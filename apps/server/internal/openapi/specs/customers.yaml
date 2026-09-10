@@ -1,0 +1,1567 @@
+components:
+    schemas:
+        AttachCustomerContactRequest:
+            properties:
+                contactId:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                email:
+                    nullable: true
+                    type: string
+                phone:
+                    nullable: true
+                    type: string
+                role:
+                    type: string
+            required:
+                - contactId
+                - role
+            type: object
+        BrregLookupLookupResult:
+            properties:
+                legalId:
+                    type: string
+                legalName:
+                    type: string
+            required:
+                - legalId
+                - legalName
+            type: object
+        BrregLookupRequest:
+            properties:
+                legalId:
+                    nullable: true
+                    type: string
+                search:
+                    nullable: true
+                    type: string
+            type: object
+            x-vantigo-source: Vantigo.Customers
+        BrregLookupResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/BrregLookupLookupResult'
+                    type: array
+            required:
+                - data
+            type: object
+        ContactRequest:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+                firstName:
+                    type: string
+                lastName:
+                    type: string
+                middleName:
+                    nullable: true
+                    type: string
+                phone:
+                    nullable: true
+                    type: string
+                prefix:
+                    nullable: true
+                    type: string
+                suffix:
+                    nullable: true
+                    type: string
+            required:
+                - firstName
+                - lastName
+            type: object
+        ContactResponse:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+                firstName:
+                    type: string
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                lastName:
+                    type: string
+                middleName:
+                    nullable: true
+                    type: string
+                phone:
+                    nullable: true
+                    type: string
+                prefix:
+                    nullable: true
+                    type: string
+                suffix:
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - firstName
+                - lastName
+            type: object
+        CreateCustomerRequest:
+            properties:
+                identity:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/LegalIdentityRequest'
+                    type: object
+                name:
+                    type: string
+                status:
+                    nullable: true
+                    type: string
+            required:
+                - name
+            type: object
+        CreateCustomerResponse:
+            properties:
+                customerNumber:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - id
+                - customerNumber
+            type: object
+            x-vantigo-source: Vantigo.Customers
+        CustomerContactRequest:
+            properties:
+                email:
+                    nullable: true
+                    type: string
+                phone:
+                    nullable: true
+                    type: string
+                role:
+                    type: string
+            required:
+                - role
+            type: object
+        CustomerContactResponse:
+            properties:
+                contact:
+                    $ref: '#/components/schemas/ContactResponse'
+                email:
+                    nullable: true
+                    type: string
+                phone:
+                    nullable: true
+                    type: string
+                role:
+                    type: string
+            required:
+                - contact
+                - role
+            type: object
+        CustomerReference:
+            properties:
+                customerNumber:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                name:
+                    type: string
+            required:
+                - id
+                - customerNumber
+                - name
+            type: object
+        CustomerResponse:
+            properties:
+                customerNumber:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                identity:
+                    properties:
+                        country:
+                            type: string
+                        id:
+                            type: string
+                        name:
+                            type: string
+                        source:
+                            type: string
+                        type:
+                            type: string
+                    required:
+                        - country
+                        - type
+                        - id
+                        - name
+                        - source
+                    type: object
+                name:
+                    type: string
+            required:
+                - id
+                - customerNumber
+                - name
+            type: object
+            x-vantigo-source: Vantigo.Customers
+        CustomerStatsAttentionItem:
+            properties:
+                entityId:
+                    type: string
+                id:
+                    type: string
+                occurredAt:
+                    format: date-time
+                    type: string
+                title:
+                    type: string
+                type:
+                    type: string
+            required:
+                - id
+                - type
+                - title
+                - occurredAt
+                - entityId
+            type: object
+        CustomerStatsDailyBucket:
+            properties:
+                date:
+                    format: date
+                    type: string
+                value:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            type: object
+        CustomerStatsSummaryResponse:
+            properties:
+                from:
+                    format: date-time
+                    type: string
+                newContacts:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                newContactsDelta:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                newCustomers:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                newCustomersDelta:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                to:
+                    format: date-time
+                    type: string
+                totalActiveCustomers:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalActiveCustomersDelta:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - from
+                - to
+                - totalActiveCustomers
+                - totalActiveCustomersDelta
+                - newCustomers
+                - newCustomersDelta
+                - newContacts
+                - newContactsDelta
+            type: object
+        CustomersPaginationMetadata:
+            properties:
+                hasNextPage:
+                    type: boolean
+                hasPreviousPage:
+                    type: boolean
+                page:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                pageSize:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalPages:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - page
+                - pageSize
+                - totalCount
+                - totalPages
+                - hasNextPage
+                - hasPreviousPage
+            type: object
+        GetContactCustomersContactCustomerResponse:
+            properties:
+                customer:
+                    $ref: '#/components/schemas/GetContactCustomersCustomerReference'
+                email:
+                    nullable: true
+                    type: string
+                phone:
+                    nullable: true
+                    type: string
+                role:
+                    type: string
+            required:
+                - customer
+                - role
+            type: object
+        GetContactCustomersCustomerReference:
+            properties:
+                customerNumber:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                name:
+                    type: string
+            required:
+                - id
+                - customerNumber
+                - name
+            type: object
+        GetContactCustomersResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/GetContactCustomersContactCustomerResponse'
+                    type: array
+            required:
+                - data
+            type: object
+        GetContactsRequest:
+            properties:
+                page:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                pageSize:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                search:
+                    nullable: true
+                    type: string
+                sortBy:
+                    nullable: true
+                    type: string
+                sortDirection:
+                    nullable: true
+                    type: string
+            type: object
+            x-vantigo-source: Vantigo.Customers
+        GetContactsResponse:
+            properties:
+                contact:
+                    $ref: '#/components/schemas/ContactResponse'
+                customer:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/CustomerReference'
+                    type: object
+                customerCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - contact
+                - customerCount
+            type: object
+        GetCustomerContactsResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/CustomerContactResponse'
+                    type: array
+            required:
+                - data
+            type: object
+        GetCustomerStatsResponse:
+            properties:
+                activeCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                businessCount:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                distinctCountryCount:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                missingIdentityCount:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                newLast30DaysCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                personCount:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                totalCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            required:
+                - totalCount
+                - activeCount
+                - newLast30DaysCount
+            type: object
+        GetCustomersRequest:
+            properties:
+                includeArchived:
+                    nullable: true
+                    type: boolean
+                page:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                pageSize:
+                    format: int32
+                    nullable: true
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                search:
+                    nullable: true
+                    type: string
+                sortBy:
+                    nullable: true
+                    type: string
+                sortDirection:
+                    nullable: true
+                    type: string
+            type: object
+            x-vantigo-source: Vantigo.Customers
+        LegalIdentityRequest:
+            properties:
+                country:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                source:
+                    type: string
+                type:
+                    type: string
+            required:
+                - country
+                - type
+                - id
+                - name
+                - source
+            type: object
+        LegalIdentityResponse:
+            properties:
+                country:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                source:
+                    type: string
+                type:
+                    type: string
+            required:
+                - country
+                - type
+                - id
+                - name
+                - source
+            type: object
+            x-vantigo-source: Vantigo.Customers
+        PaginatedResponseOfResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/GetContactsResponse'
+                    type: array
+                pagination:
+                    $ref: '#/components/schemas/CustomersPaginationMetadata'
+            required:
+                - data
+                - pagination
+            type: object
+        PaginatedResponseOfSafeCustomerResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/SafeCustomerResponse'
+                    type: array
+                pagination:
+                    $ref: '#/components/schemas/CustomersPaginationMetadata'
+            required:
+                - data
+                - pagination
+            type: object
+        SafeCustomerIdentity:
+            properties:
+                country:
+                    type: string
+                id:
+                    type: string
+                type:
+                    type: string
+            required:
+                - country
+                - type
+                - id
+            type: object
+        SafeCustomerResponse:
+            properties:
+                createdAt:
+                    format: date-time
+                    type: string
+                customerNumber:
+                    format: int64
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                identity:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/SafeCustomerIdentity'
+                    type: object
+                name:
+                    type: string
+                status:
+                    type: string
+                timelineSummary:
+                    $ref: '#/components/schemas/SafeTimelineSummary'
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - customerNumber
+                - name
+                - status
+                - createdAt
+                - updatedAt
+                - timelineSummary
+            type: object
+        SafeTimelineSummary:
+            properties:
+                entryCount:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                latestOccurredOn:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - entryCount
+            type: object
+        TimelineListResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/TimelineResponse'
+                    type: array
+                nextCursor:
+                    nullable: true
+                    type: string
+            required:
+                - data
+            type: object
+        TimelineManualTimelineRequest:
+            properties:
+                eventType:
+                    nullable: true
+                    type: string
+                expectedRevision:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                note:
+                    nullable: true
+                    type: string
+                occurredAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                occurredOn:
+                    nullable: true
+                    type: string
+                sourceUrl:
+                    nullable: true
+                    type: string
+            type: object
+        TimelineResponse:
+            properties:
+                actorDisplay:
+                    nullable: true
+                    type: string
+                actorKind:
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                currentRevision:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                eventType:
+                    type: string
+                id:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                note:
+                    nullable: true
+                    type: string
+                occurredAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                occurredOn:
+                    format: date
+                    type: string
+                payload:
+                    nullable: true
+                    oneOf:
+                        - $ref: common.yaml#/components/schemas/JsonElement
+                producer:
+                    type: string
+                provenance:
+                    type: string
+                sourceUrl:
+                    nullable: true
+                    type: string
+                state:
+                    type: string
+                summary:
+                    nullable: true
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - eventType
+                - provenance
+                - producer
+                - occurredOn
+                - currentRevision
+                - state
+                - actorKind
+                - createdAt
+                - updatedAt
+            type: object
+        TimelineRevisionListResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/TimelineRevisionResponse'
+                    type: array
+            required:
+                - data
+            type: object
+        TimelineRevisionResponse:
+            properties:
+                action:
+                    type: string
+                actorDisplayName:
+                    type: string
+                actorKind:
+                    type: string
+                changedAt:
+                    format: date-time
+                    type: string
+                deletedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                eventType:
+                    type: string
+                note:
+                    nullable: true
+                    type: string
+                occurredAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                occurredOn:
+                    format: date
+                    type: string
+                payload:
+                    nullable: true
+                    oneOf:
+                        - $ref: common.yaml#/components/schemas/JsonElement
+                producer:
+                    type: string
+                provenance:
+                    type: string
+                revision:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                sourceUrl:
+                    nullable: true
+                    type: string
+                state:
+                    type: string
+                summary:
+                    nullable: true
+                    type: string
+            required:
+                - revision
+                - eventType
+                - action
+                - changedAt
+                - provenance
+                - producer
+                - occurredOn
+                - state
+                - actorKind
+                - actorDisplayName
+            type: object
+        UpdateCustomerRequest:
+            properties:
+                identity:
+                    nullable: true
+                    oneOf:
+                        - $ref: '#/components/schemas/LegalIdentityRequest'
+                    type: object
+                name:
+                    type: string
+                status:
+                    nullable: true
+                    type: string
+            required:
+                - name
+            type: object
+info:
+    title: Vantigo Customers API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/customers:
+        get:
+            operationId: getCustomers
+            parameters:
+                - in: query
+                  name: Page
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: PageSize
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: SortBy
+                  schema:
+                    type: string
+                - in: query
+                  name: SortDirection
+                  schema:
+                    type: string
+                - in: query
+                  name: IncludeArchived
+                  schema:
+                    type: boolean
+                - in: query
+                  name: Search
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfSafeCustomerResponse'
+                    description: OK
+            summary: List all customers
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+        post:
+            operationId: postCustomers
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateCustomerRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+            summary: Create a new customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:create
+    /api/v1/customers/{id}:
+        delete:
+            operationId: deleteCustomersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Archive a customer (customers are never hard-deleted)
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:delete
+        get:
+            operationId: getCustomer
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    description: OK
+            summary: Get a customer by id
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+        put:
+            operationId: putCustomersById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateCustomerRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+            summary: Update a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
+    /api/v1/customers/{id}/contacts:
+        get:
+            operationId: getCustomersByIdContacts
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCustomerContactsResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List the contacts associated with a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:associations-view+customers:contacts-view
+        post:
+            operationId: postCustomersByIdContacts
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/AttachCustomerContactRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerContactResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Associate a contact with a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:associations-manage+customers:contacts-view
+    /api/v1/customers/{id}/contacts/{contactId}:
+        delete:
+            operationId: deleteCustomersByIdContactsByContactId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: contactId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Remove a contact association from a customer
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:associations-manage
+        put:
+            operationId: putCustomersByIdContactsByContactId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: contactId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerContactRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerContactResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a customer's contact association
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:associations-manage+customers:contacts-view
+    /api/v1/customers/{id}/legal-identity:
+        delete:
+            operationId: deleteCustomersByIdLegalIdentity
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    description: OK
+            summary: Remove a customer's legal identity
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:legal-identity-manage
+        get:
+            operationId: getCustomersByIdLegalIdentity
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    description: OK
+            summary: Get a customer's legal identity
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:legal-identity-view
+        put:
+            operationId: putCustomersByIdLegalIdentity
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LegalIdentityRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+            summary: Replace a customer's legal identity
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:legal-identity-manage+customers:legal-identity-view
+    /api/v1/customers/{id}/timeline:
+        get:
+            description: 'Filters: provenance, repeated eventType, occurredFrom, and occurredTo. Cursors are scoped to these filters.'
+            operationId: getCustomersByIdTimeline
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: query
+                  name: limit
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: cursor
+                  schema:
+                    type: string
+                - in: query
+                  name: provenance
+                  schema:
+                    type: string
+                - in: query
+                  name: eventType
+                  schema:
+                    items:
+                        type: string
+                    type: array
+                - in: query
+                  name: occurredFrom
+                  schema:
+                    type: string
+                - in: query
+                  name: occurredTo
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimelineListResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: List a customer's timeline
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:timeline-view
+        post:
+            operationId: postCustomersByIdTimeline
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimelineManualTimelineRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimelineResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Create a manual customer timeline entry
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:timeline-manage+customers:timeline-view
+    /api/v1/customers/{id}/timeline/{entryId}:
+        delete:
+            operationId: deleteCustomersByIdTimelineByEntryId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: entryId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: query
+                  name: expectedRevision
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
+            summary: Delete a manual customer timeline entry
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:timeline-manage
+        get:
+            operationId: getCustomersByIdTimelineByEntryId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: entryId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimelineResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: Get a customer timeline entry
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:timeline-view
+        put:
+            operationId: putCustomersByIdTimelineByEntryId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: entryId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimelineManualTimelineRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimelineResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
+            summary: Update a manual customer timeline entry
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:timeline-manage+customers:timeline-view
+    /api/v1/customers/{id}/timeline/{entryId}/revisions:
+        get:
+            operationId: getCustomersByIdTimelineByEntryIdRevisions
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+                - in: path
+                  name: entryId
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimelineRevisionListResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List timeline entry revisions
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:timeline-view
+    /api/v1/customers/contacts:
+        get:
+            operationId: getCustomersContacts
+            parameters:
+                - in: query
+                  name: Page
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: PageSize
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                - in: query
+                  name: SortBy
+                  schema:
+                    type: string
+                - in: query
+                  name: SortDirection
+                  schema:
+                    type: string
+                - in: query
+                  name: Search
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfResponse'
+                    description: OK
+            summary: List all contacts
+            tags:
+                - Contacts
+            x-vantigo-access: permission:customers:associations-view+customers:contacts-view
+        post:
+            operationId: postCustomersContacts
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ContactRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ContactResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+            summary: Create a new contact
+            tags:
+                - Contacts
+            x-vantigo-access: permission:customers:contacts-manage+customers:contacts-view
+    /api/v1/customers/contacts/{id}:
+        delete:
+            operationId: deleteCustomersContactsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "404":
+                    description: Not Found
+            summary: Delete a contact
+            tags:
+                - Contacts
+            x-vantigo-access: permission:customers:associations-manage+customers:contacts-manage
+        get:
+            operationId: getContact
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ContactResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: Get a contact by id
+            tags:
+                - Contacts
+            x-vantigo-access: permission:customers:contacts-view
+        put:
+            operationId: putCustomersContactsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ContactRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ContactResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "404":
+                    description: Not Found
+            summary: Update a contact
+            tags:
+                - Contacts
+            x-vantigo-access: permission:customers:contacts-manage+customers:contacts-view
+    /api/v1/customers/contacts/{id}/customers:
+        get:
+            operationId: getCustomersContactsByIdCustomers
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    pattern: ^-?(?:0|[1-9]\d*)$
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetContactCustomersResponse'
+                    description: OK
+                "404":
+                    description: Not Found
+            summary: List the customers a contact is associated with
+            tags:
+                - Contacts
+            x-vantigo-access: permission:customers:associations-view+customers:contacts-view
+    /api/v1/customers/lookup/brreg:
+        get:
+            operationId: getCustomersLookupBrreg
+            parameters:
+                - in: query
+                  name: Search
+                  schema:
+                    type: string
+                - in: query
+                  name: LegalId
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BrregLookupResponse'
+                    description: OK
+            summary: Look up business entities in Brønnøysundregisteret
+            tags:
+                - Lookup
+            x-vantigo-access: permission:customers:lookup-view
+    /api/v1/customers/stats:
+        get:
+            operationId: getCustomersStats
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCustomerStatsResponse'
+                    description: OK
+            summary: Get tenant-wide customer key figures
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+    /api/v1/customers/stats/attention:
+        get:
+            operationId: getCustomersStatsAttention
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CustomerStatsAttentionItem'
+                                type: array
+                    description: OK
+            summary: Get customer dashboard attention items
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+    /api/v1/customers/stats/summary:
+        get:
+            operationId: getCustomersStatsSummary
+            parameters:
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CustomerStatsSummaryResponse'
+                    description: OK
+            summary: Get customer dashboard summary
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+    /api/v1/customers/stats/timeseries:
+        get:
+            operationId: getCustomersStatsTimeseries
+            parameters:
+                - in: query
+                  name: metric
+                  schema:
+                    type: string
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/CustomerStatsDailyBucket'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+            summary: Get customer dashboard time series
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:view
+servers:
+    - url: /

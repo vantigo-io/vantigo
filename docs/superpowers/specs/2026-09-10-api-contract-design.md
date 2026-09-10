@@ -35,7 +35,7 @@ A test in `Vantigo.Host.Tests`, run only when `VANTIGO_OPENAPI_DUMP` names an ou
 - an `operationId` on every operation: the endpoint name when one is set, otherwise derived deterministically from the method and route (`GET /api/v1/customers/{id}` → `getCustomer…`-style camelCase built from the path segments), unique across the document.
 - component schemas for every public or internal `*Request`/`*Response` type in the module assemblies (via the document transformer's schema generation), so curation can reference generated schemas rather than hand-writing them. Schema ids are unique per CLR type: a nested type's id carries its declaring types' names (`AttachCustomerContactEndpoint.Request` → `AttachCustomerContactRequest`), because the framework's bare type name would merge every endpoint-local `Request` into one schema; the harness fails if two types still claim one id.
 
-The harness output is an input to curation, not a build artefact. After curation the YAML is hand-maintained.
+The harness output is an input to curation, not a build artefact. After curation the YAML is hand-maintained. Routes served by authentication middleware rather than endpoints do not appear in the dump: the OpenID Connect redirect URI, `/api/v1/identity/oidc/callback` (`GET` with query parameters, `POST` with a form for the default `form_post` response mode), is added to `identity.yaml` by hand.
 
 ### Layout
 
@@ -63,7 +63,7 @@ Curation fills every missing response body (2xx and the error responses the endp
 
 Correctness is verified, not asserted: the existing .NET integration suites (about 740 tests) record every request/response exchange they make when `VANTIGO_CONTRACT_RECORD` names a directory, and a Go test validates each recorded exchange against the curated YAML with kin-openapi (`openapi3filter` request and response validation). Exchanges against dropped operations are ignored. The recorded corpus is committed under `openapi/testdata/exchanges/` so the check runs in CI without .NET, and later sub-projects can replay it against the Go handlers.
 
-Definition of done for curation: every operation has a 2xx response (with a schema, or 204) and an `x-vantigo-access`; every recorded exchange validates; an operation with no recorded exchange is listed in a committed coverage report (`openapi/COVERAGE.md`) rather than silently trusted.
+Definition of done for curation: every operation has a success response — a 2xx with a schema, a 204, or, for a redirect endpoint (the OIDC flow), a 3xx declaring its `Location` header — and an `x-vantigo-access`; every recorded exchange validates; an operation with no recorded exchange is listed in a committed coverage report (`openapi/COVERAGE.md`) rather than silently trusted.
 
 ### Go
 
