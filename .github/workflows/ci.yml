@@ -66,6 +66,15 @@ jobs:
       - name: 🧰 Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: 🧬 Frontend API types are up to date
+        run: |
+          bun run gen:client:test
+          bun run gen:client
+          git diff --exit-code -- '**/api-schema.d.ts' || {
+            echo "::error::Frontend API types are stale. Run 'bun run gen:client' and commit the result."
+            exit 1
+          }
+
       - name: 🛡️ Audit frontend dependencies (informational)
         run: bun audit
         continue-on-error: true
