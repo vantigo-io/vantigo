@@ -2,6 +2,8 @@ package config
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -315,7 +317,7 @@ func TestLoad_IdentityDefaults(t *testing.T) {
 	if want := "https://vantigo.example.com/invitations/accept?token={token}"; cfg.InvitationAcceptURL != want {
 		t.Errorf("InvitationAcceptURL = %q, want the same-origin default %q", cfg.InvitationAcceptURL, want)
 	}
-	if want := "https://vantigo.example.com/password-reset?token={token}&email={email}"; cfg.PasswordResetURL != want {
+	if want := "https://vantigo.example.com/password-reset?email={email}&token={token}"; cfg.PasswordResetURL != want {
 		t.Errorf("PasswordResetURL = %q, want the same-origin default %q", cfg.PasswordResetURL, want)
 	}
 	wantMail := MailConfig{Driver: "smtp", Host: "smtp.example.com", Port: 587, From: "noreply@vantigo.example.com", TLS: "starttls"}
@@ -604,8 +606,13 @@ func TestLoad_OIDC_ClientAuthentication(t *testing.T) {
 		t.Errorf("error = %q", msg)
 	}
 
-	env := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "/var/run/secrets/token")
-	if cfg := mustLoad(t, env); cfg.OIDC.WorkloadTokenFile != "/var/run/secrets/token" || cfg.OIDC.ClientSecret != "" {
+	tokenFile := filepath.Join(t.TempDir(), "federated-token")
+	if err := os.WriteFile(tokenFile, []byte("federated-token-contents"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	env := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", tokenFile)
+	if cfg := mustLoad(t, env); cfg.OIDC.WorkloadTokenFile != tokenFile || cfg.OIDC.ClientSecret != "" {
 		t.Errorf("OIDC = %+v", cfg.OIDC)
 	}
 
@@ -614,14 +621,47 @@ func TestLoad_OIDC_ClientAuthentication(t *testing.T) {
 		t.Errorf("error = %q", msg)
 	}
 
-	googleWorkload := with(withGoogle(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "/var/run/secrets/token")
+	missing := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", filepath.Join(t.TempDir(), "does-not-exist"))
+	if msg := loadError(t, missing); !strings.Contains(msg, "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE: must be a readable file") {
+		t.Errorf("error = %q", msg)
+	}
+
+	googleWorkload := with(withGoogle(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", tokenFile)
 	if msg := loadError(t, googleWorkload); !strings.Contains(msg, "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE: is supported only for the entra provider") {
 		t.Errorf("error = %q", msg)
 	}
 
-	fallback := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "AZURE_FEDERATED_TOKEN_FILE", "/var/run/secrets/azure-token")
-	if cfg := mustLoad(t, fallback); cfg.OIDC.WorkloadTokenFile != "/var/run/secrets/azure-token" {
+	fallback := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "AZURE_FEDERATED_TOKEN_FILE", tokenFile)
+	if cfg := mustLoad(t, fallback); cfg.OIDC.WorkloadTokenFile != tokenFile {
 		t.Errorf("WorkloadTokenFile = %q, want the AZURE_FEDERATED_TOKEN_FILE fallback", cfg.OIDC.WorkloadTokenFile)
+	}
+}
+
+func TestLoad_OIDC_LeftoverSettingsWhileDisabled(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.OIDC != nil {
+		t.Errorf("OIDC = %+v, want nil", cfg.OIDC)
+	}
+
+	for _, field := range []string{
+		"OIDC_AUTHORITY", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET",
+		"OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "OIDC_ALLOWED_DOMAINS", "OIDC_DISPLAY_NAME",
+	} {
+		t.Run(field, func(t *testing.T) {
+			msg := loadError(t, with(validEnv(), field, "leftover-value"))
+			want := "OIDC_PROVIDER: is required because " + field + " is set"
+			if !strings.Contains(msg, want) {
+				t.Errorf("error = %q, want it to contain %q", msg, want)
+			}
+			if strings.Contains(msg, "leftover-value") {
+				t.Errorf("error echoes the value, not just the field name: %q", msg)
+			}
+		})
+	}
+
+	// AZURE_FEDERATED_TOKEN_FILE alone is a platform variable other software
+	// may set; it is not evidence of an abandoned OIDC configuration.
+	if cfg := mustLoad(t, with(validEnv(), "AZURE_FEDERATED_TOKEN_FILE", "/var/run/secrets/azure-token")); cfg.OIDC != nil {
+		t.Errorf("OIDC = %+v, want nil: AZURE_FEDERATED_TOKEN_FILE alone is not a leftover", cfg.OIDC)
 	}
 }
 
