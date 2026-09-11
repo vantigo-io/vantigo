@@ -209,7 +209,7 @@ func Load(env map[string]string) (*Config, error) {
 
 	c.InvitationLifetime = boundedDuration(&p, env, "INVITATION_LIFETIME", 168*time.Hour, 24*time.Hour, 720*time.Hour)
 	c.InvitationAcceptURL = templatedURL(&p, env, "INVITATION_ACCEPT_URL", c.AppOrigin+c.BasePath+"/invitations/accept?token={token}", "{token}")
-	c.PasswordResetURL = templatedURL(&p, env, "PASSWORD_RESET_URL", c.AppOrigin+c.BasePath+"/password-reset?token={token}&email={email}", "{token}", "{email}")
+	c.PasswordResetURL = templatedURL(&p, env, "PASSWORD_RESET_URL", c.AppOrigin+c.BasePath+"/password-reset?email={email}&token={token}", "{token}", "{email}")
 
 	c.Mail = mailConfig(&p, env, c)
 	c.OIDC = oidc(&p, env)
@@ -593,6 +593,9 @@ var (
 func oidc(p *problems, env map[string]string) *OIDCConfig {
 	provider := env["OIDC_PROVIDER"]
 	if provider == "" {
+		if leftover := leftoverOIDCSettings(env); len(leftover) > 0 {
+			p.add("OIDC_PROVIDER", "is required because %s is set", strings.Join(leftover, ", "))
+		}
 		return nil
 	}
 	if provider != "entra" && provider != "google" {
@@ -641,6 +644,8 @@ func oidc(p *problems, env map[string]string) *OIDCConfig {
 		p.add("OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "is supported only for the entra provider")
 	case !filepath.IsAbs(tokenFile):
 		p.add("OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "must be an absolute path")
+	case !readableFile(tokenFile):
+		p.add("OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "must be a readable file")
 	default:
 		o.WorkloadTokenFile = tokenFile
 	}
@@ -662,6 +667,45 @@ func oidc(p *problems, env map[string]string) *OIDCConfig {
 	}
 
 	return o
+}
+
+// leftoverOIDCFields are the settings that mean nothing while OIDC_PROVIDER
+// is empty, mirroring WorkforceOidcOptions.FromAuthenticationOptions's own
+// "contains provider settings but Enabled is false" rejection.
+// AZURE_FEDERATED_TOKEN_FILE is deliberately excluded: it is a platform
+// variable other software (workload identity federation) may set regardless
+// of whether OIDC is configured at all.
+var leftoverOIDCFields = []string{
+	"OIDC_AUTHORITY", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET",
+	"OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "OIDC_ALLOWED_DOMAINS", "OIDC_DISPLAY_NAME",
+}
+
+// leftoverOIDCSettings names (never their values) the settings left behind
+// when OIDC_PROVIDER is empty.
+func leftoverOIDCSettings(env map[string]string) []string {
+	var leftover []string
+	for _, field := range leftoverOIDCFields {
+		if env[field] != "" {
+			leftover = append(leftover, field)
+		}
+	}
+	return leftover
+}
+
+// readableFile reports whether path names a regular file this process can
+// open for reading, mirroring WorkforceOidcOptions's own existence and
+// readability check on the workload identity token file.
+func readableFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // allowedDomains splits a comma list of bare DNS names, trimming and
