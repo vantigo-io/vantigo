@@ -496,13 +496,24 @@ func accessOperations() []accessOperation {
 		{http.MethodPost, accessPath + "/delegations", map[string]any{"permissionKeys": []string{}, "stewardedRoleIds": []string{}}},
 		{http.MethodPut, accessPath + "/delegations/" + id, map[string]any{"permissionKeys": []string{}, "stewardedRoleIds": []string{}, "concurrencyStamp": stamp}},
 		{http.MethodPost, accessPath + "/delegations/" + id + "/revoke", map[string]any{"concurrencyStamp": stamp}},
+		{http.MethodGet, accessPath + "/groups", nil},
+		{http.MethodPost, accessPath + "/groups", map[string]any{"displayName": "x", "isActive": true}},
+		{http.MethodGet, accessPath + "/groups/" + id, nil},
+		{http.MethodPut, accessPath + "/groups/" + id, map[string]any{"displayName": "x", "concurrencyStamp": stamp}},
+		{http.MethodDelete, accessPath + "/groups/" + id, map[string]any{"concurrencyStamp": stamp}},
+		{http.MethodPost, accessPath + "/groups/" + id + "/members/" + id, map[string]any{"concurrencyStamp": stamp}},
+		{http.MethodPut, accessPath + "/groups/" + id + "/members/" + id, map[string]any{"concurrencyStamp": stamp}},
+		{http.MethodDelete, accessPath + "/groups/" + id + "/members/" + id, map[string]any{"concurrencyStamp": stamp}},
+		{http.MethodPost, accessPath + "/groups/" + id + "/role-mappings/" + id, map[string]any{"concurrencyStamp": stamp}},
+		{http.MethodPut, accessPath + "/groups/" + id + "/role-mappings/" + id, map[string]any{"concurrencyStamp": stamp}},
+		{http.MethodDelete, accessPath + "/groups/" + id + "/role-mappings/" + id, map[string]any{"concurrencyStamp": stamp}},
 	}
 }
 
 // ownerOnly reports whether op is OwnerManagement, which a delegate does
-// not pass: the audit trail and the delegations.
+// not pass: the audit trail, the delegations and the access groups.
 func (op accessOperation) ownerOnly() bool {
-	return strings.HasSuffix(op.path, "/audit") || strings.Contains(op.path, "/delegations")
+	return strings.HasSuffix(op.path, "/audit") || strings.Contains(op.path, "/delegations") || strings.Contains(op.path, "/groups")
 }
 
 // Ported from IdentityRbacIntegrationTests.NonOwnerAndAnonymousCannotUseManagementSurface,
@@ -532,6 +543,9 @@ func TestRbac_AnonymousCallersAndNonOwnersCannotManage(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.authorization_delegations`); n != 0 {
 		t.Errorf("%d delegations were created", n)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.access_groups`); n != 0 {
+		t.Errorf("%d access groups were created", n)
 	}
 	delegateID := h.createUser(t, owner, "standard-delegate@example.test", identity.RoleUser)
 	delegate(t, h, owner, delegateID, nil)

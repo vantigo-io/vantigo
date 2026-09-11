@@ -14,13 +14,8 @@ import (
 // fails the run. The list was generated from the contract's operationIds;
 // it goes away once every operation is implemented.
 var pendingOperations = []string{
-	"deleteIdentityAccessGroupsByGroupIdMembersByUserId",
-	"deleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId",
-	"deleteIdentityAccessGroupsById",
 	"deleteIdentityScimV2GroupsById",
 	"deleteIdentityScimV2UsersById",
-	"getIdentityAccessGroups",
-	"getIdentityAccessGroupsById",
 	"getIdentityOidcCallback",
 	"getIdentityOidcChallenge",
 	"getIdentityOidcComplete",
@@ -33,15 +28,9 @@ var pendingOperations = []string{
 	"getIdentityScimV2UsersById",
 	"patchIdentityScimV2GroupsById",
 	"patchIdentityScimV2UsersById",
-	"postIdentityAccessGroups",
-	"postIdentityAccessGroupsByGroupIdMembersByUserId",
-	"postIdentityAccessGroupsByGroupIdRoleMappingsByRoleId",
 	"postIdentityOidcCallback",
 	"postIdentityScimV2Groups",
 	"postIdentityScimV2Users",
-	"putIdentityAccessGroupsByGroupIdMembersByUserId",
-	"putIdentityAccessGroupsByGroupIdRoleMappingsByRoleId",
-	"putIdentityAccessGroupsById",
 	"putIdentityScimV2UsersById",
 }
 
