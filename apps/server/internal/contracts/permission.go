@@ -29,10 +29,11 @@ type Permission struct {
 // a route.
 var permissionKey = regexp.MustCompile(`^[a-z]+:[a-z-]+$`)
 
-// ValidatePermission checks the key grammar, a non-empty display,
-// description and category, and that the key's module prefix (before ":")
-// equals module, as .NET's PermissionCatalog.Create validated each
-// descriptor (packages/contracts/Vantigo.Contracts/Authorization/PermissionCatalog.cs:79-93).
+// ValidatePermission checks the key grammar, a display, description and
+// category that are not blank (empty or whitespace only), and that the
+// key's module prefix (before ":") equals module, as .NET's
+// PermissionCatalog.Create validated each descriptor with IsNullOrWhiteSpace
+// (packages/contracts/Vantigo.Contracts/Authorization/PermissionCatalog.cs:79-93).
 func ValidatePermission(module string, p Permission) error {
 	if !permissionKey.MatchString(p.Key) {
 		return fmt.Errorf("contracts: permission key %q is not of the form module:verb", p.Key)
@@ -41,14 +42,14 @@ func ValidatePermission(module string, p Permission) error {
 	if prefix != module {
 		return fmt.Errorf("contracts: permission key %q does not start with module %q", p.Key, module)
 	}
-	if p.Display == "" {
-		return fmt.Errorf("contracts: permission %q needs a non-empty display", p.Key)
+	if strings.TrimSpace(p.Display) == "" {
+		return fmt.Errorf("contracts: permission %q needs a non-blank display", p.Key)
 	}
-	if p.Description == "" {
-		return fmt.Errorf("contracts: permission %q needs a non-empty description", p.Key)
+	if strings.TrimSpace(p.Description) == "" {
+		return fmt.Errorf("contracts: permission %q needs a non-blank description", p.Key)
 	}
-	if p.Category == "" {
-		return fmt.Errorf("contracts: permission %q needs a non-empty category", p.Key)
+	if strings.TrimSpace(p.Category) == "" {
+		return fmt.Errorf("contracts: permission %q needs a non-blank category", p.Key)
 	}
 	return nil
 }

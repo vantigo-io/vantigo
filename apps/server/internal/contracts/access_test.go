@@ -96,6 +96,11 @@ func TestValidatePermission(t *testing.T) {
 		{"empty display", "identity", contracts.Permission{Key: "identity:manage-access", Display: "", Description: "d"}},
 		{"empty description", "identity", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: "", Category: "c"}},
 		{"empty category", "identity", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: "d"}},
+		// .NET refused a whitespace-only value too (IsNullOrWhiteSpace,
+		// PermissionCatalog.cs:82-88); each case blanks one field alone.
+		{"whitespace display", "identity", contracts.Permission{Key: "identity:manage-access", Display: " \t", Description: "d", Category: "c"}},
+		{"whitespace description", "identity", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: "  ", Category: "c"}},
+		{"whitespace category", "identity", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: "d", Category: "\n"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

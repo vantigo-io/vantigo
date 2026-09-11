@@ -747,7 +747,7 @@ type catalogEntry struct {
 // composed after identity, come first.
 func TestAccessCatalog_ListsEveryModulesPermissionsInKeyOrder(t *testing.T) {
 	t.Parallel()
-	manage := catalogEntry{"identity:manage", "Manage identity", "Full identity administration.", "identity", "Administration", true, false}
+	manage := catalogEntry{"identity:manage", "Manage identity", "Manage accounts, roles, and access.", "identity", "Administration", true, false}
 	for _, c := range []struct {
 		name string
 		opts []harnessOption
@@ -1256,5 +1256,62 @@ func TestRoles_ACreateRacingAnotherOfTheSameNameIsARoleConflict(t *testing.T) {
 	wantFlat(t, "the create", out[0], http.StatusConflict, "role_conflict", "The role conflicts with a concurrent authorization change.")
 	if n := h.count(t, `SELECT count(*) FROM identity.roles WHERE normalized_name = 'RACED'`); n != 1 {
 		t.Errorf("%d roles named raced", n)
+	}
+}
+
+// assignmentInFlight starts a transaction that is midway through assigning
+// roleID to userID, as PutIdentityAccessUsersByIdRoles is: it holds a key
+// share on the role (AssignUserRoleLocks) and has inserted the assignment.
+// It rolls back at cleanup unless the test commits it first.
+func assignmentInFlight(t *testing.T, h *harness, userID, roleID uuid.UUID) pgx.Tx {
+	t.Helper()
+	ctx := context.Background()
+	gate, err := h.pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `SELECT 1 FROM identity.roles WHERE id = $1 FOR KEY SHARE`, roleID); err != nil {
+		t.Fatalf("gate: key share on the role: %v", err)
+	}
+	if _, err := gate.Exec(ctx, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, userID, roleID); err != nil {
+		t.Fatalf("gate: assign: %v", err)
+	}
+	return gate
+}
+
+// TestRoles_AnAssignmentInFlightBlocksADeleteButNotAnEdit pins the two row
+// lock modes a role mutation takes against an assignment's FOR KEY SHARE.
+// An edit holds the role FOR NO KEY UPDATE, so it goes through while an
+// assignment of the role is in flight. A deletion holds it FOR UPDATE, so
+// it waits for that assignment, then sees the role assigned (409
+// role_assigned) rather than deleting it and cascading the new assignment
+// away.
+func TestRoles_AnAssignmentInFlightBlocksADeleteButNotAnEdit(t *testing.T) {
+	t.Parallel()
+	h, owner, _ := rbacHarness(t)
+	_, userID := userClient(t, h, owner, "in-flight@example.test")
+	role := createRole(t, owner, "In flight")
+
+	gate := assignmentInFlight(t, h, userID, role.ID)
+	edited := make(chan *resp, 1)
+	go func() { edited <- updateRole(owner, role.ID, role.Name, role.Version, "customers:view") }()
+	select {
+	case r := <-edited:
+		if r.status != http.StatusOK {
+			t.Fatalf("the edit beside an assignment in flight: status %d body %s", r.status, r.body)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("the edit waited on the assignment's key share; backends: %s", backends(t, h))
+	}
+	if err := gate.Rollback(context.Background()); err != nil {
+		t.Fatalf("gate: rollback: %v", err)
+	}
+
+	gate = assignmentInFlight(t, h, userID, role.ID)
+	out := raceBehind(t, h, gate, func() *resp { return deleteRole(owner, role.ID, h.version(t, "roles", role.ID)) })
+	wantFlat(t, "the deletion behind the assignment", out[0], http.StatusConflict, "role_assigned", "Assigned roles cannot be deleted.")
+	if got := h.roleNames(t, userID); !slices.Equal(got, []string{"In flight", identity.RoleUser}) {
+		t.Errorf("the user holds %v, want the role the assignment gave", got)
 	}
 }

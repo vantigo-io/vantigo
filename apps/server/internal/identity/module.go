@@ -110,7 +110,7 @@ func Module(a *Access) module.Module {
 		Permissions: []contracts.Permission{{
 			Key:         "identity:manage",
 			Display:     "Manage identity",
-			Description: "Full identity administration.",
+			Description: "Manage accounts, roles, and access.",
 			Category:    "Administration",
 			Sensitive:   true,
 			Delegable:   false,
