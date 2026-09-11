@@ -49,3 +49,12 @@ func TestLoginAttemptThrottleKeepsDotNetsLimit(t *testing.T) {
 		t.Errorf("limits = %+v, want Login on postIdentityLogin and Bootstrap on postIdentityBootstrap", limits)
 	}
 }
+
+// TestAccountPasswordLimitKeepsDotNetsPolicy pins the brief's
+// postIdentityAccountPassword→PasswordRecovery entry
+// (EA/AccountSettingsEndpoints.cs:47-48).
+func TestAccountPasswordLimitKeepsDotNetsPolicy(t *testing.T) {
+	if limits["postIdentityAccountPassword"] != policyPasswordRecovery {
+		t.Errorf("limits[postIdentityAccountPassword] = %+v, want policyPasswordRecovery", limits["postIdentityAccountPassword"])
+	}
+}

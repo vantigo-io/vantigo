@@ -29,10 +29,6 @@ func (*server) DeleteIdentityAccessRolesById(context.Context, gen.DeleteIdentity
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) DeleteIdentityAccountAvatar(context.Context, gen.DeleteIdentityAccountAvatarRequestObject) (gen.DeleteIdentityAccountAvatarResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) DeleteIdentityAccountPasskeysByCredentialId(context.Context, gen.DeleteIdentityAccountPasskeysByCredentialIdRequestObject) (gen.DeleteIdentityAccountPasskeysByCredentialIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -82,14 +78,6 @@ func (*server) GetIdentityAccessUsers(context.Context, gen.GetIdentityAccessUser
 }
 
 func (*server) GetIdentityAccessUsersById(context.Context, gen.GetIdentityAccessUsersByIdRequestObject) (gen.GetIdentityAccessUsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccount(context.Context, gen.GetIdentityAccountRequestObject) (gen.GetIdentityAccountResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccountAvatar(context.Context, gen.GetIdentityAccountAvatarRequestObject) (gen.GetIdentityAccountAvatarResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -177,10 +165,6 @@ func (*server) GetIdentitySystemStatus(context.Context, gen.GetIdentitySystemSta
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PatchIdentityAccountProfile(context.Context, gen.PatchIdentityAccountProfileRequestObject) (gen.PatchIdentityAccountProfileResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PatchIdentityScimV2GroupsById(context.Context, gen.PatchIdentityScimV2GroupsByIdRequestObject) (gen.PatchIdentityScimV2GroupsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -213,10 +197,6 @@ func (*server) PostIdentityAccessRoles(context.Context, gen.PostIdentityAccessRo
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityAccountAvatar(context.Context, gen.PostIdentityAccountAvatarRequestObject) (gen.PostIdentityAccountAvatarResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityAccountMfaDisable(context.Context, gen.PostIdentityAccountMfaDisableRequestObject) (gen.PostIdentityAccountMfaDisableResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -238,10 +218,6 @@ func (*server) PostIdentityAccountPasskeysBegin(context.Context, gen.PostIdentit
 }
 
 func (*server) PostIdentityAccountPasskeysComplete(context.Context, gen.PostIdentityAccountPasskeysCompleteRequestObject) (gen.PostIdentityAccountPasskeysCompleteResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccountPassword(context.Context, gen.PostIdentityAccountPasswordRequestObject) (gen.PostIdentityAccountPasswordResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -358,18 +334,6 @@ func (*server) PutIdentityAccessRolesByIdPermissions(context.Context, gen.PutIde
 }
 
 func (*server) PutIdentityAccessUsersByIdRoles(context.Context, gen.PutIdentityAccessUsersByIdRolesRequestObject) (gen.PutIdentityAccessUsersByIdRolesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccount(context.Context, gen.PutIdentityAccountRequestObject) (gen.PutIdentityAccountResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccountAvatar(context.Context, gen.PutIdentityAccountAvatarRequestObject) (gen.PutIdentityAccountAvatarResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccountProfile(context.Context, gen.PutIdentityAccountProfileRequestObject) (gen.PutIdentityAccountProfileResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
