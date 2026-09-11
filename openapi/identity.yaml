@@ -12,7 +12,6 @@ components:
                     type: boolean
             required:
                 - displayName
-                - isActive
             type: object
         AccessGroupResponse:
             properties:
@@ -58,6 +57,88 @@ components:
                 - concurrencyStamp
                 - memberUserIds
                 - roleIds
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AccessMeResponse:
+            properties:
+                administrationScope:
+                    allOf:
+                        - $ref: '#/components/schemas/AdministrationScopeResponse'
+                    nullable: true
+                canManageAuthorization:
+                    type: boolean
+                permissions:
+                    items:
+                        type: string
+                    type: array
+                roleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                roles:
+                    items:
+                        nullable: true
+                        type: string
+                    type: array
+                userId:
+                    format: uuid
+                    type: string
+                version:
+                    nullable: true
+                    type: string
+            required:
+                - userId
+                - roles
+                - roleIds
+                - permissions
+                - version
+                - canManageAuthorization
+                - administrationScope
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AccessRoleSummary:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AccessUserResponse:
+            properties:
+                active:
+                    type: boolean
+                displayName:
+                    type: string
+                email:
+                    nullable: true
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                isDisabled:
+                    type: boolean
+                roles:
+                    items:
+                        $ref: '#/components/schemas/AccessRoleSummary'
+                    type: array
+                version:
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - displayName
+                - email
+                - isDisabled
+                - active
+                - version
+                - roles
             type: object
             x-vantigo-source: Vantigo.Identity
         AccountPasswordRequest:
@@ -107,12 +188,44 @@ components:
                 - avatarUrl
             type: object
             x-vantigo-source: Vantigo.Identity
+        AdministrationScopeResponse:
+            properties:
+                delegationScopes:
+                    items:
+                        $ref: '#/components/schemas/DelegationScopeResponse'
+                    type: array
+                isOwner:
+                    type: boolean
+            required:
+                - isOwner
+                - delegationScopes
+            type: object
+            x-vantigo-source: Vantigo.Identity
         AntiforgeryResponse:
             properties:
                 token:
                     type: string
             required:
                 - token
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AssignRolesResponse:
+            properties:
+                roleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                userId:
+                    format: uuid
+                    type: string
+                version:
+                    nullable: true
+                    type: string
+            required:
+                - userId
+                - roleIds
+                - version
             type: object
             x-vantigo-source: Vantigo.Identity
         AuthSessionResponse:
@@ -192,6 +305,52 @@ components:
                 - displayName
                 - email
                 - roles
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        AuthorizationAuditEvent:
+            properties:
+                action:
+                    type: string
+                actorUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                afterJson:
+                    type: string
+                beforeJson:
+                    type: string
+                correlationId:
+                    type: string
+                details:
+                    type: string
+                id:
+                    format: int64
+                    type: integer
+                mfaAuthenticated:
+                    type: boolean
+                occurredAt:
+                    format: date-time
+                    type: string
+                targetRoleId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                targetUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - actorUserId
+                - targetUserId
+                - targetRoleId
+                - action
+                - details
+                - beforeJson
+                - afterJson
+                - correlationId
+                - mfaAuthenticated
+                - occurredAt
             type: object
             x-vantigo-source: Vantigo.Identity
         AvatarResponse:
@@ -285,12 +444,137 @@ components:
                     nullable: true
                     type: array
             required:
-                - granteeUserId
-                - expiresAt
                 - permissionKeys
                 - stewardedRoleIds
-                - canCreateRoles
             type: object
+        DelegationResponse:
+            properties:
+                canCreateRoles:
+                    type: boolean
+                expiresAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                granteeUserId:
+                    format: uuid
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                permissionKeys:
+                    items:
+                        type: string
+                    type: array
+                revokedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                stewardedRoleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                version:
+                    type: string
+            required:
+                - id
+                - granteeUserId
+                - expiresAt
+                - revokedAt
+                - version
+                - canCreateRoles
+                - permissionKeys
+                - stewardedRoleIds
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        DelegationRevokeResponse:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                revokedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                version:
+                    type: string
+            required:
+                - id
+                - version
+                - revokedAt
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        DelegationSaveResponse:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                version:
+                    type: string
+            required:
+                - id
+                - version
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        DelegationScopeResponse:
+            properties:
+                assignableRoleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                canCreateRoles:
+                    type: boolean
+                grantablePermissionKeys:
+                    items:
+                        type: string
+                    type: array
+                id:
+                    format: uuid
+                    type: string
+                stewardedRoleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+            required:
+                - id
+                - canCreateRoles
+                - grantablePermissionKeys
+                - stewardedRoleIds
+                - assignableRoleIds
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        EffectiveAccessResponse:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                permissions:
+                    items:
+                        type: string
+                    type: array
+                roleIds:
+                    items:
+                        format: uuid
+                        type: string
+                    type: array
+                roles:
+                    items:
+                        nullable: true
+                        type: string
+                    type: array
+                version:
+                    nullable: true
+                    type: string
+            required:
+                - id
+                - roles
+                - roleIds
+                - permissions
+                - version
+            type: object
+            x-vantigo-source: Vantigo.Identity
         IdentitySystemStatusResponse:
             properties:
                 active:
@@ -378,7 +662,6 @@ components:
                     type: string
             required:
                 - email
-                - displayName
                 - role
             type: object
         InvitationResponse:
@@ -573,7 +856,6 @@ components:
                 - displayName
                 - email
                 - role
-                - password
             type: object
         OwnerUserPasswordRequest:
             properties:
@@ -623,6 +905,8 @@ components:
                 - lockedOut
                 - lockoutEnd
                 - twoFactorEnabled
+                - avatarUrl
+                - ssoEnabled
             type: object
             x-vantigo-source: Vantigo.Identity
         OwnerUserUpdateRequest:
@@ -770,6 +1054,32 @@ components:
                 - success
             type: object
             x-vantigo-source: Vantigo.Identity
+        PermissionDescriptor:
+            properties:
+                category:
+                    type: string
+                delegable:
+                    type: boolean
+                description:
+                    type: string
+                displayName:
+                    type: string
+                key:
+                    type: string
+                module:
+                    type: string
+                sensitive:
+                    type: boolean
+            required:
+                - key
+                - displayName
+                - description
+                - module
+                - category
+                - sensitive
+                - delegable
+            type: object
+            x-vantigo-source: Vantigo.Contracts
         PermissionReplacementRequest:
             properties:
                 concurrencyStamp:
@@ -811,9 +1121,29 @@ components:
                     nullable: true
                     type: array
             required:
-                - roleIds
                 - concurrencyStamp
             type: object
+        RoleCreateResponse:
+            properties:
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    nullable: true
+                    type: string
+                permissions:
+                    items:
+                        type: string
+                    type: array
+                version:
+                    type: string
+            required:
+                - id
+                - name
+                - version
+                - permissions
+            type: object
+            x-vantigo-source: Vantigo.Identity
         RoleMutationRequest:
             properties:
                 concurrencyStamp:
@@ -822,6 +1152,75 @@ components:
             required:
                 - concurrencyStamp
             type: object
+        RoleResponse:
+            properties:
+                description:
+                    type: string
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                isBuiltIn:
+                    type: boolean
+                isSystem:
+                    type: boolean
+                name:
+                    nullable: true
+                    type: string
+                normalizedName:
+                    nullable: true
+                    type: string
+                permissions:
+                    items:
+                        type: string
+                    type: array
+                stewardUserId:
+                    format: uuid
+                    nullable: true
+                    type: string
+                version:
+                    type: string
+            required:
+                - id
+                - name
+                - normalizedName
+                - displayName
+                - description
+                - isSystem
+                - isBuiltIn
+                - stewardUserId
+                - version
+                - permissions
+            type: object
+            x-vantigo-source: Vantigo.Identity
+        RoleUpdateResponse:
+            properties:
+                description:
+                    type: string
+                displayName:
+                    type: string
+                id:
+                    format: uuid
+                    type: string
+                name:
+                    nullable: true
+                    type: string
+                permissions:
+                    items:
+                        type: string
+                    type: array
+                version:
+                    type: string
+            required:
+                - id
+                - name
+                - displayName
+                - description
+                - version
+                - permissions
+            type: object
+            x-vantigo-source: Vantigo.Identity
         RoleUpsertRequest:
             properties:
                 concurrencyStamp:
@@ -952,7 +1351,25 @@ paths:
             operationId: getIdentityAccessAudit
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/AuthorizationAuditEvent'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -961,7 +1378,25 @@ paths:
             operationId: getIdentityAccessCatalog
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/PermissionDescriptor'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -970,7 +1405,25 @@ paths:
             operationId: getIdentityAccessDelegations
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/DelegationResponse'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -984,8 +1437,38 @@ paths:
                                 - $ref: '#/components/schemas/DelegationRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DelegationSaveResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -1008,7 +1491,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DelegationSaveResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -1031,7 +1544,31 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DelegationRevokeResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:OwnerManagement
@@ -1040,7 +1577,25 @@ paths:
             operationId: getIdentityAccessGroups
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/AccessGroupResponse'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1054,8 +1609,36 @@ paths:
                                 - $ref: '#/components/schemas/AccessGroupRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1084,7 +1667,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1112,7 +1725,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1140,7 +1783,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1169,7 +1842,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1197,7 +1900,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1225,7 +1958,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1247,8 +2010,34 @@ paths:
                                 - $ref: '#/components/schemas/MutationRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1263,7 +2052,25 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1285,7 +2092,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessGroupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Identity control plane
             x-vantigo-access: policy:OwnerManagement
@@ -1294,7 +2131,19 @@ paths:
             operationId: getIdentityAccessMe
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AccessMeResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "404":
+                    description: Not Found
             tags:
                 - AuthorizationManagementEndpoints
             x-vantigo-access: session
@@ -1303,7 +2152,25 @@ paths:
             operationId: getIdentityAccessRoles
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/RoleResponse'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -1317,8 +2184,36 @@ paths:
                                 - $ref: '#/components/schemas/RoleUpsertRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RoleCreateResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -1340,8 +2235,28 @@ paths:
                                 - $ref: '#/components/schemas/RoleMutationRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -1363,7 +2278,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RoleUpdateResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -1386,7 +2331,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RoleUpdateResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -1395,7 +2370,25 @@ paths:
             operationId: getIdentityAccessUsers
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/AccessUserResponse'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -1411,7 +2404,25 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/EffectiveAccessResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -1434,7 +2445,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AssignRolesResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CodeMessageError'
+                    description: Conflict
             tags:
                 - Authorization
             x-vantigo-access: policy:AuthorizationManagement
@@ -2612,7 +3653,25 @@ paths:
             operationId: getIdentityOwnerInvitations
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/InvitationResponse'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2626,8 +3685,36 @@ paths:
                                 - $ref: '#/components/schemas/InvitationRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvitationResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2643,7 +3730,31 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvitationResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2659,7 +3770,31 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InvitationResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2668,7 +3803,33 @@ paths:
             operationId: getIdentityOwnerMfa
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaStatusResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -2684,7 +3845,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaStatusResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -2700,7 +3899,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaEnableResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -2716,7 +3953,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaRecoveryCodesResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -2732,7 +4007,47 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaResetResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2741,7 +4056,33 @@ paths:
             operationId: getIdentityOwnerMfaSetup
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaSetupResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -2756,7 +4097,45 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MfaSetupResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
             tags:
                 - AuthAccountEndpoints
             x-vantigo-access: policy:ActiveAccount
@@ -2765,7 +4144,23 @@ paths:
             operationId: getIdentityOwnerSystemStatus
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/IdentitySystemStatusResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             summary: Get non-sensitive static identity and account status
             tags:
                 - Authentication
@@ -2775,7 +4170,25 @@ paths:
             operationId: getIdentityOwnerUsers
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/OwnerUserResponse'
+                                type: array
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2789,8 +4202,36 @@ paths:
                                 - $ref: '#/components/schemas/OwnerUserCreateRequest'
                             nullable: true
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OwnerUserResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2805,8 +4246,34 @@ paths:
                     format: uuid
                     type: string
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2828,7 +4295,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OwnerUserResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2844,7 +4341,30 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        image/jpeg:
+                            schema:
+                                format: binary
+                                type: string
+                        image/png:
+                            schema:
+                                format: binary
+                                type: string
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2860,7 +4380,37 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OwnerUserResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2876,7 +4426,37 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OwnerUserResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2899,7 +4479,37 @@ paths:
                             nullable: true
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasswordResetResponse'
                     description: OK
+                "400":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
@@ -2915,7 +4525,31 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PasswordRecoveryResponse'
                     description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+                "409":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Conflict
             tags:
                 - Owner account management
             x-vantigo-access: policy:Owner+OwnerManagement
