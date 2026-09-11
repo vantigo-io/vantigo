@@ -65,9 +65,17 @@ var (
 	passkeyLimitReached     = refuse(http.StatusConflict, "passkey_limit_reached", passkeyLimitMessage, nil)
 	passkeyCeremoniesActive = refuse(http.StatusTooManyRequests, "rate_limited", passkeyCeremoniesMessage, nil)
 	passkeyCeremonyInvalid  = refuse(http.StatusConflict, "passkey_ceremony_invalid", passkeyCeremonyInvalidMessage, nil)
-	invalidPasskey          = refuse(http.StatusBadRequest, "invalid_passkey", passkeyResponseInvalidMessage, nil)
-	passkeyNotUserVerified  = refuse(http.StatusBadRequest, "invalid_passkey", passkeyNotUserVerifiedMessage, nil)
-	passkeySignInFailed     = refuse(http.StatusUnauthorized, "invalid_credentials", passkeySignInFailedMessage, nil)
+	// invalidPasskey refuses an attestation that does not verify, with a
+	// deliberately different message from .NET's. ASP.NET's
+	// PerformAttestationAsync returns a failed result instead of throwing
+	// (Microsoft.AspNetCore.Identity 10.0.12), so the catch at
+	// EA/AccountSettingsEndpoints.cs:424 never ran, and :429-431 answered
+	// every failure "A user-verified passkey is required.". Go keeps the
+	// code and the status, but gives that message (passkeyNotUserVerified)
+	// only when the user was not verified, and this one otherwise.
+	invalidPasskey         = refuse(http.StatusBadRequest, "invalid_passkey", passkeyResponseInvalidMessage, nil)
+	passkeyNotUserVerified = refuse(http.StatusBadRequest, "invalid_passkey", passkeyNotUserVerifiedMessage, nil)
+	passkeySignInFailed    = refuse(http.StatusUnauthorized, "invalid_credentials", passkeySignInFailedMessage, nil)
 	// passkeysUnconfigured answers every ceremony when APP_URL's host
 	// cannot be a relying party ID (newRelyingParty), as .NET answered
 	// options it could not generate (:524-527).
@@ -251,10 +259,11 @@ func (s *server) PostIdentityAccountPasskeysBegin(ctx context.Context, req gen.P
 //  4. The attestation must verify against the ceremony's challenge, the
 //     RP ID and APP_URL's origin: else 400 invalid_passkey. One whose
 //     authenticator did not verify the user is 400 invalid_passkey too,
-//     with its own message.
+//     with its own message (see invalidPasskey for how the messages differ
+//     from .NET's).
 //  5. Ten passkeys meanwhile: 409 passkey_limit_reached. A credential id
 //     already registered, to anyone: 400 invalid_passkey (ASP.NET's
-//     CredentialAlreadyRegistered).
+//     CredentialAlreadyRegistered, a failed attestation result, :429-431).
 //  6. The passkey is stored under the ceremony's name, as go-webauthn's
 //     Credential with its flags and transports.
 //
@@ -503,10 +512,12 @@ var errPasskeyUserMismatch = errors.New("identity: the passkey belongs to anothe
 //     by the directory; an assertion that does not parse or verify (its
 //     challenge, APP_URL's origin, the RP ID hash, user presence and
 //     verification, the signature); a user handle or credential that is not
-//     the account's; and a signature counter that did not advance, which
+//     the account's; a signature counter that did not advance, which
 //     ASP.NET rejected (PasskeyHandler.PerformAssertionCoreAsync throws
-//     SignCountLessThanOrEqualToStoredSignCount, a PasskeyException, :583-586)
-//     and go-webauthn reports as a clone warning.
+//     SignCountLessThanOrEqualToStoredSignCount, which PerformAssertionAsync
+//     returns as a failed result, answered at :588-591) and go-webauthn
+//     reports as a clone warning; and a passkey removed while the sign-in
+//     ran.
 //  4. Success stores the passkey's new counter and flags and starts a
 //     non-persistent session that counts as MFA-verified. The failure count
 //     is left as it is: .NET signed in with SignInWithClaimsAsync, which
@@ -609,15 +620,22 @@ func (s *server) verifyPasskeyLogin(ctx context.Context, tx pgx.Tx, r *http.Requ
 	if err != nil {
 		return loginOK{}, fmt.Errorf("identity: passkey sign-in: %w", err)
 	}
-	if err := q.RecordPasskeyUse(ctx, store.RecordPasskeyUseParams{
+	used, err := q.RecordPasskeyUse(ctx, store.RecordPasskeyUseParams{
 		Credential:   stored,
 		UserVerified: credential.Flags.UserVerified,
 		BackedUp:     credential.Flags.BackupState,
 		Now:          now,
 		CredentialID: credential.ID,
 		UserID:       u.ID,
-	}); err != nil {
+	})
+	if err != nil {
 		return loginOK{}, fmt.Errorf("identity: passkey sign-in: %w", err)
+	}
+	if used == 0 {
+		// Removed since ListUserPasskeys read it: DeletePasskey takes no
+		// account lock, so a removal can commit in between, and a removed
+		// passkey signs no one in.
+		return loginOK{}, passkeySignInFailed
 	}
 	token, err := s.access.createSession(ctx, tx, u.ID, false, true, r)
 	if err != nil {
