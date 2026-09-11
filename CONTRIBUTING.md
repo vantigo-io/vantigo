@@ -302,6 +302,41 @@ cd apps/server && go run ./internal/openapi/cmd/contract corpus -in /tmp/vantigo
 
 `openapi/COVERAGE.md` lists the operations no recorded exchange exercises.
 
+### Identity
+
+The identity module (`internal/identity`) serves `/api/v1/identity/*` from `openapi/identity.yaml`:
+sign-in and sessions, users and invitations, MFA and passkeys, RBAC, OIDC and SCIM,
+single-tenant, on the platform every later module mounts on.
+
+Development needs nothing beyond `APP_SECRET` (32+ bytes; `mise run server:dev` sets one).
+`BOOTSTRAP_SECRET` is optional there: leave it unset and the process generates one and logs
+it at WARN on startup — copy it from the log instead of choosing your own.
+
+To bootstrap the installation's first Owner, either open `/setup` in the SPA once it points
+at the Go server, or call the endpoint directly with the logged secret:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/identity/bootstrap \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"<the logged bootstrap secret>","email":"owner@example.test","password":"a strong password"}'
+```
+
+`GET /api/v1/identity/bootstrap-status` reports whether bootstrap is still available
+(`{"available":true}`) before you call it.
+
+`sqlc` (the identity schema's query generator) comes from mise, not a separate install; it
+runs as part of the usual generate step:
+
+```bash
+cd apps/server && mise exec -- go generate ./...
+```
+
+Identity's tests run every HTTP exchange through a contract-validating client: a response
+that does not match `identity.yaml` fails the test that produced it. `go test
+./internal/identity/` also gates on operation coverage — every operation in the contract
+must have been exercised by at least one successful exchange, with no allow-list, so a newly
+added operation without a passing test fails the whole package.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to

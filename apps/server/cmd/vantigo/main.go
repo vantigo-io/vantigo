@@ -33,6 +33,11 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/health"
+	"github.com/vantigo-io/vantigo/server/internal/identity"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
+	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
+	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/server"
 	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"github.com/vantigo-io/vantigo/server/internal/web"
@@ -133,7 +138,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintln(stderr, "the seed command is only available with APP_ENV=development")
 			return 2
 		}
-		logger.Info("nothing to seed yet: no modules are installed")
+		logger.Info("nothing to seed: identity has no development seed")
 		return 0
 	case modeAPI:
 		if code := migrate(logger, cfg); code != 0 {
@@ -221,12 +226,49 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			logger.Error("startup failed", "error", err)
 			return 1
 		}
+
+		sender, err := mail.New(cfg, logger)
+		if err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+		box, err := secrets.New(cfg.AppSecret)
+		if err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+		deps := module.Deps{
+			Config:  cfg,
+			Pool:    pool,
+			Logger:  logger,
+			Clock:   time.Now,
+			Mail:    sender,
+			Secrets: box,
+			Limiter: ratelimit.New(pool),
+		}
+		access := identity.NewAccess(deps)
+		deps.Access = access
+		api, err := module.Compose(deps, identity.Module(access))
+		if err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+		// identity.RunStartup runs on every host start (api after migrating,
+		// server on each replica), so it gets the same "finish, don't abort"
+		// treatment as opening the pool above: context.WithoutCancel(ctx), so a
+		// SIGTERM during boot cannot leave the bootstrap grant half-applied.
+		if err := identity.RunStartup(context.WithoutCancel(ctx), deps); err != nil {
+			logger.Error("startup failed", "error", err)
+			return 1
+		}
+
 		handler = telemetry.HTTPHandler(server.New(server.Options{
 			Config: cfg,
 			Logger: logger,
 			Index:  index,
 			Assets: assets,
 			Health: healthHandler,
+			API:    api,
 		}), cfg.BasePath)
 	}
 

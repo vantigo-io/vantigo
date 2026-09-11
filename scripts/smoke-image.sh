@@ -129,6 +129,18 @@ pass "cross-site POST rejected"
 [ "$(status -H 'Host: evil.example' "$base/")" = 400 ] || fail "a foreign Host header was not rejected"
 pass "foreign Host rejected"
 
+[ "$(status "$base/api/v1/identity/system/status")" = 200 ] || fail "identity system/status is not 200"
+curl -fsS "$base/api/v1/identity/system/status" | grep -q '"maintenance":false' || fail "identity system/status has no maintenance:false"
+pass "identity system/status"
+
+[ "$(status "$base/api/v1/identity/session")" = 401 ] || fail "identity session is not 401 without a cookie"
+curl -s "$base/api/v1/identity/session" | grep -q unauthenticated || fail "identity session 401 body has no unauthenticated"
+pass "identity session demands authentication"
+
+[ "$(status "$base/api/v1/identity/bootstrap-status")" = 200 ] || fail "identity bootstrap-status is not 200"
+curl -fsS "$base/api/v1/identity/bootstrap-status" | grep -q '"available":true' || fail "identity bootstrap-status has no available:true"
+pass "identity bootstrap-status is available"
+
 docker exec "$APP" /app/vantigo healthcheck || fail "the healthcheck command failed inside the container"
 health=""
 for _ in $(seq 1 30); do
