@@ -278,6 +278,28 @@ Rules the code relies on:
 - The image is COPY-only: `scripts/build-artifacts.sh` compiles natively and
   embeds the SPA; the Dockerfile never compiles anything.
 
+### The API contract
+
+`openapi/*.yaml` is the single source of truth for the API: one OpenAPI 3.0 file per module plus `common.yaml` for shared components. Every operation needs an `operationId` and an `x-vantigo-access` rule (`anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` or `permission:<module>:<verb>[+<module>:<verb>…]`, every listed name required).
+
+To change the API, edit the YAML, then regenerate and test:
+
+```bash
+cd apps/server && go generate ./... && go test ./internal/openapi/... && cd ../..
+bun run gen:client
+```
+
+`go generate` refreshes the embedded copies and the oapi-codegen server interfaces; `gen:client` refreshes each frontend package's `api-schema.d.ts`. CI fails when either is stale.
+
+`internal/openapi` validates every exchange in `openapi/testdata/exchanges/`, recorded from the .NET integration suites, against the contract. While the .NET host still exists, re-record after changing a .NET endpoint:
+
+```bash
+VANTIGO_CONTRACT_RECORD=/tmp/vantigo-exchanges dotnet test Vantigo.slnx
+cd apps/server && go run ./internal/openapi/cmd/contract corpus -in /tmp/vantigo-exchanges -out ../../openapi/testdata/exchanges
+```
+
+`openapi/COVERAGE.md` lists the operations no recorded exchange exercises.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to
