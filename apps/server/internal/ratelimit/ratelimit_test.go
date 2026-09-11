@@ -25,11 +25,11 @@ func newLimiter(t *testing.T) (*Limiter, *time.Time) {
 	return l, &now
 }
 
-func mustAllow(t *testing.T, l *Limiter, p Policy, client string) Decision {
+func mustHit(t *testing.T, l *Limiter, p Policy, client string) Decision {
 	t.Helper()
-	d, err := l.Allow(context.Background(), p, client)
+	d, err := l.Hit(context.Background(), p, client)
 	if err != nil {
-		t.Fatalf("Allow: %v", err)
+		t.Fatalf("Hit: %v", err)
 	}
 	return d
 }
@@ -38,11 +38,11 @@ func TestAllow_LimitsHitsWithinAWindow(t *testing.T) {
 	l, _ := newLimiter(t)
 
 	for i := range 2 {
-		if d := mustAllow(t, l, login, "203.0.113.7"); !d.Allowed {
+		if d := mustHit(t, l, login, "203.0.113.7"); !d.Allowed {
 			t.Fatalf("hit %d rejected", i+1)
 		}
 	}
-	d := mustAllow(t, l, login, "203.0.113.7")
+	d := mustHit(t, l, login, "203.0.113.7")
 	if d.Allowed {
 		t.Fatal("third hit allowed with a limit of 2")
 	}
@@ -54,10 +54,10 @@ func TestAllow_LimitsHitsWithinAWindow(t *testing.T) {
 func TestAllow_ANewWindowStartsAfresh(t *testing.T) {
 	l, now := newLimiter(t)
 	for range 3 {
-		mustAllow(t, l, login, "203.0.113.7")
+		mustHit(t, l, login, "203.0.113.7")
 	}
 	*now = now.Add(time.Minute)
-	if d := mustAllow(t, l, login, "203.0.113.7"); !d.Allowed {
+	if d := mustHit(t, l, login, "203.0.113.7"); !d.Allowed {
 		t.Error("first hit of the next window was rejected")
 	}
 }
@@ -69,11 +69,11 @@ func TestAllow_ALaggingClockCountsTowardTheCurrentWindow(t *testing.T) {
 	lagging := *now                 // 12:00:10, window 12:00
 	*now = lagging.Add(time.Minute) // 12:01:10, window 12:01
 	for range 2 {
-		mustAllow(t, l, login, "203.0.113.7")
+		mustHit(t, l, login, "203.0.113.7")
 	}
 
 	*now = lagging
-	d := mustAllow(t, l, login, "203.0.113.7")
+	d := mustHit(t, l, login, "203.0.113.7")
 	if d.Allowed {
 		t.Error("a hit from a lagging clock reset the counter: third hit allowed with a limit of 2")
 	}
@@ -95,13 +95,13 @@ func TestAllow_ALaggingClockCountsTowardTheCurrentWindow(t *testing.T) {
 func TestAllow_ClientsAndPoliciesAreCountedSeparately(t *testing.T) {
 	l, _ := newLimiter(t)
 	for range 3 {
-		mustAllow(t, l, login, "203.0.113.7")
+		mustHit(t, l, login, "203.0.113.7")
 	}
-	if !mustAllow(t, l, login, "198.51.100.1").Allowed {
+	if !mustHit(t, l, login, "198.51.100.1").Allowed {
 		t.Error("another client was limited by the first client's hits")
 	}
 	other := Policy{Name: "password-recovery", Limit: 1, Window: time.Minute}
-	if !mustAllow(t, l, other, "203.0.113.7").Allowed {
+	if !mustHit(t, l, other, "203.0.113.7").Allowed {
 		t.Error("another policy was limited by the login policy's hits")
 	}
 }
@@ -116,9 +116,9 @@ func TestAllow_IsAtomicUnderConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			d, err := l.Allow(context.Background(), p, "203.0.113.7")
+			d, err := l.Hit(context.Background(), p, "203.0.113.7")
 			if err != nil {
-				t.Errorf("Allow: %v", err) // Errorf, not Fatalf: this is not the test goroutine
+				t.Errorf("Hit: %v", err) // Errorf, not Fatalf: this is not the test goroutine
 				return
 			}
 			if d.Allowed {
@@ -135,7 +135,7 @@ func TestAllow_IsAtomicUnderConcurrency(t *testing.T) {
 func TestAllow_RejectsAnInvalidPolicy(t *testing.T) {
 	l, _ := newLimiter(t)
 	for _, p := range []Policy{{Name: "", Limit: 1, Window: time.Minute}, {Name: "x", Limit: 0, Window: time.Minute}, {Name: "x", Limit: 1, Window: time.Millisecond}, {Name: "login:2001", Limit: 1, Window: time.Minute}} {
-		if _, err := l.Allow(context.Background(), p, "c"); err == nil {
+		if _, err := l.Hit(context.Background(), p, "c"); err == nil {
 			t.Errorf("policy %+v accepted", p)
 		}
 	}
@@ -215,7 +215,7 @@ func TestBlocked_AFreshKeyIsAllowedAndRecordsNothing(t *testing.T) {
 func TestBlocked_IsBlockedOnceTheLimitIsHit(t *testing.T) {
 	l, _ := newLimiter(t)
 	for range login.Limit {
-		mustAllow(t, l, login, "203.0.113.7")
+		mustHit(t, l, login, "203.0.113.7")
 	}
 	d := mustBlocked(t, l, login, "203.0.113.7")
 	if d.Allowed {
@@ -229,7 +229,7 @@ func TestBlocked_IsBlockedOnceTheLimitIsHit(t *testing.T) {
 func TestBlocked_ARowFromAnOlderWindowIsNotBlocked(t *testing.T) {
 	l, now := newLimiter(t)
 	for range login.Limit {
-		mustAllow(t, l, login, "203.0.113.7")
+		mustHit(t, l, login, "203.0.113.7")
 	}
 	*now = now.Add(time.Minute) // a fresh window; the old row is stale
 	if d := mustBlocked(t, l, login, "203.0.113.7"); !d.Allowed {
@@ -237,10 +237,31 @@ func TestBlocked_ARowFromAnOlderWindowIsNotBlocked(t *testing.T) {
 	}
 }
 
+// A replica whose clock lags must still be blocked when the stored window
+// is newer and at the limit: the window never moves back, so the stored
+// limit still applies to the lagging caller.
+func TestBlocked_ANewerStoredWindowStillBlocks(t *testing.T) {
+	l, now := newLimiter(t)
+	newerWindow := *now                 // 12:00:10, window 12:00
+	*now = newerWindow.Add(time.Minute) // 12:01:10, window 12:01
+	for range login.Limit {
+		mustHit(t, l, login, "203.0.113.7")
+	}
+
+	*now = newerWindow
+	d := mustBlocked(t, l, login, "203.0.113.7")
+	if d.Allowed {
+		t.Error("Blocked allowed despite a newer stored window at the limit")
+	}
+	if d.RetryAfter <= 0 {
+		t.Errorf("RetryAfter = %v, want > 0", d.RetryAfter)
+	}
+}
+
 func TestReset_ClearsTheCounter(t *testing.T) {
 	l, _ := newLimiter(t)
 	for range login.Limit {
-		mustAllow(t, l, login, "203.0.113.7")
+		mustHit(t, l, login, "203.0.113.7")
 	}
 	if err := l.Reset(context.Background(), login, "203.0.113.7"); err != nil {
 		t.Fatalf("Reset: %v", err)
@@ -248,7 +269,7 @@ func TestReset_ClearsTheCounter(t *testing.T) {
 	if d := mustBlocked(t, l, login, "203.0.113.7"); !d.Allowed {
 		t.Error("Blocked still reports blocked after Reset")
 	}
-	if d := mustAllow(t, l, login, "203.0.113.7"); !d.Allowed {
+	if d := mustHit(t, l, login, "203.0.113.7"); !d.Allowed {
 		t.Error("Allow still limited after Reset")
 	}
 }
