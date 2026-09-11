@@ -72,6 +72,14 @@ func URL(t testing.TB) string {
 	return parsed.String()
 }
 
+// PoolMaxConns is the size of every test pool. The gated concurrency tests
+// hold a lock while up to ten requests queue behind it and poll
+// pg_stat_activity from the same pool, so the size must not follow the
+// host's CPU count: pgxpool's default of max(4, NumCPU) leaves a four-core
+// CI runner with too few connections, and the queued requests and the poll
+// then wait on each other.
+const PoolMaxConns = 16
+
 // Migrated creates a fresh database, applies every migration, and returns a
 // pool on it (closed when the test ends) together with its connection string.
 func Migrated(t testing.TB) (*pgxpool.Pool, string) {
@@ -81,7 +89,7 @@ func Migrated(t testing.TB) (*pgxpool.Pool, string) {
 	if err := db.ApplyMigrations(ctx, databaseURL); err != nil {
 		t.Fatalf("testdb: migrate: %v", err)
 	}
-	pool, err := db.Open(ctx, databaseURL)
+	pool, err := db.Open(ctx, databaseURL, db.WithMaxConns(PoolMaxConns))
 	if err != nil {
 		t.Fatalf("testdb: open pool: %v", err)
 	}

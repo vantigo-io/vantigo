@@ -85,7 +85,9 @@ jobs:
 
       - name: 🧪 Go tests with the race detector
         working-directory: apps/server
-        run: go test -race -count=1 ./...
+        # The race detector makes the identity suite several times slower than
+        # a plain run, so the per-package default of 10m is too tight.
+        run: go test -race -count=1 -timeout 20m ./...
 
       - name: 🛡️ govulncheck
         working-directory: apps/server

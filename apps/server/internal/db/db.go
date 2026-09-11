@@ -12,10 +12,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Option adjusts the pool Open builds, after the connection string has been
+// parsed and before the pool is created.
+type Option func(*pgxpool.Config)
+
+// WithMaxConns fixes the pool's size. Without it pgxpool takes max(4,
+// NumCPU), which ties the size to the host: tests that hold a lock while
+// several requests queue behind it starve on a small CI runner and run
+// comfortably on a large workstation.
+func WithMaxConns(n int32) Option {
+	return func(cfg *pgxpool.Config) { cfg.MaxConns = n }
+}
+
 // Open returns a connection pool for request traffic. It pings before
 // returning, so a wrong DATABASE_URL fails startup instead of the first
 // request.
-func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+func Open(ctx context.Context, databaseURL string, opts ...Option) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("db: parse connection string: %w", err)
