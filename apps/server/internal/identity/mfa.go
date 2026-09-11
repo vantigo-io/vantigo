@@ -237,7 +237,10 @@ func (s *server) otpauthURI(account, secret string) string {
 // invalid_mfa_code. Otherwise TOTP is on, the code's step is spent, a fresh
 // set of recovery codes replaces any old one and is returned this once, and
 // the caller's session now counts as MFA-verified, as .NET reissued the
-// caller's cookie with the MFA claim.
+// caller's cookie with the MFA claim. Enabling also rotated .NET's security
+// stamp (UserManager.SetTwoFactorEnabledAsync calls
+// UpdateSecurityStampInternal), so the user's other sessions end and their
+// reset links are spent.
 func (s *server) enableMFA(ctx context.Context, body *gen.MfaCodeRequest) (gen.MfaEnableResponse, error) {
 	p, u, err := s.mfaCaller(ctx)
 	if err != nil {
@@ -264,6 +267,9 @@ func (s *server) enableMFA(ctx context.Context, body *gen.MfaCodeRequest) (gen.M
 		}
 		if enabled == 0 {
 			return invalid
+		}
+		if err := s.access.rotateSecurityStamp(ctx, q, u.ID, p.SessionID); err != nil {
+			return err
 		}
 		if codes, err = replaceRecoveryCodes(ctx, q, u.ID); err != nil {
 			return err

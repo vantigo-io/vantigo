@@ -109,7 +109,11 @@ func (s *server) PostIdentitySystemUsersByUserIdSessionsRevoke(ctx context.Conte
 
 // revokeUserSessions ends every live session of target and records
 // user.sessions-revoked by actor, in one transaction
-// (EA/SessionEndpoints.cs:99-124).
+// (EA/SessionEndpoints.cs:99-124). .NET revoked by rotating the security
+// stamp (UpdateSecurityStampAsync, :109) for both endpoints (:47, :84),
+// which also killed every reset link the target held, so this is a full
+// rotateSecurityStamp that keeps no session: the self-revocation ends the
+// caller's own too, as .NET then signed the caller out (:57).
 func (s *server) revokeUserSessions(ctx context.Context, actor contracts.Principal, target uuid.UUID) error {
 	r, err := requestFrom(ctx)
 	if err != nil {
@@ -118,7 +122,7 @@ func (s *server) revokeUserSessions(ctx context.Context, actor contracts.Princip
 	now := s.deps.Clock()
 	return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		if err := s.access.revokeAllSessions(ctx, q, target); err != nil {
+		if err := s.access.rotateSecurityStamp(ctx, q, target, uuid.Nil); err != nil {
 			return err
 		}
 		return writeAudit(ctx, q, r, now, auditEvent{

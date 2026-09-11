@@ -20,11 +20,12 @@ import (
 // under at rest.
 const totpSecretPurpose = "identity/totp"
 
-// TOTP's parameters (spec *Credentials*): HMAC-SHA1, six digits, 30-second
-// steps and one step of skew either side, the parameters of ASP.NET's
-// authenticator provider, which .NET's test generator confirms
-// (TS/Integration/IdentityApiFactory.cs:234-250). A secret is 20 random
-// bytes, as ASP.NET's authenticator key was.
+// TOTP's parameters (spec *Credentials*): HMAC-SHA1, six digits and
+// 30-second steps, those of ASP.NET's authenticator provider, which .NET's
+// test generator confirms (TS/Integration/IdentityApiFactory.cs:234-250).
+// The window of one step either side is the spec's choice, not a .NET
+// parity value: ASP.NET's provider likely accepted a wider one. A secret is
+// 20 random bytes, as ASP.NET's authenticator key was.
 const (
 	totpPeriod      = 30
 	totpSkew        = 1

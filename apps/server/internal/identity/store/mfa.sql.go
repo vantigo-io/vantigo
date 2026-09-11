@@ -105,6 +105,27 @@ func (q *Queries) EnableTOTP(ctx context.Context, arg EnableTOTPParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const findLoginTicket = `-- name: FindLoginTicket :one
+SELECT user_id
+FROM identity.login_tickets
+WHERE token_hash = $1 AND expires_at > $2::timestamptz
+`
+
+type FindLoginTicketParams struct {
+	TokenHash []byte
+	Now       time.Time
+}
+
+// FindLoginTicket reads which user a login ticket, still unexpired at now,
+// names. It takes no lock: the second step locks the user row next, and
+// the ticket only after that (LockLoginTicket).
+func (q *Queries) FindLoginTicket(ctx context.Context, arg FindLoginTicketParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, findLoginTicket, arg.TokenHash, arg.Now)
+	var user_id uuid.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
 const getTwoFactorCandidate = `-- name: GetTwoFactorCandidate :one
 SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled, u.totp_secret,
        r.role_names,
@@ -119,6 +140,7 @@ CROSS JOIN LATERAL (
 ) r
 LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
 WHERE u.id = $2
+FOR UPDATE OF u
 `
 
 type GetTwoFactorCandidateParams struct {
@@ -141,7 +163,10 @@ type GetTwoFactorCandidateRow struct {
 // GetTwoFactorCandidate reads what the second sign-in step decides on for
 // the user a login ticket names: the TOTP state and the encrypted secret,
 // the lockout, the roles, and whether the account is effectively disabled
-// beyond is_disabled, as GetLoginCandidate reads it.
+// beyond is_disabled, as GetLoginCandidate reads it. It locks the user
+// row: the second step's lock order is the user row first (see
+// redeemLoginTicket), and holding it makes the lockout it reads the one in
+// force until the step ends.
 func (q *Queries) GetTwoFactorCandidate(ctx context.Context, arg GetTwoFactorCandidateParams) (GetTwoFactorCandidateRow, error) {
 	row := q.db.QueryRow(ctx, getTwoFactorCandidate, arg.ScimEnabled, arg.ID)
 	var i GetTwoFactorCandidateRow
@@ -201,9 +226,9 @@ type LockLoginTicketParams struct {
 	Now       time.Time
 }
 
-// LockLoginTicket finds the login ticket with token_hash that is still
-// unexpired at now, and locks it: two redemptions of one ticket run one
-// after the other, and the second finds the ticket the first spent gone.
+// LockLoginTicket re-reads the login ticket with token_hash, still
+// unexpired at now, once the second step holds the user row, and locks it:
+// of two redemptions of one ticket, the second finds it spent.
 func (q *Queries) LockLoginTicket(ctx context.Context, arg LockLoginTicketParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, lockLoginTicket, arg.TokenHash, arg.Now)
 	var user_id uuid.UUID
