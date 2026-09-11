@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -67,9 +66,14 @@ const scimLockKey = 0x5343494d
 
 // policyScimIngress is .NET's ScimIngressRateLimiter (EA/SCIM:94-103): 120
 // requests a minute, a fixed window, keyed by the connection when the token
-// is valid and by client address otherwise (SV/SCIM:558-569). The key for a
-// valid token is a prefix of its SHA-256, never the token.
+// is valid and by client address otherwise (SV/SCIM:558-569).
 var policyScimIngress = ratelimit.Policy{Name: "ScimIngress", Limit: 120, Window: time.Minute}
+
+// scimConnectionKey is the one bucket every authenticated SCIM request
+// counts against, whichever token it presents: .NET partitioned by the
+// connection id, and both tokens authenticated as the one connection, so a
+// rotation's overlap shares the 120 a minute rather than doubling them.
+var scimConnectionKey = "connection:" + scimConnectionID.String()
 
 // scimError is a SCIM error answer, {schemas, status, scimType, detail} as
 // application/scim+json (SV/SCIM:1203). An empty scimType is written as
@@ -156,17 +160,25 @@ func scimBearer(r *http.Request) (string, bool) {
 
 // scimTokenValid is ScimTokenService.VerifyAsync (ScimTokenService.cs:16-36):
 // SCIM is configured, and token is the current token or, while now is
-// before its expiry, the previous one. Both comparisons run, each in
-// constant time for tokens of one length.
+// before its expiry, the previous one. Each comparison is of the SHA-256
+// digests, in constant time, so it takes as long whatever the token's
+// length and contents.
 func (a *Access) scimTokenValid(token string, now time.Time) bool {
 	cfg := a.cfg.SCIM
 	if cfg == nil {
 		return false
 	}
-	current := subtle.ConstantTimeCompare([]byte(token), []byte(cfg.Token)) == 1
-	previous := cfg.PreviousToken != "" && cfg.PreviousTokenExpiresAt.After(now) &&
-		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.PreviousToken)) == 1
+	presented := sha256.Sum256([]byte(token))
+	current := sameDigest(presented, cfg.Token)
+	previous := cfg.PreviousToken != "" && cfg.PreviousTokenExpiresAt.After(now) && sameDigest(presented, cfg.PreviousToken)
 	return current || previous
+}
+
+// sameDigest reports, in constant time, whether presented is configured's
+// SHA-256.
+func sameDigest(presented [sha256.Size]byte, configured string) bool {
+	expected := sha256.Sum256([]byte(configured))
+	return subtle.ConstantTimeCompare(presented[:], expected[:]) == 1
 }
 
 // scimInputKey is the context key of a SCIM request's scimInput.
@@ -226,10 +238,12 @@ func scimRoutes(d module.Deps) []scimRoute {
 // next. For a SCIM operation, in .NET's order:
 //
 //  1. The bearer token is verified and the request counted against
-//     policyScimIngress, keyed by the token when it is valid and by client
-//     address otherwise; over the limit it is 429 tooMany. .NET's endpoint
-//     filter rate-limited before it authenticated or read the body
-//     (EA/SCIM:77-92, SV/SCIM:558-569).
+//     policyScimIngress, keyed by the one connection when the token is
+//     valid (scimConnectionKey) and by client address otherwise; over the
+//     limit it is 429 tooMany. .NET's endpoint filter rate-limited before
+//     it authenticated or read the body (EA/SCIM:77-92, SV/SCIM:558-569).
+//     A failure of the ingress itself, the limiter's store or reading the
+//     body, is a SCIM 500 (scimServerError).
 //  2. A request without a valid token goes on to the router, whose scim
 //     rule refuses it with the SCIM 401 (Access.Reject): the contract's
 //     access rule stays the authority.
@@ -268,12 +282,11 @@ func (s *server) scimOperation(body bool, next http.Handler) http.Handler {
 		valid := presented && s.access.scimTokenValid(token, s.deps.Clock())
 		client := "ip:" + cmp.Or(httpx.ClientIP(r), "unknown")
 		if valid {
-			sum := sha256.Sum256([]byte(token))
-			client = "token:" + hex.EncodeToString(sum[:8])
+			client = scimConnectionKey
 		}
 		d, err := s.deps.Limiter.Hit(r.Context(), policyScimIngress, client)
 		if err != nil {
-			httpx.WriteError(w, r, err)
+			s.scimServerError(w, r, err)
 			return
 		}
 		if !d.Allowed {
@@ -295,7 +308,7 @@ func (s *server) scimOperation(body bool, next http.Handler) http.Handler {
 				return
 			}
 			if err != nil {
-				httpx.WriteError(w, r, err)
+				s.scimServerError(w, r, err)
 				return
 			}
 			in.body = b
@@ -310,6 +323,17 @@ func (s *server) scimOperation(body bool, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, forward)
 	})
+}
+
+// scimServerErrorDetail is a SCIM 500's detail, the same for every failure.
+const scimServerErrorDetail = "An unexpected error occurred."
+
+// scimServerError answers a failure of the ingress itself with a SCIM 500
+// and logs it. The answer never echoes the error, and neither the answer
+// nor the log names the token or the body.
+func (s *server) scimServerError(w http.ResponseWriter, r *http.Request, err error) {
+	s.deps.Logger.ErrorContext(r.Context(), "identity: SCIM ingress failed", "path", r.URL.Path, "error", err.Error())
+	writeScimError(w, http.StatusInternalServerError, "", scimServerErrorDetail)
 }
 
 // utf8BOM is the byte order mark JsonDocument skips at the start of a
