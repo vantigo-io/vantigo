@@ -583,13 +583,6 @@ func (r logoutOK) VisitPostIdentityLogoutResponse(w http.ResponseWriter) error {
 	return r.body.VisitPostIdentityLogoutResponse(w)
 }
 
-// GetIdentityProviders lists the workforce sign-in providers
-// (EA/WorkforceOidcEndpoints.cs:27-29). OIDC sign-in is not served yet, so
-// there is none to offer.
-func (*server) GetIdentityProviders(context.Context, gen.GetIdentityProvidersRequestObject) (gen.GetIdentityProvidersResponseObject, error) {
-	return gen.GetIdentityProviders200JSONResponse{Oidc: nil}, nil
-}
-
 // normalizeEmail is an email's lookup form: identity.users.normalized_email,
 // and the account half of the throttle key. It is ASP.NET Identity's
 // upper-invariant normalizer over the trimmed address, as .NET's callers

@@ -478,9 +478,10 @@ func TestLogin_ResponseCarriesOrderedRolesAndTheOwnerEnrolmentHint(t *testing.T)
 	}
 }
 
-// TestProviders_OffersNoOIDCYet proves /providers answers the contract's
-// shape with no OIDC provider while OIDC sign-in is not served.
-func TestProviders_OffersNoOIDCYet(t *testing.T) {
+// TestProviders_OffersNoOIDCWhileItIsOff proves /providers answers the
+// contract's shape with no OIDC provider while none is configured
+// (TestOidc_ProvidersReportTheConfiguredProvidersDisplayName covers one).
+func TestProviders_OffersNoOIDCWhileItIsOff(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	r := h.client(t).do(http.MethodGet, "/api/v1/identity/providers", nil)

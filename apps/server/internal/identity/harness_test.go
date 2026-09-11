@@ -107,12 +107,13 @@ type harness struct {
 }
 
 // harnessSetup is what harness options adjust: the environment the harness
-// loads its configuration from, and the permissions of the catalogModule it
-// composes beside identity.
+// loads its configuration from, the permissions of the catalogModule it
+// composes beside identity, and the fake OIDC provider it routes to.
 type harnessSetup struct {
 	env         map[string]string
 	permissions []contracts.Permission
 	tracer      pgx.QueryTracer
+	oidc        *fakeOIDC
 }
 
 // withQueryTracer runs every query the installation makes through tracer:
@@ -229,6 +230,9 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access
+	if setup.oidc != nil {
+		setup.oidc.attach(h.access, h.now) // before Compose mounts identity
+	}
 	mods := []module.Module{identity.Module(h.access)}
 	if len(setup.permissions) > 0 {
 		mods = append(mods, catalogModule(setup.permissions))

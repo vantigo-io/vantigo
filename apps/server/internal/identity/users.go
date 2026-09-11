@@ -109,7 +109,7 @@ func lockOwners(ctx context.Context, q *store.Queries) error {
 // GetIdentityOwnerUsers lists every user for an Owner, the Owners first,
 // then by display name and id (EA/AuthAccountEndpoints.cs:401-457).
 func (s *server) GetIdentityOwnerUsers(ctx context.Context, _ gen.GetIdentityOwnerUsersRequestObject) (gen.GetIdentityOwnerUsersResponseObject, error) {
-	rows, err := s.q.ListManagedUsers(ctx, store.ListManagedUsersParams{OidcEnabled: s.deps.Config.OIDC != nil})
+	rows, err := s.q.ListManagedUsers(ctx, store.ListManagedUsersParams{OidcIssuer: s.oidcIssuer()})
 	if err != nil {
 		return nil, fmt.Errorf("identity: list users: %w", err)
 	}
@@ -157,7 +157,7 @@ func (s *server) ownerUser(u store.ListManagedUsersRow, now time.Time) gen.Owner
 // managedUser reads one user on q as ownerUser shows them: the answer of
 // every owner operation that returns the user it changed.
 func (s *server) managedUser(ctx context.Context, q *store.Queries, id uuid.UUID, now time.Time) (gen.OwnerUserResponse, error) {
-	rows, err := q.ListManagedUsers(ctx, store.ListManagedUsersParams{OidcEnabled: s.deps.Config.OIDC != nil, ID: &id})
+	rows, err := q.ListManagedUsers(ctx, store.ListManagedUsersParams{OidcIssuer: s.oidcIssuer(), ID: &id})
 	if err != nil {
 		return gen.OwnerUserResponse{}, err
 	}

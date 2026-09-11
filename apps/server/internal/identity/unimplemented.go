@@ -21,18 +21,6 @@ func (*server) DeleteIdentityScimV2UsersById(context.Context, gen.DeleteIdentity
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityOidcCallback(context.Context, gen.GetIdentityOidcCallbackRequestObject) (gen.GetIdentityOidcCallbackResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityOidcChallenge(context.Context, gen.GetIdentityOidcChallengeRequestObject) (gen.GetIdentityOidcChallengeResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityOidcComplete(context.Context, gen.GetIdentityOidcCompleteRequestObject) (gen.GetIdentityOidcCompleteResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityScimV2Groups(context.Context, gen.GetIdentityScimV2GroupsRequestObject) (gen.GetIdentityScimV2GroupsResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -66,10 +54,6 @@ func (*server) PatchIdentityScimV2GroupsById(context.Context, gen.PatchIdentityS
 }
 
 func (*server) PatchIdentityScimV2UsersById(context.Context, gen.PatchIdentityScimV2UsersByIdRequestObject) (gen.PatchIdentityScimV2UsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOidcCallback(context.Context, gen.PostIdentityOidcCallbackRequestObject) (gen.PostIdentityOidcCallbackResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
