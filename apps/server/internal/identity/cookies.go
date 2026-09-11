@@ -61,6 +61,13 @@ func (a *Access) newLoginTicketCookie(token string) *http.Cookie {
 	return c
 }
 
+// expiredLoginTicketCookie tells the browser to drop a login ticket.
+func (a *Access) expiredLoginTicketCookie() *http.Cookie {
+	c := a.cookie(loginTicketCookieName, "")
+	c.MaxAge = -1
+	return c
+}
+
 func (a *Access) cookie(name, value string) *http.Cookie {
 	path := a.cfg.BasePath
 	if path == "" {
@@ -79,7 +86,17 @@ func (a *Access) cookie(name, value string) *http.Cookie {
 // sessionTokenFrom returns the session cookie's value, if the request has
 // one.
 func sessionTokenFrom(r *http.Request) (string, bool) {
-	c, err := r.Cookie(sessionCookieName)
+	return cookieFrom(r, sessionCookieName)
+}
+
+// loginTicketFrom returns the login ticket cookie's value, if the request
+// has one.
+func loginTicketFrom(r *http.Request) (string, bool) {
+	return cookieFrom(r, loginTicketCookieName)
+}
+
+func cookieFrom(r *http.Request, name string) (string, bool) {
+	c, err := r.Cookie(name)
 	if err != nil || c.Value == "" {
 		return "", false
 	}

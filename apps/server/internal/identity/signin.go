@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
@@ -262,22 +263,279 @@ func (r loginOK) VisitPostIdentityLoginResponse(w http.ResponseWriter) error {
 	return json.NewEncoder(w).Encode(r.body)
 }
 
+// Two-factor sign-in's messages, .NET's (EA/AuthEndpoints.cs:370-401).
+const (
+	twoFactorCodeRequiredMessage = "A two-factor code is required."
+	twoFactorExpiredMessage      = "The two-factor sign-in session has expired."
+	invalidTwoFactorCodeMessage  = "The two-factor code is invalid."
+)
+
+// PostIdentityLogin2fa is sign-in's second step (EA/AuthEndpoints.cs:361-419):
+// it redeems the login ticket beginTwoFactor issued. The order and the
+// answers are .NET's:
+//
+//  1. A blank code: 400 invalid_request.
+//  2. No ticket cookie, or a ticket that is unknown, spent or expired at
+//     now: 401 two_factor_session_expired.
+//  3. The account is disabled (or SCIM-inactive and not an Owner) or
+//     locked out: the ticket is discarded and both cookies cleared, as
+//     .NET signed both schemes out (:381-386), and 429 account_locked.
+//  4. Exactly six digits are a TOTP code, anything else a recovery code
+//     (:388-396). A TOTP code must match a step within one of now, and that
+//     step must be later than the last one spent, so a replay fails. A
+//     recovery code is spent by the attempt that uses it.
+//  5. A code that fails counts toward lockout, as a wrong password does:
+//     429 account_locked when this failure locked the account, else 401
+//     invalid_two_factor_code. The ticket survives a failed code, so the
+//     user can try again while it lasts, bounded by the lockout: .NET's
+//     failure path (:397-402) answers without signing the two-factor scheme
+//     out, unlike the refusal in 3, and ASP.NET's SignInManager signs it out
+//     only once a code succeeds.
+//  6. A code that verifies clears the failure count, unless parallel
+//     failures have locked the account meanwhile, which answers 429
+//     account_locked and keeps nothing of the attempt. Then the ticket is
+//     spent and a session starts that verified a second factor, persistent
+//     when rememberMe is set.
+//
+// Everything after 1 and 2's cookie check runs in one transaction that
+// locks the ticket first, so two redemptions of one ticket take turns and
+// the second finds it spent. The success also spends the ticket with a
+// conditional delete, so the ticket is single-use without the lock too.
+func (s *server) PostIdentityLogin2fa(ctx context.Context, req gen.PostIdentityLogin2faRequestObject) (gen.PostIdentityLogin2faResponseObject, error) {
+	var code string
+	var rememberMe bool
+	if req.Body != nil {
+		code = twoFactorCode(req.Body.Code)
+		rememberMe = req.Body.RememberMe != nil && *req.Body.RememberMe
+	}
+	if strings.TrimSpace(code) == "" {
+		return gen.PostIdentityLogin2fa400JSONResponse(authErrorBody("invalid_request", twoFactorCodeRequiredMessage, nil)), nil
+	}
+	r, err := requestFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	raw, ok := loginTicketFrom(r)
+	if !ok {
+		return s.twoFactorExpired(r), nil
+	}
+	ticket, ok := parseToken(raw)
+	if !ok {
+		return s.twoFactorExpired(r), nil
+	}
+	var answer gen.PostIdentityLogin2faResponseObject
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		var err error
+		answer, err = s.redeemLoginTicket(ctx, tx, r, ticket, code, rememberMe)
+		return err
+	})
+	if err != nil {
+		return refusalOr[gen.PostIdentityLogin2faResponseObject](err)
+	}
+	return answer, nil
+}
+
+// redeemLoginTicket is PostIdentityLogin2fa's transaction, from 3 on. Its
+// answers commit what they did (a discarded ticket, a counted failure, a
+// session); only the refusals it returns as errors, a lock that won the
+// race and a ticket spent meanwhile, roll the attempt back.
+func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Request, ticket []byte, code string, rememberMe bool) (gen.PostIdentityLogin2faResponseObject, error) {
+	now := s.deps.Clock()
+	q := store.New(tx)
+	userID, err := q.LockLoginTicket(ctx, store.LockLoginTicketParams{TokenHash: ticket, Now: now})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return s.twoFactorExpired(r), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+	}
+	// A ticket dies with its user (ON DELETE CASCADE), so the user exists.
+	u, err := q.GetTwoFactorCandidate(ctx, store.GetTwoFactorCandidateParams{ScimEnabled: s.deps.Config.SCIM != nil, ID: userID})
+	if err != nil {
+		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+	}
+	if u.IsDisabled || u.ScimInactive || isLockedOut(u.LockoutEnd, now) {
+		if err := q.DeleteLoginTicket(ctx, ticket); err != nil {
+			return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+		}
+		return twoFactorRefused{
+			cookies: s.twoFactorSignOut(r),
+			body:    gen.PostIdentityLogin2fa429JSONResponse{Body: authErrorBody("account_locked", accountUnavailableMessage, nil)},
+		}, nil
+	}
+	if !u.TotpEnabled {
+		// TOTP was turned off (or reset) after the password step: the
+		// second factor this ticket was issued for is gone, and a new
+		// sign-in answers without one.
+		if err := q.DeleteLoginTicket(ctx, ticket); err != nil {
+			return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+		}
+		return s.twoFactorExpired(r), nil
+	}
+
+	verified, err := s.verifySecondFactor(ctx, q, u, code, now)
+	if err != nil {
+		return nil, err
+	}
+	if !verified {
+		lockoutEnd, err := q.RecordLoginFailure(ctx, store.RecordLoginFailureParams{
+			ID:           u.ID,
+			MaxFailures:  maxFailedLoginAttempts,
+			LockoutUntil: now.Add(lockoutDuration),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+		}
+		if isLockedOut(lockoutEnd, now) {
+			return gen.PostIdentityLogin2fa429JSONResponse{Body: authErrorBody("account_locked", accountLockedMessage, nil)}, nil
+		}
+		return gen.PostIdentityLogin2fa401JSONResponse(authErrorBody("invalid_two_factor_code", invalidTwoFactorCodeMessage, nil)), nil
+	}
+
+	unlocked, err := q.ResetLoginFailures(ctx, store.ResetLoginFailuresParams{ID: u.ID, Now: now})
+	if err != nil {
+		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+	}
+	if unlocked == 0 {
+		return nil, refuse(http.StatusTooManyRequests, "account_locked", accountLockedMessage, nil)
+	}
+	spent, err := q.SpendLoginTicket(ctx, store.SpendLoginTicketParams{TokenHash: ticket, Now: now})
+	if err != nil {
+		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+	}
+	if spent == 0 {
+		// The row lock makes this unreachable; the condition keeps the
+		// ticket single-use without relying on it, and rolls the attempt
+		// back so the factor it used is not spent.
+		return nil, refuse(http.StatusUnauthorized, "two_factor_session_expired", twoFactorExpiredMessage, nil)
+	}
+	token, err := s.access.createSession(ctx, tx, u.ID, rememberMe, true, r)
+	if err != nil {
+		return nil, err
+	}
+	roles := orderRoles(u.RoleNames)
+	user := authUser(u.ID, u.DisplayName, u.Email, roles)
+	return loginOK{
+		cookies: cookies{s.access.newSessionCookie(token, rememberMe), s.access.expiredLoginTicketCookie()},
+		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
+			User:                  &user,
+			RequiresTwoFactor:     false,
+			TwoFactorEnabled:      true,
+			MfaEnrollmentRequired: s.mfaEnrollmentRequired(roles, u.TotpEnabled),
+			Tenants:               noTenants(),
+		}},
+	}, nil
+}
+
+// verifySecondFactor checks code for u on q, the sign-in's transaction, and
+// spends what it used: a TOTP code's step (RecordTOTPStep, which a replay
+// or a concurrent use of the same code fails) or the recovery code itself
+// (ConsumeRecoveryCode, which only one of two concurrent uses succeeds at).
+func (s *server) verifySecondFactor(ctx context.Context, q *store.Queries, u store.GetTwoFactorCandidateRow, code string, now time.Time) (bool, error) {
+	if isTOTPCode(code) {
+		step, ok, err := s.verifyTOTP(u.TotpSecret, code, now)
+		if err != nil || !ok {
+			return false, err
+		}
+		spent, err := q.RecordTOTPStep(ctx, store.RecordTOTPStepParams{Step: step, ID: u.ID, TotpSecret: u.TotpSecret})
+		if err != nil {
+			return false, fmt.Errorf("identity: two-factor sign-in: %w", err)
+		}
+		return spent == 1, nil
+	}
+	spent, err := q.ConsumeRecoveryCode(ctx, store.ConsumeRecoveryCodeParams{UserID: u.ID, CodeHash: hashRecoveryCode(code)})
+	if err != nil {
+		return false, fmt.Errorf("identity: two-factor sign-in: %w", err)
+	}
+	return spent == 1, nil
+}
+
+// twoFactorExpired is 401 two_factor_session_expired, clearing a ticket
+// cookie the browser still sends.
+func (s *server) twoFactorExpired(r *http.Request) gen.PostIdentityLogin2faResponseObject {
+	body := gen.PostIdentityLogin2fa401JSONResponse(authErrorBody("two_factor_session_expired", twoFactorExpiredMessage, nil))
+	if _, ok := loginTicketFrom(r); !ok {
+		return body
+	}
+	return twoFactorRefused{cookies: cookies{s.access.expiredLoginTicketCookie()}, body: body}
+}
+
+// twoFactorSignOut clears the ticket cookie, and a session cookie the
+// browser still holds, as .NET's refusal signed both schemes out.
+func (s *server) twoFactorSignOut(r *http.Request) cookies {
+	cs := cookies{s.access.expiredLoginTicketCookie()}
+	if _, ok := sessionTokenFrom(r); ok {
+		cs = append(cs, s.access.expiredSessionCookie())
+	}
+	return cs
+}
+
+// twoFactorRefused is a refusal of the second step that also clears
+// cookies: its cookies, then the generated answer.
+type twoFactorRefused struct {
+	cookies
+	body gen.PostIdentityLogin2faResponseObject
+}
+
+func (r twoFactorRefused) VisitPostIdentityLogin2faResponse(w http.ResponseWriter) error {
+	r.set(w)
+	return r.body.VisitPostIdentityLogin2faResponse(w)
+}
+
+// loginOK is also the second step's 200.
+func (r loginOK) VisitPostIdentityLogin2faResponse(w http.ResponseWriter) error {
+	return r.VisitPostIdentityLoginResponse(w)
+}
+
+func (r refusal) VisitPostIdentityLogin2faResponse(w http.ResponseWriter) error { return r.write(w) }
+
 // PostIdentityLogout ends the caller's session and clears its cookie
 // (EA/AuthEndpoints.cs:421-425). Unlike .NET, which only cleared the cookie,
 // it revokes the session row, so a copy of the cookie dies with it (spec
-// *Sessions*, a deliberate divergence).
+// *Sessions*, a deliberate divergence). A pending two-factor sign-in the
+// browser holds ends too (discardLoginTicket).
 func (s *server) PostIdentityLogout(ctx context.Context, _ gen.PostIdentityLogoutRequestObject) (gen.PostIdentityLogoutResponseObject, error) {
 	p, err := callerFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r, err := requestFrom(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.q.RevokeSession(ctx, store.RevokeSessionParams{ID: p.SessionID, Now: s.deps.Clock()}); err != nil {
 		return nil, fmt.Errorf("identity: logout: %w", err)
 	}
+	cs := cookies{s.access.expiredSessionCookie()}
+	ticket, err := s.discardLoginTicket(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	if ticket != nil {
+		cs = append(cs, ticket)
+	}
 	return logoutOK{
-		cookies: cookies{s.access.expiredSessionCookie()},
+		cookies: cs,
 		body:    gen.PostIdentityLogout200JSONResponse{Success: true},
 	}, nil
+}
+
+// discardLoginTicket ends a pending two-factor sign-in r carries, as .NET's
+// SignOutAsync signed the TwoFactorUserId scheme out along with the app
+// cookie: the ticket's row is deleted, so a copy of the cookie is dead too,
+// and the returned cookie clears it. Without a ticket cookie it returns
+// nil.
+func (s *server) discardLoginTicket(ctx context.Context, r *http.Request) (*http.Cookie, error) {
+	raw, ok := loginTicketFrom(r)
+	if !ok {
+		return nil, nil
+	}
+	if hash, ok := parseToken(raw); ok {
+		if err := s.q.DeleteLoginTicket(ctx, hash); err != nil {
+			return nil, fmt.Errorf("identity: discard login ticket: %w", err)
+		}
+	}
+	return s.access.expiredLoginTicketCookie(), nil
 }
 
 // logoutOK is logout's 200: the cleared cookie, then the generated body.

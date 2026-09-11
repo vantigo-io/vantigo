@@ -89,3 +89,21 @@ func TestUserInvitationAndRecoveryLimitsKeepDotNetsPolicies(t *testing.T) {
 		}
 	}
 }
+
+// TestMfaLimitsKeepDotNetsPolicy pins the Mfa policy on the second sign-in
+// step and every MFA operation, both aliases and the owner reset included
+// (EA/AuthEndpoints.cs, EA/AuthAccountEndpoints.cs:56-73, inventory §12).
+func TestMfaLimitsKeepDotNetsPolicy(t *testing.T) {
+	for _, op := range []string{
+		"postIdentityLogin2fa",
+		"getIdentityAccountMfa", "getIdentityAccountMfaSetup", "postIdentityAccountMfaSetup",
+		"postIdentityAccountMfaEnable", "postIdentityAccountMfaDisable", "postIdentityAccountMfaRecoveryCodes",
+		"getIdentityOwnerMfa", "getIdentityOwnerMfaSetup", "postIdentityOwnerMfaSetup",
+		"postIdentityOwnerMfaEnable", "postIdentityOwnerMfaDisable", "postIdentityOwnerMfaRecoveryCodes",
+		"postIdentityOwnerMfaResetByUserId",
+	} {
+		if got, ok := limits[op]; !ok || got != policyMfa {
+			t.Errorf("limits[%s] = %+v, want Mfa", op, got)
+		}
+	}
+}

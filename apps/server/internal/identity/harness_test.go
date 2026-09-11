@@ -3,8 +3,12 @@ package identity_test
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +17,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -320,6 +325,73 @@ func (h *harness) login(t testing.TB, email, password string) *client {
 	c := h.client(t)
 	if r := c.do(http.MethodPost, "/api/v1/identity/login", map[string]string{"email": email, "password": password}); r.status != http.StatusOK {
 		t.Fatalf("login %s: status %d body %s", email, r.status, r.body)
+	}
+	return c
+}
+
+// totpStep is TOTP's time step. A test that has spent the code of the
+// current step advances the clock by it before computing a fresh one.
+const totpStep = 30 * time.Second
+
+// totp is the code an authenticator app shows for the base32 secret at at:
+// RFC 6238 with HMAC-SHA1, six digits and 30-second steps. It is computed
+// here, independently of the library identity uses, as .NET's tests
+// computed their own (TS/Integration/IdentityApiFactory.cs:234-250).
+func totp(secret string, at time.Time) string {
+	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimRight(secret, "=")))
+	if err != nil {
+		panic(fmt.Sprintf("totp: secret %q: %v", secret, err))
+	}
+	var counter [8]byte
+	binary.BigEndian.PutUint64(counter[:], uint64(at.Unix()/30))
+	mac := hmac.New(sha1.New, key)
+	_, _ = mac.Write(counter[:])
+	sum := mac.Sum(nil)
+	offset := sum[len(sum)-1] & 0x0f
+	code := binary.BigEndian.Uint32(sum[offset:offset+4]) & 0x7fffffff
+	return fmt.Sprintf("%06d", code%1_000_000)
+}
+
+// enrollTOTP enrols c's user in TOTP through POST /account/mfa/setup and
+// /account/mfa/enable, with password as the current password, and returns
+// the secret and the recovery codes. c's session then counts as
+// MFA-verified. Enable spends the current step's code, so the clock then
+// moves on one step: the next code a test computes is a fresh one.
+func (h *harness) enrollTOTP(t testing.TB, c *client, password string) (secret string, recoveryCodes []string) {
+	t.Helper()
+	r := c.do(http.MethodPost, "/api/v1/identity/account/mfa/setup", map[string]any{"password": password})
+	if r.status != http.StatusOK {
+		t.Fatalf("mfa setup: status %d body %s", r.status, r.body)
+	}
+	var setup struct {
+		SharedKey string `json:"sharedKey"`
+	}
+	r.json(&setup)
+	r = c.do(http.MethodPost, "/api/v1/identity/account/mfa/enable", map[string]any{"code": totp(setup.SharedKey, h.now()), "password": password})
+	if r.status != http.StatusOK {
+		t.Fatalf("mfa enable: status %d body %s", r.status, r.body)
+	}
+	var enabled struct {
+		RecoveryCodes []string `json:"recoveryCodes"`
+	}
+	r.json(&enabled)
+	h.advance(totpStep)
+	return setup.SharedKey, enabled.RecoveryCodes
+}
+
+// startTwoFactor signs email in with password on a new client, which must
+// be asked for a second factor, and returns the client, which holds the
+// login ticket.
+func (h *harness) startTwoFactor(t testing.TB, email, password string) *client {
+	t.Helper()
+	c := h.client(t)
+	r := c.do(http.MethodPost, "/api/v1/identity/login", map[string]string{"email": email, "password": password})
+	var body struct {
+		RequiresTwoFactor bool `json:"requiresTwoFactor"`
+	}
+	r.json(&body)
+	if r.status != http.StatusOK || !body.RequiresTwoFactor || c.cookie(identity.LoginTicketCookieName) == "" {
+		t.Fatalf("login %s: status %d body %s, want requiresTwoFactor with a ticket", email, r.status, r.body)
 	}
 	return c
 }

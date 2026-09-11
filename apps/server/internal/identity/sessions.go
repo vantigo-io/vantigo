@@ -50,17 +50,30 @@ func (s *server) GetIdentitySession(ctx context.Context, _ gen.GetIdentitySessio
 
 // PostIdentityAccountSessionsRevoke ends every session of the caller's
 // account, the caller's own included, and clears its cookie
-// (EA/SessionEndpoints.cs:31-59).
+// (EA/SessionEndpoints.cs:31-59). A pending two-factor sign-in the browser
+// holds ends too, as .NET's SignOutAsync signed that scheme out as well.
 func (s *server) PostIdentityAccountSessionsRevoke(ctx context.Context, _ gen.PostIdentityAccountSessionsRevokeRequestObject) (gen.PostIdentityAccountSessionsRevokeResponseObject, error) {
 	p, err := callerFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r, err := requestFrom(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.revokeUserSessions(ctx, p, p.UserID); err != nil {
 		return nil, err
 	}
+	cs := cookies{s.access.expiredSessionCookie()}
+	ticket, err := s.discardLoginTicket(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	if ticket != nil {
+		cs = append(cs, ticket)
+	}
 	return accountSessionsRevoked{
-		cookies: cookies{s.access.expiredSessionCookie()},
+		cookies: cs,
 		body:    gen.PostIdentityAccountSessionsRevoke200JSONResponse{UserId: p.UserID, Revoked: true},
 	}, nil
 }
