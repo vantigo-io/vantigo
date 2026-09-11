@@ -201,14 +201,6 @@ components:
                 - delegationScopes
             type: object
             x-vantigo-source: Vantigo.Identity
-        AntiforgeryResponse:
-            properties:
-                token:
-                    type: string
-            required:
-                - token
-            type: object
-            x-vantigo-source: Vantigo.Identity
         AssignRolesResponse:
             properties:
                 roleIds:
@@ -826,15 +818,6 @@ components:
                 - oidc
             type: object
             x-vantigo-source: Vantigo.Identity
-        OwnerMfaResetRequest:
-            properties:
-                userId:
-                    format: uuid
-                    type: string
-            required:
-                - userId
-            type: object
-            x-vantigo-source: Vantigo.Identity
         OwnerUserCreateRequest:
             properties:
                 displayName:
@@ -1250,6 +1233,489 @@ components:
                 - description
                 - permissionKeys
             type: object
+        ScimEmail:
+            properties:
+                primary:
+                    type: boolean
+                type:
+                    type: string
+                value:
+                    type: string
+            required:
+                - value
+                - type
+                - primary
+            type: object
+        ScimEmailInput:
+            properties:
+                primary:
+                    type: boolean
+                type:
+                    type: string
+                value:
+                    type: string
+            type: object
+        ScimError:
+            properties:
+                detail:
+                    type: string
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                scimType:
+                    nullable: true
+                    type: string
+                status:
+                    type: string
+            required:
+                - schemas
+                - status
+                - detail
+            type: object
+        ScimGroup:
+            properties:
+                active:
+                    type: boolean
+                displayName:
+                    type: string
+                externalId:
+                    nullable: true
+                    type: string
+                id:
+                    type: string
+                members:
+                    items:
+                        $ref: '#/components/schemas/ScimMember'
+                    type: array
+                meta:
+                    $ref: '#/components/schemas/ScimMeta'
+                schemas:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - schemas
+                - id
+                - externalId
+                - displayName
+                - active
+                - meta
+            type: object
+        ScimGroupListResponse:
+            properties:
+                itemsPerPage:
+                    format: int32
+                    type: integer
+                resources:
+                    items:
+                        $ref: '#/components/schemas/ScimGroup'
+                    type: array
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                startIndex:
+                    format: int32
+                    type: integer
+                totalResults:
+                    format: int32
+                    type: integer
+            required:
+                - schemas
+                - totalResults
+                - startIndex
+                - itemsPerPage
+                - resources
+            type: object
+        ScimGroupWriteRequest:
+            properties:
+                active:
+                    type: boolean
+                displayName:
+                    type: string
+                externalId:
+                    nullable: true
+                    type: string
+                members:
+                    items:
+                        $ref: '#/components/schemas/ScimMemberInput'
+                    type: array
+                schemas:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - displayName
+            type: object
+        ScimMember:
+            properties:
+                ref:
+                    type: string
+                type:
+                    type: string
+                value:
+                    type: string
+            required:
+                - value
+                - type
+                - ref
+            type: object
+        ScimMemberInput:
+            properties:
+                type:
+                    nullable: true
+                    type: string
+                value:
+                    type: string
+            required:
+                - value
+            type: object
+        ScimMeta:
+            properties:
+                created:
+                    format: date-time
+                    type: string
+                lastModified:
+                    format: date-time
+                    type: string
+                location:
+                    type: string
+                resourceType:
+                    type: string
+                version:
+                    type: string
+            required:
+                - resourceType
+                - created
+                - lastModified
+                - location
+                - version
+            type: object
+        ScimName:
+            properties:
+                familyName:
+                    nullable: true
+                    type: string
+                givenName:
+                    nullable: true
+                    type: string
+            type: object
+        ScimPatchOperation:
+            properties:
+                op:
+                    type: string
+                path:
+                    nullable: true
+                    type: string
+                value:
+                    $ref: common.yaml#/components/schemas/JsonElement
+            required:
+                - op
+            type: object
+        ScimPatchRequest:
+            properties:
+                Operations:
+                    items:
+                        $ref: '#/components/schemas/ScimPatchOperation'
+                    minItems: 1
+                    type: array
+                meta:
+                    properties:
+                        version:
+                            type: string
+                    type: object
+                schemas:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - Operations
+            type: object
+        ScimResourceType:
+            properties:
+                description:
+                    type: string
+                endpoint:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                schema:
+                    type: string
+            required:
+                - id
+                - name
+                - endpoint
+                - description
+                - schema
+            type: object
+        ScimResourceTypesResponse:
+            properties:
+                resources:
+                    items:
+                        $ref: '#/components/schemas/ScimResourceType'
+                    type: array
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                totalResults:
+                    format: int32
+                    type: integer
+            required:
+                - schemas
+                - totalResults
+                - resources
+            type: object
+        ScimSchemaAttribute:
+            properties:
+                caseExact:
+                    type: boolean
+                multiValued:
+                    type: boolean
+                mutability:
+                    type: string
+                name:
+                    type: string
+                required:
+                    type: boolean
+                returned:
+                    type: string
+                subAttributes:
+                    items:
+                        $ref: '#/components/schemas/ScimSchemaAttribute'
+                    type: array
+                type:
+                    type: string
+                uniqueness:
+                    type: string
+            required:
+                - name
+                - type
+                - multiValued
+                - required
+                - mutability
+                - returned
+            type: object
+        ScimSchemaDocument:
+            properties:
+                attributes:
+                    items:
+                        $ref: '#/components/schemas/ScimSchemaAttribute'
+                    type: array
+                description:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+            required:
+                - id
+                - name
+                - description
+                - attributes
+            type: object
+        ScimSchemasResponse:
+            properties:
+                resources:
+                    items:
+                        $ref: '#/components/schemas/ScimSchemaDocument'
+                    type: array
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                totalResults:
+                    format: int32
+                    type: integer
+            required:
+                - schemas
+                - totalResults
+                - resources
+            type: object
+        ScimServiceProviderConfig:
+            properties:
+                authenticationSchemes:
+                    items:
+                        properties:
+                            description:
+                                type: string
+                            documentationUri:
+                                type: string
+                            name:
+                                type: string
+                            primary:
+                                type: boolean
+                            specUri:
+                                type: string
+                            type:
+                                type: string
+                        required:
+                            - type
+                            - name
+                            - description
+                            - specUri
+                            - documentationUri
+                            - primary
+                        type: object
+                    type: array
+                bulk:
+                    properties:
+                        maxOperations:
+                            format: int32
+                            type: integer
+                        maxPayloadSize:
+                            format: int32
+                            type: integer
+                        supported:
+                            type: boolean
+                    required:
+                        - supported
+                        - maxOperations
+                        - maxPayloadSize
+                    type: object
+                changePassword:
+                    properties:
+                        supported:
+                            type: boolean
+                    required:
+                        - supported
+                    type: object
+                documentationUri:
+                    type: string
+                etag:
+                    properties:
+                        supported:
+                            type: boolean
+                    required:
+                        - supported
+                    type: object
+                filter:
+                    properties:
+                        maxResults:
+                            format: int32
+                            type: integer
+                        supported:
+                            type: boolean
+                    required:
+                        - supported
+                        - maxResults
+                    type: object
+                patch:
+                    properties:
+                        supported:
+                            type: boolean
+                    required:
+                        - supported
+                    type: object
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                sort:
+                    properties:
+                        supported:
+                            type: boolean
+                    required:
+                        - supported
+                    type: object
+            required:
+                - schemas
+                - documentationUri
+                - patch
+                - bulk
+                - filter
+                - changePassword
+                - sort
+                - etag
+                - authenticationSchemes
+            type: object
+        ScimUser:
+            properties:
+                active:
+                    type: boolean
+                displayName:
+                    type: string
+                emails:
+                    items:
+                        $ref: '#/components/schemas/ScimEmail'
+                    type: array
+                externalId:
+                    type: string
+                id:
+                    type: string
+                meta:
+                    $ref: '#/components/schemas/ScimMeta'
+                name:
+                    $ref: '#/components/schemas/ScimName'
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                userName:
+                    type: string
+            required:
+                - schemas
+                - id
+                - externalId
+                - userName
+                - active
+                - displayName
+                - meta
+            type: object
+        ScimUserListResponse:
+            properties:
+                itemsPerPage:
+                    format: int32
+                    type: integer
+                resources:
+                    items:
+                        $ref: '#/components/schemas/ScimUser'
+                    type: array
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                startIndex:
+                    format: int32
+                    type: integer
+                totalResults:
+                    format: int32
+                    type: integer
+            required:
+                - schemas
+                - totalResults
+                - startIndex
+                - itemsPerPage
+                - resources
+            type: object
+        ScimUserWriteRequest:
+            properties:
+                active:
+                    type: boolean
+                displayName:
+                    nullable: true
+                    type: string
+                emails:
+                    items:
+                        $ref: '#/components/schemas/ScimEmailInput'
+                    type: array
+                externalId:
+                    nullable: true
+                    type: string
+                name:
+                    $ref: '#/components/schemas/ScimName'
+                schemas:
+                    items:
+                        type: string
+                    type: array
+                userName:
+                    type: string
+            required:
+                - userName
+            type: object
         SessionRevocationResponse:
             properties:
                 revoked:
@@ -1280,40 +1746,6 @@ components:
             required:
                 - maintenance
                 - message
-            type: object
-            x-vantigo-source: Vantigo.Identity
-        TenantControlPlaneResponse:
-            properties:
-                enabledModules:
-                    items:
-                        type: string
-                    type: array
-                id:
-                    format: uuid
-                    type: string
-                membershipsCount:
-                    format: int32
-                    type: integer
-                name:
-                    type: string
-                seededAdminInvitationId:
-                    format: uuid
-                    nullable: true
-                    type: string
-                seededAdminInvitationToken:
-                    nullable: true
-                    type: string
-                slug:
-                    type: string
-                status:
-                    type: string
-            required:
-                - id
-                - name
-                - slug
-                - status
-                - enabledModules
-                - membershipsCount
             type: object
             x-vantigo-source: Vantigo.Identity
         TenantSessionResponse:
@@ -4737,17 +5169,116 @@ paths:
     /api/v1/identity/scim/v2/Groups:
         get:
             operationId: getIdentityScimV2Groups
+            parameters:
+                - in: query
+                  name: filter
+                  schema:
+                    type: string
+                - in: query
+                  name: startIndex
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: count
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: excludedAttributes
+                  schema:
+                    type: string
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimGroupListResponse'
                     description: OK
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
         post:
             operationId: postIdentityScimV2Groups
+            requestBody:
+                content:
+                    application/scim+json:
+                        schema:
+                            $ref: '#/components/schemas/ScimGroupWriteRequest'
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimGroup'
+                    description: Created
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                        Location:
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "409":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Conflict
+                "412":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Precondition Failed
+                "413":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Payload Too Large
+                "415":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unsupported Media Type
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4760,9 +5291,45 @@ paths:
                   required: true
                   schema:
                     type: string
+                - in: header
+                  name: If-Match
+                  schema:
+                    type: string
+                - in: header
+                  name: X-SCIM-Meta-Version
+                  schema:
+                    type: string
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Not Found
+                "412":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Precondition Failed
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4774,9 +5341,39 @@ paths:
                   required: true
                   schema:
                     type: string
+                - in: query
+                  name: excludedAttributes
+                  schema:
+                    type: string
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimGroup'
                     description: OK
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Not Found
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4788,9 +5385,74 @@ paths:
                   required: true
                   schema:
                     type: string
+                - in: header
+                  name: If-Match
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/scim+json:
+                        schema:
+                            $ref: '#/components/schemas/ScimPatchRequest'
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimGroup'
                     description: OK
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Not Found
+                "409":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Conflict
+                "412":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Precondition Failed
+                "413":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Payload Too Large
+                "415":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unsupported Media Type
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4799,7 +5461,23 @@ paths:
             operationId: getIdentityScimV2ResourceTypes
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimResourceTypesResponse'
                     description: OK
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4808,7 +5486,23 @@ paths:
             operationId: getIdentityScimV2Schemas
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimSchemasResponse'
                     description: OK
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4817,24 +5511,135 @@ paths:
             operationId: getIdentityScimV2ServiceProviderConfig
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimServiceProviderConfig'
                     description: OK
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
     /api/v1/identity/scim/v2/Users:
         get:
             operationId: getIdentityScimV2Users
+            parameters:
+                - in: query
+                  name: filter
+                  schema:
+                    type: string
+                - in: query
+                  name: startIndex
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: count
+                  schema:
+                    format: int32
+                    type: integer
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimUserListResponse'
                     description: OK
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
         post:
             operationId: postIdentityScimV2Users
+            requestBody:
+                content:
+                    application/scim+json:
+                        schema:
+                            $ref: '#/components/schemas/ScimUserWriteRequest'
             responses:
-                "200":
-                    description: OK
+                "201":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimUser'
+                    description: Created
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                        Location:
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "409":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Conflict
+                "412":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Precondition Failed
+                "413":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Payload Too Large
+                "415":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unsupported Media Type
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4847,9 +5652,47 @@ paths:
                   required: true
                   schema:
                     type: string
+                - in: header
+                  name: If-Match
+                  schema:
+                    type: string
             responses:
-                "200":
-                    description: OK
+                "204":
+                    description: No Content
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Not Found
+                "412":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Precondition Failed
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4863,7 +5706,33 @@ paths:
                     type: string
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimUser'
                     description: OK
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Not Found
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4875,9 +5744,74 @@ paths:
                   required: true
                   schema:
                     type: string
+                - in: header
+                  name: If-Match
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/scim+json:
+                        schema:
+                            $ref: '#/components/schemas/ScimPatchRequest'
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimUser'
                     description: OK
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Not Found
+                "409":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Conflict
+                "412":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Precondition Failed
+                "413":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Payload Too Large
+                "415":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unsupported Media Type
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim
@@ -4889,9 +5823,74 @@ paths:
                   required: true
                   schema:
                     type: string
+                - in: header
+                  name: If-Match
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/scim+json:
+                        schema:
+                            $ref: '#/components/schemas/ScimUserWriteRequest'
             responses:
                 "200":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimUser'
                     description: OK
+                    headers:
+                        ETag:
+                            schema:
+                                type: string
+                "400":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Bad Request
+                "401":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unauthorized
+                "404":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Not Found
+                "409":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Conflict
+                "412":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Precondition Failed
+                "413":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Payload Too Large
+                "415":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Unsupported Media Type
+                "429":
+                    content:
+                        application/scim+json:
+                            schema:
+                                $ref: '#/components/schemas/ScimError'
+                    description: Too Many Requests
             tags:
                 - SCIM 2.0
             x-vantigo-access: scim

@@ -16,6 +16,14 @@ import (
 	"github.com/getkin/kin-openapi/routers/gorillamux"
 )
 
+func init() {
+	// kin-openapi v0.149.0 registers a decoder for application/problem+json
+	// but has no decoder for the SCIM (RFC 7644) media type and no generic
+	// "+json" suffix fallback — the body-decoder lookup is exact. SCIM
+	// bodies are plain JSON on the wire, so reuse the JSON decoder.
+	openapi3filter.RegisterBodyDecoder("application/scim+json", openapi3filter.JSONBodyDecoder)
+}
+
 // Exchange is one request/response pair recorded from the .NET integration
 // suites (packages/contract-recording). Bodies are nil when they were not
 // text or were too large to record.
