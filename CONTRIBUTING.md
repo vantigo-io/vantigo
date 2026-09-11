@@ -298,6 +298,8 @@ VANTIGO_CONTRACT_RECORD=/tmp/vantigo-exchanges dotnet test Vantigo.slnx
 cd apps/server && go run ./internal/openapi/cmd/contract corpus -in /tmp/vantigo-exchanges -out ../../openapi/testdata/exchanges
 ```
 
+`contract corpus` validates every raw exchange against the contract before it writes anything — the same rules as the test, over the full recording rather than the committed sample — so a re-record that exposes a contract gap fails there, listing each failing operation and reason, and leaves the committed corpus untouched. Only then does it write the sample: at most three exchanges per operation, status and response shape (content type and top-level JSON keys).
+
 `openapi/COVERAGE.md` lists the operations no recorded exchange exercises.
 
 ## Commit conventions

@@ -74,6 +74,12 @@ jobs:
             echo "::error::Frontend API types are stale. Run 'bun run gen:client' and commit the result."
             exit 1
           }
+          untracked="$(git status --porcelain -- '**/api-schema.d.ts')"
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::gen:client produced API types that are not committed. Run 'bun run gen:client' and commit the result."
+            exit 1
+          fi
 
       - name: 🛡️ Audit frontend dependencies (informational)
         run: bun audit

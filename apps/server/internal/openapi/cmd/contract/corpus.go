@@ -225,11 +225,18 @@ func runCoverage(args []string) error {
 		if err != nil {
 			return err
 		}
-		data, _ := os.ReadFile(filepath.Join(*corpus, name+".jsonl"))
+		file := filepath.Join(*corpus, name+".jsonl")
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
 		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-			var ex openapi.Exchange
-			if line == "" || json.Unmarshal([]byte(line), &ex) != nil {
+			if line == "" {
 				continue
+			}
+			var ex openapi.Exchange
+			if err := json.Unmarshal([]byte(line), &ex); err != nil {
+				return fmt.Errorf("%s: %w", file, err)
 			}
 			if route, _, err := r.FindRoute(httptest.NewRequest(ex.Method, ex.Path, nil)); err == nil {
 				seen[route.Operation.OperationID] = true

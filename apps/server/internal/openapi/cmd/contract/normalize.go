@@ -16,15 +16,18 @@ var numericStringPatterns = map[string]bool{
 // these as JSON numbers on the wire, so this is a shape-preserving fix, not
 // a contract change — without it, oapi-codegen falls back to interface{}.
 // The numeric-string `pattern` the downgrade added alongside `format`
-// becomes redundant once `type` is restored, so it is dropped too; any
-// other pattern is left alone. It reports how many schemas it changed.
+// becomes redundant once `type` is restored, so it is dropped too — and
+// likewise from a schema that is already typed integer or number (the
+// downgrade left those on path and query parameters); any other pattern, and
+// any pattern on a string, is left alone. It reports how many schemas it
+// changed.
 func normalizeNumbers(v any) int {
 	count := 0
 	var walk func(any)
 	walk = func(v any) {
 		switch t := v.(type) {
 		case obj:
-			if _, hasType := t["type"]; !hasType {
+			if typ, hasType := t["type"]; !hasType {
 				var newType string
 				switch format, _ := t["format"].(string); format {
 				case "int32", "int64":
@@ -38,6 +41,11 @@ func normalizeNumbers(v any) int {
 					if pattern, ok := t["pattern"].(string); ok && numericStringPatterns[pattern] {
 						delete(t, "pattern")
 					}
+				}
+			} else if typ == "integer" || typ == "number" {
+				if pattern, ok := t["pattern"].(string); ok && numericStringPatterns[pattern] {
+					delete(t, "pattern")
+					count++
 				}
 			}
 			for _, child := range t {

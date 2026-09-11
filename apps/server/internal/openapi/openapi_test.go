@@ -179,6 +179,23 @@ paths:
       operationId: emptyOk
       x-vantigo-access: session
       responses: {"200": {description: ok, x-vantigo-empty-body: true}}
+  /c:
+    get:
+      operationId: unsortedPermissions
+      x-vantigo-access: permission:customers:view+customers:edit
+      responses: {"204": {description: ok}}
+    post:
+      operationId: duplicatePolicy
+      x-vantigo-access: policy:Owner+Owner
+      responses: {"204": {description: ok}}
+    put:
+      operationId: sortedPolicies
+      x-vantigo-access: policy:Owner+OwnerManagement
+      responses: {"204": {description: ok}}
+    patch:
+      operationId: sortedPermissions
+      x-vantigo-access: permission:communications:conversations-reply+communications:conversations-view
+      responses: {"204": {description: ok}}
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -187,12 +204,12 @@ paths:
 	for _, p := range Lint(doc) {
 		got[p.OperationID] = p.Message
 	}
-	for _, id := range []string{"good", "redirects", "emptyOk"} {
+	for _, id := range []string{"good", "redirects", "emptyOk", "sortedPolicies", "sortedPermissions"} {
 		if _, bad := got[id]; bad {
 			t.Errorf("%s flagged: %v", id, got[id])
 		}
 	}
-	for _, id := range []string{"noBody", "badAccess", "redirectsNowhere", ""} {
+	for _, id := range []string{"noBody", "badAccess", "redirectsNowhere", "", "unsortedPermissions", "duplicatePolicy"} {
 		if _, ok := got[id]; !ok {
 			t.Errorf("operation %q not flagged (got %v)", id, got)
 		}
@@ -223,6 +240,22 @@ func TestNumericSchemasAreTyped(t *testing.T) {
 		}
 		if format, _ := node["format"].(string); numericFormats[format] {
 			t.Errorf("%s: %s has format %q but no type — run contract normalize", file, path, format)
+		}
+	})
+}
+
+// TestNumericSchemasHaveNoPattern guards against the numeric-string
+// `pattern` the 3.0 downgrade added beside `format` surviving on a schema that
+// is typed integer or number: `pattern` only constrains strings, so on a
+// number it is dead weight that reads as if the wire carried digit strings.
+// `contract normalize` is what fixes a violation.
+func TestNumericSchemasHaveNoPattern(t *testing.T) {
+	walkContract(t, func(file, path string, node map[string]any) {
+		if typ, _ := node["type"].(string); typ != "integer" && typ != "number" {
+			return
+		}
+		if pattern, ok := node["pattern"].(string); ok {
+			t.Errorf("%s: %s is a %s with pattern %q — run contract normalize", file, path, node["type"], pattern)
 		}
 	})
 }
