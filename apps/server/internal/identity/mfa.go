@@ -331,15 +331,17 @@ func (s *server) disableMFA(ctx context.Context, body *gen.MfaCodeRequest) (gen.
 	return gen.MfaStatusResponse{TwoFactorEnabled: false, MfaEnrollmentRequired: false}, nil
 }
 
-// activeDelegatedAdministrator reports whether userID holds an active
-// authorization delegation (EA/AuthAccountEndpoints.cs:253-255), which,
-// while owners are required to use MFA, keeps them from disabling it.
-//
-// TODO(Task 15): delegations arrive with authorization management, which
-// replaces this with the real query (not revoked, and unexpired at the
-// Deps clock). Until then no one holds one.
-func (*server) activeDelegatedAdministrator(context.Context, uuid.UUID) (bool, error) {
-	return false, nil
+// activeDelegatedAdministrator reports whether userID holds an
+// authorization delegation active at the Deps clock, not revoked and
+// unexpired, which, while owners are required to use MFA, keeps them from
+// disabling it. As .NET's query (EA/AuthAccountEndpoints.cs:253-255), it
+// counts a delegation whether or not it is valid.
+func (s *server) activeDelegatedAdministrator(ctx context.Context, userID uuid.UUID) (bool, error) {
+	ids, err := s.q.ActiveDelegationIDs(ctx, store.ActiveDelegationIDsParams{GranteeUserID: userID, Now: s.deps.Clock()})
+	if err != nil {
+		return false, fmt.Errorf("identity: active delegations: %w", err)
+	}
+	return len(ids) > 0, nil
 }
 
 // regenerateRecoveryCodes is POST /mfa/recovery-codes

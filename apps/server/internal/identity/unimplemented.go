@@ -33,10 +33,6 @@ func (*server) DeleteIdentityScimV2UsersById(context.Context, gen.DeleteIdentity
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityAccessDelegations(context.Context, gen.GetIdentityAccessDelegationsRequestObject) (gen.GetIdentityAccessDelegationsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityAccessGroups(context.Context, gen.GetIdentityAccessGroupsRequestObject) (gen.GetIdentityAccessGroupsResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -93,14 +89,6 @@ func (*server) PatchIdentityScimV2UsersById(context.Context, gen.PatchIdentitySc
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityAccessDelegations(context.Context, gen.PostIdentityAccessDelegationsRequestObject) (gen.PostIdentityAccessDelegationsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccessDelegationsByIdRevoke(context.Context, gen.PostIdentityAccessDelegationsByIdRevokeRequestObject) (gen.PostIdentityAccessDelegationsByIdRevokeResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityAccessGroups(context.Context, gen.PostIdentityAccessGroupsRequestObject) (gen.PostIdentityAccessGroupsResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -122,10 +110,6 @@ func (*server) PostIdentityScimV2Groups(context.Context, gen.PostIdentityScimV2G
 }
 
 func (*server) PostIdentityScimV2Users(context.Context, gen.PostIdentityScimV2UsersRequestObject) (gen.PostIdentityScimV2UsersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccessDelegationsById(context.Context, gen.PutIdentityAccessDelegationsByIdRequestObject) (gen.PutIdentityAccessDelegationsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 

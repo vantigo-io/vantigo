@@ -37,6 +37,10 @@ type Access struct {
 	cfg *config.Config
 	q   *store.Queries
 	now func() time.Time
+	// catalog is the composed permission catalog, which decides whether a
+	// delegation's keys may be delegated. Compose builds it before any
+	// module mounts, and identity's mount sets it here.
+	catalog map[string]contracts.Permission
 }
 
 var _ contracts.Access = (*Access)(nil)
@@ -98,7 +102,11 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 			return contracts.Principal{}, contracts.ErrForbidden // ParseRule admits no empty rule; fail closed regardless
 		}
 		for _, name := range rule.Names {
-			if !a.policySatisfied(name, s) {
+			ok, err := a.policySatisfied(ctx, name, s, now)
+			if err != nil {
+				return contracts.Principal{}, err
+			}
+			if !ok {
 				return contracts.Principal{}, contracts.ErrForbidden
 			}
 		}
@@ -197,7 +205,7 @@ func interval(d time.Duration) pgtype.Interval {
 // (EA/AuthServiceCollectionExtensions.cs:281-304). Roles are the user's
 // current ones, read with the session, where .NET read them from a cookie
 // principal refreshed every 15 minutes.
-func (a *Access) policySatisfied(name string, s store.GetSessionByTokenHashRow) bool {
+func (a *Access) policySatisfied(ctx context.Context, name string, s store.GetSessionByTokenHashRow, now time.Time) (bool, error) {
 	// ActiveAccountRequirement checks IsDisabled only, not lockout or SCIM
 	// state (EA/AuthAuthorization.cs:44-45). Session validation already
 	// refused a disabled user; it is spelled out so each policy reads as
@@ -205,24 +213,43 @@ func (a *Access) policySatisfied(name string, s store.GetSessionByTokenHashRow) 
 	active := !s.IsDisabled
 	switch name {
 	case "ActiveAccount":
-		return active
+		return active, nil
 	case "Owner", "OwnerManagement":
 		// Two names, one definition: role Owner + ActiveAccount + MFA (:294-298).
-		return hasRole(s, RoleOwner) && active && a.mfaSatisfied(s)
+		return hasRole(s, RoleOwner) && active && a.mfaSatisfied(s), nil
 	case "SystemAdmin":
-		return hasRole(s, RoleSystemAdmin) && active && a.mfaSatisfied(s)
+		return hasRole(s, RoleSystemAdmin) && active && a.mfaSatisfied(s), nil
 	case "AuthorizationManagement":
-		// ActiveAccount + MFA + AuthorizationManagementRequirement (:301-303),
-		// which holding Owner satisfies (EA/AuthAuthorization.cs:115-125), as
-		// does an active delegation (:127-173). Delegations arrive with
-		// authorization management; until then only Owners qualify.
-		return active && a.mfaSatisfied(s) && hasRole(s, RoleOwner)
+		// ActiveAccount + MFA + AuthorizationManagementRequirement (:301-303).
+		// The MFA requirement binds a delegate as it binds an Owner.
+		if !active || !a.mfaSatisfied(s) {
+			return false, nil
+		}
+		return a.managesAuthorization(ctx, s, now)
 	case "Business":
 		// ActiveAccount + BusinessAccessRequirement (:299-300).
-		return active && a.businessSatisfied(s)
+		return active && a.businessSatisfied(s), nil
 	default:
-		return false // ParseRule admits no other name; fail closed regardless
+		return false, nil // ParseRule admits no other name; fail closed regardless
 	}
+}
+
+// managesAuthorization is AuthorizationManagementHandler
+// (EA/AuthAuthorization.cs:104-174), evaluated afresh on every request with
+// no cache: the user holds Owner (:115-125), or holds a delegation active at
+// now that is valid (:127-173), one whose stewarded roles all exist and are
+// custom and whose keys the catalog all lets be delegated (loadScopes). A
+// revoked, expired or malformed delegation is refused at the very next
+// request.
+func (a *Access) managesAuthorization(ctx context.Context, s store.GetSessionByTokenHashRow, now time.Time) (bool, error) {
+	if hasRole(s, RoleOwner) {
+		return true, nil
+	}
+	scopes, err := activeScopes(ctx, a.q, a.catalog, s.UserID, now)
+	if err != nil {
+		return false, err
+	}
+	return len(scopes) > 0, nil
 }
 
 // mfaSatisfied is MfaAuthenticatedRequirement (EA/AuthAuthorization.cs:80-97):
