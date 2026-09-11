@@ -735,6 +735,31 @@ func TestLoad_TrustedProxyCIDRs(t *testing.T) {
 	}
 }
 
+// Outside development, forwarded headers are honoured only from a peer
+// inside TRUSTED_PROXY_CIDRS, so hops without a list is a problem naming
+// both variables. Development keeps the hops-only behaviour (server.New
+// warns about it), and a list that fails to parse is reported once, as
+// itself.
+func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
+	const want = "TRUSTED_PROXY_HOPS: requires TRUSTED_PROXY_CIDRS outside development"
+	for _, cidrs := range []string{"", " , "} {
+		if msg := loadError(t, with(validEnv(), "TRUSTED_PROXY_HOPS", "1", "TRUSTED_PROXY_CIDRS", cidrs)); !strings.Contains(msg, want) {
+			t.Errorf("hops without CIDRs (%q): error %q, want %q", cidrs, msg, want)
+		}
+	}
+	cfg := mustLoad(t, with(validEnv(), "TRUSTED_PROXY_HOPS", "2", "TRUSTED_PROXY_CIDRS", "10.0.0.0/8"))
+	if cfg.TrustedProxyHops != 2 || len(cfg.TrustedProxyCIDRs) != 1 {
+		t.Errorf("hops with CIDRs: hops %d CIDRs %v", cfg.TrustedProxyHops, cfg.TrustedProxyCIDRs)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "TRUSTED_PROXY_HOPS", "1")); cfg.TrustedProxyHops != 1 || cfg.TrustedProxyCIDRs != nil {
+		t.Errorf("development hops without CIDRs: hops %d CIDRs %v", cfg.TrustedProxyHops, cfg.TrustedProxyCIDRs)
+	}
+	msg := loadError(t, with(validEnv(), "TRUSTED_PROXY_HOPS", "1", "TRUSTED_PROXY_CIDRS", "not-a-cidr"))
+	if !strings.Contains(msg, "TRUSTED_PROXY_CIDRS: must be a comma list") || strings.Contains(msg, want) {
+		t.Errorf("an unparsable list: error %q, want only the parse problem", msg)
+	}
+}
+
 func TestLoad_SystemAdminEmail(t *testing.T) {
 	if cfg := mustLoad(t, with(validEnv(), "SYSTEM_ADMIN_EMAIL", "  admin@vantigo.example.com  ")); cfg.SystemAdminEmail != "admin@vantigo.example.com" {
 		t.Errorf("SystemAdminEmail = %q", cfg.SystemAdminEmail)

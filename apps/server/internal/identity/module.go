@@ -120,15 +120,19 @@ func Module(a *Access) module.Module {
 }
 
 // mount registers every contract operation on the platform router, which
-// wraps each in its rate limit and access rule before the generated wrapper
-// decodes it. It fails when the router reports a problem: an operation
-// never registered, a rule that does not parse, a permission missing from
-// the catalog, or a Limits entry naming no operation. The returned handler
-// is further wrapped, in front of the router's own checks, by the SCIM
-// ingress (scimIngress: the SCIM rate limit, heartbeat and body rules) and
-// by limitAvatarUploads, the avatar endpoints' body cap. The SCIM
-// operations are not in limits: their limit is keyed by the token, which
-// the router's per-address limits cannot be.
+// wraps each in its rate limit, access rule and request-body cap before the
+// generated wrapper decodes it. Every body is capped at the router's
+// default (module.DefaultMaxBodyBytes) except the avatar uploads, which get
+// maxAvatarRequestBytes (avatarBodyLimits). It fails when the router
+// reports a problem: an operation never registered, a rule that does not
+// parse, a permission missing from the catalog, or a Limits or BodyLimits
+// entry naming no operation. The returned handler is further wrapped, in
+// front of the router's own checks, by the SCIM ingress (scimIngress: the
+// SCIM rate limit, heartbeat and body rules). The ingress reads a SCIM
+// body itself, under its own smaller cap (scimMaxBodyBytes), and forwards
+// the request with an empty body, so the router's cap never meets a SCIM
+// body. The SCIM operations are not in limits: their limit is keyed by the
+// connection, which the router's per-address limits cannot be.
 //
 // The server is built here, once per mount, which is once per process: the
 // bootstrap secret is resolved then, so /bootstrap and /bootstrap-status
@@ -137,11 +141,12 @@ func Module(a *Access) module.Module {
 func mount(a *Access, d module.Deps) (http.Handler, error) {
 	a.catalog = d.Catalog // before any request: AuthorizationManagement reads it
 	router := module.NewRouter(module.RouterOptions{
-		Doc:     d.Doc,
-		Access:  a,
-		Limiter: d.Limiter,
-		Limits:  limits,
-		Catalog: d.Catalog,
+		Doc:        d.Doc,
+		Access:     a,
+		Limiter:    d.Limiter,
+		Limits:     limits,
+		Catalog:    d.Catalog,
+		BodyLimits: avatarBodyLimits,
 	})
 	srv, err := newServer(a, d)
 	if err != nil {
@@ -158,5 +163,5 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	if err := router.Err(); err != nil {
 		return nil, err
 	}
-	return limitAvatarUploads(srv.scimIngress(scimRoutes(d), handler)), nil
+	return srv.scimIngress(scimRoutes(d), handler), nil
 }

@@ -41,7 +41,7 @@ const (
 // image.DecodeConfig cannot read as PNG or JPEG, dimensions over 4096 on
 // either side, or a body past either size bound (decision: the contract
 // documents no 413 for these operations, so an oversized body is this same
-// 400, not a distinct code — see limitAvatarUploads).
+// 400, not a distinct code — see avatarBodyLimits).
 const invalidAvatarMessage = "The avatar must be a correctly detected PNG or JPEG image of at most 5 MB and 4096x4096 pixels."
 
 // avatarImageFormats maps a sniffed magic-byte type to the format name
@@ -51,23 +51,19 @@ var avatarImageFormats = map[string]string{
 	"image/jpeg": "jpeg",
 }
 
-// limitAvatarUploads caps the body of POST/PUT /account/avatar at
-// maxAvatarRequestBytes before the generated strict server's multipart
-// decoder (r.MultipartReader(), called on the raw body) ever reads it: the
-// brief's http.MaxBytesReader wrap. It must run here, wrapping the whole
-// mounted handler, because the multipart reader is built from r.Body
-// before any per-operation code — this package's included — gets a chance
-// to touch it. Once the cap is hit, every later Read (ours, draining a
+// avatarBodyLimits raises the router's request-body cap
+// (module.RouterOptions.BodyLimits) for POST/PUT /account/avatar to
+// maxAvatarRequestBytes. The router puts its http.MaxBytesReader in place
+// before the generated strict server's multipart decoder
+// (r.MultipartReader(), called on the raw body) ever reads it, so this is
+// the one cap on an upload: there is no second, smaller one in front of it
+// or behind it. Once the cap is hit, every later Read (ours, draining a
 // preceding part, or the multipart framing itself) returns
 // *http.MaxBytesError, which avatarPart's read failure folds into the same
 // 400 invalid_avatar an oversized or malformed image gets.
-func limitAvatarUploads(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == accountAvatarPath && (r.Method == http.MethodPost || r.Method == http.MethodPut) {
-			r.Body = http.MaxBytesReader(w, r.Body, maxAvatarRequestBytes)
-		}
-		next.ServeHTTP(w, r)
-	})
+var avatarBodyLimits = map[string]int64{
+	"postIdentityAccountAvatar": maxAvatarRequestBytes,
+	"putIdentityAccountAvatar":  maxAvatarRequestBytes,
 }
 
 // GetIdentityAccount describes the caller's own account
@@ -379,7 +375,7 @@ func (s *server) PutIdentityAccountAvatar(ctx context.Context, req gen.PutIdenti
 // every way the brief rejects one: no "avatar" part, a declared type that
 // disagrees with the sniffed magic bytes or is not PNG/JPEG,
 // image.DecodeConfig failing or reporting more than 4096 pixels on a side,
-// or a read past either size bound (avatarPart, limitAvatarUploads). A
+// or a read past either size bound (avatarPart, avatarBodyLimits). A
 // success upserts profile_avatars, incrementing its version.
 func (s *server) uploadAvatar(ctx context.Context, body *multipart.Reader) (gen.AvatarResponse, bool, error) {
 	p, err := callerFrom(ctx)
@@ -409,8 +405,8 @@ func (s *server) uploadAvatar(ctx context.Context, body *multipart.Reader) (gen.
 // documented field; unlike .NET, which falls back to whatever single file
 // the form carries, this requires the exact name the contract promises).
 // data is capped at maxAvatarImageBytes: a read failure — an oversized
-// part, a malformed multipart body, or the request cap from
-// limitAvatarUploads firing while draining a preceding part — as well as an
+// part, a malformed multipart body, or the router's request cap
+// (avatarBodyLimits) firing while draining a preceding part — as well as an
 // empty or still-too-large part, all report found=false.
 func avatarPart(mr *multipart.Reader) (data []byte, declared string, found bool) {
 	for {

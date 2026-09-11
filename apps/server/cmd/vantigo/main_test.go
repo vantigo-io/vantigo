@@ -33,7 +33,7 @@ const testAppSecret = "main-test-app-secret-32-bytes!!!"
 func setEnv(t *testing.T, pairs ...string) {
 	t.Helper()
 	for _, k := range []string{"APP_ENV", "DATABASE_URL", "MIGRATIONS_DATABASE_URL", "APP_URL", "APP_BASE_PATH", "PORT",
-		"TRUSTED_PROXY_HOPS", "ALLOW_INSECURE_TRANSPORT", "CSP_REPORT_ONLY", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "PGSSLMODE",
+		"TRUSTED_PROXY_HOPS", "TRUSTED_PROXY_CIDRS", "ALLOW_INSECURE_TRANSPORT", "CSP_REPORT_ONLY", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "PGSSLMODE",
 		"APP_SECRET", "BOOTSTRAP_SECRET", "MAIL_DRIVER", "SMTP_HOST", "SMTP_FROM"} {
 		t.Setenv(k, "")
 	}

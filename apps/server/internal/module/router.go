@@ -13,6 +13,13 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
+// DefaultMaxBodyBytes is the request-body cap of every operation whose
+// module sets neither RouterOptions.MaxBodyBytes nor a BodyLimits entry
+// for it: 1 MiB, far above any JSON document a contract describes, and
+// far below what an anonymous caller could make a decoder buffer without
+// one.
+const DefaultMaxBodyBytes int64 = 1 << 20
+
 // RouterOptions configures a Router.
 type RouterOptions struct {
 	Doc     *openapi3.T
@@ -20,6 +27,12 @@ type RouterOptions struct {
 	Limiter *ratelimit.Limiter
 	Limits  map[string]ratelimit.Policy // operationId → policy
 	Catalog map[string]contracts.Permission
+	// MaxBodyBytes caps every operation's request body; zero means
+	// DefaultMaxBodyBytes.
+	MaxBodyBytes int64
+	// BodyLimits overrides MaxBodyBytes for single operations, keyed by
+	// operationId (a multipart upload that needs more, say).
+	BodyLimits map[string]int64
 }
 
 // Router implements every generated package's ServeMux interface
@@ -41,7 +54,8 @@ type Router struct {
 // ServeMux interface. Each pattern the generated server registers is looked
 // up in Doc; the handler is wrapped: rate limit (if Limits has the
 // operationId) → Access.Check(rule) → Reject on ErrUnauthenticated/
-// ErrForbidden → the generated wrapper with the Principal in the context.
+// ErrForbidden → the request-body cap → the generated wrapper with the
+// Principal in the context.
 func NewRouter(o RouterOptions) *Router {
 	r := &Router{
 		opts:         o,
@@ -96,7 +110,7 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		}
 	}
 
-	if r.mount(pattern, r.wrap(op, rule, h)) {
+	if r.mount(pattern, r.wrap(op, rule, r.bodyLimit(op.OperationID), h)) {
 		r.registered[pattern] = true
 	}
 }
@@ -118,11 +132,32 @@ func (r *Router) mount(pattern string, h http.HandlerFunc) (ok bool) {
 	return true
 }
 
+// bodyLimit is the request-body cap for operationID: its BodyLimits entry,
+// else MaxBodyBytes, else DefaultMaxBodyBytes.
+func (r *Router) bodyLimit(operationID string) int64 {
+	if n, ok := r.opts.BodyLimits[operationID]; ok {
+		return n
+	}
+	if r.opts.MaxBodyBytes > 0 {
+		return r.opts.MaxBodyBytes
+	}
+	return DefaultMaxBodyBytes
+}
+
 // wrap orders the checks: rate limit (if opts.Limits names op's
 // operationId) before Access.Check, Access.Reject on
 // ErrUnauthenticated/ErrForbidden, httpx.WriteError on any other Access
-// error, and finally h with the Principal attached to the request context.
-func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, h func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
+// error, then the body cap, and finally h with the Principal attached to
+// the request context.
+//
+// The cap is an http.MaxBytesReader of maxBody bytes over the body, put in
+// place only once the rate limit and Check have passed, so neither ever
+// sees a wrapped body and nothing reads a body for a request they refuse.
+// It is the only bound on what the generated wrapper's decoder buffers: a
+// read past it fails with *http.MaxBytesError, which the generated
+// wrapper hands to the module's RequestErrorHandlerFunc like any other
+// undecodable body (DecodeError: the operation's own documented 400).
+func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64, h func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if policy, ok := r.opts.Limits[op.OperationID]; ok {
 			d, err := r.opts.Limiter.Hit(req.Context(), policy, httpx.ClientIP(req))
@@ -146,6 +181,9 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, h func(http.R
 			return
 		}
 
+		if req.Body != nil && req.Body != http.NoBody {
+			req.Body = http.MaxBytesReader(w, req.Body, maxBody)
+		}
 		h(w, req.WithContext(contracts.WithPrincipal(req.Context(), p)))
 	}
 }
@@ -186,6 +224,17 @@ func (r *Router) Err() error {
 	for id := range r.opts.Limits {
 		if !r.operationIDs[id] {
 			badLimits = append(badLimits, fmt.Sprintf("module: Limits names unknown operation %q", id))
+		}
+	}
+	if r.opts.MaxBodyBytes < 0 {
+		badLimits = append(badLimits, "module: RouterOptions.MaxBodyBytes is negative")
+	}
+	for id, n := range r.opts.BodyLimits {
+		if !r.operationIDs[id] {
+			badLimits = append(badLimits, fmt.Sprintf("module: BodyLimits names unknown operation %q", id))
+		}
+		if n <= 0 {
+			badLimits = append(badLimits, fmt.Sprintf("module: BodyLimits[%q] is not positive", id))
 		}
 	}
 	sort.Strings(badLimits)
