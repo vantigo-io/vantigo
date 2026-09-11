@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,21 +37,26 @@ const (
 // answered with (EA/AuthorizationManagementEndpoints.cs, "EA/AMS" below;
 // AZ/AuthorizationMutationService.cs, "AZ/AMS").
 var (
-	invalidRole          = refuseFlat(http.StatusBadRequest, "invalid_role", "Role metadata and registered permission keys are required.")    // EA/AMS:750-757
-	invalidRoles         = refuseFlat(http.StatusBadRequest, "invalid_roles", "Only custom application roles may be assigned by this route.") // EA/AMS:378-379
-	selfRoleChange       = refuseFlat(http.StatusBadRequest, "self_change", "A user cannot change their own roles.")                          // EA/AMS:359
-	systemRoleChanged    = refuseFlat(http.StatusConflict, "system_role", "Protected system and built-in roles cannot be changed.")           // EA/AMS:218-219
-	systemRoleDeleted    = refuseFlat(http.StatusConflict, "system_role", "Protected system and built-in roles cannot be deleted.")           // EA/AMS:301-302
-	staleRole            = refuseFlat(http.StatusConflict, "role_conflict", "The role changed concurrently; refresh its version.")            // EA/AMS:220-222, :303-305
-	staleUser            = refuseFlat(http.StatusConflict, "user_conflict", "The user changed concurrently; refresh its version.")            // EA/AMS:362-364
-	roleExists           = refuseFlat(http.StatusConflict, "role_exists", "The normalized role name is already in use.")                      // EA/AMS:132-133, :243-244
-	roleAssigned         = refuseFlat(http.StatusConflict, "role_assigned", "Assigned roles cannot be deleted.")                              // EA/AMS:317-318
-	roleMapped           = refuseFlat(http.StatusForbidden, "role_mapped", "Roles mapped to access groups cannot be deleted; remove every mapping first.")
-	roleGroupProtected   = refuseFlat(http.StatusForbidden, "role_group_protected_permission", "A role mapped to an access group cannot receive Owner or protected authorization-management permissions.")
-	delegationNotAllowed = refuseFlat(http.StatusForbidden, "delegation_not_allowed", "Owners cannot select a delegation.")                                                        // AZ/AMS:40-42, :117-118
-	delegationRequired   = refuseFlat(http.StatusForbidden, "delegation_required", "A delegation must be selected.")                                                               // AZ/AMS:44-45, :125-126
-	roleEditDenied       = refuseFlat(http.StatusForbidden, "role_edit_denied", "Only delegated stewarded custom roles within the selected delegation boundary may be changed.")   // AZ/AMS:79-81
-	roleDeleteDenied     = refuseFlat(http.StatusForbidden, "role_delete_denied", "Only delegated stewarded custom roles within the selected delegation boundary may be deleted.") // AZ/AMS:99-102
+	invalidRole            = refuseFlat(http.StatusBadRequest, "invalid_role", "Role metadata and registered permission keys are required.")    // EA/AMS:750-757
+	invalidRoles           = refuseFlat(http.StatusBadRequest, "invalid_roles", "Only custom application roles may be assigned by this route.") // EA/AMS:378-379
+	selfRoleChange         = refuseFlat(http.StatusBadRequest, "self_change", "A user cannot change their own roles.")                          // EA/AMS:359
+	systemRoleChanged      = refuseFlat(http.StatusConflict, "system_role", "Protected system and built-in roles cannot be changed.")           // EA/AMS:218-219
+	systemRoleDeleted      = refuseFlat(http.StatusConflict, "system_role", "Protected system and built-in roles cannot be deleted.")           // EA/AMS:301-302
+	staleRole              = refuseFlat(http.StatusConflict, "role_conflict", "The role changed concurrently; refresh its version.")            // EA/AMS:220-222, :303-305
+	staleUser              = refuseFlat(http.StatusConflict, "user_conflict", "The user changed concurrently; refresh its version.")            // EA/AMS:362-364
+	roleExists             = refuseFlat(http.StatusConflict, "role_exists", "The normalized role name is already in use.")                      // EA/AMS:132-133, :243-244
+	roleAssigned           = refuseFlat(http.StatusConflict, "role_assigned", "Assigned roles cannot be deleted.")                              // EA/AMS:317-318
+	roleMapped             = refuseFlat(http.StatusForbidden, "role_mapped", "Roles mapped to access groups cannot be deleted; remove every mapping first.")
+	roleGroupProtected     = refuseFlat(http.StatusForbidden, "role_group_protected_permission", "A role mapped to an access group cannot receive Owner or protected authorization-management permissions.")
+	delegationNotAllowed   = refuseFlat(http.StatusForbidden, "delegation_not_allowed", "Owners cannot select a delegation.")                                                        // AZ/AMS:40-42, :117-118
+	delegationRequired     = refuseFlat(http.StatusForbidden, "delegation_required", "A delegation must be selected.")                                                               // AZ/AMS:44-45, :125-126
+	roleEditDenied         = refuseFlat(http.StatusForbidden, "role_edit_denied", "Only delegated stewarded custom roles within the selected delegation boundary may be changed.")   // AZ/AMS:79-81
+	roleDeleteDenied       = refuseFlat(http.StatusForbidden, "role_delete_denied", "Only delegated stewarded custom roles within the selected delegation boundary may be deleted.") // AZ/AMS:99-102
+	roleCreateDenied       = refuseFlat(http.StatusForbidden, "role_create_denied", "The selected delegation cannot create this role.")                                              // AZ/AMS:49-50
+	roleBoundaryExceeded   = refuseFlat(http.StatusForbidden, "role_boundary_exceeded", "The role permissions exceed the selected delegation boundary.")                             // AZ/AMS:51-53
+	assignmentTargetDenied = refuseFlat(http.StatusForbidden, "assignment_target_denied", "Delegates may assign only ordinary users.")                                               // AZ/AMS:121-123
+	delegationInvalid      = refuseFlat(http.StatusForbidden, "delegation_invalid", "The selected delegation is not active and valid.")                                              // AZ/AMS:127-129
+	assignmentDenied       = refuseFlat(http.StatusForbidden, "assignment_denied", "The requested role is outside the selected delegation scope.")                                   // AZ/AMS:138-139
 
 	// Each handler's own catch of a lost race, AuthorizationConflict.IsExpected
 	// (EA/AMS:192-195, :274-277, :324-327, :413-416), which answers before the
@@ -140,9 +146,14 @@ func roleMutationLockKey(id uuid.UUID) int64 {
 // group take it, so a role's protected-permission check and a group mapping
 // never interleave.
 //
-// Lock order: a transaction that takes the owner lock (ownerMutationLock)
-// and role locks takes the owner lock first, then the role locks in
-// ascending key order. No transaction takes more than one of them yet.
+// Lock order, for a transaction that takes more than one of these: the
+// owner lock (ownerMutationLock) first; then delegation rows, by id (the
+// caller's FOR SHARE, heldDelegations; the one an Owner updates or revokes
+// FOR UPDATE); then role locks in ascending key order; then users rows;
+// then roles rows. The one exception is a user's deletion, whose cascade
+// takes the user's delegation rows after their users row; PostgreSQL
+// breaks the deadlock that can meet with that user's own delegated
+// mutation, and the loser is retried.
 func lockRole(ctx context.Context, q *store.Queries, roleID uuid.UUID) error {
 	return q.AcquireRoleMutationLock(ctx, roleMutationLockKey(roleID))
 }
@@ -154,68 +165,199 @@ func isOwner(p contracts.Principal) bool {
 	return slices.Contains(p.Roles, RoleOwner)
 }
 
-// The guards below are AuthorizationMutationService's Owner paths: an Owner
-// acts directly and may not name a delegation. Delegated administrators
-// arrive with delegations, and each guard is where their scope check goes;
-// until then only an Owner passes AuthorizationManagement, and anyone else
-// is refused as .NET refused a caller without an active delegation.
+// The guards below are AuthorizationMutationService's (AZ/AMS:33-148,
+// :249-260). An Owner acts directly and may not name a delegation. Anyone
+// else passed AuthorizationManagement on an active delegation and acts
+// within one of their scopes at a time (scopesOf), never within the union
+// of several, so disjoint scopes never combine. Each guard runs in the
+// mutation's transaction, after heldDelegations, at the point .NET ran it.
 
-// authorizeRoleCreate is AuthorizeRoleCreateAsync (AZ/AMS:33-54).
-func authorizeRoleCreate(p contracts.Principal, delegationID *uuid.UUID) error {
-	if !isOwner(p) {
-		return delegationRequired
+// authorizeRoleCreate is AuthorizeRoleCreateAsync (AZ/AMS:33-54): an Owner
+// creates any role and may not name a delegation (403
+// delegation_not_allowed). Anyone else must name a delegation (403
+// delegation_required) that is one of their scopes and may create roles
+// (403 role_create_denied), and every key must lie within it (403
+// role_boundary_exceeded). It returns the scope the role is created under,
+// nil for an Owner.
+func (s *server) authorizeRoleCreate(ctx context.Context, q *store.Queries, p contracts.Principal, held []uuid.UUID, delegationID *uuid.UUID, keys []string, now time.Time) (*scope, error) {
+	if isOwner(p) {
+		if delegationID != nil {
+			return nil, delegationNotAllowed
+		}
+		return nil, nil
 	}
-	if delegationID != nil {
-		return delegationNotAllowed
-	}
-	return nil
-}
-
-// authorizeRoleEdit is AuthorizeRoleEditAsync's actor check (AZ/AMS:76-82).
-func authorizeRoleEdit(p contracts.Principal) error {
-	if !isOwner(p) {
-		return roleEditDenied
-	}
-	return nil
-}
-
-// authorizeRoleDelete is AuthorizeRoleDeleteAsync's actor check (AZ/AMS:94-102).
-func authorizeRoleDelete(p contracts.Principal) error {
-	if !isOwner(p) {
-		return roleDeleteDenied
-	}
-	return nil
-}
-
-// authorizeAssignment is AuthorizeAssignmentAsync (AZ/AMS:105-148). It
-// returns the custom roles the caller may take away from the user: for an
-// Owner, every custom role the user holds and the request leaves out.
-func authorizeAssignment(p contracts.Principal, delegationID *uuid.UUID, existingCustom, requested []uuid.UUID) ([]uuid.UUID, error) {
-	if !isOwner(p) {
+	if delegationID == nil {
 		return nil, delegationRequired
 	}
-	if delegationID != nil {
-		return nil, delegationNotAllowed
+	scopes, err := s.scopesOf(ctx, q, held, now)
+	if err != nil {
+		return nil, err
 	}
-	return slices.DeleteFunc(slices.Clone(existingCustom), func(id uuid.UUID) bool { return slices.Contains(requested, id) }), nil
+	sc := findScope(scopes, *delegationID)
+	if sc == nil || !sc.canCreateRoles {
+		return nil, roleCreateDenied
+	}
+	if !sc.within(s.deps.Catalog, keys) {
+		return nil, roleBoundaryExceeded
+	}
+	return sc, nil
+}
+
+// authorizeRoleEdit is AuthorizeRoleEditAsync's actor check (AZ/AMS:76-82):
+// an Owner edits any custom role. Anyone else edits only a role one scope
+// of theirs stewards and within which every key lies, among the keys the
+// role has and those it is to get, so an edit neither grants nor strips a
+// key outside that one scope. 403 role_edit_denied. .NET's edit named no
+// delegation, and neither does this one.
+func (s *server) authorizeRoleEdit(ctx context.Context, q *store.Queries, p contracts.Principal, held []uuid.UUID, roleID uuid.UUID, keys []string, now time.Time) error {
+	if isOwner(p) {
+		return nil
+	}
+	ok, err := s.stewardedWithin(ctx, q, held, roleID, keys, now)
+	if err != nil || !ok {
+		return cmpOr(err, error(roleEditDenied))
+	}
+	return nil
+}
+
+// authorizeRoleDelete is AuthorizeRoleDeleteAsync's actor check
+// (AZ/AMS:94-102): as authorizeRoleEdit, over the keys the role has. 403
+// role_delete_denied.
+func (s *server) authorizeRoleDelete(ctx context.Context, q *store.Queries, p contracts.Principal, held []uuid.UUID, roleID uuid.UUID, now time.Time) error {
+	if isOwner(p) {
+		return nil
+	}
+	keys, err := q.GetRolePermissionKeys(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	ok, err := s.stewardedWithin(ctx, q, held, roleID, keys, now)
+	if err != nil || !ok {
+		return cmpOr(err, error(roleDeleteDenied))
+	}
+	return nil
+}
+
+// stewardedWithin reports whether one of the scopes held stewards roleID
+// and has every key within it.
+func (s *server) stewardedWithin(ctx context.Context, q *store.Queries, held []uuid.UUID, roleID uuid.UUID, keys []string, now time.Time) (bool, error) {
+	scopes, err := s.scopesOf(ctx, q, held, now)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(scopes, func(sc scope) bool { return sc.stewards(roleID) && sc.within(s.deps.Catalog, keys) }), nil
+}
+
+// authorizeAssignment is AuthorizeAssignmentAsync (AZ/AMS:105-148), in its
+// order. It returns the custom roles the caller may take away from the
+// user. An Owner may not name a delegation (403 delegation_not_allowed),
+// and takes away every custom role the request leaves out. Anyone else may
+// not target an Owner or a delegate (403 assignment_target_denied), must
+// name a delegation (403 delegation_required) that is one of their scopes
+// (403 delegation_invalid), and may add only roles that scope can assign
+// (403 assignment_denied); of the roles the request leaves out, only those
+// that scope can assign are taken away, and the rest stay. The caller is
+// never the user (self_change answers first, EA/AMS:359, which leaves
+// AZ/AMS:113-114 unreachable), and every requested role is already known to
+// be custom (invalid_roles, EA/AMS:378-379, before AZ/AMS:131-134's
+// system_role_denied could).
+func (s *server) authorizeAssignment(ctx context.Context, q *store.Queries, p contracts.Principal, held []uuid.UUID, delegationID *uuid.UUID,
+	target uuid.UUID, targetOwner bool, existingCustom, requested []uuid.UUID, now time.Time,
+) ([]uuid.UUID, error) {
+	leftOut := slices.DeleteFunc(slices.Clone(existingCustom), func(id uuid.UUID) bool { return slices.Contains(requested, id) })
+	if isOwner(p) {
+		if delegationID != nil {
+			return nil, delegationNotAllowed
+		}
+		return leftOut, nil
+	}
+	if targetOwner {
+		return nil, assignmentTargetDenied
+	}
+	targetScopes, err := activeScopes(ctx, q, s.deps.Catalog, target, now)
+	if err != nil {
+		return nil, err
+	}
+	if len(targetScopes) > 0 {
+		return nil, assignmentTargetDenied
+	}
+	if delegationID == nil {
+		return nil, delegationRequired
+	}
+	scopes, err := s.scopesOf(ctx, q, held, now)
+	if err != nil {
+		return nil, err
+	}
+	sc := findScope(scopes, *delegationID)
+	if sc == nil {
+		return nil, delegationInvalid
+	}
+	if slices.ContainsFunc(requested, func(id uuid.UUID) bool { return !slices.Contains(existingCustom, id) && !sc.assigns(id) }) {
+		return nil, assignmentDenied
+	}
+	return slices.DeleteFunc(leftOut, func(id uuid.UUID) bool { return !sc.assigns(id) }), nil
 }
 
 // canInspectTarget is CanInspectTargetAsync (AZ/AMS:249-260): nobody
 // inspects their own access through the directory, and an Owner inspects
-// anyone else.
-func canInspectTarget(p contracts.Principal, target uuid.UUID) bool {
-	return p.UserID != target && isOwner(p)
+// anyone else. Anyone else inspects no Owner and no delegate, and
+// otherwise a user whose every custom role one scope of theirs can assign
+// (a user without custom roles, when they hold any scope).
+func (s *server) canInspectTarget(ctx context.Context, p contracts.Principal, target uuid.UUID) (bool, error) {
+	if p.UserID == target {
+		return false, nil
+	}
+	if isOwner(p) {
+		return true, nil
+	}
+	now := s.deps.Clock()
+	owner, err := s.q.IsOwner(ctx, target)
+	if err != nil || owner {
+		return false, err
+	}
+	targetScopes, err := activeScopes(ctx, s.q, s.deps.Catalog, target, now)
+	if err != nil || len(targetScopes) > 0 {
+		return false, err
+	}
+	scopes, err := activeScopes(ctx, s.q, s.deps.Catalog, p.UserID, now)
+	if err != nil {
+		return false, err
+	}
+	roles, err := s.q.ListUserRoleAssignments(ctx, target)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(scopes, func(sc scope) bool {
+		return !slices.ContainsFunc(roles, func(r store.ListUserRoleAssignmentsRow) bool {
+			return !r.IsSystem && !r.IsBuiltIn && !sc.assigns(r.ID)
+		})
+	}), nil
 }
 
 // managementScope is /access/me's canManageAuthorization and
 // administrationScope for a user (EA/AMS:433-458, AZ/AMS:157-158): an Owner
-// manages authorization, with no delegation scopes; anyone else, without a
-// delegation, does not, and has no scope.
-func managementScope(owner bool) (bool, *gen.AdministrationScopeResponse) {
-	if !owner {
+// manages authorization, with no delegation scopes. Anyone else manages it
+// while they hold a scope, and their administration scope lists each, with
+// its keys and roles as loadScopes reads them (ordinal, and by id); without
+// one they do not, and have no administration scope.
+func managementScope(owner bool, scopes []scope) (bool, *gen.AdministrationScopeResponse) {
+	if owner {
+		return true, &gen.AdministrationScopeResponse{IsOwner: true, DelegationScopes: []gen.DelegationScopeResponse{}}
+	}
+	if len(scopes) == 0 {
 		return false, nil
 	}
-	return true, &gen.AdministrationScopeResponse{IsOwner: true, DelegationScopes: []gen.DelegationScopeResponse{}}
+	out := make([]gen.DelegationScopeResponse, len(scopes))
+	for i, sc := range scopes {
+		out[i] = gen.DelegationScopeResponse{
+			Id:                      sc.id,
+			CanCreateRoles:          sc.canCreateRoles,
+			GrantablePermissionKeys: sc.keys,
+			StewardedRoleIds:        sc.stewarded,
+			AssignableRoleIds:       sc.assignable,
+		}
+	}
+	return true, &gen.AdministrationScopeResponse{IsOwner: false, DelegationScopes: out}
 }
 
 // protectedPermission reports whether key is in the catalog and may not be
@@ -350,12 +492,12 @@ func (s *server) GetIdentityAccessRoles(ctx context.Context, _ gen.GetIdentityAc
 }
 
 // PostIdentityAccessRoles creates a custom role (EA/AMS:106-196), in .NET's
-// order: 400 invalid_role; the caller's authority (an Owner naming a
-// delegation is 403 delegation_not_allowed); then one transaction in
-// which a normalized name already in use is 409
-// role_exists, the role is created with the caller as steward and each key
-// once, and role.created is audited. 201 with the role, its version and the
-// keys as sent, and its Location.
+// order: 400 invalid_role; then, in one transaction, the caller's
+// authority (authorizeRoleCreate), and 409 role_exists for a normalized
+// name already in use. The role is created with the caller as steward and
+// each key once; a delegate's joins the roles their delegation stewards
+// (EA/AMS:156-162); and role.created is audited. 201 with the role, its
+// version and the keys as sent, and its Location.
 func (s *server) PostIdentityAccessRoles(ctx context.Context, req gen.PostIdentityAccessRolesRequestObject) (gen.PostIdentityAccessRolesResponseObject, error) {
 	var body gen.RoleUpsertRequest
 	if req.Body != nil {
@@ -372,20 +514,24 @@ func (s *server) PostIdentityAccessRoles(ctx context.Context, req gen.PostIdenti
 	if err != nil {
 		return nil, err
 	}
-	if err := authorizeRoleCreate(p, body.DelegationId); err != nil {
-		return refusalOr[gen.PostIdentityAccessRolesResponseObject](err)
-	}
-
 	name := strings.TrimSpace(*body.Name)
 	displayName, description := strings.TrimSpace(*body.DisplayName), strings.TrimSpace(*body.Description)
 	keys := *body.PermissionKeys
 	id, version := uuid.New(), uuid.New()
 	err = s.accessTx(ctx, roleCreateConflict, func(q *store.Queries) error {
+		now := s.deps.Clock()
+		delegations, err := s.heldDelegations(ctx, q, p, now)
+		if err != nil {
+			return err
+		}
+		sc, err := s.authorizeRoleCreate(ctx, q, p, delegations, body.DelegationId, keys, now)
+		if err != nil {
+			return err
+		}
 		taken, err := q.RoleNameTaken(ctx, store.RoleNameTakenParams{NormalizedName: normalizeRoleName(name), ID: uuid.Nil})
 		if err != nil || taken {
 			return cmpOr(err, error(roleExists))
 		}
-		now := s.deps.Clock()
 		if err := q.InsertRole(ctx, store.InsertRoleParams{
 			ID:             id,
 			Name:           name,
@@ -401,8 +547,11 @@ func (s *server) PostIdentityAccessRoles(ctx context.Context, req gen.PostIdenti
 		if err := q.InsertRolePermissions(ctx, store.InsertRolePermissionsParams{RoleID: id, Keys: keys}); err != nil {
 			return err
 		}
-		// A delegate's new role would join the delegation's stewarded
-		// roles here (EA/AMS:156-162).
+		if sc != nil {
+			if err := q.InsertDelegationRoles(ctx, store.InsertDelegationRolesParams{DelegationID: sc.id, RoleIds: []uuid.UUID{id}}); err != nil {
+				return err
+			}
+		}
 		return writeAudit(ctx, q, r, now, auditEvent{
 			actor:      &p.UserID,
 			targetRole: &id,
@@ -475,6 +624,11 @@ func (s *server) updateRole(ctx context.Context, id uuid.UUID, name, displayName
 	requested := *keys
 	version := uuid.New()
 	err = s.accessTx(ctx, roleChangeConflict, func(q *store.Queries) error {
+		now := s.deps.Clock()
+		delegations, err := s.heldDelegations(ctx, q, p, now)
+		if err != nil {
+			return err
+		}
 		if err := lockRole(ctx, q, id); err != nil {
 			return err
 		}
@@ -498,7 +652,7 @@ func (s *server) updateRole(ctx context.Context, id uuid.UUID, name, displayName
 		if err := s.guardGroupMappedRole(ctx, q, id, newName, slices.Concat(current, requested)); err != nil {
 			return err
 		}
-		if err := authorizeRoleEdit(p); err != nil {
+		if err := s.authorizeRoleEdit(ctx, q, p, delegations, id, slices.Concat(current, requested), now); err != nil {
 			return err
 		}
 		taken, err := q.RoleNameTaken(ctx, store.RoleNameTakenParams{NormalizedName: normalizeRoleName(newName), ID: id})
@@ -506,7 +660,6 @@ func (s *server) updateRole(ctx context.Context, id uuid.UUID, name, displayName
 			return cmpOr(err, error(roleExists))
 		}
 
-		now := s.deps.Clock()
 		changed, err := q.UpdateRole(ctx, store.UpdateRoleParams{
 			ID:              id,
 			Name:            newName,
@@ -573,6 +726,11 @@ func (s *server) DeleteIdentityAccessRolesById(ctx context.Context, req gen.Dele
 		return nil, err
 	}
 	err = s.accessTx(ctx, roleChangeConflict, func(q *store.Queries) error {
+		now := s.deps.Clock()
+		delegations, err := s.heldDelegations(ctx, q, p, now)
+		if err != nil {
+			return err
+		}
 		if err := lockRole(ctx, q, req.Id); err != nil {
 			return err
 		}
@@ -593,7 +751,7 @@ func (s *server) DeleteIdentityAccessRolesById(ctx context.Context, req gen.Dele
 		if err != nil || mapped {
 			return cmpOr(err, error(roleMapped))
 		}
-		if err := authorizeRoleDelete(p); err != nil {
+		if err := s.authorizeRoleDelete(ctx, q, p, delegations, req.Id, now); err != nil {
 			return err
 		}
 		assigned, err := q.RoleIsAssigned(ctx, req.Id)
@@ -603,7 +761,7 @@ func (s *server) DeleteIdentityAccessRolesById(ctx context.Context, req gen.Dele
 		if err := q.DeleteRole(ctx, req.Id); err != nil {
 			return err
 		}
-		return writeAudit(ctx, q, r, s.deps.Clock(), auditEvent{
+		return writeAudit(ctx, q, r, now, auditEvent{
 			actor:      &p.UserID,
 			targetRole: &req.Id,
 			action:     "role.deleted",
@@ -623,9 +781,10 @@ func (s *server) DeleteIdentityAccessRolesById(ctx context.Context, req gen.Dele
 // id; then, in one transaction holding the user's row, 404 for an unknown
 // user, 409 user_conflict unless the stamp is the user's version, 400
 // invalid_roles unless every id names a custom role, and the caller's
-// authority (an Owner naming a delegation is 403 delegation_not_allowed).
-// The custom roles the request leaves out are taken away, those it names
-// are given, and the user's built-in roles stay. The user gets a new
+// authority (authorizeAssignment). The custom roles the request leaves out
+// are taken away, unless a delegate cannot assign them under the
+// delegation named, those it names are given, and the user's built-in roles
+// stay. The user gets a new
 // version, and, as .NET rotated the user's security stamp (:397), every
 // session of the user ends and every password-reset link they hold is
 // spent. user.roles-replaced is audited. 200 with the roles the user holds
@@ -658,6 +817,11 @@ func (s *server) PutIdentityAccessUsersByIdRoles(ctx context.Context, req gen.Pu
 	version := uuid.New()
 	var held []uuid.UUID
 	err = s.accessTx(ctx, userRolesConflict, func(q *store.Queries) error {
+		now := s.deps.Clock()
+		delegations, err := s.heldDelegations(ctx, q, p, now)
+		if err != nil {
+			return err
+		}
 		current, err := q.LockUserVersion(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return notFound
@@ -680,12 +844,14 @@ func (s *server) PutIdentityAccessUsersByIdRoles(ctx context.Context, req gen.Pu
 			return invalidRoles
 		}
 		var existingCustom []uuid.UUID
+		targetOwner := false
 		for _, e := range existing {
+			targetOwner = targetOwner || e.Name == RoleOwner
 			if !e.IsSystem && !e.IsBuiltIn {
 				existingCustom = append(existingCustom, e.ID)
 			}
 		}
-		removable, err := authorizeAssignment(p, body.DelegationId, existingCustom, requested)
+		removable, err := s.authorizeAssignment(ctx, q, p, delegations, body.DelegationId, req.Id, targetOwner, existingCustom, requested, now)
 		if err != nil {
 			return err
 		}
@@ -704,7 +870,6 @@ func (s *server) PutIdentityAccessUsersByIdRoles(ctx context.Context, req gen.Pu
 				return err
 			}
 		}
-		now := s.deps.Clock()
 		if err := q.RotateUserVersion(ctx, store.RotateUserVersionParams{ID: req.Id, Version: version, Now: now}); err != nil {
 			return err
 		}
@@ -815,7 +980,13 @@ func (s *server) GetIdentityAccessMe(ctx context.Context, _ gen.GetIdentityAcces
 	if err != nil {
 		return refusalOr[gen.GetIdentityAccessMeResponseObject](err)
 	}
-	canManage, scope := managementScope(a.owner)
+	var scopes []scope
+	if !a.owner {
+		if scopes, err = activeScopes(ctx, s.q, s.deps.Catalog, p.UserID, s.deps.Clock()); err != nil {
+			return nil, err
+		}
+	}
+	canManage, administration := managementScope(a.owner, scopes)
 	return gen.GetIdentityAccessMe200JSONResponse{
 		UserId:                 p.UserID,
 		Roles:                  a.roles,
@@ -823,7 +994,7 @@ func (s *server) GetIdentityAccessMe(ctx context.Context, _ gen.GetIdentityAcces
 		Permissions:            a.permissions,
 		Version:                &a.version,
 		CanManageAuthorization: canManage,
-		AdministrationScope:    scope,
+		AdministrationScope:    administration,
 	}, nil
 }
 
@@ -835,7 +1006,11 @@ func (s *server) GetIdentityAccessUsersById(ctx context.Context, req gen.GetIden
 	if err != nil {
 		return nil, err
 	}
-	if !canInspectTarget(p, req.Id) {
+	visible, err := s.canInspectTarget(ctx, p, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("identity: inspect access: %w", err)
+	}
+	if !visible {
 		return gen.GetIdentityAccessUsersById404Response{}, nil
 	}
 	a, err := projectAccess(ctx, s.q, req.Id)
@@ -854,9 +1029,13 @@ func (s *server) GetIdentityAccessUsersById(ctx context.Context, req gen.GetIden
 // GetIdentityAccessUsers is the directory role assignment works from
 // (EA/AMS:461-519): every user by display name, then id, with their state
 // at now, their version and their direct roles by name. An Owner sees every
-// user; a delegate's directory, which leaves out Owners and other delegates
-// (:500-503), arrives with delegations.
+// user. A delegate's directory leaves out every Owner and everyone holding
+// an active delegation, valid or not, themselves included (:494-503).
 func (s *server) GetIdentityAccessUsers(ctx context.Context, _ gen.GetIdentityAccessUsersRequestObject) (gen.GetIdentityAccessUsersResponseObject, error) {
+	p, err := callerFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
 	users, err := s.q.ListAccessUsers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("identity: list access users: %w", err)
@@ -865,19 +1044,33 @@ func (s *server) GetIdentityAccessUsers(ctx context.Context, _ gen.GetIdentityAc
 	if err != nil {
 		return nil, fmt.Errorf("identity: list access users: %w", err)
 	}
+	now := s.deps.Clock()
+	hidden := map[uuid.UUID]bool{}
 	roles := map[uuid.UUID][]gen.AccessRoleSummary{}
 	for _, a := range assignments {
 		roles[a.UserID] = append(roles[a.UserID], gen.AccessRoleSummary{Id: a.RoleID, Name: &a.Name})
+		hidden[a.UserID] = hidden[a.UserID] || (!isOwner(p) && a.Name == RoleOwner)
 	}
-	now := s.deps.Clock()
-	out := make(gen.GetIdentityAccessUsers200JSONResponse, len(users))
-	for i, u := range users {
+	if !isOwner(p) {
+		grantees, err := s.q.ActiveDelegationGrantees(ctx, now)
+		if err != nil {
+			return nil, fmt.Errorf("identity: list access users: %w", err)
+		}
+		for _, g := range grantees {
+			hidden[g] = true
+		}
+	}
+	out := make(gen.GetIdentityAccessUsers200JSONResponse, 0, len(users))
+	for _, u := range users {
+		if hidden[u.ID] {
+			continue
+		}
 		version := u.Version.String()
 		held := roles[u.ID]
 		if held == nil {
 			held = []gen.AccessRoleSummary{}
 		}
-		out[i] = gen.AccessUserResponse{
+		out = append(out, gen.AccessUserResponse{
 			Id:          u.ID,
 			DisplayName: u.DisplayName,
 			Email:       &u.Email,
@@ -885,7 +1078,7 @@ func (s *server) GetIdentityAccessUsers(ctx context.Context, _ gen.GetIdentityAc
 			Active:      isActive(u.IsDisabled, u.LockoutEnd, now),
 			Version:     &version,
 			Roles:       held,
-		}
+		})
 	}
 	return out, nil
 }

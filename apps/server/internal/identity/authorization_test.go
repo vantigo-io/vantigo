@@ -418,9 +418,8 @@ func TestRbac_RoleMutationsRequireTheCurrentVersion(t *testing.T) {
 }
 
 // Ported from IdentityRbacIntegrationTests.AuthorizationMutationConflictSurfacesAreDeterministicAcrossRoleAssignmentAndDelegationApis.
-// The delegation surface arrives with delegations. Extended: the codes and
-// messages, and a duplicate that differs only in case or is a built-in's
-// name.
+// Extended: the codes and messages, and a duplicate that differs only in
+// case or is a built-in's name.
 func TestRbac_ConflictAnswersAreDeterministic(t *testing.T) {
 	t.Parallel()
 	h, owner, _ := rbacHarness(t)
@@ -433,6 +432,9 @@ func TestRbac_ConflictAnswersAreDeterministic(t *testing.T) {
 	_, targetID := userClient(t, h, owner, "conflict@example.test")
 	wantFlat(t, "a stale user version", assignRoles(owner, targetID, "stale-user-version", role.ID),
 		http.StatusConflict, "user_conflict", "The user changed concurrently; refresh its version.")
+	d := delegate(t, h, owner, targetID, nil)
+	wantFlat(t, "a stale delegation version", updateDelegation(owner, d.ID, "stale-delegation-version", delegationBody(targetID, h.now().Add(2*time.Hour), nil, nil)),
+		http.StatusConflict, "delegation_conflict", "The delegation changed concurrently.")
 	wantFlat(t, "a stale role version", deleteRole(owner, role.ID, "stale-role-version"),
 		http.StatusConflict, "role_conflict", "The role changed concurrently; refresh its version.")
 	if n := h.count(t, `SELECT count(*) FROM identity.roles WHERE NOT is_built_in`); n != 1 {
@@ -490,7 +492,17 @@ func accessOperations() []accessOperation {
 		{http.MethodGet, accessPath + "/users/" + id, nil},
 		{http.MethodPut, accessPath + "/users/" + id + "/roles", map[string]any{"roleIds": []string{}, "concurrencyStamp": stamp}},
 		{http.MethodGet, accessPath + "/audit", nil},
+		{http.MethodGet, accessPath + "/delegations", nil},
+		{http.MethodPost, accessPath + "/delegations", map[string]any{"permissionKeys": []string{}, "stewardedRoleIds": []string{}}},
+		{http.MethodPut, accessPath + "/delegations/" + id, map[string]any{"permissionKeys": []string{}, "stewardedRoleIds": []string{}, "concurrencyStamp": stamp}},
+		{http.MethodPost, accessPath + "/delegations/" + id + "/revoke", map[string]any{"concurrencyStamp": stamp}},
 	}
+}
+
+// ownerOnly reports whether op is OwnerManagement, which a delegate does
+// not pass: the audit trail and the delegations.
+func (op accessOperation) ownerOnly() bool {
+	return strings.HasSuffix(op.path, "/audit") || strings.Contains(op.path, "/delegations")
 }
 
 // Ported from IdentityRbacIntegrationTests.NonOwnerAndAnonymousCannotUseManagementSurface,
@@ -517,6 +529,17 @@ func TestRbac_AnonymousCallersAndNonOwnersCannotManage(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.roles WHERE NOT is_built_in`); n != 0 {
 		t.Errorf("%d custom roles were created", n)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.authorization_delegations`); n != 0 {
+		t.Errorf("%d delegations were created", n)
+	}
+	delegateID := h.createUser(t, owner, "standard-delegate@example.test", identity.RoleUser)
+	delegate(t, h, owner, delegateID, nil)
+	delegated := h.login(t, "standard-delegate@example.test", userPassword)
+	for _, op := range accessOperations() {
+		if r := delegated.do(op.method, op.path, op.body); op.ownerOnly() && (r.status != http.StatusForbidden || r.code() != "forbidden") {
+			t.Errorf("delegate %s %s: status %d body %s", op.method, op.path, r.status, r.body)
+		}
 	}
 
 	t.Run("an Owner without MFA while Owners must use it", func(t *testing.T) {

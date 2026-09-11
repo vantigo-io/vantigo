@@ -200,9 +200,10 @@ type rolesAudit struct {
 	Roles []string `json:"Roles"`
 }
 
-func nonNil(s []string) []string {
+// nonNil is s, or an empty slice for nil, so it marshals as [] not null.
+func nonNil[T any](s []T) []T {
 	if s == nil {
-		return []string{}
+		return []T{}
 	}
 	return s
 }

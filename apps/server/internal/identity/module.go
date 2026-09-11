@@ -132,6 +132,7 @@ func Module(a *Access) module.Module {
 // share the one value, the generated development secret included, that was
 // logged; and sign-in's dummy password hash is computed then too.
 func mount(a *Access, d module.Deps) (http.Handler, error) {
+	a.catalog = d.Catalog // before any request: AuthorizationManagement reads it
 	router := module.NewRouter(module.RouterOptions{
 		Doc:     d.Doc,
 		Access:  a,

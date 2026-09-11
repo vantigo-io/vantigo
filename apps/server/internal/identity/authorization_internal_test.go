@@ -60,6 +60,15 @@ func TestAccessConflictFilter(t *testing.T) {
 		})
 	}
 
+	t.Run("the delegation operations are in the group", func(t *testing.T) {
+		for _, op := range []string{"GetIdentityAccessDelegations", "PostIdentityAccessDelegations", "PutIdentityAccessDelegationsById", "PostIdentityAccessDelegationsByIdRevoke"} {
+			w := httptest.NewRecorder()
+			if _, err := accessConflictFilter(returning(nil, &pgconn.PgError{Code: "40P01"}), op)(context.Background(), w, req, nil); err != nil || w.Code != http.StatusConflict {
+				t.Errorf("%s: the filter returned %v and answered %d, want 409 authorization_conflict", op, err, w.Code)
+			}
+		}
+	})
+
 	t.Run("anything else passes through", func(t *testing.T) {
 		other := errors.New("boom")
 		for _, c := range []struct {
