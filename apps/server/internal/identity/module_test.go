@@ -42,7 +42,7 @@ func TestModule_ComposesAndDemandsASession(t *testing.T) {
 // catalog permission, as the .NET host registered it (HOST/Program.cs:203-206).
 func TestModule_DeclaresIdentityManage(t *testing.T) {
 	m := identity.Module(nil)
-	want := []contracts.Permission{{Key: "identity:manage", Display: "Manage identity", Description: "Full identity administration.", Sensitive: true, Delegable: false}}
+	want := []contracts.Permission{{Key: "identity:manage", Display: "Manage identity", Description: "Full identity administration.", Category: "Administration", Sensitive: true, Delegable: false}}
 	if m.Name != "identity" || !slices.Equal(m.Permissions, want) {
 		t.Errorf("Module = {Name: %q, Permissions: %+v}", m.Name, m.Permissions)
 	}

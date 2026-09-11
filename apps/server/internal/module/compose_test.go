@@ -234,7 +234,7 @@ func TestCompose_DuplicateModuleNameFails(t *testing.T) {
 }
 
 func TestCompose_DuplicatePermissionFails(t *testing.T) {
-	perm := contracts.Permission{Key: "alpha:manage", Display: "d", Description: "d"}
+	perm := contracts.Permission{Key: "alpha:manage", Display: "d", Description: "d", Category: "c"}
 	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract}),
 		Module{Name: "alpha", Permissions: []contracts.Permission{perm, perm}, Mount: staticHandler("alpha")},
 	)
@@ -245,7 +245,7 @@ func TestCompose_DuplicatePermissionFails(t *testing.T) {
 
 func TestCompose_InvalidPermissionFails(t *testing.T) {
 	// The key's module prefix ("beta") does not match the owning module ("alpha").
-	perm := contracts.Permission{Key: "beta:manage", Display: "d", Description: "d"}
+	perm := contracts.Permission{Key: "beta:manage", Display: "d", Description: "d", Category: "c"}
 	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract}),
 		Module{Name: "alpha", Permissions: []contracts.Permission{perm}, Mount: staticHandler("alpha")},
 	)
@@ -264,7 +264,7 @@ func TestCompose_MountErrorFails(t *testing.T) {
 }
 
 func TestCompose_PassesTheComposedCatalogAndTheModulesOwnDocToMount(t *testing.T) {
-	perm := contracts.Permission{Key: "alpha:manage", Display: "d", Description: "d"}
+	perm := contracts.Permission{Key: "alpha:manage", Display: "d", Description: "d", Category: "c"}
 	var gotCatalog map[string]contracts.Permission
 	var gotDoc *openapi3.T
 	mount := func(d Deps) (http.Handler, error) {

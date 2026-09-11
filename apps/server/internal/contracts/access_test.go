@@ -77,7 +77,7 @@ func TestParseRule_AgreesWithOpenAPIAccessRule(t *testing.T) {
 }
 
 func TestValidatePermission(t *testing.T) {
-	valid := contracts.Permission{Key: "identity:manage-access", Display: "Manage access", Description: "Grant and revoke roles."}
+	valid := contracts.Permission{Key: "identity:manage-access", Display: "Manage access", Description: "Grant and revoke roles.", Category: "Administration"}
 	if err := contracts.ValidatePermission("identity", valid); err != nil {
 		t.Fatalf("valid permission rejected: %v", err)
 	}
@@ -94,7 +94,8 @@ func TestValidatePermission(t *testing.T) {
 		{"no verb", "identity", contracts.Permission{Key: "identity", Display: "d", Description: "d"}},
 		{"wrong prefix", "customers", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: "d"}},
 		{"empty display", "identity", contracts.Permission{Key: "identity:manage-access", Display: "", Description: "d"}},
-		{"empty description", "identity", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: ""}},
+		{"empty description", "identity", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: "", Category: "c"}},
+		{"empty category", "identity", contracts.Permission{Key: "identity:manage-access", Display: "d", Description: "d"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -10,11 +10,14 @@ import (
 	"strings"
 )
 
-// Permission is one catalog entry, "module:verb".
+// Permission is one catalog entry, "module:verb". Category groups entries
+// for display (.NET's PermissionDescriptor.Category); the module a key
+// belongs to is its prefix, which ValidatePermission ties to its module.
 type Permission struct {
 	Key         string
 	Display     string
 	Description string
+	Category    string
 	Sensitive   bool
 	Delegable   bool
 }
@@ -26,8 +29,10 @@ type Permission struct {
 // a route.
 var permissionKey = regexp.MustCompile(`^[a-z]+:[a-z-]+$`)
 
-// ValidatePermission checks the key grammar, a non-empty display and
-// description, and that the key's module prefix (before ":") equals module.
+// ValidatePermission checks the key grammar, a non-empty display,
+// description and category, and that the key's module prefix (before ":")
+// equals module, as .NET's PermissionCatalog.Create validated each
+// descriptor (packages/contracts/Vantigo.Contracts/Authorization/PermissionCatalog.cs:79-93).
 func ValidatePermission(module string, p Permission) error {
 	if !permissionKey.MatchString(p.Key) {
 		return fmt.Errorf("contracts: permission key %q is not of the form module:verb", p.Key)
@@ -41,6 +46,9 @@ func ValidatePermission(module string, p Permission) error {
 	}
 	if p.Description == "" {
 		return fmt.Errorf("contracts: permission %q needs a non-empty description", p.Key)
+	}
+	if p.Category == "" {
+		return fmt.Errorf("contracts: permission %q needs a non-empty category", p.Key)
 	}
 	return nil
 }
