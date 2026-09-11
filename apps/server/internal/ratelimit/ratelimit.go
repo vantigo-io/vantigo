@@ -110,11 +110,6 @@ func (l *Limiter) Hit(ctx context.Context, p Policy, client string) (Decision, e
 	return Decision{RetryAfter: effectiveStart.Add(p.Window).Sub(now)}, nil
 }
 
-// Allow is Hit under its original name, kept for existing callers.
-func (l *Limiter) Allow(ctx context.Context, p Policy, client string) (Decision, error) {
-	return l.Hit(ctx, p, client)
-}
-
 // Blocked reads the current window's hit count for client under p without
 // recording a hit, and reports whether it is already at or past the limit.
 // It mirrors the .NET LoginAttemptThrottle: a caller checks Blocked before
