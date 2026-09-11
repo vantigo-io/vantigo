@@ -325,6 +325,19 @@ func TestServe_ServesTheWholeStackAndDrainsOnCancel(t *testing.T) {
 	}
 }
 
+// TestServe_ServesTheIdentityModule proves api mode wires module.Compose's
+// handler into server.Options.API: the identity module answers its own
+// contract, not the platform's 404 catch-all.
+func TestServe_ServesTheIdentityModule(t *testing.T) {
+	base, stop := startServe(t, true)
+	defer stop()
+
+	code, status, _ := body(t, base+"/api/v1/identity/system/status")
+	if code != http.StatusOK || !strings.Contains(status, `"maintenance":false`) {
+		t.Errorf("system/status: %d %q", code, status)
+	}
+}
+
 func TestServe_WorkerServesOnlyHealth(t *testing.T) {
 	base, stop := startServe(t, false)
 	defer stop()

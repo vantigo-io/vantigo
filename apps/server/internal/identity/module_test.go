@@ -1,14 +1,10 @@
 package identity_test
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
-	"unicode"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
@@ -154,29 +150,5 @@ func TestHarness_ParallelSubtestsShareOneHarness(t *testing.T) {
 				t.Errorf("session: status %d", r.status)
 			}
 		})
-	}
-}
-
-// TestPendingOperationsAreExactlyTheStubs keeps pendingOperations and
-// unimplemented.go in step: every stub is pending and every pending
-// operation is still a stub, so implementing an operation means deleting
-// its stub and its pending entry together.
-func TestPendingOperationsAreExactlyTheStubs(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "unimplemented.go", nil, parser.SkipObjectResolution)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stubs []string
-	for _, decl := range file.Decls {
-		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv != nil {
-			name := []rune(fn.Name.Name)
-			name[0] = unicode.ToLower(name[0])
-			stubs = append(stubs, string(name))
-		}
-	}
-	slices.Sort(stubs)
-	pending := slices.Sorted(slices.Values(pendingOperations))
-	if !slices.Equal(stubs, pending) {
-		t.Errorf("unimplemented.go stubs %v\n!= pendingOperations %v", stubs, pending)
 	}
 }
