@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -272,9 +271,13 @@ func lockScimUser(ctx context.Context, q *store.Queries, id string) (scimUserRow
 
 // saveScimUser writes after over before on q: the account when its email
 // or display name changed, with a new version, and the mapping with a new
-// ETag, as Touch did (SV/SCIM:965-971). With deactivate, upstream no longer
-// lists the user in any SCIM group either.
-func saveScimUser(ctx context.Context, q *store.Queries, before scimUserRow, after scimUserState, now time.Time, deactivate bool) (scimUserRow, error) {
+// ETag, as Touch did (SV/SCIM:965-971). A DELETE (deleted) also records
+// that upstream no longer lists the user in any SCIM group, as
+// DeleteUserAsync did (:346-352). An active:false does not: .NET's active
+// action and input set only UpstreamActive (:920, :937), and session
+// validation refuses the inactive user anyway, so a directory that
+// disables and later re-enables a user leaves its groups as they were.
+func saveScimUser(ctx context.Context, q *store.Queries, before scimUserRow, after scimUserState, now time.Time, deleted bool) (scimUserRow, error) {
 	email := scimStoredEmail(after.email, before.ResourceID)
 	if email != before.Email || after.displayName != before.DisplayName {
 		if err := q.UpdateScimUserAccount(ctx, store.UpdateScimUserAccountParams{
@@ -303,7 +306,7 @@ func saveScimUser(ctx context.Context, q *store.Queries, before scimUserRow, aft
 	}); err != nil {
 		return scimUserRow{}, err
 	}
-	if deactivate {
+	if deleted {
 		if err := q.MarkScimUserMembershipsAbsent(ctx, before.UserID); err != nil {
 			return scimUserRow{}, err
 		}
@@ -314,10 +317,10 @@ func saveScimUser(ctx context.Context, q *store.Queries, before scimUserRow, aft
 // scimUserChange runs change on the User id names, in one SCIM transaction
 // and .NET's order: 404, 412 for a stale If-Match, 400 mutability for an
 // Owner (SV/SCIM:241-247, :286-292, :332-338). change returns the state to
-// save and whether it deactivates the user; the change is audited as
-// action, with the User's facts before and after.
-func (s *server) scimUserChange(ctx context.Context, id string, ifMatch *string, action string,
-	change func(q *store.Queries, row scimUserRow) (scimUserState, bool, error)) (scimUserRow, error) {
+// save, deleted says the change is a DELETE (saveScimUser), and the change
+// is audited as action, with the User's facts before and after.
+func (s *server) scimUserChange(ctx context.Context, id string, ifMatch *string, action string, deleted bool,
+	change func(q *store.Queries, row scimUserRow) (scimUserState, error)) (scimUserRow, error) {
 	_, r, err := scimRequest(ctx)
 	if err != nil {
 		return scimUserRow{}, err
@@ -334,7 +337,7 @@ func (s *server) scimUserChange(ctx context.Context, id string, ifMatch *string,
 		if err := refuseScimOwner(ctx, q, row.UserID); err != nil {
 			return err
 		}
-		after, deactivate, err := change(q, row)
+		after, err := change(q, row)
 		if err != nil {
 			return err
 		}
@@ -342,7 +345,7 @@ func (s *server) scimUserChange(ctx context.Context, id string, ifMatch *string,
 		if err != nil {
 			return err
 		}
-		if saved, err = saveScimUser(ctx, q, row, after, now, deactivate); err != nil {
+		if saved, err = saveScimUser(ctx, q, row, after, now, deleted); err != nil {
 			return err
 		}
 		facts, err := scimUserFactsOf(ctx, q, saved)
@@ -487,7 +490,7 @@ func replaceRacedScimUser(ctx context.Context, q *store.Queries, row scimUserRow
 	if taken, err := q.ScimUserNameTaken(ctx, store.ScimUserNameTakenParams{UserName: st.userName, ResourceID: row.ResourceID}); err != nil || taken {
 		return scimUserRow{}, cmpOr(err, error(scimUserConflict))
 	}
-	return saveScimUser(ctx, q, row, st, now, !st.active && in.active != nil)
+	return saveScimUser(ctx, q, row, st, now, false)
 }
 
 // GetIdentityScimV2UsersById is GetUserAsync (SV/SCIM:184-194): the User
@@ -554,8 +557,8 @@ func (s *server) GetIdentityScimV2Users(ctx context.Context, _ gen.GetIdentitySc
 // externalId kept when the resource leaves it out, and validation. A
 // changed externalId is 409 mutability: the correlation key is immutable
 // (spec *SCIM 2.0*), where .NET let a PUT change it. The User is replaced
-// and audited scim.user.replaced; active:false also makes its SCIM group
-// memberships absent.
+// and audited scim.user.replaced; active:false makes it upstream-inactive
+// and leaves its group memberships alone.
 func (s *server) PutIdentityScimV2UsersById(ctx context.Context, req gen.PutIdentityScimV2UsersByIdRequestObject) (gen.PutIdentityScimV2UsersByIdResponseObject, error) {
 	in, _, err := scimRequest(ctx)
 	if err != nil {
@@ -565,19 +568,19 @@ func (s *server) PutIdentityScimV2UsersById(ctx context.Context, req gen.PutIden
 	if err != nil {
 		return scimOr[gen.PutIdentityScimV2UsersByIdResponseObject](err)
 	}
-	saved, err := s.scimUserChange(ctx, req.Id, req.Params.IfMatch, "scim.user.replaced", func(q *store.Queries, row scimUserRow) (scimUserState, bool, error) {
+	saved, err := s.scimUserChange(ctx, req.Id, req.Params.IfMatch, "scim.user.replaced", false, func(q *store.Queries, row scimUserRow) (scimUserState, error) {
 		if input.externalID == nil {
 			input.externalID = &row.ExternalID
 		}
 		if err := validateScimUser(ctx, q, input, row.ResourceID); err != nil {
-			return scimUserState{}, false, err
+			return scimUserState{}, err
 		}
 		if *input.externalID != row.ExternalID {
-			return scimUserState{}, false, scimExternalIDImmutable
+			return scimUserState{}, scimExternalIDImmutable
 		}
 		st := scimStateOf(row)
 		st.apply(input, true)
-		return st, !st.active && input.active != nil, nil
+		return st, nil
 	})
 	if err != nil {
 		return scimOr[gen.PutIdentityScimV2UsersByIdResponseObject](err)
@@ -595,8 +598,8 @@ func (s *server) PutIdentityScimV2UsersById(ctx context.Context, req gen.PutIden
 // externalId operation, so a second could change the key; every one is
 // compared here. A userName another mapping has is 409 uniqueness, which
 // .NET's unique user-name index answered. The actions are applied in order
-// and audited scim.user.patched; setting active false also makes the
-// user's SCIM group memberships absent.
+// and audited scim.user.patched; setting active false makes the User
+// upstream-inactive and leaves its group memberships alone.
 func (s *server) PatchIdentityScimV2UsersById(ctx context.Context, req gen.PatchIdentityScimV2UsersByIdRequestObject) (gen.PatchIdentityScimV2UsersByIdResponseObject, error) {
 	in, _, err := scimRequest(ctx)
 	if err != nil {
@@ -606,14 +609,14 @@ func (s *server) PatchIdentityScimV2UsersById(ctx context.Context, req gen.Patch
 	if err != nil {
 		return scimOr[gen.PatchIdentityScimV2UsersByIdResponseObject](err)
 	}
-	saved, err := s.scimUserChange(ctx, req.Id, req.Params.IfMatch, "scim.user.patched", func(q *store.Queries, row scimUserRow) (scimUserState, bool, error) {
+	saved, err := s.scimUserChange(ctx, req.Id, req.Params.IfMatch, "scim.user.patched", false, func(q *store.Queries, row scimUserRow) (scimUserState, error) {
 		actions, err := scimUserActions(ops)
 		if err != nil {
-			return scimUserState{}, false, err
+			return scimUserState{}, err
 		}
 		for _, a := range actions {
 			if a.field == "externalId" && *normalizeExternalID(a.value) != row.ExternalID {
-				return scimUserState{}, false, scimExternalIDImmutable
+				return scimUserState{}, scimExternalIDImmutable
 			}
 		}
 		st := scimStateOf(row)
@@ -623,13 +626,10 @@ func (s *server) PatchIdentityScimV2UsersById(ctx context.Context, req gen.Patch
 		if st.userName != row.UserName {
 			taken, err := q.ScimUserNameTaken(ctx, store.ScimUserNameTakenParams{UserName: st.userName, ResourceID: row.ResourceID})
 			if err != nil || taken {
-				return scimUserState{}, false, cmpOr(err, error(scimUserConflict))
+				return scimUserState{}, cmpOr(err, error(scimUserConflict))
 			}
 		}
-		deactivates := slices.ContainsFunc(actions, func(a scimUserAction) bool {
-			return a.field == "active" && !a.remove && a.active != nil && !*a.active
-		})
-		return st, !st.active && deactivates, nil
+		return st, nil
 	})
 	if err != nil {
 		return scimOr[gen.PatchIdentityScimV2UsersByIdResponseObject](err)
@@ -646,10 +646,10 @@ func (s *server) PatchIdentityScimV2UsersById(ctx context.Context, req gen.Patch
 // The account and mapping stay, and a later GET shows active:false. Audited
 // scim.user.deleted; 204 with the new ETag.
 func (s *server) DeleteIdentityScimV2UsersById(ctx context.Context, req gen.DeleteIdentityScimV2UsersByIdRequestObject) (gen.DeleteIdentityScimV2UsersByIdResponseObject, error) {
-	saved, err := s.scimUserChange(ctx, req.Id, req.Params.IfMatch, "scim.user.deleted", func(_ *store.Queries, row scimUserRow) (scimUserState, bool, error) {
+	saved, err := s.scimUserChange(ctx, req.Id, req.Params.IfMatch, "scim.user.deleted", true, func(_ *store.Queries, row scimUserRow) (scimUserState, error) {
 		st := scimStateOf(row)
 		st.active = false
-		return st, true, nil
+		return st, nil
 	})
 	if err != nil {
 		return scimOr[gen.DeleteIdentityScimV2UsersByIdResponseObject](err)

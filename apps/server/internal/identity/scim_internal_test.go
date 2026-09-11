@@ -1,16 +1,22 @@
 package identity
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
 // scimErrorOf is err's SCIM answer as "status scimType: detail", or "" for
@@ -65,6 +71,16 @@ func TestScimFilter(t *testing.T) {
 		{"no space", `userName eq"x"`, nil, pattern},
 		{"a bad escape", `userName eq "\x"`, nil, field},
 		{"a raw control character", "userName eq \"a\tb\"", nil, field},
+		{"a long s in an attribute", "u\u017ferName eq \"x\"", nil, pattern},
+		{"a long s in a Groups attribute", "di\u017fplayName eq \"x\"", []string{"displayName", "externalId"}, pattern},
+		{"a long s in the last attribute", "userName eq \"a\" and u\u017ferName eq \"b\"", nil, pattern},
+		{"a lone high surrogate", `userName eq "\ud800"`, nil, field},
+		{"a lone low surrogate", `userName eq "\udc00"`, nil, field},
+		{"a high surrogate before a letter", `userName eq "\ud800A"`, nil, field},
+		{"a high surrogate before text", `userName eq "a\ud800b"`, nil, field},
+		{"a surrogate pair", `userName eq "\ud83d\ude00"`, nil, "userName=\U0001F600"},
+		{"a surrogate pair in upper case", `userName eq "\uD83D\uDE00!"`, nil, "userName=\U0001F600!"},
+		{"an escaped backslash before u", `userName eq "a\\ud800"`, nil, `userName=a\ud800`},
 	}
 	for _, c := range cases {
 		allowed := c.allowed
@@ -118,6 +134,7 @@ func TestScimPaging(t *testing.T) {
 		{"startIndex=1&startIndex=2", refused},
 		{"count=1&COUNT=2", refused},
 		{"filter=x&startIndex=3", "3 100"},
+		{"%C5%BFtartIndex=5", "1 100"},
 	}
 	for _, c := range cases {
 		start, count, err := scimPaging(c.query)
@@ -224,6 +241,9 @@ func TestScimUserPatch(t *testing.T) {
 		{"a pathless extension attribute", patchBody(`{"op":"replace","value":{"urn:ietf:params:scim:schemas:extension:enterprise:2.0:User":{"department":"x"}}}`), unsupported},
 		{"the first refusal wins", patchBody(`{"op":"replace","path":"active","value":true}`, `{"op":"replace","path":"title","value":"x"}`), unsupported},
 		{"several operations in order", patchBody(`{"op":"replace","path":"active","value":true}`, `{"op":"replace","path":"displayName","value":"D"}`), "active=true displayName=D"},
+		{"a long s in the email path", patchBody(`{"op":"replace","path":"email\u017f.value","value":"a@b.example"}`), unsupported},
+		{"a long s in a path", patchBody(`{"op":"replace","path":"u\u017ferName","value":"u"}`), unsupported},
+		{"a long s in a pathless key", patchBody(`{"op":"replace","value":{"u\u017ferName":"u"}}`), unsupported},
 	}
 	for _, c := range cases {
 		ops, err := readScimPatch([]byte(c.body))
@@ -297,6 +317,9 @@ func TestScimGroupPatch(t *testing.T) {
 		{"a pathless externalId", patchBody(`{"op":"replace","value":{"externalId":"x"}}`), unsupported},
 		{"an empty path is a path", patchBody(`{"op":"replace","path":"","value":{"active":true}}`), unsupported},
 		{"another op", patchBody(`{"op":"move","path":"active","value":true}`), "400 invalidSyntax: Only Add, Replace, and Remove are supported."},
+		{"a long s in the members path", patchBody(`{"op":"remove","path":"member\u017f"}`), unsupported},
+		{"a long s in a member filter", patchBody(`{"op":"remove","path":"member\u017f[value eq \"a\"]"}`), unsupported},
+		{"a long s in a pathless members key", patchBody(`{"op":"remove","value":{"member\u017f":[{"value":"a"}]}}`), unsupported},
 	}
 	for _, c := range cases {
 		ops, err := readScimPatch([]byte(c.body))
@@ -528,12 +551,75 @@ func TestScimPrecondition(t *testing.T) {
 	}
 }
 
-// New: OrdinalIgnoreCase maps each character to its simple uppercase, so
-// the Kelvin sign is not a k, where strings.EqualFold's folding says it is.
+// New: OrdinalIgnoreCase as .NET applied it to these ASCII names: ASCII
+// letters fold, and nothing else stands for one, neither U+017F \u017f nor the
+// Kelvin sign, which Unicode folding (strings.EqualFold) makes s and k.
 func TestEqualOrdinalIgnoreCase(t *testing.T) {
-	if !equalOrdinalIgnoreCase("userName", "USERNAME") || equalOrdinalIgnoreCase("userName", "userNam") ||
-		equalOrdinalIgnoreCase("k", "\u212a") || !strings.EqualFold("k", "\u212a") {
-		t.Error("equalOrdinalIgnoreCase is not .NET's OrdinalIgnoreCase")
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"userName", "USERNAME", true},
+		{"Members", "mEMBERS", true},
+		{"userName", "userNam", false},
+		{"u\u017ferName", "userName", false},
+		{"member\u017f", "members", false},
+		{"\u212a", "k", false},
+		{"[", "{", false},
+		{"@", "`", false},
+	}
+	for _, c := range cases {
+		if got := equalOrdinalIgnoreCase(c.a, c.b); got != c.want {
+			t.Errorf("%q, %q: %t, want %t", c.a, c.b, got, c.want)
+		}
+	}
+	if !strings.EqualFold("member\u017f", "members") {
+		t.Error("strings.EqualFold no longer folds U+017F: the premise of this test changed")
+	}
+}
+
+// failingBody is a request body whose read fails, as a dropped client's
+// does.
+type failingBody struct{}
+
+func (failingBody) Read([]byte) (int, error) { return 0, errors.New("the SCIM client went away") }
+
+// New (fix round 1): a failure of the ingress itself, the limiter's store
+// or reading the body, is a SCIM 500 as application/scim+json that echoes
+// neither the error nor the token, and is logged without the token.
+func TestScimIngressFailuresAreScimServerErrors(t *testing.T) {
+	srv, _ := newInternalServer(t)
+	srv.deps.Config.SCIM = &config.SCIMConfig{Token: "the-scim-token"}
+	var logged bytes.Buffer
+	srv.deps.Logger = slog.New(slog.NewTextHandler(&logged, nil))
+	unreachable, err := pgxpool.New(t.Context(), "postgres://vantigo@127.0.0.1:1/unreachable?connect_timeout=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unreachable.Close)
+	storeDown := &server{access: srv.access, deps: srv.deps, q: srv.q}
+	storeDown.deps.Limiter = ratelimit.NewWithClock(unreachable, srv.deps.Clock)
+
+	const want = `{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"500","scimType":null,"detail":"An unexpected error occurred."}`
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("a failed request went on to the router") })
+	for name, tc := range map[string]struct {
+		s    *server
+		body io.Reader
+	}{
+		"the limiter's store is down": {storeDown, strings.NewReader(`{}`)},
+		"the body cannot be read":     {srv, failingBody{}},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/identity/scim/v2/Users", tc.body)
+		req.Header.Set("Authorization", "Bearer the-scim-token")
+		req.Header.Set("Content-Type", "application/scim+json")
+		rec := httptest.NewRecorder()
+		tc.s.scimOperation(true, next).ServeHTTP(rec, req)
+		if rec.Code != http.StatusInternalServerError || rec.Header().Get("Content-Type") != "application/scim+json" || strings.TrimSpace(rec.Body.String()) != want {
+			t.Errorf("%s: %d %q %s\nwant 500 %s", name, rec.Code, rec.Header().Get("Content-Type"), rec.Body, want)
+		}
+	}
+	if log := logged.String(); strings.Count(log, "SCIM ingress failed") != 2 || strings.Contains(log, "the-scim-token") {
+		t.Errorf("log %s", log)
 	}
 }
 

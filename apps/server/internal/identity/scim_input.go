@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -194,18 +195,29 @@ func validScimJSON(body []byte) bool {
 	return utf8.Valid(body) && json.Valid(body) && jsonNesting(body) <= scimMaxJSONDepth
 }
 
-// equalOrdinalIgnoreCase is .NET's StringComparison.OrdinalIgnoreCase: the
-// strings are equal once each character is mapped to its simple uppercase.
+// equalOrdinalIgnoreCase is .NET's StringComparison.OrdinalIgnoreCase as
+// every caller here uses it: to compare a name with an ASCII one (a
+// property, a path, a query key, "work", "User"). There .NET equates no
+// other character with an ASCII letter: it refuses uſerName and memberſ,
+// whose U+017F Unicode folds to s. So only ASCII letters fold, and every
+// other byte must match exactly.
 func equalOrdinalIgnoreCase(a, b string) bool {
-	for a != "" && b != "" {
-		ra, na := utf8.DecodeRuneInString(a)
-		rb, nb := utf8.DecodeRuneInString(b)
-		if ra != rb && unicode.ToUpper(ra) != unicode.ToUpper(rb) {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range len(a) {
+		if asciiLower(a[i]) != asciiLower(b[i]) {
 			return false
 		}
-		a, b = a[na:], b[nb:]
 	}
-	return a == "" && b == ""
+	return true
+}
+
+func asciiLower(c byte) byte {
+	if 'A' <= c && c <= 'Z' {
+		return c + 'a' - 'A'
+	}
+	return c
 }
 
 // dotnetTrim is String.Trim(): leading and trailing white space
@@ -496,8 +508,11 @@ type scimUserAction struct {
 const nameComponentsDetail = "Only name.givenName and name.familyName are supported."
 
 // emailPathPattern is how .NET recognised a User's work email path (:885):
-// emails.value, with or without a filter.
-var emailPathPattern = regexp.MustCompile(`(?i)^emails(?:\[.*?\])?\.value$`)
+// emails.value, with or without a filter, in any case. The case is spelled
+// out letter by letter here and in the other patterns, since RE2's (?i)
+// folds by Unicode and would let U+017F ſ stand for s, which .NET's
+// patterns refuse.
+var emailPathPattern = regexp.MustCompile(`^[eE][mM][aA][iI][lL][sS](?:\[.*?\])?\.[vV][aA][lL][uU][eE]$`)
 
 // scimUserActions is TryValidateUserOperations (:774-828): every operation
 // validated into actions, or the first refusal. Entra sends a pathless
@@ -641,10 +656,13 @@ type scimGroupAction struct {
 // only ASCII white space.
 const dotnetSpace = `[\f\n\r\t\v\x{85}\p{Z}]`
 
-// The two patterns .NET matched a Group's members path with (:853, :860).
+// The two patterns .NET matched a Group's members path with (:853, :860),
+// in any ASCII case.
 var (
-	membersPathPattern  = regexp.MustCompile(`(?i)^members(?:\[value` + dotnetSpace + `+eq` + dotnetSpace + `+"[^"]+"\])?$`)
-	memberFilterPattern = regexp.MustCompile(`(?i)value` + dotnetSpace + `+eq` + dotnetSpace + `+"([^"]+)"`)
+	membersPathPattern = regexp.MustCompile(strings.ReplaceAll(
+		`^[mM][eE][mM][bB][eE][rR][sS](?:\[[vV][aA][lL][uU][eE]\s+[eE][qQ]\s+"[^"]+"\])?$`, `\s`, dotnetSpace))
+	memberFilterPattern = regexp.MustCompile(strings.ReplaceAll(
+		`[vV][aA][lL][uU][eE]\s+[eE][qQ]\s+"([^"]+)"`, `\s`, dotnetSpace))
 )
 
 // scimGroupActions is TryValidateGroupOperations (:830-873). A pathless
@@ -858,12 +876,14 @@ func dotnetIntParses(s string) bool {
 }
 
 // scimFilterPattern is .NET's filter grammar, its regex exactly (:1064),
-// with \s spelled as .NET means it: attr eq "json-string", joined by and,
-// in any case. Like .NET's, a repeated group captures only its last
-// repetition: of three or more clauses, the first and the last are read,
-// and the ones between are matched but ignored, attribute and all.
+// with \s spelled as .NET means it and its case-insensitivity spelled
+// letter by letter (see emailPathPattern): attr eq "json-string", joined by
+// and. An attribute is ASCII letters and digits, as .NET's [A-Za-z] was:
+// uſerName does not match. Like .NET's, a repeated group captures only its
+// last repetition: of three or more clauses, the first and the last are
+// read, and the ones between are matched but ignored, attribute and all.
 var scimFilterPattern = regexp.MustCompile(strings.ReplaceAll(
-	`(?i)^\s*([A-Za-z][A-Za-z0-9]*)\s+eq\s+("(?:\\.|[^"\\])*")(?:\s+and\s+([A-Za-z][A-Za-z0-9]*)\s+eq\s+("(?:\\.|[^"\\])*"))*\s*$`,
+	`^\s*([A-Za-z][A-Za-z0-9]*)\s+[eE][qQ]\s+("(?:\\.|[^"\\])*")(?:\s+[aA][nN][dD]\s+([A-Za-z][A-Za-z0-9]*)\s+[eE][qQ]\s+("(?:\\.|[^"\\])*"))*\s*$`,
 	`\s`, dotnetSpace))
 
 // scimFilterClause is ScimFilter (:1217): attribute equals value.
@@ -902,19 +922,66 @@ func scimFilter(raw string, allowed ...string) ([]scimFilterClause, error) {
 }
 
 // scimFilterClauseOf is one clause: the allowed attribute attribute names,
-// and quoted decoded as JSON (TryDecodeQuoted, :1169).
+// and quoted decoded as JSON (TryDecodeQuoted, :1169). JsonSerializer
+// refused a lone surrogate escape, where encoding/json decodes it as
+// U+FFFD, so escapes are checked first (pairedSurrogateEscapes).
 func scimFilterClauseOf(attribute, quoted string, allowed []string) (scimFilterClause, error) {
 	for _, a := range allowed {
 		if !equalOrdinalIgnoreCase(a, attribute) {
 			continue
 		}
 		var value string
-		if err := json.Unmarshal([]byte(quoted), &value); err != nil {
+		if !pairedSurrogateEscapes(quoted) || json.Unmarshal([]byte(quoted), &value) != nil {
 			break
 		}
 		return scimFilterClause{attribute: a, value: value}, nil
 	}
 	return scimFilterClause{}, scimInvalidFilter("The filter field or value is invalid.")
+}
+
+// pairedSurrogateEscapes reports whether every surrogate a \u escape of
+// the JSON string literal quoted names is half of a pair: a high one
+// (D800-DBFF) followed at once by an escaped low one (DC00-DFFF). A lone
+// half is not UTF-16 text, which .NET's reader refused. Escapes that are no
+// \u escape at all are json.Unmarshal's to refuse.
+func pairedSurrogateEscapes(quoted string) bool {
+	for i := 0; i < len(quoted); i++ {
+		if quoted[i] != '\\' {
+			continue
+		}
+		i++ // the escaped character, never itself the start of an escape
+		if i >= len(quoted) || quoted[i] != 'u' {
+			continue
+		}
+		unit, ok := hexUnit(quoted, i+1)
+		if !ok {
+			continue
+		}
+		i += 4
+		switch {
+		case 0xdc00 <= unit && unit <= 0xdfff:
+			return false
+		case 0xd800 <= unit && unit <= 0xdbff:
+			if i+6 >= len(quoted) || quoted[i+1] != '\\' || quoted[i+2] != 'u' {
+				return false
+			}
+			low, ok := hexUnit(quoted, i+3)
+			if !ok || low < 0xdc00 || low > 0xdfff {
+				return false
+			}
+			i += 6
+		}
+	}
+	return true
+}
+
+// hexUnit is the UTF-16 unit the four hex digits of s at at spell.
+func hexUnit(s string, at int) (uint64, bool) {
+	if at+4 > len(s) {
+		return 0, false
+	}
+	unit, err := strconv.ParseUint(s[at:at+4], 16, 16)
+	return unit, err == nil
 }
 
 // scimFilterValues splits clauses into the values each of the two

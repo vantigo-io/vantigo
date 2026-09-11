@@ -533,33 +533,53 @@ func TestScim_WithoutAValidTokenTheRateLimitIsPerClientAddress(t *testing.T) {
 	wantScimError(t, "the next window", a.do(http.MethodGet, "/ServiceProviderConfig", nil), http.StatusUnauthorized, "invalidValue", scimUnauthorizedText)
 }
 
-// New: with a valid token the ingress limit is per token, whatever the
-// address, and a limited request is no heartbeat.
-func TestScim_WithAValidTokenTheRateLimitIsPerToken(t *testing.T) {
+// New (fix round 1, ruled): every authenticated request draws from one
+// bucket, the connection's, whichever token it presents and from whatever
+// address, as .NET partitioned by the connection id; so a rotation's
+// overlap does not double the 120 a minute. A limited request is no
+// heartbeat.
+func TestScim_AuthenticatedRequestsShareTheConnectionsRateLimit(t *testing.T) {
 	t.Parallel()
-	h := newScimHarness(t)
+	h := newScimHarness(t, withPreviousScimToken(time.Now().Add(time.Hour)))
+	h.toWallClock()
+	h.advance(h.now().Truncate(time.Minute).Add(time.Minute).Sub(h.now())) // the start of a window, which every request below shares
 	owner, _ := h.bootstrapOwner(t)
-	a := h.scim(t, scimToken)
+	current, previous := h.scim(t, scimToken), h.scim(t, scimPreviousToken)
 
 	for i := range 120 {
-		if r := a.do(http.MethodGet, "/ServiceProviderConfig", nil); r.status != http.StatusOK {
+		c := current
+		if i%2 == 1 {
+			c = previous
+		}
+		if r := c.do(http.MethodGet, "/ServiceProviderConfig", nil); r.status != http.StatusOK {
 			t.Fatalf("request %d: status %d, want 200", i+1, r.status)
 		}
 	}
 	last := h.now()
 	h.advance(time.Second)
-	wantScimError(t, "the 121st request", a.do(http.MethodPost, "/Users", userResource("limited", nil)), http.StatusTooManyRequests, "tooMany", "SCIM request rate limit exceeded.")
-	wantScimError(t, "the token from another address", h.scim(t, scimToken).do(http.MethodGet, "/Users", nil), http.StatusTooManyRequests, "tooMany", "SCIM request rate limit exceeded.")
+	for _, tc := range []struct {
+		what string
+		c    *scimClient
+	}{
+		{"the current token", current},
+		{"the previous token", previous},
+		{"the current token from another address", h.scim(t, scimToken)},
+		{"the previous token from another address", h.scim(t, scimPreviousToken)},
+	} {
+		wantScimError(t, tc.what, tc.c.do(http.MethodPost, "/Users", userResource("limited", nil)), http.StatusTooManyRequests, "tooMany", "SCIM request rate limit exceeded.")
+	}
 	wantScimError(t, "a wrong token", h.scim(t, "wrong-token").do(http.MethodGet, "/Users", nil), http.StatusUnauthorized, "invalidValue", scimUnauthorizedText)
 	if n := h.count(t, `SELECT count(*) FROM identity.scim_user_mappings`); n != 0 {
-		t.Errorf("the limited create made %d Users", n)
+		t.Errorf("the limited creates made %d Users", n)
 	}
 	if at := scimHeartbeat(t, owner); at == nil || !at.Equal(last) {
 		t.Errorf("heartbeat at %v, want the last admitted request's %s", at, last)
 	}
 	h.advance(time.Minute)
-	if r := a.do(http.MethodGet, "/ServiceProviderConfig", nil); r.status != http.StatusOK {
-		t.Errorf("the next window: status %d, want 200", r.status)
+	for _, c := range []*scimClient{current, previous} {
+		if r := c.do(http.MethodGet, "/ServiceProviderConfig", nil); r.status != http.StatusOK {
+			t.Errorf("the next window: status %d, want 200", r.status)
+		}
 	}
 }
 
@@ -910,33 +930,10 @@ func TestScim_UsersAreCreatedAndReplacedByDotNetsRules(t *testing.T) {
 func TestScim_ACreateRacingAnotherForItsExternalIdReplacesTheUser(t *testing.T) {
 	t.Parallel()
 	h := newScimHarness(t)
-	ctx := context.Background()
-	gate, err := h.pool.Begin(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = gate.Rollback(ctx) }()
-	if _, err := gate.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, int64(identity.ScimLockKey)); err != nil {
-		t.Fatal(err)
-	}
-
 	externalID := uuid.NewString()
-	results := make([]*resp, 2)
-	var wg sync.WaitGroup
-	finished := make(chan struct{})
-	for i := range results {
-		c := h.scim(t, scimToken)
-		wg.Go(func() {
-			name := fmt.Sprintf("race-%d", i)
-			results[i] = c.do(http.MethodPost, "/Users", userResource(name, map[string]any{"externalId": externalID}))
-		})
-	}
-	go func() { wg.Wait(); close(finished) }()
-	awaitLockWaiters(t, h, 2, finished)
-	if err := gate.Rollback(ctx); err != nil {
-		t.Fatal(err)
-	}
-	<-finished
+	results := gatedScimRequests(t, h, 2, func(i int, c *scimClient) *resp {
+		return c.do(http.MethodPost, "/Users", userResource(fmt.Sprintf("race-%d", i), map[string]any{"externalId": externalID}))
+	})
 
 	var users []scimUser
 	for _, r := range results {
@@ -958,36 +955,125 @@ func TestScim_ACreateRacingAnotherForItsExternalIdReplacesTheUser(t *testing.T) 
 	}
 }
 
-// New: of concurrent PATCHes with one ETag exactly one succeeds; the others
-// answer 412, and one change is stored and audited.
-func TestScim_ConcurrentPatchesWithOneETagSucceedOnce(t *testing.T) {
-	t.Parallel()
-	h := newScimHarness(t)
-	user, etag := createUser(t, h.scim(t, scimToken), userResource("concurrent", nil))
-
-	const n = 5
+// gatedScimRequests sends n requests at once, each from its own client,
+// while a transaction holds the SCIM lock, and releases the lock only once
+// all n wait on it (awaitLockWaiters). So the requests reach their
+// transactions together whatever the scheduler does, and a test of what
+// they do concurrently cannot pass by their running one after another. It
+// returns their responses in order.
+func gatedScimRequests(t *testing.T, h *harness, n int, send func(i int, c *scimClient) *resp) []*resp {
+	t.Helper()
+	ctx := context.Background()
+	gate, err := h.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = gate.Rollback(ctx) }()
+	if _, err := gate.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, int64(identity.ScimLockKey)); err != nil {
+		t.Fatal(err)
+	}
 	results := make([]*resp, n)
 	var wg sync.WaitGroup
 	for i := range n {
 		c := h.scim(t, scimToken)
-		wg.Go(func() {
-			results[i] = c.do(http.MethodPatch, "/Users/"+user.ID, patchOps(patchOp("replace", "displayName", fmt.Sprintf("Writer %d", i))), ifMatch(etag))
+		wg.Go(func() { results[i] = send(i, c) })
+	}
+	finished := make(chan struct{})
+	go func() { wg.Wait(); close(finished) }()
+	awaitLockWaiters(t, h, n, finished)
+	if err := gate.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	<-finished
+	return results
+}
+
+// New: five PATCHes with one ETag, queued together behind the SCIM lock
+// and released at once: exactly one succeeds and four answer 412
+// invalidVers, and one change is stored and audited, for a User and for a
+// Group.
+func TestScim_ConcurrentPatchesWithOneETagSucceedOnce(t *testing.T) {
+	t.Parallel()
+	h := newScimHarness(t)
+	c := h.scim(t, scimToken)
+	user, etag := createUser(t, c, userResource("concurrent", nil))
+	group, gtag := createScimGroup(t, c, "Concurrent")
+
+	for _, tc := range []struct {
+		kind, path, etag, action string
+	}{
+		{"User", "/Users/" + user.ID, etag, "scim.user.patched"},
+		{"Group", "/Groups/" + group.ID, gtag, "scim.group.patched"},
+	} {
+		results := gatedScimRequests(t, h, 5, func(i int, c *scimClient) *resp {
+			return c.do(http.MethodPatch, tc.path, patchOps(patchOp("replace", "displayName", fmt.Sprintf("%s writer %d", tc.kind, i))), ifMatch(tc.etag))
 		})
-	}
-	wg.Wait()
-	ok := 0
-	for _, r := range results {
-		if r.status == http.StatusOK {
-			ok++
-			continue
+		ok, stale := 0, 0
+		for _, r := range results {
+			if r.status == http.StatusOK {
+				ok++
+				continue
+			}
+			wantScimError(t, tc.kind+": a losing PATCH", r, http.StatusPreconditionFailed, "invalidVers", scimStaleText)
+			stale++
 		}
-		wantScimError(t, "a losing PATCH", r, http.StatusPreconditionFailed, "invalidVers", scimStaleText)
+		if ok != 1 || stale != 4 {
+			t.Errorf("%s: %d PATCHes succeeded and %d were stale, want 1 and 4", tc.kind, ok, stale)
+		}
+		if got := len(h.auditEvents(t, tc.action)); got != 1 {
+			t.Errorf("%s: %d %s rows, want 1", tc.kind, got, tc.action)
+		}
 	}
-	if ok != 1 {
-		t.Errorf("%d PATCHes succeeded, want 1", ok)
+}
+
+// New (fix round 1, ruled, as .NET): active:false, by PATCH, PUT or a
+// pathless PATCH, only makes the User upstream-inactive; its SCIM group
+// memberships stay as they were, so a directory that disables and then
+// re-enables a user keeps its groups. Only a DELETE makes them absent
+// (SV/ScimProtocolService.cs:344-352, against :920 and :937).
+func TestScim_DeactivationKeepsGroupMembershipsAndOnlyDeleteDropsThem(t *testing.T) {
+	t.Parallel()
+	h := newScimHarness(t)
+	c := h.scim(t, scimToken)
+	user, _ := createUser(t, c, userResource("kept", nil))
+	group, _ := createScimGroup(t, c, "Kept", user.ID)
+	gid, userID := uuid.MustParse(group.ID), h.userOf(t, user.ID)
+	listed := func() []string {
+		t.Helper()
+		return memberIDs(scimOf[scimGroup](t, "GET the group", c.do(http.MethodGet, "/Groups/"+group.ID, nil), http.StatusOK))
 	}
-	if got := len(h.auditEvents(t, "scim.user.patched")); got != 1 {
-		t.Errorf("%d scim.user.patched rows, want 1", got)
+
+	for _, step := range []struct {
+		name   string
+		body   map[string]any
+		put    bool
+		active bool
+	}{
+		{"PATCH active:false", patchOps(patchOp("replace", "active", false)), false, false},
+		{"PATCH active:true", patchOps(patchOp("replace", "active", true)), false, true},
+		{"PUT active:false", map[string]any{"userName": user.UserName, "active": false}, true, false},
+		{"a pathless active:true", patchOps(patchOp("replace", "", map[string]any{"active": true})), false, true},
+		{"a pathless active:false", patchOps(patchOp("Replace", "", map[string]any{"active": false})), false, false},
+	} {
+		method := http.MethodPatch
+		if step.put {
+			method = http.MethodPut
+		}
+		u := scimOf[scimUser](t, step.name, c.do(method, "/Users/"+user.ID, step.body), http.StatusOK)
+		if row := h.membershipRow(t, gid, userID); u.Active != step.active || row != "scim/true/none" || !slices.Equal(listed(), []string{user.ID}) {
+			t.Errorf("%s: active %t, row %s, members %v; want active %t and the membership kept", step.name, u.Active, row, listed(), step.active)
+		}
+	}
+	events := h.auditEvents(t, "scim.user.patched")
+	if want := `"UpstreamGroupResourceIds":["` + group.ID + `"]}`; len(events) != 4 || !strings.HasSuffix(events[3].After, want) {
+		t.Errorf("the last patched row's after = %v, want it to end %s", events, want)
+	}
+
+	if r := c.do(http.MethodDelete, "/Users/"+user.ID, nil); r.status != http.StatusNoContent {
+		t.Fatalf("DELETE: %d %s", r.status, r.body)
+	}
+	if row := h.membershipRow(t, gid, userID); row != "scim/false/none" || len(listed()) != 0 {
+		t.Errorf("after DELETE: row %s, members %v; want the membership absent", row, listed())
 	}
 }
 
