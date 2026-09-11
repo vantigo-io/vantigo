@@ -22,7 +22,7 @@ func TestModule_ComposesAndDemandsASession(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
-	r := h.client().do(http.MethodGet, "/api/v1/identity/session", nil)
+	r := h.client(t).do(http.MethodGet, "/api/v1/identity/session", nil)
 	if r.status != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", r.status)
 	}
@@ -56,12 +56,12 @@ func TestModule_ForbiddenAndScimRejectionsMatchTheContract(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
-	r := h.signIn(h.insertUser("user@example.test", identity.RoleUserID), false).do(http.MethodGet, "/api/v1/identity/owner/users", nil)
+	r := h.signIn(t, h.insertUser(t, "user@example.test", identity.RoleUserID), false).do(http.MethodGet, "/api/v1/identity/owner/users", nil)
 	if r.status != http.StatusForbidden || r.code() != "forbidden" {
 		t.Errorf("owner users as a User: status %d code %q, want 403 forbidden", r.status, r.code())
 	}
 
-	r = h.client().do(http.MethodGet, "/api/v1/identity/scim/v2/Users", nil)
+	r = h.client(t).do(http.MethodGet, "/api/v1/identity/scim/v2/Users", nil)
 	var scim struct {
 		Schemas  []string `json:"schemas"`
 		Status   string   `json:"status"`
@@ -83,7 +83,7 @@ func TestModule_RejectedCookieIsCleared(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
-	r := h.client().do(http.MethodGet, "/api/v1/identity/session", nil, header("Cookie", identity.SessionCookieName+"=stale"))
+	r := h.client(t).do(http.MethodGet, "/api/v1/identity/session", nil, header("Cookie", identity.SessionCookieName+"=stale"))
 	if r.status != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", r.status)
 	}
@@ -98,8 +98,10 @@ func TestModule_UnimplementedOperationsAnswer501(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
-	// Off-contract by design: the contract documents no 501.
-	r := h.client().do(http.MethodGet, "/api/v1/identity/bootstrap-status", nil, skipContract("stubbed operation answers an undocumented 501"))
+	// Off-contract by design: the contract documents no 501. OIDC sign-in
+	// is among the last operations to be implemented; whoever implements it
+	// moves this probe to another stub.
+	r := h.client(t).do(http.MethodGet, "/api/v1/identity/oidc/challenge", nil, skipContract("stubbed operation answers an undocumented 501"))
 	if r.status != http.StatusNotImplemented || r.header("Content-Type") != "application/problem+json" {
 		t.Errorf("status %d Content-Type %q, want a 501 problem", r.status, r.header("Content-Type"))
 	}
@@ -113,7 +115,7 @@ func TestModule_UndecodableBodyAnswersInvalidRequest(t *testing.T) {
 	h := newHarness(t)
 
 	// Off-contract by design: the request body is not JSON.
-	r := h.client().do(http.MethodPost, "/api/v1/identity/login", nil,
+	r := h.client(t).do(http.MethodPost, "/api/v1/identity/login", nil,
 		rawBody("application/json", []byte(`{"email":`)), skipContract("deliberately malformed request body"))
 	var body struct {
 		Error struct {
@@ -136,15 +138,37 @@ func TestModule_CrossOriginProtection(t *testing.T) {
 	h := newHarness(t)
 
 	// Off-contract by design: the platform's 403 problem is not in identity.yaml.
-	r := h.client().do(http.MethodPost, "/api/v1/identity/logout", nil,
+	r := h.client(t).do(http.MethodPost, "/api/v1/identity/logout", nil,
 		origin("https://attacker.example"), skipContract("cross-site request refused by the platform"))
 	if r.status != http.StatusForbidden || r.header("Content-Type") != "application/problem+json" {
 		t.Errorf("cross-site: status %d Content-Type %q, want the 403 problem", r.status, r.header("Content-Type"))
 	}
 
-	r = h.client().do(http.MethodPost, "/api/v1/identity/logout", nil, origin(h.srv.URL))
+	r = h.client(t).do(http.MethodPost, "/api/v1/identity/logout", nil, origin(h.srv.URL))
 	if r.status != http.StatusUnauthorized || r.code() != "unauthenticated" {
 		t.Errorf("same-origin: status %d code %q, want 401 unauthenticated", r.status, r.code())
+	}
+}
+
+// TestHarness_ParallelSubtestsShareOneHarness proves two parallel subtests
+// can share one harness, each with its own client: every client reports its
+// failures and contract violations to the subtest it was made for, never to
+// the parent that built the harness.
+func TestHarness_ParallelSubtestsShareOneHarness(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	for _, name := range []string{"first", "second"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := h.client(t)
+			id := h.seedUser(t, name+"@example.test", "SharedHarness123", identity.RoleUserID)
+			if r := c.do(http.MethodGet, "/api/v1/identity/bootstrap-status", nil); r.status != http.StatusOK {
+				t.Errorf("bootstrap-status: status %d", r.status)
+			}
+			if r := h.signIn(t, id, false).do(http.MethodGet, "/api/v1/identity/session", nil); r.status != http.StatusOK {
+				t.Errorf("session: status %d", r.status)
+			}
+		})
 	}
 }
 

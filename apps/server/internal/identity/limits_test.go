@@ -35,3 +35,17 @@ func TestNamedPoliciesKeepDotNetsLimits(t *testing.T) {
 		}
 	}
 }
+
+// TestLoginAttemptThrottleKeepsDotNetsLimit pins the per-account login
+// throttle to .NET's LoginAttemptThrottle (ten failures a minute) with no
+// Retry-After, and the two operations this area rate-limits by IP.
+func TestLoginAttemptThrottleKeepsDotNetsLimit(t *testing.T) {
+	want := ratelimit.Policy{Name: "login-attempts", Limit: 10, Window: time.Minute,
+		Message: "Too many authentication attempts. Please try again later.", NoRetryAfter: true}
+	if policyLoginAttempts != want {
+		t.Errorf("policyLoginAttempts = %+v, want %+v", policyLoginAttempts, want)
+	}
+	if limits["postIdentityLogin"] != policyLogin || limits["postIdentityBootstrap"] != policyBootstrap {
+		t.Errorf("limits = %+v, want Login on postIdentityLogin and Bootstrap on postIdentityBootstrap", limits)
+	}
+}

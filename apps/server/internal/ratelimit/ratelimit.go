@@ -71,7 +71,14 @@ type Limiter struct {
 
 // New returns a limiter on pool.
 func New(pool *pgxpool.Pool) *Limiter {
-	return &Limiter{pool: pool, now: time.Now}
+	return NewWithClock(pool, time.Now)
+}
+
+// NewWithClock returns a limiter on pool whose windows follow now rather
+// than the wall clock, for a caller that owns the clock its time decisions
+// use (a module's Deps.Clock, a test harness).
+func NewWithClock(pool *pgxpool.Pool, now func() time.Time) *Limiter {
+	return &Limiter{pool: pool, now: now}
 }
 
 // hitSQL counts one hit atomically: a new key or a newer window starts at 1,

@@ -23,7 +23,8 @@ func setCookie(t *testing.T, a *Access, write func(http.ResponseWriter)) (*http.
 // TestSessionCookieAttributes pins the session cookie: HttpOnly,
 // SameSite=Strict, the base path or /, Secure unless development or
 // insecure transport, a Max-Age of the absolute lifetime only when
-// persistent, and a clearing that expires it.
+// persistent, and a clearing that expires it. The login-ticket cookie has
+// the same attributes and lives the ticket's five minutes.
 func TestSessionCookieAttributes(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -41,7 +42,7 @@ func TestSessionCookieAttributes(t *testing.T) {
 		a := &Access{cfg: &c.cfg}
 
 		for _, persistent := range []bool{false, true} {
-			got, raw := setCookie(t, a, func(w http.ResponseWriter) { a.setSessionCookie(w, "tok", persistent) })
+			got, raw := setCookie(t, a, func(w http.ResponseWriter) { cookies{a.newSessionCookie("tok", persistent)}.set(w) })
 			if got.Name != "vantigo.session" || got.Value != "tok" || !got.HttpOnly || got.SameSite != http.SameSiteStrictMode ||
 				got.Secure != c.wantSecure || got.Path != c.wantPath {
 				t.Errorf("%s (persistent %v): Set-Cookie %q", c.name, persistent, raw)
@@ -58,6 +59,12 @@ func TestSessionCookieAttributes(t *testing.T) {
 		got, raw := setCookie(t, a, a.clearSessionCookie)
 		if got.Value != "" || got.MaxAge != -1 || got.Path != c.wantPath || got.Secure != c.wantSecure {
 			t.Errorf("%s: clearing Set-Cookie %q", c.name, raw)
+		}
+
+		got, raw = setCookie(t, a, func(w http.ResponseWriter) { cookies{a.newLoginTicketCookie("ticket")}.set(w) })
+		if got.Name != "vantigo.2fa" || got.Value != "ticket" || !got.HttpOnly || got.SameSite != http.SameSiteStrictMode ||
+			got.Secure != c.wantSecure || got.Path != c.wantPath || got.MaxAge != 300 {
+			t.Errorf("%s: login ticket Set-Cookie %q", c.name, raw)
 		}
 	}
 }

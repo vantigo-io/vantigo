@@ -33,11 +33,29 @@ var (
 	policyOwnerAvatarRead      = ratelimit.Policy{Name: "OwnerAvatarRead", Limit: 300, Window: time.Minute, Message: authRateLimitMessage}
 )
 
+// policyLoginAttempts is the per-account sign-in throttle, .NET's
+// LoginAttemptThrottle (EA/LoginAttemptThrottle.cs:18-49): ten failed
+// passwords per minute for one normalized email from one client address,
+// keyed "EMAIL|ip", checked before the password and cleared by a success.
+// Unlike the nine IP policies it answers without Retry-After. It lives in
+// the database limiter, so it holds across replicas where .NET's was per
+// process.
+var policyLoginAttempts = ratelimit.Policy{
+	Name:         "login-attempts",
+	Limit:        10,
+	Window:       time.Minute,
+	Message:      authRateLimitMessage,
+	NoRetryAfter: true,
+}
+
 // limits maps each rate-limited operationId to its policy. The router
 // applies the limit before the access check, as .NET's limiter runs before
 // authentication (HOST/Program.cs:120-136). Each area adds its operations
 // as it implements them.
-var limits = map[string]ratelimit.Policy{}
+var limits = map[string]ratelimit.Policy{
+	"postIdentityLogin":     policyLogin,
+	"postIdentityBootstrap": policyBootstrap,
+}
 
 // Module is identity as a platform module: its contract mounted under
 // /api/v1/identity/ with a as the access layer of every operation, and
@@ -63,6 +81,10 @@ func Module(a *Access) module.Module {
 // decodes it. It fails when the router reports a problem: an operation
 // never registered, a rule that does not parse, a permission missing from
 // the catalog, or a Limits entry naming no operation.
+//
+// The bootstrap secret is resolved here, once per mount, which is once per
+// process: /bootstrap and /bootstrap-status then share the one value, the
+// generated development secret included, that was logged.
 func mount(a *Access, d module.Deps) (http.Handler, error) {
 	router := module.NewRouter(module.RouterOptions{
 		Doc:     d.Doc,
@@ -71,7 +93,8 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 		Limits:  limits,
 		Catalog: d.Catalog,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(a, d), nil, gen.StrictHTTPServerOptions{
+	srv := newServer(a, d, resolveBootstrapSecret(d.Config, d.Logger))
+	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{withRequest}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(writeInvalidRequest),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

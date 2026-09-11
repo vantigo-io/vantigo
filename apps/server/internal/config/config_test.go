@@ -374,6 +374,15 @@ func TestLoad_BootstrapSecret(t *testing.T) {
 	if cfg := mustLoad(t, with(validEnv(), "BOOTSTRAP_SECRET", "s3cr3t")); cfg.BootstrapSecret != "s3cr3t" {
 		t.Errorf("BootstrapSecret = %q", cfg.BootstrapSecret)
 	}
+	// A blank secret is a missing one, as .NET's IsNullOrWhiteSpace check
+	// had it; a set one is kept verbatim, its surrounding spaces included.
+	if msg := loadError(t, with(validEnv(), "BOOTSTRAP_SECRET", "   ")); !strings.Contains(msg, "BOOTSTRAP_SECRET: is required outside development") {
+		t.Errorf("blank secret: error = %q", msg)
+	}
+	const padded = " configured-secret-with-preserved-space "
+	if cfg := mustLoad(t, with(validEnv(), "BOOTSTRAP_SECRET", padded)); cfg.BootstrapSecret != padded {
+		t.Errorf("BootstrapSecret = %q, want %q verbatim", cfg.BootstrapSecret, padded)
+	}
 }
 
 func TestLoad_Sessions(t *testing.T) {

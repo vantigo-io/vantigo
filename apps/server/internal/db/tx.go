@@ -51,7 +51,7 @@ func RetrySerializable(ctx context.Context, attempts int, fn func() error) error
 		if err == nil {
 			return nil
 		}
-		if !isSerializationConflict(err) || attempt == attempts {
+		if !IsSerializationConflict(err) || attempt == attempts {
 			return err
 		}
 		select {
@@ -63,7 +63,11 @@ func RetrySerializable(ctx context.Context, attempts int, fn func() error) error
 	return err
 }
 
-func isSerializationConflict(err error) bool {
+// IsSerializationConflict reports whether err is a serialization failure
+// (40001) or a deadlock (40P01): a transaction that lost a race, which
+// RetrySerializable retries and a caller that does not retry may report as a
+// conflict.
+func IsSerializationConflict(err error) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return false

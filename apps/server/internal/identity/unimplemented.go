@@ -105,10 +105,6 @@ func (*server) GetIdentityAccountPasskeys(context.Context, gen.GetIdentityAccoun
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityBootstrapStatus(context.Context, gen.GetIdentityBootstrapStatusRequestObject) (gen.GetIdentityBootstrapStatusResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityInvitationsValidate(context.Context, gen.GetIdentityInvitationsValidateRequestObject) (gen.GetIdentityInvitationsValidateResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -149,10 +145,6 @@ func (*server) GetIdentityOwnerUsersByIdAvatar(context.Context, gen.GetIdentityO
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityProviders(context.Context, gen.GetIdentityProvidersRequestObject) (gen.GetIdentityProvidersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityScimV2Groups(context.Context, gen.GetIdentityScimV2GroupsRequestObject) (gen.GetIdentityScimV2GroupsResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -178,10 +170,6 @@ func (*server) GetIdentityScimV2Users(context.Context, gen.GetIdentityScimV2User
 }
 
 func (*server) GetIdentityScimV2UsersById(context.Context, gen.GetIdentityScimV2UsersByIdRequestObject) (gen.GetIdentityScimV2UsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentitySession(context.Context, gen.GetIdentitySessionRequestObject) (gen.GetIdentitySessionResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -257,27 +245,11 @@ func (*server) PostIdentityAccountPassword(context.Context, gen.PostIdentityAcco
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityAccountSessionsRevoke(context.Context, gen.PostIdentityAccountSessionsRevokeRequestObject) (gen.PostIdentityAccountSessionsRevokeResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityBootstrap(context.Context, gen.PostIdentityBootstrapRequestObject) (gen.PostIdentityBootstrapResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityInvitationsAccept(context.Context, gen.PostIdentityInvitationsAcceptRequestObject) (gen.PostIdentityInvitationsAcceptResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityLogin(context.Context, gen.PostIdentityLoginRequestObject) (gen.PostIdentityLoginResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityLogin2fa(context.Context, gen.PostIdentityLogin2faRequestObject) (gen.PostIdentityLogin2faResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityLogout(context.Context, gen.PostIdentityLogoutRequestObject) (gen.PostIdentityLogoutResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -358,10 +330,6 @@ func (*server) PostIdentityScimV2Groups(context.Context, gen.PostIdentityScimV2G
 }
 
 func (*server) PostIdentityScimV2Users(context.Context, gen.PostIdentityScimV2UsersRequestObject) (gen.PostIdentityScimV2UsersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentitySystemUsersByUserIdSessionsRevoke(context.Context, gen.PostIdentitySystemUsersByUserIdSessionsRevokeRequestObject) (gen.PostIdentitySystemUsersByUserIdSessionsRevokeResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
