@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -27,6 +28,9 @@ type server struct {
 	// dummyPasswordHash is what a password is verified against when the
 	// email names no account, or one without a password (checkPassword).
 	dummyPasswordHash string
+	// relyingParty verifies passkey ceremonies; nil while APP_URL's host
+	// cannot be a WebAuthn RP ID, and then every ceremony is refused.
+	relyingParty *webauthn.WebAuthn
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -38,11 +42,20 @@ const dummyPassword = "vantigo-no-such-account"
 
 // newServer builds identity's operations over a and d. It resolves the
 // bootstrap secret, and computes the dummy password hash up front so that
-// no request, the first unknown-email sign-in included, pays for it.
+// no request, the first unknown-email sign-in included, pays for it. It
+// builds the passkey relying party once; an APP_URL host that cannot be an
+// RP ID (an IP address) leaves passkeys unavailable, with a warning, rather
+// than the installation unable to start.
 func newServer(a *Access, d module.Deps) (*server, error) {
 	dummy, err := hashPassword(dummyPassword)
 	if err != nil {
 		return nil, err
+	}
+	rp, err := newRelyingParty(d.Config)
+	if err != nil {
+		d.Logger.Warn("passkeys unavailable: APP_URL's host cannot be a WebAuthn relying party ID",
+			"app_host", d.Config.AppHostname, "error", err.Error())
+		rp = nil
 	}
 	return &server{
 		access:            a,
@@ -50,6 +63,7 @@ func newServer(a *Access, d module.Deps) (*server, error) {
 		q:                 store.New(d.Pool),
 		bootstrapSecret:   resolveBootstrapSecret(d.Config, d.Logger),
 		dummyPasswordHash: dummy,
+		relyingParty:      rp,
 	}, nil
 }
 

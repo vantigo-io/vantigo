@@ -144,7 +144,7 @@ func TestModule_CrossOriginProtection(t *testing.T) {
 		t.Errorf("cross-site: status %d Content-Type %q, want the 403 problem", r.status, r.header("Content-Type"))
 	}
 
-	r = h.client(t).do(http.MethodPost, "/api/v1/identity/logout", nil, origin(h.srv.URL))
+	r = h.client(t).do(http.MethodPost, "/api/v1/identity/logout", nil, origin(h.url))
 	if r.status != http.StatusUnauthorized || r.code() != "unauthenticated" {
 		t.Errorf("same-origin: status %d code %q, want 401 unauthenticated", r.status, r.code())
 	}

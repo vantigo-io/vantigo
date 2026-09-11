@@ -3,7 +3,10 @@ package identity_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base32"
@@ -64,6 +67,7 @@ var start = time.Date(2026, time.September, 11, 12, 0, 0, 0, time.UTC)
 // The installation's first Owner, as bootstrapOwner creates them, and the
 // secret the harness configures for it.
 const (
+	harnessOrigin   = "http://identity.example.com"
 	ownerEmail      = "owner@example.test"
 	ownerPassword   = "OwnerPassword123"
 	bootstrapSecret = "identity-harness-bootstrap-secret"
@@ -90,6 +94,7 @@ type harness struct {
 	access *identity.Access
 	mail   *mail.Fake
 	srv    *httptest.Server
+	url    string // the installation's origin, APP_URL
 	base   *url.URL
 	log    *syncBuffer
 
@@ -113,10 +118,13 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	t.Helper()
 	pool, databaseURL := testdb.Migrated(t)
 
-	// The listener exists before the configuration, because APP_URL must be
-	// the server's own origin for the host filter and CrossOriginProtection.
+	// The installation answers as harnessOrigin, a real domain: a WebAuthn
+	// relying party ID is the APP_URL host and may not be an IP address, so
+	// the listener's 127.0.0.1 would leave passkeys unavailable. httptest's
+	// client dials the listener for any example.com host on port 80, and the
+	// host filter and CrossOriginProtection see the domain.
 	srv := httptest.NewUnstartedServer(nil)
-	origin := "http://" + srv.Listener.Addr().String()
+	origin := harnessOrigin
 
 	// httptest's peer is always 127.0.0.1, the one trusted proxy, so each
 	// client's X-Forwarded-For address becomes its httpx.ClientIP and every
@@ -183,7 +191,8 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	srv.Start()
 	t.Cleanup(srv.Close)
 	h.srv = srv
-	h.base, err = url.Parse(srv.URL)
+	h.url = origin
+	h.base, err = url.Parse(origin)
 	if err != nil {
 		t.Fatalf("harness: %v", err)
 	}
@@ -593,7 +602,7 @@ func (c *client) do(method, path string, body any, opts ...reqOpt) *resp {
 	if r.body != nil {
 		reader = bytes.NewReader(r.body)
 	}
-	req, err := http.NewRequest(method, c.h.srv.URL+path, reader)
+	req, err := http.NewRequest(method, c.h.url+path, reader)
 	if err != nil {
 		c.t.Fatalf("%s %s: %v", method, path, err)
 	}
@@ -664,4 +673,232 @@ func (r *resp) setCookie(name string) *http.Cookie {
 		}
 	}
 	return nil
+}
+
+// authenticator is a software passkey: an ES256 key pair behind a random
+// credential id, answering the installation's options as a platform
+// authenticator and its browser would (WebAuthn Level 3: §5.8.1 client
+// data, §6.1 authenticator data, §6.5.1 attested credential data, §8.7 the
+// "none" attestation format). The client data JSON, the authenticator data
+// and the CBOR are built by hand, so the installation's verifier is checked
+// against an encoder independent of the library it uses.
+//
+// The knobs make the negative cases: noUV leaves out the user-verified
+// flag, origin is the origin the browser reports, rpID (when set) is the RP
+// ID hashed into the authenticator data instead of the options' own, and
+// signCount is the counter, which each assertion first advances by one.
+type authenticator struct {
+	key        *ecdsa.PrivateKey
+	id         []byte
+	userHandle []byte
+	signCount  uint32
+	noUV       bool
+	origin     string
+	rpID       string
+}
+
+func newAuthenticator(t testing.TB) *authenticator {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("authenticator: %v", err)
+	}
+	return &authenticator{key: key, id: []byte(rand.Text()), origin: harnessOrigin}
+}
+
+// create answers creation options with a new credential: attestation
+// "none", flags UP|UV|AT and a COSE EC2 P-256 key, as credential JSON.
+func (a *authenticator) create(t testing.TB, options json.RawMessage) string {
+	t.Helper()
+	var o struct {
+		Challenge string              `json:"challenge"`
+		RP        struct{ ID string } `json:"rp"`
+		User      struct{ ID string } `json:"user"`
+	}
+	if err := json.Unmarshal(options, &o); err != nil {
+		t.Fatalf("authenticator: creation options %s: %v", options, err)
+	}
+	a.userHandle = mustB64(t, o.User.ID)
+	point, err := a.key.PublicKey.Bytes() // 0x04 ‖ x ‖ y
+	if err != nil {
+		t.Fatalf("authenticator: %v", err)
+	}
+	coseKey := cborMap(cborInt(1), cborInt(2), cborInt(3), cborInt(-7), // kty EC2, alg ES256
+		cborInt(-1), cborInt(1), cborInt(-2), cborBytes(point[1:33]), cborInt(-3), cborBytes(point[33:])) // crv P-256, x, y
+	attested := binary.BigEndian.AppendUint16(make([]byte, 16), uint16(len(a.id))) // zero AAGUID, id length
+	attested = append(append(attested, a.id...), coseKey...)
+	object := cborMap(cborText("fmt"), cborText("none"), cborText("attStmt"), cborMap(),
+		cborText("authData"), cborBytes(a.authenticatorData(o.RP.ID, attested)))
+	return a.credential(map[string]any{
+		"clientDataJSON":    b64(a.clientData("webauthn.create", o.Challenge)),
+		"attestationObject": b64(object),
+		"transports":        []string{"internal", "hybrid"},
+	})
+}
+
+// get answers request options with an assertion: the counter advanced,
+// flags UP|UV, and an ES256 signature over the authenticator data and the
+// client data hash, as credential JSON with the user handle.
+func (a *authenticator) get(t testing.TB, options json.RawMessage) string {
+	t.Helper()
+	var o struct {
+		Challenge string `json:"challenge"`
+		RPID      string `json:"rpId"`
+	}
+	if err := json.Unmarshal(options, &o); err != nil {
+		t.Fatalf("authenticator: request options %s: %v", options, err)
+	}
+	a.signCount++
+	clientData := a.clientData("webauthn.get", o.Challenge)
+	authData := a.authenticatorData(o.RPID, nil)
+	clientDataHash := sha256.Sum256(clientData)
+	digest := sha256.Sum256(append(bytes.Clone(authData), clientDataHash[:]...))
+	signature, err := ecdsa.SignASN1(rand.Reader, a.key, digest[:])
+	if err != nil {
+		t.Fatalf("authenticator: %v", err)
+	}
+	return a.credential(map[string]any{
+		"clientDataJSON":    b64(clientData),
+		"authenticatorData": b64(authData),
+		"signature":         b64(signature),
+		"userHandle":        b64(a.userHandle),
+	})
+}
+
+// authenticatorData is the RP ID hash, the flags, the counter, then
+// attested credential data when there is some (which sets AT).
+func (a *authenticator) authenticatorData(rpID string, attested []byte) []byte {
+	if a.rpID != "" {
+		rpID = a.rpID
+	}
+	flags := byte(0x01) // UP
+	if !a.noUV {
+		flags |= 0x04 // UV
+	}
+	if attested != nil {
+		flags |= 0x40 // AT
+	}
+	hash := sha256.Sum256([]byte(rpID))
+	out := binary.BigEndian.AppendUint32(append(hash[:], flags), a.signCount)
+	return append(out, attested...)
+}
+
+func (a *authenticator) clientData(typ, challenge string) []byte {
+	b, _ := json.Marshal(map[string]any{"type": typ, "challenge": challenge, "origin": a.origin, "crossOrigin": false})
+	return b
+}
+
+// credential is the PublicKeyCredential JSON the SPA sends as
+// credentialJson (apps/host/frontend/src/api/webauthn.ts).
+func (a *authenticator) credential(response map[string]any) string {
+	b, _ := json.Marshal(map[string]any{
+		"id": b64(a.id), "rawId": b64(a.id), "type": "public-key", "response": response,
+		"clientExtensionResults": map[string]any{}, "authenticatorAttachment": "platform",
+	})
+	return string(b)
+}
+
+// The CBOR (RFC 8949) the authenticator needs: definite-length heads,
+// integers, byte and text strings, and maps of key-value pairs.
+func cborHead(major byte, n int) []byte {
+	switch {
+	case n < 24:
+		return []byte{major<<5 | byte(n)}
+	case n < 256:
+		return []byte{major<<5 | 24, byte(n)}
+	default:
+		return []byte{major<<5 | 25, byte(n >> 8), byte(n)}
+	}
+}
+
+func cborInt(n int) []byte {
+	if n < 0 {
+		return cborHead(1, -1-n)
+	}
+	return cborHead(0, n)
+}
+
+func cborBytes(b []byte) []byte { return append(cborHead(2, len(b)), b...) }
+func cborText(s string) []byte  { return append(cborHead(3, len(s)), s...) }
+
+func cborMap(pairs ...[]byte) []byte {
+	return bytes.Join(append([][]byte{cborHead(5, len(pairs)/2)}, pairs...), nil)
+}
+
+func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
+
+func mustB64(t testing.TB, s string) []byte {
+	t.Helper()
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		t.Fatalf("base64url %q: %v", s, err)
+	}
+	return b
+}
+
+const (
+	accountPasskeysPath = "/api/v1/identity/account/passkeys"
+	passkeyLoginPath    = "/api/v1/identity/passkeys/login"
+)
+
+// passkeyCeremony is PasskeyOptionsResponse as a test reads it.
+type passkeyCeremony struct {
+	CeremonyID uuid.UUID       `json:"ceremonyId"`
+	Options    json.RawMessage `json:"options"`
+}
+
+// beginPasskeyEnrolment begins enrolling a passkey named name for c's user,
+// which must succeed, and returns the ceremony.
+func beginPasskeyEnrolment(t testing.TB, c *client, password, name string) passkeyCeremony {
+	t.Helper()
+	r := c.do(http.MethodPost, accountPasskeysPath+"/begin", map[string]any{"name": name, "currentPassword": password})
+	if r.status != http.StatusOK {
+		t.Fatalf("passkey begin: status %d body %s", r.status, r.body)
+	}
+	var ceremony passkeyCeremony
+	r.json(&ceremony)
+	return ceremony
+}
+
+// enrollPasskey enrols a new software authenticator for c's user under
+// name, with password as the current password, and returns it.
+func enrollPasskey(t testing.TB, c *client, password, name string) *authenticator {
+	t.Helper()
+	a := newAuthenticator(t)
+	ceremony := beginPasskeyEnrolment(t, c, password, name)
+	r := c.do(http.MethodPost, accountPasskeysPath+"/complete", map[string]any{
+		"ceremonyId": ceremony.CeremonyID, "credentialJson": a.create(t, ceremony.Options), "currentPassword": password,
+	})
+	if r.status != http.StatusOK {
+		t.Fatalf("passkey complete: status %d body %s", r.status, r.body)
+	}
+	return a
+}
+
+// beginPasskeyLogin begins a passkey sign-in for email on c, which must
+// succeed, and returns the ceremony.
+func beginPasskeyLogin(t testing.TB, c *client, email string) passkeyCeremony {
+	t.Helper()
+	r := c.do(http.MethodPost, passkeyLoginPath+"/begin", map[string]any{"email": email})
+	if r.status != http.StatusOK {
+		t.Fatalf("passkey login begin: status %d body %s", r.status, r.body)
+	}
+	var ceremony passkeyCeremony
+	r.json(&ceremony)
+	return ceremony
+}
+
+// completePasskeyLogin answers ceremony with a's assertion on c.
+func completePasskeyLogin(t testing.TB, c *client, ceremony passkeyCeremony, a *authenticator) *resp {
+	t.Helper()
+	return c.do(http.MethodPost, passkeyLoginPath+"/complete", map[string]any{
+		"ceremonyId": ceremony.CeremonyID, "credentialJson": a.get(t, ceremony.Options),
+	})
+}
+
+// passkeyLogin signs email in with a on c, begin and complete, and returns
+// the completion's response.
+func passkeyLogin(t testing.TB, c *client, email string, a *authenticator) *resp {
+	t.Helper()
+	return completePasskeyLogin(t, c, beginPasskeyLogin(t, c, email), a)
 }

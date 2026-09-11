@@ -29,10 +29,6 @@ func (*server) DeleteIdentityAccessRolesById(context.Context, gen.DeleteIdentity
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) DeleteIdentityAccountPasskeysByCredentialId(context.Context, gen.DeleteIdentityAccountPasskeysByCredentialIdRequestObject) (gen.DeleteIdentityAccountPasskeysByCredentialIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) DeleteIdentityScimV2GroupsById(context.Context, gen.DeleteIdentityScimV2GroupsByIdRequestObject) (gen.DeleteIdentityScimV2GroupsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -74,10 +70,6 @@ func (*server) GetIdentityAccessUsers(context.Context, gen.GetIdentityAccessUser
 }
 
 func (*server) GetIdentityAccessUsersById(context.Context, gen.GetIdentityAccessUsersByIdRequestObject) (gen.GetIdentityAccessUsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccountPasskeys(context.Context, gen.GetIdentityAccountPasskeysRequestObject) (gen.GetIdentityAccountPasskeysResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -161,23 +153,7 @@ func (*server) PostIdentityAccessRoles(context.Context, gen.PostIdentityAccessRo
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityAccountPasskeysBegin(context.Context, gen.PostIdentityAccountPasskeysBeginRequestObject) (gen.PostIdentityAccountPasskeysBeginResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccountPasskeysComplete(context.Context, gen.PostIdentityAccountPasskeysCompleteRequestObject) (gen.PostIdentityAccountPasskeysCompleteResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityOidcCallback(context.Context, gen.PostIdentityOidcCallbackRequestObject) (gen.PostIdentityOidcCallbackResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityPasskeysLoginBegin(context.Context, gen.PostIdentityPasskeysLoginBeginRequestObject) (gen.PostIdentityPasskeysLoginBeginResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityPasskeysLoginComplete(context.Context, gen.PostIdentityPasskeysLoginCompleteRequestObject) (gen.PostIdentityPasskeysLoginCompleteResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
