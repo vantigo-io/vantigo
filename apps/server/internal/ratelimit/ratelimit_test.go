@@ -189,6 +189,137 @@ func TestMiddleware_PanicsOnAnInvalidPolicy(t *testing.T) {
 	l.Middleware(Policy{Name: "x", Limit: 0, Window: time.Minute})
 }
 
+func mustBlocked(t *testing.T, l *Limiter, p Policy, client string) Decision {
+	t.Helper()
+	d, err := l.Blocked(context.Background(), p, client)
+	if err != nil {
+		t.Fatalf("Blocked: %v", err)
+	}
+	return d
+}
+
+func TestBlocked_AFreshKeyIsAllowedAndRecordsNothing(t *testing.T) {
+	l, _ := newLimiter(t)
+	if d := mustBlocked(t, l, login, "203.0.113.7"); !d.Allowed {
+		t.Fatal("a fresh key was blocked")
+	}
+	var count int
+	if err := l.pool.QueryRow(context.Background(), "SELECT count(*) FROM platform.rate_limit").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("Blocked inserted %d rows, want 0", count)
+	}
+}
+
+func TestBlocked_IsBlockedOnceTheLimitIsHit(t *testing.T) {
+	l, _ := newLimiter(t)
+	for range login.Limit {
+		mustAllow(t, l, login, "203.0.113.7")
+	}
+	d := mustBlocked(t, l, login, "203.0.113.7")
+	if d.Allowed {
+		t.Fatal("blocked after the limit was hit, but Blocked allowed it")
+	}
+	if d.RetryAfter <= 0 {
+		t.Errorf("RetryAfter = %v, want > 0", d.RetryAfter)
+	}
+}
+
+func TestBlocked_ARowFromAnOlderWindowIsNotBlocked(t *testing.T) {
+	l, now := newLimiter(t)
+	for range login.Limit {
+		mustAllow(t, l, login, "203.0.113.7")
+	}
+	*now = now.Add(time.Minute) // a fresh window; the old row is stale
+	if d := mustBlocked(t, l, login, "203.0.113.7"); !d.Allowed {
+		t.Error("a row left over from an earlier window blocked the next one")
+	}
+}
+
+func TestReset_ClearsTheCounter(t *testing.T) {
+	l, _ := newLimiter(t)
+	for range login.Limit {
+		mustAllow(t, l, login, "203.0.113.7")
+	}
+	if err := l.Reset(context.Background(), login, "203.0.113.7"); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	if d := mustBlocked(t, l, login, "203.0.113.7"); !d.Allowed {
+		t.Error("Blocked still reports blocked after Reset")
+	}
+	if d := mustAllow(t, l, login, "203.0.113.7"); !d.Allowed {
+		t.Error("Allow still limited after Reset")
+	}
+}
+
+func TestHit_IsAllowUnderItsNewName(t *testing.T) {
+	l, _ := newLimiter(t)
+	d, err := l.Hit(context.Background(), login, "203.0.113.7")
+	if err != nil {
+		t.Fatalf("Hit: %v", err)
+	}
+	if !d.Allowed {
+		t.Error("first hit rejected")
+	}
+}
+
+func TestReject_DefaultBodyIsUnchanged(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/identity/login", nil)
+	Reject(rec, req, login, Decision{RetryAfter: 50 * time.Second})
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "50" {
+		t.Errorf("Retry-After = %q, want 50", got)
+	}
+	want := `{"error":{"code":"rate_limited","message":"Too many attempts. Please try again later."}}` + "\n"
+	if rec.Body.String() != want {
+		t.Errorf("body = %q, want %q", rec.Body.String(), want)
+	}
+}
+
+func TestReject_CustomMessageIsJSONEscapedInTheBody(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/identity/login", nil)
+	p := Policy{Name: "login", Limit: 1, Window: time.Minute, Message: `Too many attempts, "friend".`}
+	Reject(rec, req, p, Decision{RetryAfter: 3 * time.Second})
+
+	want := `{"error":{"code":"rate_limited","message":"Too many attempts, \"friend\"."}}` + "\n"
+	if rec.Body.String() != want {
+		t.Errorf("body = %q, want %q", rec.Body.String(), want)
+	}
+}
+
+func TestReject_NoRetryAfterOmitsTheHeader(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/identity/login", nil)
+	p := Policy{Name: "login", Limit: 1, Window: time.Minute, NoRetryAfter: true}
+	Reject(rec, req, p, Decision{RetryAfter: 3 * time.Second})
+
+	if _, ok := rec.Header()["Retry-After"]; ok {
+		t.Errorf("Retry-After present: %q", rec.Header().Get("Retry-After"))
+	}
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
+	}
+}
+
+func TestReject_RetryAfterRoundsUpWithAMinimumOfOneSecond(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/identity/login", nil)
+	Reject(rec, req, login, Decision{RetryAfter: 400 * time.Millisecond})
+
+	if got := rec.Header().Get("Retry-After"); got != "1" {
+		t.Errorf("Retry-After = %q, want 1 (rounded up, minimum 1)", got)
+	}
+}
+
 func TestMiddleware_FailsClosedWhenTheCounterCannotBeRecorded(t *testing.T) {
 	pool, _ := testdb.Migrated(t)
 	l := New(pool)
