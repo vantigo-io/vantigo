@@ -31,6 +31,9 @@ type server struct {
 	// relyingParty verifies passkey ceremonies; nil while APP_URL's host
 	// cannot be a WebAuthn RP ID, and then every ceremony is refused.
 	relyingParty *webauthn.WebAuthn
+	// maintenance is the 20 s cache GetIdentitySystemStatus reads the
+	// system_settings singleton through; see system.go.
+	maintenance maintenanceCache
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)

@@ -25,7 +25,6 @@ var pendingOperations = []string{
 	"getIdentityOidcCallback",
 	"getIdentityOidcChallenge",
 	"getIdentityOidcComplete",
-	"getIdentityOwnerSystemStatus",
 	"getIdentityScimV2Groups",
 	"getIdentityScimV2GroupsById",
 	"getIdentityScimV2ResourceTypes",
@@ -33,7 +32,6 @@ var pendingOperations = []string{
 	"getIdentityScimV2ServiceProviderConfig",
 	"getIdentityScimV2Users",
 	"getIdentityScimV2UsersById",
-	"getIdentitySystemStatus",
 	"patchIdentityScimV2GroupsById",
 	"patchIdentityScimV2UsersById",
 	"postIdentityAccessDelegations",
@@ -49,7 +47,6 @@ var pendingOperations = []string{
 	"putIdentityAccessGroupsByGroupIdRoleMappingsByRoleId",
 	"putIdentityAccessGroupsById",
 	"putIdentityScimV2UsersById",
-	"putIdentitySystemMaintenance",
 }
 
 func TestMain(m *testing.M) {

@@ -57,10 +57,6 @@ func (*server) GetIdentityOidcComplete(context.Context, gen.GetIdentityOidcCompl
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityOwnerSystemStatus(context.Context, gen.GetIdentityOwnerSystemStatusRequestObject) (gen.GetIdentityOwnerSystemStatusResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityScimV2Groups(context.Context, gen.GetIdentityScimV2GroupsRequestObject) (gen.GetIdentityScimV2GroupsResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -86,10 +82,6 @@ func (*server) GetIdentityScimV2Users(context.Context, gen.GetIdentityScimV2User
 }
 
 func (*server) GetIdentityScimV2UsersById(context.Context, gen.GetIdentityScimV2UsersByIdRequestObject) (gen.GetIdentityScimV2UsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentitySystemStatus(context.Context, gen.GetIdentitySystemStatusRequestObject) (gen.GetIdentitySystemStatusResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -150,9 +142,5 @@ func (*server) PutIdentityAccessGroupsById(context.Context, gen.PutIdentityAcces
 }
 
 func (*server) PutIdentityScimV2UsersById(context.Context, gen.PutIdentityScimV2UsersByIdRequestObject) (gen.PutIdentityScimV2UsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentitySystemMaintenance(context.Context, gen.PutIdentitySystemMaintenanceRequestObject) (gen.PutIdentitySystemMaintenanceResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
