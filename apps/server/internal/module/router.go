@@ -60,6 +60,13 @@ func NewRouter(o RouterOptions) *Router {
 			}
 		}
 	}
+	// The contract documents no 405: an unknown path and a wrong method on a
+	// known one both answer the same 404 problem, never the inner
+	// http.ServeMux's plain-text default. This is the least specific
+	// pattern, so it only ever catches what nothing else matched — including
+	// a GET pattern's built-in HEAD match, which stdlib ServeMux still
+	// resolves first.
+	r.mux.HandleFunc("/", httpx.NotFound)
 	return r
 }
 
@@ -73,7 +80,6 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		r.problems = append(r.problems, fmt.Sprintf("module: pattern %q matches no contract operation", pattern))
 		return
 	}
-	r.registered[pattern] = true
 
 	access, _ := op.Extensions["x-vantigo-access"].(string)
 	rule, err := contracts.ParseRule(access)
@@ -90,7 +96,26 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		}
 	}
 
-	r.mux.HandleFunc(pattern, r.wrap(op, rule, h))
+	if r.mount(pattern, r.wrap(op, rule, h)) {
+		r.registered[pattern] = true
+	}
+}
+
+// mount registers h for pattern on the inner mux, recovering from the panic
+// http.ServeMux.HandleFunc raises on a duplicate or ambiguous route (real
+// contracts have these — see openapi.knownServeMuxConflicts — and letting
+// one crash Mount/Compose would take the whole process down). A recovered
+// pattern is recorded as a problem and left unregistered, so it also shows
+// up under Err's "never registered" check.
+func (r *Router) mount(pattern string, h http.HandlerFunc) (ok bool) {
+	defer func() {
+		if v := recover(); v != nil {
+			r.problems = append(r.problems, fmt.Sprintf("module: %s: conflicts with an existing route: %v", pattern, v))
+			ok = false
+		}
+	}()
+	r.mux.HandleFunc(pattern, h)
+	return true
 }
 
 // wrap orders the checks: rate limit (if opts.Limits names op's
@@ -130,14 +155,23 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mux.ServeHTTP(w, req)
 }
 
-// Err reports every registration problem: a pattern with no contract
-// operation, an operation without a valid x-vantigo-access, a permission
-// missing from Catalog, a Limits key naming no operation, and contract
-// operations that were never registered. Call it after every HandleFunc call
-// (HandlerWithOptions registers everything in one call, so Mount calls Err
-// right after it).
+// Err reports every registration problem: a nil Access, a nil Limiter when
+// Limits is non-empty, a pattern with no contract operation, an operation
+// without a valid x-vantigo-access, a permission missing from Catalog, a
+// route that conflicts with one already registered, a Limits key naming no
+// operation, and contract operations that were never registered (a
+// conflicting route counts as never registered). Call it after every
+// HandleFunc call (HandlerWithOptions registers everything in one call, so
+// Mount calls Err right after it).
 func (r *Router) Err() error {
-	problems := append([]string(nil), r.problems...)
+	var problems []string
+	if r.opts.Access == nil {
+		problems = append(problems, "module: RouterOptions.Access is nil")
+	}
+	if r.opts.Limiter == nil && len(r.opts.Limits) > 0 {
+		problems = append(problems, "module: RouterOptions.Limits is set but RouterOptions.Limiter is nil")
+	}
+	problems = append(problems, r.problems...)
 
 	var unregistered []string
 	for pattern, op := range r.ops {

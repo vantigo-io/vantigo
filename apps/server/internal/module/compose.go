@@ -18,7 +18,9 @@ import (
 // Compose mounts each module at /api/v1/<name>/, serves the combined
 // contract of the modules at GET /api/openapi.json (RuleSession), and
 // answers every other /api path with httpx.NotFound. It fails on a
-// duplicate name, an invalid or duplicate permission, or a Mount error.
+// duplicate name, an invalid or duplicate permission, a Mount error, a path
+// two modules both declare, or a component two modules declare differently
+// under the same name.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	return compose(deps, openapi.Load, mods...)
 }
@@ -56,8 +58,6 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		if err != nil {
 			return nil, fmt.Errorf("module: load %s contract: %w", mod.Name, err)
 		}
-		docs[mod.Name] = doc
-		order = append(order, mod.Name)
 
 		modDeps := deps
 		modDeps.Doc = doc
@@ -70,6 +70,18 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		// module's router the request path unchanged (no StripPrefix): the
 		// module's own router matches full paths from its own Doc.
 		outer.Handle("/api/v1/"+mod.Name+"/", handler)
+
+		// mergeContract (via InternalizeRefs) mutates the *openapi3.T it
+		// merges in place. doc was just handed to Mount as modDeps.Doc and a
+		// module may keep it, so mergeContract gets its own independent copy
+		// — a second, separate call to load — rather than doc itself, which
+		// stays exactly as Mount received it.
+		mergeDoc, err := load(ctx, mod.Name)
+		if err != nil {
+			return nil, fmt.Errorf("module: load %s contract: %w", mod.Name, err)
+		}
+		docs[mod.Name] = mergeDoc
+		order = append(order, mod.Name)
 	}
 
 	contract, err := mergeContract(docs, order)
@@ -101,9 +113,12 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 }
 
 // mergeContract builds the contract served at GET /api/openapi.json: every
-// module's paths, and their components merged (an identical component under
+// module's paths (a path two modules both declare fails, naming it and the
+// second module), and their components merged (an identical component under
 // the same name is kept once; a differing one fails, naming it), with
-// common.yaml references internalised so none remain in the output.
+// common.yaml references internalised so none remain in the output. It
+// mutates docs' entries in place (InternalizeRefs), so callers must pass it
+// copies no one else holds onto.
 func mergeContract(docs map[string]*openapi3.T, order []string) (*openapi3.T, error) {
 	combined := &openapi3.T{
 		OpenAPI: "3.0.3",
@@ -126,6 +141,9 @@ func mergeContract(docs map[string]*openapi3.T, order []string) (*openapi3.T, er
 	for _, name := range order {
 		doc := docs[name]
 		for path, item := range doc.Paths.Map() {
+			if combined.Paths.Find(path) != nil {
+				return nil, fmt.Errorf("module: path %q from %s is already registered by an earlier module", path, name)
+			}
 			combined.Paths.Set(path, item)
 		}
 		if doc.Components == nil {

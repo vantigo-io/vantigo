@@ -2,6 +2,7 @@ package module
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -58,6 +59,31 @@ paths:
   /api/v1/x/norule:
     get:
       operationId: getNoRule
+      responses:
+        "204": { description: ok }
+`
+
+// conflictingRoutesContract has two operations that stdlib http.ServeMux
+// refuses to register together (it has no notion of route constraints, so it
+// can't tell an {id} will never literally equal "contacts" — the same
+// ambiguity internal/openapi.knownServeMuxConflicts pins for the real
+// customers contract).
+const conflictingRoutesContract = `
+openapi: 3.0.3
+info:
+  title: Test
+  version: "1"
+paths:
+  /api/v1/x/contacts/{id}:
+    delete:
+      operationId: deleteContactsById
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+  /api/v1/x/{id}/legal-identity:
+    delete:
+      operationId: deleteByIdLegalIdentity
+      x-vantigo-access: anonymous
       responses:
         "204": { description: ok }
 `
@@ -160,6 +186,26 @@ func TestRouter_RegistrationProblems(t *testing.T) {
 		}
 	})
 
+	t.Run("nil Access", func(t *testing.T) {
+		r := NewRouter(RouterOptions{Doc: loadDoc(t, fourOpsContract)})
+		r.HandleFunc("GET /api/v1/x/anon", noopHandler)
+		if err := r.Err(); err == nil {
+			t.Fatal("Err() = nil, want a problem for the nil Access")
+		}
+	})
+
+	t.Run("Limits is set but Limiter is nil", func(t *testing.T) {
+		r := NewRouter(RouterOptions{
+			Doc:    loadDoc(t, fourOpsContract),
+			Access: &fakeAccess{},
+			Limits: map[string]ratelimit.Policy{"getSession": {Name: "test", Limit: 1, Window: time.Minute}}, // a real operationId: only the nil Limiter should be reported
+		})
+		r.HandleFunc("GET /api/v1/x/session", noopHandler)
+		if err := r.Err(); err == nil {
+			t.Fatal("Err() = nil, want a problem for Limits set with a nil Limiter")
+		}
+	})
+
 	t.Run("a clean registration has no problems", func(t *testing.T) {
 		r := NewRouter(RouterOptions{
 			Doc:     loadDoc(t, fourOpsContract),
@@ -174,6 +220,20 @@ func TestRouter_RegistrationProblems(t *testing.T) {
 			t.Fatalf("Err() = %v, want nil", err)
 		}
 	})
+}
+
+// A route that conflicts with one already registered on the inner
+// http.ServeMux (the real customers/products contracts have these — see
+// internal/openapi.knownServeMuxConflicts) is recorded as a problem, not a
+// panic that would crash Mount/Compose.
+func TestRouter_ConflictingRoutesDoNotPanic(t *testing.T) {
+	r := NewRouter(RouterOptions{Doc: loadDoc(t, conflictingRoutesContract), Access: &fakeAccess{}})
+	r.HandleFunc("DELETE /api/v1/x/contacts/{id}", noopHandler)
+	r.HandleFunc("DELETE /api/v1/x/{id}/legal-identity", noopHandler) // must not panic
+
+	if err := r.Err(); err == nil {
+		t.Fatal("Err() = nil, want a problem for the conflicting route")
+	}
 }
 
 func newValidRouter(t *testing.T, access *fakeAccess, limits map[string]ratelimit.Policy) *Router {
@@ -236,6 +296,7 @@ func TestRouter_RejectReceivesTheAccessError(t *testing.T) {
 	}{
 		{"unauthenticated", contracts.ErrUnauthenticated, http.StatusUnauthorized},
 		{"forbidden", contracts.ErrForbidden, http.StatusForbidden},
+		{"wrapped forbidden", fmt.Errorf("policy check: %w", contracts.ErrForbidden), http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			access := &fakeAccess{check: func(*http.Request, contracts.Rule) (contracts.Principal, error) {
@@ -310,4 +371,89 @@ func TestRouter_PrincipalReachesTheHandler(t *testing.T) {
 	if len(got.Roles) != 1 || got.Roles[0] != "owner" {
 		t.Errorf("Principal = %+v, want %+v", got, want)
 	}
+}
+
+// A limiter error (router.go's rate-limit branch, not the "not allowed"
+// branch) becomes a 500 problem, and Access.Check is never reached.
+func TestRouter_LimiterErrorIsA500(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	limiter := ratelimit.New(pool)
+	pool.Close() // the next Hit fails: the counter cannot be recorded
+
+	access := &fakeAccess{}
+	r := NewRouter(RouterOptions{
+		Doc:     loadDoc(t, fourOpsContract),
+		Access:  access,
+		Limiter: limiter,
+		Limits:  map[string]ratelimit.Policy{"getSession": {Name: "test", Limit: 1, Window: time.Minute}},
+	})
+	r.HandleFunc("GET /api/v1/x/session", noopHandler) // the other three operations are irrelevant to this test and stay unregistered
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x/session", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json", ct)
+	}
+	if len(access.checked) != 0 {
+		t.Error("Access.Check was called despite the limiter error")
+	}
+}
+
+// Unknown in-module paths, and known paths on the wrong method, both answer
+// the same 404 problem the contract's own httpx.NotFound writes — never the
+// inner http.ServeMux's plain-text default. HEAD on a GET operation keeps
+// reaching Access.Check with the operation's own rule (stdlib ServeMux's
+// built-in GET/HEAD match).
+func TestRouter_UnknownPathAndWrongMethodAnswer404(t *testing.T) {
+	access := &fakeAccess{}
+	r := newValidRouter(t, access, nil)
+
+	assertNotFoundProblem := func(t *testing.T, rec *httptest.ResponseRecorder) {
+		t.Helper()
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("status = %d, want 404", rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+			t.Errorf("Content-Type = %q, want application/problem+json", ct)
+		}
+	}
+
+	t.Run("unknown path", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/x/does-not-exist", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		assertNotFoundProblem(t, rec)
+	})
+
+	t.Run("wrong method on a known path", func(t *testing.T) {
+		checkedBefore := len(access.checked)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/x/session", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		assertNotFoundProblem(t, rec)
+		if len(access.checked) != checkedBefore {
+			t.Error("Access.Check was called for a method the operation does not accept")
+		}
+	})
+
+	t.Run("HEAD on a GET operation still runs Check", func(t *testing.T) {
+		checkedBefore := len(access.checked)
+		req := httptest.NewRequest(http.MethodHead, "/api/v1/x/session", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("status = %d, want 204 (the GET operation's own response)", rec.Code)
+		}
+		if len(access.checked) != checkedBefore+1 {
+			t.Fatalf("Access.Check was called %d times for HEAD, want %d", len(access.checked)-checkedBefore, 1)
+		}
+		if got := access.checked[len(access.checked)-1].Kind; got != contracts.RuleSession {
+			t.Errorf("Check's rule = %v, want RuleSession (the GET operation's own rule)", got)
+		}
+	})
 }

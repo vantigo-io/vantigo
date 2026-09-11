@@ -73,6 +73,20 @@ components:
         id: { type: integer }
 `
 
+// gammaDuplicatePathContract declares the exact same path alphaContract
+// does, under a different module name — a path two modules both declare.
+const gammaDuplicatePathContract = `
+openapi: 3.0.3
+info: { title: Gamma, version: "1" }
+paths:
+  /api/v1/alpha/x:
+    get:
+      operationId: getGammaDuplicate
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
 // fakeLoad is a compose loader over in-memory fixtures, the seam decision 3
 // asks for so Compose is unit-testable without the embedded specs.
 func fakeLoad(docs map[string]string) func(context.Context, string) (*openapi3.T, error) {
@@ -196,6 +210,19 @@ func TestCompose_DifferingComponentUnderTheSameNameFails(t *testing.T) {
 	}
 }
 
+func TestCompose_DuplicatePathAcrossModulesFails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "gamma": gammaDuplicatePathContract}),
+		Module{Name: "alpha", Mount: staticHandler("alpha")},
+		Module{Name: "gamma", Mount: staticHandler("gamma")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error for the path both modules declare")
+	}
+	if !strings.Contains(err.Error(), "/api/v1/alpha/x") {
+		t.Errorf("error %q does not name the duplicate path", err)
+	}
+}
+
 func TestCompose_DuplicateModuleNameFails(t *testing.T) {
 	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract}),
 		Module{Name: "alpha", Mount: staticHandler("alpha")},
@@ -261,8 +288,21 @@ func TestCompose_PassesTheComposedCatalogAndTheModulesOwnDocToMount(t *testing.T
 
 // Decision 5: merge the six real contracts (identity plus the four business
 // modules, each loaded by openapi.Load, common.yaml pulled in by reference)
-// without error, and check that no common.yaml# reference survives.
+// without error, and check that no common.yaml# reference survives, the
+// path count matches the sum of the modules' own, and the served bytes
+// reload and validate as a standalone OpenAPI document.
 func TestCompose_MergesTheSixRealContracts(t *testing.T) {
+	ctx := context.Background()
+
+	var wantPaths int
+	for _, name := range openapi.Modules {
+		doc, err := openapi.Load(ctx, name)
+		if err != nil {
+			t.Fatalf("Load(%s): %v", name, err)
+		}
+		wantPaths += len(doc.Paths.Map())
+	}
+
 	access := &fakeAccess{check: func(*http.Request, contracts.Rule) (contracts.Principal, error) {
 		return contracts.Principal{}, nil
 	}}
@@ -292,7 +332,105 @@ func TestCompose_MergesTheSixRealContracts(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if len(doc.Paths) == 0 {
-		t.Fatal("the combined contract has no paths")
+	if len(doc.Paths) != wantPaths {
+		t.Errorf("combined contract has %d paths, want %d (the sum of every module's own)", len(doc.Paths), wantPaths)
 	}
+
+	reloaded, err := openapi3.NewLoader().LoadFromData(rec.Body.Bytes())
+	if err != nil {
+		t.Fatalf("reload the served bytes: %v", err)
+	}
+	if err := reloaded.Validate(ctx); err != nil {
+		t.Errorf("the combined contract does not validate on its own: %v", err)
+	}
+}
+
+// Decision 3/5: mergeContract's InternalizeRefs must not reach back into a
+// module's own Doc (the *openapi3.T a module's Mount received and may keep):
+// Compose merges independent copies.
+func TestCompose_DoesNotMutateModulesDocs(t *testing.T) {
+	ctx := context.Background()
+
+	var identityDoc *openapi3.T
+	mods := []Module{
+		{Name: "identity", Mount: func(d Deps) (http.Handler, error) {
+			identityDoc = d.Doc
+			return http.NotFoundHandler(), nil
+		}},
+		{Name: "customers", Mount: func(Deps) (http.Handler, error) { return http.NotFoundHandler(), nil }},
+	}
+	if _, err := Compose(Deps{Access: &fakeAccess{}}, mods...); err != nil {
+		t.Fatalf("Compose: %v", err)
+	}
+	if identityDoc == nil {
+		t.Fatal("identity's Mount never ran")
+	}
+
+	got, err := json.Marshal(identityDoc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(got), "common.yaml#") {
+		t.Fatal("sanity check failed: identity's own Doc has no common.yaml# ref to begin with")
+	}
+
+	fresh, err := openapi.Load(ctx, "identity")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want, err := json.Marshal(fresh)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Error("Compose mutated the module's own Doc: its marshalled JSON changed after Compose ran")
+	}
+}
+
+func TestDecodeError(t *testing.T) {
+	write := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"code":"invalid_request","message":"The request is invalid."}`))
+	}
+	handler := DecodeError(write)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	handler(rec, req, errors.New("column \"foo\" does not exist"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "does not exist") {
+		t.Errorf("body echoes the error: %q", rec.Body.String())
+	}
+}
+
+func TestResponseError(t *testing.T) {
+	t.Run("ErrNotImplemented", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		ResponseError()(rec, httptest.NewRequest(http.MethodGet, "/", nil), ErrNotImplemented)
+		if rec.Code != http.StatusNotImplemented {
+			t.Errorf("status = %d, want 501", rec.Code)
+		}
+	})
+
+	t.Run("wrapped ErrNotImplemented", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		ResponseError()(rec, httptest.NewRequest(http.MethodGet, "/", nil), fmt.Errorf("handler getX: %w", ErrNotImplemented))
+		if rec.Code != http.StatusNotImplemented {
+			t.Errorf("status = %d, want 501", rec.Code)
+		}
+	})
+
+	t.Run("any other error is a 500 that never echoes it", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		ResponseError()(rec, httptest.NewRequest(http.MethodGet, "/", nil), errors.New("column \"foo\" does not exist"))
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("status = %d, want 500", rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "does not exist") {
+			t.Errorf("body echoes the error: %q", rec.Body.String())
+		}
+	})
 }
