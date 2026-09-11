@@ -295,11 +295,12 @@ func pendingReport(rec *Recorder, pending []string) (missing, stale []string) {
 	return missing, stale
 }
 
-// hasTestFilter reports whether the run was narrowed with -run or -skip, in
-// which case operation coverage is necessarily incomplete and the check is
-// skipped rather than reported as a failure.
+// hasTestFilter reports whether the run was narrowed with -run, -skip or
+// -list, in which case operation coverage is necessarily incomplete (a
+// -list run executes no tests at all) and the check is skipped rather than
+// reported as a failure.
 func hasTestFilter() bool {
-	for _, name := range []string{"test.run", "test.skip"} {
+	for _, name := range []string{"test.run", "test.skip", "test.list"} {
 		if f := flag.Lookup(name); f != nil && f.Value.String() != "" {
 			return true
 		}
