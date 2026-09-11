@@ -93,6 +93,9 @@ func disallowedDestination(addr netip.Addr) bool {
 	if candidate.IsLoopback() {
 		return !allowLoopback
 	}
+	// Multicast is refused for IPv4 too, stricter than .NET's
+	// SmtpDestinationGuard, which let 224.0.0.0/4 through; no SMTP server
+	// lives there.
 	if candidate.IsUnspecified() || candidate.IsMulticast() {
 		return true
 	}

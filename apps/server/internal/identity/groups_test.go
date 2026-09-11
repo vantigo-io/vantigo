@@ -826,3 +826,86 @@ func TestAccessGroups_ANameRaceIsAConflict(t *testing.T) {
 		t.Errorf("%d groups named Raced…, want the gate's two", n)
 	}
 }
+
+// raceInOrder starts fns one at a time while gate holds a lock they all
+// need, starting each only once every one before it is waiting on a lock,
+// then commits the gate. PostgreSQL grants a contended lock to its waiters
+// in the order they queued, so fns take it in the order given.
+func raceInOrder(t *testing.T, h *harness, gate interface{ Commit(context.Context) error }, fns ...func() *resp) []*resp {
+	t.Helper()
+	answers := make([]chan *resp, len(fns))
+	for i, fn := range fns {
+		answers[i] = make(chan *resp, 1)
+		finished := make(chan struct{})
+		go func() {
+			r := fn()
+			close(finished)
+			answers[i] <- r
+		}()
+		awaitLockWaiters(t, h, i+1, finished)
+	}
+	if err := gate.Commit(context.Background()); err != nil {
+		t.Fatalf("gate: commit: %v", err)
+	}
+	out := make([]*resp, len(fns))
+	for i := range answers {
+		out[i] = <-answers[i]
+	}
+	return out
+}
+
+// TestAccessGroups_AMappingAndARoleEditInEitherOrder pins both orders
+// TestAccessGroups_AMappingAndARoleEditSerialise leaves to chance: a real
+// mapping of a role and a real edit giving it identity:manage queue on the
+// role's lock in a fixed order behind a gate. Mapping first: the mapping
+// answers 200 and the edit, reading the mapping, 403
+// role_group_protected_permission. Edit first: the edit answers 200 and the
+// mapping, reading the edit's keys, 400 protected_role. Either way exactly
+// one change sticks and no group maps a role holding identity:manage.
+func TestAccessGroups_AMappingAndARoleEditInEitherOrder(t *testing.T) {
+	t.Parallel()
+	for _, mappingFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("mappingFirst=%t", mappingFirst), func(t *testing.T) {
+			t.Parallel()
+			h, owner, _ := rbacHarness(t)
+			role := createRole(t, owner, "ordered", "customers:view")
+			g := createGroup(t, owner, "Ordered")
+			mapping := func() *resp {
+				return owner.do(http.MethodPost, mappingPath(g.ID, role.ID), stamped(g.ConcurrencyStamp))
+			}
+			edit := func() *resp {
+				return updateRole(owner, role.ID, "ordered", role.Version, "customers:view", "identity:manage")
+			}
+
+			var mapped, edited *resp
+			if mappingFirst {
+				out := raceInOrder(t, h, holdRoleLock(t, h, role.ID), mapping, edit)
+				mapped, edited = out[0], out[1]
+			} else {
+				out := raceInOrder(t, h, holdRoleLock(t, h, role.ID), edit, mapping)
+				edited, mapped = out[0], out[1]
+			}
+
+			isMapped := h.count(t, `SELECT count(*) FROM identity.access_group_role_mappings WHERE role_id = $1`, role.ID) == 1
+			holds := slices.Contains(h.rolePermissions(t, role.ID), "identity:manage")
+			if mappingFirst {
+				if mapped.status != http.StatusOK {
+					t.Fatalf("the first, mapping: status %d body %s, want 200", mapped.status, mapped.body)
+				}
+				wantFlat(t, "the edit behind the mapping", edited, http.StatusForbidden, "role_group_protected_permission",
+					"A role mapped to an access group cannot receive Owner or protected authorization-management permissions.")
+				if !isMapped || holds {
+					t.Errorf("mapped %t, role holds identity:manage %t: want only the mapping to stick", isMapped, holds)
+				}
+				return
+			}
+			if edited.status != http.StatusOK {
+				t.Fatalf("the first, edit: status %d body %s, want 200", edited.status, edited.body)
+			}
+			wantFlat(t, "the mapping behind the edit", mapped, http.StatusBadRequest, "protected_role", protectedKeysMessage)
+			if isMapped || !holds {
+				t.Errorf("mapped %t, role holds identity:manage %t: want only the edit to stick", isMapped, holds)
+			}
+		})
+	}
+}

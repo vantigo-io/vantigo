@@ -152,6 +152,9 @@ func captureResponseBody(resp *http.Response) (contentType, body *string, err er
 	}
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
+		// RoundTrip then returns no response, so no caller will ever
+		// close this body: close it here, or the connection leaks.
+		_ = resp.Body.Close()
 		return nil, nil, err
 	}
 	_ = resp.Body.Close()

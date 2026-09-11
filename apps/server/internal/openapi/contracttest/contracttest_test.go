@@ -2,6 +2,7 @@ package contracttest
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -521,30 +522,161 @@ func TestCoverageExit(t *testing.T) {
 // fails RequireCoverage's coverage gate: -test.list, like -test.run and
 // -test.skip, must be treated as a filter, since a -list run (and `go test
 // -list .` in particular) executes no tests at all, so every operation would
-// otherwise be reported missing.
+// otherwise be reported missing. A -run flag set to the empty pattern
+// narrows nothing, and is not a filter. Every flag is cleared before each
+// case, so the result does not depend on how this test itself was run.
 func TestHasTestFilterRecognizesListRunAndSkip(t *testing.T) {
-	for _, name := range []string{"test.list", "test.run", "test.skip"} {
-		t.Run(name, func(t *testing.T) {
-			f := flag.Lookup(name)
-			if f == nil {
-				t.Fatalf("flag %q is not registered", name)
-			}
-			original := f.Value.String()
-			defer func() { _ = f.Value.Set(original) }()
-
-			if err := f.Value.Set(""); err != nil {
+	names := []string{"test.list", "test.run", "test.skip"}
+	for _, name := range names {
+		f := flag.Lookup(name)
+		if f == nil {
+			t.Fatalf("flag %q is not registered", name)
+		}
+		original := f.Value.String()
+		t.Cleanup(func() { _ = f.Value.Set(original) })
+	}
+	clearAll := func() {
+		for _, name := range names {
+			if err := flag.Lookup(name).Value.Set(""); err != nil {
 				t.Fatalf("reset %s: %v", name, err)
 			}
-			if hasTestFilter() {
-				t.Errorf("hasTestFilter() = true with every flag empty, want false")
-			}
-			if err := f.Value.Set("Something"); err != nil {
-				t.Fatalf("set %s: %v", name, err)
-			}
-			if !hasTestFilter() {
-				t.Errorf("hasTestFilter() = false with -%s set, want true", name)
-			}
-		})
+		}
+	}
+
+	clearAll()
+	if hasTestFilter() {
+		t.Errorf("hasTestFilter() = true with every flag empty, want false")
+	}
+	if err := flag.Lookup("test.run").Value.Set(""); err != nil {
+		t.Fatalf("set an empty -run: %v", err)
+	}
+	if hasTestFilter() {
+		t.Errorf("hasTestFilter() = true with an explicitly empty -run, want false")
+	}
+	for _, name := range names {
+		clearAll()
+		if err := flag.Lookup(name).Value.Set("Something"); err != nil {
+			t.Fatalf("set %s: %v", name, err)
+		}
+		if !hasTestFilter() {
+			t.Errorf("hasTestFilter() = false with -%s set, want true", name)
+		}
+	}
+}
+
+// TestAnUnmatchedRouteFailsAndNeverCounts proves an exchange no contract
+// operation matches fails the test — through a fake testing.TB — and marks
+// nothing exercised, although the server answered 200.
+func TestAnUnmatchedRouteFailsAndNeverCounts(t *testing.T) {
+	doc := loadDoc(t)
+	rec := New(doc)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	fake := &fakeTB{}
+	resp, err := client(fake, srv, rec).Get(srv.URL + "/nowhere")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	if len(fake.errors) != 1 {
+		t.Errorf("Errorf calls = %v, want exactly one for the unmatched route", fake.errors)
+	}
+	if got, want := rec.Missing(), []string{"getBlob", "getThings", "postThings"}; !equalStrings(got, want) {
+		t.Errorf("Missing() = %v, want %v: an unmatched exchange must count for nothing", got, want)
+	}
+}
+
+// opaqueBody is a request body http.NewRequest cannot snapshot, so it sets
+// no GetBody of its own: only the transport's capture can supply one.
+type opaqueBody struct{ io.Reader }
+
+// TestA307RedirectReplaysTheCapturedBody proves the GetBody the transport
+// installs when it captures a request body: the client follows a 307 by
+// replaying the body through GetBody, which the caller's opaque body never
+// had, and the redirected request arrives whole and validates.
+func TestA307RedirectReplaysTheCapturedBody(t *testing.T) {
+	doc := loadDoc(t)
+	rec := New(doc)
+
+	received := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/old-things" {
+			http.Redirect(w, r, "/things", http.StatusTemporaryRedirect)
+			return
+		}
+		b, _ := io.ReadAll(r.Body)
+		received <- string(b)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":1}`))
+	}))
+	defer srv.Close()
+
+	const body = `{"name":"a"}`
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/old-things", opaqueBody{strings.NewReader(body)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.GetBody != nil {
+		t.Fatal("http.NewRequest set GetBody for the opaque body; the test would prove nothing")
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	fake := &fakeTB{} // the 307 itself is undocumented and fails validation
+	resp, err := client(fake, srv, rec).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want the redirect followed to 201", resp.StatusCode)
+	}
+	if got := <-received; got != body {
+		t.Errorf("the redirected request carried %q, want %q", got, body)
+	}
+	if len(fake.errors) != 1 {
+		t.Errorf("Errorf calls = %v, want one, for the undocumented 307 only", fake.errors)
+	}
+	if containsString(rec.Missing(), "postThings") {
+		t.Errorf("Missing() = %v, still lists postThings after the replayed request validated", rec.Missing())
+	}
+}
+
+// failingBody is a response body whose every Read fails, recording Close.
+type failingBody struct{ closed *bool }
+
+func (failingBody) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
+func (b failingBody) Close() error           { *b.closed = true; return nil }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// TestAFailedResponseReadClosesTheBody proves RoundTrip closes the body it
+// could not read before returning the error: it returns no response, so
+// the caller never could.
+func TestAFailedResponseReadClosesTheBody(t *testing.T) {
+	closed := false
+	base := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: failingBody{closed: &closed}}, nil
+	})
+	req, err := http.NewRequest(http.MethodGet, "http://example.test/things", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := New(loadDoc(t)).Transport(&fakeTB{}, base).RoundTrip(req)
+	if err == nil || resp != nil {
+		t.Fatalf("RoundTrip = %v, %v; want no response and the read error", resp, err)
+	}
+	if !closed {
+		t.Error("the unreadable response body was never closed")
 	}
 }
 

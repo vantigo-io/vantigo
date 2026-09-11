@@ -733,6 +733,34 @@ func TestOwnerUsers_DeleteRemovesTheUserButNotAScimProvisionedOne(t *testing.T) 
 	}
 }
 
+// Ported from IdentityAccountEndpointsTests.OwnerMutation_RequiresCsrfToken.
+// Go has no antiforgery token: the platform's CrossOriginProtection refuses
+// an unsafe cross-site browser request with a 403 before identity sees it,
+// where .NET answered 400 csrf_validation_failed. The same Owner mutation
+// sent same-origin passes through to identity and creates the user.
+func TestOwnerUsers_ACrossSiteMutationIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	const email = "csrf-blocked@integration.test"
+	body := map[string]string{"displayName": "CSRF blocked", "email": email, "role": identity.RoleUser, "password": userPassword}
+
+	// Off-contract by design: the platform's 403 problem is not in identity.yaml.
+	r := owner.do(http.MethodPost, ownerUsersPath, body,
+		origin("https://evil.example"), header("Sec-Fetch-Site", "cross-site"), skipContract("CSRF probe"))
+	if r.status != http.StatusForbidden || r.header("Content-Type") != "application/problem+json" {
+		t.Errorf("cross-site: status %d Content-Type %q, want the 403 problem", r.status, r.header("Content-Type"))
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE normalized_email = upper($1)`, email); n != 0 {
+		t.Errorf("the refused cross-site request created the user")
+	}
+
+	r = owner.do(http.MethodPost, ownerUsersPath, body, origin(h.url), header("Sec-Fetch-Site", "same-origin"))
+	if r.status != http.StatusCreated {
+		t.Errorf("same-origin: status %d body %s, want 201", r.status, r.body)
+	}
+}
+
 // TestOwnerUsers_DeletingADelegationCreatorIsAConflict: a delegation keeps
 // naming who created it (created_by_user_id, ON DELETE RESTRICT), so
 // deleting an Owner who created one is refused 409 account_conflict, where
@@ -864,8 +892,8 @@ func TestOwnerUsers_AnUnknownUserIsNotFound(t *testing.T) {
 	}
 }
 
-// Ported from the owner half of IdentityAccountEndpointsTests.Avatar_IsPrivateValidatedAndDeletedWithoutCrossUserAccess
-// (the self-service half is TestAccountAvatar_UploadPNGAndJPEGServeAndDelete).
+// Ported from IdentityAccountEndpointsTests.Avatar_IsPrivateValidatedAndDeletedWithoutCrossUserAccess
+// (its owner half; the self-service half is TestAccountAvatar_UploadPNGAndJPEGServeAndDelete).
 func TestOwnerUsers_AvatarReadServesAnotherUsersAvatar(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

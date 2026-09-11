@@ -233,3 +233,59 @@ func TestAccountAvatar_UploadsPastTheDefaultBodyCapAreAccepted(t *testing.T) {
 		}
 	}
 }
+
+// TestAccountAvatar_ANonMultipartBodyIsAnInvalidRequest: a body that is not
+// multipart/form-data never reaches the avatar checks; the generated
+// wrapper cannot build a multipart reader, and the decode failure answers
+// 400 invalid_request, on POST and PUT alike. The request's content type is
+// deliberately not the documented one, so the exchange skips validation.
+func TestAccountAvatar_ANonMultipartBodyIsAnInvalidRequest(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "notmultipart@example.test"
+	h.seedUser(t, email, userPassword, identity.RoleUserID)
+	c := h.login(t, email, userPassword)
+
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		r := c.do(method, avatarPath, nil, rawBody("application/json", []byte(`{"avatar":"not a file"}`)),
+			skipContract("the request is deliberately not the documented multipart/form-data"))
+		if r.status != http.StatusBadRequest || r.code() != "invalid_request" {
+			t.Errorf("%s a JSON body: status %d code %q, want 400 invalid_request", method, r.status, r.code())
+		}
+	}
+	if r := c.do(http.MethodGet, avatarPath, nil); r.status != http.StatusNotFound {
+		t.Errorf("GET %s after the refusals: status %d, want 404", avatarPath, r.status)
+	}
+}
+
+// TestAccountAvatar_APartWithoutAContentTypeIsInvalid: the "avatar" part
+// must declare the type its magic bytes have; a part that declares none —
+// here a genuine PNG — is refused 400 invalid_avatar, as a wrongly
+// declared one is.
+func TestAccountAvatar_APartWithoutAContentTypeIsInvalid(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "nocontenttype@example.test"
+	h.seedUser(t, email, userPassword, identity.RoleUserID)
+	c := h.login(t, email, userPassword)
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="avatar"; filename="avatar.png"`}})
+	if err != nil {
+		t.Fatalf("create part: %v", err)
+	}
+	if _, err := part.Write(testPNG(t, 4, 4)); err != nil {
+		t.Fatalf("write part: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	if r := c.do(http.MethodPut, avatarPath, nil, rawBody(w.FormDataContentType(), buf.Bytes())); r.status != http.StatusBadRequest || r.code() != "invalid_avatar" {
+		t.Errorf("a part without a Content-Type: status %d code %q, want 400 invalid_avatar", r.status, r.code())
+	}
+	if r := c.do(http.MethodGet, avatarPath, nil); r.status != http.StatusNotFound {
+		t.Errorf("GET %s after the refusal: status %d, want 404", avatarPath, r.status)
+	}
+}

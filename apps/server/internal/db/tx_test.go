@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -54,6 +55,40 @@ func TestWithTx_RollsBackOnError(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("row is visible after a rollback, want none")
+	}
+}
+
+// A panic in fn rolls the transaction back, releases its connection, and
+// reaches WithTx's caller unchanged.
+func TestWithTx_RollsBackAndRepanicsWhenFnPanics(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+	const boom = "boom"
+
+	func() {
+		defer func() {
+			if v := recover(); v != boom {
+				t.Errorf("recovered %v, want fn's own panic value %q", v, boom)
+			}
+		}()
+		_ = db.WithTx(ctx, pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "INSERT INTO platform.rate_limit (key, window_start, hits) VALUES ($1, $2, 1)", "tx-panic", time.Now()); err != nil {
+				return err
+			}
+			panic(boom)
+		})
+		t.Error("WithTx returned, want fn's panic to propagate")
+	}()
+
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM platform.rate_limit WHERE key = $1", "tx-panic").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("the panicking transaction's row is visible, want it rolled back")
+	}
+	if n := pool.Stat().AcquiredConns(); n != 0 {
+		t.Errorf("%d connections still acquired after the panic, want the transaction's released", n)
 	}
 }
 
