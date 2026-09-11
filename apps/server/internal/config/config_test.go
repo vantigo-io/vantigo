@@ -598,6 +598,35 @@ func TestLoad_OIDC_Google(t *testing.T) {
 	}
 }
 
+// OIDC_ALLOWED_DOMAINS is normalised and validated as .NET's
+// WorkforceOidcOptions.NormalizeDomains did
+// (packages/configuration/Vantigo.Configuration/WorkforceOidcOptions.cs:183-198):
+// trimmed, trailing dots stripped, lower-cased, distinct and ordered; any
+// entry that is not a bare DNS name is a problem naming the variable,
+// never the value.
+func TestLoad_OIDC_AllowedDomainsAreBareDNSNames(t *testing.T) {
+	cfg := mustLoad(t, with(withGoogle(validEnv()), "OIDC_ALLOWED_DOMAINS", " Sub.Example.ORG. , example.com.., EXAMPLE.com,, "))
+	if got := strings.Join(cfg.OIDC.AllowedDomains, ","); got != "example.com,sub.example.org" {
+		t.Errorf("AllowedDomains = %q, want example.com,sub.example.org", got)
+	}
+
+	for _, junk := range []string{
+		"https://example.com", "example.com/path", "admin@example.com", "example.com:443", "exa mple.com",
+		"localhost", "-example.com", "example-.com", "*.example.com", "example.c", "example.123", ".",
+		"ex_ample.com", "exämple.com", strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 60) + ".com",
+	} {
+		t.Run(junk, func(t *testing.T) {
+			msg := loadError(t, with(withGoogle(validEnv()), "OIDC_ALLOWED_DOMAINS", "example.com,"+junk))
+			if !strings.Contains(msg, "OIDC_ALLOWED_DOMAINS: must contain bare DNS names") {
+				t.Errorf("error = %q, want the bare DNS name problem", msg)
+			}
+			if len(junk) > 3 && strings.Contains(strings.ReplaceAll(msg, "such as example.com", ""), junk) {
+				t.Errorf("error echoes the value: %q", msg)
+			}
+		})
+	}
+}
+
 func TestLoad_OIDC_DisplayName(t *testing.T) {
 	if cfg := mustLoad(t, withEntra(validEnv())); cfg.OIDC.DisplayName != "Workforce SSO" {
 		t.Errorf("DisplayName = %q, want Workforce SSO", cfg.OIDC.DisplayName)
@@ -665,6 +694,19 @@ func TestLoad_OIDC_LeftoverSettingsWhileDisabled(t *testing.T) {
 				t.Errorf("error echoes the value, not just the field name: %q", msg)
 			}
 		})
+	}
+
+	// Several leftovers are listed in one grammatical sentence.
+	for _, tc := range []struct {
+		pairs []string
+		want  string
+	}{
+		{[]string{"OIDC_AUTHORITY", "a", "OIDC_CLIENT_ID", "b"}, "OIDC_PROVIDER: is required because OIDC_AUTHORITY and OIDC_CLIENT_ID are set"},
+		{[]string{"OIDC_AUTHORITY", "a", "OIDC_CLIENT_ID", "b", "OIDC_DISPLAY_NAME", "c"}, "OIDC_PROVIDER: is required because OIDC_AUTHORITY, OIDC_CLIENT_ID and OIDC_DISPLAY_NAME are set"},
+	} {
+		if msg := loadError(t, with(validEnv(), tc.pairs...)); !strings.Contains(msg, tc.want) {
+			t.Errorf("error = %q, want it to contain %q", msg, tc.want)
+		}
 	}
 
 	// AZURE_FEDERATED_TOKEN_FILE alone is a platform variable other software

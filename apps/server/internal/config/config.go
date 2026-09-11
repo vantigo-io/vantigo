@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -597,7 +598,7 @@ func oidc(p *problems, env map[string]string) *OIDCConfig {
 	provider := env["OIDC_PROVIDER"]
 	if provider == "" {
 		if leftover := leftoverOIDCSettings(env); len(leftover) > 0 {
-			p.add("OIDC_PROVIDER", "is required because %s is set", strings.Join(leftover, ", "))
+			p.add("OIDC_PROVIDER", "is required because %s", areSet(leftover))
 		}
 		return nil
 	}
@@ -653,7 +654,7 @@ func oidc(p *problems, env map[string]string) *OIDCConfig {
 		o.WorkloadTokenFile = tokenFile
 	}
 
-	o.AllowedDomains = allowedDomains(env["OIDC_ALLOWED_DOMAINS"])
+	o.AllowedDomains = allowedDomains(p, env["OIDC_ALLOWED_DOMAINS"])
 	switch provider {
 	case "entra":
 		if len(o.AllowedDomains) > 0 {
@@ -681,6 +682,15 @@ func oidc(p *problems, env map[string]string) *OIDCConfig {
 var leftoverOIDCFields = []string{
 	"OIDC_AUTHORITY", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET",
 	"OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "OIDC_ALLOWED_DOMAINS", "OIDC_DISPLAY_NAME",
+}
+
+// areSet is "A is set", "A and B are set" or "A, B and C are set" for
+// fields.
+func areSet(fields []string) string {
+	if len(fields) == 1 {
+		return fields[0] + " is set"
+	}
+	return strings.Join(fields[:len(fields)-1], ", ") + " and " + fields[len(fields)-1] + " are set"
 }
 
 // leftoverOIDCSettings names (never their values) the settings left behind
@@ -711,17 +721,47 @@ func readableFile(path string) bool {
 	return true
 }
 
-// allowedDomains splits a comma list of bare DNS names, trimming and
-// lower-casing each one.
-func allowedDomains(v string) []string {
+// dnsNamePattern is .NET's bare-DNS-name pattern for an allowed domain
+// (WorkforceOidcOptions.NormalizeDomains) less its (?=.{1,253}$)
+// lookahead, which RE2 lacks and allowedDomains checks as a length.
+var dnsNamePattern = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
+
+// allowedDomains parses a comma list of bare DNS names as .NET's
+// WorkforceOidcOptions.NormalizeDomains did
+// (packages/configuration/Vantigo.Configuration/WorkforceOidcOptions.cs:183-198):
+// each trimmed, its trailing dots stripped and lower-cased, then required
+// to be 1 to 253 characters matching the bare-DNS-name pattern, so a URL,
+// an address, a port, whitespace or a single label is refused; the result
+// is distinct and in ordinal order. A blank entry between commas is
+// skipped; one that is only dots is not blank and is refused. A refusal is
+// reported once and names the variable, never a value.
+func allowedDomains(p *problems, v string) []string {
 	if v == "" {
 		return nil
 	}
-	var out []string
+	seen := map[string]bool{}
+	invalid := false
 	for _, raw := range strings.Split(v, ",") {
-		if d := strings.ToLower(strings.TrimSpace(raw)); d != "" {
-			out = append(out, d)
+		if strings.TrimSpace(raw) == "" {
+			continue
 		}
+		d := strings.ToLower(strings.TrimRight(strings.TrimSpace(raw), "."))
+		if len(d) == 0 || len(d) > 253 || !dnsNamePattern.MatchString(d) {
+			invalid = true
+			continue
+		}
+		seen[d] = true
+	}
+	if invalid {
+		p.add("OIDC_ALLOWED_DOMAINS", "must contain bare DNS names such as example.com")
+	}
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
