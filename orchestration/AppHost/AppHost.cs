@@ -16,7 +16,9 @@ var vantigoDb = postgres.AddDatabase("vantigo-db", "vantigo");
 
 var minioRootUser = builder.AddParameter("minio-root-user", "minioadmin", secret: true);
 var minioRootPassword = builder.AddParameter("minio-root-password", "minioadmin", secret: true);
+// MinIO no longer publishes minio/minio on Docker Hub; pull it from MinIO's own registry.
 var minio = builder.AddContainer("minio", "minio/minio")
+    .WithImageRegistry("quay.io")
     .WithArgs("server", "/data", "--console-address", ":9001")
     .WithEnvironment("MINIO_ROOT_USER", minioRootUser)
     .WithEnvironment("MINIO_ROOT_PASSWORD", minioRootPassword)
