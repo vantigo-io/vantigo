@@ -399,6 +399,11 @@ func verifyBuiltInRoles(ctx context.Context, q *store.Queries) error {
 	return nil
 }
 
+// errSystemAdminUnverifiedAccount is RunStartup's refusal to make an
+// unverified, passwordless account SystemAdmin (see grantSystemAdmin).
+var errSystemAdminUnverifiedAccount = errors.New("identity: SYSTEM_ADMIN_EMAIL matches an account whose email is unconfirmed " +
+	"and which has no local password, such as one provisioned from an unverified OIDC email claim; SystemAdmin is not granted to it")
+
 // grantSystemAdmin is RunStartup's transaction on q for the configured
 // email.
 func grantSystemAdmin(ctx context.Context, d module.Deps, q *store.Queries, email string) error {
@@ -417,6 +422,19 @@ func grantSystemAdmin(ctx context.Context, d module.Deps, q *store.Queries, emai
 	}
 	if err != nil {
 		return fmt.Errorf("identity: SystemAdmin grant: %w", err)
+	}
+	// Deliberate hardening beyond .NET, whose bootstrapper matched the email
+	// alone (SV/SystemAdminBootstrapper.cs:50). An account with an
+	// unconfirmed email and no local password is, in practice, one workforce
+	// OIDC provisioned from an email claim nobody verified (Entra's email
+	// claim is unverified), so anyone in the tenant who asserted
+	// SYSTEM_ADMIN_EMAIL would become SystemAdmin at the next start. Startup
+	// fails closed instead, granting nothing, as for a conflicting built-in
+	// role; the error names the reason, never the address. The bootstrap
+	// Owner (unconfirmed, but with a local password) and any confirmed
+	// account are granted as before.
+	if !user.EmailConfirmed && user.PasswordHash == nil {
+		return errSystemAdminUnverifiedAccount
 	}
 
 	granted, err := q.AssignUserRole(ctx, store.AssignUserRoleParams{UserID: user.ID, RoleID: RoleSystemAdminID})

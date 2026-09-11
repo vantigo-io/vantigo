@@ -157,21 +157,31 @@ func (rp *oidcRelyingParty) clientContext(ctx context.Context) context.Context {
 	return oidc.ClientContext(ctx, rp.client)
 }
 
-// discover returns the provider's metadata, fetching it on first use. A
-// failure is not cached, so the next sign-in tries again. go-oidc refuses a
-// discovery document whose issuer is not exactly the configured authority,
-// which config pins to Entra's tenant-specific
-// https://login.microsoftonline.com/<tenant>/v2.0 (whose metadata names
-// that concrete issuer, never the multi-tenant {tenantid} template) or to
-// https://accounts.google.com (CFG/WorkforceOidcOptions.cs:75-83, :151-158).
+// discover returns the provider's metadata, fetching it on first use. No
+// lock is held across the fetch: while the provider is slow, each sign-in
+// fetches on its own request's context, none queues behind another, and
+// one whose request ends stops waiting. The first success is cached, and a
+// racing fetch's result is dropped for it; a failure is not cached, so the
+// next sign-in tries again. go-oidc refuses a discovery document whose
+// issuer is not exactly the configured authority, which config pins to
+// Entra's tenant-specific https://login.microsoftonline.com/<tenant>/v2.0
+// (whose metadata names that concrete issuer, never the multi-tenant
+// {tenantid} template) or to https://accounts.google.com
+// (CFG/WorkforceOidcOptions.cs:75-83, :151-158).
 func (rp *oidcRelyingParty) discover(ctx context.Context) (*oidc.Provider, error) {
+	rp.mu.Lock()
+	cached := rp.provider
+	rp.mu.Unlock()
+	if cached != nil {
+		return cached, nil
+	}
+	p, err := oidc.NewProvider(rp.clientContext(ctx), rp.cfg.Authority)
+	if err != nil {
+		return nil, err
+	}
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 	if rp.provider == nil {
-		p, err := oidc.NewProvider(rp.clientContext(ctx), rp.cfg.Authority)
-		if err != nil {
-			return nil, err
-		}
 		rp.provider = p
 	}
 	return rp.provider, nil
@@ -310,12 +320,13 @@ func (s *server) PostIdentityOidcCallback(ctx context.Context, req gen.PostIdent
 //
 // On success the validated identity is sealed into the external cookie and
 // the browser goes on to complete.
-func (s *server) oidcCallback(ctx context.Context, code, state, providerError *string) (oidcRedirect, error) {
+func (s *server) oidcCallback(ctx context.Context, code, state, providerError *string) (_ oidcRedirect, err error) {
 	r, err := requestFrom(ctx)
 	if err != nil {
 		return oidcRedirect{}, err
 	}
 	spent := s.expiredOIDCCookie(oidcStateCookieName)
+	defer func() { clearOnServerError(ctx, err, spent) }()
 	fail := func(errorCode, reason string) (oidcRedirect, error) {
 		return s.oidcFailure(ctx, errorCode, reason, spent), nil
 	}
@@ -389,8 +400,9 @@ func (s *server) oidcCallback(ctx context.Context, code, state, providerError *s
 // OnTokenValidated did, and returns its claims, or the failure's error code
 // and a reason to log:
 //
-//  1. go-oidc verifies the signature against the provider's keys, the
-//     audience (the client id), and the expiry on the Deps clock.
+//  1. go-oidc verifies the signature against the provider's keys and the
+//     audience (the client id); lifetimeProblem checks exp and nbf on the
+//     Deps clock with ASP.NET's five minutes of clock skew.
 //  2. The issuer must be exactly the configured authority: go-oidc lets
 //     Google's scheme-less "accounts.google.com" through, which ASP.NET's
 //     exact issuer validation refused.
@@ -410,9 +422,12 @@ func (rp *oidcRelyingParty) validate(ctx context.Context, p *oidc.Provider, toke
 	if raw == "" {
 		return oidcClaims{}, oidcAuthenticationFailed, "the token response carries no id_token"
 	}
-	idToken, err := p.Verifier(&oidc.Config{ClientID: rp.cfg.ClientID, Now: rp.now}).Verify(ctx, raw)
+	idToken, err := p.Verifier(&oidc.Config{ClientID: rp.cfg.ClientID, SkipExpiryCheck: true}).Verify(ctx, raw)
 	if err != nil {
 		return oidcClaims{}, oidcAuthenticationFailed, "the id_token failed verification: " + err.Error()
+	}
+	if problem := rp.lifetimeProblem(idToken); problem != "" {
+		return oidcClaims{}, oidcAuthenticationFailed, problem
 	}
 	if idToken.Issuer != rp.cfg.Authority {
 		return oidcClaims{}, oidcAuthenticationFailed, "the id_token's issuer is not the authority"
@@ -447,6 +462,34 @@ func (rp *oidcRelyingParty) validate(ctx context.Context, p *oidc.Provider, toke
 	return claims, "", ""
 }
 
+// idTokenClockSkew is the lifetime tolerance ASP.NET's token validation
+// allowed, Microsoft.IdentityModel's TokenValidationParameters.DefaultClockSkew:
+// a token is expired once now - 5 min is past its exp, and not yet valid
+// while now + 5 min is before its nbf.
+const idTokenClockSkew = 5 * time.Minute
+
+// lifetimeProblem judges idToken's lifetime on the Deps clock, or returns
+// "" when it holds. go-oidc allows the skew on nbf but none on exp, so the
+// verifier skips its expiry check (which also skips its nbf check) and both
+// are judged here, nbf exactly as go-oidc did. A token without exp is
+// expired, as ASP.NET required one.
+func (rp *oidcRelyingParty) lifetimeProblem(idToken *oidc.IDToken) string {
+	var times struct {
+		NotBefore *float64 `json:"nbf"`
+	}
+	if err := idToken.Claims(&times); err != nil {
+		return "the id_token's nbf does not decode"
+	}
+	now := rp.now()
+	if idToken.Expiry.Before(now.Add(-idTokenClockSkew)) {
+		return "the id_token has expired"
+	}
+	if times.NotBefore != nil && now.Add(idTokenClockSkew).Before(time.Unix(int64(*times.NotBefore), 0)) {
+		return "the id_token is not valid yet"
+	}
+	return ""
+}
+
 // GetIdentityOidcComplete signs the federated identity in
 // (EA/WorkforceOidcEndpoints.cs:45-175). 404 while OIDC is off. Every
 // answer consumes the external cookie. In .NET's order:
@@ -468,8 +511,10 @@ func (rp *oidcRelyingParty) validate(ctx context.Context, p *oidc.Provider, toke
 //     3 does; without one it is oidc_sign_in_unavailable.
 //
 // A sign-in creates a new non-persistent session with no MFA, records the
-// operational heartbeat, and lands on the base path's root.
-func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityOidcCompleteRequestObject) (gen.GetIdentityOidcCompleteResponseObject, error) {
+// operational heartbeat, and lands on the base path's root. A server error
+// (a failed query) is a 500, as .NET's unhandled exception was, but it
+// consumes the external cookie too (clearOnServerError).
+func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityOidcCompleteRequestObject) (_ gen.GetIdentityOidcCompleteResponseObject, err error) {
 	if s.oidc == nil {
 		return gen.GetIdentityOidcComplete404Response{}, nil
 	}
@@ -478,6 +523,7 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 		return nil, err
 	}
 	consumed := s.expiredOIDCCookie(oidcExternalCookieName)
+	defer func() { clearOnServerError(ctx, err, consumed) }()
 	fail := func(errorCode, reason string) (gen.GetIdentityOidcCompleteResponseObject, error) {
 		return s.oidcFailure(ctx, errorCode, reason, consumed), nil
 	}
@@ -703,6 +749,22 @@ func (s *server) oidcCookie(name, value string, lifetime time.Duration) *http.Co
 	c.SameSite = http.SameSiteLaxMode
 	c.MaxAge = int(lifetime.Seconds())
 	return c
+}
+
+// clearOnServerError sets cookies on the response when a step ends in err,
+// a server error module.ResponseError then answers with a 500. A step's
+// cookie is spent on every answer, a 500 included, so a browser never
+// keeps a half-used state or identity. This is deliberate: .NET's
+// unhandled exceptions left its cookie in place.
+func clearOnServerError(ctx context.Context, err error, cs ...*http.Cookie) {
+	if err == nil {
+		return
+	}
+	if w, ok := responseWriterFrom(ctx); ok {
+		for _, c := range cs {
+			http.SetCookie(w, c)
+		}
+	}
 }
 
 // expiredOIDCCookie tells the browser to drop one of the flow's cookies.
