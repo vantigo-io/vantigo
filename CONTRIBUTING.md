@@ -318,11 +318,19 @@ at the Go server, or call the endpoint directly with the logged secret:
 ```bash
 curl -X POST http://localhost:8080/api/v1/identity/bootstrap \
   -H 'Content-Type: application/json' \
-  -d '{"secret":"<the logged bootstrap secret>","email":"owner@example.test","password":"a strong password"}'
+  -d '{"secret":"<the logged bootstrap secret>","email":"owner@example.test","displayName":"Owner","password":"a strong password"}'
 ```
 
 `GET /api/v1/identity/bootstrap-status` reports whether bootstrap is still available
 (`{"available":true}`) before you call it.
+
+Behind a reverse proxy, set `TRUSTED_PROXY_HOPS` to the number of proxies in front of the
+server. Outside development it also needs `TRUSTED_PROXY_CIDRS`, the proxies' own addresses,
+or configuration fails: forwarded headers are honoured only from a peer inside that list.
+
+When rotating the SCIM token, `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` must still be in the future
+at every start, so a restart after the overlap window fails configuration: remove
+`SCIM_PREVIOUS_TOKEN` and its expiry once the window has passed, as .NET required.
 
 `sqlc` (the identity schema's query generator) comes from mise, not a separate install; it
 runs as part of the usual generate step:
