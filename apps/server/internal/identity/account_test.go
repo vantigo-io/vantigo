@@ -39,9 +39,11 @@ func getAccount(t *testing.T, c *client) account {
 	return a
 }
 
-// Ported from IdentityAccountEndpointsTests.AccountProfile_NorwegianLanguageRoundTripsCaseInsensitivelyAndNormalizesAutomatic,
-// plus the no-mutation half of AccountProfile_IsolatedAndRejectsInvalidLanguageWithoutMutation
-// (that test's cross-account 404 belongs to Task 11's owner user-management endpoints).
+// Ported from IdentityAccountEndpointsTests.AccountProfile_NorwegianLanguageRoundTripsCaseInsensitivelyAndNormalizesAutomatic.
+// Ported from IdentityAccountEndpointsTests.AccountProfile_IsolatedAndRejectsInvalidLanguageWithoutMutation.
+// The second's isolation probe, GET /account/{otherId}, names a path no
+// contract operation has: the router answers it with its 404 problem, so
+// one account never reads another through the self-service routes.
 func TestAccountProfile_LanguageRoundTripsCaseInsensitivelyAndRejectsInvalidWithoutMutation(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -86,6 +88,13 @@ func TestAccountProfile_LanguageRoundTripsCaseInsensitivelyAndRejectsInvalidWith
 	}
 	if got := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND preferred_language = 'nb'`, id); got != 1 {
 		t.Errorf("preferred_language in the database is not 'nb'")
+	}
+
+	other := h.seedUser(t, "other-profile@example.test", userPassword, identity.RoleUserID)
+	foreign := c.do(http.MethodGet, accountPath+"/"+other.String(), nil,
+		skipContract("GET /account/{id} is no contract operation; the router's 404 problem answers it"))
+	if foreign.status != http.StatusNotFound || foreign.header("Content-Type") != "application/problem+json" {
+		t.Errorf("GET %s/{otherId}: status %d Content-Type %q, want the 404 problem", accountPath, foreign.status, foreign.header("Content-Type"))
 	}
 }
 

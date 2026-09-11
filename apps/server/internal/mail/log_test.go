@@ -68,9 +68,10 @@ func TestLog_FormattedLogDoesNotContainSecretOrLink(t *testing.T) {
 	}
 }
 
-// Ported from ApplicationEmailSenderTests.AddApplicationEmail_SelectsSmtpSender_WhenProviderIsSmtp
-// and AddApplicationEmail_SelectsLoggingSender_WhenProviderIsLogging, adapted
-// to mail.New's driver selection.
+// TestLog_RecordsOneEntryPerSend: the log driver writes one entry, naming
+// the recipient, per message sent. It ports no .NET test; the two
+// driver-selection tests it once cited are ported in mail_test.go
+// (TestNew_SelectsLogDriver, TestNew_SelectsSMTPDriver).
 func TestLog_RecordsOneEntryPerSend(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))

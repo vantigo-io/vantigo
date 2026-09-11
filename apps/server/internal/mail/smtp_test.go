@@ -49,6 +49,7 @@ type smtpTestServer struct {
 	done chan struct{}
 
 	mu       sync.Mutex
+	conn     net.Conn // the one connection accepted, closed at cleanup
 	mailFrom string
 	rcptTo   string
 	data     string
@@ -77,7 +78,22 @@ func newSMTPTestServer(t *testing.T, cert tls.Certificate, opts func(*smtpTestSe
 	}
 
 	go srv.serveOne()
-	t.Cleanup(func() { _ = ln.Close() })
+	// Join the server goroutine whatever the test did: closing the
+	// listener ends an Accept that never got a connection, and closing
+	// the accepted connection ends a session the client abandoned.
+	t.Cleanup(func() {
+		_ = ln.Close()
+		srv.mu.Lock()
+		if srv.conn != nil {
+			_ = srv.conn.Close()
+		}
+		srv.mu.Unlock()
+		select {
+		case <-srv.done:
+		case <-time.After(5 * time.Second):
+			t.Error("the smtp test server goroutine did not exit")
+		}
+	})
 	return srv
 }
 
@@ -101,6 +117,9 @@ func (s *smtpTestServer) serveOne() {
 	if err != nil {
 		return
 	}
+	s.mu.Lock()
+	s.conn = conn
+	s.mu.Unlock()
 	defer func() { _ = conn.Close() }()
 
 	r := bufio.NewReader(conn)
