@@ -2,6 +2,7 @@ package contracttest
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -513,6 +514,37 @@ func TestCoverageExit(t *testing.T) {
 		if hasReport := buf.Len() > 0; hasReport != c.wantReport {
 			t.Errorf("%s: report written = %v, want %v (output: %q)", c.name, hasReport, c.wantReport, buf.String())
 		}
+	}
+}
+
+// TestHasTestFilterRecognizesListRunAndSkip proves go test -list . no longer
+// fails RequireCoverage's coverage gate: -test.list, like -test.run and
+// -test.skip, must be treated as a filter, since a -list run (and `go test
+// -list .` in particular) executes no tests at all, so every operation would
+// otherwise be reported missing.
+func TestHasTestFilterRecognizesListRunAndSkip(t *testing.T) {
+	for _, name := range []string{"test.list", "test.run", "test.skip"} {
+		t.Run(name, func(t *testing.T) {
+			f := flag.Lookup(name)
+			if f == nil {
+				t.Fatalf("flag %q is not registered", name)
+			}
+			original := f.Value.String()
+			defer func() { _ = f.Value.Set(original) }()
+
+			if err := f.Value.Set(""); err != nil {
+				t.Fatalf("reset %s: %v", name, err)
+			}
+			if hasTestFilter() {
+				t.Errorf("hasTestFilter() = true with every flag empty, want false")
+			}
+			if err := f.Value.Set("Something"); err != nil {
+				t.Fatalf("set %s: %v", name, err)
+			}
+			if !hasTestFilter() {
+				t.Errorf("hasTestFilter() = false with -%s set, want true", name)
+			}
+		})
 	}
 }
 
