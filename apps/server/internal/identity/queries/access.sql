@@ -96,6 +96,14 @@ SELECT EXISTS (
 -- name: DeleteRole :exec
 DELETE FROM identity.roles WHERE id = @id;
 
+-- name: DeleteRoleStewardships :exec
+-- DeleteRoleStewardships takes a role out of every delegation that
+-- stewards it, as .NET's cascading fk_authorization_delegation_roles_role_id
+-- did when the role was deleted: those delegations stay valid and lose
+-- only the role. The table has no foreign key, so a reference left
+-- dangling any other way still fails closed when scopes are evaluated.
+DELETE FROM identity.authorization_delegation_roles WHERE role_id = @role_id;
+
 -- name: LockUserVersion :one
 -- LockUserVersion reads a user's version and holds the users row until the
 -- transaction ends, so concurrent role replacements for one user take

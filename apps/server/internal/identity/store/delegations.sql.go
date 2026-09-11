@@ -377,6 +377,43 @@ func (q *Queries) LockDelegation(ctx context.Context, id uuid.UUID) (IdentityAut
 	return i, err
 }
 
+const lockStewardableRoles = `-- name: LockStewardableRoles :many
+SELECT id, is_system, is_built_in
+FROM identity.roles
+WHERE id = ANY($1::uuid[])
+FOR KEY SHARE
+`
+
+type LockStewardableRolesRow struct {
+	ID        uuid.UUID
+	IsSystem  bool
+	IsBuiltIn bool
+}
+
+// LockStewardableRoles reads the roles among @ids a delegation is to
+// steward and holds a key share on each until the transaction ends, so none
+// is deleted before the delegation naming it commits; a role a deletion
+// removed first is missing here.
+func (q *Queries) LockStewardableRoles(ctx context.Context, ids []uuid.UUID) ([]LockStewardableRolesRow, error) {
+	rows, err := q.db.Query(ctx, lockStewardableRoles, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockStewardableRolesRow
+	for rows.Next() {
+		var i LockStewardableRolesRow
+		if err := rows.Scan(&i.ID, &i.IsSystem, &i.IsBuiltIn); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const revokeDelegation = `-- name: RevokeDelegation :execrows
 UPDATE identity.authorization_delegations
 SET revoked_at = $1::timestamptz, version = $2, updated_at = $1::timestamptz

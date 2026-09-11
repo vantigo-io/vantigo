@@ -178,6 +178,9 @@ type delegationRequest struct {
 // invalid_delegation_roles unless every role id names a custom role, a
 // repeated id counting as a missing one, as .NET counted them. An absent
 // grantee is the nil uuid and an absent flag false, as .NET bound them.
+// The roles are held FOR KEY SHARE (LockStewardableRoles), so a role
+// deletion cannot slip in between this check and the commit and leave the
+// delegation naming a role that no longer exists.
 func (s *server) validateDelegation(ctx context.Context, q *store.Queries, body *gen.DelegationRequest, actor uuid.UUID, now time.Time) (delegationRequest, error) {
 	if body == nil || body.PermissionKeys == nil || body.StewardedRoleIds == nil {
 		return delegationRequest{}, invalidDelegation
@@ -208,11 +211,11 @@ func (s *server) validateDelegation(ctx context.Context, q *store.Queries, body 
 	if slices.ContainsFunc(d.keys, func(key string) bool { return !delegable(s.deps.Catalog, key) }) {
 		return delegationRequest{}, invalidDelegationPermissions
 	}
-	roles, err := q.ScopeRoles(ctx, d.roleIDs)
+	roles, err := q.LockStewardableRoles(ctx, d.roleIDs)
 	if err != nil {
 		return delegationRequest{}, err
 	}
-	if len(roles) != len(d.roleIDs) || slices.ContainsFunc(roles, func(r store.ScopeRolesRow) bool { return r.IsSystem || r.IsBuiltIn }) {
+	if len(roles) != len(d.roleIDs) || slices.ContainsFunc(roles, func(r store.LockStewardableRolesRow) bool { return r.IsSystem || r.IsBuiltIn }) {
 		return delegationRequest{}, invalidDelegationRoles
 	}
 	return d, nil
@@ -488,7 +491,9 @@ func (s *server) PostIdentityAccessDelegationsByIdRevoke(ctx context.Context, re
 		if err != nil {
 			return err
 		}
-		revokedAt = s.deps.Clock()
+		// At timestamptz's precision, so the answer and the audit row agree
+		// with what is read back, as expiresAt is stored.
+		revokedAt = s.deps.Clock().Truncate(time.Microsecond)
 		changed, err := q.RevokeDelegation(ctx, store.RevokeDelegationParams{Now: revokedAt, Version: version, ID: req.Id, ExpectedVersion: current.Version})
 		if err != nil {
 			return err

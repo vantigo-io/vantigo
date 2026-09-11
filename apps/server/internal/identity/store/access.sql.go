@@ -78,6 +78,20 @@ func (q *Queries) DeleteRolePermissions(ctx context.Context, roleID uuid.UUID) e
 	return err
 }
 
+const deleteRoleStewardships = `-- name: DeleteRoleStewardships :exec
+DELETE FROM identity.authorization_delegation_roles WHERE role_id = $1
+`
+
+// DeleteRoleStewardships takes a role out of every delegation that
+// stewards it, as .NET's cascading fk_authorization_delegation_roles_role_id
+// did when the role was deleted: those delegations stay valid and lose
+// only the role. The table has no foreign key, so a reference left
+// dangling any other way still fails closed when scopes are evaluated.
+func (q *Queries) DeleteRoleStewardships(ctx context.Context, roleID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteRoleStewardships, roleID)
+	return err
+}
+
 const getRolePermissionKeys = `-- name: GetRolePermissionKeys :many
 SELECT permission_key
 FROM identity.role_permissions

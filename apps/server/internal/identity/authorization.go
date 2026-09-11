@@ -158,7 +158,11 @@ func roleMutationLockKey(id uuid.UUID) int64 {
 // rows; then users rows; then roles rows. The one exception is a user's
 // deletion, whose cascade takes the user's delegation rows after their
 // users row; PostgreSQL breaks the deadlock that can meet with that user's
-// own delegated mutation, and the loser is retried.
+// own delegated mutation, and the loser is retried. Delegation create and
+// update take a key share on the roles they name (LockStewardableRoles)
+// before the key share their writes take on users rows; no transaction
+// holding a users row waits for a roles row lock stronger than a key share,
+// so the two cannot meet.
 func lockRole(ctx context.Context, q *store.Queries, roleID uuid.UUID) error {
 	return q.AcquireRoleMutationLock(ctx, roleMutationLockKey(roleID))
 }
@@ -716,7 +720,10 @@ func (s *server) updateRole(ctx context.Context, id uuid.UUID, name, displayName
 // while an access group maps it, the caller's authority, and 409
 // role_assigned while anyone holds it. .NET checked the mapping again once
 // it held the lock (:308-316); here the lock is held from the start, so the
-// one check is already the one after it. role.deleted is audited. 204.
+// one check is already the one after it. The role then leaves every
+// delegation that stewarded it, as .NET's foreign key cascaded
+// (Configurations/AuthorizationDelegationEntityTypeConfiguration.cs:49-50),
+// so those delegations stay valid, and role.deleted is audited. 204.
 func (s *server) DeleteIdentityAccessRolesById(ctx context.Context, req gen.DeleteIdentityAccessRolesByIdRequestObject) (gen.DeleteIdentityAccessRolesByIdResponseObject, error) {
 	var stamp *string
 	if req.Body != nil {
@@ -762,6 +769,9 @@ func (s *server) DeleteIdentityAccessRolesById(ctx context.Context, req gen.Dele
 		assigned, err := q.RoleIsAssigned(ctx, req.Id)
 		if err != nil || assigned {
 			return cmpOr(err, error(roleAssigned))
+		}
+		if err := q.DeleteRoleStewardships(ctx, req.Id); err != nil {
+			return err
 		}
 		if err := q.DeleteRole(ctx, req.Id); err != nil {
 			return err

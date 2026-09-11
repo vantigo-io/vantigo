@@ -496,8 +496,10 @@ func TestRbac_ADelegatedEditMustCoverTheCurrentAndTheNewKeys(t *testing.T) {
 }
 
 // Ported from IdentityRbacIntegrationTests.DelegatedDeleteRequiresSelectedScopeToCoverCurrentRolePermissions.
-// Extended: the code; the role survives; and once the delegation grants the
-// key again, the same deletion goes through.
+// Extended: the code; the role survives; once the delegation grants the
+// key again, the same deletion goes through; and the delegation outlives
+// the role it stewarded, as .NET's cascading foreign key kept it: the
+// delegate still manages and creates a role under it.
 func TestRbac_ADelegatedDeleteNeedsAScopeCoveringTheRolesKeys(t *testing.T) {
 	t.Parallel()
 	h, owner, _ := rbacHarness(t)
@@ -515,18 +517,111 @@ func TestRbac_ADelegatedDeleteNeedsAScopeCoveringTheRolesKeys(t *testing.T) {
 	}
 	h.exec(t, `INSERT INTO identity.authorization_delegation_permissions (delegation_id, permission_key) VALUES ($1, 'customers:view')`, d.ID)
 	if r := deleteRole(delegated, role.ID, role.Version); r.status != http.StatusNoContent {
-		t.Errorf("the deletion once the scope covers the key: status %d body %s", r.status, r.body)
+		t.Fatalf("the deletion once the scope covers the key: status %d body %s", r.status, r.body)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.authorization_delegation_roles WHERE role_id = $1`, role.ID); n != 0 {
+		t.Errorf("%d stewardships of the deleted role remain", n)
+	}
+	if !manages(t, delegated) {
+		t.Fatal("the delegate no longer manages after deleting a role within their scope")
+	}
+	if sc := administrationOf(t, delegated).scopeOf(t, d.ID); len(sc.StewardedRoleIDs) != 0 || !slices.Equal(sc.GrantablePermissionKeys, []string{"customers:view"}) {
+		t.Errorf("the scope after the deletion %+v, want no roles and its key", sc)
+	}
+	if r := createRoleUnder(delegated, "rbac-after-delete", &d.ID, "customers:view"); r.status != http.StatusCreated {
+		t.Errorf("a role created under the delegation afterwards: status %d body %s", r.status, r.body)
+	}
+}
+
+// TestRbac_AnOwnerDeletingAStewardedRoleLeavesTheDelegationUsable is
+// .NET's cascading fk_authorization_delegation_roles_role_id
+// (Configurations/AuthorizationDelegationEntityTypeConfiguration.cs:49-50):
+// deleting a role takes it out of every delegation that stewards it, and
+// each delegation stays valid with its other roles, or with none.
+func TestRbac_AnOwnerDeletingAStewardedRoleLeavesTheDelegationUsable(t *testing.T) {
+	t.Parallel()
+	h, owner, _ := rbacHarness(t)
+	const email, otherEmail = "outliving-delegate@example.test", "outliving-other@example.test"
+	delegateID := h.createUser(t, owner, email, identity.RoleUser)
+	otherID := h.createUser(t, owner, otherEmail, identity.RoleUser)
+	targetID := h.createUser(t, owner, "outliving-target@example.test", identity.RoleUser)
+	gone := createRole(t, owner, "Gone", "customers:view")
+	kept := createRole(t, owner, "Kept", "customers:view")
+	d := delegate(t, h, owner, delegateID, []uuid.UUID{gone.ID, kept.ID}, "customers:view")
+	only := delegate(t, h, owner, otherID, []uuid.UUID{gone.ID})
+	delegated, other := h.login(t, email, userPassword), h.login(t, otherEmail, userPassword)
+
+	if r := deleteRole(owner, gone.ID, gone.Version); r.status != http.StatusNoContent {
+		t.Fatalf("delete: status %d body %s", r.status, r.body)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.authorization_delegation_roles WHERE role_id = $1`, gone.ID); n != 0 {
+		t.Errorf("%d stewardships of the deleted role remain", n)
+	}
+	if !manages(t, delegated) || !manages(t, other) {
+		t.Fatal("a delegation that stewarded the deleted role no longer grants management")
+	}
+	if sc := administrationOf(t, delegated).scopeOf(t, d.ID); !slices.Equal(sc.StewardedRoleIDs, []uuid.UUID{kept.ID}) || !slices.Equal(sc.AssignableRoleIDs, []uuid.UUID{kept.ID}) {
+		t.Errorf("the delegate's scope %+v, want Kept stewarded and assignable", sc)
+	}
+	if sc := administrationOf(t, other).scopeOf(t, only.ID); len(sc.StewardedRoleIDs) != 0 {
+		t.Errorf("the other delegate's scope %+v, want no roles", sc)
+	}
+	if r := assignUnder(delegated, targetID, h.version(t, "users", targetID), &d.ID, kept.ID); r.status != http.StatusOK {
+		t.Errorf("assign Kept under the delegation: status %d body %s", r.status, r.body)
+	}
+	r := owner.do(http.MethodGet, delegationsPath, nil)
+	var listed []struct {
+		ID               uuid.UUID   `json:"id"`
+		StewardedRoleIDs []uuid.UUID `json:"stewardedRoleIds"`
+	}
+	r.json(&listed)
+	for _, l := range listed {
+		if slices.Contains(l.StewardedRoleIDs, gone.ID) {
+			t.Errorf("delegation %s still lists the deleted role: %s", l.ID, r.body)
+		}
+	}
+}
+
+// TestDelegations_AnUpdateQueuedBehindARoleDeletionIsRefused is why
+// validation holds the stewarded roles FOR KEY SHARE: a gate deletes a role,
+// uncommitted and so holding its row, while an update that names it waits
+// for that row. Once the gate commits, the role is missing, and the update
+// is refused rather than leaving the delegation naming a role that no
+// longer exists, which would disable it entirely.
+func TestDelegations_AnUpdateQueuedBehindARoleDeletionIsRefused(t *testing.T) {
+	t.Parallel()
+	h, owner, _ := rbacHarness(t)
+	const email = "queued-update@example.test"
+	granteeID := h.createUser(t, owner, email, identity.RoleUser)
+	kept := createRole(t, owner, "Kept")
+	doomed := createRole(t, owner, "Doomed")
+	d := delegate(t, h, owner, granteeID, []uuid.UUID{kept.ID})
+
+	deleting := gate(t, h,
+		stmt(`DELETE FROM identity.authorization_delegation_roles WHERE role_id = $1`, doomed.ID),
+		stmt(`DELETE FROM identity.roles WHERE id = $1`, doomed.ID))
+	out := raceBehind(t, h, deleting, func() *resp {
+		return updateDelegation(owner, d.ID, d.Version, delegationBody(granteeID, h.now().Add(time.Hour), []uuid.UUID{kept.ID, doomed.ID}, nil))
+	})
+	wantFlat(t, "the update behind the deletion", out[0], http.StatusBadRequest, "invalid_delegation_roles", "Only custom roles may be stewarded.")
+	grantee := h.login(t, email, userPassword)
+	if sc := administrationOf(t, grantee).scopeOf(t, d.ID); !slices.Equal(sc.StewardedRoleIDs, []uuid.UUID{kept.ID}) {
+		t.Errorf("the scope %+v, want Kept alone", sc)
 	}
 }
 
 // Ported from IdentityDelegationMalformedMetadataTests.MissingReferencedRoleMetadataFailsClosedForDelegatedManagement.
-// .NET deleted the role's metadata row. Go keeps a role's metadata on its
-// roles row, so a role without metadata is a role that no longer exists,
-// which authorization_delegation_roles, deliberately without a foreign key,
-// goes on naming. Extended to the other references that fail closed: a role
-// since made protected, and a key the catalog lacks or does not let be
-// delegated. Each delegate manages until their delegation is corrupted,
-// and not after, at the very next request.
+// .NET deleted the role's metadata row, leaving the role and the
+// delegation's reference to it. Go keeps a role's metadata on its roles
+// row, and the role deletion endpoint takes the role out of every
+// delegation (as .NET's foreign key cascaded), so the dangling reference is
+// made directly in the database: a role deleted around the endpoint, or a
+// stewarded role id that names no role. authorization_delegation_roles has
+// no foreign key, so either reference survives and must fail closed.
+// Extended to the other references that fail closed: a role since made
+// protected, and a key the catalog lacks or does not let be delegated. Each
+// delegate manages until their delegation is corrupted, and not after, at
+// the very next request.
 func TestDelegation_AMissingOrProtectedReferenceFailsClosed(t *testing.T) {
 	t.Parallel()
 	h, owner, _ := rbacHarness(t)
@@ -534,8 +629,11 @@ func TestDelegation_AMissingOrProtectedReferenceFailsClosed(t *testing.T) {
 		name    string
 		corrupt func(t *testing.T, roleID, delegationID uuid.UUID)
 	}{
-		{"the stewarded role no longer exists", func(t *testing.T, roleID, _ uuid.UUID) {
+		{"the stewarded role deleted around the endpoint", func(t *testing.T, roleID, _ uuid.UUID) {
 			h.exec(t, `DELETE FROM identity.roles WHERE id = $1`, roleID)
+		}},
+		{"a stewarded role id that names no role", func(t *testing.T, _, delegationID uuid.UUID) {
+			h.exec(t, `INSERT INTO identity.authorization_delegation_roles (delegation_id, role_id) VALUES ($1, $2)`, delegationID, uuid.New())
 		}},
 		{"the stewarded role became a system role", func(t *testing.T, roleID, _ uuid.UUID) {
 			h.exec(t, `UPDATE identity.roles SET is_system = true WHERE id = $1`, roleID)
@@ -828,14 +926,22 @@ func TestDelegations_RevokeEndsTheGranteesSessionsAndResetLinks(t *testing.T) {
 		t.Fatalf("%d reset tokens after the refusals, want the one requested", n)
 	}
 
-	h.advance(time.Minute)
+	// The clock carries nanoseconds timestamptz cannot hold, as time.Now
+	// does in production: revokedAt is answered at the stored precision.
+	h.advance(time.Minute + 1500*time.Nanosecond)
+	revokedAt := `"` + h.now().Truncate(time.Microsecond).Format(time.RFC3339Nano) + `"`
 	r := revokeDelegation(owner, d.ID, d.Version)
 	var body map[string]json.RawMessage
 	r.json(&body)
 	version := h.version(t, "authorization_delegations", d.ID)
 	if r.status != http.StatusOK || !slices.Equal(fieldsOf(body), []string{"id", "revokedAt", "version"}) || string(body["id"]) != `"`+d.ID.String()+`"` ||
-		string(body["version"]) != `"`+version+`"` || version == d.Version || string(body["revokedAt"]) != `"`+h.now().Format(time.RFC3339Nano)+`"` {
-		t.Fatalf("revoke: status %d body %s", r.status, r.body)
+		string(body["version"]) != `"`+version+`"` || version == d.Version || string(body["revokedAt"]) != revokedAt {
+		t.Fatalf("revoke: status %d body %s, want revokedAt %s", r.status, r.body, revokedAt)
+	}
+	var listed []map[string]json.RawMessage
+	owner.do(http.MethodGet, delegationsPath, nil).json(&listed)
+	if len(listed) != 1 || string(listed[0]["revokedAt"]) != revokedAt {
+		t.Errorf("GET /access/delegations reads back %s, want the revokedAt answered, %s", listed, revokedAt)
 	}
 	rejected(t, grantee)
 	rejected(t, other)
@@ -853,7 +959,7 @@ func TestDelegations_RevokeEndsTheGranteesSessionsAndResetLinks(t *testing.T) {
 			`"PermissionKeys":["customers:view"],"StewardedRoleIds":["%s"]}`, d.ID, granteeID, ownerID, expires.Format(time.RFC3339Nano), revokedAt, role.ID)
 	}
 	if len(events) != 1 || events[0].Actor == nil || *events[0].Actor != ownerID || events[0].TargetUser == nil || *events[0].TargetUser != granteeID ||
-		events[0].Before != state("null") || events[0].After != state(`"`+h.now().Format(time.RFC3339Nano)+`"`) || events[0].Details != `{"action":"delegation.revoked"}` {
+		events[0].Before != state("null") || events[0].After != state(revokedAt) || events[0].Details != `{"action":"delegation.revoked"}` {
 		t.Errorf("delegation.revoked rows %+v", events)
 	}
 	again := h.login(t, email, userPassword)
@@ -869,7 +975,7 @@ func TestDelegations_RevokeEndsTheGranteesSessionsAndResetLinks(t *testing.T) {
 	if r := revokeDelegation(owner, d.ID, version); r.status != http.StatusOK {
 		t.Fatalf("a second revoke: status %d body %s", r.status, r.body)
 	}
-	if n := h.count(t, `SELECT count(*) FROM identity.authorization_delegations WHERE id = $1 AND revoked_at = $2`, d.ID, h.now()); n != 1 {
+	if n := h.count(t, `SELECT count(*) FROM identity.authorization_delegations WHERE id = $1 AND revoked_at = $2`, d.ID, h.now().Truncate(time.Microsecond)); n != 1 {
 		t.Error("the second revoke did not move revoked_at")
 	}
 	rejected(t, again)

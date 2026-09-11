@@ -57,6 +57,16 @@ SELECT r.id, r.is_system, r.is_built_in,
 FROM identity.roles r
 WHERE r.id = ANY(@ids::uuid[]);
 
+-- name: LockStewardableRoles :many
+-- LockStewardableRoles reads the roles among @ids a delegation is to
+-- steward and holds a key share on each until the transaction ends, so none
+-- is deleted before the delegation naming it commits; a role a deletion
+-- removed first is missing here.
+SELECT id, is_system, is_built_in
+FROM identity.roles
+WHERE id = ANY(@ids::uuid[])
+FOR KEY SHARE;
+
 -- name: ActiveDelegationGrantees :many
 -- ActiveDelegationGrantees is every user who holds a delegation active at
 -- @now, valid or not: the users a delegate's directory leaves out
