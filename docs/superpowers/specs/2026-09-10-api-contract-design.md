@@ -63,11 +63,13 @@ Curation fills every missing response body (2xx and the error responses the endp
 
 Correctness is verified, not asserted: the existing .NET integration suites (about 740 tests) record every request/response exchange they make when `VANTIGO_CONTRACT_RECORD` names a directory, and a Go test validates each recorded exchange against the curated YAML with kin-openapi (`openapi3filter` request and response validation). Exchanges against dropped operations are ignored. The recorded corpus is committed under `openapi/testdata/exchanges/` so the check runs in CI without .NET, and later sub-projects can replay it against the Go handlers.
 
+The validation is strict about inputs as well as outputs, because kin-openapi ignores what the contract does not declare: a recorded query key (exact case) the operation does not declare, a request body sent to an operation that declares none, a response body where the contract documents none, and a non-text response whose content type the contract does not list all fail. Header and cookie parameters are not checked — the recorder captures no headers — so they rest on the handler code alone (e.g. communications' required `Idempotency-Key`). `contract corpus` validates every raw recording before it writes the committed sample, which keeps up to three exchanges per operation, status, content type and top-level body shape.
+
 Definition of done for curation: every operation has a success response — a 2xx with a schema, a 204, a 2xx the handler sends without a body and that is marked `x-vantigo-empty-body: true`, or, for a redirect endpoint (the OIDC flow), a 3xx declaring its `Location` header — and an `x-vantigo-access`; every recorded exchange validates; an operation with no recorded exchange is listed in a committed coverage report (`openapi/COVERAGE.md`) rather than silently trusted.
 
 ### Go
 
-- oapi-codegen v2.8.0, per module: `models` into `internal/<module>/gen/types.gen.go`, `std-http-server` + `strict-server` into `internal/<module>/gen/server.gen.go`; `common.yaml` generates `internal/apicommon/types.gen.go`, wired to the modules through `import-mapping`.
+- oapi-codegen v2.8.0, per module: `models` + `std-http-server` + `strict-server` into one file, `internal/<module>/gen/api.gen.go`; `common.yaml` generates `internal/apicommon/gen/api.gen.go`, wired to the modules through `import-mapping`.
 - `internal/openapi` embeds copies of the spec files (copied by `go generate`, since `go:embed` cannot reach above the module root) and exposes a loader that resolves the relative `$ref`s from the embedded files with kin-openapi. Mounting request validation and serving `/api/openapi.json` + Scalar are sub-project 3, which introduces sessions and the first real routes.
 - Tests: the embedded copies equal `openapi/*`; the specs load and validate as OpenAPI 3.0; every operation's `x-vantigo-access` is present and well-formed; the recorded-exchange validation above.
 - Generated code is committed. CI regenerates it and fails on a diff.
@@ -80,7 +82,7 @@ Definition of done for curation: every operation has a success response — a 2x
 
 ### CI and tooling
 
-- `mise.toml` pins `go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen` 2.8.0 for local `go generate`; CI never runs a `go:` tool through mise — the drift jobs use `go run …@v2.8.0`, like govulncheck.
+- oapi-codegen is pinned in one place, the `go:generate` directives in `apps/server/generate.go` (`go run …/oapi-codegen@v2.8.0`), so local runs and CI's drift check use the same version; `mise.toml` does not carry it (CI never runs a `go:` tool through mise, like govulncheck).
 - `server-test.yml` gains the Go drift check; the frontend job in `ci.yml` gains the `gen:client` drift check (it already runs lint and tests over the frontend packages).
 
 ## Out of scope
