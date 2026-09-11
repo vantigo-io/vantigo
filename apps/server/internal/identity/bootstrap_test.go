@@ -482,6 +482,15 @@ func TestRunStartup_GrantIsIdempotentAndRevokesSessionsOnlyWhenGranting(t *testi
 	id := h.seedUser(t, email, password, identity.RoleUserID)
 	before := userVersion(t, h, id)
 	first := h.login(t, email, password)
+	// A reset link the account holds, as a recovery request would mint it.
+	holdResetLink := func() {
+		h.exec(t, `INSERT INTO identity.password_reset_tokens (token_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
+			[]byte(uuid.NewString()), id, start.Add(time.Hour))
+	}
+	resetLinks := func() int {
+		return h.count(t, `SELECT count(*) FROM identity.password_reset_tokens WHERE user_id = $1`, id)
+	}
+	holdResetLink()
 
 	if err := h.runStartup(email); err != nil {
 		t.Fatalf("first run: %v", err)
@@ -494,8 +503,12 @@ func TestRunStartup_GrantIsIdempotentAndRevokesSessionsOnlyWhenGranting(t *testi
 		t.Fatal("the account was not granted SystemAdmin")
 	}
 	rejected(t, first)
+	if n := resetLinks(); n != 0 {
+		t.Errorf("%d reset links survived the grant, want 0", n)
+	}
 
 	second := h.login(t, email, password)
+	holdResetLink()
 	if err := h.runStartup(email); err != nil {
 		t.Fatalf("repeat run: %v", err)
 	}
@@ -503,6 +516,9 @@ func TestRunStartup_GrantIsIdempotentAndRevokesSessionsOnlyWhenGranting(t *testi
 		t.Error("the repeat run rotated the version")
 	}
 	admitted(t, second)
+	if n := resetLinks(); n != 1 {
+		t.Errorf("%d reset links after the repeat run, want the 1 it left alone", n)
+	}
 }
 
 // Ported from IdentitySystemAdminBootstrapperTests.ExistingUserCreatedSystemAdminRoleConflictsWithProtectedMetadata.

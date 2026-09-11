@@ -11,9 +11,10 @@ SET display_name = @display_name, preferred_language = @preferred_language, upda
 WHERE id = @id
 RETURNING id, display_name, email, preferred_language;
 
--- name: UpdateAccountPassword :exec
+-- name: UpdateAccountPassword :execrows
 -- UpdateAccountPassword stores the new hash and bumps version, the
--- concurrency-stamp analogue (EA/AccountSettingsEndpoints.cs:157).
+-- concurrency-stamp analogue (EA/AccountSettingsEndpoints.cs:157). It
+-- affects no row when the user has been deleted.
 UPDATE identity.users
 SET password_hash = @password_hash, version = @version, updated_at = @now::timestamptz
 WHERE id = @id;

@@ -1,6 +1,7 @@
 package identity_test
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -589,6 +590,75 @@ func TestInvitations_ConcurrentAcceptancesCreateOneAccount(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.sessions s JOIN identity.users u ON u.id = s.user_id WHERE u.normalized_email = 'RACER@EXAMPLE.TEST'`); n != 1 {
 		t.Errorf("%d sessions, want 1", n)
+	}
+}
+
+// TestInvitations_ConcurrentCreatesForOneEmailLeaveOneActive races two
+// invitations for one email, forced to overlap: the test holds the row lock
+// of the email's pending invitation, so both creations take their
+// snapshots and queue on it. Released, one revokes and inserts; the other
+// fails to serialize and, retried from a fresh snapshot, revokes the
+// winner's invitation in turn, exactly as an invitation sent a moment later
+// would. Both answer 201, one invitation is active, and only its mailed
+// link validates. Without the retry the loser would be 409
+// account_conflict. Run with -count to repeat the race.
+func TestInvitations_ConcurrentCreatesForOneEmailLeaveOneActive(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	const email = "contested@example.test"
+	pending, pendingToken := invite(t, h, owner, map[string]string{"email": email, "role": identity.RoleUser})
+
+	ctx := context.Background()
+	gate, err := h.pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `SELECT 1 FROM identity.invitations WHERE id = $1 FOR UPDATE`, pending.ID); err != nil {
+		t.Fatalf("gate: lock the pending invitation: %v", err)
+	}
+	create := func() *resp {
+		return owner.do(http.MethodPost, ownerInvitationsPath, map[string]string{"email": email, "role": identity.RoleUser})
+	}
+	done := make(chan []*resp, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(create, create)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 2, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	for i, r := range responses {
+		if r.status != http.StatusCreated {
+			t.Errorf("create %d: status %d body %s, want 201", i, r.status, r.body)
+		}
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.invitations WHERE normalized_email = 'CONTESTED@EXAMPLE.TEST' AND revoked_at IS NULL AND accepted_at IS NULL`); n != 1 {
+		t.Fatalf("%d active invitations for the email, want 1", n)
+	}
+	msgs := h.mailTo(email)
+	if len(msgs) != 3 {
+		t.Fatalf("%d mails, want 3", len(msgs))
+	}
+	anonymous := h.client(t)
+	valid := 0
+	for _, m := range msgs[1:] {
+		body := m.TextBody
+		link, err := url.Parse(body[strings.LastIndex(body, " ")+1:])
+		if err != nil {
+			t.Fatalf("mail without a link: %q", body)
+		}
+		if validateToken(t, anonymous, link.Query().Get("token")).Valid {
+			valid++
+		}
+	}
+	if valid != 1 || validateToken(t, anonymous, pendingToken).Valid {
+		t.Errorf("%d of the two new links validate (want 1), or the first invitation's still does", valid)
 	}
 }
 

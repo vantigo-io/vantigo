@@ -59,7 +59,7 @@ func (q *Queries) HasProfileAvatar(ctx context.Context, userID uuid.UUID) (bool,
 	return column_1, err
 }
 
-const updateAccountPassword = `-- name: UpdateAccountPassword :exec
+const updateAccountPassword = `-- name: UpdateAccountPassword :execrows
 UPDATE identity.users
 SET password_hash = $1, version = $2, updated_at = $3::timestamptz
 WHERE id = $4
@@ -73,15 +73,19 @@ type UpdateAccountPasswordParams struct {
 }
 
 // UpdateAccountPassword stores the new hash and bumps version, the
-// concurrency-stamp analogue (EA/AccountSettingsEndpoints.cs:157).
-func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) error {
-	_, err := q.db.Exec(ctx, updateAccountPassword,
+// concurrency-stamp analogue (EA/AccountSettingsEndpoints.cs:157). It
+// affects no row when the user has been deleted.
+func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateAccountPassword,
 		arg.PasswordHash,
 		arg.Version,
 		arg.Now,
 		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateAccountProfile = `-- name: UpdateAccountProfile :one
