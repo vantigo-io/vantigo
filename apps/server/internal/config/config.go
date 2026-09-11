@@ -442,11 +442,14 @@ func appSecret(p *problems, env map[string]string) []byte {
 	return []byte(v)
 }
 
-// bootstrapSecret is required outside development. A development-only
-// fallback (generated and logged) is the caller's concern, not config's.
+// bootstrapSecret is required outside development, where a blank value
+// counts as missing, as .NET's IsNullOrWhiteSpace check did
+// (SV/BootstrapSecretProvider.cs:21-33). A set value is kept verbatim,
+// surrounding spaces included. A development-only fallback (generated and
+// logged) is the caller's concern, not config's.
 func bootstrapSecret(p *problems, env map[string]string, c *Config) string {
 	v := env["BOOTSTRAP_SECRET"]
-	if v == "" && !c.IsDevelopment() {
+	if strings.TrimSpace(v) == "" && !c.IsDevelopment() {
 		p.add("BOOTSTRAP_SECRET", "is required outside development")
 	}
 	return v

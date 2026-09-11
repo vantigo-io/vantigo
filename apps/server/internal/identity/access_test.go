@@ -60,13 +60,13 @@ func check(t *testing.T, h *harness, token, rule string) (contracts.Principal, o
 	}
 }
 
-func (h *harness) insertRole(name string, permissions ...string) uuid.UUID {
-	h.t.Helper()
+func (h *harness) insertRole(t testing.TB, name string, permissions ...string) uuid.UUID {
+	t.Helper()
 	id := uuid.New()
-	h.exec(`INSERT INTO identity.roles (id, name, normalized_name, display_name, version, created_at, updated_at)
+	h.exec(t, `INSERT INTO identity.roles (id, name, normalized_name, display_name, version, created_at, updated_at)
 	        VALUES ($1, $2, upper($2), $2, $3, $4, $4)`, id, name, uuid.New(), h.now())
 	for _, key := range permissions {
-		h.exec(`INSERT INTO identity.role_permissions (role_id, permission_key) VALUES ($1, $2)`, id, key)
+		h.exec(t, `INSERT INTO identity.role_permissions (role_id, permission_key) VALUES ($1, $2)`, id, key)
 	}
 	return id
 }
@@ -106,12 +106,12 @@ func newAccessFixture(t *testing.T, opts ...harnessOption) *accessFixture {
 	// SCIM is configured so a directory-deactivated account is enforced.
 	h := newHarness(t, append([]harnessOption{withEnv("SCIM_TOKEN", "identity-harness-scim-token")}, opts...)...)
 	f := &accessFixture{h: h, users: map[string]uuid.UUID{}, tokens: map[string]string{}}
-	auditor := h.insertRole("Auditor", "identity:manage")
+	auditor := h.insertRole(t, "Auditor", "identity:manage")
 
 	add := func(name string, mfa bool, roles ...uuid.UUID) uuid.UUID {
-		id := h.insertUser(name+"@example.test", roles...)
+		id := h.insertUser(t, name+"@example.test", roles...)
 		f.users[name] = id
-		f.tokens[name] = h.session(id, mfa)
+		f.tokens[name] = h.session(t, id, mfa)
 		return id
 	}
 	add("ownerMFA", true, identity.RoleOwnerID)
@@ -124,31 +124,31 @@ func newAccessFixture(t *testing.T, opts ...harnessOption) *accessFixture {
 
 	lockedUntil := h.now().Add(15 * time.Minute)
 	locked := add("lockedPermitted", false, identity.RoleUserID, auditor)
-	h.exec(`UPDATE identity.users SET lockout_end = $2 WHERE id = $1`, locked, lockedUntil)
+	h.exec(t, `UPDATE identity.users SET lockout_end = $2 WHERE id = $1`, locked, lockedUntil)
 	lockedOwner := add("lockedOwnerMFA", true, identity.RoleOwnerID)
-	h.exec(`UPDATE identity.users SET lockout_end = $2 WHERE id = $1`, lockedOwner, lockedUntil)
+	h.exec(t, `UPDATE identity.users SET lockout_end = $2 WHERE id = $1`, lockedOwner, lockedUntil)
 
 	disabled := add("disabledUser", false, identity.RoleUserID)
-	h.exec(`UPDATE identity.users SET is_disabled = true WHERE id = $1`, disabled)
+	h.exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, disabled)
 	disabledOwner := add("disabledOwnerMFA", true, identity.RoleOwnerID)
-	h.exec(`UPDATE identity.users SET is_disabled = true WHERE id = $1`, disabledOwner)
+	h.exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, disabledOwner)
 
 	scimInactive := add("scimInactiveUser", false, identity.RoleUserID)
-	f.deactivateInDirectory(scimInactive)
+	f.deactivateInDirectory(t, scimInactive)
 	scimInactiveOwner := add("scimInactiveOwnerMFA", true, identity.RoleOwnerID)
-	f.deactivateInDirectory(scimInactiveOwner)
+	f.deactivateInDirectory(t, scimInactiveOwner)
 
 	revoked := add("revoked", false, identity.RoleUserID)
 	if err := identity.RevokeAllSessions(h.access, context.Background(), store.New(h.pool), revoked); err != nil {
 		t.Fatal(err)
 	}
 
-	f.users["noSession"] = h.insertUser("nosession@example.test", identity.RoleUserID)
+	f.users["noSession"] = h.insertUser(t, "nosession@example.test", identity.RoleUserID)
 	return f
 }
 
-func (f *accessFixture) deactivateInDirectory(userID uuid.UUID) {
-	f.h.exec(`INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
+func (f *accessFixture) deactivateInDirectory(t testing.TB, userID uuid.UUID) {
+	f.h.exec(t, `INSERT INTO identity.scim_user_mappings (resource_id, user_id, external_id, user_name, upstream_active, version, etag, created_at, updated_at)
 	          VALUES ($1, $2, $3, $3, false, 1, 'etag', $4, $4)`, uuid.New(), userID, userID.String(), f.h.now())
 }
 
@@ -233,6 +233,28 @@ func TestAccess_RulesWithoutOwnerMFA(t *testing.T) {
 	})
 }
 
+// TestAccess_EmptyRulesFailClosed proves a policy or permission rule that
+// names nothing grants nothing, even to an Owner with MFA. ParseRule never
+// produces one; Check must refuse it regardless.
+func TestAccess_EmptyRulesFailClosed(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	token := h.session(t, h.insertUser(t, "owner@example.test", identity.RoleOwnerID, identity.RoleSystemAdminID), true)
+
+	for _, rule := range []contracts.Rule{
+		{Kind: contracts.RulePolicy},
+		{Kind: contracts.RulePolicy, Names: []string{}},
+		{Kind: contracts.RulePermission},
+		{Kind: contracts.RulePermission, Names: []string{}},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.AddCookie(&http.Cookie{Name: identity.SessionCookieName, Value: token})
+		if _, err := h.access.Check(req, rule); !errors.Is(err, contracts.ErrForbidden) {
+			t.Errorf("Check(%+v) = %v, want ErrForbidden", rule, err)
+		}
+	}
+}
+
 // TestAccess_PermissionEffectiveRoles pins the permission check's effective
 // roles (AZ/PermissionAuthorization.cs:76-99): direct roles plus roles mapped
 // to active groups the user effectively belongs to, with the mapping's
@@ -243,14 +265,14 @@ func TestAccess_RulesWithoutOwnerMFA(t *testing.T) {
 func TestAccess_PermissionEffectiveRoles(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	auditor := h.insertRole("Auditor", "identity:manage")
-	reader := h.insertRole("Reader", "identity:read")
+	auditor := h.insertRole(t, "Auditor", "identity:manage")
+	reader := h.insertRole(t, "Reader", "identity:read")
 
 	group := func(name, source string, active bool, mappingSource string) uuid.UUID {
 		id := uuid.New()
-		h.exec(`INSERT INTO identity.access_groups (id, display_name, source, is_active, version, created_at, updated_at)
+		h.exec(t, `INSERT INTO identity.access_groups (id, display_name, source, is_active, version, created_at, updated_at)
 		        VALUES ($1, $2, $3, $4, $5, $6, $6)`, id, name, source, active, uuid.New(), h.now())
-		h.exec(`INSERT INTO identity.access_group_role_mappings (group_id, role_id, source) VALUES ($1, $2, $3)`, id, reader, mappingSource)
+		h.exec(t, `INSERT INTO identity.access_group_role_mappings (group_id, role_id, source) VALUES ($1, $2, $3)`, id, reader, mappingSource)
 		return id
 	}
 	localGroup := group("Local readers", "local", true, "local")
@@ -259,21 +281,21 @@ func TestAccess_PermissionEffectiveRoles(t *testing.T) {
 	mismatchedGroup := group("Mismatched readers", "scim", true, "local")
 
 	member := func(groupID, userID uuid.UUID, source string, upstream bool, override *string) {
-		h.exec(`INSERT INTO identity.access_group_memberships (group_id, user_id, source, is_upstream_present, membership_override)
+		h.exec(t, `INSERT INTO identity.access_group_memberships (group_id, user_id, source, is_upstream_present, membership_override)
 		        VALUES ($1, $2, $3, $4, $5)`, groupID, userID, source, upstream, override)
 	}
 	forceMember, forceNonMember := "force_member", "force_non_member"
 
 	users := map[string]uuid.UUID{
-		"direct":         h.insertUser("direct@example.test", identity.RoleUserID, auditor),
-		"directAndGroup": h.insertUser("both@example.test", identity.RoleUserID, auditor),
-		"forcedMember":   h.insertUser("forced@example.test", identity.RoleUserID),
-		"upstreamMember": h.insertUser("upstream@example.test", identity.RoleUserID),
-		"upstreamAbsent": h.insertUser("absent@example.test", identity.RoleUserID),
-		"forcedOut":      h.insertUser("forcedout@example.test", identity.RoleUserID),
-		"inactiveGroup":  h.insertUser("inactive@example.test", identity.RoleUserID),
-		"sourceMismatch": h.insertUser("mismatch@example.test", identity.RoleUserID),
-		"owner":          h.insertUser("owner@example.test", identity.RoleOwnerID),
+		"direct":         h.insertUser(t, "direct@example.test", identity.RoleUserID, auditor),
+		"directAndGroup": h.insertUser(t, "both@example.test", identity.RoleUserID, auditor),
+		"forcedMember":   h.insertUser(t, "forced@example.test", identity.RoleUserID),
+		"upstreamMember": h.insertUser(t, "upstream@example.test", identity.RoleUserID),
+		"upstreamAbsent": h.insertUser(t, "absent@example.test", identity.RoleUserID),
+		"forcedOut":      h.insertUser(t, "forcedout@example.test", identity.RoleUserID),
+		"inactiveGroup":  h.insertUser(t, "inactive@example.test", identity.RoleUserID),
+		"sourceMismatch": h.insertUser(t, "mismatch@example.test", identity.RoleUserID),
+		"owner":          h.insertUser(t, "owner@example.test", identity.RoleOwnerID),
 	}
 	member(localGroup, users["directAndGroup"], "local", false, &forceMember)
 	member(localGroup, users["forcedMember"], "local", false, &forceMember)
@@ -302,7 +324,7 @@ func TestAccess_PermissionEffectiveRoles(t *testing.T) {
 		{"owner", both, allowed}, // Owner short-circuits every key
 	}
 	for _, c := range cases {
-		token := h.session(users[c.user], false)
+		token := h.session(t, users[c.user], false)
 		if _, got := check(t, h, token, c.rule); got != c.want {
 			t.Errorf("%s %s: got %v, want %v", c.user, c.rule, got, c.want)
 		}
@@ -315,10 +337,10 @@ func TestAccess_PermissionEffectiveRoles(t *testing.T) {
 func TestAccess_PrincipalCarriesTheSessionAndOrderedRoles(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	billing := h.insertRole("Billing")
-	id := h.insertUser("admin@example.test", identity.RoleUserID, billing, identity.RoleOwnerID, identity.RoleSystemAdminID)
+	billing := h.insertRole(t, "Billing")
+	id := h.insertUser(t, "admin@example.test", identity.RoleUserID, billing, identity.RoleOwnerID, identity.RoleSystemAdminID)
 
-	p, got := check(t, h, h.session(id, true), "session")
+	p, got := check(t, h, h.session(t, id, true), "session")
 	if got != allowed {
 		t.Fatalf("session: got %v", got)
 	}
@@ -329,7 +351,7 @@ func TestAccess_PrincipalCarriesTheSessionAndOrderedRoles(t *testing.T) {
 		t.Errorf("roles = %v, want %v", p.Roles, want)
 	}
 
-	if p, _ := check(t, h, h.session(id, false), "session"); p.MFAVerified {
+	if p, _ := check(t, h, h.session(t, id, false), "session"); p.MFAVerified {
 		t.Error("a password-only session reports MFAVerified")
 	}
 }
@@ -360,9 +382,9 @@ func TestAccess_RevocationEndsSessionsAtOnce(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	ctx, q := context.Background(), store.New(h.pool)
-	id := h.insertUser("user@example.test", identity.RoleUserID)
-	mine, other := h.session(id, false), h.session(id, false)
-	bystander := h.session(h.insertUser("other@example.test", identity.RoleUserID), false)
+	id := h.insertUser(t, "user@example.test", identity.RoleUserID)
+	mine, other := h.session(t, id, false), h.session(t, id, false)
+	bystander := h.session(t, h.insertUser(t, "other@example.test", identity.RoleUserID), false)
 
 	p, _ := check(t, h, mine, "session")
 	if err := identity.RevokeOtherSessions(h.access, ctx, q, id, p.SessionID); err != nil {
@@ -403,7 +425,7 @@ func lastSeen(t *testing.T, h *harness, sessionID uuid.UUID) time.Time {
 func TestAccess_ActivitySlidesOnlyPastTheWriteInterval(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	token := h.session(h.insertUser("user@example.test", identity.RoleUserID), false)
+	token := h.session(t, h.insertUser(t, "user@example.test", identity.RoleUserID), false)
 	p, _ := check(t, h, token, "session")
 
 	h.advance(5*time.Minute - time.Second)
@@ -425,7 +447,7 @@ func TestAccess_ActivitySlidesOnlyPastTheWriteInterval(t *testing.T) {
 func TestAccess_IdleBoundRejectsAtExactlyTheIdleTimeout(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	token := h.session(h.insertUser("user@example.test", identity.RoleUserID), false)
+	token := h.session(t, h.insertUser(t, "user@example.test", identity.RoleUserID), false)
 
 	h.advance(h.cfg.Sessions.Idle - time.Second)
 	if _, got := check(t, h, token, "session"); got != allowed {
@@ -442,7 +464,7 @@ func TestAccess_IdleBoundRejectsAtExactlyTheIdleTimeout(t *testing.T) {
 func TestAccess_PrivilegedAbsoluteLifetime(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	token := h.session(h.insertUser("owner@example.test", identity.RoleOwnerID), true)
+	token := h.session(t, h.insertUser(t, "owner@example.test", identity.RoleOwnerID), true)
 
 	for elapsed := time.Hour; elapsed < h.cfg.Sessions.PrivilegedAbsolute; elapsed += time.Hour {
 		h.advance(time.Hour)
@@ -466,12 +488,12 @@ func TestAccess_PrivilegedAbsoluteLifetime(t *testing.T) {
 func TestAccess_PromotionTightensTheBoundsAtOnce(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	promoted := h.insertUser("promoted@example.test", identity.RoleUserID)
-	promotedToken := h.session(promoted, false)
-	control := h.session(h.insertUser("control@example.test", identity.RoleUserID), false)
+	promoted := h.insertUser(t, "promoted@example.test", identity.RoleUserID)
+	promotedToken := h.session(t, promoted, false)
+	control := h.session(t, h.insertUser(t, "control@example.test", identity.RoleUserID), false)
 
 	h.advance(3 * time.Hour)
-	h.exec(`INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, promoted, identity.RoleOwnerID)
+	h.exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, promoted, identity.RoleOwnerID)
 
 	if _, got := check(t, h, control, "session"); got != allowed {
 		t.Errorf("User idle 3h: got %v, want allowed", got)
@@ -481,18 +503,14 @@ func TestAccess_PromotionTightensTheBoundsAtOnce(t *testing.T) {
 	}
 }
 
-// stubbedSession is why the session-lifetime exchanges below skip contract
-// validation: getIdentitySession is still a stub, and its 501 is not in the
-// contract. A 501 proves the access layer admitted the request; the task
-// that implements the operation turns these into validated 200s.
-const stubbedSession = "getIdentitySession is still a stub; its 501 proves the session was admitted"
-
 const sessionPath = "/api/v1/identity/session"
 
+// admitted proves c's session is live: GET /session answers a
+// contract-validated 200.
 func admitted(t *testing.T, c *client) {
 	t.Helper()
-	if r := c.do(http.MethodGet, sessionPath, nil, skipContract(stubbedSession)); r.status != http.StatusNotImplemented {
-		t.Fatalf("GET %s: status %d, want 501 (admitted, stubbed)", sessionPath, r.status)
+	if r := c.do(http.MethodGet, sessionPath, nil); r.status != http.StatusOK {
+		t.Fatalf("GET %s: status %d, want 200 (admitted)", sessionPath, r.status)
 	}
 }
 
@@ -507,7 +525,7 @@ func rejected(t *testing.T, c *client) {
 func TestSessionLifetime_PrivilegedSessionEndsAfterTheShorterIdleWindow(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c := h.signIn(h.insertUser("owner@example.test", identity.RoleOwnerID), true)
+	c := h.signIn(t, h.insertUser(t, "owner@example.test", identity.RoleOwnerID), true)
 	admitted(t, c)
 
 	h.advance(h.cfg.Sessions.PrivilegedIdle + time.Second)
@@ -518,7 +536,7 @@ func TestSessionLifetime_PrivilegedSessionEndsAfterTheShorterIdleWindow(t *testi
 func TestSessionLifetime_StandardSessionSurvivesThePrivilegedIdleWindow(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c := h.signIn(h.insertUser("user@example.test", identity.RoleUserID), false)
+	c := h.signIn(t, h.insertUser(t, "user@example.test", identity.RoleUserID), false)
 
 	h.advance(h.cfg.Sessions.PrivilegedIdle + time.Second)
 	admitted(t, c)
@@ -528,7 +546,7 @@ func TestSessionLifetime_StandardSessionSurvivesThePrivilegedIdleWindow(t *testi
 func TestSessionLifetime_ActivityRenewsAPrivilegedSessionInsideTheIdleWindow(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c := h.signIn(h.insertUser("owner@example.test", identity.RoleOwnerID), true)
+	c := h.signIn(t, h.insertUser(t, "owner@example.test", identity.RoleOwnerID), true)
 
 	// Requests spanning longer than the 2 h idle window. Each one has to
 	// renew the window, otherwise the session dies partway through.
@@ -543,7 +561,7 @@ func TestSessionLifetime_ActivityRenewsAPrivilegedSessionInsideTheIdleWindow(t *
 func TestSessionLifetime_ContinuouslyUsedSessionStillEndsAtTheAbsoluteLifetime(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
-	c := h.signIn(h.insertUser("user@example.test", identity.RoleUserID), false)
+	c := h.signIn(t, h.insertUser(t, "user@example.test", identity.RoleUserID), false)
 
 	// The 8 h idle window never elapses between hourly requests, so nothing
 	// but the 24 h absolute lifetime can end this session.

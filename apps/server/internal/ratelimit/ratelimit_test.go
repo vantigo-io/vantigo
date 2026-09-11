@@ -258,6 +258,27 @@ func TestBlocked_ANewerStoredWindowStillBlocks(t *testing.T) {
 	}
 }
 
+// TestNewWithClock_WindowsFollowTheGivenClock proves a limiter built on a
+// caller's clock opens and closes its windows on that clock, not the wall
+// clock: a full window stays full while the clock stands still, and the next
+// window opens when the clock, not real time, reaches it.
+func TestNewWithClock_WindowsFollowTheGivenClock(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	now := time.Date(2026, 9, 10, 12, 0, 59, 0, time.UTC)
+	l := NewWithClock(pool, func() time.Time { return now })
+
+	for range login.Limit {
+		mustHit(t, l, login, "203.0.113.7")
+	}
+	if d := mustBlocked(t, l, login, "203.0.113.7"); d.Allowed {
+		t.Fatal("a full window at 12:00:59 is not blocked")
+	}
+	now = now.Add(time.Second) // 12:01:00, the next window
+	if d := mustBlocked(t, l, login, "203.0.113.7"); !d.Allowed {
+		t.Error("the window did not turn over when the given clock reached 12:01")
+	}
+}
+
 func TestReset_ClearsTheCounter(t *testing.T) {
 	l, _ := newLimiter(t)
 	for range login.Limit {

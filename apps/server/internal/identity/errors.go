@@ -23,13 +23,19 @@ const (
 // authError writes identity's usual error body, AuthErrorResponse:
 // {"error":{"code","message","fields"}}, with fields omitted when empty.
 func authError(w http.ResponseWriter, status int, code, message string, fields map[string][]string) {
+	writeJSON(w, status, "application/json", authErrorBody(code, message, fields))
+}
+
+// authErrorBody is the AuthErrorResponse authError writes, for handlers
+// that answer through a generated response type.
+func authErrorBody(code, message string, fields map[string][]string) apicommon.AuthErrorResponse {
 	var body apicommon.AuthErrorResponse
 	body.Error.Code = code
 	body.Error.Message = message
 	if len(fields) > 0 {
 		body.Error.Fields = &fields
 	}
-	writeJSON(w, status, "application/json", body)
+	return body
 }
 
 // codeMessage writes the flat CodeMessageError body {"code","message"} that

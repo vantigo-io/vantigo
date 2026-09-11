@@ -13,6 +13,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteExpiredLoginTickets = `-- name: DeleteExpiredLoginTickets :exec
+DELETE FROM identity.login_tickets
+WHERE expires_at <= $1::timestamptz
+`
+
+func (q *Queries) DeleteExpiredLoginTickets(ctx context.Context, now time.Time) error {
+	_, err := q.db.Exec(ctx, deleteExpiredLoginTickets, now)
+	return err
+}
+
 const getSessionByTokenHash = `-- name: GetSessionByTokenHash :one
 SELECT s.id, s.user_id, s.persistent, s.mfa_verified_at, s.created_at, s.last_seen_at,
        u.is_disabled, u.lockout_end,
@@ -98,6 +108,22 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, arg GetSessionByTok
 		&i.ScimUpstreamActive,
 	)
 	return i, err
+}
+
+const insertLoginTicket = `-- name: InsertLoginTicket :exec
+INSERT INTO identity.login_tickets (token_hash, user_id, expires_at)
+VALUES ($1, $2, $3::timestamptz)
+`
+
+type InsertLoginTicketParams struct {
+	TokenHash []byte
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+}
+
+func (q *Queries) InsertLoginTicket(ctx context.Context, arg InsertLoginTicketParams) error {
+	_, err := q.db.Exec(ctx, insertLoginTicket, arg.TokenHash, arg.UserID, arg.ExpiresAt)
+	return err
 }
 
 const insertSession = `-- name: InsertSession :exec

@@ -94,6 +94,9 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 	case contracts.RuleAnonymous, contracts.RuleSession:
 		return p, nil
 	case contracts.RulePolicy:
+		if len(rule.Names) == 0 {
+			return contracts.Principal{}, contracts.ErrForbidden // ParseRule admits no empty rule; fail closed regardless
+		}
 		for _, name := range rule.Names {
 			if !a.policySatisfied(name, s) {
 				return contracts.Principal{}, contracts.ErrForbidden
@@ -101,6 +104,9 @@ func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principa
 		}
 		return p, nil
 	case contracts.RulePermission:
+		if len(rule.Names) == 0 {
+			return contracts.Principal{}, contracts.ErrForbidden // as for policies: an empty rule grants nothing
+		}
 		allowed, err := a.permitted(ctx, s, rule.Names, now)
 		if err != nil {
 			return contracts.Principal{}, err

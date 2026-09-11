@@ -12,6 +12,125 @@ import (
 	"github.com/google/uuid"
 )
 
+const acquireOwnerMutationLock = `-- name: AcquireOwnerMutationLock :exec
+SELECT pg_advisory_xact_lock($1::bigint)
+`
+
+// AcquireOwnerMutationLock takes the transaction advisory lock every change
+// to who holds Owner serialises on (EA/AuthAccountState.cs:9, :20-25).
+func (q *Queries) AcquireOwnerMutationLock(ctx context.Context, lockKey int64) error {
+	_, err := q.db.Exec(ctx, acquireOwnerMutationLock, lockKey)
+	return err
+}
+
+const assignUserRole = `-- name: AssignUserRole :execrows
+INSERT INTO identity.user_roles (user_id, role_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING
+`
+
+type AssignUserRoleParams struct {
+	UserID uuid.UUID
+	RoleID uuid.UUID
+}
+
+// AssignUserRole gives the user a direct role. It affects no row when the
+// user already holds it.
+func (q *Queries) AssignUserRole(ctx context.Context, arg AssignUserRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, assignUserRole, arg.UserID, arg.RoleID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getLoginCandidate = `-- name: GetLoginCandidate :one
+SELECT u.id, u.email, u.display_name, u.password_hash, u.is_disabled, u.lockout_end, u.totp_enabled,
+       r.role_names,
+       ($1::boolean AND m.upstream_active IS FALSE AND NOT r.is_owner)::boolean AS scim_inactive
+FROM identity.users u
+CROSS JOIN LATERAL (
+    SELECT coalesce(array_agg(ro.name ORDER BY ro.name), '{}')::text[] AS role_names,
+           coalesce(bool_or(ro.name = 'Owner'), false)::boolean AS is_owner
+    FROM identity.user_roles ur
+    JOIN identity.roles ro ON ro.id = ur.role_id
+    WHERE ur.user_id = u.id
+) r
+LEFT JOIN identity.scim_user_mappings m ON m.user_id = u.id
+WHERE u.normalized_email = $2
+`
+
+type GetLoginCandidateParams struct {
+	ScimEnabled     bool
+	NormalizedEmail string
+}
+
+type GetLoginCandidateRow struct {
+	ID           uuid.UUID
+	Email        string
+	DisplayName  string
+	PasswordHash *string
+	IsDisabled   bool
+	LockoutEnd   *time.Time
+	TotpEnabled  bool
+	RoleNames    []string
+	ScimInactive bool
+}
+
+// GetLoginCandidate reads what password sign-in decides on for the account
+// with normalized_email: its credential, TOTP and lockout state, its roles,
+// and whether it is "effectively disabled" beyond is_disabled: while SCIM
+// is configured, a non-Owner the directory deactivated
+// (SV/ScimLifecycleService.cs:21-44).
+func (q *Queries) GetLoginCandidate(ctx context.Context, arg GetLoginCandidateParams) (GetLoginCandidateRow, error) {
+	row := q.db.QueryRow(ctx, getLoginCandidate, arg.ScimEnabled, arg.NormalizedEmail)
+	var i GetLoginCandidateRow
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.IsDisabled,
+		&i.LockoutEnd,
+		&i.TotpEnabled,
+		&i.RoleNames,
+		&i.ScimInactive,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
+       password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
+       totp_enabled, totp_last_step, version, created_at, updated_at
+FROM identity.users
+WHERE id = $1
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (IdentityUser, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i IdentityUser
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.NormalizedEmail,
+		&i.EmailConfirmed,
+		&i.DisplayName,
+		&i.PreferredLanguage,
+		&i.PasswordHash,
+		&i.IsDisabled,
+		&i.LockoutEnd,
+		&i.FailedLoginCount,
+		&i.TotpSecret,
+		&i.TotpEnabled,
+		&i.TotpLastStep,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserByNormalizedEmail = `-- name: GetUserByNormalizedEmail :one
 SELECT id, email, normalized_email, email_confirmed, display_name, preferred_language,
        password_hash, is_disabled, lockout_end, failed_login_count, totp_secret,
@@ -81,5 +200,58 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
+	return err
+}
+
+const recordLoginFailure = `-- name: RecordLoginFailure :one
+UPDATE identity.users
+SET failed_login_count = CASE WHEN failed_login_count + 1 >= $1::integer THEN 0 ELSE failed_login_count + 1 END,
+    lockout_end = CASE WHEN failed_login_count + 1 >= $1::integer THEN $2::timestamptz ELSE lockout_end END
+WHERE id = $3
+RETURNING lockout_end
+`
+
+type RecordLoginFailureParams struct {
+	MaxFailures  int32
+	LockoutUntil time.Time
+	ID           uuid.UUID
+}
+
+// RecordLoginFailure counts one wrong password, as ASP.NET Identity's
+// AccessFailedAsync does: the failure that reaches max_failures locks the
+// account until lockout_until and starts the count again from zero. It
+// returns the lockout end as it stands afterwards.
+func (q *Queries) RecordLoginFailure(ctx context.Context, arg RecordLoginFailureParams) (*time.Time, error) {
+	row := q.db.QueryRow(ctx, recordLoginFailure, arg.MaxFailures, arg.LockoutUntil, arg.ID)
+	var lockout_end *time.Time
+	err := row.Scan(&lockout_end)
+	return lockout_end, err
+}
+
+const resetLoginFailures = `-- name: ResetLoginFailures :exec
+UPDATE identity.users
+SET failed_login_count = 0
+WHERE id = $1 AND failed_login_count <> 0
+`
+
+func (q *Queries) ResetLoginFailures(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, resetLoginFailures, id)
+	return err
+}
+
+const rotateUserVersion = `-- name: RotateUserVersion :exec
+UPDATE identity.users
+SET version = $1, updated_at = $2::timestamptz
+WHERE id = $3
+`
+
+type RotateUserVersionParams struct {
+	Version uuid.UUID
+	Now     time.Time
+	ID      uuid.UUID
+}
+
+func (q *Queries) RotateUserVersion(ctx context.Context, arg RotateUserVersionParams) error {
+	_, err := q.db.Exec(ctx, rotateUserVersion, arg.Version, arg.Now, arg.ID)
 	return err
 }

@@ -2,39 +2,72 @@ package identity
 
 import (
 	"net/http"
+	"time"
 )
 
 // sessionCookieName carries the session token (spec *Sessions*).
 const sessionCookieName = "vantigo.session"
 
-// setSessionCookie hands token to the browser: HttpOnly, SameSite=Strict,
+// loginTicketCookieName carries a pending two-factor sign-in's ticket from
+// POST /login to POST /login/2fa (spec *Sessions*, the 2FA step).
+const loginTicketCookieName = "vantigo.2fa"
+
+// loginTicketLifetime is how long a login ticket, row and cookie alike,
+// stays valid: ASP.NET's TwoFactorUserIdScheme default, which the .NET
+// flow relied on.
+const loginTicketLifetime = 5 * time.Minute
+
+// cookies are the cookies a response sets before its generated Visit
+// method writes the status and body.
+type cookies []*http.Cookie
+
+func (cs cookies) set(w http.ResponseWriter) {
+	for _, c := range cs {
+		http.SetCookie(w, c)
+	}
+}
+
+// newSessionCookie hands token to the browser: HttpOnly, SameSite=Strict,
 // scoped to the base path, and Secure unless the installation runs in
 // development or has knowingly allowed plaintext transport. A persistent
 // cookie (rememberMe on /login/2fa) lives for the standard absolute
 // lifetime; the server enforces the tighter privileged bound per request
 // whatever the cookie says. Any other cookie ends with the browser session.
-func (a *Access) setSessionCookie(w http.ResponseWriter, token string, persistent bool) {
-	c := a.sessionCookie(token)
+func (a *Access) newSessionCookie(token string, persistent bool) *http.Cookie {
+	c := a.cookie(sessionCookieName, token)
 	if persistent {
 		c.MaxAge = int(a.cfg.Sessions.Absolute.Seconds())
 	}
-	http.SetCookie(w, c)
+	return c
 }
 
-// clearSessionCookie tells the browser to drop the session cookie.
-func (a *Access) clearSessionCookie(w http.ResponseWriter) {
-	c := a.sessionCookie("")
+// expiredSessionCookie tells the browser to drop the session cookie.
+func (a *Access) expiredSessionCookie() *http.Cookie {
+	c := a.cookie(sessionCookieName, "")
 	c.MaxAge = -1
-	http.SetCookie(w, c)
+	return c
 }
 
-func (a *Access) sessionCookie(value string) *http.Cookie {
+// clearSessionCookie sets expiredSessionCookie on w.
+func (a *Access) clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, a.expiredSessionCookie())
+}
+
+// newLoginTicketCookie hands a login ticket to the browser with the session
+// cookie's attributes, expiring with the ticket.
+func (a *Access) newLoginTicketCookie(token string) *http.Cookie {
+	c := a.cookie(loginTicketCookieName, token)
+	c.MaxAge = int(loginTicketLifetime.Seconds())
+	return c
+}
+
+func (a *Access) cookie(name, value string) *http.Cookie {
 	path := a.cfg.BasePath
 	if path == "" {
 		path = "/"
 	}
 	return &http.Cookie{
-		Name:     sessionCookieName,
+		Name:     name,
 		Value:    value,
 		Path:     path,
 		HttpOnly: true,

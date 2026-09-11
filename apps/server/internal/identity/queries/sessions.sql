@@ -61,3 +61,11 @@ WHERE user_id = @user_id AND revoked_at IS NULL;
 UPDATE identity.sessions
 SET revoked_at = @now::timestamptz
 WHERE user_id = @user_id AND id <> @keep AND revoked_at IS NULL;
+
+-- name: InsertLoginTicket :exec
+INSERT INTO identity.login_tickets (token_hash, user_id, expires_at)
+VALUES (@token_hash, @user_id, @expires_at::timestamptz);
+
+-- name: DeleteExpiredLoginTickets :exec
+DELETE FROM identity.login_tickets
+WHERE expires_at <= @now::timestamptz;
