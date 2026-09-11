@@ -257,3 +257,41 @@ func TestSessionRevocation_SystemAdminRevokingThemselvesIsSignedOut(t *testing.T
 		t.Errorf("the administrator's cookie replayed: status %d, want 401", r.status)
 	}
 }
+
+// TestSessionRevocation_BothRevocationsSpendResetLinks: .NET's RevokeAsync,
+// behind both revocation endpoints (EA/SessionEndpoints.cs:47, :84), rotated
+// the security stamp (UpdateSecurityStampAsync, :109), which also killed
+// every reset link the target held. Go deletes the target's reset tokens in
+// the revocation's transaction, for the self-revocation and a SystemAdmin's
+// revocation of another account alike.
+func TestSessionRevocation_BothRevocationsSpendResetLinks(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	admin, _ := h.bootstrapOwner(t)
+
+	for _, via := range []string{"self", "system"} {
+		email := via + "-revocation@example.test"
+		id := h.createUser(t, admin, email, identity.RoleUser)
+		c := h.login(t, email, userPassword)
+		requestRecovery(t, h, email)
+		token := mailedLink(t, h, email).Query().Get("token")
+
+		var r *resp
+		if via == "self" {
+			r = c.do(http.MethodPost, "/api/v1/identity/account/sessions/revoke", nil)
+		} else {
+			r = admin.do(http.MethodPost, revokePathFor(id), nil)
+		}
+		if r.status != http.StatusOK {
+			t.Fatalf("%s revocation: status %d body %s", via, r.status, r.body)
+		}
+		if r := reset(h, t, email, token, newUserPassword); r.status != http.StatusBadRequest || r.code() != "invalid_reset_token" {
+			t.Errorf("%s revocation: the reset link afterwards: status %d code %q, want 400 invalid_reset_token", via, r.status, r.code())
+		}
+		if n := h.count(t, `SELECT count(*) FROM identity.password_reset_tokens WHERE user_id = $1`, id); n != 0 {
+			t.Errorf("%s revocation: %d reset tokens left, want 0", via, n)
+		}
+		rejected(t, c)
+	}
+	admitted(t, admin)
+}

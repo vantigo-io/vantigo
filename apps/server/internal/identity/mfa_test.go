@@ -367,7 +367,7 @@ func TestMfa_TotpVerificationIsSessionBound(t *testing.T) {
 // MFA-verified, as .NET's reissued cookie dropped its MFA claim.
 func TestMfa_SetupReturnsTheSecretOnceEncryptsItAndEndsOtherSessions(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("MFA_ISSUER", "Acme Corp"))
+	h := newHarness(t, withEnv("MFA_ISSUER", "Acme: Corp"))
 	owner, _ := h.bootstrapOwner(t)
 	const email = "setup+mfa@example.test"
 	id := h.createUser(t, owner, email, identity.RoleUser)
@@ -393,9 +393,14 @@ func TestMfa_SetupReturnsTheSecretOnceEncryptsItAndEndsOtherSessions(t *testing.
 	if raw, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(key); err != nil || len(raw) != 20 {
 		t.Errorf("shared key %q: %d bytes (%v), want 20 random bytes in unpadded base32", key, len(raw), err)
 	}
-	wantURI := "otpauth://totp/Acme%20Corp:setup%2Bmfa%40example.test?secret=" + key + "&issuer=Acme%20Corp&digits=6"
+	// The issuer's colon is escaped, so the one raw colon in the label is
+	// the separator between issuer and account.
+	wantURI := "otpauth://totp/Acme%3A%20Corp:setup%2Bmfa%40example.test?secret=" + key + "&issuer=Acme%3A%20Corp&digits=6"
 	if *setup.AuthenticatorURI != wantURI {
 		t.Errorf("authenticator URI\n got %s\nwant %s", *setup.AuthenticatorURI, wantURI)
+	}
+	if label, _, _ := strings.Cut(strings.TrimPrefix(*setup.AuthenticatorURI, "otpauth://totp/"), "?"); strings.Count(label, ":") != 1 || !strings.Contains(label, "%3A") {
+		t.Errorf("label %q, want the issuer's colon escaped as %%3A and one raw separator", label)
 	}
 
 	s := readTOTP(t, h, id)
@@ -447,8 +452,9 @@ func TestMfa_SetupReturnsTheSecretOnceEncryptsItAndEndsOtherSessions(t *testing.
 // TestMfa_EnableVerifiesTheCodeAndIssuesRecoveryCodes proves enable: a
 // blank or wrong code is 400 invalid_mfa_code and changes nothing; the
 // right one turns TOTP on, spends its step, returns ten recovery codes
-// stored only as hashes, and makes the caller's session MFA-verified while
-// another session stays as it was; the same code a second time is refused.
+// stored only as hashes, makes the caller's session MFA-verified, and, as
+// .NET's stamp rotation did, ends the user's other session and spends
+// their reset link; the same code a second time is refused.
 func TestMfa_EnableVerifiesTheCodeAndIssuesRecoveryCodes(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -462,6 +468,8 @@ func TestMfa_EnableVerifiesTheCodeAndIssuesRecoveryCodes(t *testing.T) {
 	r.json(&setup)
 	key := *setup.SharedKey
 	other := h.login(t, email, userPassword) // after setup, which ends other sessions
+	requestRecovery(t, h, email)
+	token := mailedLink(t, h, email).Query().Get("token")
 
 	for name, code := range map[string]any{"blank": nil, "spaces": "   ", "wrong": totp(key, h.now().Add(-10*time.Minute))} {
 		r := c.do(http.MethodPost, accountMFAPath+"/enable", map[string]any{"code": code, "password": userPassword})
@@ -488,8 +496,11 @@ func TestMfa_EnableVerifiesTheCodeAndIssuesRecoveryCodes(t *testing.T) {
 	if !sessionMFA(t, c) {
 		t.Errorf("the enabling session does not count as MFA-verified")
 	}
-	if sessionMFA(t, other) {
-		t.Errorf("another session counts as MFA-verified")
+	// Enabling rotated .NET's security stamp: the other session ends and the
+	// reset link dies with it, while the caller's session carries on.
+	rejected(t, other)
+	if r := reset(h, t, email, token, newUserPassword); r.status != http.StatusBadRequest || r.code() != "invalid_reset_token" {
+		t.Errorf("the reset link after enable: status %d code %q, want 400 invalid_reset_token", r.status, r.code())
 	}
 
 	if r := c.do(http.MethodPost, accountMFAPath+"/enable", map[string]any{"code": code, "password": userPassword}); r.status != http.StatusBadRequest || r.code() != "invalid_mfa_code" {

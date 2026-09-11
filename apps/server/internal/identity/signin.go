@@ -284,23 +284,27 @@ const (
 //     (:388-396). A TOTP code must match a step within one of now, and that
 //     step must be later than the last one spent, so a replay fails. A
 //     recovery code is spent by the attempt that uses it.
-//  5. A code that fails counts toward lockout, as a wrong password does:
-//     429 account_locked when this failure locked the account, else 401
+//  5. A code that fails counts toward lockout, as a wrong password does,
+//     a failed recovery code included (deliberate hardening, see
+//     redeemLoginTicket): 429 account_locked when this failure locked the
+//     account, else 401
 //     invalid_two_factor_code. The ticket survives a failed code, so the
 //     user can try again while it lasts, bounded by the lockout: .NET's
 //     failure path (:397-402) answers without signing the two-factor scheme
 //     out, unlike the refusal in 3, and ASP.NET's SignInManager signs it out
 //     only once a code succeeds.
-//  6. A code that verifies clears the failure count, unless parallel
-//     failures have locked the account meanwhile, which answers 429
-//     account_locked and keeps nothing of the attempt. Then the ticket is
-//     spent and a session starts that verified a second factor, persistent
-//     when rememberMe is set.
+//  6. A code that verifies clears the failure count. The reset is
+//     conditional on no lockout being in force, a guard the row lock now
+//     makes unreachable (it would answer 429 account_locked and keep
+//     nothing of the attempt). Then the ticket is spent and a session
+//     starts that verified a second factor, persistent when rememberMe is
+//     set.
 //
 // Everything after 1 and 2's cookie check runs in one transaction that
-// locks the ticket first, so two redemptions of one ticket take turns and
-// the second finds it spent. The success also spends the ticket with a
-// conditional delete, so the ticket is single-use without the lock too.
+// locks the user row first and then the ticket (redeemLoginTicket gives
+// the lock order), so two redemptions of one ticket take turns and the
+// second finds it spent. The success also spends the ticket with a
+// conditional delete, so the ticket is single-use without the locks too.
 func (s *server) PostIdentityLogin2fa(ctx context.Context, req gen.PostIdentityLogin2faRequestObject) (gen.PostIdentityLogin2faResponseObject, error) {
 	var code string
 	var rememberMe bool
@@ -342,16 +346,37 @@ func (s *server) PostIdentityLogin2fa(ctx context.Context, req gen.PostIdentityL
 func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Request, ticket []byte, code string, rememberMe bool) (gen.PostIdentityLogin2faResponseObject, error) {
 	now := s.deps.Clock()
 	q := store.New(tx)
-	userID, err := q.LockLoginTicket(ctx, store.LockLoginTicketParams{TokenHash: ticket, Now: now})
+	userID, err := q.FindLoginTicket(ctx, store.FindLoginTicketParams{TokenHash: ticket, Now: now})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return s.twoFactorExpired(r), nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
 	}
-	// A ticket dies with its user (ON DELETE CASCADE), so the user exists.
+	// Lock order: the user row first, then the ticket, then the step or the
+	// recovery code. Every MFA change (setup, enable, disable, regeneration,
+	// the owner reset) locks the user row before it touches the recovery
+	// codes, and deleting a user locks the row before its tickets go with
+	// it. Taking the row first here keeps every path in that one order, so
+	// none can deadlock; spending a recovery code before the row once did,
+	// against a concurrent disable or regeneration (40P01, a 500). Holding
+	// the row also makes this read authoritative: no failure or lockout can
+	// land between it and the end of the step.
 	u, err := q.GetTwoFactorCandidate(ctx, store.GetTwoFactorCandidateParams{ScimEnabled: s.deps.Config.SCIM != nil, ID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// The user was deleted since the ticket was read, and the ticket
+		// went with them (ON DELETE CASCADE).
+		return s.twoFactorExpired(r), nil
+	}
 	if err != nil {
+		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
+	}
+	// Under the row lock, lock the ticket: a redemption of the same ticket
+	// that held the row first has spent it by now.
+	switch _, err := q.LockLoginTicket(ctx, store.LockLoginTicketParams{TokenHash: ticket, Now: now}); {
+	case errors.Is(err, pgx.ErrNoRows):
+		return s.twoFactorExpired(r), nil
+	case err != nil:
 		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
 	}
 	if u.IsDisabled || u.ScimInactive || isLockedOut(u.LockoutEnd, now) {
@@ -377,6 +402,12 @@ func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Reque
 	if err != nil {
 		return nil, err
 	}
+	// A failed code counts toward the password lockout, a failed recovery
+	// code included. For recovery codes that is deliberate hardening, not
+	// parity: ASP.NET's TwoFactorRecoveryCodeSignInAsync counted no failure
+	// (it relies on the codes being random), while its authenticator path
+	// did. Keep it: every guess at either factor costs one of the five
+	// attempts.
 	if !verified {
 		lockoutEnd, err := q.RecordLoginFailure(ctx, store.RecordLoginFailureParams{
 			ID:           u.ID,
@@ -397,6 +428,9 @@ func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Reque
 		return nil, fmt.Errorf("identity: two-factor sign-in: %w", err)
 	}
 	if unlocked == 0 {
+		// Unreachable under the row lock, which kept any lockout from
+		// landing after the read above; kept as a guard should the lock
+		// order ever change.
 		return nil, refuse(http.StatusTooManyRequests, "account_locked", accountLockedMessage, nil)
 	}
 	spent, err := q.SpendLoginTicket(ctx, store.SpendLoginTicketParams{TokenHash: ticket, Now: now})

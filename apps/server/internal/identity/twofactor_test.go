@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 )
@@ -327,7 +328,10 @@ func TestLogin2fa_TotpReplayIsRejected(t *testing.T) {
 }
 
 // TestLogin2fa_ConcurrentUsesOfOneTotpCodeSucceedOnce races one code from
-// two sign-ins, each with its own ticket: exactly one gets a session.
+// two sign-ins, each with its own ticket, released together from behind the
+// user row so both have verified nothing yet: the one that gets the row
+// second finds the step spent (RecordTOTPStep's condition), and exactly one
+// gets a session.
 func TestLogin2fa_ConcurrentUsesOfOneTotpCodeSucceedOnce(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -337,7 +341,7 @@ func TestLogin2fa_ConcurrentUsesOfOneTotpCodeSucceedOnce(t *testing.T) {
 	a, b := h.startTwoFactor(t, email, userPassword), h.startTwoFactor(t, email, userPassword)
 	before := h.count(t, `SELECT count(*) FROM identity.sessions WHERE user_id = $1`, id)
 
-	responses := race(func() *resp { return secondFactor(a, code, false) }, func() *resp { return secondFactor(b, code, false) })
+	responses := raceBehindUserRow(t, h, id, func() *resp { return secondFactor(a, code, false) }, func() *resp { return secondFactor(b, code, false) })
 	statuses := []int{responses[0].status, responses[1].status}
 	slices.Sort(statuses)
 	if !slices.Equal(statuses, []int{http.StatusOK, http.StatusUnauthorized}) {
@@ -383,7 +387,8 @@ func TestLogin2fa_RecoveryCodeIsSingleUse(t *testing.T) {
 }
 
 // TestLogin2fa_ConcurrentUsesOfOneRecoveryCodeSucceedOnce races one recovery
-// code from two sign-ins: exactly one gets a session.
+// code from two sign-ins, released together from behind the user row:
+// exactly one gets a session.
 func TestLogin2fa_ConcurrentUsesOfOneRecoveryCodeSucceedOnce(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -391,7 +396,7 @@ func TestLogin2fa_ConcurrentUsesOfOneRecoveryCodeSucceedOnce(t *testing.T) {
 	id, _, codes := enrolledUser(t, h, email, identity.RoleUserID)
 	a, b := h.startTwoFactor(t, email, userPassword), h.startTwoFactor(t, email, userPassword)
 
-	responses := race(func() *resp { return secondFactor(a, codes[0], false) }, func() *resp { return secondFactor(b, codes[0], false) })
+	responses := raceBehindUserRow(t, h, id, func() *resp { return secondFactor(a, codes[0], false) }, func() *resp { return secondFactor(b, codes[0], false) })
 	statuses := []int{responses[0].status, responses[1].status}
 	slices.Sort(statuses)
 	if !slices.Equal(statuses, []int{http.StatusOK, http.StatusUnauthorized}) {
@@ -418,6 +423,43 @@ func awaitLockWaiters(t *testing.T, h *harness, n int, finished <-chan struct{})
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// lockUserRow starts a transaction that holds userID's users row, as an MFA
+// change or a counted failure holds it, and rolls it back at cleanup unless
+// the test commits it first.
+func lockUserRow(t *testing.T, h *harness, userID uuid.UUID) pgx.Tx {
+	t.Helper()
+	ctx := context.Background()
+	gate, err := h.pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `SELECT 1 FROM identity.users WHERE id = $1 FOR UPDATE`, userID); err != nil {
+		t.Fatalf("gate: lock the user row: %v", err)
+	}
+	return gate
+}
+
+// raceBehindUserRow runs fns at once while a gate holds userID's users row,
+// and releases the gate only once every one of them is waiting on a lock,
+// so they truly overlap at the row every second step locks first.
+func raceBehindUserRow(t *testing.T, h *harness, userID uuid.UUID, fns ...func() *resp) []*resp {
+	t.Helper()
+	gate := lockUserRow(t, h, userID)
+	var out []*resp
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		out = race(fns...)
+	}()
+	awaitLockWaiters(t, h, len(fns), finished)
+	if err := gate.Commit(context.Background()); err != nil {
+		t.Fatalf("gate: commit: %v", err)
+	}
+	<-finished
+	return out
 }
 
 // TestLogin2fa_OneTicketRedeemsOnceUnderConcurrency races two valid second
@@ -482,12 +524,14 @@ func TestLogin2fa_OneTicketRedeemsOnceUnderConcurrency(t *testing.T) {
 	}
 }
 
-// TestLogin2fa_TheLockWinsTheRace forces the race the conditional reset
-// closes: the account is read unlocked, then a lock lands while the sign-in
-// waits on the user row. The success path's reset matches no row, so the
-// answer is 429 account_locked, no session starts, and the attempt rolls
-// back: the ticket and the last spent step are as they were.
-func TestLogin2fa_TheLockWinsTheRace(t *testing.T) {
+// TestLogin2fa_ALockThatLandsWhileWaitingIsTheOneSeen forces the race the
+// lockout guards: the account is locked while the second step waits. The
+// step locks the user row before it reads the account, so it waits for the
+// change and then sees the lockout: 429 account_locked, the ticket
+// discarded, and no session, no step spent and no failure counted.
+// (ResetLoginFailures' conditional stays as a second guard; under the row
+// lock it can no longer lose.)
+func TestLogin2fa_ALockThatLandsWhileWaitingIsTheOneSeen(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	const email = "lock-race@example.test"
@@ -497,21 +541,14 @@ func TestLogin2fa_TheLockWinsTheRace(t *testing.T) {
 	sessionsBefore := h.count(t, `SELECT count(*) FROM identity.sessions WHERE user_id = $1`, id)
 
 	ctx := context.Background()
-	gate, err := h.pool.Begin(ctx)
-	if err != nil {
-		t.Fatalf("gate: %v", err)
-	}
-	t.Cleanup(func() { _ = gate.Rollback(ctx) })
-	if _, err := gate.Exec(ctx, `SELECT 1 FROM identity.users WHERE id = $1 FOR UPDATE`, id); err != nil {
-		t.Fatalf("gate: lock the user row: %v", err)
-	}
+	gate := lockUserRow(t, h, id)
 	var r *resp
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
 		r = secondFactor(c, totp(secret, h.now()), false)
 	}()
-	// The sign-in has read the account and is waiting to spend the step.
+	// The sign-in is waiting on the user row.
 	awaitLockWaiters(t, h, 1, finished)
 	if _, err := gate.Exec(ctx, `UPDATE identity.users SET lockout_end = $2, failed_login_count = 0 WHERE id = $1`, id, h.now().Add(15*time.Minute)); err != nil {
 		t.Fatalf("gate: lock the account: %v", err)
@@ -519,19 +556,61 @@ func TestLogin2fa_TheLockWinsTheRace(t *testing.T) {
 	if err := gate.Commit(ctx); err != nil {
 		t.Fatalf("gate: commit: %v", err)
 	}
-
 	<-finished
-	if r.status != http.StatusTooManyRequests || r.code() != "account_locked" || !strings.Contains(string(r.body), lockedMessage) {
+
+	if r.status != http.StatusTooManyRequests || r.code() != "account_locked" || !strings.Contains(string(r.body), unavailableMessage) {
 		t.Fatalf("status %d body %s, want 429 account_locked", r.status, r.body)
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.sessions WHERE user_id = $1`, id); n != sessionsBefore {
 		t.Errorf("%d new sessions, want none", n-sessionsBefore)
 	}
-	if n := ticketRows(t, h, id); n != 1 {
-		t.Errorf("%d login tickets, want the ticket kept by the rollback", n)
+	if n := ticketRows(t, h, id); n != 0 {
+		t.Errorf("%d login tickets, want the refused one discarded", n)
 	}
 	if after := readTOTP(t, h, id).lastStep; after == nil || stepBefore == nil || *after != *stepBefore {
-		t.Errorf("last spent step %v, want %v as before the rolled-back attempt", after, stepBefore)
+		t.Errorf("last spent step %v, want %v: the refused sign-in spent nothing", after, stepBefore)
+	}
+	if n := failedLogins(t, h, id); n != 0 {
+		t.Errorf("failed_login_count = %d, want 0", n)
+	}
+}
+
+// TestLogin2fa_TakesTheUserRowBeforeTheRecoveryCodes proves the lock order.
+// An MFA change holds the user row and then locks the user's recovery
+// codes, as disable and regeneration do (users first, then the codes). A
+// recovery-code sign-in that started meanwhile waits for the user row
+// without having touched the codes, so the change completes and the
+// sign-in then succeeds. Spending the code before taking the row
+// deadlocked here: PostgreSQL aborted one side with 40P01, a 500.
+func TestLogin2fa_TakesTheUserRowBeforeTheRecoveryCodes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "lock-order@example.test"
+	id, _, codes := enrolledUser(t, h, email, identity.RoleUserID)
+	c := h.startTwoFactor(t, email, userPassword)
+
+	ctx := context.Background()
+	gate := lockUserRow(t, h, id)
+	var r *resp
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		r = secondFactor(c, codes[0], false)
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+	if _, err := gate.Exec(ctx, `SELECT 1 FROM identity.recovery_codes WHERE user_id = $1 FOR UPDATE`, id); err != nil {
+		t.Fatalf("the change could not lock the recovery codes behind the waiting sign-in: %v", err)
+	}
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: commit: %v", err)
+	}
+	<-finished
+
+	if r.status != http.StatusOK {
+		t.Fatalf("the recovery-code sign-in after the change: status %d body %s, want 200", r.status, r.body)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.recovery_codes WHERE user_id = $1`, id); n != 9 {
+		t.Errorf("%d recovery codes left, want 9", n)
 	}
 }
 
