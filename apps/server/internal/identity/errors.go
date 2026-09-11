@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
@@ -118,15 +120,44 @@ func writeInvalidRequest(w http.ResponseWriter, _ *http.Request) {
 	authError(w, http.StatusBadRequest, "invalid_request", invalidRequestMessage, nil)
 }
 
+// writeDecodeError is the generated server's answer to a parameter or body
+// it cannot decode: writeInvalidRequest, except under the SCIM base path,
+// where it is a SCIM 400 invalidSyntax, the scimType .NET's SCIM endpoints
+// gave input they could not read (EA/ScimProtocolEndpoints.cs:62-65), with
+// the decode message. The SCIM ingress leaves the generated layer nothing
+// of a SCIM request it could fail to decode (scimIngress), so this is the
+// backstop that keeps even an unforeseen failure in the SCIM shape.
+func writeDecodeError(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, scimBasePath+"/") {
+		writeScimError(w, http.StatusBadRequest, "invalidSyntax", invalidRequestMessage)
+		return
+	}
+	writeInvalidRequest(w, r)
+}
+
 // scimUnauthorized writes the SCIM 401 error body.
 func scimUnauthorized(w http.ResponseWriter) {
-	scimType := "invalidValue"
-	writeJSON(w, http.StatusUnauthorized, "application/scim+json", gen.ScimError{
-		Schemas:  []string{scimErrorSchema},
-		Status:   "401",
-		ScimType: &scimType,
-		Detail:   scimUnauthorizedDetail,
-	})
+	writeScimError(w, http.StatusUnauthorized, "invalidValue", scimUnauthorizedDetail)
+}
+
+// scimErrorBody is a SCIM error as .NET wrote it (SV/ScimProtocolService.cs:1202-1203):
+// its four properties in that order, and scimType null rather than left
+// out when there is none.
+type scimErrorBody struct {
+	Schemas  []string `json:"schemas"`
+	Status   string   `json:"status"`
+	ScimType *string  `json:"scimType"`
+	Detail   string   `json:"detail"`
+}
+
+// writeScimError writes a SCIM error with status as application/scim+json;
+// an empty scimType is written as null.
+func writeScimError(w http.ResponseWriter, status int, scimType, detail string) {
+	body := scimErrorBody{Schemas: []string{scimErrorSchema}, Status: strconv.Itoa(status), Detail: detail}
+	if scimType != "" {
+		body.ScimType = &scimType
+	}
+	writeJSON(w, status, scimMediaType, body)
 }
 
 func writeJSON(w http.ResponseWriter, status int, contentType string, body any) {

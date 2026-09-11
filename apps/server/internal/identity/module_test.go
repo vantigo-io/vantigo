@@ -92,23 +92,6 @@ func TestModule_RejectedCookieIsCleared(t *testing.T) {
 	}
 }
 
-// TestModule_StubbedOperationsSitBehindTheirAccessRule proves a stubbed
-// operation is mounted behind its access rule. Every stub left is a SCIM
-// operation, and the scim rule refuses every request until the SCIM
-// bearer-token authenticator arrives with those operations, so the probe
-// gets the rule's documented 401 and never reaches the stub. The stub's
-// own 501 is module.ResponseError's mapping of ErrNotImplemented, which
-// internal/module's tests cover.
-func TestModule_StubbedOperationsSitBehindTheirAccessRule(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-
-	r := h.client(t).do(http.MethodGet, "/api/v1/identity/scim/v2/Schemas", nil)
-	if r.status != http.StatusUnauthorized || r.header("Content-Type") != "application/scim+json" {
-		t.Errorf("status %d Content-Type %q, want the scim rule's 401", r.status, r.header("Content-Type"))
-	}
-}
-
 // TestModule_UndecodableBodyAnswersInvalidRequest proves the generated
 // server's decode failures reach identity's 400 invalid_request body, never
 // the decoder's own error text.

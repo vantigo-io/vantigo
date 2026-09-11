@@ -274,10 +274,11 @@ func TestSystemStatus_CountsExcludeUnavailableAccountsAndOnlyCountPendingInvitat
 }
 
 // Ported from StaticScimSystemStatusIntegrationTests.AuthenticatedScimIngressIsReportedBestEffortWithoutExposingToken.
-// SCIM (Task 19) is not implemented yet, so the heartbeat is written
-// directly with the same query recordOperationalEvent uses, called twice to
-// prove the one-row-per-kind upsert: only the later occurrence is reported.
-// Task 19 re-asserts this end to end through the real SCIM endpoint.
+// The heartbeat is written directly with the same query
+// recordOperationalEvent uses, called twice to prove the one-row-per-kind
+// upsert: only the later occurrence is reported.
+// TestScim_TheHeartbeatRecordsAuthenticatedRequestsOnly asserts it end to
+// end through the real SCIM endpoints.
 func TestSystemStatus_ScimHeartbeatIsReportedWithoutExposingTheToken(t *testing.T) {
 	t.Parallel()
 	const token = "identity-harness-scim-token"

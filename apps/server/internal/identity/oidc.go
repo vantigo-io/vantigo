@@ -508,6 +508,18 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 			return nil, fmt.Errorf("identity: OIDC email: %w", err)
 		}
 		if taken {
+			// A completion racing this one for the same identity may have
+			// committed its account and link between the two reads: then
+			// the email is that account's, and the link, which only a
+			// completion for this very identity creates, decides, as after
+			// a lost provisioning race. The email alone never links.
+			linked, err := s.q.GetOidcLinkedUser(ctx, store.GetOidcLinkedUserParams{Issuer: account.issuer, Subject: account.subject})
+			if err == nil {
+				return s.oidcSignInLinked(ctx, r, linked, consumed)
+			}
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return nil, fmt.Errorf("identity: OIDC link: %w", err)
+			}
 			if u.IsDisabled || isLockedOut(u.LockoutEnd, s.deps.Clock()) {
 				return fail(oidcAccountLocked, "the email's account is unavailable")
 			}

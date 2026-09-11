@@ -227,11 +227,13 @@ CREATE TABLE identity.oidc_links (
 CREATE INDEX ix_oidc_links_user ON identity.oidc_links (user_id);
 
 -- Deleting a SCIM-provisioned user is refused (RESTRICT → 409
--- provenance_conflict), as in the .NET module.
+-- provenance_conflict), as in the .NET module. external_id holds the 512
+-- characters .NET's column did (ScimUserMappingEntityTypeConfiguration.cs:16),
+-- the bound its SCIM validation allows.
 CREATE TABLE identity.scim_user_mappings (
     resource_id     uuid PRIMARY KEY,
     user_id         uuid NOT NULL REFERENCES identity.users (id) ON DELETE RESTRICT,
-    external_id     text NOT NULL CHECK (char_length(external_id) BETWEEN 1 AND 256),
+    external_id     text NOT NULL CHECK (char_length(external_id) BETWEEN 1 AND 512),
     user_name       text NOT NULL,
     upstream_active boolean NOT NULL DEFAULT true,
     source_profile  jsonb,

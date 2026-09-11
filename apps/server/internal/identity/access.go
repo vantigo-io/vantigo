@@ -61,10 +61,13 @@ func NewAccess(d module.Deps) *Access {
 	return &Access{cfg: d.Config, q: store.New(d.Pool), now: d.Clock}
 }
 
-// Check evaluates rule for r. Every rule but scim first resolves the session;
-// anonymous admits a request without one and returns the caller when there
-// is one. Any other rule answers ErrUnauthenticated without a live session
-// and ErrForbidden when the session's user fails a requirement.
+// Check evaluates rule for r. The scim rule admits a request that presents
+// the SCIM bearer token (scimBearer, scimTokenValid), with a principal that
+// names no user, and answers ErrUnauthenticated otherwise. Every other rule
+// first resolves the session; anonymous admits a request without one and
+// returns the caller when there is one. Any other rule answers
+// ErrUnauthenticated without a live session and ErrForbidden when the
+// session's user fails a requirement.
 //
 // A compound rule requires every name it lists, for policies and permissions
 // alike. The contract's "+" stands for .NET's stacked RequireAuthorization
@@ -76,7 +79,9 @@ func NewAccess(d module.Deps) *Access {
 // policies succeeds.
 func (a *Access) Check(r *http.Request, rule contracts.Rule) (contracts.Principal, error) {
 	if rule.Kind == contracts.RuleSCIM {
-		// The SCIM bearer-token authenticator arrives with the SCIM operations.
+		if token, ok := scimBearer(r); ok && a.scimTokenValid(token, a.now()) {
+			return contracts.Principal{SCIM: true}, nil
+		}
 		return contracts.Principal{}, contracts.ErrUnauthenticated
 	}
 
