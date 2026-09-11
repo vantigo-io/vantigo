@@ -87,10 +87,13 @@ func (f *fakeTB) Errorf(format string, args ...any) {
 	f.errors = append(f.errors, fmt.Sprintf(format, args...))
 }
 
+// client wraps the server's transport in a recorder. httptest hands out one
+// client per server, so it gets a client of its own rather than that shared
+// one: tests calling this from several goroutines would otherwise race on
+// the shared client's Transport field, and each call would wrap the previous
+// recorder.
 func client(t testing.TB, srv *httptest.Server, rec *Recorder) *http.Client {
-	c := srv.Client()
-	c.Transport = rec.Transport(t, c.Transport)
-	return c
+	return &http.Client{Transport: rec.Transport(t, srv.Client().Transport)}
 }
 
 // TestTransportValidatesAConformingExchange proves the happy path: a request

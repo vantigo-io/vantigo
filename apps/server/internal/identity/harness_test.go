@@ -133,6 +133,8 @@ func tracedPool(t testing.TB, databaseURL string, tracer pgx.QueryTracer) *pgxpo
 		t.Fatalf("harness: %v", err)
 	}
 	cfg.ConnConfig.Tracer = tracer
+	// The same fixed size as every other test pool, for the same reason.
+	cfg.MaxConns = testdb.PoolMaxConns
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("harness: %v", err)
@@ -313,10 +315,17 @@ func (h *harness) mailTo(to string) []mail.Message {
 	return out
 }
 
+// fixtureTimeout bounds every fixture query. Without it a pool with no free
+// connection blocks in Acquire for as long as the test binary runs, which
+// turns an exhausted pool into a hung package instead of a failed test.
+const fixtureTimeout = 15 * time.Second
+
 // exec runs one fixture statement.
 func (h *harness) exec(t testing.TB, sql string, args ...any) {
 	t.Helper()
-	if _, err := h.pool.Exec(context.Background(), sql, args...); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), fixtureTimeout)
+	defer cancel()
+	if _, err := h.pool.Exec(ctx, sql, args...); err != nil {
 		t.Fatalf("harness: %s: %v", sql, err)
 	}
 }
@@ -504,7 +513,9 @@ func (h *harness) sessionID(t testing.TB, token string) uuid.UUID {
 func (h *harness) count(t testing.TB, sql string, args ...any) int {
 	t.Helper()
 	var n int
-	if err := h.pool.QueryRow(context.Background(), sql, args...).Scan(&n); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), fixtureTimeout)
+	defer cancel()
+	if err := h.pool.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
 		t.Fatalf("harness: %s: %v", sql, err)
 	}
 	return n
