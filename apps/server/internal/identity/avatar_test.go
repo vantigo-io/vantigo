@@ -187,12 +187,12 @@ func TestAccountAvatar_RejectsMalformedMismatchedAndOversizedUploads(t *testing.
 	}
 }
 
-// TestAccountAvatar_RequestOverTheOuterCapIsRejected proves
-// limitAvatarUploads' http.MaxBytesReader wrap (decision: the contract
-// documents no 413 for these operations, so an oversized request answers
-// the same 400 invalid_avatar an oversized or malformed image gets): a
-// request whose total body crosses maxAvatarRequestBytes (5 MiB + 64 KiB)
-// is refused even though the avatar part itself, read alone, would pass.
+// TestAccountAvatar_RequestOverTheOuterCapIsRejected proves the router's
+// avatar body cap (avatarBodyLimits; decision: the contract documents no
+// 413 for these operations, so an oversized request answers the same 400
+// invalid_avatar an oversized or malformed image gets): a request whose
+// total body crosses maxAvatarRequestBytes (5 MiB + 64 KiB) is refused
+// even though the avatar part itself, read alone, would pass.
 func TestAccountAvatar_RequestOverTheOuterCapIsRejected(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -205,5 +205,31 @@ func TestAccountAvatar_RequestOverTheOuterCapIsRejected(t *testing.T) {
 
 	if r := c.do(http.MethodPut, avatarPath, nil, rawBody(ct, body)); r.status != http.StatusBadRequest || r.code() != "invalid_avatar" {
 		t.Errorf("status %d code %q, want 400 invalid_avatar", r.status, r.code())
+	}
+}
+
+// TestAccountAvatar_UploadsPastTheDefaultBodyCapAreAccepted proves the
+// avatar operations' BodyLimits override replaces the router's 1 MiB
+// default (module.DefaultMaxBodyBytes) rather than sitting behind it: an
+// upload of 2 MiB, well inside maxAvatarRequestBytes, is stored through
+// both POST and PUT.
+func TestAccountAvatar_UploadsPastTheDefaultBodyCapAreAccepted(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "largeupload@example.test"
+	h.seedUser(t, email, userPassword, identity.RoleUserID)
+	c := h.login(t, email, userPassword)
+
+	const fillerBytes = 2 * 1024 * 1024 // past the 1 MiB default, inside the avatar cap
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		ct, body := avatarUploadWithFiller(t, fillerBytes, "image/png", testPNG(t, 4, 4))
+		r := c.do(method, avatarPath, nil, rawBody(ct, body))
+		var got struct {
+			Uploaded bool `json:"uploaded"`
+		}
+		r.json(&got)
+		if r.status != http.StatusOK || !got.Uploaded {
+			t.Errorf("%s %d-byte upload: status %d body %s, want 200 uploaded", method, len(body), r.status, r.body)
+		}
 	}
 }

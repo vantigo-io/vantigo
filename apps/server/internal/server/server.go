@@ -53,6 +53,8 @@ func New(o Options) http.Handler {
 	mux.Handle("/api", apiHandler)
 	mux.Handle("/", web.Handler(o.Assets, o.Index))
 
+	// config.Load refuses hops without CIDRs outside development, so in a
+	// loaded configuration this only ever fires in development.
 	if o.Config.TrustedProxyHops > 0 && len(o.Config.TrustedProxyCIDRs) == 0 {
 		o.Logger.Warn("TRUSTED_PROXY_HOPS is set without TRUSTED_PROXY_CIDRS; forwarded headers are trusted from any peer")
 	}

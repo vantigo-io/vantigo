@@ -32,7 +32,8 @@ type forwarded struct {
 // client itself, headers and all, exactly as with trustedHops = 0. An
 // IPv4-mapped IPv6 peer (e.g. from a dual-stack listener) is unmapped before
 // the match. With trustedPeers empty, every peer is trusted by hops alone,
-// unchanged from before this parameter existed.
+// unchanged from before this parameter existed; config.Load refuses that
+// combination outside development, so it is a development-only shape.
 func Forwarded(trustedHops int, trustedPeers []netip.Prefix) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

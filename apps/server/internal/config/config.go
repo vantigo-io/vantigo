@@ -215,7 +215,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.OIDC = oidc(&p, env)
 	c.SCIM = scim(&p, env)
 
-	c.TrustedProxyCIDRs = prefixes(&p, env, "TRUSTED_PROXY_CIDRS")
+	c.TrustedProxyCIDRs = trustedProxyCIDRs(&p, env, c)
 
 	if c.EnforcesTransportSecurity() {
 		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
@@ -781,6 +781,21 @@ func scim(p *problems, env map[string]string) *SCIMConfig {
 
 func containsWhitespace(v string) bool {
 	return strings.IndexFunc(v, unicode.IsSpace) >= 0
+}
+
+// trustedProxyCIDRs parses TRUSTED_PROXY_CIDRS, the peers whose
+// X-Forwarded-* headers are honoured. Outside development, hops without a
+// list is a problem: the forwarded headers are to be honoured only from a
+// peer inside the list, and with none every peer could choose the client
+// address the rate limits key on. Development keeps the hops-only
+// behaviour, and server.New warns about it there.
+func trustedProxyCIDRs(p *problems, env map[string]string, c *Config) []netip.Prefix {
+	before := len(*p)
+	out := prefixes(p, env, "TRUSTED_PROXY_CIDRS")
+	if len(*p) == before && len(out) == 0 && c.TrustedProxyHops > 0 && !c.IsDevelopment() {
+		p.add("TRUSTED_PROXY_HOPS", "requires TRUSTED_PROXY_CIDRS outside development: forwarded headers are honoured only from a peer inside that list")
+	}
+	return out
 }
 
 // prefixes parses a comma list of CIDR prefixes. Empty means none.
