@@ -7,10 +7,17 @@ import (
 	"time"
 )
 
+// testAppSecret is a fixture value only: 32 bytes, never a real secret.
+var testAppSecret = strings.Repeat("s", 32)
+
 func validEnv() map[string]string {
 	return map[string]string{
-		"DATABASE_URL": "postgres://vantigo:secret@db.internal:5432/vantigo?sslmode=verify-full",
-		"APP_URL":      "https://vantigo.example.com",
+		"DATABASE_URL":     "postgres://vantigo:secret@db.internal:5432/vantigo?sslmode=verify-full",
+		"APP_URL":          "https://vantigo.example.com",
+		"APP_SECRET":       testAppSecret,
+		"BOOTSTRAP_SECRET": "test-bootstrap-secret",
+		"SMTP_HOST":        "smtp.example.com",
+		"SMTP_FROM":        "noreply@vantigo.example.com",
 	}
 }
 
@@ -283,5 +290,407 @@ func TestLoad_EnvAndLogLevel(t *testing.T) {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error is missing %q:\n%s", want, msg)
 		}
+	}
+}
+
+func TestLoad_IdentityDefaults(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+
+	if len(cfg.AppSecret) != 32 || string(cfg.AppSecret) != testAppSecret {
+		t.Errorf("AppSecret = %q, want %q", cfg.AppSecret, testAppSecret)
+	}
+	wantSessions := SessionConfig{Idle: 8 * time.Hour, PrivilegedIdle: 2 * time.Hour, Absolute: 24 * time.Hour, PrivilegedAbsolute: 8 * time.Hour}
+	if cfg.Sessions != wantSessions {
+		t.Errorf("Sessions = %+v, want %+v", cfg.Sessions, wantSessions)
+	}
+	if !cfg.OwnersRequireMFA || cfg.OwnersAllowInsecureNoMFA {
+		t.Errorf("OwnersRequireMFA/OwnersAllowInsecureNoMFA = %v/%v, want true/false in production", cfg.OwnersRequireMFA, cfg.OwnersAllowInsecureNoMFA)
+	}
+	if cfg.MFAIssuer != "Vantigo" {
+		t.Errorf("MFAIssuer = %q, want Vantigo", cfg.MFAIssuer)
+	}
+	if cfg.InvitationLifetime != 168*time.Hour {
+		t.Errorf("InvitationLifetime = %v, want 168h", cfg.InvitationLifetime)
+	}
+	if want := "https://vantigo.example.com/invitations/accept?token={token}"; cfg.InvitationAcceptURL != want {
+		t.Errorf("InvitationAcceptURL = %q, want the same-origin default %q", cfg.InvitationAcceptURL, want)
+	}
+	if want := "https://vantigo.example.com/password-reset?token={token}&email={email}"; cfg.PasswordResetURL != want {
+		t.Errorf("PasswordResetURL = %q, want the same-origin default %q", cfg.PasswordResetURL, want)
+	}
+	wantMail := MailConfig{Driver: "smtp", Host: "smtp.example.com", Port: 587, From: "noreply@vantigo.example.com", TLS: "starttls"}
+	if cfg.Mail != wantMail {
+		t.Errorf("Mail = %+v, want %+v", cfg.Mail, wantMail)
+	}
+	if cfg.OIDC != nil {
+		t.Errorf("OIDC = %+v, want nil (disabled)", cfg.OIDC)
+	}
+	if cfg.SCIM != nil {
+		t.Errorf("SCIM = %+v, want nil (disabled)", cfg.SCIM)
+	}
+	if cfg.TrustedProxyCIDRs != nil {
+		t.Errorf("TrustedProxyCIDRs = %v, want none", cfg.TrustedProxyCIDRs)
+	}
+
+	dev := mustLoad(t, with(validEnv(), "APP_ENV", "development"))
+	if dev.OwnersRequireMFA {
+		t.Error("OwnersRequireMFA = true, want false in development")
+	}
+	if dev.Mail.Driver != "log" {
+		t.Errorf("Mail.Driver = %q, want log in development", dev.Mail.Driver)
+	}
+}
+
+func TestLoad_AppSecret(t *testing.T) {
+	msg := loadError(t, with(validEnv(), "APP_SECRET", ""))
+	if !strings.Contains(msg, "APP_SECRET: must be at least 32 bytes") {
+		t.Errorf("error = %q", msg)
+	}
+
+	short := "top-secret-but-short"
+	msg = loadError(t, with(validEnv(), "APP_SECRET", short))
+	if !strings.Contains(msg, "APP_SECRET: must be at least 32 bytes") {
+		t.Errorf("error = %q", msg)
+	}
+	if strings.Contains(msg, short) {
+		t.Errorf("error leaks the secret value: %q", msg)
+	}
+
+	cfg := mustLoad(t, with(validEnv(), "APP_SECRET", testAppSecret+"x"))
+	if string(cfg.AppSecret) != testAppSecret+"x" {
+		t.Errorf("AppSecret = %q", cfg.AppSecret)
+	}
+}
+
+func TestLoad_BootstrapSecret(t *testing.T) {
+	if msg := loadError(t, with(validEnv(), "BOOTSTRAP_SECRET", "")); !strings.Contains(msg, "BOOTSTRAP_SECRET: is required outside development") {
+		t.Errorf("error = %q", msg)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "BOOTSTRAP_SECRET", "")); cfg.BootstrapSecret != "" {
+		t.Errorf("BootstrapSecret = %q, want empty in development", cfg.BootstrapSecret)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "BOOTSTRAP_SECRET", "s3cr3t")); cfg.BootstrapSecret != "s3cr3t" {
+		t.Errorf("BootstrapSecret = %q", cfg.BootstrapSecret)
+	}
+}
+
+func TestLoad_Sessions(t *testing.T) {
+	cfg := mustLoad(t, with(validEnv(),
+		"SESSION_IDLE_TIMEOUT", "10h",
+		"SESSION_PRIVILEGED_IDLE_TIMEOUT", "1h",
+		"SESSION_ABSOLUTE_LIFETIME", "48h",
+		"SESSION_PRIVILEGED_ABSOLUTE_LIFETIME", "4h",
+	))
+	want := SessionConfig{Idle: 10 * time.Hour, PrivilegedIdle: time.Hour, Absolute: 48 * time.Hour, PrivilegedAbsolute: 4 * time.Hour}
+	if cfg.Sessions != want {
+		t.Errorf("Sessions = %+v, want %+v", cfg.Sessions, want)
+	}
+
+	for _, field := range []string{"SESSION_IDLE_TIMEOUT", "SESSION_PRIVILEGED_IDLE_TIMEOUT", "SESSION_ABSOLUTE_LIFETIME", "SESSION_PRIVILEGED_ABSOLUTE_LIFETIME"} {
+		for _, bad := range []string{"0", "-1h"} {
+			if msg := loadError(t, with(validEnv(), field, bad)); !strings.Contains(msg, field+": must be a positive duration") {
+				t.Errorf("%s=%q: error %q", field, bad, msg)
+			}
+		}
+	}
+
+	if msg := loadError(t, with(validEnv(), "SESSION_PRIVILEGED_IDLE_TIMEOUT", "9h")); !strings.Contains(msg, "SESSION_PRIVILEGED_IDLE_TIMEOUT: must not exceed SESSION_IDLE_TIMEOUT") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "SESSION_PRIVILEGED_ABSOLUTE_LIFETIME", "25h")); !strings.Contains(msg, "SESSION_PRIVILEGED_ABSOLUTE_LIFETIME: must not exceed SESSION_ABSOLUTE_LIFETIME") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_OwnersRequireMFA(t *testing.T) {
+	if msg := loadError(t, with(validEnv(), "OWNERS_REQUIRE_MFA", "0")); !strings.Contains(msg, "OWNERS_REQUIRE_MFA: must not be 0 outside development") {
+		t.Errorf("error = %q", msg)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "OWNERS_REQUIRE_MFA", "0", "OWNERS_ALLOW_INSECURE_NO_MFA", "1")); cfg.OwnersRequireMFA {
+		t.Error("OwnersRequireMFA = true, want false")
+	}
+	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "OWNERS_REQUIRE_MFA", "0")); cfg.OwnersRequireMFA {
+		t.Error("OwnersRequireMFA = true, want false in development")
+	}
+	if msg := loadError(t, with(validEnv(), "OWNERS_REQUIRE_MFA", "yes")); !strings.Contains(msg, `OWNERS_REQUIRE_MFA: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_MFAIssuer(t *testing.T) {
+	if cfg := mustLoad(t, with(validEnv(), "MFA_ISSUER", "Acme Corp")); cfg.MFAIssuer != "Acme Corp" {
+		t.Errorf("MFAIssuer = %q", cfg.MFAIssuer)
+	}
+}
+
+func TestLoad_InvitationLifetime(t *testing.T) {
+	if cfg := mustLoad(t, with(validEnv(), "INVITATION_LIFETIME", "72h")); cfg.InvitationLifetime != 72*time.Hour {
+		t.Errorf("InvitationLifetime = %v", cfg.InvitationLifetime)
+	}
+	for _, bad := range []string{"1h", "800h"} {
+		if msg := loadError(t, with(validEnv(), "INVITATION_LIFETIME", bad)); !strings.Contains(msg, "INVITATION_LIFETIME: must be from 24h") {
+			t.Errorf("INVITATION_LIFETIME=%q: error %q", bad, msg)
+		}
+	}
+}
+
+func TestLoad_InvitationAcceptURL(t *testing.T) {
+	if cfg := mustLoad(t, with(validEnv(), "INVITATION_ACCEPT_URL", "")); cfg.InvitationAcceptURL == "" || !strings.Contains(cfg.InvitationAcceptURL, "{token}") {
+		t.Errorf("InvitationAcceptURL = %q, want the APP_URL-derived default when unset", cfg.InvitationAcceptURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "INVITATION_ACCEPT_URL", "https://accept.example.com/i?token={token}")); cfg.InvitationAcceptURL != "https://accept.example.com/i?token={token}" {
+		t.Errorf("InvitationAcceptURL = %q", cfg.InvitationAcceptURL)
+	}
+	if msg := loadError(t, with(validEnv(), "INVITATION_ACCEPT_URL", "https://vantigo.example.com/invitations/accept")); !strings.Contains(msg, "INVITATION_ACCEPT_URL: must contain the {token} placeholder") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_PasswordResetURL(t *testing.T) {
+	if cfg := mustLoad(t, with(validEnv(), "PASSWORD_RESET_URL", "")); cfg.PasswordResetURL == "" || !strings.Contains(cfg.PasswordResetURL, "{token}") || !strings.Contains(cfg.PasswordResetURL, "{email}") {
+		t.Errorf("PasswordResetURL = %q, want the APP_URL-derived default when unset", cfg.PasswordResetURL)
+	}
+	if msg := loadError(t, with(validEnv(), "PASSWORD_RESET_URL", "https://vantigo.example.com/password-reset?email={email}")); !strings.Contains(msg, "PASSWORD_RESET_URL: must contain the {token} placeholder") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "PASSWORD_RESET_URL", "https://vantigo.example.com/password-reset?token={token}")); !strings.Contains(msg, "PASSWORD_RESET_URL: must contain the {email} placeholder") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_MailDriver(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.Mail.Driver != "smtp" {
+		t.Errorf("Mail.Driver = %q, want smtp in production", cfg.Mail.Driver)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development")); cfg.Mail.Driver != "log" {
+		t.Errorf("Mail.Driver = %q, want log in development", cfg.Mail.Driver)
+	}
+	if msg := loadError(t, with(validEnv(), "MAIL_DRIVER", "log")); !strings.Contains(msg, `MAIL_DRIVER: must not be "log" outside development`) {
+		t.Errorf("error = %q", msg)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "MAIL_DRIVER", "log")); cfg.Mail.Driver != "log" {
+		t.Errorf("Mail.Driver = %q", cfg.Mail.Driver)
+	}
+	if msg := loadError(t, with(validEnv(), "MAIL_DRIVER", "sendgrid")); !strings.Contains(msg, `MAIL_DRIVER: must be "smtp" or "log"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_SMTP(t *testing.T) {
+	msg := loadError(t, with(validEnv(), "SMTP_HOST", "", "SMTP_FROM", ""))
+	for _, want := range []string{"SMTP_HOST: is required", "SMTP_FROM: is required"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error is missing %q:\n%s", want, msg)
+		}
+	}
+	if msg := loadError(t, with(validEnv(), "SMTP_FROM", "Team <team@example.com>")); !strings.Contains(msg, "SMTP_FROM: must be a plain email address") {
+		t.Errorf("error = %q", msg)
+	}
+
+	if cfg := mustLoad(t, validEnv()); cfg.Mail.Port != 587 {
+		t.Errorf("Mail.Port = %d, want 587", cfg.Mail.Port)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "SMTP_PORT", "465")); cfg.Mail.Port != 465 {
+		t.Errorf("Mail.Port = %d", cfg.Mail.Port)
+	}
+
+	if cfg := mustLoad(t, validEnv()); cfg.Mail.TLS != "starttls" {
+		t.Errorf("Mail.TLS = %q, want starttls", cfg.Mail.TLS)
+	}
+	if msg := loadError(t, with(validEnv(), "SMTP_TLS", "none")); !strings.Contains(msg, `SMTP_TLS: "none" requires ALLOW_INSECURE_TRANSPORT=1 outside development`) {
+		t.Errorf("error = %q", msg)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "SMTP_TLS", "none", "ALLOW_INSECURE_TRANSPORT", "1")); cfg.Mail.TLS != "none" {
+		t.Errorf("Mail.TLS = %q", cfg.Mail.TLS)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "SMTP_TLS", "none")); cfg.Mail.TLS != "none" {
+		t.Errorf("Mail.TLS = %q", cfg.Mail.TLS)
+	}
+	if msg := loadError(t, with(validEnv(), "SMTP_TLS", "ssl")); !strings.Contains(msg, `SMTP_TLS: must be "implicit", "starttls" or "none"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+const (
+	validEntraAuthority = "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0"
+	validEntraClientID  = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	validGoogleClientID = "12345-abc.apps.googleusercontent.com"
+)
+
+func withEntra(env map[string]string) map[string]string {
+	return with(env,
+		"OIDC_PROVIDER", "entra",
+		"OIDC_AUTHORITY", validEntraAuthority,
+		"OIDC_CLIENT_ID", validEntraClientID,
+		"OIDC_CLIENT_SECRET", "entra-client-secret",
+	)
+}
+
+func withGoogle(env map[string]string) map[string]string {
+	return with(env,
+		"OIDC_PROVIDER", "google",
+		"OIDC_AUTHORITY", "https://accounts.google.com",
+		"OIDC_CLIENT_ID", validGoogleClientID,
+		"OIDC_CLIENT_SECRET", "google-client-secret",
+		"OIDC_ALLOWED_DOMAINS", "example.com",
+	)
+}
+
+func TestLoad_OIDC_DisabledByDefault(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.OIDC != nil {
+		t.Errorf("OIDC = %+v, want nil", cfg.OIDC)
+	}
+}
+
+func TestLoad_OIDC_Entra(t *testing.T) {
+	cfg := mustLoad(t, withEntra(validEnv()))
+	want := &OIDCConfig{
+		Provider: "entra", Authority: validEntraAuthority, ClientID: validEntraClientID,
+		ClientSecret: "entra-client-secret", DisplayName: "Workforce SSO",
+	}
+	if cfg.OIDC.Provider != want.Provider || cfg.OIDC.Authority != want.Authority || cfg.OIDC.ClientID != want.ClientID ||
+		cfg.OIDC.ClientSecret != want.ClientSecret || cfg.OIDC.DisplayName != want.DisplayName || len(cfg.OIDC.AllowedDomains) != 0 {
+		t.Errorf("OIDC = %+v, want %+v", cfg.OIDC, want)
+	}
+
+	if msg := loadError(t, with(withEntra(validEnv()), "OIDC_AUTHORITY", "https://login.microsoftonline.com/not-a-guid/v2.0")); !strings.Contains(msg, "OIDC_AUTHORITY: must be exactly https://login.microsoftonline.com/<tenant-guid>/v2.0") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(withEntra(validEnv()), "OIDC_CLIENT_ID", "not-a-guid")); !strings.Contains(msg, "OIDC_CLIENT_ID: must be a GUID") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(withEntra(validEnv()), "OIDC_ALLOWED_DOMAINS", "example.com")); !strings.Contains(msg, "OIDC_ALLOWED_DOMAINS: is only valid for the google provider") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_OIDC_Google(t *testing.T) {
+	cfg := mustLoad(t, withGoogle(validEnv()))
+	want := &OIDCConfig{
+		Provider: "google", Authority: "https://accounts.google.com", ClientID: validGoogleClientID,
+		ClientSecret: "google-client-secret", AllowedDomains: []string{"example.com"}, DisplayName: "Workforce SSO",
+	}
+	if cfg.OIDC.Provider != want.Provider || cfg.OIDC.Authority != want.Authority || cfg.OIDC.ClientID != want.ClientID ||
+		cfg.OIDC.ClientSecret != want.ClientSecret || cfg.OIDC.DisplayName != want.DisplayName ||
+		strings.Join(cfg.OIDC.AllowedDomains, ",") != strings.Join(want.AllowedDomains, ",") {
+		t.Errorf("OIDC = %+v, want %+v", cfg.OIDC, want)
+	}
+
+	if msg := loadError(t, with(withGoogle(validEnv()), "OIDC_AUTHORITY", "https://accounts.google.example")); !strings.Contains(msg, "OIDC_AUTHORITY: must be exactly https://accounts.google.com") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(withGoogle(validEnv()), "OIDC_CLIENT_ID", "12345.apps.example.com")); !strings.Contains(msg, "OIDC_CLIENT_ID: must end with .apps.googleusercontent.com") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(withGoogle(validEnv()), "OIDC_ALLOWED_DOMAINS", "")); !strings.Contains(msg, "OIDC_ALLOWED_DOMAINS: must list at least one domain") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_OIDC_DisplayName(t *testing.T) {
+	if cfg := mustLoad(t, withEntra(validEnv())); cfg.OIDC.DisplayName != "Workforce SSO" {
+		t.Errorf("DisplayName = %q, want Workforce SSO", cfg.OIDC.DisplayName)
+	}
+	if cfg := mustLoad(t, withEntra(with(validEnv(), "OIDC_DISPLAY_NAME", "Acme SSO"))); cfg.OIDC.DisplayName != "Acme SSO" {
+		t.Errorf("DisplayName = %q", cfg.OIDC.DisplayName)
+	}
+}
+
+func TestLoad_OIDC_ClientAuthentication(t *testing.T) {
+	if msg := loadError(t, with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "")); !strings.Contains(msg, "OIDC_CLIENT_SECRET: or OIDC_WORKLOAD_IDENTITY_TOKEN_FILE is required") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(withEntra(validEnv()), "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "/var/run/token")); !strings.Contains(msg, "OIDC_CLIENT_SECRET: and OIDC_WORKLOAD_IDENTITY_TOKEN_FILE are mutually exclusive") {
+		t.Errorf("error = %q", msg)
+	}
+
+	env := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "/var/run/secrets/token")
+	if cfg := mustLoad(t, env); cfg.OIDC.WorkloadTokenFile != "/var/run/secrets/token" || cfg.OIDC.ClientSecret != "" {
+		t.Errorf("OIDC = %+v", cfg.OIDC)
+	}
+
+	relative := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "relative/token")
+	if msg := loadError(t, relative); !strings.Contains(msg, "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE: must be an absolute path") {
+		t.Errorf("error = %q", msg)
+	}
+
+	googleWorkload := with(withGoogle(validEnv()), "OIDC_CLIENT_SECRET", "", "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE", "/var/run/secrets/token")
+	if msg := loadError(t, googleWorkload); !strings.Contains(msg, "OIDC_WORKLOAD_IDENTITY_TOKEN_FILE: is supported only for the entra provider") {
+		t.Errorf("error = %q", msg)
+	}
+
+	fallback := with(withEntra(validEnv()), "OIDC_CLIENT_SECRET", "", "AZURE_FEDERATED_TOKEN_FILE", "/var/run/secrets/azure-token")
+	if cfg := mustLoad(t, fallback); cfg.OIDC.WorkloadTokenFile != "/var/run/secrets/azure-token" {
+		t.Errorf("WorkloadTokenFile = %q, want the AZURE_FEDERATED_TOKEN_FILE fallback", cfg.OIDC.WorkloadTokenFile)
+	}
+}
+
+func TestLoad_OIDC_UnknownProvider(t *testing.T) {
+	if msg := loadError(t, with(validEnv(), "OIDC_PROVIDER", "okta")); !strings.Contains(msg, `OIDC_PROVIDER: must be "entra" or "google"`) {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_SCIM_DisabledByDefault(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.SCIM != nil {
+		t.Errorf("SCIM = %+v, want nil", cfg.SCIM)
+	}
+}
+
+func TestLoad_SCIM(t *testing.T) {
+	cfg := mustLoad(t, with(validEnv(), "SCIM_TOKEN", "scim-bearer-token"))
+	if cfg.SCIM == nil || cfg.SCIM.Token != "scim-bearer-token" {
+		t.Errorf("SCIM = %+v", cfg.SCIM)
+	}
+
+	if msg := loadError(t, with(validEnv(), "SCIM_TOKEN", "has a space")); !strings.Contains(msg, "SCIM_TOKEN: must not contain whitespace") {
+		t.Errorf("error = %q", msg)
+	}
+
+	if msg := loadError(t, with(validEnv(), "SCIM_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN", "previous-token")); !strings.Contains(msg, "SCIM_PREVIOUS_TOKEN_EXPIRES_AT: is required when SCIM_PREVIOUS_TOKEN is set") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "SCIM_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN_EXPIRES_AT", time.Now().Add(time.Hour).Format(time.RFC3339))); !strings.Contains(msg, "SCIM_PREVIOUS_TOKEN_EXPIRES_AT: requires SCIM_PREVIOUS_TOKEN") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "SCIM_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN_EXPIRES_AT", time.Now().Add(time.Hour).Format(time.RFC3339))); !strings.Contains(msg, "SCIM_PREVIOUS_TOKEN: must differ from SCIM_TOKEN") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "SCIM_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN", "previous-token", "SCIM_PREVIOUS_TOKEN_EXPIRES_AT", "not-a-timestamp")); !strings.Contains(msg, "SCIM_PREVIOUS_TOKEN_EXPIRES_AT: must be an RFC 3339 timestamp") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "SCIM_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN", "previous-token", "SCIM_PREVIOUS_TOKEN_EXPIRES_AT", time.Now().Add(-time.Hour).Format(time.RFC3339))); !strings.Contains(msg, "SCIM_PREVIOUS_TOKEN_EXPIRES_AT: must be in the future") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "SCIM_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN", "previous-token", "SCIM_PREVIOUS_TOKEN_EXPIRES_AT", time.Now().Add(25*time.Hour).Format(time.RFC3339))); !strings.Contains(msg, "SCIM_PREVIOUS_TOKEN_EXPIRES_AT: must be at most 24h from now") {
+		t.Errorf("error = %q", msg)
+	}
+
+	expires := time.Now().Add(12 * time.Hour).Truncate(time.Second)
+	valid := mustLoad(t, with(validEnv(), "SCIM_TOKEN", "current-token", "SCIM_PREVIOUS_TOKEN", "previous-token", "SCIM_PREVIOUS_TOKEN_EXPIRES_AT", expires.Format(time.RFC3339)))
+	if valid.SCIM.PreviousToken != "previous-token" || !valid.SCIM.PreviousTokenExpiresAt.Equal(expires) {
+		t.Errorf("SCIM = %+v, want previous token %q expiring %v", valid.SCIM, "previous-token", expires)
+	}
+}
+
+func TestLoad_TrustedProxyCIDRs(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.TrustedProxyCIDRs != nil {
+		t.Errorf("TrustedProxyCIDRs = %v, want none", cfg.TrustedProxyCIDRs)
+	}
+	cfg := mustLoad(t, with(validEnv(), "TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 192.168.0.0/16"))
+	if len(cfg.TrustedProxyCIDRs) != 2 || cfg.TrustedProxyCIDRs[0].String() != "10.0.0.0/8" || cfg.TrustedProxyCIDRs[1].String() != "192.168.0.0/16" {
+		t.Errorf("TrustedProxyCIDRs = %v", cfg.TrustedProxyCIDRs)
+	}
+	if msg := loadError(t, with(validEnv(), "TRUSTED_PROXY_CIDRS", "10.0.0.0/8, not-a-cidr")); !strings.Contains(msg, "TRUSTED_PROXY_CIDRS: must be a comma list of CIDR prefixes") {
+		t.Errorf("error = %q", msg)
+	}
+}
+
+func TestLoad_SystemAdminEmail(t *testing.T) {
+	if cfg := mustLoad(t, with(validEnv(), "SYSTEM_ADMIN_EMAIL", "  admin@vantigo.example.com  ")); cfg.SystemAdminEmail != "admin@vantigo.example.com" {
+		t.Errorf("SystemAdminEmail = %q", cfg.SystemAdminEmail)
+	}
+	if cfg := mustLoad(t, validEnv()); cfg.SystemAdminEmail != "" {
+		t.Errorf("SystemAdminEmail = %q, want empty by default", cfg.SystemAdminEmail)
 	}
 }

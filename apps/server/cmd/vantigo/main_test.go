@@ -22,14 +22,25 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 )
 
+// testAppSecret is a fixture value only: 32+ bytes, never a real secret.
+const testAppSecret = "main-test-app-secret-32-bytes!!!"
+
 // setEnv sets the variables config reads and blanks every other one it knows,
-// so the developer's own environment cannot leak into a test.
+// so the developer's own environment cannot leak into a test. It also seeds
+// the identity settings that are required whenever APP_ENV defaults to
+// production (the zero value of the blanked APP_ENV), so a caller only
+// overrides what its case is actually about.
 func setEnv(t *testing.T, pairs ...string) {
 	t.Helper()
 	for _, k := range []string{"APP_ENV", "DATABASE_URL", "MIGRATIONS_DATABASE_URL", "APP_URL", "APP_BASE_PATH", "PORT",
-		"TRUSTED_PROXY_HOPS", "ALLOW_INSECURE_TRANSPORT", "CSP_REPORT_ONLY", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "PGSSLMODE"} {
+		"TRUSTED_PROXY_HOPS", "ALLOW_INSECURE_TRANSPORT", "CSP_REPORT_ONLY", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "PGSSLMODE",
+		"APP_SECRET", "BOOTSTRAP_SECRET", "MAIL_DRIVER", "SMTP_HOST", "SMTP_FROM"} {
 		t.Setenv(k, "")
 	}
+	t.Setenv("APP_SECRET", testAppSecret)
+	t.Setenv("BOOTSTRAP_SECRET", "main-test-bootstrap-secret")
+	t.Setenv("SMTP_HOST", "smtp.example.invalid")
+	t.Setenv("SMTP_FROM", "noreply@example.invalid")
 	for i := 0; i+1 < len(pairs); i += 2 {
 		t.Setenv(pairs[i], pairs[i+1])
 	}
@@ -233,6 +244,10 @@ func startServe(t *testing.T, withAPI bool) (string, func() int) {
 		"APP_URL":                  "http://localhost:8080",
 		"ALLOW_INSECURE_TRANSPORT": "1",
 		"SHUTDOWN_TIMEOUT":         "10s",
+		"APP_SECRET":               testAppSecret,
+		"BOOTSTRAP_SECRET":         "main-test-bootstrap-secret",
+		"SMTP_HOST":                "smtp.example.invalid",
+		"SMTP_FROM":                "noreply@example.invalid",
 	})
 	if err != nil {
 		t.Fatal(err)
