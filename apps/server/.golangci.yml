@@ -9,6 +9,143 @@ version: "2"
 
 linters:
   default: standard
+  enable:
+    - depguard
+  settings:
+    depguard:
+      # Each business module is an island: internal/<module>/... (its gen/
+      # subpackage included) may import platform packages and its own
+      # subpackages, never another module's. internal/module and
+      # internal/contracts are the platform the modules mount through, so
+      # they may not import any module either. One rule set per boundary,
+      # scoped to its directory with `files`, denying every other module's
+      # import path (root and gen/).
+      rules:
+        identity:
+          files:
+            - "**/internal/identity/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers/gen
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products/gen
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy/gen
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications
+              desc: "internal/identity may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications/gen
+              desc: "internal/identity may not import another business module"
+        customers:
+          files:
+            - "**/internal/customers/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity/gen
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products/gen
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy/gen
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications
+              desc: "internal/customers may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications/gen
+              desc: "internal/customers may not import another business module"
+        products:
+          files:
+            - "**/internal/products/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity/gen
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers/gen
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy/gen
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications
+              desc: "internal/products may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications/gen
+              desc: "internal/products may not import another business module"
+        energy:
+          files:
+            - "**/internal/energy/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity/gen
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers/gen
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products/gen
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications
+              desc: "internal/energy may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications/gen
+              desc: "internal/energy may not import another business module"
+        communications:
+          files:
+            - "**/internal/communications/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity/gen
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers/gen
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products/gen
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy
+              desc: "internal/communications may not import another business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy/gen
+              desc: "internal/communications may not import another business module"
+        platform:
+          files:
+            - "**/internal/module/**"
+            - "**/internal/contracts/**"
+          deny:
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/identity/gen
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/customers/gen
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/products/gen
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/energy/gen
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications
+              desc: "internal/module and internal/contracts may not import any business module"
+            - pkg: github.com/vantigo-io/vantigo/server/internal/communications/gen
+              desc: "internal/module and internal/contracts may not import any business module"
   exclusions:
     paths:
       # Generated files only; hand-written tests in gen/ packages stay linted.
