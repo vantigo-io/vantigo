@@ -41,6 +41,11 @@ type Access struct {
 	// delegation's keys may be delegated. Compose builds it before any
 	// module mounts, and identity's mount sets it here.
 	catalog map[string]contracts.Permission
+	// oidcHTTPClient is what workforce OIDC's discovery, key and token
+	// requests go through; nil means a client with oidcHTTPTimeout. Only a
+	// test sets it (SetOIDCHTTPClient), before the module mounts, to reach a
+	// fake provider.
+	oidcHTTPClient *http.Client
 }
 
 var _ contracts.Access = (*Access)(nil)

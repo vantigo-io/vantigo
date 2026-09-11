@@ -92,18 +92,20 @@ func TestModule_RejectedCookieIsCleared(t *testing.T) {
 	}
 }
 
-// TestModule_UnimplementedOperationsAnswer501 proves a stubbed operation is
-// mounted and answers 501 once its access rule passes.
-func TestModule_UnimplementedOperationsAnswer501(t *testing.T) {
+// TestModule_StubbedOperationsSitBehindTheirAccessRule proves a stubbed
+// operation is mounted behind its access rule. Every stub left is a SCIM
+// operation, and the scim rule refuses every request until the SCIM
+// bearer-token authenticator arrives with those operations, so the probe
+// gets the rule's documented 401 and never reaches the stub. The stub's
+// own 501 is module.ResponseError's mapping of ErrNotImplemented, which
+// internal/module's tests cover.
+func TestModule_StubbedOperationsSitBehindTheirAccessRule(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
-	// Off-contract by design: the contract documents no 501. OIDC sign-in
-	// is among the last operations to be implemented; whoever implements it
-	// moves this probe to another stub.
-	r := h.client(t).do(http.MethodGet, "/api/v1/identity/oidc/challenge", nil, skipContract("stubbed operation answers an undocumented 501"))
-	if r.status != http.StatusNotImplemented || r.header("Content-Type") != "application/problem+json" {
-		t.Errorf("status %d Content-Type %q, want a 501 problem", r.status, r.header("Content-Type"))
+	r := h.client(t).do(http.MethodGet, "/api/v1/identity/scim/v2/Schemas", nil)
+	if r.status != http.StatusUnauthorized || r.header("Content-Type") != "application/scim+json" {
+		t.Errorf("status %d Content-Type %q, want the scim rule's 401", r.status, r.header("Content-Type"))
 	}
 }
 

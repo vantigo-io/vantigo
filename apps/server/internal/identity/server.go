@@ -34,6 +34,9 @@ type server struct {
 	// maintenance is the 20 s cache GetIdentitySystemStatus reads the
 	// system_settings singleton through; see system.go.
 	maintenance maintenanceCache
+	// oidc is the workforce OIDC relying party; nil while OIDC is off, and
+	// then the OIDC operations answer 404 or a failure redirect.
+	oidc *oidcRelyingParty
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
@@ -60,6 +63,10 @@ func newServer(a *Access, d module.Deps) (*server, error) {
 			"app_host", d.Config.AppHostname, "error", err.Error())
 		rp = nil
 	}
+	oidcRP, err := newOIDCRelyingParty(d.Config, a.oidcHTTPClient, d.Clock)
+	if err != nil {
+		return nil, err
+	}
 	return &server{
 		access:            a,
 		deps:              d,
@@ -67,6 +74,7 @@ func newServer(a *Access, d module.Deps) (*server, error) {
 		bootstrapSecret:   resolveBootstrapSecret(d.Config, d.Logger),
 		dummyPasswordHash: dummy,
 		relyingParty:      rp,
+		oidc:              oidcRP,
 	}, nil
 }
 

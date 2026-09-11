@@ -16,9 +16,6 @@ import (
 var pendingOperations = []string{
 	"deleteIdentityScimV2GroupsById",
 	"deleteIdentityScimV2UsersById",
-	"getIdentityOidcCallback",
-	"getIdentityOidcChallenge",
-	"getIdentityOidcComplete",
 	"getIdentityScimV2Groups",
 	"getIdentityScimV2GroupsById",
 	"getIdentityScimV2ResourceTypes",
@@ -28,7 +25,6 @@ var pendingOperations = []string{
 	"getIdentityScimV2UsersById",
 	"patchIdentityScimV2GroupsById",
 	"patchIdentityScimV2UsersById",
-	"postIdentityOidcCallback",
 	"postIdentityScimV2Groups",
 	"postIdentityScimV2Users",
 	"putIdentityScimV2UsersById",

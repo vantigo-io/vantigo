@@ -3,7 +3,10 @@
 -- of the user id names (EA/AuthAccountEndpoints.cs:401-457): the Owners
 -- first, then by display name ordinally, then by id. is_owner decides the
 -- managed role (EA/AuthAccountState.cs:105-110); sso_enabled is whether the
--- user is linked to the workforce OIDC provider while one is configured.
+-- user is linked to the configured workforce OIDC provider: a link under
+-- oidc_issuer, the configured authority normalized, which is null while
+-- OIDC is off (EA/AuthAccountEndpoints.cs:406-408, :425-426). A link left
+-- behind by a previously configured provider does not count.
 SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabled,
        EXISTS (
            SELECT 1
@@ -12,7 +15,10 @@ SELECT u.id, u.email, u.display_name, u.is_disabled, u.lockout_end, u.totp_enabl
            WHERE ur.user_id = u.id AND r.name = 'Owner'
        )::boolean AS is_owner,
        EXISTS (SELECT 1 FROM identity.profile_avatars a WHERE a.user_id = u.id)::boolean AS has_avatar,
-       (@oidc_enabled::boolean AND EXISTS (SELECT 1 FROM identity.oidc_links l WHERE l.user_id = u.id))::boolean AS sso_enabled
+       (sqlc.narg(oidc_issuer)::text IS NOT NULL AND EXISTS (
+           SELECT 1 FROM identity.oidc_links l
+           WHERE l.user_id = u.id AND l.issuer = sqlc.narg(oidc_issuer)::text
+       ))::boolean AS sso_enabled
 FROM identity.users u
 WHERE sqlc.narg(id)::uuid IS NULL OR u.id = sqlc.narg(id)::uuid
 ORDER BY is_owner DESC, u.display_name COLLATE "C", u.id;

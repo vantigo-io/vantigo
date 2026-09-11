@@ -311,8 +311,9 @@ func TestSystemStatus_ScimHeartbeatIsReportedWithoutExposingTheToken(t *testing.
 }
 
 // New: the OIDC half of the brief, symmetric to the SCIM heartbeat test
-// above. OIDC (Task 18) is not implemented yet, so its heartbeat is written
-// directly the same way; Task 18 re-asserts it end to end.
+// above, for a Google configuration, with the heartbeat written directly.
+// TestOidc_AnUnavailableLinkedAccountIsAccountLocked asserts it end to end,
+// from a real sign-in.
 func TestSystemStatus_ReportsTheConfiguredOidcProviderAndHeartbeatWithoutExposingSecrets(t *testing.T) {
 	t.Parallel()
 	const clientSecret = "google-client-secret-harness"

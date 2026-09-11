@@ -1,5 +1,7 @@
 package identity
 
+import "net/http"
+
 // Hooks for the identity_test package. Tests start and revoke sessions
 // directly, exactly as the endpoints do, where no endpoint yet reaches the
 // state they need (an MFA session, a caller-sparing revocation), and seed
@@ -16,6 +18,17 @@ const OwnerMutationLock = ownerMutationLock
 // RoleMutationLockKey is a role's advisory lock key, for a test that holds
 // the lock itself to force a race's interleaving.
 var RoleMutationLockKey = roleMutationLockKey
+
+// The workforce OIDC flow's two cookies, for tests that assert on them.
+const (
+	OIDCStateCookieName    = oidcStateCookieName
+	OIDCExternalCookieName = oidcExternalCookieName
+)
+
+// SetOIDCHTTPClient routes a's workforce OIDC discovery, key and token
+// requests through c, a test's fake provider. It must run before the
+// module mounts, which is when the relying party takes its client.
+func SetOIDCHTTPClient(a *Access, c *http.Client) { a.oidcHTTPClient = c }
 
 var (
 	CreateSession       = (*Access).createSession
