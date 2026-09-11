@@ -53,8 +53,9 @@ var policyLoginAttempts = ratelimit.Policy{
 // authentication (HOST/Program.cs:120-136). Each area adds its operations
 // as it implements them.
 var limits = map[string]ratelimit.Policy{
-	"postIdentityLogin":     policyLogin,
-	"postIdentityBootstrap": policyBootstrap,
+	"postIdentityLogin":           policyLogin,
+	"postIdentityBootstrap":       policyBootstrap,
+	"postIdentityAccountPassword": policyPasswordRecovery,
 }
 
 // Module is identity as a platform module: its contract mounted under
@@ -80,7 +81,9 @@ func Module(a *Access) module.Module {
 // wraps each in its rate limit and access rule before the generated wrapper
 // decodes it. It fails when the router reports a problem: an operation
 // never registered, a rule that does not parse, a permission missing from
-// the catalog, or a Limits entry naming no operation.
+// the catalog, or a Limits entry naming no operation. The returned handler
+// is further wrapped by limitAvatarUploads, so the avatar endpoints' body
+// cap applies before the router's own checks even run.
 //
 // The bootstrap secret is resolved here, once per mount, which is once per
 // process: /bootstrap and /bootstrap-status then share the one value, the
@@ -105,5 +108,5 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	if err := router.Err(); err != nil {
 		return nil, err
 	}
-	return handler, nil
+	return limitAvatarUploads(handler), nil
 }
