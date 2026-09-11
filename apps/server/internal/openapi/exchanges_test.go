@@ -13,16 +13,12 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const (
-	corpusDir = "../../../../openapi/testdata/exchanges"
-	gapsFile  = "../../../../openapi/testdata/known-gaps.txt"
-)
+const corpusDir = "../../../../openapi/testdata/exchanges"
 
 // TestRecordedExchangesMatchTheContract validates every exchange recorded
 // from the .NET suites against the module that owns its path, and checks
-// every module against the structural lint. Operations listed in
-// known-gaps.txt may fail; anything else failing — or a listed operation
-// that now passes — fails the test. CONTRACT_UPDATE_GAPS=1 rewrites the list.
+// every module against the structural lint. Every operation must lint
+// clean and every recorded exchange must validate.
 func TestRecordedExchangesMatchTheContract(t *testing.T) {
 	ctx := context.Background()
 	failing := map[string][]string{} // operationId (or path) -> reasons
@@ -48,31 +44,8 @@ func TestRecordedExchangesMatchTheContract(t *testing.T) {
 	}
 	sort.Strings(ids)
 
-	if os.Getenv("CONTRACT_UPDATE_GAPS") == "1" {
-		if err := os.WriteFile(gapsFile, []byte(strings.Join(ids, "\n")+"\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("wrote %d known gaps", len(ids))
-		return
-	}
-
-	known := map[string]bool{}
-	if data, err := os.ReadFile(gapsFile); err == nil {
-		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-			if line != "" {
-				known[line] = true
-			}
-		}
-	}
 	for _, id := range ids {
-		if !known[id] {
-			t.Errorf("%s does not match the contract:\n  %s", id, strings.Join(failing[id], "\n  "))
-		}
-	}
-	for id := range known {
-		if _, still := failing[id]; !still {
-			t.Errorf("%s now matches the contract — remove it from openapi/testdata/known-gaps.txt", id)
-		}
+		t.Errorf("%s does not match the contract:\n  %s", id, strings.Join(failing[id], "\n  "))
 	}
 }
 
