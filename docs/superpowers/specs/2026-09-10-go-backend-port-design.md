@@ -291,15 +291,18 @@ Credentials
   `Invitations`, `InvitationAcceptance`, `PasswordRecovery`, `Mfa`,
   `PasskeyLogin`, `UserManagement`, `OwnerAvatarRead`) with the same limits
   and the same `{"error":{"code":"rate_limited"}}` + `Retry-After` shape.
-- Invitation, password-recovery and bootstrap tokens: 256-bit random, only
-  the SHA-256 stored, as today.
+- Invitation and password-recovery tokens: 256-bit random, only the SHA-256
+  stored (today reset tokens are ASP.NET Data Protection tokens; Go stores
+  them like invitations). The bootstrap secret is a configured value.
 
 MFA and passkeys
 
 - TOTP via `pquerna/otp`; recovery codes are one-use, hashed at rest. Login
   becomes a two-step flow: `POST /login` answers `mfaRequired` with a
-  short-lived login ticket; `POST /login/2fa` completes it. Owners must
-  have MFA unless `OWNERS_ALLOW_INSECURE_NO_MFA=1` (carried over).
+  short-lived login ticket; `POST /login/2fa` completes it. Owner MFA
+  follows .NET's `RequireMfa` switch: `OWNERS_REQUIRE_MFA` (on by default in
+  production), and turning it off in production also needs
+  `OWNERS_ALLOW_INSECURE_NO_MFA=1`.
 - Passkeys via `go-webauthn/webauthn`. RP ID and origin come from `APP_URL`,
   never the `Host` header. User verification required, resident keys
   required. Ceremony state lives in a short-TTL table, not in a cookie.
@@ -308,7 +311,9 @@ Workforce OIDC
 
 - One static provider from `OIDC_*` via `coreos/go-oidc` and
   `golang.org/x/oauth2`, authorization code + PKCE, issuer re-validated on
-  callback. Federated identity key = SHA-256(issuer + subject), as today.
+  callback. Federated identity key = the (normalized issuer, subject) pair,
+  as today; SHA-256(issuer "\0" subject) only derives the synthetic
+  username and `@sso.invalid` email.
 - Entra workload identity: when `AZURE_FEDERATED_TOKEN_FILE` is set, the
   token endpoint is called with `client_assertion` read from that file
   instead of a client secret.
@@ -317,7 +322,7 @@ Workforce OIDC
 
 SCIM 2.0
 
-- Hand-written server for the current 13 endpoints under
+- Hand-written server for the current 14 endpoints under
   `/api/v1/identity/scim/v2`: ServiceProviderConfig, Schemas,
   ResourceTypes, Users and Groups CRUD + list with filters, PATCH, ETags.
 - Static bearer token(s) with the documented rotation overlap; ingress rate
