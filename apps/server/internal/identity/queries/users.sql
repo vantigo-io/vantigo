@@ -51,10 +51,16 @@ SET failed_login_count = CASE WHEN failed_login_count + 1 >= @max_failures::inte
 WHERE id = @id
 RETURNING lockout_end;
 
--- name: ResetLoginFailures :exec
+-- name: ResetLoginFailures :execrows
+-- ResetLoginFailures clears the failure count after a right password, but
+-- only while no lockout is in force at now. When parallel wrong guesses
+-- lock the account between the password check and this statement, it
+-- affects no row and the sign-in is refused: the row lock makes it wait for
+-- a concurrent RecordLoginFailure and re-check the lockout it wrote.
 UPDATE identity.users
 SET failed_login_count = 0
-WHERE id = @id AND failed_login_count <> 0;
+WHERE id = @id
+  AND (lockout_end IS NULL OR lockout_end <= @now::timestamptz);
 
 -- name: AssignUserRole :execrows
 -- AssignUserRole gives the user a direct role. It affects no row when the

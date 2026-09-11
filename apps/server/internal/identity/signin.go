@@ -2,12 +2,14 @@ package identity
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,14 +42,6 @@ const (
 	invalidCredentialsMessage = "Invalid email or password."
 )
 
-// dummyPasswordHash is what a password is verified against when the email
-// names no account, or one without a password. An unknown email then costs
-// what a wrong password does, so the two are indistinguishable in time as
-// well as in the answer.
-var dummyPasswordHash = sync.OnceValues(func() (string, error) {
-	return hashPassword("vantigo-no-such-account")
-})
-
 // PostIdentityLogin signs in with email and password
 // (EA/AuthEndpoints.cs:270-359). The order and the answers are .NET's:
 //
@@ -61,10 +55,7 @@ var dummyPasswordHash = sync.OnceValues(func() (string, error) {
 //     locks it answers 429 account_locked. Otherwise the failure, like an
 //     unknown email's, counts on the throttle: 401 invalid_credentials,
 //     the same answer for both.
-//  6. The right password clears the throttle. With TOTP enrolled it answers
-//     requiresTwoFactor and a login ticket (beginTwoFactor). Otherwise it
-//     clears the failure count and starts a non-persistent session that has
-//     not verified a second factor.
+//  6. The right password finishes in completePasswordLogin.
 func (s *server) PostIdentityLogin(ctx context.Context, req gen.PostIdentityLoginRequestObject) (gen.PostIdentityLoginResponseObject, error) {
 	var email, password string
 	if req.Body != nil {
@@ -87,7 +78,7 @@ func (s *server) PostIdentityLogin(ctx context.Context, req gen.PostIdentityLogi
 
 	// The throttle is consulted before any credential work, for accounts
 	// that do not exist too.
-	throttle := normalizeEmail(email) + "|" + httpx.ClientIP(r)
+	throttle := loginThrottleKey(email, httpx.ClientIP(r))
 	d, err := s.deps.Limiter.Blocked(ctx, policyLoginAttempts, throttle)
 	if err != nil {
 		return nil, fmt.Errorf("identity: login throttle: %w", err)
@@ -116,7 +107,7 @@ func (s *server) PostIdentityLogin(ctx context.Context, req gen.PostIdentityLogi
 	if found {
 		hash = u.PasswordHash
 	}
-	ok, err := checkPassword(hash, password)
+	ok, err := s.checkPassword(hash, password)
 	if err != nil {
 		return nil, fmt.Errorf("identity: login: %w", err)
 	}
@@ -140,15 +131,35 @@ func (s *server) PostIdentityLogin(ctx context.Context, req gen.PostIdentityLogi
 		return gen.PostIdentityLogin401JSONResponse(authErrorBody("invalid_credentials", invalidCredentialsMessage, nil)), nil
 	}
 
-	if err := s.deps.Limiter.Reset(ctx, policyLoginAttempts, throttle); err != nil {
-		return nil, fmt.Errorf("identity: login throttle: %w", err)
-	}
+	return s.completePasswordLogin(ctx, r, u, throttle, now)
+}
+
+// completePasswordLogin finishes a sign-in whose password was right for u,
+// the account as read before the check. With TOTP enrolled it clears the
+// throttle and answers requiresTwoFactor with a login ticket
+// (beginTwoFactor); ASP.NET clears the failure count only once the second
+// factor passes, and /login/2fa refuses a locked account then. Otherwise it
+// clears the failure count only if no lockout is in force at now: parallel
+// wrong guesses may have locked the account since u was read, and then the
+// lock wins with 429 account_locked and no session. Once the count is
+// cleared, so is the throttle, and a non-persistent session starts that has
+// not verified a second factor.
+func (s *server) completePasswordLogin(ctx context.Context, r *http.Request, u store.GetLoginCandidateRow, throttle string, now time.Time) (gen.PostIdentityLoginResponseObject, error) {
 	if u.TotpEnabled {
-		// ASP.NET resets the failure count only once the second factor passes.
+		if err := s.deps.Limiter.Reset(ctx, policyLoginAttempts, throttle); err != nil {
+			return nil, fmt.Errorf("identity: login throttle: %w", err)
+		}
 		return s.beginTwoFactor(ctx, r, u.ID, now)
 	}
-	if err := s.q.ResetLoginFailures(ctx, u.ID); err != nil {
+	unlocked, err := s.q.ResetLoginFailures(ctx, store.ResetLoginFailuresParams{ID: u.ID, Now: now})
+	if err != nil {
 		return nil, fmt.Errorf("identity: login: %w", err)
+	}
+	if unlocked == 0 {
+		return loginRefused("account_locked", accountLockedMessage), nil
+	}
+	if err := s.deps.Limiter.Reset(ctx, policyLoginAttempts, throttle); err != nil {
+		return nil, fmt.Errorf("identity: login throttle: %w", err)
 	}
 	token, err := s.access.createSession(ctx, s.deps.Pool, u.ID, false, false, r)
 	if err != nil {
@@ -158,14 +169,24 @@ func (s *server) PostIdentityLogin(ctx context.Context, req gen.PostIdentityLogi
 	user := authUser(u.ID, u.DisplayName, u.Email, roles)
 	return loginOK{
 		cookies: cookies{s.access.newSessionCookie(token, false)},
-		body: gen.PostIdentityLogin200JSONResponse{
+		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
 			User:                  &user,
 			RequiresTwoFactor:     false,
 			TwoFactorEnabled:      false,
 			MfaEnrollmentRequired: slices.Contains(roles, RoleOwner) && s.deps.Config.OwnersRequireMFA,
 			Tenants:               noTenants(),
-		},
+		}},
 	}, nil
+}
+
+// loginThrottleKey is the per-account throttle's key: the hex SHA-256 of
+// the normalized email, then "|" and the client address. Hashing bounds the
+// key's length whatever email a caller sends (the limiter's key is an
+// indexed primary key, and PostgreSQL refuses an oversize index row), and
+// keeps the addresses callers tried out of the limiter table in clear.
+func loginThrottleKey(email, clientIP string) string {
+	sum := sha256.Sum256([]byte(normalizeEmail(email)))
+	return hex.EncodeToString(sum[:]) + "|" + clientIP
 }
 
 // beginTwoFactor answers the right password for an account with TOTP
@@ -191,25 +212,24 @@ func (s *server) beginTwoFactor(ctx context.Context, r *http.Request, userID uui
 	}
 	return loginOK{
 		cookies: cs,
-		body: gen.PostIdentityLogin200JSONResponse{
+		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
 			User:                  nil,
 			RequiresTwoFactor:     true,
 			TwoFactorEnabled:      true,
 			MfaEnrollmentRequired: false,
 			Tenants:               noTenants(),
-		},
+		}},
 	}, nil
 }
 
-// checkPassword verifies pw against hash, or, without one, against
-// dummyPasswordHash, which never counts as a match.
-func checkPassword(hash *string, pw string) (bool, error) {
+// checkPassword verifies pw against hash. Without one (an unknown email, or
+// an account without a password) it verifies against the server's dummy
+// hash and never counts that as a match, so an unknown email costs what a
+// wrong password does and the two are indistinguishable in time as well as
+// in the answer.
+func (s *server) checkPassword(hash *string, pw string) (bool, error) {
 	if hash == nil {
-		dummy, err := dummyPasswordHash()
-		if err != nil {
-			return false, err
-		}
-		_, err = verifyPassword(dummy, pw)
+		_, err := verifyPassword(s.dummyPasswordHash, pw)
 		return false, err
 	}
 	return verifyPassword(*hash, pw)
@@ -219,15 +239,27 @@ func loginRefused(code, message string) gen.PostIdentityLogin429JSONResponse {
 	return gen.PostIdentityLogin429JSONResponse{Body: authErrorBody(code, message, nil)}
 }
 
-// loginOK is sign-in's 200: its cookies, then the generated body.
+// authSuccessBody is AuthSuccessResponse as identity writes it. The
+// generated type drops a nil activeTenantId (omitempty); the contract's
+// tenancy leftover is written as an explicit null instead (spec *Contract
+// leftovers*). The outer field shadows the embedded one of the same JSON
+// name.
+type authSuccessBody struct {
+	gen.AuthSuccessResponse
+	ActiveTenantID *uuid.UUID `json:"activeTenantId"`
+}
+
+// loginOK is sign-in's 200: its cookies, then the body.
 type loginOK struct {
 	cookies
-	body gen.PostIdentityLogin200JSONResponse
+	body authSuccessBody
 }
 
 func (r loginOK) VisitPostIdentityLoginResponse(w http.ResponseWriter) error {
 	r.set(w)
-	return r.body.VisitPostIdentityLoginResponse(w)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	return json.NewEncoder(w).Encode(r.body)
 }
 
 // PostIdentityLogout ends the caller's session and clears its cookie
@@ -294,7 +326,7 @@ func authUser(id uuid.UUID, displayName, email string, roles []string) gen.AuthU
 
 // noTenants is AuthSuccessResponse's tenants: the contract still carries
 // tenancy, and a single-tenant installation answers an empty list (spec
-// *Contract leftovers*). activeTenantId, optional there, is left out.
+// *Contract leftovers*). authSuccessBody writes activeTenantId as null.
 func noTenants() *[]gen.TenantSessionResponse {
 	return &[]gen.TenantSessionResponse{}
 }

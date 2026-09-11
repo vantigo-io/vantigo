@@ -228,15 +228,29 @@ func (q *Queries) RecordLoginFailure(ctx context.Context, arg RecordLoginFailure
 	return lockout_end, err
 }
 
-const resetLoginFailures = `-- name: ResetLoginFailures :exec
+const resetLoginFailures = `-- name: ResetLoginFailures :execrows
 UPDATE identity.users
 SET failed_login_count = 0
-WHERE id = $1 AND failed_login_count <> 0
+WHERE id = $1
+  AND (lockout_end IS NULL OR lockout_end <= $2::timestamptz)
 `
 
-func (q *Queries) ResetLoginFailures(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, resetLoginFailures, id)
-	return err
+type ResetLoginFailuresParams struct {
+	ID  uuid.UUID
+	Now time.Time
+}
+
+// ResetLoginFailures clears the failure count after a right password, but
+// only while no lockout is in force at now. When parallel wrong guesses
+// lock the account between the password check and this statement, it
+// affects no row and the sign-in is refused: the row lock makes it wait for
+// a concurrent RecordLoginFailure and re-check the lockout it wrote.
+func (q *Queries) ResetLoginFailures(ctx context.Context, arg ResetLoginFailuresParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resetLoginFailures, arg.ID, arg.Now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const rotateUserVersion = `-- name: RotateUserVersion :exec

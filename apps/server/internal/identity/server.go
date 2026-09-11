@@ -24,12 +24,33 @@ type server struct {
 	// bootstrapSecret is what POST /bootstrap accepts, resolved once when
 	// the module mounts (resolveBootstrapSecret); "" accepts nothing.
 	bootstrapSecret string
+	// dummyPasswordHash is what a password is verified against when the
+	// email names no account, or one without a password (checkPassword).
+	dummyPasswordHash string
 }
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
-func newServer(a *Access, d module.Deps, bootstrapSecret string) *server {
-	return &server{access: a, deps: d, q: store.New(d.Pool), bootstrapSecret: bootstrapSecret}
+// dummyPassword is the password dummyPasswordHash hashes. Nothing ever
+// signs in with it: checkPassword never counts a dummy verification as a
+// match.
+const dummyPassword = "vantigo-no-such-account"
+
+// newServer builds identity's operations over a and d. It resolves the
+// bootstrap secret, and computes the dummy password hash up front so that
+// no request, the first unknown-email sign-in included, pays for it.
+func newServer(a *Access, d module.Deps) (*server, error) {
+	dummy, err := hashPassword(dummyPassword)
+	if err != nil {
+		return nil, err
+	}
+	return &server{
+		access:            a,
+		deps:              d,
+		q:                 store.New(d.Pool),
+		bootstrapSecret:   resolveBootstrapSecret(d.Config, d.Logger),
+		dummyPasswordHash: dummy,
+	}, nil
 }
 
 // requestKey is the context key withRequest stores the request under.
