@@ -37,6 +37,9 @@ func Open(ctx context.Context, databaseURL string, opts ...Option) (*pgxpool.Poo
 	// to the bare operation name (e.g. "SELECT"); WithQuerySpanNamePrefix
 	// prefixes it with "query " per the OTel DB span-naming convention.
 	cfg.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithQuerySpanNamePrefix())
+	for _, opt := range opts {
+		opt(cfg)
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("db: open pool: %w", err)

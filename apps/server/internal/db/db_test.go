@@ -53,6 +53,21 @@ func TestApplyMigrations_IsIdempotent(t *testing.T) {
 	}
 }
 
+// Open must apply its options. A signature that accepts them and drops them
+// compiles and passes every caller's tests, while the pool silently keeps
+// pgxpool's default of max(4, NumCPU): enough on a large workstation, too
+// few on a small CI runner, where the gated concurrency tests then starve.
+func TestOpen_AppliesWithMaxConns(t *testing.T) {
+	pool, err := db.Open(context.Background(), testdb.URL(t), db.WithMaxConns(3))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer pool.Close()
+	if got := pool.Config().MaxConns; got != 3 {
+		t.Errorf("MaxConns = %d, want 3", got)
+	}
+}
+
 // A second migrator must wait on the advisory lock rather than race the first.
 // pg_stat_activity is the ground truth for "waiting on the lock", not a sleep.
 func TestApplyMigrations_WaitsForTheAdvisoryLock(t *testing.T) {
