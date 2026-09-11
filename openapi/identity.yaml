@@ -1279,6 +1279,7 @@ components:
                     type: string
             required:
                 - maintenance
+                - message
             type: object
             x-vantigo-source: Vantigo.Identity
         TenantControlPlaneResponse:
