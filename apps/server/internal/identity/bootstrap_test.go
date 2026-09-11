@@ -231,6 +231,15 @@ func TestBootstrap_WrongSecretIs401(t *testing.T) {
 	if !bootstrapAvailable(t, c) {
 		t.Error("a refused bootstrap consumed it")
 	}
+	for what, sql := range map[string]string{
+		"users":        `SELECT count(*) FROM identity.users`,
+		"marker rows":  `SELECT count(*) FROM identity.bootstrap_state`,
+		"audit events": `SELECT count(*) FROM identity.authorization_audit_events`,
+	} {
+		if n := h.count(t, sql); n != 0 {
+			t.Errorf("%d %s after refused bootstraps, want none", n, what)
+		}
+	}
 }
 
 // TestBootstrap_SecondBootstrapIs409 proves bootstrap is one-time: once the

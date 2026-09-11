@@ -85,9 +85,10 @@ func Module(a *Access) module.Module {
 // is further wrapped by limitAvatarUploads, so the avatar endpoints' body
 // cap applies before the router's own checks even run.
 //
-// The bootstrap secret is resolved here, once per mount, which is once per
-// process: /bootstrap and /bootstrap-status then share the one value, the
-// generated development secret included, that was logged.
+// The server is built here, once per mount, which is once per process: the
+// bootstrap secret is resolved then, so /bootstrap and /bootstrap-status
+// share the one value, the generated development secret included, that was
+// logged; and sign-in's dummy password hash is computed then too.
 func mount(a *Access, d module.Deps) (http.Handler, error) {
 	router := module.NewRouter(module.RouterOptions{
 		Doc:     d.Doc,
@@ -96,7 +97,10 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 		Limits:  limits,
 		Catalog: d.Catalog,
 	})
-	srv := newServer(a, d, resolveBootstrapSecret(d.Config, d.Logger))
+	srv, err := newServer(a, d)
+	if err != nil {
+		return nil, err
+	}
 	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{withRequest}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(writeInvalidRequest),
 		ResponseErrorHandlerFunc: module.ResponseError(),

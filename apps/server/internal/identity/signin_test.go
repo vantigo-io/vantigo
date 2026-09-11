@@ -2,8 +2,10 @@ package identity_test
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"net/http"
 	"slices"
 	"strings"
@@ -54,8 +56,8 @@ func TestLogin_LocalPasswordLoginEstablishesSessionAndLogoutClearsIt(t *testing.
 		!slices.Equal(body.User.Roles, []string{"User"}) || body.RequiresTwoFactor || body.TwoFactorEnabled || body.MfaEnrollmentRequired {
 		t.Errorf("login body = %s", r.body)
 	}
-	if !strings.Contains(string(r.body), `"tenants":[]`) {
-		t.Errorf("login body %s: want the contract's leftover tenants as an empty list", r.body)
+	if !strings.Contains(string(r.body), `"tenants":[]`) || !strings.Contains(string(r.body), `"activeTenantId":null`) {
+		t.Errorf("login body %s: want the contract's leftover tenancy as an empty list and a null", r.body)
 	}
 	cookie := r.setCookie(identity.SessionCookieName)
 	if cookie == nil || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.MaxAge != 0 || !cookie.Expires.IsZero() {
@@ -180,10 +182,14 @@ func TestLoginThrottling_RepeatedFailuresForOneAccountAreThrottledWithoutAffecti
 	}
 }
 
-// throttleHits is the login throttle's count for key, 0 without a row.
-func throttleHits(t *testing.T, h *harness, key string) int {
+// throttleHits is the login throttle's count for email from the client
+// address ip, 0 without a row. The key is the hex SHA-256 of the normalized
+// email, then "|" and the address.
+func throttleHits(t *testing.T, h *harness, email, ip string) int {
 	t.Helper()
-	return h.count(t, `SELECT coalesce(sum(hits), 0) FROM platform.rate_limit WHERE key = $1`, "login-attempts:"+key)
+	sum := sha256.Sum256([]byte(strings.ToUpper(strings.TrimSpace(email))))
+	return h.count(t, `SELECT coalesce(sum(hits), 0) FROM platform.rate_limit WHERE key = $1`,
+		"login-attempts:"+hex.EncodeToString(sum[:])+"|"+ip)
 }
 
 // Ported from LoginThrottlingIntegrationTests.A_successful_login_clears_the_account_failure_window.
@@ -196,14 +202,13 @@ func TestLoginThrottling_ASuccessfulLoginClearsTheAccountFailureWindow(t *testin
 	const email = "user@example.test"
 	id := h.seedUser(t, email, userPassword, identity.RoleUserID)
 	c := h.client(t)
-	key := "USER@EXAMPLE.TEST|" + c.ip
 
 	for attempt := range 4 {
 		if r := c.do(http.MethodPost, loginPath, credentials(email, "wrong-password")); r.status != http.StatusUnauthorized {
 			t.Fatalf("attempt %d: status %d, want 401", attempt+1, r.status)
 		}
 	}
-	if n := throttleHits(t, h, key); n != 4 {
+	if n := throttleHits(t, h, email, c.ip); n != 4 {
 		t.Errorf("throttle hits after 4 failures = %d", n)
 	}
 	if n := h.count(t, `SELECT failed_login_count FROM identity.users WHERE id = $1`, id); n != 4 {
@@ -213,7 +218,7 @@ func TestLoginThrottling_ASuccessfulLoginClearsTheAccountFailureWindow(t *testin
 	if r := c.do(http.MethodPost, loginPath, credentials(email, userPassword)); r.status != http.StatusOK {
 		t.Fatalf("success: status %d body %s", r.status, r.body)
 	}
-	if n := throttleHits(t, h, key); n != 0 {
+	if n := throttleHits(t, h, email, c.ip); n != 0 {
 		t.Errorf("throttle hits after the success = %d, want the window cleared", n)
 	}
 	if n := h.count(t, `SELECT failed_login_count FROM identity.users WHERE id = $1`, id); n != 0 {
@@ -246,11 +251,40 @@ func TestLoginThrottling_IsPerClientAddress(t *testing.T) {
 	if r := b.do(http.MethodPost, loginPath, credentials(email, "wrong-password")); r.status != http.StatusUnauthorized {
 		t.Errorf("client B, same email: status %d, want 401 (not throttled)", r.status)
 	}
-	if n := throttleHits(t, h, "SHARED-8B2D@INTEGRATION.TEST|"+a.ip); n != 10 {
+	if n := throttleHits(t, h, email, a.ip); n != 10 {
 		t.Errorf("client A's throttle row (%s) has %d hits, want 10", a.ip, n)
 	}
-	if n := throttleHits(t, h, "SHARED-8B2D@INTEGRATION.TEST|"+b.ip); n != 1 {
+	if n := throttleHits(t, h, email, b.ip); n != 1 {
 		t.Errorf("client B's throttle row (%s) has %d hits, want 1", b.ip, n)
+	}
+	// The limiter never holds the email in clear.
+	if n := h.count(t, `SELECT count(*) FROM platform.rate_limit WHERE upper(key) LIKE '%SHARED-8B2D%'`); n != 0 {
+		t.Errorf("%d limiter rows carry the email in clear", n)
+	}
+}
+
+// TestLogin_OversizeEmailIsAnUnknownEmail is the regression for a 16 KB
+// email, which once made the throttle's key too large for the limiter's
+// index and answered 500. It is now just an unknown email: the same 401
+// invalid_credentials body as any other, contract-validated (the contract
+// puts no bound on the email), with its failure counted on a bounded key.
+// The email is random hex: PostgreSQL compresses a long value before
+// indexing it, so a repetitive one would fit the index and prove nothing.
+func TestLogin_OversizeEmailIsAnUnknownEmail(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.client(t)
+	noise := make([]byte, 8*1024)
+	_, _ = rand.Read(noise) // crypto/rand.Read never returns an error
+	oversize := hex.EncodeToString(noise) + "@example.test"
+
+	usual := c.do(http.MethodPost, loginPath, credentials("unknown-3c4d@integration.test", "wrong-password"))
+	r := c.do(http.MethodPost, loginPath, credentials(oversize, "wrong-password"))
+	if r.status != http.StatusUnauthorized || r.code() != "invalid_credentials" || string(r.body) != string(usual.body) {
+		t.Errorf("oversize email: status %d body %.200s, want the unknown-email 401 %s", r.status, r.body, usual.body)
+	}
+	if n := throttleHits(t, h, oversize, c.ip); n != 1 {
+		t.Errorf("the oversize email's throttle row has %d hits, want 1", n)
 	}
 }
 
@@ -391,7 +425,8 @@ func TestLogin_WithTotpEnrolledAnswersRequiresTwoFactorWithATicket(t *testing.T)
 	}
 	var body authSuccess
 	r.json(&body)
-	if body.User != nil || !body.RequiresTwoFactor || !body.TwoFactorEnabled || body.MfaEnrollmentRequired || !strings.Contains(string(r.body), `"user":null`) {
+	if body.User != nil || !body.RequiresTwoFactor || !body.TwoFactorEnabled || body.MfaEnrollmentRequired ||
+		!strings.Contains(string(r.body), `"user":null`) || !strings.Contains(string(r.body), `"activeTenantId":null`) {
 		t.Errorf("body = %s, want the requiresTwoFactor answer", r.body)
 	}
 	ticket := r.setCookie(identity.LoginTicketCookieName)
