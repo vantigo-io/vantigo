@@ -460,10 +460,16 @@ type avatarResponseHeaders struct {
 }
 
 func (r avatarResponseHeaders) VisitGetIdentityAccountAvatarResponse(w http.ResponseWriter) error {
+	setAvatarHeaders(w)
+	return r.body.VisitGetIdentityAccountAvatarResponse(w)
+}
+
+// setAvatarHeaders sets the headers every avatar read answers with, the
+// account's own and an Owner's read of another user's alike.
+func setAvatarHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", "inline")
-	return r.body.VisitGetIdentityAccountAvatarResponse(w)
 }
 
 // GetIdentityAccountAvatar serves the caller's stored avatar bytes, or 404

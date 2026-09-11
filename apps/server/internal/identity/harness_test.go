@@ -199,6 +199,36 @@ func (h *harness) advance(d time.Duration) {
 	h.clock = h.clock.Add(d)
 }
 
+// createUser creates a user with role through POST /owner/users as owner
+// and returns its id. The email is also the display name, the password is
+// userPassword, and the email counts as confirmed, as for every account an
+// Owner creates.
+func (h *harness) createUser(t testing.TB, owner *client, email, role string) uuid.UUID {
+	t.Helper()
+	r := owner.do(http.MethodPost, "/api/v1/identity/owner/users", map[string]string{
+		"displayName": email, "email": email, "role": role, "password": userPassword,
+	})
+	if r.status != http.StatusCreated {
+		t.Fatalf("create user %s: status %d body %s", email, r.status, r.body)
+	}
+	var body struct {
+		ID uuid.UUID `json:"id"`
+	}
+	r.json(&body)
+	return body.ID
+}
+
+// mailTo is every mail the fake sender recorded for to, in send order.
+func (h *harness) mailTo(to string) []mail.Message {
+	var out []mail.Message
+	for _, m := range h.mail.Messages() {
+		if m.To == to {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // exec runs one fixture statement.
 func (h *harness) exec(t testing.TB, sql string, args ...any) {
 	t.Helper()
@@ -222,9 +252,11 @@ func (h *harness) insertUser(t testing.TB, email string, roles ...uuid.UUID) uui
 }
 
 // seedUser creates a user who can sign in with password, directly in the
-// database, and returns its id. It is test-only scaffolding: until the owner
-// user-management endpoints exist, it is how a test gets accounts beyond
-// the bootstrap Owner. The hash is identity's own Argon2id PHC string.
+// database, and returns its id. It is test-only scaffolding: tests with an
+// Owner prefer createUser, which goes through the endpoint; seedUser makes
+// the accounts no endpoint makes, such as one whose email is unconfirmed,
+// and accounts for tests without an Owner. The hash is identity's own
+// Argon2id PHC string.
 func (h *harness) seedUser(t testing.TB, email, password string, roles ...uuid.UUID) uuid.UUID {
 	t.Helper()
 	id := h.insertUser(t, email, roles...)

@@ -33,10 +33,6 @@ func (*server) DeleteIdentityAccountPasskeysByCredentialId(context.Context, gen.
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) DeleteIdentityOwnerUsersById(context.Context, gen.DeleteIdentityOwnerUsersByIdRequestObject) (gen.DeleteIdentityOwnerUsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) DeleteIdentityScimV2GroupsById(context.Context, gen.DeleteIdentityScimV2GroupsByIdRequestObject) (gen.DeleteIdentityScimV2GroupsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -93,10 +89,6 @@ func (*server) GetIdentityAccountPasskeys(context.Context, gen.GetIdentityAccoun
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityInvitationsValidate(context.Context, gen.GetIdentityInvitationsValidateRequestObject) (gen.GetIdentityInvitationsValidateResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityOidcCallback(context.Context, gen.GetIdentityOidcCallbackRequestObject) (gen.GetIdentityOidcCallbackResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -109,10 +101,6 @@ func (*server) GetIdentityOidcComplete(context.Context, gen.GetIdentityOidcCompl
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityOwnerInvitations(context.Context, gen.GetIdentityOwnerInvitationsRequestObject) (gen.GetIdentityOwnerInvitationsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityOwnerMfa(context.Context, gen.GetIdentityOwnerMfaRequestObject) (gen.GetIdentityOwnerMfaResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -122,14 +110,6 @@ func (*server) GetIdentityOwnerMfaSetup(context.Context, gen.GetIdentityOwnerMfa
 }
 
 func (*server) GetIdentityOwnerSystemStatus(context.Context, gen.GetIdentityOwnerSystemStatusRequestObject) (gen.GetIdentityOwnerSystemStatusResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityOwnerUsers(context.Context, gen.GetIdentityOwnerUsersRequestObject) (gen.GetIdentityOwnerUsersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityOwnerUsersByIdAvatar(context.Context, gen.GetIdentityOwnerUsersByIdAvatarRequestObject) (gen.GetIdentityOwnerUsersByIdAvatarResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -221,27 +201,11 @@ func (*server) PostIdentityAccountPasskeysComplete(context.Context, gen.PostIden
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityInvitationsAccept(context.Context, gen.PostIdentityInvitationsAcceptRequestObject) (gen.PostIdentityInvitationsAcceptResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityLogin2fa(context.Context, gen.PostIdentityLogin2faRequestObject) (gen.PostIdentityLogin2faResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
 func (*server) PostIdentityOidcCallback(context.Context, gen.PostIdentityOidcCallbackRequestObject) (gen.PostIdentityOidcCallbackResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerInvitations(context.Context, gen.PostIdentityOwnerInvitationsRequestObject) (gen.PostIdentityOwnerInvitationsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerInvitationsByIdResend(context.Context, gen.PostIdentityOwnerInvitationsByIdResendRequestObject) (gen.PostIdentityOwnerInvitationsByIdResendResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerInvitationsByIdRevoke(context.Context, gen.PostIdentityOwnerInvitationsByIdRevokeRequestObject) (gen.PostIdentityOwnerInvitationsByIdRevokeResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -265,39 +229,11 @@ func (*server) PostIdentityOwnerMfaSetup(context.Context, gen.PostIdentityOwnerM
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityOwnerUsers(context.Context, gen.PostIdentityOwnerUsersRequestObject) (gen.PostIdentityOwnerUsersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerUsersByIdDisable(context.Context, gen.PostIdentityOwnerUsersByIdDisableRequestObject) (gen.PostIdentityOwnerUsersByIdDisableResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerUsersByIdEnable(context.Context, gen.PostIdentityOwnerUsersByIdEnableRequestObject) (gen.PostIdentityOwnerUsersByIdEnableResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerUsersByIdPassword(context.Context, gen.PostIdentityOwnerUsersByIdPasswordRequestObject) (gen.PostIdentityOwnerUsersByIdPasswordResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerUsersByIdPasswordReset(context.Context, gen.PostIdentityOwnerUsersByIdPasswordResetRequestObject) (gen.PostIdentityOwnerUsersByIdPasswordResetResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityPasskeysLoginBegin(context.Context, gen.PostIdentityPasskeysLoginBeginRequestObject) (gen.PostIdentityPasskeysLoginBeginResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
 func (*server) PostIdentityPasskeysLoginComplete(context.Context, gen.PostIdentityPasskeysLoginCompleteRequestObject) (gen.PostIdentityPasskeysLoginCompleteResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityPasswordRecoveryRequest(context.Context, gen.PostIdentityPasswordRecoveryRequestRequestObject) (gen.PostIdentityPasswordRecoveryRequestResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityPasswordRecoveryReset(context.Context, gen.PostIdentityPasswordRecoveryResetRequestObject) (gen.PostIdentityPasswordRecoveryResetResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -334,10 +270,6 @@ func (*server) PutIdentityAccessRolesByIdPermissions(context.Context, gen.PutIde
 }
 
 func (*server) PutIdentityAccessUsersByIdRoles(context.Context, gen.PutIdentityAccessUsersByIdRolesRequestObject) (gen.PutIdentityAccessUsersByIdRolesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityOwnerUsersById(context.Context, gen.PutIdentityOwnerUsersByIdRequestObject) (gen.PutIdentityOwnerUsersByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 

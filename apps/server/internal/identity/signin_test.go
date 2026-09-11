@@ -152,6 +152,12 @@ func TestLogin_CrossSiteUnsafeRequestsAreRefused(t *testing.T) {
 	if r := signedIn.do(http.MethodPost, logoutPath, nil, sameOrigin...); r.status != http.StatusOK {
 		t.Errorf("same-origin logout: status %d, want 200", r.status)
 	}
+	if r := h.client(t).do(http.MethodPost, "/api/v1/identity/password-recovery/request", map[string]string{"email": "csrf-dummy@integration.test"}, sameOrigin...); r.status != http.StatusOK {
+		t.Errorf("same-origin recovery request: status %d, want 200", r.status)
+	}
+	if r := h.client(t).do(http.MethodPost, "/api/v1/identity/password-recovery/reset", map[string]string{"email": "csrf-dummy@integration.test", "token": "csrf-dummy-token", "newPassword": "csrf-dummy-new-password"}, sameOrigin...); r.status != http.StatusBadRequest || r.code() != "invalid_reset_token" {
+		t.Errorf("same-origin recovery reset: status %d code %q, want 400 invalid_reset_token", r.status, r.code())
+	}
 }
 
 // Ported from LoginThrottlingIntegrationTests.Repeated_failures_for_one_account_are_throttled_without_affecting_others.

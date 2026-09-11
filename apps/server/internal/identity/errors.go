@@ -2,11 +2,64 @@ package identity
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 
 	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 )
+
+// refusal is a client error answer that a handler, or a transaction on its
+// behalf, decides on: an AuthErrorResponse with its status, or a bare 404.
+// It is an error, so a transaction returns it to roll back and the handler
+// hands it on (refusalOr). It implements the response interface of each
+// operation that answers with one; those Visit methods sit beside the
+// operations.
+type refusal struct {
+	status int
+	body   *apicommon.AuthErrorResponse // nil for a bare 404
+}
+
+func refuse(status int, code, message string, fields map[string][]string) refusal {
+	body := authErrorBody(code, message, fields)
+	return refusal{status: status, body: &body}
+}
+
+// notFound is the contract's bare 404, with no body, for an unknown user
+// or invitation.
+var notFound = refusal{status: http.StatusNotFound}
+
+func (r refusal) Error() string {
+	if r.body == nil {
+		return fmt.Sprintf("identity: refused with %d", r.status)
+	}
+	return fmt.Sprintf("identity: refused with %d %s", r.status, r.body.Error.Code)
+}
+
+func (r refusal) write(w http.ResponseWriter) error {
+	if r.body == nil {
+		w.WriteHeader(r.status)
+		return nil
+	}
+	writeJSON(w, r.status, "application/json", r.body)
+	return nil
+}
+
+// refusalOr is a handler's answer to err: the refusal in err's chain, or
+// err itself, a server error. T is the operation's response interface; a
+// refusal that does not implement it is a server error too, which the
+// operation's tests catch.
+func refusalOr[T any](err error) (T, error) {
+	var zero T
+	var r refusal
+	if errors.As(err, &r) {
+		if answer, ok := any(r).(T); ok {
+			return answer, nil
+		}
+	}
+	return zero, err
+}
 
 // The fixed messages of the access layer's answers (.NET's cookie events,
 // EA/AuthServiceCollectionExtensions.cs:114-125), of a body or parameter that

@@ -56,6 +56,26 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityLogin":           policyLogin,
 	"postIdentityBootstrap":       policyBootstrap,
 	"postIdentityAccountPassword": policyPasswordRecovery,
+
+	"getIdentityOwnerUsers":                   policyUserManagement,
+	"postIdentityOwnerUsers":                  policyUserManagement,
+	"putIdentityOwnerUsersById":               policyUserManagement,
+	"deleteIdentityOwnerUsersById":            policyUserManagement,
+	"postIdentityOwnerUsersByIdDisable":       policyUserManagement,
+	"postIdentityOwnerUsersByIdEnable":        policyUserManagement,
+	"postIdentityOwnerUsersByIdPassword":      policyUserManagement,
+	"postIdentityOwnerUsersByIdPasswordReset": policyUserManagement,
+	"getIdentityOwnerUsersByIdAvatar":         policyOwnerAvatarRead,
+
+	"getIdentityOwnerInvitations":            policyInvitations,
+	"postIdentityOwnerInvitations":           policyInvitations,
+	"postIdentityOwnerInvitationsByIdResend": policyInvitations,
+	"postIdentityOwnerInvitationsByIdRevoke": policyInvitations,
+	"getIdentityInvitationsValidate":         policyInvitationAcceptance,
+	"postIdentityInvitationsAccept":          policyInvitationAcceptance,
+
+	"postIdentityPasswordRecoveryRequest": policyPasswordRecovery,
+	"postIdentityPasswordRecoveryReset":   policyPasswordRecovery,
 }
 
 // Module is identity as a platform module: its contract mounted under
