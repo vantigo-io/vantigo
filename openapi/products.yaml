@@ -425,38 +425,38 @@ paths:
             operationId: getProducts
             parameters:
                 - in: query
-                  name: Page
+                  name: page
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: PageSize
+                  name: pageSize
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: SortBy
+                  name: sortBy
                   schema:
                     type: string
                 - in: query
-                  name: SortDirection
+                  name: sortDirection
                   schema:
                     type: string
                 - in: query
-                  name: Search
+                  name: search
                   schema:
                     type: string
                 - in: query
-                  name: Status
+                  name: status
                   schema:
                     type: string
                 - in: query
-                  name: CategoryId
+                  name: categoryId
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: Uncategorized
+                  name: uncategorized
                   schema:
                     type: boolean
             responses:

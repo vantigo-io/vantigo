@@ -916,6 +916,9 @@ type PostIdentityOidcCallbackFormdataBody struct {
 // PostIdentityOwnerInvitationsJSONBody defines parameters for PostIdentityOwnerInvitations.
 type PostIdentityOwnerInvitationsJSONBody = InvitationRequest
 
+// PostIdentityOwnerInvitationsByIdResendJSONBody defines parameters for PostIdentityOwnerInvitationsByIdResend.
+type PostIdentityOwnerInvitationsByIdResendJSONBody = map[string]interface{}
+
 // PostIdentityOwnerMfaDisableJSONBody defines parameters for PostIdentityOwnerMfaDisable.
 type PostIdentityOwnerMfaDisableJSONBody = MfaCodeRequest
 
@@ -924,6 +927,9 @@ type PostIdentityOwnerMfaEnableJSONBody = MfaCodeRequest
 
 // PostIdentityOwnerMfaRecoveryCodesJSONBody defines parameters for PostIdentityOwnerMfaRecoveryCodes.
 type PostIdentityOwnerMfaRecoveryCodesJSONBody = MfaCodeRequest
+
+// PostIdentityOwnerMfaResetByUserIdJSONBody defines parameters for PostIdentityOwnerMfaResetByUserId.
+type PostIdentityOwnerMfaResetByUserIdJSONBody = map[string]interface{}
 
 // PostIdentityOwnerMfaSetupJSONBody defines parameters for PostIdentityOwnerMfaSetup.
 type PostIdentityOwnerMfaSetupJSONBody = MfaCodeRequest
@@ -1106,6 +1112,9 @@ type PostIdentityOidcCallbackFormdataRequestBody PostIdentityOidcCallbackFormdat
 // PostIdentityOwnerInvitationsJSONRequestBody defines body for PostIdentityOwnerInvitations for application/json ContentType.
 type PostIdentityOwnerInvitationsJSONRequestBody = PostIdentityOwnerInvitationsJSONBody
 
+// PostIdentityOwnerInvitationsByIdResendJSONRequestBody defines body for PostIdentityOwnerInvitationsByIdResend for application/json ContentType.
+type PostIdentityOwnerInvitationsByIdResendJSONRequestBody = PostIdentityOwnerInvitationsByIdResendJSONBody
+
 // PostIdentityOwnerMfaDisableJSONRequestBody defines body for PostIdentityOwnerMfaDisable for application/json ContentType.
 type PostIdentityOwnerMfaDisableJSONRequestBody = PostIdentityOwnerMfaDisableJSONBody
 
@@ -1114,6 +1123,9 @@ type PostIdentityOwnerMfaEnableJSONRequestBody = PostIdentityOwnerMfaEnableJSONB
 
 // PostIdentityOwnerMfaRecoveryCodesJSONRequestBody defines body for PostIdentityOwnerMfaRecoveryCodes for application/json ContentType.
 type PostIdentityOwnerMfaRecoveryCodesJSONRequestBody = PostIdentityOwnerMfaRecoveryCodesJSONBody
+
+// PostIdentityOwnerMfaResetByUserIdJSONRequestBody defines body for PostIdentityOwnerMfaResetByUserId for application/json ContentType.
+type PostIdentityOwnerMfaResetByUserIdJSONRequestBody = PostIdentityOwnerMfaResetByUserIdJSONBody
 
 // PostIdentityOwnerMfaSetupJSONRequestBody defines body for PostIdentityOwnerMfaSetup for application/json ContentType.
 type PostIdentityOwnerMfaSetupJSONRequestBody = PostIdentityOwnerMfaSetupJSONBody
@@ -8394,7 +8406,8 @@ func (response PostIdentityOwnerInvitations429JSONResponse) VisitPostIdentityOwn
 }
 
 type PostIdentityOwnerInvitationsByIdResendRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id   openapi_types.UUID `json:"id"`
+	Body *PostIdentityOwnerInvitationsByIdResendJSONRequestBody
 }
 
 type PostIdentityOwnerInvitationsByIdResendResponseObject interface {
@@ -8966,6 +8979,7 @@ func (response PostIdentityOwnerMfaRecoveryCodes429JSONResponse) VisitPostIdenti
 
 type PostIdentityOwnerMfaResetByUserIdRequestObject struct {
 	UserId openapi_types.UUID `json:"userId"`
+	Body   *PostIdentityOwnerMfaResetByUserIdJSONRequestBody
 }
 
 type PostIdentityOwnerMfaResetByUserIdResponseObject interface {
@@ -14183,6 +14197,16 @@ func (sh *strictHandler) PostIdentityOwnerInvitationsByIdResend(w http.ResponseW
 
 	request.Id = id
 
+	var body PostIdentityOwnerInvitationsByIdResendJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.PostIdentityOwnerInvitationsByIdResend(ctx, request.(PostIdentityOwnerInvitationsByIdResendRequestObject))
 	}
@@ -14360,6 +14384,16 @@ func (sh *strictHandler) PostIdentityOwnerMfaResetByUserId(w http.ResponseWriter
 	var request PostIdentityOwnerMfaResetByUserIdRequestObject
 
 	request.UserId = userId
+
+	var body PostIdentityOwnerMfaResetByUserIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.PostIdentityOwnerMfaResetByUserId(ctx, request.(PostIdentityOwnerMfaResetByUserIdRequestObject))

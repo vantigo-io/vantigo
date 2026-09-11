@@ -4191,6 +4191,13 @@ paths:
                   schema:
                     format: uuid
                     type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                description: Ignored — the handler binds no body. The frontend sends none; the .NET integration tests send `{}`, which the host accepts like an empty request.
+                required: false
             responses:
                 "200":
                     content:
@@ -4488,6 +4495,13 @@ paths:
                   schema:
                     format: uuid
                     type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            type: object
+                description: Ignored — the handler binds no body. The frontend has no caller; the .NET integration tests send `{}` (or no body), which the host accepts like an empty request.
+                required: false
             responses:
                 "200":
                     content:

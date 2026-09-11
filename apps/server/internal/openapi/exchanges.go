@@ -78,7 +78,7 @@ func Validate(ctx context.Context, doc *openapi3.T, ex Exchange) (string, error)
 		ExcludeRequestBody:    ex.RequestBody == nil,
 		ExcludeResponseBody:   ex.ResponseBody == nil,
 	}
-	input := &openapi3filter.RequestValidationInput{Request: req, PathParams: params, Route: route, Options: options}
+	input := &openapi3filter.RequestValidationInput{Request: req, PathParams: params, Route: withoutUnrecordedParameters(route), Options: options}
 	id := route.Operation.OperationID
 	// The .NET suites send invalid requests on purpose. A request the contract
 	// rejects is consistent only when the server rejected it too (4xx); the
@@ -101,6 +101,28 @@ func Validate(ctx context.Context, doc *openapi3.T, ex Exchange) (string, error)
 		return id, fmt.Errorf("response %d: %w", ex.Status, err)
 	}
 	return id, nil
+}
+
+// withoutUnrecordedParameters returns a copy of route whose operation and path
+// item lack header and cookie parameters. The recorder
+// (packages/contract-recording) keeps no request headers, so such a
+// parameter — the required Idempotency-Key, say — cannot be checked against a
+// recording, just as an unrecorded body is excluded rather than read as empty.
+func withoutUnrecordedParameters(route *routers.Route) *routers.Route {
+	strip := func(params openapi3.Parameters) openapi3.Parameters {
+		var kept openapi3.Parameters
+		for _, p := range params {
+			if p != nil && p.Value != nil && (p.Value.In == openapi3.ParameterInHeader || p.Value.In == openapi3.ParameterInCookie) {
+				continue
+			}
+			kept = append(kept, p)
+		}
+		return kept
+	}
+	op, item, copied := *route.Operation, *route.PathItem, *route
+	op.Parameters, item.Parameters = strip(op.Parameters), strip(item.Parameters)
+	copied.Operation, copied.PathItem = &op, &item
+	return &copied
 }
 
 func deref(s *string) string {

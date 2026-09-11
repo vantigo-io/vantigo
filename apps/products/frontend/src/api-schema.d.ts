@@ -490,14 +490,14 @@ export interface operations {
     getProducts: {
         parameters: {
             query?: {
-                Page?: number;
-                PageSize?: number;
-                SortBy?: string;
-                SortDirection?: string;
-                Search?: string;
-                Status?: string;
-                CategoryId?: number;
-                Uncategorized?: boolean;
+                page?: number;
+                pageSize?: number;
+                sortBy?: string;
+                sortDirection?: string;
+                search?: string;
+                status?: string;
+                categoryId?: number;
+                uncategorized?: boolean;
             };
             header?: never;
             path?: never;

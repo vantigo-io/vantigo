@@ -4999,7 +4999,12 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description Ignored — the handler binds no body. The frontend sends none; the .NET integration tests send `{}`, which the host accepts like an empty request. */
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -5389,7 +5394,12 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        /** @description Ignored — the handler binds no body. The frontend has no caller; the .NET integration tests send `{}` (or no body), which the host accepts like an empty request. */
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {

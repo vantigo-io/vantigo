@@ -179,14 +179,14 @@ type VariantRequest struct {
 
 // GetProductsParams defines parameters for GetProducts.
 type GetProductsParams struct {
-	Page          *int32  `form:"Page,omitempty" json:"Page,omitempty"`
-	PageSize      *int32  `form:"PageSize,omitempty" json:"PageSize,omitempty"`
-	SortBy        *string `form:"SortBy,omitempty" json:"SortBy,omitempty"`
-	SortDirection *string `form:"SortDirection,omitempty" json:"SortDirection,omitempty"`
-	Search        *string `form:"Search,omitempty" json:"Search,omitempty"`
-	Status        *string `form:"Status,omitempty" json:"Status,omitempty"`
-	CategoryId    *int32  `form:"CategoryId,omitempty" json:"CategoryId,omitempty"`
-	Uncategorized *bool   `form:"Uncategorized,omitempty" json:"Uncategorized,omitempty"`
+	Page          *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize      *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	SortBy        *string `form:"sortBy,omitempty" json:"sortBy,omitempty"`
+	SortDirection *string `form:"sortDirection,omitempty" json:"sortDirection,omitempty"`
+	Search        *string `form:"search,omitempty" json:"search,omitempty"`
+	Status        *string `form:"status,omitempty" json:"status,omitempty"`
+	CategoryId    *int32  `form:"categoryId,omitempty" json:"categoryId,omitempty"`
+	Uncategorized *bool   `form:"uncategorized,omitempty" json:"uncategorized,omitempty"`
 }
 
 // GetProductsStatsSummaryParams defines parameters for GetProductsStatsSummary.
@@ -332,106 +332,106 @@ func (siw *ServerInterfaceWrapper) GetProducts(w http.ResponseWriter, r *http.Re
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetProductsParams
 
-	// ------------- Optional query parameter "Page" -------------
+	// ------------- Optional query parameter "page" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "Page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "Page"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Page", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "PageSize" -------------
+	// ------------- Optional query parameter "pageSize" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "PageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "PageSize"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "PageSize", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "SortBy" -------------
+	// ------------- Optional query parameter "sortBy" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "SortBy", r.URL.Query(), &params.SortBy, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sortBy", r.URL.Query(), &params.SortBy, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "SortBy"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sortBy"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "SortBy", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortBy", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "SortDirection" -------------
+	// ------------- Optional query parameter "sortDirection" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "SortDirection", r.URL.Query(), &params.SortDirection, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sortDirection", r.URL.Query(), &params.SortDirection, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "SortDirection"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sortDirection"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "SortDirection", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sortDirection", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "Search" -------------
+	// ------------- Optional query parameter "search" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "Search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "Search"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Search", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "Status" -------------
+	// ------------- Optional query parameter "status" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "Status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "Status"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Status", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "CategoryId" -------------
+	// ------------- Optional query parameter "categoryId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "CategoryId", r.URL.Query(), &params.CategoryId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "categoryId", r.URL.Query(), &params.CategoryId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "CategoryId"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "categoryId"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "CategoryId", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "categoryId", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "Uncategorized" -------------
+	// ------------- Optional query parameter "uncategorized" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "Uncategorized", r.URL.Query(), &params.Uncategorized, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "uncategorized", r.URL.Query(), &params.Uncategorized, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "Uncategorized"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "uncategorized"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Uncategorized", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "uncategorized", Err: err})
 		}
 		return
 	}
