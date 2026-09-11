@@ -76,6 +76,12 @@ jobs:
             echo "::error::Generated code or embedded contract copies are stale. Run 'go generate ./...' in apps/server and commit the result."
             exit 1
           }
+          untracked="$(git status --porcelain -- . ../../openapi)"
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::go generate produced files that are not committed. Run 'go generate ./...' in apps/server and commit the result."
+            exit 1
+          fi
 
       - name: 🧪 Go tests with the race detector
         working-directory: apps/server

@@ -1,10 +1,19 @@
 package main
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
+
+func TestCoverageFailsOnAnUnreadableCorpus(t *testing.T) {
+	dir := t.TempDir()
+	err := runCoverage([]string{"-corpus", filepath.Join(dir, "missing"), "-out", filepath.Join(dir, "COVERAGE.md")})
+	if err == nil {
+		t.Fatal("runCoverage ignored a corpus it could not read")
+	}
+}
 
 func TestSampleKeySeparatesShapesUnderOneStatus(t *testing.T) {
 	str := func(s string) *string { return &s }

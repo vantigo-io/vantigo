@@ -541,7 +541,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "204":
@@ -572,7 +571,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "200":
@@ -607,7 +605,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             requestBody:
                 content:
@@ -655,7 +652,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "200":
@@ -692,7 +688,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             requestBody:
                 content:
@@ -746,14 +741,12 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: variantId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "204":
@@ -790,14 +783,12 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: variantId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             requestBody:
                 content:
@@ -851,14 +842,12 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: variantId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "200":
@@ -895,14 +884,12 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: variantId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             requestBody:
                 content:
@@ -956,21 +943,18 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: variantId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: priceId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "204":
@@ -1001,21 +985,18 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: variantId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
                 - in: path
                   name: priceId
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             requestBody:
                 content:
@@ -1142,7 +1123,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "204":
@@ -1179,7 +1159,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "200":
@@ -1215,7 +1194,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             requestBody:
                 content:
@@ -1461,7 +1439,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "204":
@@ -1498,7 +1475,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             responses:
                 "200":
@@ -1533,7 +1509,6 @@ paths:
                   required: true
                   schema:
                     format: int32
-                    pattern: ^-?(?:0|[1-9]\d*)$
                     type: integer
             requestBody:
                 content:

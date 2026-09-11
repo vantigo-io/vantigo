@@ -43,6 +43,24 @@ func TestNormalizeNumbers(t *testing.T) {
 			count: 1,
 		},
 		{
+			name:  "typed integer loses its numeric-string pattern",
+			in:    obj{"type": "integer", "format": "int32", "pattern": `^-?(?:0|[1-9]\d*)$`},
+			want:  obj{"type": "integer", "format": "int32"},
+			count: 1,
+		},
+		{
+			name:  "typed number loses its numeric-string pattern",
+			in:    obj{"type": "number", "format": "double", "pattern": `^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$`},
+			want:  obj{"type": "number", "format": "double"},
+			count: 1,
+		},
+		{
+			name:  "string keeps a numeric-string pattern",
+			in:    obj{"type": "string", "pattern": `^-?(?:0|[1-9]\d*)$`},
+			want:  obj{"type": "string", "pattern": `^-?(?:0|[1-9]\d*)$`},
+			count: 0,
+		},
+		{
 			name:  "already-typed schema untouched",
 			in:    obj{"type": "string", "format": "date-time"},
 			want:  obj{"type": "string", "format": "date-time"},

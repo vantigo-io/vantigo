@@ -30,12 +30,31 @@ func Lint(doc *openapi3.T) []Problem {
 		access, _ := op.Op.Extensions["x-vantigo-access"].(string)
 		if !AccessRule.MatchString(access) {
 			problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: x-vantigo-access %q is not valid", where, access)})
+		} else if !sortedAndUnique(access) {
+			problems = append(problems, Problem{op.OperationID, fmt.Sprintf("%s: x-vantigo-access %q must list its names sorted and without duplicates", where, access)})
 		}
 		if !hasSuccessResponse(op.Op) {
 			problems = append(problems, Problem{op.OperationID, where + ": no 2xx response with a body schema, 204, or 3xx with a Location header"})
 		}
 	}
 	return problems
+}
+
+// sortedAndUnique reports whether a permission: or policy: access value lists
+// its names in strictly ascending order — sorted, no duplicates — which the
+// grammar regex cannot say. Other values have no list and always pass.
+func sortedAndUnique(access string) bool {
+	kind, list, _ := strings.Cut(access, ":")
+	if kind != "permission" && kind != "policy" {
+		return true
+	}
+	names := strings.Split(list, "+")
+	for i := 1; i < len(names); i++ {
+		if names[i-1] >= names[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // hasSuccessResponse reports whether op documents how it succeeds: a 2xx with

@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import openapiTS, { astToString } from "openapi-typescript";
 
 const repositoryRoot = resolve(import.meta.dir, "../..");
@@ -21,7 +22,7 @@ const header =
 export const generateClients = async (outputRoot: string = repositoryRoot): Promise<string[]> => {
   const written: string[] = [];
   for (const target of targets) {
-    const source = new URL(`file://${join(repositoryRoot, "openapi", `${target.module}.yaml`)}`);
+    const source = pathToFileURL(join(repositoryRoot, "openapi", `${target.module}.yaml`));
     const ast = await openapiTS(source);
     const file = join(outputRoot, target.output);
     await mkdir(dirname(file), { recursive: true });

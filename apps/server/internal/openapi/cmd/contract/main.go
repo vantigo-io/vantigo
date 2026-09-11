@@ -1,11 +1,17 @@
 // Command contract maintains the Go port's OpenAPI contract files:
 //
-//	contract split     -in <dump.json> -out <dir>  split the .NET dump into per-module files
-//	contract normalize -dir <dir>                  type numeric schemas and rewrite nullable references in place
-//	contract corpus    -in <dir> -out <dir>         deduplicate recorded exchanges (Task 4)
-//	contract coverage  -corpus <dir> -out <file>    list operations without exchanges (Task 4)
+//	contract split     -in <dump.json> -out <dir>    split the .NET dump into per-module files
+//	contract normalize -dir <dir>                    type numeric schemas and rewrite nullable references in place
+//	contract corpus    -in <dir> -out <dir>          validate every raw recorded exchange, then write a per-module sample
+//	contract coverage  -corpus <dir> -out <file>     list the operations no sampled exchange exercises
 //
-// Run from apps/server. See docs/superpowers/plans/2026-09-10-api-contract.md.
+// Run from apps/server, e.g.
+//
+//	go run ./internal/openapi/cmd/contract corpus -in /tmp/vantigo-exchanges -out ../../openapi/testdata/exchanges
+//	go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md
+//	go run ./internal/openapi/cmd/contract normalize -dir ../../openapi
+//
+// See docs/superpowers/plans/2026-09-10-api-contract.md.
 package main
 
 import (
@@ -68,7 +74,8 @@ func runSplit(args []string) error {
 }
 
 // runNormalize rewrites every *.yaml file in dir in place: it types the
-// numeric schemas the 3.1 -> 3.0 downgrade left untyped and rewrites
+// numeric schemas the 3.1 -> 3.0 downgrade left untyped, drops the
+// numeric-string patterns it added to numbers, and rewrites
 // nullable single-$ref oneOf schemas into the allOf idiom, using the same
 // YAML<->JSON round trip as split so the files stay sorted and 4-space
 // indented.
@@ -91,9 +98,9 @@ func runNormalize(args []string) error {
 		}
 		totalNumbers += numbers
 		totalRefs += refs
-		fmt.Printf("%s: %d numeric schema(s) typed, %d nullable reference(s) rewritten\n", filepath.Base(path), numbers, refs)
+		fmt.Printf("%s: %d numeric schema(s) typed or stripped of a numeric-string pattern, %d nullable reference(s) rewritten\n", filepath.Base(path), numbers, refs)
 	}
-	fmt.Printf("total: %d numeric schema(s) typed, %d nullable reference(s) rewritten\n", totalNumbers, totalRefs)
+	fmt.Printf("total: %d numeric schema(s) typed or stripped of a numeric-string pattern, %d nullable reference(s) rewritten\n", totalNumbers, totalRefs)
 	return nil
 }
 
