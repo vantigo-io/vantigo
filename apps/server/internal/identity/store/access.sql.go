@@ -439,10 +439,43 @@ WHERE id = $1
 FOR UPDATE
 `
 
-// LockRole reads a role and holds its row until the transaction ends, so
-// no assignment can take it (AssignUserRoleLocks) while it is deleted.
+// LockRole reads a role it is about to delete and holds its row FOR UPDATE
+// until the transaction ends, so no assignment can take it
+// (AssignUserRoleLocks' FOR KEY SHARE) while it is deleted.
 func (q *Queries) LockRole(ctx context.Context, id uuid.UUID) (IdentityRole, error) {
 	row := q.db.QueryRow(ctx, lockRole, id)
+	var i IdentityRole
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.NormalizedName,
+		&i.DisplayName,
+		&i.Description,
+		&i.IsSystem,
+		&i.IsBuiltIn,
+		&i.StewardUserID,
+		&i.Version,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const lockRoleForEdit = `-- name: LockRoleForEdit :one
+SELECT id, name, normalized_name, display_name, description, is_system, is_built_in,
+       steward_user_id, version, created_at, updated_at
+FROM identity.roles
+WHERE id = $1
+FOR NO KEY UPDATE
+`
+
+// LockRoleForEdit reads a role it is about to edit and holds its row FOR NO
+// KEY UPDATE: concurrent edits take turns, while an assignment's FOR KEY
+// SHARE on the role is not blocked, since an edit never deletes the row. A
+// rename is the exception: UpdateRole then changes normalized_name, a
+// unique column, and PostgreSQL takes that UPDATE's row lock FOR UPDATE.
+func (q *Queries) LockRoleForEdit(ctx context.Context, id uuid.UUID) (IdentityRole, error) {
+	row := q.db.QueryRow(ctx, lockRoleForEdit, id)
 	var i IdentityRole
 	err := row.Scan(
 		&i.ID,

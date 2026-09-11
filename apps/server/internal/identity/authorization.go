@@ -478,7 +478,7 @@ func (s *server) updateRole(ctx context.Context, id uuid.UUID, name, displayName
 		if err := lockRole(ctx, q, id); err != nil {
 			return err
 		}
-		role, err := q.LockRole(ctx, id)
+		role, err := q.LockRoleForEdit(ctx, id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return notFound
 		}
