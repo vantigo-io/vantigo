@@ -21,9 +21,11 @@ INSERT INTO identity.passkeys (
 )
 ON CONFLICT (credential_id) DO NOTHING;
 
--- name: RecordPasskeyUse :exec
+-- name: RecordPasskeyUse :execrows
 -- RecordPasskeyUse stores a passkey as a sign-in left it: its new signature
--- counter and flags, inside credential, and when it was used.
+-- counter and flags, inside credential, and when it was used. It affects no
+-- row when the passkey was removed after the sign-in read it (a removal
+-- takes no account lock), and the sign-in is then refused.
 UPDATE identity.passkeys
 SET credential = @credential, user_verified = @user_verified, backed_up = @backed_up, last_used_at = @now::timestamptz
 WHERE credential_id = @credential_id AND user_id = @user_id;

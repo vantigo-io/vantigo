@@ -284,8 +284,9 @@ func TestPasskeyLogin_RefusesAssertionsThatDoNotVerify(t *testing.T) {
 // TestPasskeyLogin_ACounterThatDidNotAdvanceIsRefused: a signature counter
 // no higher than the stored one signals a cloned authenticator. ASP.NET
 // rejected it (PasskeyHandler.PerformAssertionCoreAsync throws
-// SignCountLessThanOrEqualToStoredSignCount, which the endpoint answers 401,
-// EA/AccountSettingsEndpoints.cs:583-586), and so does go-webauthn's clone
+// SignCountLessThanOrEqualToStoredSignCount, which PerformAssertionAsync
+// returns as a failed result, answered 401 at
+// EA/AccountSettingsEndpoints.cs:588-591), and so does go-webauthn's clone
 // warning here; the stored counter stays where it was.
 func TestPasskeyLogin_ACounterThatDidNotAdvanceIsRefused(t *testing.T) {
 	t.Parallel()
@@ -464,6 +465,121 @@ func TestPasskeyLogin_CeremonyExpiresAfterFiveMinutes(t *testing.T) {
 	ceremony = beginPasskeyLogin(t, login, email)
 	h.advance(5 * time.Minute)
 	wantAuthError(t, "at 5:00", completePasskeyLogin(t, login, ceremony, a), http.StatusConflict, "passkey_ceremony_invalid", "The passkey ceremony is expired or already used.")
+}
+
+// TestPasskeyCeremonies_AreBoundToTheirKind: a ceremony completes only in
+// the flow that began it. An enrolment ceremony's id sent to sign-in
+// completion, and a sign-in ceremony's id sent to enrolment completion
+// (the same account's, so only the kind tells them apart), are each 409
+// passkey_ceremony_invalid and leave the ceremony live: its own flow then
+// completes it with the very answer that was refused.
+func TestPasskeyCeremonies_AreBoundToTheirKind(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "kinds@example.test"
+	_, c := passkeyAccount(t, h, email)
+	a := enrollPasskey(t, c, userPassword, "Key")
+	const invalid = "The passkey ceremony is expired or already used."
+
+	enrolment := beginPasskeyEnrolment(t, c, userPassword, "Second")
+	attestation := newAuthenticator(t).create(t, enrolment.Options)
+	r := h.client(t).do(http.MethodPost, passkeyLoginPath+"/complete", map[string]any{
+		"ceremonyId": enrolment.CeremonyID, "credentialJson": attestation,
+	})
+	wantAuthError(t, "an enrolment ceremony at sign-in", r, http.StatusConflict, "passkey_ceremony_invalid", invalid)
+	r = c.do(http.MethodPost, accountPasskeysPath+"/complete", map[string]any{
+		"ceremonyId": enrolment.CeremonyID, "credentialJson": attestation, "currentPassword": userPassword,
+	})
+	if r.status != http.StatusOK {
+		t.Errorf("the enrolment ceremony at enrolment afterwards: status %d body %s", r.status, r.body)
+	}
+
+	login := h.client(t)
+	signIn := beginPasskeyLogin(t, login, email)
+	assertion := a.get(t, signIn.Options)
+	r = c.do(http.MethodPost, accountPasskeysPath+"/complete", map[string]any{
+		"ceremonyId": signIn.CeremonyID, "credentialJson": assertion, "currentPassword": userPassword,
+	})
+	wantAuthError(t, "a sign-in ceremony at enrolment", r, http.StatusConflict, "passkey_ceremony_invalid", invalid)
+	r = login.do(http.MethodPost, passkeyLoginPath+"/complete", map[string]any{"ceremonyId": signIn.CeremonyID, "credentialJson": assertion})
+	if r.status != http.StatusOK {
+		t.Errorf("the sign-in ceremony at sign-in afterwards: status %d body %s", r.status, r.body)
+	}
+}
+
+// TestPasskeyEnrolment_CeremonyExpiresAfterFiveMinutes: an enrolment
+// ceremony completes until its fifth minute is up, on the Deps clock, and
+// is 409 from then on, enrolling nothing.
+func TestPasskeyEnrolment_CeremonyExpiresAfterFiveMinutes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	id, c := passkeyAccount(t, h, "enrolment-expiry@example.test")
+	complete := func(ceremony passkeyCeremony) *resp {
+		return c.do(http.MethodPost, accountPasskeysPath+"/complete", map[string]any{
+			"ceremonyId": ceremony.CeremonyID, "credentialJson": newAuthenticator(t).create(t, ceremony.Options), "currentPassword": userPassword,
+		})
+	}
+	ceremony := beginPasskeyEnrolment(t, c, userPassword, "In time")
+	h.advance(5*time.Minute - time.Second)
+	if r := complete(ceremony); r.status != http.StatusOK {
+		t.Errorf("at 4:59: status %d body %s", r.status, r.body)
+	}
+	ceremony = beginPasskeyEnrolment(t, c, userPassword, "Too late")
+	h.advance(5 * time.Minute)
+	wantAuthError(t, "at 5:00", complete(ceremony), http.StatusConflict, "passkey_ceremony_invalid", "The passkey ceremony is expired or already used.")
+	if n := h.count(t, `SELECT count(*) FROM identity.passkeys WHERE user_id = $1`, id); n != 1 {
+		t.Errorf("%d passkeys, want 1", n)
+	}
+}
+
+// TestPasskeyLogin_APasskeyRemovedMidSignInIsRefused: a removal takes no
+// account lock, so it can commit while a sign-in with that passkey sits
+// between reading the account's passkeys and recording the use. A gate
+// holds the passkey's row until the sign-in waits on it, then deletes the
+// row and commits: the sign-in finds nothing to record and is 401
+// invalid_credentials, with no session.
+func TestPasskeyLogin_APasskeyRemovedMidSignInIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	const email = "removed-mid-sign-in@example.test"
+	id, c := passkeyAccount(t, h, email)
+	a := enrollPasskey(t, c, userPassword, "Key")
+	sessions := h.count(t, `SELECT count(*) FROM identity.sessions WHERE user_id = $1`, id)
+	login := h.client(t)
+	ceremony := beginPasskeyLogin(t, login, email)
+	assertion := a.get(t, ceremony.Options)
+
+	ctx := context.Background()
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM identity.passkeys WHERE credential_id = $1 FOR UPDATE`, a.id); err != nil {
+		t.Fatal(err)
+	}
+	finished := make(chan struct{})
+	var r *resp
+	go func() {
+		defer close(finished)
+		r = login.do(http.MethodPost, passkeyLoginPath+"/complete", map[string]any{"ceremonyId": ceremony.CeremonyID, "credentialJson": assertion})
+	}()
+	awaitLockWaiters(t, h, 1, finished)
+	if _, err := tx.Exec(ctx, `DELETE FROM identity.passkeys WHERE credential_id = $1`, a.id); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	<-finished
+
+	wantAuthError(t, "sign-in", r, http.StatusUnauthorized, "invalid_credentials", passkeySignInFailed)
+	if r.setCookie(identity.SessionCookieName) != nil {
+		t.Errorf("a session cookie was set")
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.sessions WHERE user_id = $1`, id); n != sessions {
+		t.Errorf("%d sessions, want %d", n, sessions)
+	}
 }
 
 // TestPasskeyLogin_OneCeremonyCompletesOnce races two valid assertions for

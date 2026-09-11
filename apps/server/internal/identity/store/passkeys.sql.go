@@ -365,7 +365,7 @@ func (q *Queries) LockPasskeyLoginUser(ctx context.Context, arg LockPasskeyLogin
 	return i, err
 }
 
-const recordPasskeyUse = `-- name: RecordPasskeyUse :exec
+const recordPasskeyUse = `-- name: RecordPasskeyUse :execrows
 UPDATE identity.passkeys
 SET credential = $1, user_verified = $2, backed_up = $3, last_used_at = $4::timestamptz
 WHERE credential_id = $5 AND user_id = $6
@@ -381,9 +381,11 @@ type RecordPasskeyUseParams struct {
 }
 
 // RecordPasskeyUse stores a passkey as a sign-in left it: its new signature
-// counter and flags, inside credential, and when it was used.
-func (q *Queries) RecordPasskeyUse(ctx context.Context, arg RecordPasskeyUseParams) error {
-	_, err := q.db.Exec(ctx, recordPasskeyUse,
+// counter and flags, inside credential, and when it was used. It affects no
+// row when the passkey was removed after the sign-in read it (a removal
+// takes no account lock), and the sign-in is then refused.
+func (q *Queries) RecordPasskeyUse(ctx context.Context, arg RecordPasskeyUseParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordPasskeyUse,
 		arg.Credential,
 		arg.UserVerified,
 		arg.BackedUp,
@@ -391,5 +393,8 @@ func (q *Queries) RecordPasskeyUse(ctx context.Context, arg RecordPasskeyUsePara
 		arg.CredentialID,
 		arg.UserID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
