@@ -221,11 +221,8 @@ func TestMfa_UnenrolledOwnerCanReachEnrolmentAndGainsPrivilegedAccessAfterEnroll
 	if r := owner.do(http.MethodGet, ownerUsersPath, nil); r.status != http.StatusOK {
 		t.Errorf("GET %s after enrolment: status %d, want 200", ownerUsersPath, r.status)
 	}
-	// The system status operation is still a stub, which answers an
-	// undocumented 501; what this proves is that the Owner policy now admits
-	// the session.
-	if r := owner.do(http.MethodGet, systemStatusPath, nil, skipContract("stubbed operation: only the access decision is checked")); r.status == http.StatusForbidden || r.status == http.StatusUnauthorized {
-		t.Errorf("GET %s after enrolment: status %d, want the Owner policy to admit the session", systemStatusPath, r.status)
+	if r := owner.do(http.MethodGet, systemStatusPath, nil); r.status != http.StatusOK {
+		t.Errorf("GET %s after enrolment: status %d, want 200", systemStatusPath, r.status)
 	}
 }
 
