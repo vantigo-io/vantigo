@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -114,6 +115,61 @@ func TestLogValue_NeverLogsASecret(t *testing.T) {
 	}
 }
 
+// TestMarshalJSON_NeverPrintsASecret marshals a configuration carrying
+// every secret straight to JSON, and again nested inside another value, the
+// way slog's JSON handler reaches it (via encoding/json, which consults
+// neither Format nor LogValue): no secret appears in either case, while the
+// non-secret settings still do.
+func TestMarshalJSON_NeverPrintsASecret(t *testing.T) {
+	cfg := secretConfig(t)
+
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("json.Marshal(cfg): %v", err)
+	}
+	assertNoSecret(t, "json.Marshal(*Config)", string(b))
+	if !strings.Contains(string(b), "db.internal") {
+		t.Errorf("json.Marshal(*Config) lost the non-secret settings:\n%s", b)
+	}
+
+	b, err = json.Marshal(*cfg)
+	if err != nil {
+		t.Fatalf("json.Marshal(Config): %v", err)
+	}
+	assertNoSecret(t, "json.Marshal(Config)", string(b))
+
+	nested := struct {
+		Ptr   *Config
+		Value Config
+	}{cfg, *cfg}
+	b, err = json.Marshal(nested)
+	if err != nil {
+		t.Fatalf("json.Marshal(nested Config): %v", err)
+	}
+	assertNoSecret(t, "json.Marshal(struct{*Config; Config})", string(b))
+	if !strings.Contains(string(b), "db.internal") {
+		t.Errorf("json.Marshal(struct{*Config; Config}) lost the non-secret settings:\n%s", b)
+	}
+}
+
+// TestLogValueJSONHandler_NeverLogsASecret is TestLogValue_NeverLogsASecret's
+// json-handler case for a Config reached only through encoding/json: a
+// Config logged nested inside another value passed to slog.Any, as
+// module.Deps is. The text handler and a directly logged Config both go
+// through LogValue already, covered above; this is the gap MarshalJSON
+// closes.
+func TestLogValueJSONHandler_NeverLogsASecret(t *testing.T) {
+	cfg := secretConfig(t)
+	var buf bytes.Buffer
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("x",
+		slog.Any("deps", struct{ C *Config }{cfg}))
+	out := buf.String()
+	assertNoSecret(t, "json handler, nested *Config", out)
+	if !strings.Contains(out, "db.internal") {
+		t.Errorf("json handler lost the non-secret settings:\n%s", out)
+	}
+}
+
 // redactDatabaseURL replaces every password a connection string can carry
 // and leaves the rest readable.
 func TestRedactDatabaseURL(t *testing.T) {
@@ -124,6 +180,9 @@ func TestRedactDatabaseURL(t *testing.T) {
 		{"postgresql://db/vantigo?user=v&password=pw", "postgresql://db/vantigo?password=redacted&user=v"},
 		{"postgres://db/v?sslpassword=kp", "postgres://db/v?sslpassword=redacted"},
 		{"host=db password=pw dbname=v", "host=db password=redacted dbname=v"},
+		{"host=db password='a b' dbname=v", "host=db password=redacted dbname=v"},
+		{`host=db password=abc\ def dbname=v`, "host=db password=redacted dbname=v"},
+		{"host=db password= dbname=v", "host=db password=redacted dbname=v"},
 		{"host=db PASSWORD = 'p w\\' x' dbname=v", "host=db PASSWORD=redacted dbname=v"},
 		{"host=db sslpassword=kp", "host=db sslpassword=redacted"},
 		{"postgres://%zz:pw@db/v", redactedText},

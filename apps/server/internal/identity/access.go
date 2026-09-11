@@ -334,11 +334,15 @@ func isActive(disabled bool, lockoutEnd *time.Time, now time.Time) bool {
 // rememberMe. Running on the caller's transaction means a sign-in that fails
 // later leaves no session behind.
 //
-// Each sign-in also purges the user's dead sessions, in the same
-// transaction (PurgeDeadUserSessions: revoked, or past the standard
-// absolute lifetime at now), so a user's rows stay bounded by the sessions
-// that could still be valid, and a stamp rotation's revocation updates no
-// long history.
+// Each sign-in also purges the user's dead sessions before creating the new
+// one (PurgeDeadUserSessions: revoked, or past the standard absolute
+// lifetime at now), so a user's rows stay bounded by the sessions that
+// could still be valid, and a stamp rotation's revocation updates no long
+// history. The purge runs in the same transaction as the insert only when
+// the caller passes one: 2FA, passkey and invitation accept. Password
+// login, OIDC and bootstrap pass the pool, so there the purge is a separate
+// autocommit statement before the insert; that is harmless, since it only
+// deletes dead rows.
 func (a *Access) createSession(ctx context.Context, tx store.DBTX, userID uuid.UUID, persistent, mfa bool, r *http.Request) (token string, err error) {
 	now := a.now()
 	var mfaVerifiedAt *time.Time
