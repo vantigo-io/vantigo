@@ -32,6 +32,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
@@ -104,14 +105,43 @@ type harness struct {
 	clients atomic.Uint32
 }
 
-// harnessOption adjusts the environment the harness loads its configuration
-// from.
-type harnessOption func(env map[string]string)
+// harnessSetup is what harness options adjust: the environment the harness
+// loads its configuration from, and the permissions of the catalogModule it
+// composes beside identity.
+type harnessSetup struct {
+	env         map[string]string
+	permissions []contracts.Permission
+}
+
+// harnessOption adjusts the harness's setup.
+type harnessOption func(*harnessSetup)
 
 // withEnv sets one environment variable over the harness's development
 // defaults.
 func withEnv(k, v string) harnessOption {
-	return func(env map[string]string) { env[k] = v }
+	return func(s *harnessSetup) { s.env[k] = v }
+}
+
+// withPermissions adds perms, each a customers: key, to the composed
+// catalog through catalogModule, for tests that give roles keys beyond
+// identity:manage.
+func withPermissions(perms ...contracts.Permission) harnessOption {
+	return func(s *harnessSetup) { s.permissions = append(s.permissions, perms...) }
+}
+
+// catalogModule stands in for the customers module, contributing only
+// permissions. RBAC tests need catalog keys beyond identity:manage, and a
+// key must belong to a module Compose knows: openapi.Load must find the
+// module's contract, and ValidatePermission requires the key's prefix to be
+// the module's name. Its Mount serves nothing and builds no module.Router,
+// which would report every customers operation as never registered; only
+// its Permissions matter, and they reach identity through Deps.Catalog.
+func catalogModule(perms []contracts.Permission) module.Module {
+	return module.Module{
+		Name:        "customers",
+		Permissions: perms,
+		Mount:       func(module.Deps) (http.Handler, error) { return http.NotFoundHandler(), nil },
+	}
 }
 
 func newHarness(t *testing.T, opts ...harnessOption) *harness {
@@ -139,8 +169,9 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		"TRUSTED_PROXY_HOPS":  "1",
 		"TRUSTED_PROXY_CIDRS": "127.0.0.1/32",
 	}
+	setup := &harnessSetup{env: env}
 	for _, o := range opts {
-		o(env)
+		o(setup)
 	}
 	cfg, err := config.Load(env)
 	if err != nil {
@@ -167,7 +198,11 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access
-	api, err := module.Compose(h.deps, identity.Module(h.access))
+	mods := []module.Module{identity.Module(h.access)}
+	if len(setup.permissions) > 0 {
+		mods = append(mods, catalogModule(setup.permissions))
+	}
+	api, err := module.Compose(h.deps, mods...)
 	if err != nil {
 		t.Fatalf("harness: compose identity: %v", err)
 	}

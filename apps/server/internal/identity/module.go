@@ -111,6 +111,7 @@ func Module(a *Access) module.Module {
 			Key:         "identity:manage",
 			Display:     "Manage identity",
 			Description: "Full identity administration.",
+			Category:    "Administration",
 			Sensitive:   true,
 			Delegable:   false,
 		}},
@@ -142,7 +143,7 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{withRequest}, gen.StrictHTTPServerOptions{
+	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{withRequest, accessConflictFilter}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(writeInvalidRequest),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

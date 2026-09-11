@@ -25,23 +25,11 @@ func (*server) DeleteIdentityAccessGroupsById(context.Context, gen.DeleteIdentit
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) DeleteIdentityAccessRolesById(context.Context, gen.DeleteIdentityAccessRolesByIdRequestObject) (gen.DeleteIdentityAccessRolesByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) DeleteIdentityScimV2GroupsById(context.Context, gen.DeleteIdentityScimV2GroupsByIdRequestObject) (gen.DeleteIdentityScimV2GroupsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
 func (*server) DeleteIdentityScimV2UsersById(context.Context, gen.DeleteIdentityScimV2UsersByIdRequestObject) (gen.DeleteIdentityScimV2UsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessAudit(context.Context, gen.GetIdentityAccessAuditRequestObject) (gen.GetIdentityAccessAuditResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessCatalog(context.Context, gen.GetIdentityAccessCatalogRequestObject) (gen.GetIdentityAccessCatalogResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -54,22 +42,6 @@ func (*server) GetIdentityAccessGroups(context.Context, gen.GetIdentityAccessGro
 }
 
 func (*server) GetIdentityAccessGroupsById(context.Context, gen.GetIdentityAccessGroupsByIdRequestObject) (gen.GetIdentityAccessGroupsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessMe(context.Context, gen.GetIdentityAccessMeRequestObject) (gen.GetIdentityAccessMeResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessRoles(context.Context, gen.GetIdentityAccessRolesRequestObject) (gen.GetIdentityAccessRolesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessUsers(context.Context, gen.GetIdentityAccessUsersRequestObject) (gen.GetIdentityAccessUsersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessUsersById(context.Context, gen.GetIdentityAccessUsersByIdRequestObject) (gen.GetIdentityAccessUsersByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -149,10 +121,6 @@ func (*server) PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(context.Con
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityAccessRoles(context.Context, gen.PostIdentityAccessRolesRequestObject) (gen.PostIdentityAccessRolesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityOidcCallback(context.Context, gen.PostIdentityOidcCallbackRequestObject) (gen.PostIdentityOidcCallbackResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -178,18 +146,6 @@ func (*server) PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(context.Cont
 }
 
 func (*server) PutIdentityAccessGroupsById(context.Context, gen.PutIdentityAccessGroupsByIdRequestObject) (gen.PutIdentityAccessGroupsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccessRolesById(context.Context, gen.PutIdentityAccessRolesByIdRequestObject) (gen.PutIdentityAccessRolesByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccessRolesByIdPermissions(context.Context, gen.PutIdentityAccessRolesByIdPermissionsRequestObject) (gen.PutIdentityAccessRolesByIdPermissionsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccessUsersByIdRoles(context.Context, gen.PutIdentityAccessUsersByIdRolesRequestObject) (gen.PutIdentityAccessUsersByIdRolesResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 

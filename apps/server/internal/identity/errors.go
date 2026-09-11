@@ -11,14 +11,15 @@ import (
 )
 
 // refusal is a client error answer that a handler, or a transaction on its
-// behalf, decides on: an AuthErrorResponse with its status, or a bare 404.
-// It is an error, so a transaction returns it to roll back and the handler
-// hands it on (refusalOr). It implements the response interface of each
-// operation that answers with one; those Visit methods sit beside the
-// operations.
+// behalf, decides on: an AuthErrorResponse with its status, the flat
+// CodeMessageError /access/* answers with, or a bare 404. It is an error,
+// so a transaction returns it to roll back and the handler hands it on
+// (refusalOr). It implements the response interface of each operation that
+// answers with one; those Visit methods sit beside the operations.
 type refusal struct {
 	status int
-	body   *apicommon.AuthErrorResponse // nil for a bare 404
+	body   *apicommon.AuthErrorResponse // nil for a flat body or a bare 404
+	flat   *gen.CodeMessageError        // set only by refuseFlat
 }
 
 func refuse(status int, code, message string, fields map[string][]string) refusal {
@@ -26,23 +27,37 @@ func refuse(status int, code, message string, fields map[string][]string) refusa
 	return refusal{status: status, body: &body}
 }
 
+// refuseFlat is a refusal with the flat CodeMessageError body
+// {"code","message"} of the /access/* handlers
+// (EA/AuthorizationManagementEndpoints.cs:759-760).
+func refuseFlat(status int, code, message string) refusal {
+	return refusal{status: status, flat: &gen.CodeMessageError{Code: code, Message: message}}
+}
+
 // notFound is the contract's bare 404, with no body, for an unknown user
 // or invitation.
 var notFound = refusal{status: http.StatusNotFound}
 
 func (r refusal) Error() string {
-	if r.body == nil {
+	switch {
+	case r.flat != nil:
+		return fmt.Sprintf("identity: refused with %d %s", r.status, r.flat.Code)
+	case r.body != nil:
+		return fmt.Sprintf("identity: refused with %d %s", r.status, r.body.Error.Code)
+	default:
 		return fmt.Sprintf("identity: refused with %d", r.status)
 	}
-	return fmt.Sprintf("identity: refused with %d %s", r.status, r.body.Error.Code)
 }
 
 func (r refusal) write(w http.ResponseWriter) error {
-	if r.body == nil {
+	switch {
+	case r.flat != nil:
+		writeJSON(w, r.status, "application/json", r.flat)
+	case r.body != nil:
+		writeJSON(w, r.status, "application/json", r.body)
+	default:
 		w.WriteHeader(r.status)
-		return nil
 	}
-	writeJSON(w, r.status, "application/json", r.body)
 	return nil
 }
 

@@ -13,6 +13,10 @@ const LoginTicketCookieName = loginTicketCookieName
 // itself to force a race's interleaving.
 const OwnerMutationLock = ownerMutationLock
 
+// RoleMutationLockKey is a role's advisory lock key, for a test that holds
+// the lock itself to force a race's interleaving.
+var RoleMutationLockKey = roleMutationLockKey
+
 var (
 	CreateSession       = (*Access).createSession
 	RevokeOtherSessions = (*Access).revokeOtherSessions
