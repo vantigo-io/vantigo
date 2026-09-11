@@ -108,9 +108,11 @@ CREATE TABLE identity.authorization_delegation_permissions (
     PRIMARY KEY (delegation_id, permission_key)
 );
 
--- role_id deliberately has no foreign key: a delegation that names a role
--- which no longer exists (or became a system role) must fail closed at
--- evaluation, as the .NET module does (IdentityDelegationMalformedMetadataTests).
+-- role_id deliberately has no foreign key. Deleting a role through the
+-- endpoint removes its rows here first (DeleteRoleStewardships), as .NET's
+-- cascading foreign key did, so the delegation stays valid; a reference left
+-- dangling any other way (a role deleted around the endpoint, or an id that
+-- names no role) fails closed at evaluation, dropping the delegation.
 CREATE TABLE identity.authorization_delegation_roles (
     delegation_id uuid NOT NULL REFERENCES identity.authorization_delegations (id) ON DELETE CASCADE,
     role_id       uuid NOT NULL,
