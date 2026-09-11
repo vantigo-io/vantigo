@@ -473,8 +473,11 @@ host serves today (§10, sub-project 2).
 
 Copied from Pjokk, with names changed:
 
-- `.mise.toml` is the single toolchain pin: Go, Bun, sqlc, oapi-codegen,
-  goose, goreleaser, golangci-lint, svu, cosign, syft, trivy. `global.json`,
+- `.mise.toml` is the single toolchain pin: Go, Bun, sqlc, goose,
+  goreleaser, golangci-lint, svu, cosign, syft, trivy. oapi-codegen is the
+  exception: it is pinned in `apps/server/generate.go`'s `go:generate`
+  directives (`go run …@v2.8.0`), so local runs and CI's drift check share
+  one version (sub-project 2). `global.json`,
   `.bun-version` and `tools/toolchain` are removed.
 - `scripts/build-artifacts.sh`: builds the SPA, overlays it into the embed
   dir, cross-compiles `CGO_ENABLED=0 GOOS=linux` for amd64 and arm64 with
@@ -582,9 +585,12 @@ Each gets its own spec and plan against this document.
    preview image.
 2. **Contract.** Run the .NET host in Development, dump the OpenAPI
    documents, split and curate them into `openapi/*.yaml` (drop tenant,
-   antiforgery, Mailgun and scanning operations; add
-   `x-vantigo-access`), set up oapi-codegen, the validation
-   middleware, `gen:client`, and the drift tests. No handlers yet.
+   antiforgery and Mailgun operations; attachment-scanning fields stay
+   until sub-project 5; add `x-vantigo-access`), prove the contract
+   against exchanges recorded from the .NET suites, set up oapi-codegen,
+   `gen:client`, and the drift tests. No handlers yet; mounting the
+   request-validation middleware moves to sub-project 3 with the first
+   routes.
 3. **Identity.** Sessions, passwords, bootstrap, users, invitations,
    password recovery, RBAC + catalog + audit, account settings, then MFA,
    passkeys, OIDC, SCIM. Identity's transactional mail via the `mail` port.
