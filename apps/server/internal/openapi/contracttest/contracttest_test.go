@@ -44,6 +44,11 @@ paths:
           content:
             application/json:
               schema: {type: array, items: {type: object}}
+        "401":
+          description: unauthenticated
+          content:
+            application/json:
+              schema: {type: object, required: [code], properties: {code: {type: string}}}
   /blob:
     get:
       operationId: getBlob
@@ -204,6 +209,55 @@ func TestMissingListsUnexercisedOperations(t *testing.T) {
 
 	if got, want := rec.Missing(), []string{"getBlob", "postThings"}; !equalStrings(got, want) {
 		t.Fatalf("Missing() after exercising getThings = %v, want %v", got, want)
+	}
+}
+
+// TestOnlySuccessfulExchangesCountAsExercised proves the coverage gate needs
+// a success: a documented 401 validates (a real t is used, so any Errorf
+// would fail this test) yet leaves the operation missing, and only a
+// validated 200 marks it exercised.
+func TestOnlySuccessfulExchangesCountAsExercised(t *testing.T) {
+	doc := loadDoc(t)
+	rec := New(doc)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Header.Get("Authorization") == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":"unauthenticated"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	c := client(t, srv, rec)
+
+	resp, err := c.Get(srv.URL + "/things")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+	if !containsString(rec.Missing(), "getThings") {
+		t.Fatalf("Missing() = %v, want getThings still listed after only a validated 401", rec.Missing())
+	}
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/things", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer x")
+	resp, err = c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if containsString(rec.Missing(), "getThings") {
+		t.Errorf("Missing() = %v, still lists getThings after a validated 200", rec.Missing())
 	}
 }
 

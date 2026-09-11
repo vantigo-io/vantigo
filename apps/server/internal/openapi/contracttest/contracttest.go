@@ -1,7 +1,8 @@
 // Package contracttest wraps an http.RoundTripper so every request/response
 // pair a test sends through it is validated against an OpenAPI contract with
-// openapi.Validate, and tracks which operations a test run exercised. It is
-// the test client every identity integration test runs through.
+// openapi.Validate, and tracks which operations a test run exercised
+// successfully. It is the test client every identity integration test runs
+// through.
 package contracttest
 
 import (
@@ -33,9 +34,12 @@ const maxBodyBytes = 256 * 1024
 const SkipHeader = "X-Contract-Skip"
 
 // Recorder tracks, for one OpenAPI document, which operations a test run has
-// exercised with a contract-conforming exchange. It is meant to be
-// package-level and shared by every test in the package (parallel tests
-// included), so its exercised set is guarded by a mutex.
+// exercised: an operation counts once a contract-conforming exchange for it
+// answered with a status below 400. A conforming error response (the access
+// layer's 401, a documented 400) is validated like any other but does not
+// count, so an operation cannot be covered without ever having succeeded. It
+// is meant to be package-level and shared by every test in the package
+// (parallel tests included), so its exercised set is guarded by a mutex.
 type Recorder struct {
 	doc *openapi3.T
 
@@ -51,8 +55,9 @@ func New(doc *openapi3.T) *Recorder {
 // Transport wraps base so every exchange that passes through it is validated
 // against the Recorder's contract. A validation failure calls t.Errorf,
 // naming the operation and the reason; the exchange still completes, body
-// and all, so the test can also assert on the response. A request carrying
-// SkipHeader is not validated at all.
+// and all, so the test can also assert on the response. A validated exchange
+// with a status below 400 marks its operation exercised. A request carrying
+// SkipHeader is not validated at all, and never counts.
 func (r *Recorder) Transport(t testing.TB, base http.RoundTripper) http.RoundTripper {
 	return &transport{t: t, base: base, rec: r}
 }
@@ -108,7 +113,13 @@ func (rt *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		rt.t.Errorf("contract: operation %s: %v", id, verr)
 		return resp, nil
 	}
-	rt.rec.markExercised(id)
+	// Only a success counts as coverage. A documented error (the access
+	// layer's 401, a validation 400) still validates, but it proves nothing
+	// about the operation's success path, so it must not let an operation
+	// leave the pending list without ever having worked.
+	if resp.StatusCode < 400 {
+		rt.rec.markExercised(id)
+	}
 	return resp, nil
 }
 
@@ -198,7 +209,8 @@ func (r *Recorder) wasExercised(id string) bool {
 }
 
 // Missing returns the operationIds of the Recorder's contract that no
-// contract-conforming exchange has exercised yet, sorted.
+// successful (status < 400) contract-conforming exchange has exercised yet,
+// sorted.
 func (r *Recorder) Missing() []string {
 	r.mu.Lock()
 	exercised := make(map[string]bool, len(r.exercised))
@@ -232,8 +244,9 @@ func operationIDs(doc *openapi3.T) []string {
 
 // RequireCoverage runs m.Run(), then, when the run passed and no -run/-skip
 // filter narrowed it, requires every operation of the Recorder's contract to
-// have been exercised — except those named in pending, its allow-list for
-// operations later tasks still owe coverage for.
+// have been exercised by a successful (status < 400) contract-conforming
+// exchange — except those named in pending, its allow-list for operations
+// later tasks still owe coverage for.
 //
 // A pending operation that was nonetheless exercised, and a pending entry
 // that names no operation in the contract, both fail the run: the allow-list
@@ -254,8 +267,8 @@ func RequireCoverage(m *testing.M, rec *Recorder, pending ...string) int {
 //
 // missing is rec.Missing() with pending's entries removed. stale reports the
 // two ways pending can be wrong: an entry naming no operation in rec's
-// contract, and an entry that a contract-conforming exchange has in fact
-// exercised — the allow-list is only ever allowed to shrink honestly.
+// contract, and an entry that a successful contract-conforming exchange has
+// in fact exercised — the allow-list is only ever allowed to shrink honestly.
 func pendingReport(rec *Recorder, pending []string) (missing, stale []string) {
 	documented := map[string]bool{}
 	for _, id := range operationIDs(rec.doc) {
