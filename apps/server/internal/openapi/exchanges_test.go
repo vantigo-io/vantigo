@@ -101,6 +101,21 @@ paths:
           content:
             application/problem+json:
               schema: {type: object, required: [title], properties: {title: {type: string}}}
+  /api/v1/scim-things:
+    put:
+      operationId: putScimThings
+      x-vantigo-access: scim
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema: {type: object, required: [userName], properties: {userName: {type: string}}}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/scim+json:
+              schema: {type: object, required: [id], properties: {id: {type: string}}}
 `
 
 func TestValidate(t *testing.T) {
@@ -109,10 +124,14 @@ func TestValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	str := func(s string) *string { return &s }
-	appJSON, problem := str("application/json"), str("application/problem+json")
+	appJSON, problem, scimJSON := str("application/json"), str("application/problem+json"), str("application/scim+json")
 	post := func(body string, status int, contentType *string, response string) Exchange {
 		return Exchange{Method: "POST", Path: "/api/v1/things", RequestContentType: appJSON, RequestBody: str(body),
 			Status: status, ResponseContentType: contentType, ResponseBody: str(response)}
+	}
+	put := func(body string, status int, response string) Exchange {
+		return Exchange{Method: "PUT", Path: "/api/v1/scim-things", RequestContentType: scimJSON, RequestBody: str(body),
+			Status: status, ResponseContentType: scimJSON, ResponseBody: str(response)}
 	}
 	cases := []struct {
 		name string
@@ -126,6 +145,8 @@ func TestValidate(t *testing.T) {
 		{"invalid request the server accepted", post(`{}`, 201, appJSON, `{"id":1}`), false},
 		{"rejection off contract", post(`{}`, 400, problem, `{}`), false},
 		{"no matching operation", Exchange{Method: "GET", Path: "/api/v1/nothing", Status: 404}, false},
+		{"scim+json request and response validate", put(`{"userName":"a"}`, 200, `{"id":"1"}`), true},
+		{"scim+json response off schema", put(`{"userName":"a"}`, 200, `{"id":1}`), false},
 	}
 	for _, c := range cases {
 		if _, err := Validate(context.Background(), doc, c.ex); (err == nil) != c.ok {
