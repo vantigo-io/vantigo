@@ -13,31 +13,11 @@ import (
 // here, so the build keeps proving the interface is complete. The test
 // package's pendingOperations lists exactly these operations.
 
-func (*server) DeleteIdentityAccessGroupsByGroupIdMembersByUserId(context.Context, gen.DeleteIdentityAccessGroupsByGroupIdMembersByUserIdRequestObject) (gen.DeleteIdentityAccessGroupsByGroupIdMembersByUserIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(context.Context, gen.DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdRequestObject) (gen.DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) DeleteIdentityAccessGroupsById(context.Context, gen.DeleteIdentityAccessGroupsByIdRequestObject) (gen.DeleteIdentityAccessGroupsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) DeleteIdentityScimV2GroupsById(context.Context, gen.DeleteIdentityScimV2GroupsByIdRequestObject) (gen.DeleteIdentityScimV2GroupsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
 func (*server) DeleteIdentityScimV2UsersById(context.Context, gen.DeleteIdentityScimV2UsersByIdRequestObject) (gen.DeleteIdentityScimV2UsersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessGroups(context.Context, gen.GetIdentityAccessGroupsRequestObject) (gen.GetIdentityAccessGroupsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccessGroupsById(context.Context, gen.GetIdentityAccessGroupsByIdRequestObject) (gen.GetIdentityAccessGroupsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -89,18 +69,6 @@ func (*server) PatchIdentityScimV2UsersById(context.Context, gen.PatchIdentitySc
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityAccessGroups(context.Context, gen.PostIdentityAccessGroupsRequestObject) (gen.PostIdentityAccessGroupsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccessGroupsByGroupIdMembersByUserId(context.Context, gen.PostIdentityAccessGroupsByGroupIdMembersByUserIdRequestObject) (gen.PostIdentityAccessGroupsByGroupIdMembersByUserIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(context.Context, gen.PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdRequestObject) (gen.PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityOidcCallback(context.Context, gen.PostIdentityOidcCallbackRequestObject) (gen.PostIdentityOidcCallbackResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -110,18 +78,6 @@ func (*server) PostIdentityScimV2Groups(context.Context, gen.PostIdentityScimV2G
 }
 
 func (*server) PostIdentityScimV2Users(context.Context, gen.PostIdentityScimV2UsersRequestObject) (gen.PostIdentityScimV2UsersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccessGroupsByGroupIdMembersByUserId(context.Context, gen.PutIdentityAccessGroupsByGroupIdMembersByUserIdRequestObject) (gen.PutIdentityAccessGroupsByGroupIdMembersByUserIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleId(context.Context, gen.PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdRequestObject) (gen.PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PutIdentityAccessGroupsById(context.Context, gen.PutIdentityAccessGroupsByIdRequestObject) (gen.PutIdentityAccessGroupsByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 

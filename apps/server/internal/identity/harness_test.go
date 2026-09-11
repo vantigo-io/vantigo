@@ -29,6 +29,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
@@ -111,6 +112,32 @@ type harness struct {
 type harnessSetup struct {
 	env         map[string]string
 	permissions []contracts.Permission
+	tracer      pgx.QueryTracer
+}
+
+// withQueryTracer runs every query the installation makes through tracer:
+// the installation gets a pool of its own on the harness's database, built
+// with tracer, while h.pool, which fixtures use, stays untraced, so only
+// the installation's own queries are traced.
+func withQueryTracer(tracer pgx.QueryTracer) harnessOption {
+	return func(s *harnessSetup) { s.tracer = tracer }
+}
+
+// tracedPool is a pool on databaseURL whose every query goes through
+// tracer, closed when t ends.
+func tracedPool(t testing.TB, databaseURL string, tracer pgx.QueryTracer) *pgxpool.Pool {
+	t.Helper()
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("harness: %v", err)
+	}
+	cfg.ConnConfig.Tracer = tracer
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("harness: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
 }
 
 // harnessOption adjusts the harness's setup.
@@ -184,17 +211,21 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 
 	h := &harness{pool: pool, cfg: cfg, mail: &mail.Fake{}, clock: start, log: &syncBuffer{}}
 	logger := slog.New(slog.NewJSONHandler(h.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	installation := pool
+	if setup.tracer != nil {
+		installation = tracedPool(t, databaseURL, setup.tracer)
+	}
 	// The limiter runs on the harness clock too, so a throttle window turns
 	// over when a test advances the clock and never mid-test on the wall
 	// clock.
 	h.deps = module.Deps{
 		Config:  cfg,
-		Pool:    pool,
+		Pool:    installation,
 		Logger:  logger,
 		Clock:   h.now,
 		Mail:    h.mail,
 		Secrets: box,
-		Limiter: ratelimit.NewWithClock(pool, h.now),
+		Limiter: ratelimit.NewWithClock(installation, h.now),
 	}
 	h.access = identity.NewAccess(h.deps)
 	h.deps.Access = h.access

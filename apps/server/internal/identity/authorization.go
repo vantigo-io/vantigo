@@ -105,22 +105,27 @@ func (s *server) accessTx(ctx context.Context, conflict refusal, fn func(q *stor
 	return err
 }
 
-// accessConflictFilter is the endpoint filter of .NET's /access route group
-// (EA/AMS:20-34): a lost race that escapes an operation's own handling is
-// answered 409 authorization_conflict with the flat body, not a 500. It is
-// a strict middleware, so it sees exactly what the operation returned.
-// /access/me was mapped outside that group (EA/AMS:55-56), and the access
-// group operations have their own filter, concurrency_conflict
-// (EA/IdentityControlPlaneEndpoints.cs:17-22), which arrives with them.
+// accessConflictFilter is the endpoint filter of .NET's two /access route
+// groups: a lost race that escapes an operation's own handling (a
+// concurrent version change, a unique violation, a serialization failure or
+// a deadlock) is answered 409 with the flat body, not a 500. Roles, users
+// and delegations answer authorization_conflict (EA/AMS:20-34); access
+// groups answer concurrency_conflict (EA/IdentityControlPlaneEndpoints.cs:17-22),
+// whose filter caught the same errors. It is a strict middleware, so it
+// sees exactly what the operation returned. /access/me was mapped outside
+// both groups (EA/AMS:55-56).
 func accessConflictFilter(f gen.StrictHandlerFunc, operationID string) gen.StrictHandlerFunc {
-	if operationID == "GetIdentityAccessMe" || strings.Contains(operationID, "IdentityAccessGroups") ||
-		!strings.Contains(operationID, "IdentityAccess") {
+	if operationID == "GetIdentityAccessMe" || !strings.Contains(operationID, "IdentityAccess") {
 		return f
+	}
+	answer := authorizationConflict
+	if strings.Contains(operationID, "IdentityAccessGroups") {
+		answer = groupConcurrencyConflict
 	}
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
 		response, err := f(ctx, w, r, request)
 		if err != nil && isAuthorizationConflict(err) {
-			return nil, authorizationConflict.write(w) // written here: no response object, so the generated handler writes nothing more
+			return nil, answer.write(w) // written here: no response object, so the generated handler writes nothing more
 		}
 		return response, err
 	}
@@ -142,18 +147,18 @@ func roleMutationLockKey(id uuid.UUID) int64 {
 }
 
 // lockRole takes roleID's transaction advisory lock on q
-// (AZ/AMS:20-25). Editing a role, deleting it and mapping it to an access
-// group take it, so a role's protected-permission check and a group mapping
-// never interleave.
+// (AZ/AMS:20-25). Editing a role, deleting it, and mapping it to an access
+// group or unmapping it (roleMappingMutation) take it, so a role's
+// protected-permission check and a group mapping never interleave.
 //
 // Lock order, for a transaction that takes more than one of these: the
 // owner lock (ownerMutationLock) first; then delegation rows, by id (the
 // caller's FOR SHARE, heldDelegations; the one an Owner updates or revokes
-// FOR UPDATE); then role locks in ascending key order; then users rows;
-// then roles rows. The one exception is a user's deletion, whose cascade
-// takes the user's delegation rows after their users row; PostgreSQL
-// breaks the deadlock that can meet with that user's own delegated
-// mutation, and the loser is retried.
+// FOR UPDATE); then role locks in ascending key order; then access_groups
+// rows; then users rows; then roles rows. The one exception is a user's
+// deletion, whose cascade takes the user's delegation rows after their
+// users row; PostgreSQL breaks the deadlock that can meet with that user's
+// own delegated mutation, and the loser is retried.
 func lockRole(ctx context.Context, q *store.Queries, roleID uuid.UUID) error {
 	return q.AcquireRoleMutationLock(ctx, roleMutationLockKey(roleID))
 }

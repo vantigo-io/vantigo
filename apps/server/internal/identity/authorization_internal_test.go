@@ -69,6 +69,23 @@ func TestAccessConflictFilter(t *testing.T) {
 		}
 	})
 
+	t.Run("the access group operations answer concurrency_conflict", func(t *testing.T) {
+		for _, op := range []string{
+			"GetIdentityAccessGroups", "GetIdentityAccessGroupsById", "PostIdentityAccessGroups", "PutIdentityAccessGroupsById", "DeleteIdentityAccessGroupsById",
+			"PostIdentityAccessGroupsByGroupIdMembersByUserId", "PutIdentityAccessGroupsByGroupIdMembersByUserId", "DeleteIdentityAccessGroupsByGroupIdMembersByUserId",
+			"PostIdentityAccessGroupsByGroupIdRoleMappingsByRoleId", "PutIdentityAccessGroupsByGroupIdRoleMappingsByRoleId", "DeleteIdentityAccessGroupsByGroupIdRoleMappingsByRoleId",
+		} {
+			for _, err := range []error{&pgconn.PgError{Code: "40P01"}, fmt.Errorf("insert: %w", &pgconn.PgError{Code: "23505"}), fmt.Errorf("update: %w", errConcurrentChange)} {
+				w := httptest.NewRecorder()
+				response, got := accessConflictFilter(returning(nil, err), op)(context.Background(), w, req, nil)
+				if response != nil || got != nil || w.Code != http.StatusConflict ||
+					w.Body.String() != `{"code":"concurrency_conflict","message":"The resource changed concurrently."}`+"\n" {
+					t.Errorf("%s, %v: the filter returned (%v, %v) and answered %d %s", op, err, response, got, w.Code, w.Body)
+				}
+			}
+		}
+	})
+
 	t.Run("anything else passes through", func(t *testing.T) {
 		other := errors.New("boom")
 		for _, c := range []struct {
@@ -83,9 +100,9 @@ func TestAccessConflictFilter(t *testing.T) {
 		}
 	})
 
-	t.Run("outside the /access route group", func(t *testing.T) {
+	t.Run("outside the /access route groups", func(t *testing.T) {
 		conflict := &pgconn.PgError{Code: "40001"}
-		for _, op := range []string{"GetIdentityAccessMe", "PostIdentityAccessGroups", "PutIdentityAccessGroupsByGroupIdMembersByUserId", "PutIdentityOwnerUsersById", "GetIdentityAccount"} {
+		for _, op := range []string{"GetIdentityAccessMe", "PutIdentityOwnerUsersById", "GetIdentityAccount"} {
 			w := httptest.NewRecorder()
 			if _, err := accessConflictFilter(returning(nil, conflict), op)(context.Background(), w, req, nil); !errors.Is(err, conflict) || w.Body.Len() != 0 {
 				t.Errorf("%s: the filter answered (%v, %q), want the error untouched", op, err, w.Body)
