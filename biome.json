@@ -28,7 +28,8 @@
       "!!**/dist",
       "!!**/bin",
       "!!**/obj",
-      "!**/routeTree.gen.ts"
+      "!**/routeTree.gen.ts",
+      "!**/api-schema.d.ts"
     ]
   }
 }

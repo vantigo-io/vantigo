@@ -63,6 +63,8 @@
     "frontend:build": "bun run --cwd apps/host/frontend build",
     "toolchain:check": "bun run tools/toolchain/check.ts",
     "toolchain:test": "bun test tools/toolchain",
+    "gen:client": "bun run tools/openapi/gen-client.ts",
+    "gen:client:test": "bun test tools/openapi",
     "translations:check": "bun run tools/i18n/check.ts",
     "i18n:test": "bun run --cwd apps/customers/frontend vitest run --root ../../../packages/frontend-shell src/i18n && bun test tools/i18n",
     "prepare": "husky",
@@ -71,7 +73,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.5",
-    "husky": "9.1.7"
+    "husky": "9.1.7",
+    "openapi-typescript": "7.13.0"
   },
   "overrides": {
     "brace-expansion": "^5.0.9",
