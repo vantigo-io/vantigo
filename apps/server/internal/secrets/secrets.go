@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"golang.org/x/crypto/hkdf"
@@ -177,4 +178,16 @@ func (b *Box) OpenString(purpose, s string) (string, error) {
 		return "", err
 	}
 	return string(plaintext), nil
+}
+
+// Format writes exactly "secrets.Box{redacted}" for every verb, preventing
+// fmt's reflection from printing the appSecret.
+func (b *Box) Format(f fmt.State, verb rune) {
+	_, _ = fmt.Fprintf(f, "secrets.Box{redacted}")
+}
+
+// LogValue returns a slog.Value that prevents log/slog handlers from
+// reflecting into the Box's appSecret field.
+func (b *Box) LogValue() slog.Value {
+	return slog.StringValue("secrets.Box{redacted}")
 }

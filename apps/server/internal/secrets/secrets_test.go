@@ -2,6 +2,8 @@ package secrets
 
 import (
 	"bytes"
+	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -207,5 +209,79 @@ func TestKeyDerivation_CachedPerPurpose(t *testing.T) {
 		if _, err := box.Open("identity/totp", sealed); err != nil {
 			t.Fatalf("Open (iteration %d): %v", i, err)
 		}
+	}
+}
+
+func TestBox_NeverPrintsTheSecret(t *testing.T) {
+	// Build a Box from a recognizable secret: 32 bytes of 'Z'.
+	recognizableSecret := bytes.Repeat([]byte("Z"), 32)
+	box, err := New(recognizableSecret)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Patterns that must not appear in any fmt output.
+	forbiddenPatterns := []string{
+		"ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ", // Secret string as-is
+		"90 90 90",                         // Decimal byte value of 'Z' (90) repeated
+		"5a5a5a",                           // Hex value of 'Z' (5a) repeated
+		"5A5A5A",                           // Hex uppercase variant
+	}
+
+	testCases := []struct {
+		name string
+		verb string
+		fmt  string
+	}{
+		{"pointer %v", "v", "%v"},
+		{"pointer %+v", "+v", "%+v"},
+		{"pointer %#v", "#v", "%#v"},
+		{"pointer %s", "s", "%s"},
+		{"pointer %d", "d", "%d"},
+		{"pointer %x", "x", "%x"},
+	}
+
+	// Test pointer formatting.
+	for _, tc := range testCases {
+		output := fmt.Sprintf(tc.fmt, box)
+		for _, pattern := range forbiddenPatterns {
+			if strings.Contains(output, pattern) {
+				t.Errorf("%s: output contains secret pattern %q: %q", tc.name, pattern, output)
+			}
+		}
+		// Verify the redaction message is present.
+		if !strings.Contains(output, "redacted") {
+			t.Errorf("%s: output does not contain redaction message: %q", tc.name, output)
+		}
+	}
+
+	// Test slog text handler.
+	var textBuf bytes.Buffer
+	textHandler := slog.NewTextHandler(&textBuf, nil)
+	textLogger := slog.New(textHandler)
+	textLogger.Info("test", slog.Any("box", box))
+	textOutput := textBuf.String()
+	for _, pattern := range forbiddenPatterns {
+		if strings.Contains(textOutput, pattern) {
+			t.Errorf("slog text handler: output contains secret pattern %q: %q", pattern, textOutput)
+		}
+	}
+	if !strings.Contains(textOutput, "redacted") {
+		t.Errorf("slog text handler: output does not contain redaction message: %q", textOutput)
+	}
+
+	// Test slog JSON handler.
+	var jsonBuf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&jsonBuf, nil)
+	jsonLogger := slog.New(jsonHandler)
+	jsonLogger.Info("test", slog.Any("box", box))
+	jsonOutput := jsonBuf.String()
+	for _, pattern := range forbiddenPatterns {
+		if strings.Contains(jsonOutput, pattern) {
+			t.Errorf("slog JSON handler: output contains secret pattern %q: %q", pattern, jsonOutput)
+		}
+	}
+	if !strings.Contains(jsonOutput, "redacted") {
+		t.Errorf("slog JSON handler: output does not contain redaction message: %q", jsonOutput)
 	}
 }
