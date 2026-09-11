@@ -19,6 +19,13 @@ const OwnerMutationLock = ownerMutationLock
 // the lock itself to force a race's interleaving.
 var RoleMutationLockKey = roleMutationLockKey
 
+// ScimLockKey is the SCIM lock's key, for a test that holds the lock itself
+// to make SCIM writes queue behind it.
+const ScimLockKey = scimLockKey
+
+// ScimConnectionID is the one static SCIM connection the audit facts name.
+var ScimConnectionID = scimConnectionID
+
 // The workforce OIDC flow's two cookies, for tests that assert on them.
 const (
 	OIDCStateCookieName    = oidcStateCookieName

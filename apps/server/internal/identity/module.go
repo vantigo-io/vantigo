@@ -124,8 +124,11 @@ func Module(a *Access) module.Module {
 // decodes it. It fails when the router reports a problem: an operation
 // never registered, a rule that does not parse, a permission missing from
 // the catalog, or a Limits entry naming no operation. The returned handler
-// is further wrapped by limitAvatarUploads, so the avatar endpoints' body
-// cap applies before the router's own checks even run.
+// is further wrapped, in front of the router's own checks, by the SCIM
+// ingress (scimIngress: the SCIM rate limit, heartbeat and body rules) and
+// by limitAvatarUploads, the avatar endpoints' body cap. The SCIM
+// operations are not in limits: their limit is keyed by the token, which
+// the router's per-address limits cannot be.
 //
 // The server is built here, once per mount, which is once per process: the
 // bootstrap secret is resolved then, so /bootstrap and /bootstrap-status
@@ -145,15 +148,15 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 		return nil, err
 	}
 	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{withRequest, accessConflictFilter}, gen.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  module.DecodeError(writeInvalidRequest),
+		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseRouter:       router,
-		ErrorHandlerFunc: module.DecodeError(writeInvalidRequest),
+		ErrorHandlerFunc: module.DecodeError(writeDecodeError),
 	})
 	if err := router.Err(); err != nil {
 		return nil, err
 	}
-	return limitAvatarUploads(handler), nil
+	return limitAvatarUploads(srv.scimIngress(scimRoutes(d), handler)), nil
 }

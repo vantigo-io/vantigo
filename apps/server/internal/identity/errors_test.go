@@ -27,7 +27,17 @@ func TestErrorBodies(t *testing.T) {
 		{"writeInvalidRequest", func(w http.ResponseWriter) { writeInvalidRequest(w, httptest.NewRequest(http.MethodGet, "/", nil)) },
 			http.StatusBadRequest, "application/json", `{"error":{"code":"invalid_request","message":"The request is invalid."}}`},
 		{"scimUnauthorized", scimUnauthorized, http.StatusUnauthorized, "application/scim+json",
-			`{"detail":"A valid SCIM bearer token is required.","schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"scimType":"invalidValue","status":"401"}`},
+			`{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"401","scimType":"invalidValue","detail":"A valid SCIM bearer token is required."}`},
+		{"scimError with no scimType", func(w http.ResponseWriter) { _ = scimNotFound.write(w) }, http.StatusNotFound, "application/scim+json",
+			`{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"404","scimType":null,"detail":"The requested resource was not found."}`},
+		{"writeDecodeError outside SCIM", func(w http.ResponseWriter) {
+			writeDecodeError(w, httptest.NewRequest(http.MethodPost, "/api/v1/identity/login", nil))
+		},
+			http.StatusBadRequest, "application/json", `{"error":{"code":"invalid_request","message":"The request is invalid."}}`},
+		{"writeDecodeError under SCIM", func(w http.ResponseWriter) {
+			writeDecodeError(w, httptest.NewRequest(http.MethodGet, "/api/v1/identity/scim/v2/Users?startIndex=x", nil))
+		}, http.StatusBadRequest, "application/scim+json",
+			`{"schemas":["urn:ietf:params:scim:api:messages:2.0:Error"],"status":"400","scimType":"invalidSyntax","detail":"The request is invalid."}`},
 	}
 	for _, c := range cases {
 		rec := httptest.NewRecorder()
