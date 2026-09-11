@@ -2467,9 +2467,9 @@ output-options:
   skip-prune: true
 ```
 
-- [ ] **Step 2: Write the four compile tests**
+- [ ] **Step 2: Write the mount tests (all five modules)**
 
-For each of the four modules, create `apps/server/internal/<module>/gen/gen_test.go`:
+For each of the four modules, create `apps/server/internal/<module>/gen/gen_test.go`, and replace Task 5's energy test with the same. Go's `http.ServeMux` cannot hold several customers/products route pairs that .NET separates with `{id:int}`/`{id:guid}` route constraints (e.g. `DELETE /customers/contacts/{id}` and `DELETE /customers/{id}/legal-identity`), so the test mounts on a recording router and proves the generated server registers exactly the contract's operations; `TestServeMuxConflictsArePinned` in `internal/openapi` pins the stdlib conflicts for sub-project 3, which mounts on a precedence-aware router:
 
 ```go
 package gen
@@ -2479,14 +2479,24 @@ import (
 	"testing"
 )
 
-// The generated strict server must mount on a std-lib mux; this fails to
-// compile if the generator's output or its common.yaml import mapping breaks.
-func TestGeneratedServerMountsOnServeMux(t *testing.T) {
-	var server StrictServerInterface // nil: only the types are under test
-	handler := HandlerFromMux(NewStrictHandler(server, nil), http.NewServeMux())
-	if handler == nil {
-		t.Fatal("HandlerFromMux returned nil")
-	}
+// recordingMux captures the patterns the generated server registers. The
+// stdlib ServeMux cannot hold every route of the contract (see
+// openapi.TestServeMuxConflictsArePinned); mounting on a real router is
+// sub-project 3's job.
+type recordingMux struct{ patterns []string }
+
+func (m *recordingMux) HandleFunc(pattern string, _ func(http.ResponseWriter, *http.Request)) {
+	m.patterns = append(m.patterns, pattern)
+}
+func (m *recordingMux) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
+// The generated strict server mounts exactly the contract's operations.
+func TestGeneratedServerMountsEveryOperation(t *testing.T) {
+	mux := &recordingMux{}
+	var server StrictServerInterface // nil: only the wiring is under test
+	HandlerWithOptions(NewStrictHandler(server, nil), StdHTTPServerOptions{BaseRouter: mux})
+	// Compare mux.patterns with "METHOD /path" for every operation of
+	// openapi.Load(ctx, "<module>"): report missing and extra patterns.
 }
 ```
 

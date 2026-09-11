@@ -71,6 +71,7 @@ Definition of done for curation: every operation has a success response — a 2x
 - `internal/openapi` embeds copies of the spec files (copied by `go generate`, since `go:embed` cannot reach above the module root) and exposes a loader that resolves the relative `$ref`s from the embedded files with kin-openapi. Mounting request validation and serving `/api/openapi.json` + Scalar are sub-project 3, which introduces sessions and the first real routes.
 - Tests: the embedded copies equal `openapi/*`; the specs load and validate as OpenAPI 3.0; every operation's `x-vantigo-access` is present and well-formed; the recorded-exchange validation above.
 - Generated code is committed. CI regenerates it and fails on a diff.
+- Mounting (open item for sub-project 3): Go's `http.ServeMux` refuses eight customers/products route pairs that .NET separates with `{id:int}`/`{id:guid}` route constraints — e.g. `DELETE /api/v1/customers/contacts/{id}` and `DELETE /api/v1/customers/{id}/legal-identity`, `GET /api/v1/products/categories/{id}` and `GET /api/v1/products/{id}/variants`; the full list is `knownServeMuxConflicts` in `internal/openapi`, and a test fails if it changes. The generated servers are tested against a recording router. Sub-project 3 mounts them on a precedence-aware router (a literal segment before a parameter, as ASP.NET routes) through `StdHTTPServerOptions.BaseRouter`, with a test that routes each pinned pair correctly.
 
 ### Frontend
 
