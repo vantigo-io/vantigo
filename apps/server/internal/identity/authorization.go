@@ -155,10 +155,16 @@ func roleMutationLockKey(id uuid.UUID) int64 {
 // owner lock (ownerMutationLock) first; then delegation rows, by id (the
 // caller's FOR SHARE, heldDelegations; the one an Owner updates or revokes
 // FOR UPDATE); then role locks in ascending key order; then access_groups
-// rows; then users rows; then roles rows. The one exception is a user's
-// deletion, whose cascade takes the user's delegation rows after their
-// users row; PostgreSQL breaks the deadlock that can meet with that user's
-// own delegated mutation, and the loser is retried. Delegation create and
+// rows; then users rows; then roles rows. Two exceptions are known and
+// accepted. A user's deletion, whose cascade takes the user's delegation
+// rows after their users row, can meet that user's own delegated
+// mutation. An invitation's acceptance locks the invitation row
+// (LockInvitationByTokenHash, FOR UPDATE) before, for an Owner invitation,
+// the owner lock (invitations.go), the reverse of an Owner user's create
+// or email edit, which take the owner lock and then revoke that email's
+// pending invitations (RevokeActiveInvitationsForEmail). In both cases
+// PostgreSQL breaks the deadlock (40P01) and RetrySerializable retries the
+// loser, which then sees the winner's commit. Delegation create and
 // update take a key share on the roles they name (LockStewardableRoles)
 // before the key share their writes take on users rows; no transaction
 // holding a users row waits for a roles row lock stronger than a key share,

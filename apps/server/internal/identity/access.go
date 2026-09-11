@@ -333,6 +333,12 @@ func isActive(disabled bool, lockoutEnd *time.Time, now time.Time) bool {
 // code, a passkey); password-only sign-in passes false. persistent is
 // rememberMe. Running on the caller's transaction means a sign-in that fails
 // later leaves no session behind.
+//
+// Each sign-in also purges the user's dead sessions, in the same
+// transaction (PurgeDeadUserSessions: revoked, or past the standard
+// absolute lifetime at now), so a user's rows stay bounded by the sessions
+// that could still be valid, and a stamp rotation's revocation updates no
+// long history.
 func (a *Access) createSession(ctx context.Context, tx store.DBTX, userID uuid.UUID, persistent, mfa bool, r *http.Request) (token string, err error) {
 	now := a.now()
 	var mfaVerifiedAt *time.Time
@@ -343,8 +349,14 @@ func (a *Access) createSession(ctx context.Context, tx store.DBTX, userID uuid.U
 	if v := httpx.ClientIP(r); v != "" {
 		ip = &v
 	}
+	q := store.New(tx)
+	if err := q.PurgeDeadUserSessions(ctx, store.PurgeDeadUserSessionsParams{
+		UserID: userID, Now: now, Absolute: interval(a.cfg.Sessions.Absolute),
+	}); err != nil {
+		return "", fmt.Errorf("identity: purge dead sessions: %w", err)
+	}
 	raw, hash := newToken()
-	if err := store.New(tx).InsertSession(ctx, store.InsertSessionParams{
+	if err := q.InsertSession(ctx, store.InsertSessionParams{
 		ID:            uuid.New(),
 		UserID:        userID,
 		TokenHash:     hash,

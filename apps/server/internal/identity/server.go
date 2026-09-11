@@ -16,7 +16,7 @@ import (
 
 // server implements gen.StrictServerInterface, identity's contract
 // operations. Each area implements its operations as methods in its own
-// file, and unimplemented.go stubs the rest, so the build proves the
+// file; every operation is implemented, so the build itself proves the
 // interface is complete.
 type server struct {
 	access *Access

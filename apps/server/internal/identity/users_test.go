@@ -733,6 +733,42 @@ func TestOwnerUsers_DeleteRemovesTheUserButNotAScimProvisionedOne(t *testing.T) 
 	}
 }
 
+// TestOwnerUsers_DeletingADelegationCreatorIsAConflict: a delegation keeps
+// naming who created it (created_by_user_id, ON DELETE RESTRICT), so
+// deleting an Owner who created one is refused 409 account_conflict, where
+// .NET let the violation surface as a 500. Nothing is deleted or audited.
+// Once the delegation is gone — here by deleting its grantee, which
+// cascades — the same deletion succeeds. The delegation is seeded
+// directly, as only an Owner creates one and this Owner need not sign in.
+func TestOwnerUsers_DeletingADelegationCreatorIsAConflict(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	creator := h.createUser(t, owner, "creator@example.test", identity.RoleOwner)
+	grantee := h.createUser(t, owner, "grantee@example.test", identity.RoleUser)
+	h.exec(t, `INSERT INTO identity.authorization_delegations (id, grantee_user_id, created_by_user_id, version, created_at, updated_at)
+	        VALUES ($1, $2, $3, $4, $5, $5)`, uuid.New(), grantee, creator, uuid.New(), start)
+
+	r := owner.do(http.MethodDelete, userPath(creator, ""), nil)
+	if e := errorOf(t, r); r.status != http.StatusConflict || e.Code != "account_conflict" ||
+		e.Message != "This user created authorization delegations and cannot be deleted." {
+		t.Errorf("delete a delegation creator: status %d error %+v, want 409 account_conflict", r.status, e)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1`, creator); n != 1 {
+		t.Errorf("the delegation creator was deleted")
+	}
+	if events := h.auditEvents(t, "user.deleted"); len(events) != 0 {
+		t.Errorf("user.deleted events = %+v, want none for a refused deletion", events)
+	}
+
+	if r := owner.do(http.MethodDelete, userPath(grantee, ""), nil); r.status != http.StatusNoContent {
+		t.Fatalf("delete the grantee: status %d body %s, want 204", r.status, r.body)
+	}
+	if r := owner.do(http.MethodDelete, userPath(creator, ""), nil); r.status != http.StatusNoContent {
+		t.Errorf("delete the creator once no delegation names them: status %d body %s, want 204", r.status, r.body)
+	}
+}
+
 // TestOwnerUsers_SettingAPasswordEndsSessionsAndSpendsResetTokens: an
 // Owner's new password for a user ends the user's sessions and kills the
 // reset link the user holds.

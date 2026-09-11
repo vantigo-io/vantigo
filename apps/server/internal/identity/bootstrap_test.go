@@ -163,6 +163,42 @@ func TestBootstrap_ConfiguredSystemAdminEmailAlsoGetsSystemAdmin(t *testing.T) {
 	}
 }
 
+// TestBootstrap_DisplayNameLengthCountsUTF16Units: the 200-character bound
+// counts UTF-16 code units, as .NET's string.Length did and every other
+// display-name bound here does (utf16Length). An emoji outside the Basic
+// Multilingual Plane is one rune but two units: 101 of them (202 units) are
+// refused, 100 (200 units) are accepted.
+func TestBootstrap_DisplayNameLengthCountsUTF16Units(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.client(t)
+
+	body := bootstrapBody(bootstrapSecret, ownerEmail)
+	body["displayName"] = strings.Repeat("😀", 101)
+	r := c.do(http.MethodPost, bootstrapPath, body)
+	var refused struct {
+		Error struct {
+			Code   string              `json:"code"`
+			Fields map[string][]string `json:"fields"`
+		} `json:"error"`
+	}
+	r.json(&refused)
+	if r.status != http.StatusBadRequest || refused.Error.Code != "invalid_request" ||
+		!slices.Equal(refused.Error.Fields["displayName"], []string{"Display name must be at most 200 characters."}) {
+		t.Fatalf("101 emoji (202 UTF-16 units): status %d body %s, want 400 on displayName", r.status, r.body)
+	}
+
+	body["displayName"] = strings.Repeat("😀", 100)
+	r = c.do(http.MethodPost, bootstrapPath, body)
+	var created struct {
+		User authUser `json:"user"`
+	}
+	r.json(&created)
+	if r.status != http.StatusCreated || created.User.DisplayName != body["displayName"] {
+		t.Errorf("100 emoji (200 UTF-16 units): status %d body %s, want 201 with the name kept", r.status, r.body)
+	}
+}
+
 // TestBootstrap_InvalidRequestListsEveryProblem proves validation comes
 // first, answering 400 invalid_request with .NET's message and one entry per
 // field, before the secret is looked at.
@@ -519,6 +555,9 @@ func TestRunStartup_MissingAccountFailsOnABootstrappedInstallation(t *testing.T)
 	if err == nil || !strings.Contains(err.Error(), "break-glass administrator is missing") {
 		t.Errorf("with users: RunStartup = %v, want the missing break-glass administrator", err)
 	}
+	if err != nil && (strings.Contains(err.Error(), "missing-7c1d") || !strings.Contains(err.Error(), "SYSTEM_ADMIN_EMAIL")) {
+		t.Errorf("RunStartup = %v, want the variable named and the address left out", err)
+	}
 
 	markerOnly := newHarness(t)
 	markerOnly.exec(t, `INSERT INTO identity.bootstrap_state (id, completed_at) VALUES (1, $1)`, start)
@@ -536,6 +575,10 @@ func TestRunStartup_MissingAccountIsAllowedOnAFreshInstallation(t *testing.T) {
 	}
 	if n := h.count(t, `SELECT count(*) FROM identity.users`); n != 0 {
 		t.Errorf("%d users, want none", n)
+	}
+	logs := string(h.log.Bytes())
+	if !strings.Contains(logs, "SYSTEM_ADMIN_EMAIL matches no account yet") || strings.Contains(logs, "first-run-2b9a") {
+		t.Errorf("logs %s: want the SYSTEM_ADMIN_EMAIL notice without the address", logs)
 	}
 	if !bootstrapAvailable(t, h.client(t)) {
 		t.Error("bootstrap is no longer available")

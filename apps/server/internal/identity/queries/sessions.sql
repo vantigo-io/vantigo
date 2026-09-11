@@ -69,3 +69,15 @@ VALUES (@token_hash, @user_id, @expires_at::timestamptz);
 -- name: DeleteExpiredLoginTickets :exec
 DELETE FROM identity.login_tickets
 WHERE expires_at <= @now::timestamptz;
+
+-- name: PurgeDeadUserSessions :exec
+-- PurgeDeadUserSessions deletes the sessions of user_id that can never be
+-- valid again: revoked ones, and ones past the standard absolute lifetime
+-- (created_at <= now - absolute). The standard bound is the looser of the
+-- two, so a session it deletes is dead whatever roles the user holds when
+-- it is next presented; one only past the privileged bound is kept, since
+-- a demotion would make it valid again. now is the caller's clock.
+DELETE FROM identity.sessions
+WHERE user_id = @user_id
+  AND (revoked_at IS NOT NULL
+       OR created_at <= sqlc.arg(now)::timestamptz - sqlc.arg(absolute)::interval);
