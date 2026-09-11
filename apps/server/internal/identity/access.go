@@ -354,3 +354,24 @@ func (a *Access) revokeAllSessions(ctx context.Context, q *store.Queries, userID
 	}
 	return nil
 }
+
+// rotateSecurityStamp does what rotating .NET's security stamp did beyond
+// the cookie, on the caller's transaction q: it ends every live session of
+// userID except keep, the caller's own (uuid.Nil keeps none), and spends
+// every password-reset link the user holds, since .NET's reset tokens were
+// bound to the stamp and died with it.
+func (a *Access) rotateSecurityStamp(ctx context.Context, q *store.Queries, userID, keep uuid.UUID) error {
+	var err error
+	if keep == uuid.Nil {
+		err = a.revokeAllSessions(ctx, q, userID)
+	} else {
+		err = a.revokeOtherSessions(ctx, q, userID, keep)
+	}
+	if err != nil {
+		return err
+	}
+	if err := q.DeleteUserPasswordResetTokens(ctx, userID); err != nil {
+		return fmt.Errorf("identity: spend reset links: %w", err)
+	}
+	return nil
+}

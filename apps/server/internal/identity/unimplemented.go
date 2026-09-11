@@ -77,14 +77,6 @@ func (*server) GetIdentityAccessUsersById(context.Context, gen.GetIdentityAccess
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) GetIdentityAccountMfa(context.Context, gen.GetIdentityAccountMfaRequestObject) (gen.GetIdentityAccountMfaResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityAccountMfaSetup(context.Context, gen.GetIdentityAccountMfaSetupRequestObject) (gen.GetIdentityAccountMfaSetupResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) GetIdentityAccountPasskeys(context.Context, gen.GetIdentityAccountPasskeysRequestObject) (gen.GetIdentityAccountPasskeysResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -98,14 +90,6 @@ func (*server) GetIdentityOidcChallenge(context.Context, gen.GetIdentityOidcChal
 }
 
 func (*server) GetIdentityOidcComplete(context.Context, gen.GetIdentityOidcCompleteRequestObject) (gen.GetIdentityOidcCompleteResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityOwnerMfa(context.Context, gen.GetIdentityOwnerMfaRequestObject) (gen.GetIdentityOwnerMfaResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) GetIdentityOwnerMfaSetup(context.Context, gen.GetIdentityOwnerMfaSetupRequestObject) (gen.GetIdentityOwnerMfaSetupResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
@@ -177,22 +161,6 @@ func (*server) PostIdentityAccessRoles(context.Context, gen.PostIdentityAccessRo
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityAccountMfaDisable(context.Context, gen.PostIdentityAccountMfaDisableRequestObject) (gen.PostIdentityAccountMfaDisableResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccountMfaEnable(context.Context, gen.PostIdentityAccountMfaEnableRequestObject) (gen.PostIdentityAccountMfaEnableResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccountMfaRecoveryCodes(context.Context, gen.PostIdentityAccountMfaRecoveryCodesRequestObject) (gen.PostIdentityAccountMfaRecoveryCodesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityAccountMfaSetup(context.Context, gen.PostIdentityAccountMfaSetupRequestObject) (gen.PostIdentityAccountMfaSetupResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityAccountPasskeysBegin(context.Context, gen.PostIdentityAccountPasskeysBeginRequestObject) (gen.PostIdentityAccountPasskeysBeginResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
@@ -201,31 +169,7 @@ func (*server) PostIdentityAccountPasskeysComplete(context.Context, gen.PostIden
 	return nil, module.ErrNotImplemented
 }
 
-func (*server) PostIdentityLogin2fa(context.Context, gen.PostIdentityLogin2faRequestObject) (gen.PostIdentityLogin2faResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 func (*server) PostIdentityOidcCallback(context.Context, gen.PostIdentityOidcCallbackRequestObject) (gen.PostIdentityOidcCallbackResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerMfaDisable(context.Context, gen.PostIdentityOwnerMfaDisableRequestObject) (gen.PostIdentityOwnerMfaDisableResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerMfaEnable(context.Context, gen.PostIdentityOwnerMfaEnableRequestObject) (gen.PostIdentityOwnerMfaEnableResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerMfaRecoveryCodes(context.Context, gen.PostIdentityOwnerMfaRecoveryCodesRequestObject) (gen.PostIdentityOwnerMfaRecoveryCodesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerMfaResetByUserId(context.Context, gen.PostIdentityOwnerMfaResetByUserIdRequestObject) (gen.PostIdentityOwnerMfaResetByUserIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-func (*server) PostIdentityOwnerMfaSetup(context.Context, gen.PostIdentityOwnerMfaSetupRequestObject) (gen.PostIdentityOwnerMfaSetupResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
