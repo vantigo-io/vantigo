@@ -315,7 +315,7 @@ func (s *server) PostIdentityAccountPassword(ctx context.Context, req gen.PostId
 	now := s.deps.Clock()
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
-		if err := q.UpdateAccountPassword(ctx, store.UpdateAccountPasswordParams{ID: p.UserID, PasswordHash: &hash, Version: uuid.New(), Now: now}); err != nil {
+		if _, err := q.UpdateAccountPassword(ctx, store.UpdateAccountPasswordParams{ID: p.UserID, PasswordHash: &hash, Version: uuid.New(), Now: now}); err != nil {
 			return err
 		}
 		if err := q.DeleteUserPasswordResetTokens(ctx, p.UserID); err != nil {

@@ -475,25 +475,13 @@ func TestOwnerUsers_ADemotionThatQueuedOnTheOwnerLockIsRetriedToLastActiveOwner(
 		}
 	}
 	done := make(chan []*resp, 1)
+	finished := make(chan struct{})
 	go func() {
 		done <- race(demote(first, "first-owner@example.test"), demote(second, "second-owner@example.test"))
+		close(finished)
 	}()
 
-	// Both demotions are waiting on the owner lock in this database.
-	deadline := time.Now().Add(10 * time.Second)
-	for h.count(t, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
-	        AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`) < 2 {
-		select {
-		case early := <-done:
-			t.Fatalf("the demotions answered without waiting on the owner lock: %d %s / %d %s",
-				early[0].status, early[0].body, early[1].status, early[1].body)
-		default:
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the demotions never queued on the owner lock; backends: %s", backends(t, h))
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	awaitLockWaiters(t, h, 2, finished) // both demotions are queued on the owner lock
 	if err := gate.Commit(ctx); err != nil {
 		t.Fatalf("gate: release the owner lock: %v", err)
 	}
@@ -512,6 +500,71 @@ func TestOwnerUsers_ADemotionThatQueuedOnTheOwnerLockIsRetriedToLastActiveOwner(
 	if n := h.count(t, `SELECT count(*) FROM identity.user_roles WHERE user_id = ANY($1) AND role_id = $2`, []uuid.UUID{first, second}, identity.RoleOwnerID); n != 1 {
 		t.Errorf("%d of the two targets still hold Owner, want exactly 1", n)
 	}
+}
+
+// TestOwnerUsers_EditsSpendTheUsersResetLinks: an Owner's edit rotates
+// what .NET's security stamp guarded, so a reset link mailed before it is
+// dead. After a display-name edit; and after an email change, the case
+// that matters: the link went to the replaced (say, compromised) mailbox
+// and is submitted with the new address.
+func TestOwnerUsers_EditsSpendTheUsersResetLinks(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	const oldEmail, newEmail = "compromised@example.test", "fresh@example.test"
+	id := h.createUser(t, owner, oldEmail, identity.RoleUser)
+	edit := func(displayName, email string) {
+		t.Helper()
+		r := owner.do(http.MethodPut, userPath(id, ""), map[string]string{"displayName": displayName, "email": email, "role": identity.RoleUser})
+		if r.status != http.StatusOK {
+			t.Fatalf("edit: status %d body %s", r.status, r.body)
+		}
+	}
+
+	requestRecovery(t, h, oldEmail)
+	beforeRename := mailedLink(t, h, oldEmail).Query().Get("token")
+	edit("Renamed", oldEmail)
+	if r := reset(h, t, oldEmail, beforeRename, newUserPassword); r.status != http.StatusBadRequest || r.code() != "invalid_reset_token" {
+		t.Errorf("a link from before a rename: status %d code %q, want 400 invalid_reset_token", r.status, r.code())
+	}
+
+	requestRecovery(t, h, oldEmail)
+	toOldMailbox := mailedLink(t, h, oldEmail).Query().Get("token")
+	edit("Renamed", newEmail)
+	if r := reset(h, t, newEmail, toOldMailbox, newUserPassword); r.status != http.StatusBadRequest || r.code() != "invalid_reset_token" {
+		t.Errorf("the old mailbox's link with the new address: status %d code %q, want 400 invalid_reset_token", r.status, r.code())
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.password_reset_tokens WHERE user_id = $1`, id); n != 0 {
+		t.Errorf("%d reset tokens survived the edits, want 0", n)
+	}
+	h.login(t, newEmail, userPassword) // the password never changed
+}
+
+// TestOwnerUsers_DisableAndEnableSpendTheUsersResetLinks: disabling spends
+// the user's reset links with their sessions, so a link mailed before the
+// disable does not work once the user is enabled again.
+func TestOwnerUsers_DisableAndEnableSpendTheUsersResetLinks(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := h.bootstrapOwner(t)
+	const email = "suspended@example.test"
+	id := h.createUser(t, owner, email, identity.RoleUser)
+	requestRecovery(t, h, email)
+	token := mailedLink(t, h, email).Query().Get("token")
+
+	if r := owner.do(http.MethodPost, userPath(id, "/disable"), nil); r.status != http.StatusOK {
+		t.Fatalf("disable: status %d body %s", r.status, r.body)
+	}
+	if n := h.count(t, `SELECT count(*) FROM identity.password_reset_tokens WHERE user_id = $1`, id); n != 0 {
+		t.Errorf("%d reset tokens survived the disable, want 0", n)
+	}
+	if r := owner.do(http.MethodPost, userPath(id, "/enable"), nil); r.status != http.StatusOK {
+		t.Fatalf("enable: status %d body %s", r.status, r.body)
+	}
+	if r := reset(h, t, email, token, newUserPassword); r.status != http.StatusBadRequest || r.code() != "invalid_reset_token" {
+		t.Errorf("a link from before the disable: status %d code %q, want 400 invalid_reset_token", r.status, r.code())
+	}
+	h.login(t, email, userPassword)
 }
 
 // backends describes what every other backend on this test's database is

@@ -400,8 +400,11 @@ func (s *server) PutIdentityOwnerUsersById(ctx context.Context, req gen.PutIdent
 				return err
 			}
 		}
+		// .NET rotated the security stamp here (:663-670): the user's
+		// sessions end, and so do the reset links they hold, so a link
+		// mailed to a replaced address cannot reset the account.
 		if detailsChanged || roleChanged {
-			if err := s.access.revokeAllSessions(ctx, q, target.ID); err != nil {
+			if err := s.access.rotateSecurityStamp(ctx, q, target.ID, uuid.Nil); err != nil {
 				return err
 			}
 		}
@@ -511,7 +514,9 @@ func (s *server) setUserDisabled(ctx context.Context, id uuid.UUID, disabled boo
 			if err := q.SetUserDisabled(ctx, store.SetUserDisabledParams{ID: id, IsDisabled: disabled, Version: uuid.New(), Now: now}); err != nil {
 				return err
 			}
-			if err := s.access.revokeAllSessions(ctx, q, id); err != nil {
+			// The stamp rotation (:793-797, :852-856): sessions and reset
+			// links end, on enable as on disable.
+			if err := s.access.rotateSecurityStamp(ctx, q, id, uuid.Nil); err != nil {
 				return err
 			}
 			after := before
@@ -633,16 +638,19 @@ func (s *server) PostIdentityOwnerUsersByIdPassword(ctx context.Context, req gen
 		return refuse(http.StatusBadRequest, "identity_validation_failed", userPasswordNotChangedMessage, problems), nil
 	}
 	if err := s.setPassword(ctx, req.Id, password, nil); err != nil {
-		return nil, err
+		return refusalOr[gen.PostIdentityOwnerUsersByIdPasswordResponseObject](err)
 	}
 	return gen.PostIdentityOwnerUsersByIdPassword200JSONResponse{Success: true}, nil
 }
 
-// setPassword stores password as userID's, rotates their version, spends
-// every password-reset token they hold and ends every session they have,
-// in one transaction: an Owner setting it, or a password reset. A reset
-// passes the hash of the token it spends: when a concurrent reset has spent
-// it already, the change is refused with invalid_reset_token.
+// setPassword stores password as userID's, rotates their version, and
+// rotates their security stamp (every session ends, every password-reset
+// token is spent), in one transaction: an Owner setting it, or a password
+// reset. A reset passes the hash of the token it spends: when a concurrent
+// reset has spent it already, the change is refused with
+// invalid_reset_token. A user deleted since the caller looked them up
+// changes nothing and is refused too: the bare 404 for an Owner, and
+// invalid_reset_token for a reset, whose contract has no 404.
 func (s *server) setPassword(ctx context.Context, userID uuid.UUID, password string, resetToken []byte) error {
 	hash, err := hashPassword(password)
 	if err != nil {
@@ -660,13 +668,17 @@ func (s *server) setPassword(ctx context.Context, userID uuid.UUID, password str
 				return invalidResetToken
 			}
 		}
-		if err := q.UpdateAccountPassword(ctx, store.UpdateAccountPasswordParams{ID: userID, PasswordHash: &hash, Version: uuid.New(), Now: now}); err != nil {
+		changed, err := q.UpdateAccountPassword(ctx, store.UpdateAccountPasswordParams{ID: userID, PasswordHash: &hash, Version: uuid.New(), Now: now})
+		if err != nil {
 			return err
 		}
-		if err := q.DeleteUserPasswordResetTokens(ctx, userID); err != nil {
-			return err
+		if changed == 0 {
+			if resetToken != nil {
+				return invalidResetToken
+			}
+			return notFound
 		}
-		return s.access.revokeAllSessions(ctx, q, userID)
+		return s.access.rotateSecurityStamp(ctx, q, userID, uuid.Nil)
 	})
 	if err != nil {
 		return fmt.Errorf("identity: set password: %w", err)

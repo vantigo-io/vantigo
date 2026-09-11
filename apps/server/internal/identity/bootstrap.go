@@ -341,9 +341,9 @@ func builtInRoleID(name string) uuid.UUID {
 //     SYSTEM_ADMIN_EMAIL says, as .NET's EnsureBuiltInRolesAsync did.
 //   - SYSTEM_ADMIN_EMAIL unset: nothing more to do.
 //   - The account with that email (matched case-insensitively) is granted
-//     SystemAdmin if it lacks it; the grant rotates its version and revokes
-//     its sessions, as .NET rotated the security stamp. Run again, it
-//     changes nothing.
+//     SystemAdmin if it lacks it; the grant rotates its version, revokes
+//     its sessions and spends its reset links, as .NET rotated the security
+//     stamp. Run again, it changes nothing.
 //   - No such account on an installation already in use (any user, or the
 //     bootstrap marker): an error, because the configured break-glass
 //     administrator is missing.
@@ -430,9 +430,11 @@ func grantSystemAdmin(ctx context.Context, d module.Deps, q *store.Queries, emai
 	if err := q.RotateUserVersion(ctx, store.RotateUserVersionParams{ID: user.ID, Version: uuid.New(), Now: now}); err != nil {
 		return fmt.Errorf("identity: SystemAdmin grant: %w", err)
 	}
-	if err := q.RevokeUserSessions(ctx, store.RevokeUserSessionsParams{UserID: user.ID, Now: now}); err != nil {
+	// The security stamp rotation (SV/SystemAdminBootstrapper.cs:69-82):
+	// every session ends and every reset link the account holds dies.
+	if err := NewAccess(d).rotateSecurityStamp(ctx, q, user.ID, uuid.Nil); err != nil {
 		return fmt.Errorf("identity: SystemAdmin grant: %w", err)
 	}
-	d.Logger.InfoContext(ctx, "granted SystemAdmin to the configured account and revoked its sessions", "user_id", user.ID)
+	d.Logger.InfoContext(ctx, "granted SystemAdmin to the configured account and revoked its sessions and reset links", "user_id", user.ID)
 	return nil
 }
