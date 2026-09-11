@@ -11,7 +11,9 @@ namespace Vantigo.Storage.Tests.Providers.S3;
 
 public sealed class MinioObjectStoreTests : IAsyncLifetime
 {
-    private readonly MinioContainer container = new MinioBuilder("minio/minio")
+    // MinIO no longer publishes minio/minio on Docker Hub (pulls are denied), so
+    // the image comes from MinIO's own registry.
+    private readonly MinioContainer container = new MinioBuilder("quay.io/minio/minio")
         .WithUsername("minioadmin")
         .WithPassword("minioadmin")
         .Build();
