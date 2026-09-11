@@ -2207,8 +2207,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/CodeMessageError'
-                    description: Forbidden
+                                oneOf:
+                                    - $ref: common.yaml#/components/schemas/AuthErrorResponse
+                                    - $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden — the caller lacks the policy, or the handler refuses the change
                 "409":
                     content:
                         application/json:
@@ -2248,8 +2250,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/CodeMessageError'
-                    description: Forbidden
+                                oneOf:
+                                    - $ref: common.yaml#/components/schemas/AuthErrorResponse
+                                    - $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden — the caller lacks the policy, or the handler refuses the change
                 "404":
                     description: Not Found
                 "409":
@@ -2300,8 +2304,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/CodeMessageError'
-                    description: Forbidden
+                                oneOf:
+                                    - $ref: common.yaml#/components/schemas/AuthErrorResponse
+                                    - $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden — the caller lacks the policy, or the handler refuses the change
                 "404":
                     description: Not Found
                 "409":
@@ -2353,8 +2359,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/CodeMessageError'
-                    description: Forbidden
+                                oneOf:
+                                    - $ref: common.yaml#/components/schemas/AuthErrorResponse
+                                    - $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden — the caller lacks the policy, or the handler refuses the change
                 "404":
                     description: Not Found
                 "409":
@@ -2467,8 +2475,10 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/CodeMessageError'
-                    description: Forbidden
+                                oneOf:
+                                    - $ref: common.yaml#/components/schemas/AuthErrorResponse
+                                    - $ref: '#/components/schemas/CodeMessageError'
+                    description: Forbidden — the caller lacks the policy, or the handler refuses the change
                 "404":
                     description: Not Found
                 "409":
