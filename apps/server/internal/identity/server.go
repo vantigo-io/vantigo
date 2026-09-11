@@ -78,17 +78,30 @@ func newServer(a *Access, d module.Deps) (*server, error) {
 	}, nil
 }
 
-// requestKey is the context key withRequest stores the request under.
-type requestKey struct{}
+// requestKey and responseWriterKey are the context keys withRequest stores
+// the request and its response writer under.
+type (
+	requestKey        struct{}
+	responseWriterKey struct{}
+)
 
 // withRequest is the strict middleware that hands every operation its
-// *http.Request. The generated strict handlers pass only a context, and
-// sign-in needs the client address, the user agent, the cookies and the
-// trace id.
+// *http.Request and response writer. The generated strict handlers pass
+// only a context: sign-in needs the client address, the user agent, the
+// cookies and the trace id, and an OIDC step that ends in a server error
+// still clears its cookie on the 500 (clearOnServerError).
 func withRequest(f gen.StrictHandlerFunc, _ string) gen.StrictHandlerFunc {
 	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
-		return f(context.WithValue(ctx, requestKey{}, r), w, r, request)
+		ctx = context.WithValue(ctx, requestKey{}, r)
+		ctx = context.WithValue(ctx, responseWriterKey{}, w)
+		return f(ctx, w, r, request)
 	}
+}
+
+// responseWriterFrom returns the response writer withRequest stored in ctx.
+func responseWriterFrom(ctx context.Context) (http.ResponseWriter, bool) {
+	w, ok := ctx.Value(responseWriterKey{}).(http.ResponseWriter)
+	return w, ok
 }
 
 var errNoRequest = errors.New("identity: no request in the handler context")

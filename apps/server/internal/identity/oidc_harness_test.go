@@ -2,10 +2,13 @@ package identity_test
 
 import (
 	"crypto"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -60,6 +63,16 @@ var fakeSigningKey = sync.OnceValue(func() *rsa.PrivateKey {
 	return k
 })
 
+// foreignSigningKey is an RSA key the provider never published, for
+// forged id_tokens.
+var foreignSigningKey = sync.OnceValue(func() *rsa.PrivateKey {
+	k, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(err)
+	}
+	return k
+})
+
 // fakeOIDC is a workforce OIDC provider for one test, as .NET's
 // DeterministicOidcBackchannelHandler was (TS/Integration/IdentityApiFactory.cs:501):
 // discovery, a JWKS with one RSA key, an authorization endpoint that signs
@@ -90,6 +103,9 @@ type fakeOIDC struct {
 	now             func() time.Time
 	discoveryIssuer string
 	discoveryDown   bool
+	discoveryGate   chan struct{} // when set, discovery answers once it is closed
+	discoveryCount  int
+	forge           func(header map[string]string, payload []byte) string
 	claims          map[string]any
 	tokenLifetime   time.Duration
 	tokenError      string
@@ -221,6 +237,14 @@ func (f *fakeOIDC) authorize(t testing.TB, location *url.URL) string {
 	return res.Header.Get("Location")
 }
 
+// discoveries is how many discovery requests the fake has received, the
+// ones still held at discoveryGate included.
+func (f *fakeOIDC) discoveries() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.discoveryCount
+}
+
 // redemptionForms is the form of every token request, in order.
 func (f *fakeOIDC) redemptionForms() []url.Values {
 	f.mu.Lock()
@@ -276,8 +300,12 @@ func (f *fakeOIDC) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (f *fakeOIDC) discovery(w http.ResponseWriter) {
 	f.mu.Lock()
-	down, issuer := f.discoveryDown, f.discoveryIssuer
+	f.discoveryCount++
+	down, issuer, gate := f.discoveryDown, f.discoveryIssuer, f.discoveryGate
 	f.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	if down {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
@@ -370,7 +398,9 @@ func (f *fakeOIDC) tokenEndpoint(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// mint signs the id_token for grant. f.mu is held.
+// mint signs the id_token for grant, or hands its header and payload to
+// forge when a test set one, for a token the provider never signed. f.mu
+// is held.
 func (f *fakeOIDC) mint(grant fakeGrant) string {
 	claims := map[string]any{
 		"iss":   f.authority,
@@ -395,15 +425,66 @@ func (f *fakeOIDC) mint(grant fakeGrant) string {
 			claims[k] = v
 		}
 	}
-	header, _ := json.Marshal(map[string]string{"alg": "RS256", "typ": "JWT", "kid": fakeSigningKeyID})
+	header := map[string]string{"alg": "RS256", "typ": "JWT", "kid": fakeSigningKeyID}
 	payload, _ := json.Marshal(claims)
-	signed := b64(header) + "." + b64(payload)
+	if f.forge != nil {
+		return f.forge(header, payload)
+	}
+	return signRS256(fakeSigningKey(), header, payload)
+}
+
+// signingInput is a JWS's header and payload, base64url, as it is signed.
+func signingInput(header map[string]string, payload []byte) string {
+	h, _ := json.Marshal(header)
+	return b64(h) + "." + b64(payload)
+}
+
+// signRS256 is a compact JWS over header and payload, signed with key.
+func signRS256(key *rsa.PrivateKey, header map[string]string, payload []byte) string {
+	signed := signingInput(header, payload)
 	digest := sha256.Sum256([]byte(signed))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, fakeSigningKey(), crypto.SHA256, digest[:])
+	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
 	if err != nil {
 		panic(err)
 	}
 	return signed + "." + b64(signature)
+}
+
+// The forged id_tokens fakeOIDC.forge can mint, each one the provider's
+// JWKS must not verify.
+
+// forgeAlgNone is an unsigned token: alg "none", no signature.
+func forgeAlgNone(header map[string]string, payload []byte) string {
+	header["alg"] = "none"
+	return signingInput(header, payload) + "."
+}
+
+// forgeHS256WithThePublicKey is the key-confusion forgery: HS256 keyed with
+// the provider's public RSA key, as PEM, which a verifier that trusts the
+// token's alg would check against that same public key.
+func forgeHS256WithThePublicKey(header map[string]string, payload []byte) string {
+	der, err := x509.MarshalPKIXPublicKey(&fakeSigningKey().PublicKey)
+	if err != nil {
+		panic(err)
+	}
+	header["alg"] = "HS256"
+	signed := signingInput(header, payload)
+	mac := hmac.New(sha256.New, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))
+	_, _ = mac.Write([]byte(signed))
+	return signed + "." + b64(mac.Sum(nil))
+}
+
+// forgeWithAForeignKey signs with a key the provider never published, under
+// the provider's own kid.
+func forgeWithAForeignKey(header map[string]string, payload []byte) string {
+	return signRS256(foreignSigningKey(), header, payload)
+}
+
+// forgeWithAnUnknownKid signs with the provider's real key but names a kid
+// its JWKS does not have.
+func forgeWithAnUnknownKid(header map[string]string, payload []byte) string {
+	header["kid"] = "unknown-kid"
+	return signRS256(fakeSigningKey(), header, payload)
 }
 
 func writeFakeJSON(w http.ResponseWriter, status int, body any) {

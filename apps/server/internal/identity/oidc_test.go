@@ -343,25 +343,33 @@ func TestOidc_AStateMismatchIsARemoteFailureAndSpendsTheStateCookie(t *testing.T
 }
 
 // An id_token that fails validation is an authentication failure, after
-// the redemption: a nonce other than the one sealed in the state cookie,
-// another audience, another issuer, an authorized party that is another
-// client, and a token without iat.
+// the redemption, and creates nothing: a nonce other than the one sealed in
+// the state cookie, another audience, another issuer, an authorized party
+// that is another client, a token without iat or exp; and every forged
+// signature: alg "none", HS256 keyed with the provider's public key (key
+// confusion), a foreign RSA key under the provider's kid, and a kid the
+// provider's JWKS does not have.
 func TestOidc_AnInvalidIdTokenIsAnAuthenticationFailure(t *testing.T) {
 	t.Parallel()
-	for name, claim := range map[string]struct {
-		key   string
-		value any
-	}{
-		"nonce mismatch":          {"nonce", "another-nonce"},
-		"wrong audience":          {"aud", fakeOtherTenantID},
-		"wrong issuer":            {"iss", "https://login.microsoftonline.com/" + fakeOtherTenantID + "/v2.0"},
-		"another authorized part": {"azp", fakeOtherTenantID},
-		"no issued-at":            {"iat", nil},
+	forged := func(forge func(map[string]string, []byte) string) func(f *fakeOIDC) {
+		return func(f *fakeOIDC) { f.update(func(f *fakeOIDC) { f.forge = forge }) }
+	}
+	for name, setup := range map[string]func(f *fakeOIDC){
+		"nonce mismatch":                         func(f *fakeOIDC) { f.set("nonce", "another-nonce") },
+		"wrong audience":                         func(f *fakeOIDC) { f.set("aud", fakeOtherTenantID) },
+		"wrong issuer":                           func(f *fakeOIDC) { f.set("iss", "https://login.microsoftonline.com/"+fakeOtherTenantID+"/v2.0") },
+		"another authorized part":                func(f *fakeOIDC) { f.set("azp", fakeOtherTenantID) },
+		"no issued-at":                           func(f *fakeOIDC) { f.unset("iat") },
+		"no expiry":                              func(f *fakeOIDC) { f.unset("exp") },
+		"alg none":                               forged(forgeAlgNone),
+		"HS256 keyed with the RSA public key":    forged(forgeHS256WithThePublicKey),
+		"a foreign key under the provider's kid": forged(forgeWithAForeignKey),
+		"an unknown kid":                         forged(forgeWithAnUnknownKid),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			f := newFakeOIDC(t)
-			f.set(claim.key, claim.value)
+			setup(f)
 			h := newHarness(t, f.options()...)
 			r := h.oidcCallback(t, h.client(t), f)
 			assertOIDCRedirect(t, r, oidcErrorLocation("oidc_authentication_failed"))
@@ -372,8 +380,10 @@ func TestOidc_AnInvalidIdTokenIsAnAuthenticationFailure(t *testing.T) {
 			if n := len(f.redemptionForms()); n != 1 {
 				t.Errorf("%d redemptions, want 1", n)
 			}
-			if n := h.count(t, `SELECT count(*) FROM identity.users`); n != 0 {
-				t.Errorf("%d users, want 0", n)
+			for _, table := range []string{"users", "oidc_links", "sessions"} {
+				if n := h.count(t, `SELECT count(*) FROM identity.`+table); n != 0 {
+					t.Errorf("identity.%s has %d rows, want 0", table, n)
+				}
 			}
 		})
 	}
@@ -406,23 +416,25 @@ func TestOidc_AnEntraClaimPolicyFailureIsARemoteFailure(t *testing.T) {
 	}
 }
 
-// An id_token is judged on the harness clock: good four minutes into a
-// five-minute lifetime, expired at six, though the ten-minute state cookie
-// still is not; and the state cookie itself expires at ten.
+// An id_token is judged on the harness clock with ASP.NET's five minutes of
+// clock skew: a one-minute token is still accepted four minutes past its
+// exp and refused six minutes past it, while the ten-minute state cookie is
+// still good. The state cookie itself expires at ten. nbf keeps go-oidc's
+// five minutes: four minutes ahead is accepted, six refused.
 func TestOidc_AnExpiredIdTokenIsAnAuthenticationFailure(t *testing.T) {
 	t.Parallel()
 	f := newFakeOIDC(t)
-	f.update(func(f *fakeOIDC) { f.tokenLifetime = 5 * time.Minute })
+	f.update(func(f *fakeOIDC) { f.tokenLifetime = time.Minute })
 	h := newHarness(t, f.options()...)
 
-	timely := h.client(t)
-	back := h.oidcCallbackLocation(t, timely, f)
-	h.advance(4 * time.Minute)
-	assertOIDCRedirect(t, timely.do(http.MethodGet, h.pathOf(t, back), nil), oidcCompletePath)
+	skewed := h.client(t)
+	back := h.oidcCallbackLocation(t, skewed, f)
+	h.advance(5 * time.Minute) // exp + 4 min
+	assertOIDCRedirect(t, skewed.do(http.MethodGet, h.pathOf(t, back), nil), oidcCompletePath)
 
 	late := h.client(t)
 	back = h.oidcCallbackLocation(t, late, f)
-	h.advance(6 * time.Minute)
+	h.advance(7 * time.Minute) // exp + 6 min
 	assertOIDCRedirect(t, late.do(http.MethodGet, h.pathOf(t, back), nil), oidcErrorLocation("oidc_authentication_failed"))
 
 	stale := h.client(t)
@@ -432,6 +444,79 @@ func TestOidc_AnExpiredIdTokenIsAnAuthenticationFailure(t *testing.T) {
 	assertOIDCRedirect(t, stale.do(http.MethodGet, h.pathOf(t, back), nil), oidcErrorLocation("oidc_remote_failure"))
 	if n := len(f.redemptionForms()); n != redemptions {
 		t.Error("a stale state cookie's code was redeemed")
+	}
+
+	f.update(func(f *fakeOIDC) { f.tokenLifetime = time.Hour })
+	f.set("nbf", h.now().Add(4*time.Minute).Unix())
+	assertOIDCRedirect(t, h.oidcCallback(t, h.client(t), f), oidcCompletePath)
+	f.set("nbf", h.now().Add(6*time.Minute).Unix())
+	assertOIDCRedirect(t, h.oidcCallback(t, h.client(t), f), oidcErrorLocation("oidc_authentication_failed"))
+}
+
+// Discovery holds no lock across its fetch: two challenges while the
+// provider's metadata hangs both reach the provider, neither queued behind
+// the other, and both complete once it answers; the result is then cached.
+func TestOidc_ConcurrentChallengesDoNotQueueBehindAHangingDiscovery(t *testing.T) {
+	t.Parallel()
+	f := newFakeOIDC(t)
+	gate := make(chan struct{})
+	f.update(func(f *fakeOIDC) { f.discoveryGate = gate })
+	h := newHarness(t, f.options()...)
+	var once sync.Once
+	release := func() { once.Do(func() { close(gate) }) }
+	t.Cleanup(release) // before the fake's own cleanup waits on its handlers
+
+	clients := []*client{h.client(t), h.client(t)}
+	results := make([]*resp, len(clients))
+	var wg sync.WaitGroup
+	for i, c := range clients {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = c.do(http.MethodGet, oidcChallengePath, nil)
+		}()
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for f.discoveries() < len(clients) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	waiting := f.discoveries()
+	release()
+	wg.Wait()
+
+	if waiting != len(clients) {
+		t.Errorf("%d discovery requests reached the hanging provider, want %d: a challenge queued behind another", waiting, len(clients))
+	}
+	for _, r := range results {
+		if r.status != http.StatusFound || !strings.HasPrefix(r.header("Location"), "https://login.microsoftonline.com/") {
+			t.Errorf("challenge: status %d Location %q, want the provider", r.status, r.header("Location"))
+		}
+	}
+	fetched := f.discoveries()
+	h.oidcChallenge(t, h.client(t))
+	if f.discoveries() != fetched {
+		t.Error("the discovered metadata was not cached")
+	}
+}
+
+// A server error in completion is a 500, as .NET's unhandled exception
+// was, but it still consumes the external identity cookie.
+func TestOidc_AServerErrorInCompletionStillClearsTheExternalCookie(t *testing.T) {
+	t.Parallel()
+	f := newFakeOIDC(t)
+	h := newHarness(t, f.options()...)
+	c := h.client(t)
+	assertOIDCRedirect(t, h.oidcCallback(t, c, f), oidcCompletePath)
+	h.exec(t, `DROP TABLE identity.oidc_links`)
+
+	// Off-contract by design: the contract documents no 500.
+	r := c.do(http.MethodGet, oidcCompletePath, nil, skipContract("forced server error"))
+	if r.status != http.StatusInternalServerError {
+		t.Fatalf("complete: status %d, want 500", r.status)
+	}
+	assertCleared(t, r, identity.OIDCExternalCookieName, oidcCookiePath)
+	if c.cookieAt(oidcCompletePath, identity.OIDCExternalCookieName) != "" {
+		t.Error("the browser still holds the external identity after the 500")
 	}
 }
 

@@ -429,12 +429,82 @@ func TestRunStartup_MatchesTheConfiguredEmailCaseInsensitively(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	id := h.insertUser(t, "breakglass-1f2e@integration.test", identity.RoleUserID)
+	// Confirmed: an unconfirmed, passwordless account is refused
+	// (TestRunStartup_RefusesAnUnverifiedPasswordlessAccount).
+	h.exec(t, `UPDATE identity.users SET email_confirmed = true WHERE id = $1`, id)
 
 	if err := h.runStartup("  BreakGlass-1F2E@Integration.Test "); err != nil {
 		t.Fatalf("RunStartup: %v", err)
 	}
 	if !hasRole(t, h, id, identity.RoleSystemAdminID) {
 		t.Error("the matching account was not granted SystemAdmin")
+	}
+}
+
+// New: hardening beyond .NET. An account workforce OIDC provisioned from an
+// unverified email claim (Entra's), unconfirmed and passwordless, is never
+// made SystemAdmin by asserting SYSTEM_ADMIN_EMAIL: startup fails with the
+// reason, not the address, and nothing is granted or revoked.
+func TestRunStartup_RefusesAnUnverifiedPasswordlessAccount(t *testing.T) {
+	t.Parallel()
+	const email = "claimed-admin-5d1c@integration.test"
+	f := newFakeOIDC(t)
+	f.set("email", email)
+	f.unset("email_verified")
+	h := newHarness(t, f.options()...)
+	c := h.client(t)
+	assertOIDCRedirect(t, h.oidcSignIn(t, c, f), "/")
+	id := oidcSession(t, c).User.ID
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND NOT email_confirmed AND password_hash IS NULL`, id); n != 1 {
+		t.Fatal("the provisioned account is not unconfirmed and passwordless")
+	}
+
+	err := h.runStartup(email)
+	if err == nil || !strings.Contains(err.Error(), "unconfirmed") || strings.Contains(strings.ToLower(err.Error()), email) {
+		t.Errorf("RunStartup = %v, want the unverified-account refusal without the address", err)
+	}
+	if hasRole(t, h, id, identity.RoleSystemAdminID) {
+		t.Error("the unverified account was granted SystemAdmin")
+	}
+	if r := c.do(http.MethodGet, "/api/v1/identity/session", nil); r.status != http.StatusOK {
+		t.Errorf("the account's session: status %d, want 200 (nothing revoked)", r.status)
+	}
+}
+
+// New: the refusal spares the bootstrap Owner, whose email is unconfirmed
+// but who has a local password: granted as before.
+func TestRunStartup_GrantsTheUnconfirmedBootstrapOwner(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, id := h.bootstrapOwner(t)
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND NOT email_confirmed AND password_hash IS NOT NULL`, id); n != 1 {
+		t.Fatal("the bootstrap Owner is not unconfirmed with a password")
+	}
+	if err := h.runStartup(ownerEmail); err != nil {
+		t.Fatalf("RunStartup: %v", err)
+	}
+	if !hasRole(t, h, id, identity.RoleSystemAdminID) {
+		t.Error("the bootstrap Owner was not granted SystemAdmin")
+	}
+}
+
+// New: an account OIDC provisioned from a verified email claim is
+// confirmed, and granted without a local password.
+func TestRunStartup_GrantsAConfirmedAccountWithoutAPassword(t *testing.T) {
+	t.Parallel()
+	f := newFakeOIDC(t)
+	h := newHarness(t, f.options()...)
+	c := h.client(t)
+	assertOIDCRedirect(t, h.oidcSignIn(t, c, f), "/")
+	id := oidcSession(t, c).User.ID
+	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND email_confirmed AND password_hash IS NULL`, id); n != 1 {
+		t.Fatal("the provisioned account is not confirmed and passwordless")
+	}
+	if err := h.runStartup(fakeEmail); err != nil {
+		t.Fatalf("RunStartup: %v", err)
+	}
+	if !hasRole(t, h, id, identity.RoleSystemAdminID) {
+		t.Error("the confirmed account was not granted SystemAdmin")
 	}
 }
 
