@@ -25,11 +25,19 @@ type forwarded struct {
 // and is not trusted. X-Forwarded-Proto's last entry is taken as the scheme.
 // X-Forwarded-Host is never honoured: proxies must preserve Host, which host
 // filtering checks.
-func Forwarded(trustedHops int) func(http.Handler) http.Handler {
+//
+// trustedPeers additionally gates the headers on who is asking: when it is
+// non-empty, X-Forwarded-* is honoured only when the direct peer (RemoteAddr)
+// falls inside one of its prefixes; a peer outside them is treated as the
+// client itself, headers and all, exactly as with trustedHops = 0. An
+// IPv4-mapped IPv6 peer (e.g. from a dual-stack listener) is unmapped before
+// the match. With trustedPeers empty, every peer is trusted by hops alone,
+// unchanged from before this parameter existed.
+func Forwarded(trustedHops int, trustedPeers []netip.Prefix) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			f := forwarded{clientIP: peerIP(r), scheme: connScheme(r)}
-			if trustedHops > 0 {
+			if trustedHops > 0 && peerTrusted(r, trustedPeers) {
 				if ip, ok := forwardedClient(r.Header.Values("X-Forwarded-For"), trustedHops); ok {
 					f.clientIP = ip
 				}
@@ -40,6 +48,35 @@ func Forwarded(trustedHops int) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), forwardedKey{}, f)))
 		})
 	}
+}
+
+// peerTrusted reports whether the request's direct peer (RemoteAddr) is
+// allowed to set forwarded headers. An empty trustedPeers trusts every peer,
+// preserving the hops-only behaviour.
+func peerTrusted(r *http.Request, trustedPeers []netip.Prefix) bool {
+	if len(trustedPeers) == 0 {
+		return true
+	}
+	addr, ok := peerAddr(r)
+	if !ok {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, prefix := range trustedPeers {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// peerAddr parses the host portion of RemoteAddr as an IP address.
+func peerAddr(r *http.Request) (netip.Addr, bool) {
+	addr, err := netip.ParseAddr(peerIP(r))
+	if err != nil {
+		return netip.Addr{}, false
+	}
+	return addr, true
 }
 
 // ClientIP is the client's address as resolved by Forwarded, or the peer

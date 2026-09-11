@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -187,6 +188,26 @@ func TestNew_HSTS(t *testing.T) {
 	req := request(http.MethodGet, "http://vantigo.example.com/", "X-Forwarded-Proto", "https", "X-Forwarded-For", "203.0.113.7")
 	if got := proxied.do(req).Header().Get("Strict-Transport-Security"); got != "max-age=2592000" {
 		t.Errorf("https behind a trusted proxy: HSTS %q", got)
+	}
+}
+
+func TestNew_WarnsWhenTrustedProxyHopsHasNoCIDRs(t *testing.T) {
+	unguarded := newFixture(t, func(cfg *config.Config, _ *Options) { cfg.TrustedProxyHops = 1 })
+	if !strings.Contains(unguarded.logs.String(), "TRUSTED_PROXY_HOPS is set without TRUSTED_PROXY_CIDRS") {
+		t.Errorf("missing warning: %s", unguarded.logs.String())
+	}
+
+	guarded := newFixture(t, func(cfg *config.Config, _ *Options) {
+		cfg.TrustedProxyHops = 1
+		cfg.TrustedProxyCIDRs = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	})
+	if strings.Contains(guarded.logs.String(), "TRUSTED_PROXY_HOPS is set without") {
+		t.Errorf("unexpected warning with CIDRs configured: %s", guarded.logs.String())
+	}
+
+	noHops := newFixture(t, nil)
+	if strings.Contains(noHops.logs.String(), "TRUSTED_PROXY_HOPS is set without") {
+		t.Errorf("unexpected warning with hops at their default of 0: %s", noHops.logs.String())
 	}
 }
 

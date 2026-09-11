@@ -13,7 +13,7 @@ const testHash = "'sha256-abc123='"
 func serveWithHeaders(o HeaderOptions, req *http.Request) http.Header {
 	rec := httptest.NewRecorder()
 	httpx.Chain(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
-		httpx.Forwarded(1), Headers(o)).ServeHTTP(rec, req)
+		httpx.Forwarded(1, nil), Headers(o)).ServeHTTP(rec, req)
 	return rec.Header()
 }
 
