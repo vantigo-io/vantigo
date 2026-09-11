@@ -91,6 +91,12 @@ var limits = map[string]ratelimit.Policy{
 	"postIdentityOwnerMfaDisable":         policyMfa,
 	"postIdentityOwnerMfaRecoveryCodes":   policyMfa,
 	"postIdentityOwnerMfaResetByUserId":   policyMfa,
+
+	"postIdentityAccountPasskeysBegin":            policyMfa,
+	"postIdentityAccountPasskeysComplete":         policyMfa,
+	"deleteIdentityAccountPasskeysByCredentialId": policyMfa,
+	"postIdentityPasskeysLoginBegin":              policyPasskeyLogin,
+	"postIdentityPasskeysLoginComplete":           policyPasskeyLogin,
 }
 
 // Module is identity as a platform module: its contract mounted under

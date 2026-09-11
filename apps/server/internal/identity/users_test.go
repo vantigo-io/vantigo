@@ -794,7 +794,7 @@ func TestOwnerUsers_PasswordResetMailsOnlyAnAccountWithAPasswordAndAConfirmedEma
 	if len(msgs) != 1 || msgs[0].To != "eligible@example.test" {
 		t.Fatalf("mails = %+v, want one, to the eligible account", msgs)
 	}
-	wantPrefix := "Use this link to reset your password: " + h.srv.URL + "/password-reset?email=eligible%40example.test&token="
+	wantPrefix := "Use this link to reset your password: " + h.url + "/password-reset?email=eligible%40example.test&token="
 	if msgs[0].Subject != "Reset your Vantigo password" || !strings.HasPrefix(msgs[0].TextBody, wantPrefix) {
 		t.Errorf("mail = %q / %q, want the reset template with %s…", msgs[0].Subject, msgs[0].TextBody, wantPrefix)
 	}

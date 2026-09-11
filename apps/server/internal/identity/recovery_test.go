@@ -84,7 +84,7 @@ func TestPasswordRecovery_RoundTripEndsSessionsAndRejectsReplay(t *testing.T) {
 	}
 	link := mailedLink(t, h, email)
 	query := link.Query()
-	wantBody := "Use this link to reset your password: " + h.srv.URL + "/password-reset?email=recovering%40example.test&token=" + query.Get("token")
+	wantBody := "Use this link to reset your password: " + h.url + "/password-reset?email=recovering%40example.test&token=" + query.Get("token")
 	if msgs[0].Subject != "Reset your Vantigo password" || msgs[0].TextBody != wantBody {
 		t.Errorf("mail = %q / %q, want %q / %q", msgs[0].Subject, msgs[0].TextBody, "Reset your Vantigo password", wantBody)
 	}

@@ -135,7 +135,7 @@ func TestInvitations_CreateValidateAndAcceptRoundTrip(t *testing.T) {
 		t.Fatalf("%d mails to the invitee, want 1", len(msgs))
 	}
 	token := mailedLink(t, h, "invitee@example.test").Query().Get("token")
-	wantBody := "Use this link to create your Vantigo account: " + h.srv.URL + "/invitations/accept?token=" + token
+	wantBody := "Use this link to create your Vantigo account: " + h.url + "/invitations/accept?token=" + token
 	if msgs[0].Subject != "You are invited to Vantigo" || msgs[0].TextBody != wantBody {
 		t.Errorf("mail = %q / %q, want %q / %q", msgs[0].Subject, msgs[0].TextBody, "You are invited to Vantigo", wantBody)
 	}

@@ -126,7 +126,7 @@ func TestLogin_CrossSiteUnsafeRequestsAreRefused(t *testing.T) {
 	h.seedUser(t, email, userPassword, identity.RoleUserID)
 	// Off-contract by design: the platform's 403 problem is not in identity.yaml.
 	crossSite := []reqOpt{origin("https://evil.example"), header("Sec-Fetch-Site", "cross-site"), skipContract("CSRF probe")}
-	sameOrigin := []reqOpt{origin(h.srv.URL), header("Sec-Fetch-Site", "same-origin")}
+	sameOrigin := []reqOpt{origin(h.url), header("Sec-Fetch-Site", "same-origin")}
 
 	signedIn := h.login(t, email, userPassword)
 	for _, probe := range []struct {
