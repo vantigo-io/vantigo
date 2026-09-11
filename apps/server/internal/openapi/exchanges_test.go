@@ -58,6 +58,8 @@ paths:
     post:
       operationId: postThings
       x-vantigo-access: session
+      parameters:
+        - {in: header, name: Idempotency-Key, required: true, schema: {type: string}}
       requestBody:
         required: true
         content:
@@ -111,6 +113,8 @@ func TestValidate(t *testing.T) {
 		ex   Exchange
 		ok   bool
 	}{
+		// postThings requires a header the recorder cannot carry (it keeps no
+		// request headers), so its cases also prove Validate skips header parameters.
 		{"valid exchange", post(`{"name":"a"}`, 201, appJSON, `{"id":1}`), true},
 		{"undocumented status", post(`{"name":"a"}`, 409, problem, `{"title":"conflict"}`), false},
 		{"response off contract", post(`{"name":"a"}`, 201, appJSON, `{"id":"x"}`), false},

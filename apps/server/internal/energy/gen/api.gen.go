@@ -227,9 +227,9 @@ type GetEnergyCustomersByCustomerIdConsumptionAggregateParams struct {
 
 // GetEnergyMeteringPointsParams defines parameters for GetEnergyMeteringPoints.
 type GetEnergyMeteringPointsParams struct {
-	Search   *string `form:"Search,omitempty" json:"Search,omitempty"`
-	Page     *int32  `form:"Page,omitempty" json:"Page,omitempty"`
-	PageSize *int32  `form:"PageSize,omitempty" json:"PageSize,omitempty"`
+	Search   *string `form:"search,omitempty" json:"search,omitempty"`
+	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // GetEnergyMeteringPointsByIdConsumptionParams defines parameters for GetEnergyMeteringPointsByIdConsumption.
@@ -536,41 +536,41 @@ func (siw *ServerInterfaceWrapper) GetEnergyMeteringPoints(w http.ResponseWriter
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetEnergyMeteringPointsParams
 
-	// ------------- Optional query parameter "Search" -------------
+	// ------------- Optional query parameter "search" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "Search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "Search"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Search", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "Page" -------------
+	// ------------- Optional query parameter "page" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "Page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "Page"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Page", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
 		}
 		return
 	}
 
-	// ------------- Optional query parameter "PageSize" -------------
+	// ------------- Optional query parameter "pageSize" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "PageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "PageSize"})
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
 		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "PageSize", Err: err})
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
 		}
 		return
 	}

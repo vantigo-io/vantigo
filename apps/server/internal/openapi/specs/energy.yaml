@@ -647,16 +647,16 @@ paths:
             operationId: getEnergyMeteringPoints
             parameters:
                 - in: query
-                  name: Search
+                  name: search
                   schema:
                     type: string
                 - in: query
-                  name: Page
+                  name: page
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: PageSize
+                  name: pageSize
                   schema:
                     format: int32
                     type: integer

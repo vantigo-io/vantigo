@@ -661,9 +661,9 @@ export interface operations {
     getEnergyMeteringPoints: {
         parameters: {
             query?: {
-                Search?: string;
-                Page?: number;
-                PageSize?: number;
+                search?: string;
+                page?: number;
+                pageSize?: number;
             };
             header?: never;
             path?: never;

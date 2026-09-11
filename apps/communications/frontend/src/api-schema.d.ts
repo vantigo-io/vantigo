@@ -1110,7 +1110,10 @@ export interface operations {
     postCommunicationsConversations: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required. The client-chosen key that makes the send safe to retry — non-blank, at most 200 characters, no surrounding whitespace or control characters. A missing or invalid key is answered 400 `idempotency_key_required`; a key reused with a different payload, 409 `idempotency_key_reused`; a replay of the same payload returns the original result with 200. */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1515,7 +1518,10 @@ export interface operations {
     postCommunicationsConversationsByIdAttachments: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required. The client-chosen key that makes the upload safe to retry — non-blank, at most 200 characters, no surrounding whitespace or control characters. A missing or invalid key is answered 400 `idempotency_key_required`; a key the same user already staged an upload with returns that upload with 200. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -1721,7 +1727,10 @@ export interface operations {
     postCommunicationsConversationsByIdReply: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Required. The client-chosen key that makes the reply safe to retry — non-blank, at most 200 characters, no surrounding whitespace or control characters. A missing or invalid key is answered 400 `idempotency_key_required`; a key reused with a different payload, 409 `idempotency_key_reused`; a replay of the same payload returns the original result with 200. */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };

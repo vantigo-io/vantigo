@@ -387,6 +387,12 @@ type GetCommunicationsConversationsParams struct {
 // PostCommunicationsConversationsJSONBody defines parameters for PostCommunicationsConversations.
 type PostCommunicationsConversationsJSONBody = CreateConversationRequest
 
+// PostCommunicationsConversationsParams defines parameters for PostCommunicationsConversations.
+type PostCommunicationsConversationsParams struct {
+	// IdempotencyKey Required. The client-chosen key that makes the send safe to retry — non-blank, at most 200 characters, no surrounding whitespace or control characters. A missing or invalid key is answered 400 `idempotency_key_required`; a key reused with a different payload, 409 `idempotency_key_reused`; a replay of the same payload returns the original result with 200.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // PatchCommunicationsConversationsByIdJSONBody defines parameters for PatchCommunicationsConversationsById.
 type PatchCommunicationsConversationsByIdJSONBody = UpdateConversationRequest
 
@@ -400,11 +406,23 @@ type PostCommunicationsConversationsByIdAttachmentsMultipartBody struct {
 	IsInline  *string            `json:"isInline,omitempty"`
 }
 
+// PostCommunicationsConversationsByIdAttachmentsParams defines parameters for PostCommunicationsConversationsByIdAttachments.
+type PostCommunicationsConversationsByIdAttachmentsParams struct {
+	// IdempotencyKey Required. The client-chosen key that makes the upload safe to retry — non-blank, at most 200 characters, no surrounding whitespace or control characters. A missing or invalid key is answered 400 `idempotency_key_required`; a key the same user already staged an upload with returns that upload with 200.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // PostCommunicationsConversationsByIdNotesJSONBody defines parameters for PostCommunicationsConversationsByIdNotes.
 type PostCommunicationsConversationsByIdNotesJSONBody = NoteRequest
 
 // PostCommunicationsConversationsByIdReplyJSONBody defines parameters for PostCommunicationsConversationsByIdReply.
 type PostCommunicationsConversationsByIdReplyJSONBody = ReplyRequest
+
+// PostCommunicationsConversationsByIdReplyParams defines parameters for PostCommunicationsConversationsByIdReply.
+type PostCommunicationsConversationsByIdReplyParams struct {
+	// IdempotencyKey Required. The client-chosen key that makes the reply safe to retry — non-blank, at most 200 characters, no surrounding whitespace or control characters. A missing or invalid key is answered 400 `idempotency_key_required`; a key reused with a different payload, 409 `idempotency_key_reused`; a replay of the same payload returns the original result with 200.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
 
 // GetCommunicationsStatsSummaryParams defines parameters for GetCommunicationsStatsSummary.
 type GetCommunicationsStatsSummaryParams struct {
@@ -480,7 +498,7 @@ type ServerInterface interface {
 	GetCommunicationsConversations(w http.ResponseWriter, r *http.Request, params GetCommunicationsConversationsParams)
 
 	// (POST /api/v1/communications/conversations)
-	PostCommunicationsConversations(w http.ResponseWriter, r *http.Request)
+	PostCommunicationsConversations(w http.ResponseWriter, r *http.Request, params PostCommunicationsConversationsParams)
 
 	// (GET /api/v1/communications/conversations/{conversationId}/attachments/{attachmentId})
 	GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentId(w http.ResponseWriter, r *http.Request, conversationId openapi_types.UUID, attachmentId openapi_types.UUID)
@@ -498,7 +516,7 @@ type ServerInterface interface {
 	PostCommunicationsConversationsByIdAiDraft(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
 	// (POST /api/v1/communications/conversations/{id}/attachments)
-	PostCommunicationsConversationsByIdAttachments(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	PostCommunicationsConversationsByIdAttachments(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostCommunicationsConversationsByIdAttachmentsParams)
 
 	// (POST /api/v1/communications/conversations/{id}/notes)
 	PostCommunicationsConversationsByIdNotes(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -507,7 +525,7 @@ type ServerInterface interface {
 	PostCommunicationsConversationsByIdRead(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 
 	// (POST /api/v1/communications/conversations/{id}/reply)
-	PostCommunicationsConversationsByIdReply(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	PostCommunicationsConversationsByIdReply(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostCommunicationsConversationsByIdReplyParams)
 
 	// (DELETE /api/v1/communications/conversations/{id}/tags/{tagId})
 	DeleteCommunicationsConversationsByIdTagsByTagId(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, tagId openapi_types.UUID)
@@ -798,8 +816,39 @@ func (siw *ServerInterfaceWrapper) GetCommunicationsConversations(w http.Respons
 // PostCommunicationsConversations operation middleware
 func (siw *ServerInterfaceWrapper) PostCommunicationsConversations(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostCommunicationsConversationsParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostCommunicationsConversations(w, r)
+		siw.Handler.PostCommunicationsConversations(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -963,8 +1012,36 @@ func (siw *ServerInterfaceWrapper) PostCommunicationsConversationsByIdAttachment
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostCommunicationsConversationsByIdAttachmentsParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostCommunicationsConversationsByIdAttachments(w, r, id)
+		siw.Handler.PostCommunicationsConversationsByIdAttachments(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1041,8 +1118,36 @@ func (siw *ServerInterfaceWrapper) PostCommunicationsConversationsByIdReply(w ht
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PostCommunicationsConversationsByIdReplyParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostCommunicationsConversationsByIdReply(w, r, id)
+		siw.Handler.PostCommunicationsConversationsByIdReply(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1969,7 +2074,8 @@ func (response GetCommunicationsConversations404Response) VisitGetCommunications
 }
 
 type PostCommunicationsConversationsRequestObject struct {
-	Body *PostCommunicationsConversationsJSONRequestBody
+	Params PostCommunicationsConversationsParams
+	Body   *PostCommunicationsConversationsJSONRequestBody
 }
 
 type PostCommunicationsConversationsResponseObject interface {
@@ -2500,8 +2606,9 @@ func (response PostCommunicationsConversationsByIdAiDraft503JSONResponse) VisitP
 }
 
 type PostCommunicationsConversationsByIdAttachmentsRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *multipart.Reader
+	Id     openapi_types.UUID `json:"id"`
+	Params PostCommunicationsConversationsByIdAttachmentsParams
+	Body   *multipart.Reader
 }
 
 type PostCommunicationsConversationsByIdAttachmentsResponseObject interface {
@@ -2754,8 +2861,9 @@ func (response PostCommunicationsConversationsByIdRead404Response) VisitPostComm
 }
 
 type PostCommunicationsConversationsByIdReplyRequestObject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Body *PostCommunicationsConversationsByIdReplyJSONRequestBody
+	Id     openapi_types.UUID `json:"id"`
+	Params PostCommunicationsConversationsByIdReplyParams
+	Body   *PostCommunicationsConversationsByIdReplyJSONRequestBody
 }
 
 type PostCommunicationsConversationsByIdReplyResponseObject interface {
@@ -3841,8 +3949,10 @@ func (sh *strictHandler) GetCommunicationsConversations(w http.ResponseWriter, r
 }
 
 // PostCommunicationsConversations operation middleware
-func (sh *strictHandler) PostCommunicationsConversations(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) PostCommunicationsConversations(w http.ResponseWriter, r *http.Request, params PostCommunicationsConversationsParams) {
 	var request PostCommunicationsConversationsRequestObject
+
+	request.Params = params
 
 	var body PostCommunicationsConversationsJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -4026,10 +4136,11 @@ func (sh *strictHandler) PostCommunicationsConversationsByIdAiDraft(w http.Respo
 }
 
 // PostCommunicationsConversationsByIdAttachments operation middleware
-func (sh *strictHandler) PostCommunicationsConversationsByIdAttachments(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (sh *strictHandler) PostCommunicationsConversationsByIdAttachments(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostCommunicationsConversationsByIdAttachmentsParams) {
 	var request PostCommunicationsConversationsByIdAttachmentsRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	if reader, err := r.MultipartReader(); err != nil {
 		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
@@ -4121,10 +4232,11 @@ func (sh *strictHandler) PostCommunicationsConversationsByIdRead(w http.Response
 }
 
 // PostCommunicationsConversationsByIdReply operation middleware
-func (sh *strictHandler) PostCommunicationsConversationsByIdReply(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (sh *strictHandler) PostCommunicationsConversationsByIdReply(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params PostCommunicationsConversationsByIdReplyParams) {
 	var request PostCommunicationsConversationsByIdReplyRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	var body PostCommunicationsConversationsByIdReplyJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

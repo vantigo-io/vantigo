@@ -599,12 +599,12 @@ export interface operations {
     getCustomers: {
         parameters: {
             query?: {
-                Page?: number;
-                PageSize?: number;
-                SortBy?: string;
-                SortDirection?: string;
-                IncludeArchived?: boolean;
-                Search?: string;
+                page?: number;
+                pageSize?: number;
+                sortBy?: string;
+                sortDirection?: string;
+                includeArchived?: boolean;
+                search?: string;
             };
             header?: never;
             path?: never;
@@ -672,12 +672,13 @@ export interface operations {
                     "application/json": components["schemas"]["CreateCustomerResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request — a validation problem (application/problem+json), or the host's antiforgery rejection (application/json, code csrf_validation_failed) of a cookie-authenticated request without a valid X-XSRF-TOKEN header. */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
@@ -1584,11 +1585,11 @@ export interface operations {
     getCustomersContacts: {
         parameters: {
             query?: {
-                Page?: number;
-                PageSize?: number;
-                SortBy?: string;
-                SortDirection?: string;
-                Search?: string;
+                page?: number;
+                pageSize?: number;
+                sortBy?: string;
+                sortDirection?: string;
+                search?: string;
             };
             header?: never;
             path?: never;
@@ -1887,8 +1888,8 @@ export interface operations {
     getCustomersLookupBrreg: {
         parameters: {
             query?: {
-                Search?: string;
-                LegalId?: string;
+                search?: string;
+                legalId?: string;
             };
             header?: never;
             path?: never;

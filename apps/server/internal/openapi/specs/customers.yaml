@@ -631,29 +631,29 @@ paths:
             operationId: getCustomers
             parameters:
                 - in: query
-                  name: Page
+                  name: page
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: PageSize
+                  name: pageSize
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: SortBy
+                  name: sortBy
                   schema:
                     type: string
                 - in: query
-                  name: SortDirection
+                  name: sortDirection
                   schema:
                     type: string
                 - in: query
-                  name: IncludeArchived
+                  name: includeArchived
                   schema:
                     type: boolean
                 - in: query
-                  name: Search
+                  name: search
                   schema:
                     type: string
             responses:
@@ -702,10 +702,13 @@ paths:
                     description: Created
                 "400":
                     content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request
+                    description: Bad Request — a validation problem (application/problem+json), or the host's antiforgery rejection (application/json, code csrf_validation_failed) of a cookie-authenticated request without a valid X-XSRF-TOKEN header.
                 "401":
                     content:
                         application/json:
@@ -1451,25 +1454,25 @@ paths:
             operationId: getCustomersContacts
             parameters:
                 - in: query
-                  name: Page
+                  name: page
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: PageSize
+                  name: pageSize
                   schema:
                     format: int32
                     type: integer
                 - in: query
-                  name: SortBy
+                  name: sortBy
                   schema:
                     type: string
                 - in: query
-                  name: SortDirection
+                  name: sortDirection
                   schema:
                     type: string
                 - in: query
-                  name: Search
+                  name: search
                   schema:
                     type: string
             responses:
@@ -1693,11 +1696,11 @@ paths:
             operationId: getCustomersLookupBrreg
             parameters:
                 - in: query
-                  name: Search
+                  name: search
                   schema:
                     type: string
                 - in: query
-                  name: LegalId
+                  name: legalId
                   schema:
                     type: string
             responses:
