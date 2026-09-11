@@ -239,24 +239,31 @@ func touchGroup(ctx context.Context, q *store.Queries, g store.IdentityAccessGro
 // although the change does not happen.
 //
 // now is the clock at microseconds, the precision the columns keep, so the
-// times an audit row records are the ones stored.
+// times an audit row records are the ones stored. The rejection's audit
+// row records the now of the attempt that was rejected, and is written
+// with the same READ COMMITTED transaction and deadlock retry as the
+// mutation.
 func (s *server) groupTx(ctx context.Context, p contracts.Principal, r *http.Request, fn func(q *store.Queries, now time.Time) error) error {
+	var now time.Time
 	err := db.RetrySerializable(ctx, serializableAttempts, func() error {
 		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-			return fn(store.New(tx), s.deps.Clock().UTC().Truncate(time.Microsecond))
+			now = s.deps.Clock().UTC().Truncate(time.Microsecond)
+			return fn(store.New(tx), now)
 		})
 	})
 	var rejected scimRejection
 	if !errors.As(err, &rejected) {
 		return err
 	}
-	if err := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
-		return writeAudit(ctx, store.New(tx), r, s.deps.Clock(), auditEvent{
-			actor:  &p.UserID,
-			action: rejected.action,
-			before: snapshotOf(rejected.group),
-			after:  groupRejected{GroupID: rejected.group.ID, UserID: rejected.userID, Rejected: true, Reason: scimRejectionReason},
-			mfa:    p.MFAVerified,
+	if err := db.RetrySerializable(ctx, serializableAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(tx pgx.Tx) error {
+			return writeAudit(ctx, store.New(tx), r, now, auditEvent{
+				actor:  &p.UserID,
+				action: rejected.action,
+				before: snapshotOf(rejected.group),
+				after:  groupRejected{GroupID: rejected.group.ID, UserID: rejected.userID, Rejected: true, Reason: scimRejectionReason},
+				mfa:    p.MFAVerified,
+			})
 		})
 	}); err != nil {
 		return err

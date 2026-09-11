@@ -587,6 +587,9 @@ func (s *server) DeleteIdentityOwnerUsersById(ctx context.Context, req gen.Delet
 			if isProvenanceViolation(err) {
 				return provenanceConflict
 			}
+			if isDelegationCreatorViolation(err) {
+				return delegationCreatorConflict
+			}
 			return err
 		}
 		after := before
@@ -605,8 +608,38 @@ func (s *server) DeleteIdentityOwnerUsersById(ctx context.Context, req gen.Delet
 // RESTRICT refusing a deletion: the backstop behind the HasScimMapping
 // check (EA/AuthAccountState.cs:64-86).
 func isProvenanceViolation(err error) bool {
+	pgErr, ok := referenceViolation(err)
+	return ok && strings.Contains(pgErr.ConstraintName, "scim")
+}
+
+// referenceViolation reports whether err is a foreign key refusing a
+// deletion, and returns it. An ON DELETE RESTRICT key raises
+// restrict_violation (23001); a NO ACTION one, foreign_key_violation
+// (23503).
+func referenceViolation(err error) (*pgconn.PgError, bool) {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503" && strings.Contains(pgErr.ConstraintName, "scim")
+	if !errors.As(err, &pgErr) || (pgErr.Code != "23001" && pgErr.Code != "23503") {
+		return nil, false
+	}
+	return pgErr, true
+}
+
+// delegationCreatorConflict answers the deletion of a user who created an
+// authorization delegation. authorization_delegations.created_by_user_id
+// is ON DELETE RESTRICT (as in .NET, whose endpoint let the violation
+// surface as a 500): a delegation keeps naming who granted it. The
+// contract documents 409 with an AuthErrorResponse for the deletion, and
+// the refusal is an account conflict, not SCIM provenance, so it is 409
+// account_conflict with its own message.
+var delegationCreatorConflict = refuse(http.StatusConflict, "account_conflict",
+	"This user created authorization delegations and cannot be deleted.", nil)
+
+// isDelegationCreatorViolation reports whether err is
+// authorization_delegations.created_by_user_id's ON DELETE RESTRICT
+// refusing a user's deletion.
+func isDelegationCreatorViolation(err error) bool {
+	pgErr, ok := referenceViolation(err)
+	return ok && pgErr.TableName == "authorization_delegations" && strings.Contains(pgErr.ConstraintName, "created_by_user_id")
 }
 
 // PostIdentityOwnerUsersByIdPassword sets another user's password for an

@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -246,7 +245,7 @@ func validateBootstrapRequest(b gen.BootstrapRequest) map[string][]string {
 	switch {
 	case blank(b.DisplayName):
 		fields["displayName"] = []string{"Display name is required."}
-	case utf8.RuneCountInString(strings.TrimSpace(*b.DisplayName)) > maxDisplayNameLength:
+	case utf16Length(strings.TrimSpace(*b.DisplayName)) > maxDisplayNameLength:
 		fields["displayName"] = []string{fmt.Sprintf("Display name must be at most %d characters.", maxDisplayNameLength)}
 	}
 	if blank(b.Password) {
@@ -414,10 +413,10 @@ func grantSystemAdmin(ctx context.Context, d module.Deps, q *store.Queries, emai
 			return fmt.Errorf("identity: SystemAdmin grant: %w", err)
 		}
 		if inUse {
-			return fmt.Errorf("identity: SYSTEM_ADMIN_EMAIL %q does not match an existing user: "+
-				"the configured break-glass administrator is missing from an already bootstrapped installation", email)
+			return errors.New("identity: SYSTEM_ADMIN_EMAIL does not match an existing user: " +
+				"the configured break-glass administrator is missing from an already bootstrapped installation")
 		}
-		d.Logger.InfoContext(ctx, "SYSTEM_ADMIN_EMAIL matches no account yet; the first-run bootstrap may create it", "email", email)
+		d.Logger.InfoContext(ctx, "SYSTEM_ADMIN_EMAIL matches no account yet; the first-run bootstrap may create it")
 		return nil
 	}
 	if err != nil {

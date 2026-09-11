@@ -159,6 +159,30 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 	return err
 }
 
+const purgeDeadUserSessions = `-- name: PurgeDeadUserSessions :exec
+DELETE FROM identity.sessions
+WHERE user_id = $1
+  AND (revoked_at IS NOT NULL
+       OR created_at <= $2::timestamptz - $3::interval)
+`
+
+type PurgeDeadUserSessionsParams struct {
+	UserID   uuid.UUID
+	Now      time.Time
+	Absolute pgtype.Interval
+}
+
+// PurgeDeadUserSessions deletes the sessions of user_id that can never be
+// valid again: revoked ones, and ones past the standard absolute lifetime
+// (created_at <= now - absolute). The standard bound is the looser of the
+// two, so a session it deletes is dead whatever roles the user holds when
+// it is next presented; one only past the privileged bound is kept, since
+// a demotion would make it valid again. now is the caller's clock.
+func (q *Queries) PurgeDeadUserSessions(ctx context.Context, arg PurgeDeadUserSessionsParams) error {
+	_, err := q.db.Exec(ctx, purgeDeadUserSessions, arg.UserID, arg.Now, arg.Absolute)
+	return err
+}
+
 const revokeSession = `-- name: RevokeSession :exec
 UPDATE identity.sessions
 SET revoked_at = $1::timestamptz

@@ -147,7 +147,7 @@ CREATE TABLE identity.sessions (
     revoked_at      timestamptz
 );
 CREATE UNIQUE INDEX ux_sessions_token_hash ON identity.sessions (token_hash);
-CREATE INDEX ix_sessions_user_active ON identity.sessions (user_id) WHERE revoked_at IS NULL;
+CREATE INDEX ix_sessions_user_id ON identity.sessions (user_id);
 
 CREATE TABLE identity.login_tickets (
     token_hash bytea PRIMARY KEY,
