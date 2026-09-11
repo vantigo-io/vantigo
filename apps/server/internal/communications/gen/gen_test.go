@@ -29,7 +29,7 @@ func TestGeneratedServerMountsEveryOperation(t *testing.T) {
 	var server StrictServerInterface // nil: only the wiring is under test
 	HandlerWithOptions(NewStrictHandler(server, nil), StdHTTPServerOptions{BaseRouter: mux})
 
-	doc, err := openapi.Load(context.Background(), "energy")
+	doc, err := openapi.Load(context.Background(), "communications")
 	if err != nil {
 		t.Fatal(err)
 	}

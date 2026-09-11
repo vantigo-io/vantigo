@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -67,6 +70,80 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 			seen[op.OperationID] = name
 		}
 	}
+}
+
+// knownServeMuxConflicts pins the operation pairs Go's stdlib http.ServeMux
+// (1.22+) refuses to register together: it has no notion of route
+// constraints — unlike the .NET host, which separates these with
+// {id:int}/{id:guid} — and no literal-before-parameter precedence across
+// differing segments, so it can't tell that an id will never literally equal
+// "contacts" or "variants". These are genuine ambiguities from ServeMux's
+// point of view, not a contract defect; sub-project 3 mounts the generated
+// handlers on a precedence-aware router (via StdHTTPServerOptions.BaseRouter)
+// and must route each pair correctly. A pair appearing or disappearing here
+// means the contract's route shape changed and sub-project 3 needs to know.
+var knownServeMuxConflicts = []string{
+	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
+	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/contacts",
+	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/legal-identity",
+	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/timeline",
+	"GET /api/v1/customers/contacts/{id}/customers ⟷ GET /api/v1/customers/{id}/timeline/{entryId}",
+	"GET /api/v1/products/categories/{id} ⟷ GET /api/v1/products/{id}/variants",
+	"GET /api/v1/products/tax-categories/{id} ⟷ GET /api/v1/products/{id}/variants",
+	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/legal-identity",
+}
+
+// TestServeMuxConflictsArePinned checks every pair of operations across every
+// module against a real http.ServeMux and compares the set of pairs it
+// refuses to mount together against knownServeMuxConflicts. See the comment
+// there for why these conflicts exist and who resolves them.
+func TestServeMuxConflictsArePinned(t *testing.T) {
+	var patterns []string
+	for _, name := range Modules {
+		doc, err := Load(context.Background(), name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, op := range operations(doc) {
+			patterns = append(patterns, op.Method+" "+op.Path)
+		}
+	}
+
+	var got []string
+	for i := range patterns {
+		for j := i + 1; j < len(patterns); j++ {
+			if !serveMuxConflicts(patterns[i], patterns[j]) {
+				continue
+			}
+			a, b := patterns[i], patterns[j]
+			if a > b {
+				a, b = b, a
+			}
+			got = append(got, a+" ⟷ "+b)
+		}
+	}
+	sort.Strings(got)
+
+	want := append([]string(nil), knownServeMuxConflicts...)
+	sort.Strings(want)
+
+	if !slices.Equal(got, want) {
+		t.Errorf("ServeMux conflicts drifted from knownServeMuxConflicts:\ngot:  %v\nwant: %v", got, want)
+	}
+}
+
+// serveMuxConflicts reports whether a fresh http.ServeMux refuses to
+// register patterns a and b together.
+func serveMuxConflicts(a, b string) (conflict bool) {
+	defer func() {
+		if recover() != nil {
+			conflict = true
+		}
+	}()
+	mux := http.NewServeMux()
+	mux.HandleFunc(a, func(http.ResponseWriter, *http.Request) {})
+	mux.HandleFunc(b, func(http.ResponseWriter, *http.Request) {})
+	return false
 }
 
 func TestLintFlagsTheStructuralRules(t *testing.T) {

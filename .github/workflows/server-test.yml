@@ -68,6 +68,15 @@ jobs:
         working-directory: apps/server
         run: golangci-lint run
 
+      - name: 🧬 Generated code is up to date
+        working-directory: apps/server
+        run: |
+          go generate ./...
+          git diff --exit-code -- . ../../openapi || {
+            echo "::error::Generated code or embedded contract copies are stale. Run 'go generate ./...' in apps/server and commit the result."
+            exit 1
+          }
+
       - name: 🧪 Go tests with the race detector
         working-directory: apps/server
         run: go test -race -count=1 ./...
