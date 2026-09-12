@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -29,6 +30,7 @@ func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 // compose in-memory contracts instead of the embedded specs.
 func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error), mods ...Module) (http.Handler, error) {
 	ctx := context.Background()
+	mods = enabledModules(deps, mods)
 
 	names := make(map[string]bool, len(mods))
 	catalog := make(map[string]contracts.Permission)
@@ -110,6 +112,24 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 	outer.HandleFunc("/api/", httpx.NotFound)
 
 	return outer, nil
+}
+
+// enabledModules keeps identity, always mounted, and any module deps.Config
+// enables, dropping the rest before they contribute a route, a
+// permission-catalog entry or a contract path: their paths fall through to
+// the /api 404 problem. deps.Config is nil only in tests that do not
+// exercise enablement; a nil Config enables everything it is given.
+func enabledModules(deps Deps, mods []Module) []Module {
+	if deps.Config == nil {
+		return mods
+	}
+	out := make([]Module, 0, len(mods))
+	for _, mod := range mods {
+		if mod.Name == "identity" || slices.Contains(deps.Config.Modules, mod.Name) {
+			out = append(out, mod)
+		}
+	}
+	return out
 }
 
 // mergeContract builds the contract served at GET /api/openapi.json: every
