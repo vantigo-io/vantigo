@@ -72,7 +72,7 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 	}
 }
 
-// knownServeMuxConflicts pins the operation pairs Go's stdlib http.ServeMux
+// KnownServeMuxConflicts pins the operation pairs Go's stdlib http.ServeMux
 // (1.22+) refuses to register together: it has no notion of route
 // constraints — unlike the .NET host, which separates these with
 // {id:int}/{id:guid} — and no literal-before-parameter precedence across
@@ -80,9 +80,16 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 // "contacts" or "variants". These are genuine ambiguities from ServeMux's
 // point of view, not a contract defect; sub-project 3 mounts the generated
 // handlers on a precedence-aware router (via StdHTTPServerOptions.BaseRouter)
-// and must route each pair correctly. A pair appearing or disappearing here
-// means the contract's route shape changed and sub-project 3 needs to know.
-var knownServeMuxConflicts = []string{
+// and must route each pair correctly — see TestKnownServeMuxConflictsMountOnModuleRouter,
+// which proves it does. A pair appearing or disappearing here means the
+// contract's route shape changed and sub-project 3 needs to know.
+//
+// Exported so TestKnownServeMuxConflictsMountOnModuleRouter, in the
+// black-box openapi_test package (module_router_test.go), can register the
+// same pairs on module.NewRouter: module already imports this package in
+// production code, so this white-box test file — package openapi — cannot
+// import module itself without an import cycle.
+var KnownServeMuxConflicts = []string{
 	"DELETE /api/v1/customers/contacts/{id} ⟷ DELETE /api/v1/customers/{id}/legal-identity",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/contacts",
 	"GET /api/v1/customers/contacts/{id} ⟷ GET /api/v1/customers/{id}/legal-identity",
@@ -95,7 +102,7 @@ var knownServeMuxConflicts = []string{
 
 // TestServeMuxConflictsArePinned checks every pair of operations across every
 // module against a real http.ServeMux and compares the set of pairs it
-// refuses to mount together against knownServeMuxConflicts. See the comment
+// refuses to mount together against KnownServeMuxConflicts. See the comment
 // there for why these conflicts exist and who resolves them.
 func TestServeMuxConflictsArePinned(t *testing.T) {
 	var patterns []string
@@ -124,11 +131,11 @@ func TestServeMuxConflictsArePinned(t *testing.T) {
 	}
 	sort.Strings(got)
 
-	want := append([]string(nil), knownServeMuxConflicts...)
+	want := append([]string(nil), KnownServeMuxConflicts...)
 	sort.Strings(want)
 
 	if !slices.Equal(got, want) {
-		t.Errorf("ServeMux conflicts drifted from knownServeMuxConflicts:\ngot:  %v\nwant: %v", got, want)
+		t.Errorf("ServeMux conflicts drifted from KnownServeMuxConflicts:\ngot:  %v\nwant: %v", got, want)
 	}
 }
 
