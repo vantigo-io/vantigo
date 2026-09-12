@@ -156,3 +156,115 @@ func TestConcurrentOverlappingSupplyPeriodCreates_YieldOneSuccessAndConflicts(t 
 		t.Errorf("conflicted = %d, want exactly 3", conflicted)
 	}
 }
+
+// TestConcurrentEndSupplyPeriodExtensions_YieldOneSuccessAndConflicts is
+// this task's fix-round item 2, pinned the same way as the Create race
+// above: re-ending an already-Ended period *extends* its range (energy
+// inventory §2.3), which the GiST exclusion constraint treats exactly like
+// inserting a fresh overlapping row, deadlock hazard (40P01) included if
+// the write is not serialized the way lockSupplyPeriods now serializes
+// every write to supply_periods (Create, Switch, End and Cancel alike).
+//
+// Four short, mutually non-overlapping, already-Ended periods are each
+// extended, concurrently, to one common far-future end — making all four
+// overlap one another once extended. The gate here blocks each request
+// earlier than Create's (at the advisory lock itself, since acquiring it
+// needs no table access and so is never blocked by the table-level gate;
+// only the UPDATE that follows it is) — awaitLockWaiters does not care
+// which kind of lock a backend is waiting on, only that it is waiting on
+// one, so the same technique still proves every request reached its write
+// step before any of them proceeds. Exactly one extension must succeed and
+// the rest must answer a generic 409 from a real 23P01 — never a 500 from
+// an unresolved 40P01 deadlock.
+func TestConcurrentEndSupplyPeriodExtensions_YieldOneSuccessAndConflicts(t *testing.T) {
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+	point := createMeteringPoint(t, c)
+	base := h.Now()
+
+	periodIDs := make([]int32, 4)
+	for i := range periodIDs {
+		start := base.Add(time.Duration(i) * 10 * time.Minute)
+		create := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id),
+			map[string]any{"customerId": 1001, "start": start})
+		if create.Status != http.StatusCreated {
+			t.Fatalf("create period %d: status %d body %s, want 201", i, create.Status, create.Body)
+		}
+		var period supplyPeriodJSON
+		create.JSON(&period)
+		end := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods/%d/end", point.Id, period.Id),
+			map[string]any{"end": start.Add(5 * time.Minute)})
+		if end.Status != http.StatusOK {
+			t.Fatalf("end period %d: status %d body %s, want 200", i, end.Status, end.Body)
+		}
+		periodIDs[i] = period.Id
+	}
+	// Extending any one of the four to farEnd overlaps every other one:
+	// all four currently end within the first 35 minutes after base, all
+	// start before that too.
+	farEnd := base.Add(time.Hour)
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE energy.supply_periods IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock supply_periods: %v", err)
+	}
+
+	extendWith := func(periodID int32) func() *modtest.Response {
+		return func() *modtest.Response {
+			// SkipContract: this operation's contract declares no 409 (it
+			// was auto-generated from EndSupplyPeriodEndpoint.cs's own
+			// Results<> signature, which names no Conflict-producing
+			// branch — only the .NET host-wide exception handler's
+			// fallback can produce one, invisible to that generator) even
+			// though a genuine race here really can raise one, as this
+			// test proves — a gap in the *contract*, not a divergence
+			// this port introduced; see this task's report.
+			return c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods/%d/end", point.Id, periodID),
+				map[string]any{"end": farEnd}, modtest.SkipContract("the contract declares no 409 for this operation, but a real exclusion-constraint race can raise one"))
+		}
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(extendWith(periodIDs[0]), extendWith(periodIDs[1]), extendWith(periodIDs[2]), extendWith(periodIDs[3]))
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 4, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	var succeeded, conflicted int
+	for _, r := range responses {
+		switch r.Status {
+		case http.StatusOK:
+			succeeded++
+		case http.StatusConflict:
+			conflicted++
+			var problem problemJSON
+			r.JSON(&problem)
+			if problem.Title != "Conflict" {
+				t.Errorf("loser Title = %q, want %q (the generic conflict problem)", problem.Title, "Conflict")
+			}
+			want := "The request conflicts with data that already exists. Verify the values and try again."
+			if problem.Detail != want {
+				t.Errorf("loser Detail = %q, want %q", problem.Detail, want)
+			}
+		default:
+			t.Errorf("status %d body %s, want 200 or 409", r.Status, r.Body)
+		}
+	}
+	if succeeded != 1 {
+		t.Errorf("succeeded = %d, want exactly 1", succeeded)
+	}
+	if conflicted != 3 {
+		t.Errorf("conflicted = %d, want exactly 3", conflicted)
+	}
+}

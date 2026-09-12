@@ -37,9 +37,11 @@ const overlapTitle = "Overlapping supply period"
 const overlapDetail = "The metering point already has a non-cancelled supply period at that time. End the existing period first."
 
 // supplyPeriodRaceAttempts bounds db.RetrySerializable's retry of a supply
-// period write against a serialization failure (40001) — a defensive
-// backstop; lockSupplyPeriods below is what actually keeps the exclusion
-// constraint's race clean, see its comment.
+// period write against a genuine serialization failure (40001) only. It is
+// not what keeps the GiST exclusion constraint's race clean: confirmed
+// empirically, every attempt still deadlocked (40P01) without
+// lockSupplyPeriods below — retrying alone does not reliably resolve that
+// deadlock, so the lock, not this retry, is the fix's primary mechanism.
 const supplyPeriodRaceAttempts = 3
 
 // supplyPeriodLockClass namespaces lockSupplyPeriods's advisory lock key
@@ -50,9 +52,9 @@ const supplyPeriodRaceAttempts = 3
 const supplyPeriodLockClass = 0x53555052 // "SUPR", arbitrary but memorable
 
 // lockSupplyPeriods takes a transaction-scoped Postgres advisory lock keyed
-// by meteringPointID, released automatically at commit or rollback. Create
-// and Switch both take it immediately before writing to
-// energy.supply_periods.
+// by meteringPointID, released automatically at commit or rollback. Every
+// write to energy.supply_periods (Create, Switch, End and Cancel) takes it
+// immediately before writing.
 //
 // Without it, two-plus concurrent writers targeting the same, exactly
 // overlapping range can make PostgreSQL's own GiST exclusion-constraint
@@ -70,8 +72,10 @@ const supplyPeriodLockClass = 0x53555052 // "SUPR", arbitrary but memorable
 // one at a time — the constraint itself, not the lock, still decides who
 // wins — so the observable outcome (exactly one success, the rest a generic
 // 409 from a real 23P01) is unchanged; only the pathological deadlock is
-// removed. db.RetrySerializable above stays as a defensive backstop for a
-// genuine serialization failure, not as this mechanism's primary defence.
+// removed. db.RetrySerializable above is unrelated to this fix: it already
+// existed as a backstop for a genuine 40001 serialization failure and
+// remains one, but retrying on its own does not reliably resolve the
+// deadlock this lock prevents — every attempt still deadlocked without it.
 func lockSupplyPeriods(ctx context.Context, tx pgx.Tx, meteringPointID int32) error {
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, int32(supplyPeriodLockClass), meteringPointID)
 	return err
@@ -81,35 +85,53 @@ func lockSupplyPeriods(ctx context.Context, tx pgx.Tx, meteringPointID int32) er
 // `Offset != TimeSpan.Zero` check (SupplyPeriod.cs:25), which looks at the
 // offset value itself, not whether the literal text ended in "Z": a
 // "+00:00" timestamp is just as UTC as a "Z" one.
+//
+// Call this only on a timestamp the *request* supplied, never one read back
+// from the database. Fix-round finding: pgx decodes a `timestamptz` column
+// in the process's local time zone (time.Local, whatever the process's TZ
+// happens to be) — unlike Npgsql's DateTimeOffset, which always decodes at
+// offset 0 regardless of the server's zone. .NET's own SupplyPeriod.Validate
+// is only ever called with request-supplied timestamps (energy inventory
+// §2.3 line 133: "only checked for request-supplied timestamps"), so this
+// distinction never had to be made there; it must be made here, or every
+// request through a handler that offset-checks a decoded value 400s
+// whenever the process runs under a non-UTC TZ — invisible under the UTC
+// TZ this repo's tests and CI always run with, until it fires in
+// production. See validateSupplyPeriodEnd below, and its test-file
+// TestEndSupplyPeriod_NotAffectedByProcessTimeZone (energy_test package)
+// and TestValidateSupplyPeriodEnd_DoesNotOffsetCheckStart (domain_test.go).
 func hasUTCOffset(t time.Time) bool {
 	_, offset := t.Zone()
 	return offset == 0
 }
 
-// validateSupplyPeriodTimestamps is SupplyPeriod.Validate(start, end)
-// (SupplyPeriod.cs:23-27), shared by create, switch and end: both
-// timestamps (when end is given) must carry a zero UTC offset, and end
-// must be strictly after start (equal is rejected).
-func validateSupplyPeriodTimestamps(start time.Time, end *time.Time) string {
-	if !hasUTCOffset(start) || (end != nil && !hasUTCOffset(*end)) {
+// validateSupplyPeriodStart is SupplyPeriod.Validate(start, nil) as Create
+// and Switch call it (SupplyPeriod.cs:23-27): start is always
+// request-supplied and end is always nil at creation time, so only start's
+// offset needs checking.
+func validateSupplyPeriodStart(start time.Time) string {
+	if !hasUTCOffset(start) {
 		return "Start and end must be UTC timestamps."
-	}
-	if end != nil && !end.After(start) {
-		return "End must be later than start."
 	}
 	return ""
 }
 
-// supplyPeriodsOverlap is SupplyPeriod.Overlaps (SupplyPeriod.cs:17-19):
-// half-open [start, end) interval semantics, a nil end treated as +∞. It is
-// not called by any handler here — the DB-backed SupplyPeriodOverlapExists
-// query and the GiST exclusion constraint are what actually decide overlap
-// (energy inventory §2.3/§3.2) — but it exists as the same pure predicate
-// SupplyPeriodTests pins directly (ported in domain_test.go).
-func supplyPeriodsOverlap(firstStart time.Time, firstEnd *time.Time, secondStart time.Time, secondEnd *time.Time) bool {
-	firstBeforeSecondEnd := secondEnd == nil || firstStart.Before(*secondEnd)
-	secondBeforeFirstEnd := firstEnd == nil || secondStart.Before(*firstEnd)
-	return firstBeforeSecondEnd && secondBeforeFirstEnd
+// validateSupplyPeriodEnd is SupplyPeriod.Validate(start, end) as End calls
+// it (SupplyPeriod.cs:23-27), but offset-checking only end: start here is
+// the period's own Start, read back from the database by
+// PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd — see
+// hasUTCOffset's comment for why it must never be offset-checked. end is
+// always request-supplied and is checked; the ordering rule (end strictly
+// after start) is a plain instant comparison, unaffected by which zone
+// either value happens to be represented in.
+func validateSupplyPeriodEnd(start, end time.Time) string {
+	if !hasUTCOffset(end) {
+		return "Start and end must be UTC timestamps."
+	}
+	if !end.After(start) {
+		return "End must be later than start."
+	}
+	return ""
 }
 
 func supplyPeriodResponseOf(p store.EnergySupplyPeriod) gen.SupplyPeriodResponse {
@@ -166,7 +188,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(validationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {"Customer ID must be greater than zero."}})), nil
 	}
-	if msg := validateSupplyPeriodTimestamps(body.Start, nil); msg != "" {
+	if msg := validateSupplyPeriodStart(body.Start); msg != "" {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(validationProblem(
 			"Invalid supply period", map[string][]string{"start": {msg}})), nil
 	}
@@ -253,7 +275,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(validationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {"Customer ID must be greater than zero."}})), nil
 	}
-	if msg := validateSupplyPeriodTimestamps(body.SwitchAt, nil); msg != "" {
+	if msg := validateSupplyPeriodStart(body.SwitchAt); msg != "" {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(validationProblem(
 			"Invalid supply period", map[string][]string{"switchAt": {msg}})), nil
 	}
@@ -355,7 +377,13 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 // this operation's 400 — energy inventory §1.1 line 41/§8 oddity 2,
 // reproduced here via validationProblemNoErrors) -> the UTC/ordering check
 // against the period's own Start (400 ValidationProblem, field "end") ->
-// apply.
+// apply. Fix-round finding: re-ending a period *extends* its range
+// ("end" moves later), which the GiST exclusion constraint (§3.2) treats
+// exactly like a fresh insert — it can race a concurrent Create/Switch/End
+// on the same metering point. The write is now the same
+// lock-then-transact shape as Create and Switch (lockSupplyPeriods'
+// comment), for the same race reason and so a reader is not left wondering
+// why one write path is unserialized and the others are not.
 func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(ctx context.Context, req gen.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndRequestObject) (gen.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	period, err := q.GetSupplyPeriod(ctx, store.GetSupplyPeriodParams{ID: req.PeriodId, MeteringPointID: req.Id})
@@ -374,12 +402,22 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(ctx cont
 	if req.Body != nil {
 		body = *req.Body
 	}
-	if msg := validateSupplyPeriodTimestamps(period.Start, &body.End); msg != "" {
+	if msg := validateSupplyPeriodEnd(period.Start, body.End); msg != "" {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd400ApplicationProblemPlusJSONResponse(
 			validationProblem("Invalid supply period", map[string][]string{"end": {msg}})), nil
 	}
 
-	updated, err := q.EndSupplyPeriod(ctx, store.EndSupplyPeriodParams{ID: period.ID, EndAt: body.End, Status: statusEnded})
+	var updated store.EnergySupplyPeriod
+	err = db.RetrySerializable(ctx, supplyPeriodRaceAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			if lerr := lockSupplyPeriods(ctx, tx, req.Id); lerr != nil {
+				return lerr
+			}
+			var uerr error
+			updated, uerr = store.New(tx).EndSupplyPeriod(ctx, store.EndSupplyPeriodParams{ID: period.ID, EndAt: body.End, Status: statusEnded})
+			return uerr
+		})
+	})
 	if err != nil {
 		return nil, fmt.Errorf("energy: end supply period: %w", err)
 	}
@@ -392,6 +430,13 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(ctx cont
 // CancelSupplyPeriodEndpoint.cs:11-18: lookup (404) -> Status = Cancelled,
 // unconditionally. No status guard: an already-Ended or already-Cancelled
 // period can be cancelled again (energy inventory §1.1/§8 oddity 5).
+// Cancelling only ever *removes* a row from the exclusion constraint's
+// concern (its WHERE clause excludes Cancelled rows), so it cannot itself
+// lose a race the way End's extension or Create/Switch's insert can — but
+// it takes the same lock-then-transact shape as those anyway (fix-round
+// finding), so every write to supply_periods is uniformly serialized per
+// metering point and a reader never has to work out why this one write
+// path alone was left different.
 func (s *server) DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(ctx context.Context, req gen.DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdRequestObject) (gen.DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	if _, err := q.GetSupplyPeriod(ctx, store.GetSupplyPeriodParams{ID: req.PeriodId, MeteringPointID: req.Id}); errors.Is(err, pgx.ErrNoRows) {
@@ -399,7 +444,17 @@ func (s *server) DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId(ctx conte
 	} else if err != nil {
 		return nil, fmt.Errorf("energy: get supply period: %w", err)
 	}
-	if _, err := q.SetSupplyPeriodStatus(ctx, store.SetSupplyPeriodStatusParams{ID: req.PeriodId, Status: statusCancelled}); err != nil {
+
+	err := db.RetrySerializable(ctx, supplyPeriodRaceAttempts, func() error {
+		return db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			if lerr := lockSupplyPeriods(ctx, tx, req.Id); lerr != nil {
+				return lerr
+			}
+			_, uerr := store.New(tx).SetSupplyPeriodStatus(ctx, store.SetSupplyPeriodStatusParams{ID: req.PeriodId, Status: statusCancelled})
+			return uerr
+		})
+	})
+	if err != nil {
 		return nil, fmt.Errorf("energy: cancel supply period: %w", err)
 	}
 	return gen.DeleteEnergyMeteringPointsByIdSupplyPeriodsByPeriodId204Response{}, nil
