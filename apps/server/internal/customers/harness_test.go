@@ -18,6 +18,15 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 	}, opts...)...)
 }
 
+// authenticatedClient signs in a caller holding every permission the
+// customers CRUD and dashboard-stats operations (Task 6) can exercise —
+// .NET's CustomersApiFactory.CreateAuthenticatedClient, which the ported
+// tests assume throughout (TS/CustomersEndpointsTests.cs and friends).
+func authenticatedClient(t *testing.T, h *modtest.Harness) *modtest.Client {
+	t.Helper()
+	return h.SignIn(t, "customers:view", "customers:create", "customers:update", "customers:delete", "customers:legal-identity-view")
+}
+
 // insertCustomer creates a customer with the given name and status and returns
 // its id. The customer number is the next one free, which is all the directory
 // tests need of it.

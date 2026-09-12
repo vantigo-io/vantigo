@@ -25,20 +25,17 @@ func loadContract() *openapi3.T {
 	return doc
 }
 
-// pendingOperations are the contract's operations no test covers yet. Every
-// one of the module's 29 operations is a stub answering 501, so all 29 are
-// pending; each later task removes the operations of the area it implements,
-// and RequireCoverage fails the run if an entry left here was in fact
-// exercised.
+// pendingOperations are the contract's operations no test covers yet. Task 6
+// implements customer CRUD and dashboard stats (nine operations), removing
+// them from this list; each later task removes the operations of the area it
+// implements, and RequireCoverage fails the run if an entry left here was in
+// fact exercised.
 var pendingOperations = []string{
-	"deleteCustomersById",
 	"deleteCustomersByIdContactsByContactId",
 	"deleteCustomersByIdLegalIdentity",
 	"deleteCustomersByIdTimelineByEntryId",
 	"deleteCustomersContactsById",
 	"getContact",
-	"getCustomer",
-	"getCustomers",
 	"getCustomersByIdContacts",
 	"getCustomersByIdLegalIdentity",
 	"getCustomersByIdTimeline",
@@ -47,15 +44,9 @@ var pendingOperations = []string{
 	"getCustomersContacts",
 	"getCustomersContactsByIdCustomers",
 	"getCustomersLookupBrreg",
-	"getCustomersStats",
-	"getCustomersStatsAttention",
-	"getCustomersStatsSummary",
-	"getCustomersStatsTimeseries",
-	"postCustomers",
 	"postCustomersByIdContacts",
 	"postCustomersByIdTimeline",
 	"postCustomersContacts",
-	"putCustomersById",
 	"putCustomersByIdContactsByContactId",
 	"putCustomersByIdLegalIdentity",
 	"putCustomersByIdTimelineByEntryId",
