@@ -2,11 +2,17 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
@@ -140,4 +146,180 @@ func TestIdentityBaseline_AppliesAndSeedsBuiltInRoles(t *testing.T) {
 			t.Errorf("role %s = %q, want %q", id, got[id], name)
 		}
 	}
+}
+
+// applyUpDownUp applies every migration, rolls back the most recent one
+// (00003_customers_baseline.sql, at the time this test was written), and
+// applies it again, proving the customers baseline's down migration is a
+// clean inverse of its up migration.
+func applyUpDownUp(t *testing.T, databaseURL string) {
+	t.Helper()
+	ctx := context.Background()
+
+	cfg, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("parse connection string: %v", err)
+	}
+	sqlDB := sql.OpenDB(stdlib.GetConnector(*cfg))
+	defer func() { _ = sqlDB.Close() }()
+
+	dir, err := fs.Sub(db.MigrationsFS, "migrations")
+	if err != nil {
+		t.Fatalf("embedded migrations: %v", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, sqlDB, dir)
+	if err != nil {
+		t.Fatalf("goose provider: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("up: %v", err)
+	}
+	if _, err := provider.Down(ctx); err != nil {
+		t.Fatalf("down: %v", err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatalf("up again: %v", err)
+	}
+}
+
+// TestCustomersBaseline_AppliesAndIsIdempotent proves
+// 00003_customers_baseline.sql applies, rolls back, and re-applies cleanly,
+// and that the tenant drop landed exactly where the inventory says it
+// should: customer_number unique alone, the revisions pair unique alone,
+// the customers_contacts PK without tenant_id, and no tenant_id column
+// anywhere in the schema.
+func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url)
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	wantTables := []string{
+		"contacts",
+		"counters",
+		"customers",
+		"customers_contacts",
+		"customers_timeline_entries",
+		"customers_timeline_entries_revisions",
+	}
+	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'customers' ORDER BY table_name`)
+	if err != nil {
+		t.Fatalf("query tables: %v", err)
+	}
+	var gotTables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan table name: %v", err)
+		}
+		gotTables = append(gotTables, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(gotTables) != len(wantTables) {
+		t.Fatalf("tables = %v, want %v", gotTables, wantTables)
+	}
+	for i, name := range wantTables {
+		if gotTables[i] != name {
+			t.Errorf("tables = %v, want %v", gotTables, wantTables)
+			break
+		}
+	}
+
+	if cols := indexColumns(t, ctx, pool, "customers", "ux_customers_customer_number"); len(cols) != 1 || cols[0] != "customer_number" {
+		t.Errorf("ux_customers_customer_number columns = %v, want [customer_number]", cols)
+	}
+
+	if cols := indexColumns(t, ctx, pool, "customers", "ux_customers_timeline_entries_revisions_entry_revision"); !equalStrings(cols, []string{"customer_timeline_entry_id", "revision_number"}) {
+		t.Errorf("ux_customers_timeline_entries_revisions_entry_revision columns = %v, want [customer_timeline_entry_id revision_number]", cols)
+	}
+
+	if cols := primaryKeyColumns(t, ctx, pool, "customers", "customers_contacts"); !equalStrings(cols, []string{"customer_id", "contact_id"}) {
+		t.Errorf("customers_contacts primary key columns = %v, want [customer_id contact_id]", cols)
+	}
+
+	var tenantIDColumns int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'customers' AND column_name = 'tenant_id'`).Scan(&tenantIDColumns); err != nil {
+		t.Fatalf("count tenant_id columns: %v", err)
+	}
+	if tenantIDColumns != 0 {
+		t.Errorf("found %d tenant_id column(s) in schema customers, want 0", tenantIDColumns)
+	}
+}
+
+// indexColumns returns a named index's columns, in index order.
+func indexColumns(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, indexName string) []string {
+	t.Helper()
+	rows, err := pool.Query(ctx, `
+		SELECT a.attname
+		FROM pg_index i
+		JOIN pg_class ic ON ic.oid = i.indexrelid
+		JOIN pg_namespace n ON n.oid = ic.relnamespace
+		JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+		WHERE n.nspname = $1 AND ic.relname = $2
+		ORDER BY array_position(i.indkey, a.attnum)`, schema, indexName)
+	if err != nil {
+		t.Fatalf("query index columns for %s: %v", indexName, err)
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			t.Fatalf("scan index column: %v", err)
+		}
+		cols = append(cols, col)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	return cols
+}
+
+// primaryKeyColumns returns a table's primary key columns, in key order.
+func primaryKeyColumns(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, table string) []string {
+	t.Helper()
+	rows, err := pool.Query(ctx, `
+		SELECT a.attname
+		FROM pg_constraint c
+		JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+		WHERE c.contype = 'p' AND c.conrelid = ($1 || '.' || $2)::regclass
+		ORDER BY array_position(c.conkey, a.attnum)`, schema, table)
+	if err != nil {
+		t.Fatalf("query primary key columns for %s.%s: %v", schema, table, err)
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			t.Fatalf("scan primary key column: %v", err)
+		}
+		cols = append(cols, col)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	return cols
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
