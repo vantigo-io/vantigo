@@ -27,18 +27,12 @@ func loadContract() *openapi3.T {
 
 // pendingOperations are the contract's operations no test covers yet. Task 6
 // implemented customer CRUD and dashboard stats (nine operations), Task 7
-// contacts and customer-contact associations (ten more), and Task 8 legal
-// identity and the Brreg lookup (four more); each removes the operations of
-// the area it implements from this list, and RequireCoverage fails the run
-// if an entry left here was in fact exercised.
-var pendingOperations = []string{
-	"deleteCustomersByIdTimelineByEntryId",
-	"getCustomersByIdTimeline",
-	"getCustomersByIdTimelineByEntryId",
-	"getCustomersByIdTimelineByEntryIdRevisions",
-	"postCustomersByIdTimeline",
-	"putCustomersByIdTimelineByEntryId",
-}
+// contacts and customer-contact associations (ten more), Task 8 legal
+// identity and the Brreg lookup (four more), and Task 9 the customer
+// timeline (six more, the module's last) — every one of the module's 29
+// operations is now covered, so this list is empty. RequireCoverage still
+// fails the run if it is ever exercised as non-empty by accident.
+var pendingOperations = []string{}
 
 func TestMain(m *testing.M) {
 	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))

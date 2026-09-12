@@ -19,19 +19,23 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 }
 
 // authenticatedClient signs in a caller holding every permission the
-// customers CRUD/dashboard-stats (Task 6) and contacts/association (Task 7)
-// operations can exercise — .NET's CustomersApiFactory.CreateAuthenticatedClient,
-// which the ported tests assume throughout (TS/CustomersEndpointsTests.cs,
-// TS/ContactsEndpointsTests.cs and friends). legal-identity-manage is
-// included: this client is meant to represent a caller with no restrictions,
-// so the permission-gate tests that need a caller *without* some permission
-// sign in separately with a narrower set.
+// customers CRUD/dashboard-stats (Task 6), contacts/association (Task 7) and
+// timeline (Task 9) operations can exercise — .NET's
+// CustomersApiFactory.CreateAuthenticatedClient, which the ported tests
+// assume throughout (TS/CustomersEndpointsTests.cs, TS/ContactsEndpointsTests.cs,
+// TS/TimelineEndpointsTests.cs and friends). legal-identity-manage is
+// included: this client is meant to represent a caller with no restrictions
+// short of lookup-view, which every legal_identity_permission_test.go and
+// brreg_test.go case signs in for separately (Task 8's own pattern, kept
+// as-is here); the permission-gate tests that need a caller *without* some
+// permission sign in separately with a narrower set too.
 func authenticatedClient(t *testing.T, h *modtest.Harness) *modtest.Client {
 	t.Helper()
 	return h.SignIn(t, "customers:view", "customers:create", "customers:update", "customers:delete",
 		"customers:legal-identity-view", "customers:legal-identity-manage",
 		"customers:contacts-view", "customers:contacts-manage",
-		"customers:associations-view", "customers:associations-manage")
+		"customers:associations-view", "customers:associations-manage",
+		"customers:timeline-view", "customers:timeline-manage")
 }
 
 // insertCustomer creates a customer with the given name and status and returns

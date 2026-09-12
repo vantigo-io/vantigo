@@ -7,7 +7,6 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers"
-	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // TestModule_ComposesAndDemandsAPermission proves customers mounts through
@@ -60,27 +59,10 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	}
 }
 
-// TestModule_StubbedOperationAnswers501 proves one still-pending operation
-// reaches its stub rather than a 404 from an unregistered route or a 500 from
-// a nil handler: a signed-in caller holding the operation's permission passes
-// the access check and gets back 501. That every operation the contract
-// declares is in fact routed is router.Err()'s guarantee (checked at Compose
-// time by every test's newHarness call, TestModule_ComposesAndDemandsAPermission
-// included), not something this one request could prove on its own.
-// getCustomersByIdTimeline is the timeline's (Task 9); customer CRUD/stats
-// (Task 6), contacts/associations (Task 7) and legal identity/the Brreg
-// lookup (Task 8) are implemented by the time this test runs, so it targets
-// an operation still pending.
-func TestModule_StubbedOperationAnswers501(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-
-	// Off-contract by design: a 501 is the platform's answer to a handler that
-	// does not exist yet, and no operation documents one. The stub never
-	// looks up the customer, so an arbitrary id is enough to reach it.
-	r := h.SignIn(t, "customers:timeline-view").Do(http.MethodGet, "/api/v1/customers/1/timeline", nil,
-		modtest.SkipContract("the operation is not implemented yet"))
-	if r.Status != http.StatusNotImplemented {
-		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
-	}
-}
+// There is no TestModule_StubbedOperationAnswers501 any more: that test
+// exercised getCustomersByIdTimeline as the one operation still pending
+// unimplemented.go's stub before Task 9. Task 9 implements the timeline —
+// the module's last area — so unimplemented.go is gone and every one of the
+// 29 contract operations now has a real handler; router.Err()'s "never
+// registered" check (TestModule_ComposesAndDemandsAPermission's newHarness
+// call) is what still proves every operation is routed.
