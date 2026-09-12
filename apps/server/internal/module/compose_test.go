@@ -202,14 +202,56 @@ func TestCompose_RoutesTheModulesOwnRootPath(t *testing.T) {
 		t.Errorf("subtree: body = %q, want %q", rec.Body.String(), want)
 	}
 
-	// beta's contract declares no root path of its own, so nothing is
-	// registered for it and http.ServeMux's subtree redirect still applies,
-	// exactly as before.
+	// beta's contract declares no root path of its own. The bare path is
+	// registered for it all the same, so the request reaches beta's handler
+	// and beta's own router gets to decide — which, for a path its contract
+	// does not declare, is the 404 problem. What it must never be is
+	// http.ServeMux's subtree redirect: that answered 307 with a text/html
+	// body and ran no Access.Check at all, contradicting internal/server's
+	// rule that every unknown /api path is a problem document. (The stub
+	// handler here is not a router, so it answers 200 with the path it saw;
+	// the assertion is that the path arrives unchanged and nothing redirects.)
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/beta", nil)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusTemporaryRedirect {
-		t.Errorf("a module without a root path: status = %d, want the unchanged ServeMux redirect", rec.Code)
+	if rec.Code == http.StatusMovedPermanently || rec.Code == http.StatusTemporaryRedirect {
+		t.Fatalf("a module without a root path: status = %d with Location %q, want beta's own answer and no redirect",
+			rec.Code, rec.Header().Get("Location"))
+	}
+	if want := "beta:/api/v1/beta"; rec.Body.String() != want {
+		t.Errorf("a module without a root path: body = %q, want %q (the path must reach the module unchanged)",
+			rec.Body.String(), want)
+	}
+}
+
+// GET /api itself answers the 404 problem, not http.ServeMux's automatic
+// redirect to "/api/". The redirect answered 307 with a text/html body and ran
+// no Access.Check, where internal/server/server.go hands both "/api" and the
+// "/api/" subtree to this handler and every undeclared API path is a problem
+// document.
+func TestCompose_BareAPIPathIsTheProblemNotARedirect(t *testing.T) {
+	handler, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaRootContract}),
+		Module{Name: "alpha", Mount: staticHandler("alpha")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+
+	for _, path := range []string{"/api", "/api/"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusMovedPermanently || rec.Code == http.StatusTemporaryRedirect {
+			t.Fatalf("%s: status = %d with Location %q, want the 404 problem and no redirect",
+				path, rec.Code, rec.Header().Get("Location"))
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", path, rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+			t.Errorf("%s: Content-Type = %q, want application/problem+json", path, ct)
+		}
 	}
 }
 

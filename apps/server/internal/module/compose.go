@@ -108,17 +108,25 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		// http.ServeMux's path cleaning never folds a doubled slash inside a
 		// module's subtree onto the real path (see moduleMount).
 		mounts = append(mounts, moduleMount{prefix: "/api/v1/" + mod.Name + "/", handler: handler})
-		// The subtree pattern alone does not cover the module's own root path.
-		// A contract that declares "/api/v1/customers" (the listing and its
-		// create) would have those requests answered by http.ServeMux's
-		// automatic redirect to the trailing-slash form instead — a path no
-		// contract declares, and one the module's router would then answer 404.
-		// Registering the bare path explicitly both suppresses that redirect
-		// and delivers the request, path unchanged, to the module.
-		if doc.Paths.Find("/api/v1/"+mod.Name) != nil {
-			outer.Handle("/api/v1/"+mod.Name, handler)
-			mounts[len(mounts)-1].root = "/api/v1/" + mod.Name
-		}
+		// The subtree pattern alone does not cover the module's own root path,
+		// so it is registered explicitly — whether or not the contract
+		// declares it. A contract that declares "/api/v1/customers" (the
+		// listing and its create) would otherwise have those requests
+		// answered by http.ServeMux's automatic redirect to the
+		// trailing-slash form: a path no contract declares, and one the
+		// module's router would then answer 404. Registering the bare path
+		// suppresses that redirect and delivers the request, path unchanged,
+		// to the module.
+		//
+		// A module whose contract declares no bare root (energy) is
+		// registered just the same, and for the same reason: the redirect is
+		// wrong there too. It answered 307 with a text/html body and ran no
+		// Access.Check at all, where every other undeclared API path answers
+		// the 404 problem (internal/server's own /api contract). Handing the
+		// path to the module instead lets its router answer that 404, as it
+		// does for any other path its contract does not declare.
+		outer.Handle("/api/v1/"+mod.Name, handler)
+		mounts[len(mounts)-1].root = "/api/v1/" + mod.Name
 
 		// mergeContract (via InternalizeRefs) mutates the *openapi3.T it
 		// merges in place. doc was just handed to Mount as modDeps.Doc and a
@@ -156,7 +164,13 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		_, _ = w.Write(body)
 	})
 
+	// Both the subtree and the bare "/api". Without the bare pattern,
+	// http.ServeMux answers "/api" with its automatic redirect to "/api/" —
+	// a 307 carrying a text/html body, and no Access.Check — where
+	// internal/server's own contract (server.go's /api matcher) says every
+	// unknown API path is the 404 problem.
 	outer.HandleFunc("/api/", httpx.NotFound)
+	outer.HandleFunc("/api", httpx.NotFound)
 
 	return dispatchModules(mounts, outer), nil
 }

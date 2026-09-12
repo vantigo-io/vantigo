@@ -217,19 +217,67 @@ func formatAmount(v float64) string {
 // its shortest round-tripping decimal text rather than rounded in Go:
 // products inventory §2 says Postgres's numeric(p,s) column scale is where
 // rounding happens, exactly as .NET relied on Postgres to do it.
-func numericFromFloat(v float64) pgtype.Numeric {
+//
+// Scan's error is returned rather than discarded. It can only fire for an
+// infinity ("+Inf"/"-Inf"): Postgres's numeric type has a NaN of its own, so
+// Scan accepts "NaN" and the infinities are the only unstorable float64s.
+// Either way nothing reaches this from a request today, because every value
+// arrives through encoding/json, which refuses to decode a NaN or an
+// infinity. Discarding the error would store a silent SQL NULL for a number
+// the caller actually sent, so the one remaining way to reach it (a future
+// non-JSON caller) fails loudly instead.
+func numericFromFloat(v float64) (pgtype.Numeric, error) {
 	var n pgtype.Numeric
-	_ = n.Scan(strconv.FormatFloat(v, 'f', -1, 64))
-	return n
+	if err := n.Scan(strconv.FormatFloat(v, 'f', -1, 64)); err != nil {
+		return pgtype.Numeric{}, fmt.Errorf("products: %v is not a storable decimal: %w", v, err)
+	}
+	return n, nil
 }
 
 // numericFromFloatPtr is numericFromFloat for an optional field: nil stays
-// an invalid (SQL NULL) pgtype.Numeric.
-func numericFromFloatPtr(v *float64) pgtype.Numeric {
+// an invalid (SQL NULL) pgtype.Numeric, which is the column's own NULL and
+// never an error.
+func numericFromFloatPtr(v *float64) (pgtype.Numeric, error) {
 	if v == nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, nil
 	}
 	return numericFromFloat(*v)
+}
+
+// variantNumerics are a variant's five optional decimal columns, converted
+// together so a caller checks one error rather than five and its params
+// literal stays one readable block.
+type variantNumerics struct {
+	StandardCost pgtype.Numeric
+	WeightKg     pgtype.Numeric
+	LengthCm     pgtype.Numeric
+	WidthCm      pgtype.Numeric
+	HeightCm     pgtype.Numeric
+}
+
+// numericsFromVariant converts every optional decimal a validated variant
+// carries, failing on the first value Postgres could not store (see
+// numericFromFloat: unreachable from a JSON request, loud rather than a
+// silent NULL if it ever becomes reachable).
+func numericsFromVariant(v parsedVariant) (variantNumerics, error) {
+	var out variantNumerics
+	for _, f := range []struct {
+		dst *pgtype.Numeric
+		src *float64
+	}{
+		{&out.StandardCost, v.StandardCost},
+		{&out.WeightKg, v.WeightKg},
+		{&out.LengthCm, v.LengthCm},
+		{&out.WidthCm, v.WidthCm},
+		{&out.HeightCm, v.HeightCm},
+	} {
+		n, err := numericFromFloatPtr(f.src)
+		if err != nil {
+			return variantNumerics{}, err
+		}
+		*f.dst = n
+	}
+	return out, nil
 }
 
 // floatFromNumeric reads a required pgtype.Numeric column back onto the

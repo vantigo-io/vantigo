@@ -95,11 +95,6 @@ func RawBody(ct string, b []byte) RequestOption {
 	return func(r *request) { r.contentType, r.body = ct, b }
 }
 
-// Origin sends an Origin header, as a browser does on a cross-site request.
-func Origin(o string) RequestOption {
-	return Header("Origin", o)
-}
-
 // Do sends one request to path (server-absolute, base path included) and
 // returns the response, body read. body, when not nil, is sent as JSON.
 func (c *Client) Do(method, path string, body any, opts ...RequestOption) *Response {

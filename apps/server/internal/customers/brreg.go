@@ -49,11 +49,13 @@ import (
 // by any honest reading; and a 500 here would have forced tests to skip
 // contract validation for this whole operation, not just this one case.
 //
-// The retry backoff (~200ms base, full jitter, capped at ~1s, worst case
-// ~1.4s across three retries) is also a deliberate divergence: .NET's
-// Polly default base is ~2s, which alone could sleep ~14s across four
-// attempts — more than fits inside §5's own 15s total timeout. Task 16
-// records this as an explicit .NET-divergence decision.
+// The retry backoff (~200ms base, full jitter, so 200/400/800ms before the
+// three retries and ~1.4s of sleep at worst) is also a deliberate
+// divergence: .NET's Polly default base is ~2s, which alone could sleep
+// ~14s across four attempts — more than fits inside §5's own 15s total
+// timeout. Task 16 records this as an explicit .NET-divergence decision.
+// brregBackoffCap is a guard on the doubling, not a figure this attempt
+// count reaches: see its own comment.
 
 const (
 	// brregMinSearchLength is BrregLookupEndpoint.MinSearchLength (:15).
@@ -137,10 +139,16 @@ const brregRetryAttempts = 3
 const brregAttemptTimeout = 4 * time.Second
 
 // brregBackoffBase and brregBackoffCap bound brregBackoff: exponential with
-// full jitter from a 200ms base, capped at 1s, so the worst-case total delay
-// across three retries (200+400+800ms, before jitter shrinks each toward 0)
-// is about 1.4s — this file's doc comment explains why that is shorter than
-// .NET's own default.
+// full jitter from a 200ms base, so the worst-case total delay across three
+// retries (200+400+800ms, before jitter shrinks each toward 0) is about
+// 1.4s — this file's doc comment explains why that is shorter than .NET's
+// own default.
+//
+// The cap never binds at brregRetryAttempts = 3: the largest pre-jitter
+// delay the loop can ask for is 800ms, so the 1s cap is a guard on the
+// doubling should the attempt count ever rise (attempt 4 would want 1.6s),
+// not a figure this configuration produces. Read it as a ceiling on future
+// growth rather than as today's maximum.
 const (
 	brregBackoffBase = 200 * time.Millisecond
 	brregBackoffCap  = 1 * time.Second
@@ -153,9 +161,6 @@ const (
 // a retry loop's tests never actually sleep.
 func brregBackoff(attempt int) time.Duration {
 	shift := attempt - 1
-	if shift < 0 {
-		shift = 0
-	}
 	d := brregBackoffBase * time.Duration(int64(1)<<uint(shift))
 	if d <= 0 || d > brregBackoffCap {
 		d = brregBackoffCap
@@ -224,7 +229,18 @@ func newBrregClient(baseURL string, timeout time.Duration, transport http.RoundT
 	if backoff == nil {
 		backoff = brregBackoff
 	}
-	return &brregClient{baseURL: baseURL, timeout: timeout, client: &http.Client{Transport: transport}, backoff: backoff}
+	return &brregClient{
+		baseURL: baseURL,
+		timeout: timeout,
+		// Redirects are never followed: a 3xx is returned to lookup as-is,
+		// which treats it as the non-2xx it is. The base URL is operator
+		// configuration and validated, so a redirect to an arbitrary host is
+		// not reachable today — but following one would send this request
+		// (and Go would re-send it up to ten times) to a host no operator
+		// named, which is not a thing a registry lookup should ever do.
+		client:  &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		backoff: backoff,
+	}
 }
 
 // lookup performs one GET against path, the whole call bounded by

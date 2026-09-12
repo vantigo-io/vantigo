@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/web"
 )
 
@@ -162,7 +164,65 @@ func TestNew_HealthRoutesToTheHealthHandler(t *testing.T) {
 	}
 }
 
+// allowAllAccess is a contracts.Access that admits everything: these tests are
+// about routing, never about authorization.
+type allowAllAccess struct{}
+
+func (allowAllAccess) Check(*http.Request, contracts.Rule) (contracts.Principal, error) {
+	return contracts.Principal{}, nil
+}
+
+func (allowAllAccess) Reject(w http.ResponseWriter, r *http.Request, _ contracts.Rule, _ error) {
+	httpx.WriteProblem(w, r, http.StatusUnauthorized, "")
+}
+
+// composedAPI is the real API handler production runs: module.Compose over a
+// real embedded contract, rather than a stub. energy is deliberately the
+// module: its contract declares no bare "/api/v1/energy" root, which is
+// exactly the case that used to escape through http.ServeMux's redirect. Its
+// Mount answers the 404 problem, which is what a module's own router answers
+// for a path its contract does not declare.
+func composedAPI(t *testing.T) http.Handler {
+	t.Helper()
+	api, err := module.Compose(
+		module.Deps{Config: &config.Config{Modules: []string{"energy"}}, Access: allowAllAccess{}},
+		module.Module{Name: "energy", Mount: func(module.Deps) (http.Handler, error) {
+			return http.HandlerFunc(httpx.NotFound), nil
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose the API: %v", err)
+	}
+	return api
+}
+
+// Every unknown path under /api is a problem document, never the SPA and never
+// a redirect. This runs against the composed API rather than a nil one: with
+// o.API = nil every path was answered by httpx.NotFound directly, which made
+// the test blind to how the real composition answers. Through the real stack
+// both "/api" and a module subtree with no declared bare root ("/api/v1/energy")
+// used to answer 307 with a text/html body and no Access.Check at all.
 func TestNew_UnknownAPIPathsAreProblemsNeverTheSPA(t *testing.T) {
+	f := newFixture(t, func(_ *config.Config, o *Options) { o.API = composedAPI(t) })
+
+	for _, path := range []string{"/api", "/api/", "/api/v1/customers", "/api/v1/energy", "/api/v1/energy/"} {
+		rec := f.do(request(http.MethodGet, "https://vantigo.example.com"+path))
+
+		if rec.Code == http.StatusTemporaryRedirect || rec.Code == http.StatusMovedPermanently {
+			t.Errorf("%s: status %d with Location %q, want the 404 problem and no redirect",
+				path, rec.Code, rec.Header().Get("Location"))
+			continue
+		}
+		if rec.Code != http.StatusNotFound || rec.Header().Get("Content-Type") != "application/problem+json" {
+			t.Errorf("%s: status %d Content-Type %q, want 404 application/problem+json",
+				path, rec.Code, rec.Header().Get("Content-Type"))
+		}
+	}
+}
+
+// A nil Options.API answers every API path with the 404 problem, which is what
+// the field documents.
+func TestNew_NilAPIAnswersEveryAPIPathWithAProblem(t *testing.T) {
 	f := newFixture(t, func(_ *config.Config, o *Options) { o.API = nil })
 	for _, path := range []string{"/api", "/api/", "/api/v1/customers"} {
 		rec := f.do(request(http.MethodGet, "https://vantigo.example.com"+path))

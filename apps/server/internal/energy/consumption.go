@@ -219,9 +219,13 @@ func (s *server) PostEnergyMeteringPointsByIdConsumption(ctx context.Context, re
 			supersedesStart = &previous.Start
 		}
 
+		quantity, qerr := numericFromFloat(body.QuantityKwh)
+		if qerr != nil {
+			return qerr
+		}
 		var ierr error
 		result, ierr = txq.InsertConsumptionInterval(ctx, store.InsertConsumptionIntervalParams{
-			MeteringPointID: req.Id, Start: body.Start, EndAt: body.End, QuantityKwh: numericFromFloat(body.QuantityKwh),
+			MeteringPointID: req.Id, Start: body.Start, EndAt: body.End, QuantityKwh: quantity,
 			ReceivedAt: now, SupersedesID: supersedesID, SupersedesStart: supersedesStart,
 		})
 		return ierr

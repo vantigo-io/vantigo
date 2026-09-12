@@ -38,7 +38,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -133,13 +132,6 @@ func WithModule(m module.Module) Option {
 // package's Recorder over that package's own contract.
 func WithRecorder(rec *contracttest.Recorder) Option {
 	return func(s *setup) { s.recorder = rec }
-}
-
-// WithEnv sets one environment variable over the harness's development
-// defaults, for a module-specific setting a test needs (an upstream base URL,
-// a timeout, a narrower MODULES).
-func WithEnv(k, v string) Option {
-	return func(s *setup) { s.env[k] = v }
 }
 
 // WithTransport sets the RoundTripper Deps.HTTPTransport carries, for a
@@ -412,24 +404,6 @@ func (h *Harness) session(t testing.TB, userID uuid.UUID) string {
 	h.Exec(t, `INSERT INTO identity.sessions (id, user_id, token_hash, persistent, created_at, last_seen_at)
 	           VALUES ($1, $2, $3, false, $4, $4)`, uuid.New(), userID, hash[:], now)
 	return base64.RawURLEncoding.EncodeToString(raw)
-}
-
-// LogRecords is every record the installation logged so far, each decoded from
-// its JSON line.
-func (h *Harness) LogRecords(t testing.TB) []map[string]any {
-	t.Helper()
-	var records []map[string]any
-	for _, line := range bytes.Split(h.log.Bytes(), []byte("\n")) {
-		if len(line) == 0 {
-			continue
-		}
-		var rec map[string]any
-		if err := json.Unmarshal(line, &rec); err != nil {
-			t.Fatalf("modtest: log line %q: %v", line, err)
-		}
-		records = append(records, rec)
-	}
-	return records
 }
 
 // syncBuffer is a bytes.Buffer safe for the concurrent writes of a server's log.
