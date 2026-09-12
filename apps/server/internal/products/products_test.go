@@ -430,6 +430,50 @@ func TestDeleteProductsById_UnknownId_ReturnsNotFound(t *testing.T) {
 	}
 }
 
+// TestPutProductsById_UnknownId_ReturnsNotFound covers
+// UpdateProductEndpoint's 404 (products.go's PutProductsById). Until this
+// test no products test PUT to a missing product id at all — every 999999
+// PUT in the package targeted tax categories, variants or prices — so the
+// whole status code was uncovered on this operation.
+func TestPutProductsById_UnknownId_ReturnsNotFound(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+
+	r := c.Do(http.MethodPut, "/api/v1/products/999999", map[string]any{
+		"name": "Ghost Product", "type": "Goods", "taxCategoryId": taxCategoryID,
+	})
+	if r.Status != http.StatusNotFound {
+		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
+	}
+}
+
+// TestPutProductsById_InvalidBodyAgainstMissingProduct_Returns400 pins
+// UpdateProductEndpoint.cs:19-66's order, which products.go's doc comment
+// states as "field validation -> product exists (404)": a body that is both
+// invalid and aimed at a missing id answers 400, never 404. Moving the
+// existence check ahead of validation passes every other test in this
+// package and fails only this one.
+func TestPutProductsById_InvalidBodyAgainstMissingProduct_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+
+	r := c.Do(http.MethodPut, "/api/v1/products/999999", map[string]any{
+		"name": "", "type": "Goods", "taxCategoryId": taxCategoryID,
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if _, ok := problem.Errors["name"]; !ok {
+		t.Errorf("errors = %v, want a key \"name\"", problem.Errors)
+	}
+}
+
 // TestGetProductsByIdVariants_ListsProductVariants gives
 // getProductsByIdVariants its own successful exchange.
 func TestGetProductsByIdVariants_ListsProductVariants(t *testing.T) {

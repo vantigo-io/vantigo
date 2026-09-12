@@ -487,3 +487,20 @@ func TestConsumptionAggregate_NotFound(t *testing.T) {
 		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
 	}
 }
+
+// TestConsumptionAggregate_InvalidRequestAgainstMissingPoint_Returns400 pins
+// GetConsumptionAggregateEndpoint.cs:12-33's order, which consumption.go's
+// doc comment states as "ConsumptionAggregateValidation (400) -> existence
+// (404)": a bad resolution aimed at a nonexistent metering point answers 400,
+// never the 404 TestConsumptionAggregate_NotFound pins for a valid request.
+func TestConsumptionAggregate_InvalidRequestAgainstMissingPoint_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+
+	r := c.Do(http.MethodGet,
+		"/api/v1/energy/metering-points/999999/consumption/aggregate?from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z&resolution=week", nil)
+	if r.Status != http.StatusBadRequest {
+		t.Errorf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
+	}
+}

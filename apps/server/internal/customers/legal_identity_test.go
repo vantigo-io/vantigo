@@ -342,9 +342,18 @@ func TestPutCustomersByIdLegalIdentity_WithBlankFields_ReturnsExactValidationMes
 
 // TestPutCustomersByIdLegalIdentity_WhenCustomerDoesNotExist_ReturnsNotFound
 // pins LegalIdentityEndpoints.cs:43-47's 404, which runs only once the body
-// has already validated (there is no field-validation-vs-existence ordering
-// question here the way UpdateCustomerById has — the identity is the whole
-// body, not a conditionally-present sub-object).
+// has already validated (legal_identity.go validates the identity before it
+// looks the customer up).
+//
+// There *is* a field-validation-versus-existence ordering question here, and
+// it is observable: an invalid body aimed at a missing customer answers 400
+// today and would answer 404 if the two steps were swapped. It is pinned by
+// TestPutCustomersByIdLegalIdentity_InvalidBodyAgainstMissingCustomer_Returns400
+// below. (An earlier version of this comment claimed there was no such
+// question, because the identity is the whole body rather than a
+// conditionally-present sub-object. That explains why this operation's error
+// keys are bare — "country", not "identity.country" — not why the ordering
+// would be unobservable.)
 func TestPutCustomersByIdLegalIdentity_WhenCustomerDoesNotExist_ReturnsNotFound(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -355,6 +364,29 @@ func TestPutCustomersByIdLegalIdentity_WhenCustomerDoesNotExist_ReturnsNotFound(
 	})
 	if r.Status != http.StatusNotFound {
 		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
+	}
+}
+
+// TestPutCustomersByIdLegalIdentity_InvalidBodyAgainstMissingCustomer_Returns400
+// pins the ordering the comment above describes, the half the 404 test cannot
+// see: validation runs first, so a blank-field identity aimed at a
+// nonexistent customer answers 400 and not the 404 a swapped order would
+// produce.
+func TestPutCustomersByIdLegalIdentity_InvalidBodyAgainstMissingCustomer_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	r := c.Do(http.MethodPut, "/api/v1/customers/999999/legal-identity", map[string]any{
+		"country": "", "type": "business", "id": "923609016", "name": "Ghost AS", "source": "manual",
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if _, ok := problem.Errors["country"]; !ok {
+		t.Errorf("errors = %v, want a key \"country\"", problem.Errors)
 	}
 }
 

@@ -180,3 +180,47 @@ func TestGetProductsByIdVariantsByVariantIdPrices_UnknownVariant_ReturnsNotFound
 		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
 	}
 }
+
+// TestPostPrice_InvalidBodyAgainstMissingVariant_Returns400 pins
+// AddProductPriceEndpoint's order (prices.go's doc comment): field
+// validation runs before the scoped variant lookup, so an invalid price
+// aimed at a missing variant answers 400, never 404. No test posted a price
+// to an unknown variant at all before this one.
+func TestPostPrice_InvalidBodyAgainstMissingVariant_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	created := createProduct(t, c, newProductBody(taxCategoryID, "Price Ordering", sku(t, "price-order")))
+
+	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/products/%d/variants/999999/prices", created.Id),
+		map[string]any{"currency": "NOK", "amount": -1})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if _, ok := problem.Errors["amount"]; !ok {
+		t.Errorf("errors = %v, want a key \"amount\"", problem.Errors)
+	}
+}
+
+// TestPutPrice_InvalidBodyAgainstMissingPrice_Returns400 pins
+// UpdateProductPriceEndpoint.cs:17-61's order: field validation before the
+// scoped price lookup, so an invalid price aimed at a missing price id
+// answers 400, never the 404 TestPutPrice_UnknownId_ReturnsNotFound pins for
+// a valid body.
+func TestPutPrice_InvalidBodyAgainstMissingPrice_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	created := createProduct(t, c, newProductBody(taxCategoryID, "Price Put Ordering", sku(t, "price-put-order")))
+	variant := created.Variants[0]
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/products/%d/variants/%d/prices/999999", created.Id, variant.Id),
+		map[string]any{"currency": "NOK", "amount": -1})
+	if r.Status != http.StatusBadRequest {
+		t.Errorf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
+	}
+}

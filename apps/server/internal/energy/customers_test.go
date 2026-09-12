@@ -151,6 +151,25 @@ func TestGetCustomerConsumption_RangeInvalid(t *testing.T) {
 	}
 }
 
+// TestCustomerConsumptionAggregate_InvalidRequestAgainstUnknownCustomer_Returns400
+// pins customers.go's order for the customer-scoped aggregate: the same
+// ConsumptionAggregateValidation runs before the metering-point listing
+// query, so a bad resolution wins and an unknown customer id answers 400 —
+// not the empty 200 a *valid* request for an unknown customer gets
+// (TestGetCustomerConsumption_UnknownCustomerAnswersEmptyList below). Moving
+// validation after the query would turn this into that 200.
+func TestCustomerConsumptionAggregate_InvalidRequestAgainstUnknownCustomer_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+
+	r := c.Do(http.MethodGet,
+		"/api/v1/energy/customers/999999/consumption/aggregate?from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z&resolution=week", nil)
+	if r.Status != http.StatusBadRequest {
+		t.Errorf("status %d body %s, want 400 (validation must run before the listing query)", r.Status, r.Body)
+	}
+}
+
 // TestGetCustomerConsumption_UnknownCustomerAnswersEmptyList pins energy
 // inventory §1.2: the customer-scoped operations never call
 // contracts.CustomerDirectory and trust customerId as opaque, so an unknown

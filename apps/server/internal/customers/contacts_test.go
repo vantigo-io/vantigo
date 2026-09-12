@@ -471,7 +471,19 @@ func TestAttachContact_Twice_ReturnsConflict(t *testing.T) {
 		"contactId": contact.Id, "role": "CTO",
 	})
 	if r.Status != http.StatusConflict {
-		t.Errorf("status %d body %s, want 409", r.Status, r.Body)
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	// The 409's body is client-visible and byte-exact from
+	// AttachCustomerContactEndpoint: a status-only assertion let a rewrite of
+	// either string through unnoticed.
+	var problem problemDetailsJSON
+	r.JSON(&problem)
+	if got := problemTitle(problem.Title); got != "Contact already associated" {
+		t.Errorf("Title = %q, want %q", got, "Contact already associated")
+	}
+	wantDetail := fmt.Sprintf("Contact %d is already associated with customer %d.", contact.Id, customer.Id)
+	if got := problemTitle(problem.Detail); got != wantDetail {
+		t.Errorf("Detail = %q, want %q", got, wantDetail)
 	}
 }
 
@@ -527,6 +539,30 @@ func TestAttachContact_WithInvalidConnection_ReportsFieldErrors(t *testing.T) {
 	}
 	if !sameSet(got, want) {
 		t.Errorf("error keys = %v, want %v", got, want)
+	}
+}
+
+// TestPutContact_InvalidBodyAgainstMissingContact_Returns400 pins
+// UpdateContactEndpoint.cs:15-38's order, which contacts.go states as
+// inventory §1.4's "CreateContact / UpdateContact: validate first, then (for
+// update) look up": a body that is both invalid and aimed at a missing
+// contact id answers 400, never 404. Swapping the two steps fails only this
+// test — every other contact test sends either a valid body or a real id.
+func TestPutContact_InvalidBodyAgainstMissingContact_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	r := c.Do(http.MethodPut, "/api/v1/customers/contacts/999999", map[string]any{
+		"firstName": "", "lastName": "",
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (validation must run before the lookup)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if _, ok := problem.Errors["firstName"]; !ok {
+		t.Errorf("errors = %v, want a key \"firstName\"", problem.Errors)
 	}
 }
 

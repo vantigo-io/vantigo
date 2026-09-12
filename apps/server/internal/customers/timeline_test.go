@@ -91,6 +91,31 @@ func createManual(t *testing.T, c *modtest.Client, customerID int32, occurredOn,
 	return createManualEntry(t, c, customerID, body)
 }
 
+// TestPutTimelineEntry_InvalidBodyAgainstMissingEntry_Returns400 pins
+// TimelineEndpoints.Update's order (timeline.go validates the manual entry
+// before it loads the row): a body that is both invalid and aimed at a
+// missing entry id answers 400, never the 404 the lookup would produce if the
+// two steps were swapped. Not a .NET port — no test in
+// TimelineEndpointsTests.cs combines an invalid body with a missing entry.
+func TestPutTimelineEntry_InvalidBodyAgainstMissingEntry_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Timeline Ordering Co")
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/timeline/999999", customer.Id), map[string]any{
+		"eventType": "note", "occurredOn": "2026-07-27", "note": "", "expectedRevision": 1,
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (validation must run before the lookup)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if _, ok := problem.Errors["note"]; !ok {
+		t.Errorf("errors = %v, want a key \"note\"", problem.Errors)
+	}
+}
+
 // Ported from Integration/TimelineEndpointsTests.cs.
 // ManualTimelineEntry_CanBeEditedAndSoftDeletedWithHistory.
 func TestManualTimelineEntry_CanBeEditedAndSoftDeletedWithHistory(t *testing.T) {
