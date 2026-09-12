@@ -18,7 +18,21 @@
 
 ## Global Constraints
 
-- **The .NET test is the specification.** Every ported test carries `// Ported from <Class>.<Method>`. Tenancy-only tests are dropped. Targets: customers 100, products 72, energy 43 — 215 total. (Products and the total were corrected in Task 16, from 79 and 222. Two independent errors: (1) `IProductCatalog` is listed in products inventory §5 as "published for other modules", but the design doc makes `contracts.CustomerDirectory` the only cross-module read in this sub-project, so nothing here consumes `IProductCatalog` — the interface is deliberately not built and `ProductCatalogContractTests`' 7 methods, 6 portable plus 1 tenancy-only, are out of scope; (2) the inventory's census was off by one, `CategoriesEndpointsTests` having 13 facts rather than 14, so the .NET suite is 79 methods, not 80. 79 − 7 = 72.)
+- **The .NET test is the specification.** Every ported test carries `// Ported from <Class>.<Method>`. Tenancy-only tests are dropped. Targets: customers 136, products 72, energy 31 — **239 total**.
+
+  **The metric is .NET test *methods*: a `[Theory]` counts as one method regardless of how many `InlineData` cases it carries.** This is stated here and in each inventory's census because the three modules previously mixed metrics — products counted theory methods while customers and energy counted theory *cases* — which made the figures unaddable. Never mix them again. Counted by `[Fact]`/`[Theory]` attributes across each module's `*.Tests` project, then applying that inventory's own port/drop dispositions:
+
+  | module | raw methods | dropped | portable | how the drop is composed |
+  |---|---|---|---|---|
+  | customers | 211 | 75 (12 classes) | **136** | tenancy-only (`TenantIsolation` 3, `LeastPrivilegeDatabaseRole` 8) plus unrelated host/identity infra (`Auth` 25, `AuthSecurityUnit` 2, `Phase3Mfa` 4, `WorkforceOidc` 7, `WorkforceOidcCompletion` 6, `PublicOrigin` 3, `SecurityHeaders` 5, `SpaFallback` 8, `DevelopmentSeed` 3, `DatabaseContextRegistration` 1) |
+  | products | 79 | 7 (1 class) | **72** | all of `ProductCatalogContractTests`: `IProductCatalog` is out of scope (below) |
+  | energy | 32 | 1 (1 class) | **31** | `EnergyTenancyIntegrationTests`, tenancy-only |
+
+  136 + 72 + 31 = **239**, replacing the 222 this plan first committed to and the 215 Task 16's first round computed. Three independent errors produced the old numbers:
+
+  1. **Customers 100 → 136.** Its inventory's "Portable total" addend list included only one of its seven "port" domain classes, omitting 36 methods (the seven domain classes sum to 48, of which the list carried 12). Cross-checked: 211 raw − 75 dropped = 136.
+  2. **Energy 43 → 31.** Its inventory counted theory *cases*, not methods, and separately undercounted `EnergyEndpointsTests` as 13 where the file carries 15 `[Fact]`s.
+  3. **Products 79 → 72.** `IProductCatalog` is listed in products inventory §5 as "published for other modules", but the design doc makes `contracts.CustomerDirectory` the only cross-module read in this sub-project, so nothing here consumes `IProductCatalog` — the interface is deliberately not built and `ProductCatalogContractTests`' 7 methods are out of scope. The inventory's census was also off by one: `CategoriesEndpointsTests` has 13 facts, not 14, so the suite is 79 methods, not 80.
 - **No tenancy.** No `tenant_id` column, index component, or parameter anywhere. Where a .NET key is `(tenant_id, x)`, the Go key is `(x)`.
 - **One schema per module**, no cross-schema references in migrations or queries. `internal/db/schema_test.go` already scans all five schemas.
 - **Contract-driven access.** Every operation's `x-vantigo-access` is enforced by `module.Router`. Handlers never re-check what the router already checked, with one exception: the conditional pricing permission in Task 11.

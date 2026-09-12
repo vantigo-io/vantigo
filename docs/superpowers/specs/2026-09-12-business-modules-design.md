@@ -18,7 +18,7 @@ sub-project 3 built: 75 operations (customers 29, products 26, energy 20),
 modules are served by `cmd/vantigo` and exercised by tests and the smoke
 test only.
 
-(Ported-test target corrected to 215 during Task 16 — see §Testing.)
+(Ported-test target corrected to 239 during Task 16 — see §Testing.)
 
 One spec, one plan, one PR.
 
@@ -180,17 +180,33 @@ collect-all-problems style, and secrets stay redacted.
 
 ## Testing
 
-- **Ported tests: 215** (customers 100, products 72, energy 43), each marked
+- **Ported tests: 239** (customers 136, products 72, energy 31), each marked
   `// Ported from <Class>.<Method>`. Tenancy-only tests are dropped.
-  Corrected from 222 in Task 16: the products figure was wrong twice over.
-  `IProductCatalog` is listed in products inventory §5 as "published for
-  other modules", but `contracts.CustomerDirectory` is the **only**
-  cross-module read in this sub-project (see §Decisions/Platform), so nothing
-  here consumes `IProductCatalog`, the interface is deliberately not built,
-  and `ProductCatalogContractTests`' 7 methods (6 portable, 1 tenancy-only)
-  are out of scope. Independently, the inventory's own census was off by one:
-  `CategoriesEndpointsTests` has 13 facts, not 14, making the .NET suite 79
-  methods rather than 80. 79 − 7 = 72.
+
+  **The metric is .NET test methods: a `[Theory]` counts as one method
+  regardless of its `InlineData` count.** The three inventories previously
+  mixed metrics — products counted theory methods, customers and energy
+  counted theory cases — so their figures were unaddable. Each inventory's
+  census now states the metric.
+
+  Corrected from 222 (and from the 215 of Task 16's first round) for three
+  independent reasons, one per module:
+
+  1. **Customers 100 → 136.** Its inventory's "Portable total" addend list
+     carried only one of its seven "port" domain classes and omitted 36
+     methods, though the same sentence correctly totalled those classes at
+     48. Cross-checked as 211 raw − 75 dropped.
+  2. **Energy 43 → 31.** Its inventory counted theory cases rather than
+     methods, and undercounted `EnergyEndpointsTests` as 13 where the file
+     carries 15 facts.
+  3. **Products 79 → 72.** `IProductCatalog` is listed in products inventory
+     §5 as "published for other modules", but `contracts.CustomerDirectory`
+     is the **only** cross-module read in this sub-project (see
+     §Decisions/Platform), so nothing here consumes `IProductCatalog`, the
+     interface is deliberately not built, and `ProductCatalogContractTests`'
+     7 methods are out of scope. The inventory's census was also off by one:
+     `CategoriesEndpointsTests` has 13 facts, not 14, making the suite 79
+     methods rather than 80.
 - Each module gets a harness in the shape of identity's: a real `server.New`
   stack over `module.Compose`, its own migrated database per test, a settable
   clock, and the contract-validating transport. Every exchange is validated
@@ -221,17 +237,30 @@ Go behaviour, .NET's behaviour, and the reason.
    retries implies roughly 14 s of sleep, which cannot fit inside the 15 s
    `BRREG_TIMEOUT` total-request budget this spec sets — the retries would be
    cut off by the budget rather than completed by the policy.
-3. **A `RESTRICT` foreign-key violation answers 409.** .NET's host-wide
-   handler special-cases only `23505` (unique) and `23P01` (exclusion), so a
-   restrict violation fell through to a generic unhandled 500. Go maps both
-   `23001` — what a literal `ON DELETE RESTRICT` actually raises, verified
-   twice against a real Postgres — and `23503` to the operation's documented
-   409.
-4. **A concurrently-deleted association answers 204/200 idempotently.** .NET
-   raised a concurrency exception, which surfaced as a 500, when the row a
-   delete or update had just read was already gone by the time it wrote. Go
-   treats the absent row as the caller's desired end state, matching the
-   idempotence the same endpoints already have for a never-existent row.
+3. **A `RESTRICT` foreign-key violation answers 409 — in products only.**
+   .NET's host-wide handler special-cases only `23505` (unique) and `23P01`
+   (exclusion), so a restrict violation fell through to a generic unhandled
+   500. Products maps both `23001` — what a literal `ON DELETE RESTRICT`
+   actually raises, verified twice against a real Postgres — and `23503` to
+   the operation's documented 409, in its own `isRestrictConflict`. This is
+   deliberately **not** a platform-wide mapping: `httpx.WriteError` still
+   maps only `23505`/`23P01` for every other module, because products is the
+   only schema here with `RESTRICT` foreign keys a request can reach. A
+   later module that gains one must opt in the same way.
+4. **An association deleted by a concurrent writer between the pre-read and
+   the write answers 204/200 idempotently.** Both association endpoints
+   pre-read the row and answer **404** when it is genuinely absent
+   (`pgx.ErrNoRows` → `Delete…404Response` at `contacts.go:597-598`,
+   `Put…404Response` at `:548-549`), so this divergence is **not** about an
+   absent row: the ordinary missing-association case matches .NET exactly.
+   It concerns only the race in which the row existed at the pre-read and a
+   concurrent writer removed it before the write landed. .NET raised a
+   concurrency exception there, which surfaced as an unhandled 500; Go
+   treats the row's absence as the caller's desired end state and answers
+   the operation's documented 204 (delete) or 200 (update). Reason: a 500
+   for a request whose intent was already satisfied is a worse answer than
+   success, and the window is invisible to the caller, who cannot tell it
+   from having simply won the race.
 5. **Offset-less `from`/`to` query parameters answer 400.** .NET's
    minimal-API `IParsable<DateTimeOffset>` binding silently accepted an
    offset-less string and interpreted it in the server's local time zone,
@@ -260,6 +289,28 @@ a later reader does not mistake it for one.
   replaces the orphaned half with the replacement character, while .NET's
   string can hold it. Unobservable except for a note whose 500th and 501st
   UTF-16 units are the two halves of one astral character.
+- **The Owner short-circuit is not exercised by the ported products
+  authorization tests.** .NET's `ProductsApiFactory.CreateAuthenticatedClient`
+  returns the bootstrap Owner, whose permission check short-circuits to allow
+  before any catalog lookup. `internal/modtest` has no Owner concept at all
+  (zero references), so the four ported
+  `ProductsAuthorizationEndpointsTests` matrix facts use a caller holding all
+  ten products permissions for the "can do everything" leg. Every narrower
+  leg is a genuine scoped role, as in .NET. An accepted limitation of the
+  port rather than a coverage gap: these tests are about which permissions
+  gate which routes, and the Owner short-circuit itself belongs to identity,
+  whose own tests cover it.
+- **`/api%2Fv1/...` reaches the SPA rather than the API.** The `/api` subtree
+  is matched on `r.URL.EscapedPath()` (see §Decisions/Platform and
+  `internal/server`), so a percent-encoded slash does not match the `/api/`
+  prefix and the request falls through to the SPA handler, which answers 200
+  `text/html`. Measured, both `%2F` and `%2f`. There is no authorization
+  impact: no API route becomes reachable and the API handler is never
+  entered, so nothing is served that a contract operation would have
+  protected — the caller simply gets the SPA shell, exactly as for any other
+  unrouted path. Recorded rather than changed, because deciding to reject or
+  canonicalise such a path is a platform-wide question rather than this
+  sub-project's.
 - **The energy stats attention rule matching `Active` with a non-null `End` is
   unreachable through any public endpoint.** `ListExpiringSupplyPeriods`
   selects `status = 'Active' AND "end" IS NOT NULL`, faithfully ported from
