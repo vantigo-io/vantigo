@@ -515,6 +515,284 @@ func TestProductVariantsAndPrices_CascadeFromTheirParent(t *testing.T) {
 	}
 }
 
+// TestEnergyBaseline_AppliesAndIsIdempotent proves
+// 00005_energy_baseline.sql applies, rolls back, and re-applies cleanly —
+// the extension and the partitioned table make this baseline's down path
+// less trivial than the previous three (dropping the schema must also take
+// the function, every pre-created monthly partition, and the exclusion
+// constraint with it) — and that the tenant drop landed exactly where the
+// inventory says it should: no tenant_id column anywhere in the schema, and
+// consumption_intervals' primary key carries start alongside id (energy
+// inventory §3, the partition-key requirement).
+func TestEnergyBaseline_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url)
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	// information_schema.tables lists every pre-created monthly partition as
+	// its own table, so the base-table list is read from pg_class instead,
+	// filtered to relations that are not themselves a partition
+	// (relispartition = false catches consumption_intervals's own children
+	// but keeps the partitioned parent itself, relkind 'p').
+	wantTables := []string{
+		"consumption_intervals",
+		"metering_points",
+		"meters",
+		"supply_periods",
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT c.relname
+		FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'energy' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+		ORDER BY c.relname`)
+	if err != nil {
+		t.Fatalf("query tables: %v", err)
+	}
+	var gotTables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan table name: %v", err)
+		}
+		gotTables = append(gotTables, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(gotTables) != len(wantTables) {
+		t.Fatalf("tables = %v, want %v", gotTables, wantTables)
+	}
+	for i, name := range wantTables {
+		if gotTables[i] != name {
+			t.Errorf("tables = %v, want %v", gotTables, wantTables)
+			break
+		}
+	}
+
+	var extensions int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM pg_extension WHERE extname = 'btree_gist'`).Scan(&extensions); err != nil {
+		t.Fatalf("count btree_gist extension: %v", err)
+	}
+	if extensions != 1 {
+		t.Errorf("found %d btree_gist extension(s), want 1", extensions)
+	}
+
+	var exclusionConstraints int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM pg_constraint c
+		JOIN pg_class t ON t.oid = c.conrelid
+		JOIN pg_namespace n ON n.oid = t.relnamespace
+		WHERE n.nspname = 'energy' AND t.relname = 'supply_periods' AND c.contype = 'x' AND c.conname = 'supply_periods_no_overlap'`).Scan(&exclusionConstraints); err != nil {
+		t.Fatalf("count supply_periods_no_overlap: %v", err)
+	}
+	if exclusionConstraints != 1 {
+		t.Errorf("found %d supply_periods_no_overlap exclusion constraint(s), want 1", exclusionConstraints)
+	}
+
+	if cols := indexColumns(t, ctx, pool, "energy", "ux_metering_points_gsrn"); len(cols) != 1 || cols[0] != "gsrn" {
+		t.Errorf("ux_metering_points_gsrn columns = %v, want [gsrn]", cols)
+	}
+	if cols := indexColumns(t, ctx, pool, "energy", "ux_meters_metering_point_id_active"); len(cols) != 1 || cols[0] != "metering_point_id" {
+		t.Errorf("ux_meters_metering_point_id_active columns = %v, want [metering_point_id]", cols)
+	}
+	if cols := primaryKeyColumns(t, ctx, pool, "energy", "consumption_intervals"); !equalStrings(cols, []string{"id", "start"}) {
+		t.Errorf("consumption_intervals primary key columns = %v, want [id start] (Postgres requires the partition key in every unique/PK index)", cols)
+	}
+
+	var tenantIDColumns int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'energy' AND column_name = 'tenant_id'`).Scan(&tenantIDColumns); err != nil {
+		t.Fatalf("count tenant_id columns: %v", err)
+	}
+	if tenantIDColumns != 0 {
+		t.Errorf("found %d tenant_id column(s) in schema energy, want 0", tenantIDColumns)
+	}
+}
+
+// insertTestMeteringPoint inserts one metering point and returns its id. It
+// exists only to satisfy meters/supply_periods/consumption_intervals' NOT
+// NULL metering_point_id FK for tests that need a real parent row.
+func insertTestMeteringPoint(t *testing.T, ctx context.Context, pool *pgxpool.Pool) int32 {
+	t.Helper()
+	var id int32
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO energy.metering_points
+			(gsrn, street_address, postal_code, city, country_code, price_area, connection_status, created_at, updated_at)
+		VALUES
+			('123456789012345678', 'Storgata 1', '0001', 'Oslo', 'NO', 'NO1', 'New', now(), now())
+		RETURNING id`).Scan(&id); err != nil {
+		t.Fatalf("insert metering point: %v", err)
+	}
+	return id
+}
+
+// TestSupplyPeriods_ExclusionConstraintRejectsOverlappingNonCancelledPeriods
+// proves the GiST exclusion constraint's overlap half: two non-Cancelled
+// supply periods on the same metering point with overlapping [start, end)
+// ranges cannot both exist (energy inventory §3.2, §5 — this is what
+// actually decides concurrent-create races, not the application's own
+// pre-checks, which this schema-level test deliberately bypasses).
+func TestSupplyPeriods_ExclusionConstraintRejectsOverlappingNonCancelledPeriods(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	meteringPointID := insertTestMeteringPoint(t, ctx, pool)
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
+		VALUES ($1, 1001, '2026-01-01T00:00:00Z', '2026-02-01T00:00:00Z', 'Active')`, meteringPointID); err != nil {
+		t.Fatalf("insert first active period: %v", err)
+	}
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
+		VALUES ($1, 1002, '2026-01-15T00:00:00Z', '2026-03-01T00:00:00Z', 'Ended')`, meteringPointID)
+	if !isExclusionViolation(err) {
+		t.Fatalf("insert overlapping Ended period: err = %v, want an exclusion_violation", err)
+	}
+}
+
+// TestSupplyPeriods_ExclusionConstraintAllowsOverlappingCancelledPeriods
+// proves the constraint's partial WHERE (status <> 'Cancelled') half: two
+// overlapping periods on the same metering point are admitted as soon as
+// one of them is Cancelled, since a Cancelled row never participates in the
+// exclusion index at all (energy inventory §3.2). Together with the
+// previous test, this pins both halves of the WHERE clause — losing either
+// half (dropping the clause entirely, or inverting it) would flip one of
+// these two tests from pass to fail.
+func TestSupplyPeriods_ExclusionConstraintAllowsOverlappingCancelledPeriods(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	meteringPointID := insertTestMeteringPoint(t, ctx, pool)
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
+		VALUES ($1, 1001, '2026-01-01T00:00:00Z', '2026-02-01T00:00:00Z', 'Cancelled')`, meteringPointID); err != nil {
+		t.Fatalf("insert cancelled period: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
+		VALUES ($1, 1002, '2026-01-15T00:00:00Z', '2026-03-01T00:00:00Z', 'Active')`, meteringPointID); err != nil {
+		t.Fatalf("insert overlapping active period against a cancelled one: err = %v, want no error", err)
+	}
+}
+
+// TestMeters_ActiveMeterUniqueIsPartial proves ux_meters_metering_point_id_active
+// is a partial unique index (WHERE removed_at IS NULL): at most one live
+// (removed_at IS NULL) meter may exist per metering point, but any number of
+// removed ones may — and once the live meter is itself removed, a new live
+// meter may be installed (energy inventory §2.2/§3).
+func TestMeters_ActiveMeterUniqueIsPartial(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	meteringPointID := insertTestMeteringPoint(t, ctx, pool)
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.meters (metering_point_id, meter_number, installed_at, removed_at)
+		VALUES ($1, 'M-1', '2026-01-01T00:00:00Z', NULL)`, meteringPointID); err != nil {
+		t.Fatalf("insert first live meter: %v", err)
+	}
+	_, err := pool.Exec(ctx, `
+		INSERT INTO energy.meters (metering_point_id, meter_number, installed_at, removed_at)
+		VALUES ($1, 'M-2', '2026-02-01T00:00:00Z', NULL)`, meteringPointID)
+	if !isUniqueViolation(err) {
+		t.Fatalf("insert second live meter: err = %v, want a unique_violation", err)
+	}
+
+	// Any number of removed meters may coexist: the partiality of the index
+	// is what makes this legal, unlike a plain UNIQUE (metering_point_id).
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.meters (metering_point_id, meter_number, installed_at, removed_at)
+		VALUES ($1, 'M-3', '2025-01-01T00:00:00Z', '2025-06-01T00:00:00Z')`, meteringPointID); err != nil {
+		t.Fatalf("insert first removed meter: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.meters (metering_point_id, meter_number, installed_at, removed_at)
+		VALUES ($1, 'M-4', '2025-06-01T00:00:00Z', '2025-12-01T00:00:00Z')`, meteringPointID); err != nil {
+		t.Fatalf("insert second removed meter: %v, want no error (the unique index is partial)", err)
+	}
+
+	// Removing the live meter frees the slot for a new one.
+	if _, err := pool.Exec(ctx, `UPDATE energy.meters SET removed_at = '2026-03-01T00:00:00Z' WHERE metering_point_id = $1 AND removed_at IS NULL`, meteringPointID); err != nil {
+		t.Fatalf("remove the live meter: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.meters (metering_point_id, meter_number, installed_at, removed_at)
+		VALUES ($1, 'M-5', '2026-03-01T00:00:00Z', NULL)`, meteringPointID); err != nil {
+		t.Fatalf("insert a new live meter after removing the old one: %v, want no error", err)
+	}
+}
+
+// TestConsumptionIntervals_EnsurePartitionCreatesMonthlyPartition proves
+// energy.ensure_consumption_partition (energy inventory §3.3, ported
+// verbatim from the .NET migration) creates a real, correctly-bounded
+// monthly partition on demand, and that a row whose start falls in that
+// month can then be written. 2031-03 is chosen because it falls well
+// outside the ±12 month window the migration itself pre-creates around the
+// real clock (energy inventory §3.3), so this test can only pass if the
+// function itself works, not because the partition already existed.
+func TestConsumptionIntervals_EnsurePartitionCreatesMonthlyPartition(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	if _, err := pool.Exec(ctx, `SELECT energy.ensure_consumption_partition('2031-03-10'::date)`); err != nil {
+		t.Fatalf("ensure_consumption_partition: %v", err)
+	}
+	// Idempotent: a second call for the same month must not error (the
+	// function's own CREATE TABLE IF NOT EXISTS).
+	if _, err := pool.Exec(ctx, `SELECT energy.ensure_consumption_partition('2031-03-25'::date)`); err != nil {
+		t.Fatalf("ensure_consumption_partition, second call for the same month: %v", err)
+	}
+
+	var bound string
+	err := pool.QueryRow(ctx, `
+		SELECT pg_get_expr(c.relpartbound, c.oid)
+		FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'energy' AND c.relname = 'consumption_intervals_2031_03'`).Scan(&bound)
+	if err != nil {
+		t.Fatalf("find partition consumption_intervals_2031_03: %v (want a partition table with this exact name — YYYY_MM of the truncated month)", err)
+	}
+	if !strings.Contains(bound, "2031-03-01") || !strings.Contains(bound, "2031-04-01") {
+		t.Errorf("consumption_intervals_2031_03 bound = %q, want it to span [2031-03-01, 2031-04-01)", bound)
+	}
+
+	meteringPointID := insertTestMeteringPoint(t, ctx, pool)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.consumption_intervals (metering_point_id, start, "end", quantity_kwh, quality, source, received_at)
+		VALUES ($1, '2031-03-10T00:00:00Z', '2031-03-10T01:00:00Z', 1.5, 'Measured', 'Elhub', now())`, meteringPointID); err != nil {
+		t.Fatalf("insert a consumption interval into the newly created partition: %v", err)
+	}
+
+	var rowsInPartition int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM energy.consumption_intervals_2031_03`).Scan(&rowsInPartition); err != nil {
+		t.Fatalf("count rows in partition: %v", err)
+	}
+	if rowsInPartition != 1 {
+		t.Errorf("consumption_intervals_2031_03 has %d row(s), want 1 (the written interval should have routed into this partition)", rowsInPartition)
+	}
+}
+
+// isExclusionViolation reports whether err is Postgres SQL state 23P01
+// (exclusion_violation), what a GiST EXCLUDE USING constraint raises.
+func isExclusionViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "23P01"
+}
+
 // isRestrictViolation reports whether err is Postgres SQL state 23001
 // (restrict_violation), what a literal `ON DELETE RESTRICT` FK raises —
 // distinct from 23503 (foreign_key_violation), which is what the FK default
