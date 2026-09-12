@@ -72,9 +72,8 @@ const (
 // conditional on request-body content the router cannot see). The other is
 // customers' legal-identity gate (internal/customers/server.go's
 // legalIdentityManage), which has the same shape and fails closed the same
-// way; neither is "the one" — postProducts and postProductsByIdVariants
-// additionally
-// require pricing-view AND pricing-manage when the submitted payload
+// way; neither is "the one". postProducts and postProductsByIdVariants
+// additionally require pricing-view AND pricing-manage when the submitted payload
 // carries pricing data (a non-null standardCost or a non-empty prices
 // array on any variant), because whether pricing is involved at all depends
 // on the request body, which module.Router's static x-vantigo-access can
