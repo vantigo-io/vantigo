@@ -86,8 +86,14 @@ jobs:
       - name: 🧪 Go tests with the race detector
         working-directory: apps/server
         # The race detector makes the identity suite several times slower than
-        # a plain run, so the per-package default of 10m is too tight.
-        run: go test -race -count=1 -timeout 20m ./...
+        # a plain run, so the per-package default of 10m is too tight. 20m was
+        # enough until the customers, products and energy suites landed: go
+        # test runs packages in parallel, so those three (each minutes long and
+        # database-backed) now contend with identity for this runner's four
+        # CPUs and its single Postgres service, and identity timed out at
+        # 1202s — 0.4% over 20m — with every other package passing. 40m is
+        # headroom, not a mask: a genuinely deadlocked test still fails here.
+        run: go test -race -count=1 -timeout 40m ./...
 
       - name: 🌍 Energy tests under a non-UTC time zone
         working-directory: apps/server
