@@ -397,6 +397,54 @@ func TestSwitchSupplyPeriod_Ordering(t *testing.T) {
 	})
 }
 
+// TestEndSupplyPeriod_NotAffectedByProcessTimeZone is the package-level pin
+// for the fix-round's critical finding: pgx decodes a `timestamptz` column
+// (here, the supply period's own Start) in the process's local time zone
+// (time.Local), not UTC, so an End handler that offset-checked the decoded
+// Start against the request's End would 400 under any non-UTC TZ — a bug
+// this repo's UTC-only test/CI environment could never surface on its own.
+// This test forces the bug's precondition directly by mutating time.Local
+// itself (the same knob a real deployment's TZ environment variable would
+// turn), rather than depending on how the test binary happens to be
+// launched.
+//
+// NOT PARALLEL-SAFE: t.Parallel() is deliberately not called. time.Local is
+// a package-level, process-wide variable; Go's test runner executes every
+// non-parallel top-level test to completion (synchronously, defer included)
+// before any t.Parallel() test's body actually starts running concurrently,
+// so as long as this test stays non-parallel its mutate/restore window can
+// never overlap another test's use of time.Local — including this file's
+// own client requests, which marshal timestamps as UTC regardless of
+// time.Local and so are unaffected by the mutation on either side.
+func TestEndSupplyPeriod_NotAffectedByProcessTimeZone(t *testing.T) {
+	loc, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Skipf("Europe/Oslo tzdata not available: %v", err)
+	}
+	original := time.Local
+	time.Local = loc
+	defer func() { time.Local = original }()
+
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+	point := createMeteringPoint(t, c)
+	start := h.Now()
+
+	create := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id),
+		map[string]any{"customerId": 1001, "start": start})
+	if create.Status != http.StatusCreated {
+		t.Fatalf("create: status %d body %s, want 201", create.Status, create.Body)
+	}
+	var period supplyPeriodJSON
+	create.JSON(&period)
+
+	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods/%d/end", point.Id, period.Id),
+		map[string]any{"end": start.Add(time.Hour)})
+	if r.Status != http.StatusOK {
+		t.Errorf("status %d body %s, want 200 under TZ=Europe/Oslo (End must never offset-check the DB-decoded Start)", r.Status, r.Body)
+	}
+}
+
 // Ported from EnergyEndpointsTests's EndSupplyPeriodEndpoint coverage plus
 // its "cancelled period" 400 branch (energy inventory §1.1 line 41).
 func TestEndSupplyPeriod(t *testing.T) {
