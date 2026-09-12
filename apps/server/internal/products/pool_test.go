@@ -1,6 +1,7 @@
 package products
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,23 +47,36 @@ func TestNewServer_UsesTheSharedConnectionPool(t *testing.T) {
 func TestPackage_OpensNoConnectionPoolOfItsOwn(t *testing.T) {
 	t.Parallel()
 
-	entries, err := os.ReadDir(".")
+	// Walks the whole module subtree, not just this directory: the generated
+	// query layer in products/store and the generated server in products/gen
+	// are as capable of opening a pool as the hand-written files beside this
+	// one, and scanning "." alone would miss them.
+	var scanned int
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		b, readErr := os.ReadFile(filepath.Clean(path))
+		if readErr != nil {
+			return readErr
+		}
+		scanned++
+		for _, ctor := range []string{"pgxpool.New(", "pgxpool.NewWithConfig("} {
+			if strings.Contains(string(b), ctor) {
+				t.Errorf("%s calls %s: the module must use the shared module.Deps.Pool, never open a pool of its own", path, ctor)
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Clean(name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, ctor := range []string{"pgxpool.New(", "pgxpool.NewWithConfig("} {
-			if strings.Contains(string(b), ctor) {
-				t.Errorf("%s calls %s: the module must use the shared module.Deps.Pool, never open a pool of its own", name, ctor)
-			}
-		}
+	// Guards the guard: a walk that silently matched nothing would pass
+	// vacuously forever.
+	if scanned < 10 {
+		t.Errorf("scanned only %d non-test .go files; the walk is not reaching the module's sources", scanned)
 	}
 }
