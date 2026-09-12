@@ -25,8 +25,4 @@ package server
 //go:generate sqlc generate -f internal/identity/sqlc.yaml
 //go:generate sqlc generate -f internal/customers/sqlc.yaml
 //go:generate sqlc generate -f internal/products/sqlc.yaml
-// internal/energy/sqlc.yaml is not wired in here yet: sqlc refuses to run
-// over a queries directory with no .sql files in it, and energy.yaml's
-// queries directory is still empty at this task (schema, skeleton and
-// catalog only, no query needs a generated method yet). The first
-// implementation task adds the first query and this line together.
+//go:generate sqlc generate -f internal/energy/sqlc.yaml

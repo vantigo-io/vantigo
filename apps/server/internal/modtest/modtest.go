@@ -54,6 +54,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
@@ -116,6 +117,7 @@ type setup struct {
 	recorder  *contracttest.Recorder
 	transport http.RoundTripper
 	backoff   func(int) time.Duration
+	directory contracts.CustomerDirectory
 }
 
 // Option adjusts a harness before it is built.
@@ -156,6 +158,20 @@ func WithTransport(rt http.RoundTripper) Option {
 // back to its own production default.
 func WithBackoff(fn func(attempt int) time.Duration) Option {
 	return func(s *setup) { s.backoff = fn }
+}
+
+// WithDirectory sets Deps.Directory directly to d, for a module under test
+// that reads another module's data through contracts.CustomerDirectory
+// (energy, so far) without composing that other module beside it — depguard
+// forbids the module's own test package from importing the module that
+// would otherwise provide one (customers), so the test builds its own fake
+// directly against the contracts interface, the same seam .NET's
+// FakeCustomerDirectory fills in EnergyApiFactory. module.Compose only ever
+// overwrites Deps.Directory when one of the composed modules declares
+// Module.Directory (none of energy's harnesses do), so a value set here
+// survives Compose unchanged.
+func WithDirectory(d contracts.CustomerDirectory) Option {
+	return func(s *setup) { s.directory = d }
 }
 
 // New builds a harness for t. It fails t when no Recorder or no module was
@@ -212,6 +228,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Limiter:       ratelimit.NewWithClock(pool, h.Now),
 		HTTPTransport: s.transport,
 		HTTPBackoff:   s.backoff,
+		Directory:     s.directory,
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access
