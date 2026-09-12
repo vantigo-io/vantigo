@@ -8,12 +8,22 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 )
 
-// This module's refusals are bare RFC 7807 problems and field-level validation
-// text, never identity's {code, message} bodies: .NET's Customers endpoints
-// used TypedResults.Problem and TypedResults.ValidationProblem throughout and
-// have no machine-readable code vocabulary at all, so callers key off the
-// status and the problem's title and detail (inventory §1). Nothing here may
-// grow an error code.
+// This module's own refusals are bare RFC 7807 problems and field-level
+// validation text, never identity's {code, message} bodies: .NET's Customers
+// endpoints used TypedResults.Problem and TypedResults.ValidationProblem
+// throughout and have no machine-readable code vocabulary at all, so callers
+// key off the status and the problem's title and detail (inventory §1).
+// Nothing here may grow a new error code of its own.
+//
+// forbiddenBody is the one exception, and it is not a new code: it is the
+// platform access layer's own {code,message} AuthErrorResponse shape
+// (already every operation's 401/403 in the generated contract), reused for
+// the one handler-level Access.Check this module makes beyond what
+// module.Router's x-vantigo-access already enforced — legal-identity-manage
+// on postCustomers/putCustomersById when the body carries an identity
+// (inventory §1.1/§1.4). A caller denied there should see exactly what a
+// router-level permission denial looks like, not a different shape for the
+// same kind of refusal.
 
 // writeDecodeError is the generated server's answer to a parameter or body it
 // cannot decode: a bare 400 problem. It never echoes the decoder's error,
@@ -37,6 +47,26 @@ func problem(title, detail string) apicommon.ProblemDetails {
 func validationProblem(title string, errs map[string][]string) apicommon.HttpValidationProblemDetails {
 	status := int32(http.StatusBadRequest)
 	return apicommon.HttpValidationProblemDetails{Title: &title, Status: &status, Errors: &errs}
+}
+
+// forbiddenCode and forbiddenMessage duplicate identity's access-layer
+// forbidden body (internal/identity/errors.go's forbiddenMessage and
+// Access.Reject): depguard forbids this module importing identity, and the
+// body is three lines. A caller denied by legalIdentityManage's handler-side
+// check sees exactly what module.Router's own permission denial would have
+// shown had it been able to see the request body.
+const (
+	forbiddenCode    = "forbidden"
+	forbiddenMessage = "You do not have permission to access this resource."
+)
+
+// forbiddenBody is the AuthErrorResponse forbiddenCode/forbiddenMessage
+// make, for a handler answering through a generated 403 response type.
+func forbiddenBody() apicommon.AuthErrorResponse {
+	var body apicommon.AuthErrorResponse
+	body.Error.Code = forbiddenCode
+	body.Error.Message = forbiddenMessage
+	return body
 }
 
 // paginationMetadata is PaginationMetadata.Create

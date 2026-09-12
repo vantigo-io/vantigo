@@ -63,6 +63,17 @@ func requestFrom(ctx context.Context) (*http.Request, error) {
 // access gate, and never answers 403 (inventory §6).
 const legalIdentityView = "customers:legal-identity-view"
 
+// legalIdentityManage is the permission PostCustomers/PutCustomersById
+// additionally require when the request body carries an identity
+// (CreateCustomerEndpoint.cs:38-42, UpdateCustomerEndpoint.cs:34-38,
+// inventory §1.1/§1.4). Unlike legalIdentityView, this one does gate the
+// request: module.Router's x-vantigo-access for both operations is the flat
+// create (or update+view), since whether identity is required at all
+// depends on the request body, which the router never inspects — so this is
+// the one additional Access.Check a handler makes that can itself answer
+// 403, the same shape as Task 11's conditional pricing permission.
+const legalIdentityManage = "customers:legal-identity-manage"
+
 // hasPermission reports whether the signed-in caller holds key, evaluated
 // the same way module.Router evaluates x-vantigo-access. Any failure,
 // infrastructure errors included, reads as false: a response-shaping check
