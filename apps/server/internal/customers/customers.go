@@ -247,20 +247,28 @@ func (r createdCustomerResponse) VisitPostCustomersResponse(w http.ResponseWrite
 // PostCustomers Create a new customer
 // (POST /api/v1/customers)
 //
-// Ordering follows CreateCustomerEndpoint.cs:24-82 (inventory §1.4): name,
-// status and identity are all validated and every error collected before
-// any of them short-circuits the others; there is no existence check on
-// create. The .NET handler's extra "403 immediately if identity is given
-// and the caller lacks legal-identity-manage" gate (:38-42) is the same
-// shape as Task 11's conditional pricing permission, and the business-
-// modules plan scopes that handler-level re-check pattern to Task 11 alone
-// (Global Constraints, "Contract-driven access") — deliberately not
-// reproduced here; see the task report.
+// Ordering follows CreateCustomerEndpoint.cs:24-82 (inventory §1.4): (1) if
+// identity is present and the caller lacks legal-identity-manage, 403
+// immediately, before any field validation; (2) name, status and identity
+// are then all validated and every error collected before any of them
+// short-circuits the others. There is no existence check on create. The
+// legal-identity-manage gate is an additional permission the router cannot
+// enforce — x-vantigo-access for postCustomers is the flat
+// permission:customers:create, since whether identity is required at all
+// depends on the request body, which the router never inspects — so the
+// handler is the only place it can live, the same shape as Task 11's
+// conditional pricing permission (Global Constraints, "Contract-driven
+// access"). It reuses hasPermission/requestFrom, never a second mechanism.
 func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequestObject) (gen.PostCustomersResponseObject, error) {
 	body := gen.CreateCustomerRequest{}
 	if req.Body != nil {
 		body = *req.Body
 	}
+
+	if body.Identity != nil && !s.hasPermission(ctx, legalIdentityManage) {
+		return gen.PostCustomers403JSONResponse(forbiddenBody()), nil
+	}
+
 	errs := map[string][]string{}
 
 	name, nameErr := validateFriendlyName(body.Name)
@@ -351,14 +359,17 @@ func (s *server) GetCustomer(ctx context.Context, req gen.GetCustomerRequestObje
 // PutCustomersById Update a customer
 // (PUT /api/v1/customers/{id})
 //
-// Ordering follows UpdateCustomerEndpoint.cs:23-129 (inventory §1.4): name
-// and status are validated first, together, before the customer lookup;
-// only once the customer is found is the identity re-validated, as its own
-// ValidationProblem — so an invalid name against a missing id answers 400
-// (validation wins) while an invalid identity against a missing id answers
-// 404 (existence wins). As for PostCustomers, the .NET handler's extra
-// legal-identity-manage 403 gate (:34-38) is not reproduced (see
-// PostCustomers' doc comment and the task report).
+// Ordering follows UpdateCustomerEndpoint.cs:23-129 (inventory §1.4): (1)
+// the same legal-identity-manage 403 gate as PostCustomers, first, ahead of
+// everything else — before field validation, before the 404 lookup, and
+// before the post-404 identity re-validation; (2) name and status are
+// validated next, together, before the customer lookup; (3) the lookup
+// itself, 404 if missing; (4) only once the customer is found is the
+// identity re-validated, as its own ValidationProblem — so an invalid name
+// against a missing id answers 400 (validation wins) while an invalid
+// identity against a missing id answers 404 (existence wins), but identity
+// supplied without legal-identity-manage against a missing id answers 403
+// (the permission gate wins over both).
 //
 // When the request omits identity, the persisted identity is left
 // unchanged: UpdateCustomerEndpoint.cs:71 seeds customerIdentity from
@@ -373,6 +384,10 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 	body := gen.UpdateCustomerRequest{}
 	if req.Body != nil {
 		body = *req.Body
+	}
+
+	if body.Identity != nil && !s.hasPermission(ctx, legalIdentityManage) {
+		return gen.PutCustomersById403JSONResponse(forbiddenBody()), nil
 	}
 	errs := map[string][]string{}
 
