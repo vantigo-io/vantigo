@@ -66,7 +66,7 @@ func mount(d module.Deps) (http.Handler, error) {
 		Limits:  limits,
 		Catalog: d.Catalog,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+	strict := gen.NewStrictHandlerWithOptions(newServer(d), []gen.StrictMiddlewareFunc{withRequest}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

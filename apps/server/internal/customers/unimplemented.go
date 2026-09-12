@@ -13,18 +13,6 @@ import (
 // contract is fully routed from the first commit and each later task replaces
 // the stubs of the area it implements.
 
-// GetCustomers List all customers
-// (GET /api/v1/customers)
-func (s *server) GetCustomers(context.Context, gen.GetCustomersRequestObject) (gen.GetCustomersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostCustomers Create a new customer
-// (POST /api/v1/customers)
-func (s *server) PostCustomers(context.Context, gen.PostCustomersRequestObject) (gen.PostCustomersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 // GetCustomersContacts List all contacts
 // (GET /api/v1/customers/contacts)
 func (s *server) GetCustomersContacts(context.Context, gen.GetCustomersContactsRequestObject) (gen.GetCustomersContactsResponseObject, error) {
@@ -64,48 +52,6 @@ func (s *server) GetCustomersContactsByIdCustomers(context.Context, gen.GetCusto
 // GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 // (GET /api/v1/customers/lookup/brreg)
 func (s *server) GetCustomersLookupBrreg(context.Context, gen.GetCustomersLookupBrregRequestObject) (gen.GetCustomersLookupBrregResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomersStats Get tenant-wide customer key figures
-// (GET /api/v1/customers/stats)
-func (s *server) GetCustomersStats(context.Context, gen.GetCustomersStatsRequestObject) (gen.GetCustomersStatsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomersStatsAttention Get customer dashboard attention items
-// (GET /api/v1/customers/stats/attention)
-func (s *server) GetCustomersStatsAttention(context.Context, gen.GetCustomersStatsAttentionRequestObject) (gen.GetCustomersStatsAttentionResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomersStatsSummary Get customer dashboard summary
-// (GET /api/v1/customers/stats/summary)
-func (s *server) GetCustomersStatsSummary(context.Context, gen.GetCustomersStatsSummaryRequestObject) (gen.GetCustomersStatsSummaryResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomersStatsTimeseries Get customer dashboard time series
-// (GET /api/v1/customers/stats/timeseries)
-func (s *server) GetCustomersStatsTimeseries(context.Context, gen.GetCustomersStatsTimeseriesRequestObject) (gen.GetCustomersStatsTimeseriesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteCustomersById Archive a customer (customers are never hard-deleted)
-// (DELETE /api/v1/customers/{id})
-func (s *server) DeleteCustomersById(context.Context, gen.DeleteCustomersByIdRequestObject) (gen.DeleteCustomersByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomer Get a customer by id
-// (GET /api/v1/customers/{id})
-func (s *server) GetCustomer(context.Context, gen.GetCustomerRequestObject) (gen.GetCustomerResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutCustomersById Update a customer
-// (PUT /api/v1/customers/{id})
-func (s *server) PutCustomersById(context.Context, gen.PutCustomersByIdRequestObject) (gen.PutCustomersByIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 

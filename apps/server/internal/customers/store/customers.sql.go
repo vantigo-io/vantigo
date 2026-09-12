@@ -8,7 +8,269 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const contactCreationBuckets = `-- name: ContactCreationBuckets :many
+SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS value
+FROM customers.contacts
+WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz
+GROUP BY day
+ORDER BY day
+`
+
+type ContactCreationBucketsParams struct {
+	RangeFrom time.Time
+	RangeTo   time.Time
+}
+
+type ContactCreationBucketsRow struct {
+	Day   pgtype.Date
+	Value int64
+}
+
+// ContactCreationBuckets is the timeseries's newContacts metric
+// (CustomerStatsEndpoints.cs:100-108).
+func (q *Queries) ContactCreationBuckets(ctx context.Context, arg ContactCreationBucketsParams) ([]ContactCreationBucketsRow, error) {
+	rows, err := q.db.Query(ctx, contactCreationBuckets, arg.RangeFrom, arg.RangeTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ContactCreationBucketsRow
+	for rows.Next() {
+		var i ContactCreationBucketsRow
+		if err := rows.Scan(&i.Day, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countCustomers = `-- name: CountCustomers :one
+SELECT count(*)
+FROM customers.customers
+WHERE ($1::bool OR status <> 'archived')
+  AND ($2::text IS NULL OR name ILIKE $2::text)
+`
+
+type CountCustomersParams struct {
+	IncludeArchived bool
+	Search          *string
+}
+
+// CountCustomers is the total row count GetCustomers paginates over
+// (GetCustomersEndpoint.cs:58), the same filters ListCustomersByID/ByName
+// apply below: archived customers excluded unless requested, and search
+// ILIKE-matching the name only (inventory oddity #2: the legal name and
+// legal id are never searched, despite GetCustomers's own stale doc
+// comment claiming otherwise; TS/CustomersEndpointsTests.cs's
+// GetCustomers_Search_MatchesLegalNameAndLegalIdCaseInsensitively pins the
+// absence).
+func (q *Queries) CountCustomers(ctx context.Context, arg CountCustomersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countCustomers, arg.IncludeArchived, arg.Search)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const customerCreationBuckets = `-- name: CustomerCreationBuckets :many
+SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS value
+FROM customers.customers
+WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz
+GROUP BY day
+ORDER BY day
+`
+
+type CustomerCreationBucketsParams struct {
+	RangeFrom time.Time
+	RangeTo   time.Time
+}
+
+type CustomerCreationBucketsRow struct {
+	Day   pgtype.Date
+	Value int64
+}
+
+// CustomerCreationBuckets is the timeseries's newCustomers metric
+// (CustomerStatsEndpoints.cs:88-98): one row per UTC calendar day with at
+// least one customer created in [range_from, range_to).
+func (q *Queries) CustomerCreationBuckets(ctx context.Context, arg CustomerCreationBucketsParams) ([]CustomerCreationBucketsRow, error) {
+	rows, err := q.db.Query(ctx, customerCreationBuckets, arg.RangeFrom, arg.RangeTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CustomerCreationBucketsRow
+	for rows.Next() {
+		var i CustomerCreationBucketsRow
+		if err := rows.Scan(&i.Day, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const customerIdentityFigures = `-- name: CustomerIdentityFigures :one
+SELECT
+    count(*) FILTER (WHERE legal_type = 'business') AS business_count,
+    count(*) FILTER (WHERE legal_type = 'person') AS person_count,
+    count(*) FILTER (WHERE legal_country IS NULL) AS missing_identity_count,
+    count(DISTINCT legal_country) AS distinct_country_count
+FROM customers.customers
+WHERE status <> 'archived'
+`
+
+type CustomerIdentityFiguresRow struct {
+	BusinessCount        int64
+	PersonCount          int64
+	MissingIdentityCount int64
+	DistinctCountryCount int64
+}
+
+// CustomerIdentityFigures is GetCustomerStatsEndpoint's identity-derived
+// counts (GetCustomerStatsEndpoint.cs:48-62), only ever queried when the
+// caller holds legal-identity-view; archived customers excluded, as for
+// CustomerKeyFigures. legal_country IS NULL stands in for "Identity is
+// null": the five legal_* columns are written all-or-nothing by this
+// module's own handlers (inventory §2.1's owned-type invariant, app-level
+// only — see the schema migration's comment).
+func (q *Queries) CustomerIdentityFigures(ctx context.Context) (CustomerIdentityFiguresRow, error) {
+	row := q.db.QueryRow(ctx, customerIdentityFigures)
+	var i CustomerIdentityFiguresRow
+	err := row.Scan(
+		&i.BusinessCount,
+		&i.PersonCount,
+		&i.MissingIdentityCount,
+		&i.DistinctCountryCount,
+	)
+	return i, err
+}
+
+const customerKeyFigures = `-- name: CustomerKeyFigures :one
+SELECT
+    count(*) FILTER (WHERE status <> 'archived') AS total_count,
+    count(*) FILTER (WHERE status = 'active') AS active_count,
+    count(*) FILTER (WHERE status <> 'archived' AND created_at >= $1::timestamptz) AS new_last_30_days_count
+FROM customers.customers
+`
+
+type CustomerKeyFiguresRow struct {
+	TotalCount         int64
+	ActiveCount        int64
+	NewLast30DaysCount int64
+}
+
+// CustomerKeyFigures is GetCustomerStatsEndpoint's tenant-wide counts
+// (GetCustomerStatsEndpoint.cs:29-38): archived customers excluded from
+// every figure.
+func (q *Queries) CustomerKeyFigures(ctx context.Context, since time.Time) (CustomerKeyFiguresRow, error) {
+	row := q.db.QueryRow(ctx, customerKeyFigures, since)
+	var i CustomerKeyFiguresRow
+	err := row.Scan(&i.TotalCount, &i.ActiveCount, &i.NewLast30DaysCount)
+	return i, err
+}
+
+const customerStatsSummaryContactCounts = `-- name: CustomerStatsSummaryContactCounts :one
+SELECT
+    count(*) FILTER (WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz) AS new_contacts,
+    count(*) FILTER (WHERE created_at >= $3::timestamptz AND created_at < $1::timestamptz) AS previous_new_contacts
+FROM customers.contacts
+`
+
+type CustomerStatsSummaryContactCountsParams struct {
+	PeriodFrom   time.Time
+	PeriodTo     time.Time
+	PreviousFrom time.Time
+}
+
+type CustomerStatsSummaryContactCountsRow struct {
+	NewContacts         int64
+	PreviousNewContacts int64
+}
+
+// CustomerStatsSummaryContactCounts is CustomerStatsEndpoints.Summary's
+// contact-side counts (CustomerStatsEndpoints.cs:52-55).
+func (q *Queries) CustomerStatsSummaryContactCounts(ctx context.Context, arg CustomerStatsSummaryContactCountsParams) (CustomerStatsSummaryContactCountsRow, error) {
+	row := q.db.QueryRow(ctx, customerStatsSummaryContactCounts, arg.PeriodFrom, arg.PeriodTo, arg.PreviousFrom)
+	var i CustomerStatsSummaryContactCountsRow
+	err := row.Scan(&i.NewContacts, &i.PreviousNewContacts)
+	return i, err
+}
+
+const customerStatsSummaryCustomerCounts = `-- name: CustomerStatsSummaryCustomerCounts :one
+SELECT
+    count(*) FILTER (WHERE status = 'active') AS active,
+    count(*) FILTER (WHERE status = 'active' AND created_at < $1::timestamptz) AS active_at_period_start,
+    count(*) FILTER (WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz) AS new_customers,
+    count(*) FILTER (WHERE created_at >= $3::timestamptz AND created_at < $1::timestamptz) AS previous_new_customers
+FROM customers.customers
+`
+
+type CustomerStatsSummaryCustomerCountsParams struct {
+	PeriodFrom   time.Time
+	PeriodTo     time.Time
+	PreviousFrom time.Time
+}
+
+type CustomerStatsSummaryCustomerCountsRow struct {
+	Active               int64
+	ActiveAtPeriodStart  int64
+	NewCustomers         int64
+	PreviousNewCustomers int64
+}
+
+// CustomerStatsSummaryCustomerCounts is CustomerStatsEndpoints.Summary's
+// customer-side counts (CustomerStatsEndpoints.cs:44-51): unlike
+// CustomerKeyFigures, the dashboard summary counts every status, archived
+// included — .NET's db.Customers here carries no status filter.
+// previous_from..@period_from is the immediately preceding window of the
+// same length as [period_from, period_to).
+func (q *Queries) CustomerStatsSummaryCustomerCounts(ctx context.Context, arg CustomerStatsSummaryCustomerCountsParams) (CustomerStatsSummaryCustomerCountsRow, error) {
+	row := q.db.QueryRow(ctx, customerStatsSummaryCustomerCounts, arg.PeriodFrom, arg.PeriodTo, arg.PreviousFrom)
+	var i CustomerStatsSummaryCustomerCountsRow
+	err := row.Scan(
+		&i.Active,
+		&i.ActiveAtPeriodStart,
+		&i.NewCustomers,
+		&i.PreviousNewCustomers,
+	)
+	return i, err
+}
+
+const customerTimelineSummary = `-- name: CustomerTimelineSummary :one
+SELECT
+    count(*) AS entry_count,
+    max(occurred_on)::date AS latest_occurred_on
+FROM customers.customers_timeline_entries
+WHERE customer_id = $1 AND state = 'active'
+`
+
+type CustomerTimelineSummaryRow struct {
+	EntryCount       int64
+	LatestOccurredOn pgtype.Date
+}
+
+// CustomerTimelineSummary is SafeCustomerProjection.TimelineSummaryAsync's
+// row for a single customer (SafeCustomerProjection.cs): how many active
+// timeline entries it has, and the most recent occurred_on among them.
+// Aggregates with no GROUP BY always answer one row, zero matches included
+// (entry_count 0, latest_occurred_on NULL), so :one is safe here.
+func (q *Queries) CustomerTimelineSummary(ctx context.Context, customerID int32) (CustomerTimelineSummaryRow, error) {
+	row := q.db.QueryRow(ctx, customerTimelineSummary, customerID)
+	var i CustomerTimelineSummaryRow
+	err := row.Scan(&i.EntryCount, &i.LatestOccurredOn)
+	return i, err
+}
 
 const directoryContact = `-- name: DirectoryContact :one
 SELECT id, first_name, last_name, email
@@ -207,6 +469,232 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 	return i, err
 }
 
+const insertGeneratedTimelineEvent = `-- name: InsertGeneratedTimelineEvent :exec
+WITH entry AS (
+    INSERT INTO customers.customers_timeline_entries (
+        customer_id, provenance, producer, event_type, occurred_on, occurred_at,
+        summary, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
+        created_at, updated_at
+    ) VALUES (
+        $1::int, 'generated', 'customers.api', $2::text, $3::date, $4::timestamptz,
+        $5::text, $6::jsonb, $7::int, 1, 'active', 'system', 'System',
+        $4::timestamptz, $4::timestamptz
+    )
+    RETURNING id, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
+              source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
+              created_at, updated_at
+)
+INSERT INTO customers.customers_timeline_entries_revisions (
+    customer_timeline_entry_id, revision_number, customer_id, provenance, producer, event_type,
+    occurred_on, occurred_at, summary, note, source_url, payload_json, payload_version, current_revision,
+    state, actor_kind, actor_display, created_at, updated_at
+)
+SELECT id, 1, customer_id, provenance, producer, event_type, occurred_on, occurred_at, summary, note,
+       source_url, payload_json, payload_version, current_revision, state, actor_kind, actor_display,
+       created_at, updated_at
+FROM entry
+`
+
+type InsertGeneratedTimelineEventParams struct {
+	CustomerID     int32
+	EventType      string
+	OccurredOn     pgtype.Date
+	Now            time.Time
+	Summary        string
+	PayloadJson    []byte
+	PayloadVersion int32
+}
+
+// InsertGeneratedTimelineEvent is CustomerTimelineRecorder.Add
+// (SV/CustomerTimelineRecorder.cs:127-160): every generated event is
+// written with its first, and since generated entries are never mutated
+// afterward (inventory §2.4), only revision, in one statement.
+// provenance/producer/actor_kind/actor_display/current_revision/state are
+// the recorder's fixed constants, never caller-supplied.
+func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGeneratedTimelineEventParams) error {
+	_, err := q.db.Exec(ctx, insertGeneratedTimelineEvent,
+		arg.CustomerID,
+		arg.EventType,
+		arg.OccurredOn,
+		arg.Now,
+		arg.Summary,
+		arg.PayloadJson,
+		arg.PayloadVersion,
+	)
+	return err
+}
+
+const listCustomersByID = `-- name: ListCustomersByID :many
+SELECT c.id, c.customer_number, c.name, c.status, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
+       c.legal_type, c.created_at, c.updated_at,
+       (SELECT count(*) FROM customers.customers_timeline_entries e
+         WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
+       (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
+         WHERE e.customer_id = c.id AND e.state = 'active') AS latest_occurred_on
+FROM customers.customers c
+WHERE ($1::bool OR c.status <> 'archived')
+  AND ($2::text IS NULL OR c.name ILIKE $2::text)
+ORDER BY
+    CASE WHEN NOT $3::bool THEN c.id END ASC,
+    CASE WHEN $3::bool THEN c.id END DESC
+LIMIT $5::int OFFSET $4::int
+`
+
+type ListCustomersByIDParams struct {
+	IncludeArchived bool
+	Search          *string
+	Descending      bool
+	RowOffset       int32
+	PageSize        int32
+}
+
+type ListCustomersByIDRow struct {
+	ID               int32
+	CustomerNumber   int64
+	Name             string
+	Status           string
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	EntryCount       int64
+	LatestOccurredOn pgtype.Date
+}
+
+// ListCustomersByID is GetCustomers's default sort (id, ascending unless
+// descending is requested), one page of rows with each row's timeline
+// summary inlined (GetCustomersEndpoint.cs:60-103, SafeCustomerProjection).
+func (q *Queries) ListCustomersByID(ctx context.Context, arg ListCustomersByIDParams) ([]ListCustomersByIDRow, error) {
+	rows, err := q.db.Query(ctx, listCustomersByID,
+		arg.IncludeArchived,
+		arg.Search,
+		arg.Descending,
+		arg.RowOffset,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCustomersByIDRow
+	for rows.Next() {
+		var i ListCustomersByIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerNumber,
+			&i.Name,
+			&i.Status,
+			&i.LegalCountry,
+			&i.LegalID,
+			&i.LegalName,
+			&i.LegalSource,
+			&i.LegalType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.EntryCount,
+			&i.LatestOccurredOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCustomersByName = `-- name: ListCustomersByName :many
+SELECT c.id, c.customer_number, c.name, c.status, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
+       c.legal_type, c.created_at, c.updated_at,
+       (SELECT count(*) FROM customers.customers_timeline_entries e
+         WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
+       (SELECT max(e.occurred_on)::date FROM customers.customers_timeline_entries e
+         WHERE e.customer_id = c.id AND e.state = 'active') AS latest_occurred_on
+FROM customers.customers c
+WHERE ($1::bool OR c.status <> 'archived')
+  AND ($2::text IS NULL OR c.name ILIKE $2::text)
+ORDER BY
+    CASE WHEN NOT $3::bool THEN c.name END ASC,
+    CASE WHEN $3::bool THEN c.name END DESC,
+    CASE WHEN NOT $3::bool THEN c.id END ASC,
+    CASE WHEN $3::bool THEN c.id END DESC
+LIMIT $5::int OFFSET $4::int
+`
+
+type ListCustomersByNameParams struct {
+	IncludeArchived bool
+	Search          *string
+	Descending      bool
+	RowOffset       int32
+	PageSize        int32
+}
+
+type ListCustomersByNameRow struct {
+	ID               int32
+	CustomerNumber   int64
+	Name             string
+	Status           string
+	LegalCountry     *string
+	LegalID          *string
+	LegalName        *string
+	LegalSource      *string
+	LegalType        *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	EntryCount       int64
+	LatestOccurredOn pgtype.Date
+}
+
+// ListCustomersByName is GetCustomers's sortBy=name path: name first, id as
+// the tie-break (.NET's ThenBy(c => c.Id)), same filters and pagination as
+// ListCustomersByID. Exactly one of the two CASE pairs below is non-null
+// for every row in a given call (the sort direction is a query-wide
+// parameter, not a per-row one), so the other pair contributes nothing to
+// the ordering.
+func (q *Queries) ListCustomersByName(ctx context.Context, arg ListCustomersByNameParams) ([]ListCustomersByNameRow, error) {
+	rows, err := q.db.Query(ctx, listCustomersByName,
+		arg.IncludeArchived,
+		arg.Search,
+		arg.Descending,
+		arg.RowOffset,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCustomersByNameRow
+	for rows.Next() {
+		var i ListCustomersByNameRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CustomerNumber,
+			&i.Name,
+			&i.Status,
+			&i.LegalCountry,
+			&i.LegalID,
+			&i.LegalName,
+			&i.LegalSource,
+			&i.LegalType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.EntryCount,
+			&i.LatestOccurredOn,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextCounterValue = `-- name: NextCounterValue :one
 INSERT INTO customers.counters (counter_name, next_value)
 VALUES ($1, 1)
@@ -224,4 +712,101 @@ func (q *Queries) NextCounterValue(ctx context.Context, counterName string) (int
 	var next_value int64
 	err := row.Scan(&next_value)
 	return next_value, err
+}
+
+const setCustomerStatus = `-- name: SetCustomerStatus :one
+UPDATE customers.customers
+SET status = $1, updated_at = $2::timestamptz
+WHERE id = $3
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at
+`
+
+type SetCustomerStatusParams struct {
+	Status string
+	Now    time.Time
+	ID     int32
+}
+
+// SetCustomerStatus is DeleteCustomerEndpoint's archive transition
+// (DeleteCustomerEndpoint.cs:31-38): status and updated_at only, called
+// once the handler has confirmed the row is not archived already.
+func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusParams) (CustomersCustomer, error) {
+	row := q.db.QueryRow(ctx, setCustomerStatus, arg.Status, arg.Now, arg.ID)
+	var i CustomersCustomer
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerNumber,
+		&i.Name,
+		&i.Status,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateCustomer = `-- name: UpdateCustomer :one
+UPDATE customers.customers
+SET name = $1,
+    status = $2,
+    legal_country = $3,
+    legal_id = $4,
+    legal_name = $5,
+    legal_source = $6,
+    legal_type = $7,
+    updated_at = $8::timestamptz
+WHERE id = $9
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at
+`
+
+type UpdateCustomerParams struct {
+	Name         string
+	Status       string
+	LegalCountry *string
+	LegalID      *string
+	LegalName    *string
+	LegalSource  *string
+	LegalType    *string
+	UpdatedAt    time.Time
+	ID           int32
+}
+
+// UpdateCustomer applies PUT /customers/{id}'s validated fields
+// (UpdateCustomerEndpoint.cs:88-109): name, status, and the legal identity
+// (all five columns together, or all five NULL). updated_at is whatever the
+// caller computes it should be — the row's own timestamp when nothing
+// changed, now when it did — never a database default.
+func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) (CustomersCustomer, error) {
+	row := q.db.QueryRow(ctx, updateCustomer,
+		arg.Name,
+		arg.Status,
+		arg.LegalCountry,
+		arg.LegalID,
+		arg.LegalName,
+		arg.LegalSource,
+		arg.LegalType,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i CustomersCustomer
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerNumber,
+		&i.Name,
+		&i.Status,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

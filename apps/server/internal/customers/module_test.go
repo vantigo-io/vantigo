@@ -64,13 +64,16 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 // before any is implemented: a signed-in caller holding the operation's
 // permission passes the access check and reaches the stub, which answers 501
 // rather than a 404 from an unregistered route or a 500 from a nil handler.
+// getCustomersLookupBrreg is Task 8's; customer CRUD and stats (Task 6) are
+// implemented by the time this test runs, so it targets an operation still
+// pending.
 func TestModule_StubbedOperationAnswers501(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
 	// Off-contract by design: a 501 is the platform's answer to a handler that
 	// does not exist yet, and no operation documents one.
-	r := h.SignIn(t, "customers:view").Do(http.MethodGet, "/api/v1/customers", nil,
+	r := h.SignIn(t, "customers:lookup-view").Do(http.MethodGet, "/api/v1/customers/lookup/brreg", nil,
 		modtest.SkipContract("the operation is not implemented yet"))
 	if r.Status != http.StatusNotImplemented {
 		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
