@@ -3,9 +3,9 @@ package products
 // Ported from Domain/Products/ProductCategoryHierarchyTests.cs's four
 // WouldCreateCycle facts (categories.go's wouldCreateCycle). The test
 // class's other two facts, GetSelfAndDescendantIds_ReturnsWholeSubtree and
-// _ForLeaf, exercise selfAndDescendantCategoryIDs — Task 11's function,
-// already covered by products_test.go's
-// TestGetProducts_FiltersByCategoryIncludingDescendants.
+// _ForLeaf, exercise selfAndDescendantCategoryIDs — Task 11's function
+// (products.go), ported in category_hierarchy_test.go, which also shares
+// categoryHierarchyTree below.
 
 import "testing"
 
