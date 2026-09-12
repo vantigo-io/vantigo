@@ -416,19 +416,28 @@ Maps the metering point's `PriceArea` prefix (first two characters) to an IANA z
 | Class | File | Count | Description | Port? |
 |---|---|---|---|---|
 | `ConsumptionIntervalTests` | `TS/Domain/ConsumptionIntervalTests.cs` | 2 | Rejects end-before-start; rejects negative quantity | Port |
-| `GsrnTests` | `TS/Domain/GsrnTests.cs` | 5 (2+3 `InlineData`) | Accepts 18-digit strings; rejects short/empty/non-digit | Port |
-| `MarketTimeZoneTests` | `TS/Domain/MarketTimeZoneTests.cs` | 6 (`InlineData`) | Price-area prefix → IANA zone, incl. unknown/null → Oslo fallback | Port |
-| `MeterTests` | `TS/Domain/MeterTests.cs` | 5 (3+1+1) | Rejects missing/blank meter number; rejects >64 chars; trimming allowed | Port |
-| `PriceAreaTests` | `TS/Domain/PriceAreaTests.cs` | 6 (3+3) | Accepts NN#/NN## format; rejects short/lowercase/too-long | Port |
+| `GsrnTests` | `TS/Domain/GsrnTests.cs` | 2 (2 `[Theory]`; 5 `InlineData` cases) | Accepts 18-digit strings; rejects short/empty/non-digit | Port |
+| `MarketTimeZoneTests` | `TS/Domain/MarketTimeZoneTests.cs` | 1 (1 `[Theory]`; 6 cases) | Price-area prefix → IANA zone, incl. unknown/null → Oslo fallback | Port |
+| `MeterTests` | `TS/Domain/MeterTests.cs` | 3 (2 `[Fact]` + 1 `[Theory]`; 5 cases) | Rejects missing/blank meter number; rejects >64 chars; trimming allowed | Port |
+| `PriceAreaTests` | `TS/Domain/PriceAreaTests.cs` | 2 (2 `[Theory]`; 6 cases) | Accepts NN#/NN## format; rejects short/lowercase/too-long | Port |
 | `SupplyPeriodTests` | `TS/Domain/SupplyPeriodTests.cs` | 2 | Adjacent periods don't overlap; open-ended overlaps later period | Port |
 | `EnergyPermissionCatalogTests` | `TS/Authorization/EnergyPermissionCatalogTests.cs` | 1 | Catalog keys, ordering, module/category/non-blank metadata | Port (adapt to Go catalog shape) |
 | `EnergyAuthorizationIntegrationTests` | `TS/Integration/EnergyAuthorizationIntegrationTests.cs` | 3 | (1) every endpoint 403s without its permission(s) and 401/403s a disabled user; (2) customer metering-points needs *all three* composite permissions; (3) every composite (multi-permission) endpoint 403s if any one required permission is missing | Port (re-target to Go's auth mechanism; behavior, not .NET Identity plumbing, is the contract) |
-| `EnergyEndpointsTests` | `TS/Integration/EnergyEndpointsTests.cs` | 13 | Metering-point CRUD round trip; meter swap history; manual-consumption supersede; supply-period overlap/409 + end-then-recreate; concurrent overlapping creates (1 win, rest 409); switch ends+creates contiguous; switch as move-in (no active period); switch rejects before-start/same-customer; switch rejects overlap vs. historical period; customer consumption partitioned by switch; customer consumption respects period boundaries; aggregate Oslo day/month boundaries; aggregate DST 23-hour day + `hasEstimated`; customer aggregate excludes out-of-period intervals; aggregate rejects invalid resolution | Port — this is the core functional/behavioral suite |
+| `EnergyEndpointsTests` | `TS/Integration/EnergyEndpointsTests.cs` | 15 | Metering-point CRUD round trip; meter swap history; manual-consumption supersede; supply-period overlap/409 + end-then-recreate; concurrent overlapping creates (1 win, rest 409); switch ends+creates contiguous; switch as move-in (no active period); switch rejects before-start/same-customer; switch rejects overlap vs. historical period; customer consumption partitioned by switch; customer consumption respects period boundaries; aggregate Oslo day/month boundaries; aggregate DST 23-hour day + `hasEstimated`; customer aggregate excludes out-of-period intervals; aggregate rejects invalid resolution | Port — this is the core functional/behavioral suite |
 | `EnergyTenancyIntegrationTests` | `TS/Integration/EnergyTenancyIntegrationTests.cs` | 1 | Tenant isolation of metering points/consumption + per-tenant GSRN uniqueness | **Drop (tenancy-only)** |
 
-**Total tests: 44. Portable: 43** (all except `EnergyTenancyIntegrationTests`'s single test). `EnergyApiFactory.cs`
-is test infrastructure (WebApplicationFactory + a `FakeCustomerDirectory` stubbing customers `1001`/`1002`), not a
-test class itself.
+**The metric is .NET test methods: a `[Theory]` counts as one method regardless of its `InlineData` count.**
+Every `Count` above is now a method count, with the case count noted in parentheses where the two differ.
+
+**Total: 32 methods. Portable: 31** (all except `EnergyTenancyIntegrationTests`' single tenancy-only test).
+
+Corrected 2026-09-12 in Task 16, from "44 total / 43 portable". Two errors: this table counted theory *cases*
+rather than methods for the five theory-bearing domain classes (21 cases across 8 theory methods), and it
+undercounted `EnergyEndpointsTests` as 13 where the file carries 15 `[Fact]`s. Counting methods:
+2 + 2 + 1 + 3 + 2 + 2 + 1 + 3 + 15 = 31 portable, plus the 1 dropped = 32.
+
+`EnergyApiFactory.cs` is test infrastructure (WebApplicationFactory + a `FakeCustomerDirectory` stubbing
+customers `1001`/`1002`), not a test class itself.
 
 ## 8. Oddities (porter hazards)
 

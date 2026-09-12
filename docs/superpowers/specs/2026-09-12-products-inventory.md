@@ -356,9 +356,14 @@ equivalent test harness is.
 | `Integration/ProductsEndpointsTests` | 15 | 0 | create (flattened single variant, missing-variants error, prices→effective-price resolution, duplicate SKU conflict), update-variant duplicate SKU conflict, conflicting base-price field error, update-shared-fields-only, SKU change allowed on Draft / conflict on Active, last-variant delete guard, multi-variant non-flattening, price sub-resource scoping, overlapping open-ended price conflict, invalid validity-window field error, unknown-id 404 | port |
 | `Integration/TaxCategoriesEndpointsTests` | 4 | 0 | CRUD round trip, delete-in-use conflict, unknown-tax-category field error on product create, tax category embedded with rate on product response | port |
 
+**The metric is .NET test methods: a `[Theory]` counts as one method regardless of its `InlineData` count.**
+Stated explicitly because the three module inventories previously mixed metrics (energy counted theory *cases*),
+which made their totals unaddable. The `T (cases)` column above is informational only; the totals below count
+methods.
+
 **Totals** (census corrected 2026-09-12 in Task 16, by counting `[Fact]`/`[Theory]` attributes across
 `Products.Module.Tests` directly; this section previously said 80 methods and 14 `CategoriesEndpointsTests`
-facts, both wrong): **79 test methods** (75 `[Fact]` + 4 `[Theory]` covering 16 cases).
+facts, both wrong): **79 test methods** (75 `[Fact]` + 4 `[Theory]`, the latter covering 16 cases).
 
 **7 are out of scope for the Go port** — the whole of `ProductCatalogContractTests`, because it tests
 `IProductCatalog` and the Go port does not build that interface. The business-modules design doc makes

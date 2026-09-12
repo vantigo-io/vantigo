@@ -82,6 +82,21 @@ const PoolMaxConns = 16
 
 // Migrated creates a fresh database, applies every migration, and returns a
 // pool on it (closed when the test ends) together with its connection string.
+//
+// Applying every migration per test is what bounds how many tests may start at
+// once. 00005_energy_baseline.sql creates the range-partitioned
+// consumption_intervals and takes ~648 locks in one transaction (145
+// AccessExclusive; 25 monthly partitions x ~5 relations). The shared lock table
+// is sized as max_locks_per_transaction x (max_connections +
+// max_prepared_transactions) — an aggregate, not a per-transaction cap — so
+// Postgres's defaults give ~6400 slots and a ceiling near 9 concurrent
+// migrators. Beyond it this fails with SQLSTATE 53200, "out of shared memory",
+// on a different arbitrary subset of tests every run, which reads as a flaky
+// test rather than a resource limit. Run the suite with taskset -c 0-3 (CI's
+// sizing) or -parallel 8 on a many-core host; see CONTRIBUTING.md's Go server
+// section. The migration advisory lock cannot serialise this: advisory locks
+// are per-database and every test has its own database, which is why
+// production, migrating one database, never sees it.
 func Migrated(t testing.TB) (*pgxpool.Pool, string) {
 	t.Helper()
 	databaseURL := URL(t)

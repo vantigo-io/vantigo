@@ -278,6 +278,38 @@ Rules the code relies on:
 - The image is COPY-only: `scripts/build-artifacts.sh` compiles natively and
   embeds the SPA; the Dockerfile never compiles anything.
 
+**Run the Go tests pinned to four CPUs on a many-core machine:**
+
+```bash
+cd apps/server && taskset -c 0-3 go test ./... -count=1     # or: -parallel 8
+```
+
+A full-parallelism run on a many-core host is **not** a valid gate: it fails
+with `ERROR: out of shared memory (SQLSTATE 53200)` while applying migration 5,
+and it fails in a way that looks like a flaky test rather than a resource limit.
+
+`internal/testdb` gives every test its own database, and each one applies all
+migrations. `00005_energy_baseline.sql` creates the range-partitioned
+`consumption_intervals` and takes about **648 locks in one transaction** (145 of
+them `AccessExclusive`; 25 monthly partitions times roughly 5 relations each).
+`max_locks_per_transaction` is not a per-transaction cap but an *aggregate
+sizing* parameter: the shared lock table holds roughly
+`max_locks_per_transaction × (max_connections + max_prepared_transactions)`
+slots, so the default 64 × 100 ≈ 6400. One migrator uses about a tenth of that
+and cannot exhaust it; the ceiling is around **9 concurrent migrators**. Eight
+pass (8 × 648 = 5184) and forty-four do not (44 × 648 = 28512). The migration
+advisory lock does not help, because advisory locks are per-database and every
+test has its own database — which is exactly why production, migrating one
+database, never sees this.
+
+Because the failure strikes whichever tests happen to be creating a database at
+that moment, the set of failing tests differs on every run. CI uses four CPUs
+and so never hits it.
+
+One caveat: with `max_connections ≤ 10` the shared table holds only ~640 slots
+and a **single** migrator would fail. `docker-compose.test.yml` leaves the
+default of 100.
+
 ### The API contract
 
 `openapi/*.yaml` is the single source of truth for the API: one OpenAPI 3.0 file per module plus `common.yaml` for shared components. Every operation needs an `operationId` and an `x-vantigo-access` rule (`anonymous`, `session`, `scim`, `policy:<Name>[+<Name>…]` or `permission:<module>:<verb>[+<module>:<verb>…]`, every listed name required).

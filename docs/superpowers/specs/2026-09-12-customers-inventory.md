@@ -385,9 +385,21 @@ are marked "infra, drop" below rather than "tenancy-only".
 | `Integration/SecurityHeadersIntegrationTests.cs` | 5 | Browser security headers on every response | **infra, drop** (host) |
 | `Integration/SpaFallbackIntegrationTests.cs` | 8 | SPA `index.html` templating/fallback | **infra, drop** (host) |
 
-**Portable total: 12 + 24 + 24 + 10 + 4 + 5 + 6 + 5 + 10 = 100 tests** (7 domain unit classes = 48, plus 6
-integration classes = 52). Everything else (11 classes, ~69 tests) is tenancy-only or unrelated host/identity
-infrastructure and is dropped.
+**The metric is .NET test methods: a `[Theory]` counts as one method regardless of its `InlineData` count.**
+Every `Count` above is a method count on that basis. Stated explicitly because the three module inventories
+previously mixed metrics (energy counted theory *cases*), which made their totals unaddable.
+
+**Portable total: 136 methods** (corrected 2026-09-12 in Task 16, from 100). Domain, 7 classes = **48**:
+12 + 5 + 6 + 7 + 7 + 5 + 6. Integration, 8 classes = **88**: 24 + 24 + 10 + 4 + 5 + 6 + 5 + 10. 48 + 88 = 136.
+
+The previous "100" came from an addend list — `12 + 24 + 24 + 10 + 4 + 5 + 6 + 5 + 10` — that carried only
+**one** of the seven "port" domain classes (`ContactValueObjectTests`' 12) and silently omitted the other six
+(`CountryCode` 5, `FriendlyName` 6, `LegalId` 7, `LegalName` 7, `LegalType` 5, `LegalIdentity` 6 = **36**), even
+though the same sentence correctly said the domain classes total 48. 100 + 36 = 136.
+
+Cross-checked against the whole project: 211 methods exist in `Customers.Module.Tests`; **75 are dropped across
+12 classes** (2 tenancy-only classes, 10 unrelated host/identity/infra classes); 211 − 75 = 136. The earlier
+"11 classes, ~69 tests" understated both.
 
 ## 8. Oddities
 
