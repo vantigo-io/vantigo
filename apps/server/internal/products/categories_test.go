@@ -197,6 +197,18 @@ func TestCreateCategory_WithUnknownParent_ReturnsFieldError(t *testing.T) {
 
 // Ported from Integration/CategoriesEndpointsTests.cs.
 // CreateCategory_WithDuplicateSiblingName_ReturnsConflict.
+//
+// Asserts the problem's title and detail, not just the status — fix round
+// 1: a status-only assertion here cannot distinguish the app-level
+// CategorySiblingNameExists pre-check (categories.go, this friendly
+// "Duplicate category name" title/detail) from the unique index's own
+// 23505 backstop turning into httpx.WriteError's generic ConflictDetail.
+// Both root categories below have no parentId (nil), so this is also the
+// NULLS NOT DISTINCT root-vs-root case (products inventory §3): mutating
+// CategorySiblingNameExists from IS NOT DISTINCT FROM to = would silently
+// route this exact scenario through the DB backstop instead of the
+// pre-check, changing the response body while leaving the status 409 —
+// this assertion is the one that would catch it.
 func TestCreateCategory_WithDuplicateSiblingName_ReturnsConflict(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -209,7 +221,16 @@ func TestCreateCategory_WithDuplicateSiblingName_ReturnsConflict(t *testing.T) {
 	}
 	second := c.Do(http.MethodPost, "/api/v1/products/categories", map[string]any{"name": name})
 	if second.Status != http.StatusConflict {
-		t.Errorf("status %d body %s, want 409", second.Status, second.Body)
+		t.Fatalf("status %d body %s, want 409", second.Status, second.Body)
+	}
+	var problem problemJSON
+	second.JSON(&problem)
+	if problem.Title != "Duplicate category name" {
+		t.Errorf("Title = %q, want %q", problem.Title, "Duplicate category name")
+	}
+	wantDetail := fmt.Sprintf("A category named '%s' already exists under the same parent.", name)
+	if problem.Detail != wantDetail {
+		t.Errorf("Detail = %q, want %q", problem.Detail, wantDetail)
 	}
 }
 
