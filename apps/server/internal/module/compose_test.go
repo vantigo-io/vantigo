@@ -12,6 +12,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
+	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
@@ -134,6 +135,52 @@ func TestCompose_RoutesToModulesAndAnswers404Otherwise(t *testing.T) {
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
 		t.Errorf("Content-Type = %q, want application/problem+json", ct)
+	}
+}
+
+// A module cfg.Modules does not enable contributes no route, no
+// permission-catalog entry and no contract path: its paths fall through to
+// the /api 404 problem, exactly as if it had never been passed to Compose.
+func TestCompose_DisabledModuleContributesNothing(t *testing.T) {
+	alphaPerm := contracts.Permission{Key: "alpha:manage", Display: "d", Description: "d", Category: "c"}
+	betaPerm := contracts.Permission{Key: "beta:manage", Display: "d", Description: "d", Category: "c"}
+	var gotCatalog map[string]contracts.Permission
+
+	handler, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Permissions: []contracts.Permission{alphaPerm}, Mount: func(d Deps) (http.Handler, error) {
+			gotCatalog = d.Catalog
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Permissions: []contracts.Permission{betaPerm}, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/alpha/x", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if want := "alpha:/api/v1/alpha/x"; rec.Body.String() != want {
+		t.Errorf("enabled module: body = %q, want %q", rec.Body.String(), want)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/beta/y", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("disabled module: status = %d, want 404", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("disabled module: Content-Type = %q, want application/problem+json", ct)
+	}
+
+	if _, ok := gotCatalog["alpha:manage"]; !ok {
+		t.Error("catalog is missing the enabled module's permission")
+	}
+	if _, ok := gotCatalog["beta:manage"]; ok {
+		t.Error("catalog holds the disabled module's permission")
 	}
 }
 

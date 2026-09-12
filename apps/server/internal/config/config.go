@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,8 @@ import (
 	"unicode"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
 
 // Env is the deployment environment. Only development relaxes anything.
@@ -135,6 +138,12 @@ type Config struct {
 	SCIM *SCIMConfig
 
 	TrustedProxyCIDRs []netip.Prefix
+
+	// Modules are the business modules MODULES enables (trimmed, lower-cased
+	// names from the known set). Identity is always mounted and never
+	// appears here; module.Compose mounts only the modules this list enables
+	// plus identity.
+	Modules []string
 }
 
 // IsDevelopment reports whether APP_ENV=development.
@@ -217,6 +226,8 @@ func Load(env map[string]string) (*Config, error) {
 	c.SCIM = scim(&p, env)
 
 	c.TrustedProxyCIDRs = trustedProxyCIDRs(&p, env, c)
+
+	c.Modules = modules(&p, env)
 
 	if c.EnforcesTransportSecurity() {
 		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
@@ -835,6 +846,60 @@ func trustedProxyCIDRs(p *problems, env map[string]string, c *Config) []netip.Pr
 	if len(*p) == before && len(out) == 0 && c.TrustedProxyHops > 0 && !c.IsDevelopment() {
 		p.add("TRUSTED_PROXY_HOPS", "requires TRUSTED_PROXY_CIDRS outside development: forwarded headers are honoured only from a peer inside that list")
 	}
+	return out
+}
+
+// knownModules are the business modules MODULES may enable: openapi.Modules
+// (the contract names, the one place that list is written) less identity,
+// which is always mounted and never appears in MODULES.
+var knownModules = func() []string {
+	out := make([]string, 0, len(openapi.Modules)-1)
+	for _, m := range openapi.Modules {
+		if m != "identity" {
+			out = append(out, m)
+		}
+	}
+	return out
+}()
+
+// defaultModules are enabled when MODULES is unset: every business module
+// this sub-project ports. communications arrives in a later sub-project and
+// is not on by default.
+var defaultModules = []string{"customers", "products", "energy"}
+
+// modules parses MODULES, a comma list of business module names this
+// deployment enables. Entries are trimmed and lower-cased; empty entries
+// (from "a,,b" or surrounding commas) are ignored. An entry outside
+// knownModules is a problem naming both the offending value and the known
+// set. energy depends on customers, and so does communications: enabling
+// either without customers is its own problem, naming both. Identity is
+// always mounted and is never listed here.
+func modules(p *problems, env map[string]string) []string {
+	v := env["MODULES"]
+	if v == "" {
+		return append([]string(nil), defaultModules...)
+	}
+
+	var out []string
+	for _, raw := range strings.Split(v, ",") {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		if name == "" {
+			continue
+		}
+		if !slices.Contains(knownModules, name) {
+			p.add("MODULES", "%q is not a known module; must be one of %s", name, strings.Join(knownModules, ", "))
+			continue
+		}
+		out = append(out, name)
+	}
+
+	if slices.Contains(out, "energy") && !slices.Contains(out, "customers") {
+		p.add("MODULES", "energy requires customers")
+	}
+	if slices.Contains(out, "communications") && !slices.Contains(out, "customers") {
+		p.add("MODULES", "communications requires customers")
+	}
+
 	return out
 }
 

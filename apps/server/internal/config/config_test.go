@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -808,5 +809,33 @@ func TestLoad_SystemAdminEmail(t *testing.T) {
 	}
 	if cfg := mustLoad(t, validEnv()); cfg.SystemAdminEmail != "" {
 		t.Errorf("SystemAdminEmail = %q, want empty by default", cfg.SystemAdminEmail)
+	}
+}
+
+func TestLoad_Modules(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy"}) {
+		t.Errorf("Modules = %v, want the default customers,products,energy when MODULES is unset", cfg.Modules)
+	}
+
+	cfg := mustLoad(t, with(validEnv(), "MODULES", " Customers ,, ENERGY,products "))
+	if !slices.Equal(cfg.Modules, []string{"customers", "energy", "products"}) {
+		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
+	}
+
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications") {
+		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
+	}
+
+	if msg := loadError(t, with(validEnv(), "MODULES", "energy")); !strings.Contains(msg, "MODULES: energy requires customers") {
+		t.Errorf("error = %q, want energy without customers named", msg)
+	}
+
+	if msg := loadError(t, with(validEnv(), "MODULES", "communications")); !strings.Contains(msg, "MODULES: communications requires customers") {
+		t.Errorf("error = %q, want communications without customers named", msg)
+	}
+
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,energy,communications"))
+	if !slices.Equal(cfg.Modules, []string{"customers", "energy", "communications"}) {
+		t.Errorf("Modules = %v, want exactly customers,energy,communications", cfg.Modules)
 	}
 }
