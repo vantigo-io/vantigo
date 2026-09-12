@@ -35,6 +35,27 @@ components:
         id: { type: string }
 `
 
+// alphaRootContract declares the module's own root path, "/api/v1/alpha", as
+// the real customers contract declares "/api/v1/customers" for the customer
+// listing and its create, alongside a path below it.
+const alphaRootContract = `
+openapi: 3.0.3
+info: { title: Alpha, version: "1" }
+paths:
+  /api/v1/alpha:
+    get:
+      operationId: getAlpha
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+  /api/v1/alpha/x:
+    get:
+      operationId: getAlphaX
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
 const betaContract = `
 openapi: 3.0.3
 info: { title: Beta, version: "1" }
@@ -150,6 +171,45 @@ func TestCompose_RoutesToModulesAndAnswers404Otherwise(t *testing.T) {
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
 		t.Errorf("Content-Type = %q, want application/problem+json", ct)
+	}
+}
+
+// A module whose contract declares its own root path receives requests for
+// it, path unchanged. The subtree pattern alone does not cover that path:
+// http.ServeMux would answer it with a redirect to the trailing-slash form,
+// which no contract declares and the module's own router would then answer
+// 404, leaving the customer listing unreachable.
+func TestCompose_RoutesTheModulesOwnRootPath(t *testing.T) {
+	handler, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaRootContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: staticHandler("alpha")},
+		Module{Name: "beta", Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/alpha", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if want := "alpha:/api/v1/alpha"; rec.Body.String() != want {
+		t.Errorf("root path: body = %q, want %q (the full path, unstripped, and no redirect)", rec.Body.String(), want)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/alpha/x", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if want := "alpha:/api/v1/alpha/x"; rec.Body.String() != want {
+		t.Errorf("subtree: body = %q, want %q", rec.Body.String(), want)
+	}
+
+	// beta's contract declares no root path of its own, so nothing is
+	// registered for it and http.ServeMux's subtree redirect still applies,
+	// exactly as before.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/beta", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusTemporaryRedirect {
+		t.Errorf("a module without a root path: status = %d, want the unchanged ServeMux redirect", rec.Code)
 	}
 }
 
