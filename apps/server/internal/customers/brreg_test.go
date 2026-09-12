@@ -282,6 +282,47 @@ func TestBrregLookup_WhenRegistryIsUnavailable_ReturnsBadGateway(t *testing.T) {
 	}
 }
 
+// TestBrregLookup_DoesNotFollowRedirects pins the client's CheckRedirect: a
+// 3xx from the registry is handed back to lookup as the non-2xx it is — 502
+// to the caller — and the redirect target is never fetched. Without
+// http.ErrUseLastResponse, net/http follows up to ten redirects, which would
+// send this request (Location and all) to a host no operator configured. The
+// status alone cannot catch that, because a redirect loop eventually fails
+// and also ends in 502; the assertion that matters is which hosts the
+// transport was asked for.
+func TestBrregLookup_DoesNotFollowRedirects(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var hosts []string
+	transport := &fakeBrregTransport{}
+	transport.setOnRequest(func(r *http.Request) (*http.Response, error) {
+		mu.Lock()
+		hosts = append(hosts, r.URL.Host)
+		mu.Unlock()
+		resp := jsonResponse(http.StatusFound, "")
+		resp.Header.Set("Location", "https://evil.example/enhetsregisteret/api/enheter?navn=equinor")
+		return resp, nil
+	})
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	c := h.SignIn(t, "customers:lookup-view")
+
+	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
+	if r.Status != http.StatusBadGateway {
+		t.Fatalf("status %d body %s, want 502 (a redirect is an upstream failure, not an answer)", r.Status, r.Body)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if slices.Contains(hosts, "evil.example") {
+		t.Errorf("the client followed the redirect: hosts asked for = %v, none may be the redirect target", hosts)
+	}
+	// A 302 is not retryable (isRetryableStatus), so the loop stops on the
+	// first attempt rather than spending the remaining three.
+	if got := transport.Attempts(); got != 1 {
+		t.Errorf("attempts = %d, want 1 (a redirect is not retried and not followed)", got)
+	}
+}
+
 // This section is not a port: it pins the retry count, the per-attempt
 // timeout and the exact 502 boundary (brreg.go's file doc comment), none of
 // which any .NET test measures directly — LookupEndpointsTests.cs only

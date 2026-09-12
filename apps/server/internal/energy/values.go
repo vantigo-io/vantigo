@@ -1,6 +1,7 @@
 package energy
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -113,13 +114,20 @@ func likePattern(search string) string {
 // rounded in Go — Postgres's numeric(14,3) column scale is where rounding
 // happens (energy inventory §3.1 oddity 7), exactly as .NET relied on
 // Postgres to do it.
-func numericFromFloatPtr(v *float64) pgtype.Numeric {
+// Scan's error is returned rather than discarded, for the reason products'
+// own copy gives: it can only fire for an infinity (Postgres numeric has a
+// NaN of its own, so "NaN" scans fine), which encoding/json refuses to
+// decode anyway, so no request reaches it today — but discarding it would
+// store a silent SQL NULL for a number the caller actually sent.
+func numericFromFloatPtr(v *float64) (pgtype.Numeric, error) {
 	if v == nil {
-		return pgtype.Numeric{}
+		return pgtype.Numeric{}, nil
 	}
 	var n pgtype.Numeric
-	_ = n.Scan(strconv.FormatFloat(*v, 'f', -1, 64))
-	return n
+	if err := n.Scan(strconv.FormatFloat(*v, 'f', -1, 64)); err != nil {
+		return pgtype.Numeric{}, fmt.Errorf("energy: %v is not a storable decimal: %w", *v, err)
+	}
+	return n, nil
 }
 
 func floatPtrFromNumeric(n pgtype.Numeric) *float64 {
@@ -137,10 +145,8 @@ func floatPtrFromNumeric(n pgtype.Numeric) *float64 {
 // required numeric(14,3) field (ManualConsumptionRequest.QuantityKwh):
 // formatted the same way — shortest round-tripping decimal text, with
 // rounding left to Postgres's column scale.
-func numericFromFloat(v float64) pgtype.Numeric {
-	var n pgtype.Numeric
-	_ = n.Scan(strconv.FormatFloat(v, 'f', -1, 64))
-	return n
+func numericFromFloat(v float64) (pgtype.Numeric, error) {
+	return numericFromFloatPtr(&v)
 }
 
 // floatFromNumeric is floatPtrFromNumeric's non-nullable counterpart, for a

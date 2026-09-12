@@ -137,8 +137,12 @@ func (s *server) PostProductsTaxCategories(ctx context.Context, req gen.PostProd
 			"Duplicate tax category name", fmt.Sprintf("A tax category named '%s' already exists.", name), http.StatusConflict)), nil
 	}
 
+	rate, err := numericFromFloat(body.Rate)
+	if err != nil {
+		return nil, err
+	}
 	created, err := q.InsertTaxCategory(ctx, store.InsertTaxCategoryParams{
-		Name: name, Kind: kind, Rate: numericFromFloat(body.Rate), Now: s.deps.Clock(),
+		Name: name, Kind: kind, Rate: rate, Now: s.deps.Clock(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("products: insert tax category: %w", err)
@@ -197,8 +201,12 @@ func (s *server) PutProductsTaxCategoriesById(ctx context.Context, req gen.PutPr
 			"Duplicate tax category name", fmt.Sprintf("A tax category named '%s' already exists.", name), http.StatusConflict)), nil
 	}
 
+	rate, err := numericFromFloat(body.Rate)
+	if err != nil {
+		return nil, err
+	}
 	updated, err := q.UpdateTaxCategory(ctx, store.UpdateTaxCategoryParams{
-		Name: name, Kind: kind, Rate: numericFromFloat(body.Rate), UpdatedAt: s.deps.Clock(), ID: req.Id,
+		Name: name, Kind: kind, Rate: rate, UpdatedAt: s.deps.Clock(), ID: req.Id,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("products: update tax category: %w", err)

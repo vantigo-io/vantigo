@@ -283,6 +283,10 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 
 	now := s.deps.Clock()
 	connStatus, _ := parseConnectionStatus(body.ConnectionStatus)
+	expected, err := numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh)
+	if err != nil {
+		return nil, fmt.Errorf("energy: create metering point: %w", err)
+	}
 	var created store.EnergyMeteringPoint
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
@@ -295,7 +299,7 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 			CountryCode:                  resolveCountryCode(body.Address.CountryCode),
 			PriceArea:                    *body.PriceArea,
 			GridArea:                     trimmedOrNil(body.GridArea),
-			ExpectedAnnualConsumptionKwh: numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh),
+			ExpectedAnnualConsumptionKwh: expected,
 			Latitude:                     body.Latitude,
 			Longitude:                    body.Longitude,
 			ConnectionStatus:             connStatus,
@@ -373,6 +377,10 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 	}
 
 	connStatus, _ := parseConnectionStatus(body.ConnectionStatus)
+	expected, err := numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh)
+	if err != nil {
+		return nil, fmt.Errorf("energy: update metering point: %w", err)
+	}
 	updated, err := q.UpdateMeteringPoint(ctx, store.UpdateMeteringPointParams{
 		ID:                           req.Id,
 		Gsrn:                         *body.Gsrn,
@@ -382,7 +390,7 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 		CountryCode:                  resolveCountryCode(body.Address.CountryCode),
 		PriceArea:                    *body.PriceArea,
 		GridArea:                     trimmedOrNil(body.GridArea),
-		ExpectedAnnualConsumptionKwh: numericFromFloatPtr(body.ExpectedAnnualConsumptionKwh),
+		ExpectedAnnualConsumptionKwh: expected,
 		Latitude:                     body.Latitude,
 		Longitude:                    body.Longitude,
 		ConnectionStatus:             connStatus,

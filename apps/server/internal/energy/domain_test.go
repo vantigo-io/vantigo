@@ -6,6 +6,50 @@ import (
 	"time"
 )
 
+// TestNumericFromFloat_RejectsUnstorableValues pins that
+// pgtype.Numeric.Scan's error is propagated rather than discarded
+// (values.go). Discarding it left the zero pgtype.Numeric — an invalid
+// value, which writes as SQL NULL — so an infinity would have become a
+// silent NULL in numeric(14,3) instead of failing. No request reaches this
+// today, because every value arrives through encoding/json, which refuses to
+// decode either an infinity or a NaN; that is exactly why only a direct test
+// can hold the behaviour. Mirrors products' own copy in pricing_test.go,
+// including its finding that NaN is *not* unstorable: Postgres numeric has
+// its own NaN, so only the two infinities fail to scan.
+func TestNumericFromFloat_RejectsUnstorableValues(t *testing.T) {
+	t.Parallel()
+	for _, v := range []float64{math.Inf(1), math.Inf(-1)} {
+		if _, err := numericFromFloat(v); err == nil {
+			t.Errorf("numericFromFloat(%v) returned no error, want one rather than a silent SQL NULL", v)
+		}
+	}
+
+	nan, err := numericFromFloat(math.NaN())
+	if err != nil {
+		t.Fatalf("numericFromFloat(NaN): %v, want no error (Postgres numeric has its own NaN)", err)
+	}
+	if !nan.Valid || !nan.NaN {
+		t.Errorf("numericFromFloat(NaN) = %+v, want a Valid NaN rather than the invalid SQL NULL zero value", nan)
+	}
+
+	n, err := numericFromFloat(1.5)
+	if err != nil {
+		t.Fatalf("numericFromFloat(1.5): %v, want no error", err)
+	}
+	if !n.Valid {
+		t.Error("numericFromFloat(1.5) is not Valid, want a storable value")
+	}
+
+	// nil is the column's own NULL for an optional field, never an error.
+	null, err := numericFromFloatPtr(nil)
+	if err != nil {
+		t.Fatalf("numericFromFloatPtr(nil): %v, want no error", err)
+	}
+	if null.Valid {
+		t.Error("numericFromFloatPtr(nil) is Valid, want the invalid (SQL NULL) zero value")
+	}
+}
+
 // Ported from TS/Domain/GsrnTests.cs.
 func TestGsrn_IsValid(t *testing.T) {
 	t.Parallel()

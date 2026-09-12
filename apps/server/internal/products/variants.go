@@ -115,19 +115,26 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 	var priceRows []store.ProductsProductPrice
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		var err error
+		nums, err := numericsFromVariant(parsed)
+		if err != nil {
+			return err
+		}
 		variant, err = txq.InsertProductVariant(ctx, store.InsertProductVariantParams{
 			ProductID: req.Id, Sku: parsed.Sku, Barcode: parsed.Barcode, Unit: parsed.Unit,
-			StandardCost: numericFromFloatPtr(parsed.StandardCost), WeightKg: numericFromFloatPtr(parsed.WeightKg),
-			LengthCm: numericFromFloatPtr(parsed.LengthCm), WidthCm: numericFromFloatPtr(parsed.WidthCm), HeightCm: numericFromFloatPtr(parsed.HeightCm),
+			StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
+			LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
 			OptionValues: marshalOptionValues(parsed.OptionValues), Now: now,
 		})
 		if err != nil {
 			return err
 		}
 		for _, price := range parsed.Prices {
+			amount, aerr := numericFromFloat(price.Amount)
+			if aerr != nil {
+				return aerr
+			}
 			row, err := txq.InsertProductPrice(ctx, store.InsertProductPriceParams{
-				VariantID: variant.ID, Currency: price.Currency, Amount: numericFromFloat(price.Amount),
+				VariantID: variant.ID, Currency: price.Currency, Amount: amount,
 				ValidFrom: price.ValidFrom, ValidTo: price.ValidTo,
 			})
 			if err != nil {
@@ -211,10 +218,14 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 		}
 	}
 
+	nums, err := numericsFromVariant(parsed)
+	if err != nil {
+		return nil, err
+	}
 	updated, err := q.UpdateProductVariant(ctx, store.UpdateProductVariantParams{
 		Sku: parsed.Sku, Barcode: parsed.Barcode, Unit: parsed.Unit,
-		StandardCost: numericFromFloatPtr(parsed.StandardCost), WeightKg: numericFromFloatPtr(parsed.WeightKg),
-		LengthCm: numericFromFloatPtr(parsed.LengthCm), WidthCm: numericFromFloatPtr(parsed.WidthCm), HeightCm: numericFromFloatPtr(parsed.HeightCm),
+		StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
+		LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
 		OptionValues: marshalOptionValues(parsed.OptionValues), UpdatedAt: s.deps.Clock(), ID: req.VariantId,
 	})
 	if err != nil {

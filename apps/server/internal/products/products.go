@@ -32,10 +32,12 @@ func likePattern(search string) string {
 	return "%" + likeReplacer.Replace(search) + "%"
 }
 
-// paginationMetadataOf is PaginationMetadata.Create
+// paginationMetadata is PaginationMetadata.Create
 // (Endpoints/Dtos/PaginationMetadata.cs:18-31), duplicated from customers'
-// errors.go: depguard forbids this module importing customers.
-func paginationMetadataOf(page, pageSize, totalCount int32) apicommon.PaginationMetadata {
+// errors.go under the same name: depguard forbids this module importing
+// customers, so the body is copied, but a reader comparing the two modules
+// should not have to notice that one calls it something else.
+func paginationMetadata(page, pageSize, totalCount int32) apicommon.PaginationMetadata {
 	var totalPages int32
 	if pageSize > 0 {
 		totalPages = int32(math.Ceil(float64(totalCount) / float64(pageSize)))
@@ -298,7 +300,7 @@ func (s *server) GetProducts(ctx context.Context, req gen.GetProductsRequestObje
 
 	return gen.GetProducts200JSONResponse{
 		Data:       data,
-		Pagination: paginationMetadataOf(page, pageSize, int32(total)),
+		Pagination: paginationMetadata(page, pageSize, int32(total)),
 	}, nil
 }
 
@@ -441,10 +443,14 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 		}
 
 		for _, v := range parsed.Variants {
+			nums, nerr := numericsFromVariant(v)
+			if nerr != nil {
+				return nerr
+			}
 			variant, err := txq.InsertProductVariant(ctx, store.InsertProductVariantParams{
 				ProductID: created.ID, Sku: v.Sku, Barcode: v.Barcode, Unit: v.Unit,
-				StandardCost: numericFromFloatPtr(v.StandardCost), WeightKg: numericFromFloatPtr(v.WeightKg),
-				LengthCm: numericFromFloatPtr(v.LengthCm), WidthCm: numericFromFloatPtr(v.WidthCm), HeightCm: numericFromFloatPtr(v.HeightCm),
+				StandardCost: nums.StandardCost, WeightKg: nums.WeightKg,
+				LengthCm: nums.LengthCm, WidthCm: nums.WidthCm, HeightCm: nums.HeightCm,
 				OptionValues: marshalOptionValues(v.OptionValues), Now: now,
 			})
 			if err != nil {
@@ -453,8 +459,12 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 			variantRows = append(variantRows, variant)
 
 			for _, price := range v.Prices {
+				amount, aerr := numericFromFloat(price.Amount)
+				if aerr != nil {
+					return aerr
+				}
 				row, err := txq.InsertProductPrice(ctx, store.InsertProductPriceParams{
-					VariantID: variant.ID, Currency: price.Currency, Amount: numericFromFloat(price.Amount),
+					VariantID: variant.ID, Currency: price.Currency, Amount: amount,
 					ValidFrom: price.ValidFrom, ValidTo: price.ValidTo,
 				})
 				if err != nil {

@@ -93,8 +93,12 @@ func (s *server) PostProductsByIdVariantsByVariantIdPrices(ctx context.Context, 
 		}
 	}
 
+	amount, err := numericFromFloat(candidate.Amount)
+	if err != nil {
+		return nil, err
+	}
 	created, err := q.InsertProductPrice(ctx, store.InsertProductPriceParams{
-		VariantID: variant.ID, Currency: candidate.Currency, Amount: numericFromFloat(candidate.Amount),
+		VariantID: variant.ID, Currency: candidate.Currency, Amount: amount,
 		ValidFrom: candidate.ValidFrom, ValidTo: candidate.ValidTo,
 	})
 	if err != nil {
@@ -149,8 +153,12 @@ func (s *server) PutProductsByIdVariantsByVariantIdPricesByPriceId(ctx context.C
 		}
 	}
 
+	amount, err := numericFromFloat(candidate.Amount)
+	if err != nil {
+		return nil, err
+	}
 	updated, err := q.UpdatePrice(ctx, store.UpdatePriceParams{
-		Currency: candidate.Currency, Amount: numericFromFloat(candidate.Amount),
+		Currency: candidate.Currency, Amount: amount,
 		ValidFrom: candidate.ValidFrom, ValidTo: candidate.ValidTo, ID: req.PriceId,
 	})
 	if err != nil {
