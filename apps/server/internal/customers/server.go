@@ -74,8 +74,12 @@ const legalIdentityView = "customers:legal-identity-view"
 // request: module.Router's x-vantigo-access for both operations is the flat
 // create (or update+view), since whether identity is required at all
 // depends on the request body, which the router never inspects — so this is
-// the one additional Access.Check a handler makes that can itself answer
-// 403, the same shape as Task 11's conditional pricing permission.
+// one of exactly two handler-side Access.Check gates that can themselves
+// answer 403. The other is Task 11's conditional pricing permission
+// (internal/products/server.go's hasPermission); the two have the same
+// shape — a permission conditional on payload content the router cannot
+// see — and the plan's Global Constraints names both, so neither comment
+// should claim to be the only one.
 const legalIdentityManage = "customers:legal-identity-manage"
 
 // hasPermission reports whether the signed-in caller holds key, evaluated
