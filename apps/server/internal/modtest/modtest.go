@@ -115,6 +115,7 @@ type setup struct {
 	modules   []module.Module
 	recorder  *contracttest.Recorder
 	transport http.RoundTripper
+	backoff   func(int) time.Duration
 }
 
 // Option adjusts a harness before it is built.
@@ -146,6 +147,15 @@ func WithEnv(k, v string) Option {
 // module falls back to its own production default.
 func WithTransport(rt http.RoundTripper) Option {
 	return func(s *setup) { s.transport = rt }
+}
+
+// WithBackoff sets the function Deps.HTTPBackoff carries, for a module whose
+// own outbound HTTP client retries with a backoff: fn stands in for that
+// client's real backoff, typically a function returning 0 so a test
+// exercising several retries never actually sleeps. Unset, a module falls
+// back to its own production default.
+func WithBackoff(fn func(attempt int) time.Duration) Option {
+	return func(s *setup) { s.backoff = fn }
 }
 
 // New builds a harness for t. It fails t when no Recorder or no module was
@@ -201,6 +211,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Secrets:       box,
 		Limiter:       ratelimit.NewWithClock(pool, h.Now),
 		HTTPTransport: s.transport,
+		HTTPBackoff:   s.backoff,
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access
