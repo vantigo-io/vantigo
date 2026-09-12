@@ -33,13 +33,25 @@ type Deps struct {
 	// Doc is this module's own contract. Compose sets it, on a copy of Deps,
 	// before calling Mount, by loading the module's own specs/<name>.yaml.
 	Doc *openapi3.T
+	// Directory is the customer directory, the one sanctioned way a module
+	// reads another's data (see contracts.CustomerDirectory). Compose sets
+	// it, on every module's Deps copy, from whichever enabled module
+	// declares Module.Directory; it is nil when no enabled module provides
+	// one.
+	Directory contracts.CustomerDirectory
 }
 
 // Module is one business module: its name (the path segment it mounts under,
 // /api/v1/<name>/), the permissions it contributes to the composed catalog,
-// and how to build its handler.
+// how to build its handler, and, optionally, the customer directory it
+// provides to every other module.
 type Module struct {
 	Name        string
 	Permissions []contracts.Permission
 	Mount       func(Deps) (http.Handler, error)
+	// Directory builds this module's contracts.CustomerDirectory
+	// implementation, if it provides one. At most one enabled module may
+	// set it; Compose calls it before any Mount runs and puts the result on
+	// every module's Deps, including the provider's own.
+	Directory func(Deps) contracts.CustomerDirectory
 }

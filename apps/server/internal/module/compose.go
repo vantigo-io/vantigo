@@ -20,8 +20,9 @@ import (
 // contract of the modules at GET /api/openapi.json (RuleSession), and
 // answers every other /api path with httpx.NotFound. It fails on a
 // duplicate name, an invalid or duplicate permission, a Mount error, a path
-// two modules both declare, or a component two modules declare differently
-// under the same name.
+// two modules both declare, a component two modules declare differently
+// under the same name, or two modules both declaring a customer directory
+// (naming both).
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	return compose(deps, openapi.Load, mods...)
 }
@@ -49,6 +50,30 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 			}
 			catalog[perm.Key] = perm
 		}
+	}
+
+	// The customer directory is the one sanctioned cross-module read
+	// (contracts.CustomerDirectory): at most one enabled module may declare
+	// it. It is resolved here, before any Mount runs, so the result can be
+	// copied onto every module's Deps below — including the provider's own,
+	// which may need it too. Directory runs on deps as Compose itself
+	// received it, deliberately narrower than the per-module copy Mount
+	// gets (no Doc, no per-module Catalog reference beyond what is already
+	// built here): building a directory is a data-layer concern (Pool,
+	// Config, Clock, Secrets, ...), not a contract one, and no module's own
+	// Doc is loaded yet at this point regardless.
+	var directoryProvider *Module
+	for i := range mods {
+		if mods[i].Directory == nil {
+			continue
+		}
+		if directoryProvider != nil {
+			return nil, fmt.Errorf("module: multiple modules declare a customer directory: %q and %q", directoryProvider.Name, mods[i].Name)
+		}
+		directoryProvider = &mods[i]
+	}
+	if directoryProvider != nil {
+		deps.Directory = directoryProvider.Directory(deps)
 	}
 
 	outer := http.NewServeMux()
