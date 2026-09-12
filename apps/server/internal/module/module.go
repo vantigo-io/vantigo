@@ -45,6 +45,11 @@ type Deps struct {
 	// fake so no test ever touches the network, the same shape as Clock
 	// makes time controllable.
 	HTTPTransport http.RoundTripper
+	// HTTPBackoff is the delay a module's own outbound HTTP client waits
+	// before retry attempt n (1-indexed). nil in production, meaning that
+	// client's own real backoff; a test harness sets it (typically to a
+	// function returning 0) so a retry loop's tests never actually sleep.
+	HTTPBackoff func(attempt int) time.Duration
 }
 
 // Module is one business module: its name (the path segment it mounts under,

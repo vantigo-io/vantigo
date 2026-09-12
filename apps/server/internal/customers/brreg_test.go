@@ -18,12 +18,15 @@ import (
 // This file ports Integration/LookupEndpointsTests.cs (customers inventory
 // §5, §7): all 6 of its tests, plus tests of this port's own explicit
 // divergences from .NET — no circuit breaker, no response cache (recorded
-// in the spec, not new here) and, genuinely new, a narrower 502 boundary
-// (brreg.go's file doc comment) — and the retry count and per-attempt
-// timeout, neither of which any .NET test pins by its own attempt count or
-// deadline the way the tests below do. No test here opens a real socket:
-// fakeBrregTransport stands in for .NET's StubBrregHandler as an
-// http.RoundTripper, wired in through modtest.WithTransport.
+// in the spec, not new here), a shorter retry backoff base, and a malformed
+// body mapping to 502 rather than 500 (brreg.go's file doc comment) — and
+// the retry count and per-attempt timeout, neither of which any .NET test
+// pins by its own attempt count or deadline the way the tests below do. No
+// test here opens a real socket or actually sleeps: fakeBrregTransport
+// stands in for .NET's StubBrregHandler as an http.RoundTripper, wired in
+// through modtest.WithTransport, and modtest.WithBackoff(zeroBackoff) stands
+// in for the real (jittered) backoff wherever a test drives more than one
+// attempt.
 
 // fakeBrregTransport stands in for StubBrregHandler
 // (Integration/StubBrregHandler.cs): every attempt goes through onRequest,
@@ -94,6 +97,20 @@ type brregLookupResponseJSON struct {
 	Data []brregLookupResultJSON `json:"data"`
 }
 
+// brregProblemJSON is the fields this file asserts on a 400/502 problem
+// body: title and detail text, and the status field itself (customers
+// inventory fix-round item 6 — the one planted mutation that survived the
+// first review, because nothing asserted this field).
+type brregProblemJSON struct {
+	Status int    `json:"status"`
+	Title  string `json:"title"`
+	Detail string `json:"detail"`
+}
+
+// zeroBackoff stands in for the real (jittered) backoff in every test that
+// drives more than one attempt, so retries never actually sleep.
+func zeroBackoff(int) time.Duration { return 0 }
+
 // Ported from Integration/LookupEndpointsTests.cs.
 // BrregLookup_RetriesTransientUpstreamFailures.
 func TestBrregLookup_RetriesTransientUpstreamFailures(t *testing.T) {
@@ -105,7 +122,7 @@ func TestBrregLookup_RetriesTransientUpstreamFailures(t *testing.T) {
 		}
 		return defaultBrregResponse(r), nil
 	})
-	h := newHarness(t, modtest.WithTransport(transport))
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	c := h.SignIn(t, "customers:lookup-view")
 
 	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
@@ -245,18 +262,18 @@ func TestBrregLookup_WhenRegistryIsUnavailable_ReturnsBadGateway(t *testing.T) {
 	transport.setOnRequest(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("boom")
 	})
-	h := newHarness(t, modtest.WithTransport(transport))
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	c := h.SignIn(t, "customers:lookup-view")
 
 	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
 	if r.Status != http.StatusBadGateway {
 		t.Fatalf("status %d body %s, want 502", r.Status, r.Body)
 	}
-	var problem struct {
-		Title  string `json:"title"`
-		Detail string `json:"detail"`
-	}
+	var problem brregProblemJSON
 	r.JSON(&problem)
+	if problem.Status != http.StatusBadGateway {
+		t.Errorf("status field = %d, want 502", problem.Status)
+	}
 	if problem.Title != "Lookup service unavailable" {
 		t.Errorf("title = %q, want %q", problem.Title, "Lookup service unavailable")
 	}
@@ -283,7 +300,7 @@ func TestBrregLookup_ExhaustsRetriesThenReturnsBadGateway(t *testing.T) {
 	transport.setOnRequest(func(*http.Request) (*http.Response, error) {
 		return jsonResponse(http.StatusServiceUnavailable, ""), nil
 	})
-	h := newHarness(t, modtest.WithTransport(transport))
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
 	c := h.SignIn(t, "customers:lookup-view")
 
 	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
@@ -325,12 +342,14 @@ func TestBrregLookup_PerAttemptTimeoutIsFourSeconds(t *testing.T) {
 	}
 }
 
-// TestBrregLookup_UpstreamNotFoundIsNotBadGateway pins the narrowed 502
-// boundary this port deliberately diverges on (brreg.go's file doc
-// comment): a 404 is neither retried nor turned into 502, unlike .NET
-// where GetFromJsonAsync's EnsureSuccessStatusCode would have raised the
-// same HttpRequestException a genuine transport failure does.
-func TestBrregLookup_UpstreamNotFoundIsNotBadGateway(t *testing.T) {
+// TestBrregLookup_UpstreamNotFoundMapsToBadGateway pins the 502 boundary
+// corrected in review: .NET's GetFromJsonAsync calls EnsureSuccessStatusCode
+// internally, so a 404 raises the same HttpRequestException a genuine
+// transport failure does, and both are caught alike (BrregLookupEndpoint.cs:39-41,56,62-65).
+// A 404 is not retryable (isRetryableStatus), so it stops the loop after
+// exactly one attempt, but it is still unavailable — an outage must never
+// render as "no such company."
+func TestBrregLookup_UpstreamNotFoundMapsToBadGateway(t *testing.T) {
 	t.Parallel()
 	transport := &fakeBrregTransport{}
 	transport.setOnRequest(func(*http.Request) (*http.Response, error) {
@@ -340,27 +359,53 @@ func TestBrregLookup_UpstreamNotFoundIsNotBadGateway(t *testing.T) {
 	c := h.SignIn(t, "customers:lookup-view")
 
 	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
+	if r.Status != http.StatusBadGateway {
+		t.Fatalf("status %d body %s, want 502 (an upstream 404 is an outage, not an empty result)", r.Status, r.Body)
+	}
+	var problem brregProblemJSON
+	r.JSON(&problem)
+	if problem.Status != http.StatusBadGateway {
+		t.Errorf("status field = %d, want 502", problem.Status)
+	}
+	if got := transport.Attempts(); got != 1 {
+		t.Errorf("attempts = %d, want 1 (a 404 is not retried, just not treated as success)", got)
+	}
+}
+
+// TestBrregLookup_SuccessfulResponseWithNoEmbeddedKeyIsEmptyList is the
+// case TestBrregLookup_UpstreamNotFoundMapsToBadGateway must not be confused
+// with: a *successful* 200 whose body has no "_embedded" key is zero
+// matches, not a failure (BrregLookupEndpoint.cs:43, §5). This is the same
+// behaviour TestBrregLookup_WhenRegistryReturnsNoMatches_ReturnsEmptyList
+// (the .NET port) already proves with the default no-match body; this one
+// makes the 200-vs-non-200 distinction explicit alongside the 404 case
+// above, so the two are read together.
+func TestBrregLookup_SuccessfulResponseWithNoEmbeddedKeyIsEmptyList(t *testing.T) {
+	t.Parallel()
+	transport := &fakeBrregTransport{}
+	transport.setOnRequest(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"someOtherKey":true}`), nil
+	})
+	h := newHarness(t, modtest.WithTransport(transport))
+	c := h.SignIn(t, "customers:lookup-view")
+
+	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
 	if r.Status != http.StatusOK {
-		t.Fatalf("status %d body %s, want 200 (a non-retryable upstream status is decoded like any other)", r.Status, r.Body)
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
 	}
 	var body brregLookupResponseJSON
 	r.JSON(&body)
 	if len(body.Data) != 0 {
-		t.Errorf("Data = %+v, want empty (the 404 body carries no _embedded)", body.Data)
-	}
-	if got := transport.Attempts(); got != 1 {
-		t.Errorf("attempts = %d, want 1 (a 404 is not retried)", got)
+		t.Errorf("Data = %+v, want empty", body.Data)
 	}
 }
 
-// TestBrregLookup_MalformedBodyIsNotBadGateway pins the other half of the
-// narrowed boundary: a body that fails to decode is a genuine internal
-// error (500 via the generated wrapper's default error handling), never a
-// sanitized 502 — .NET's GetFromJsonAsync would have raised a JsonException
-// there too, which BrregLookupEndpoint's catch does not touch either
-// (it only catches HttpRequestException/TaskCanceledException), so this is
-// not a new gap, just an explicit one.
-func TestBrregLookup_MalformedBodyIsNotBadGateway(t *testing.T) {
+// TestBrregLookup_MalformedBodyMapsToBadGateway pins this port's one
+// deliberate non-match with .NET (brreg.go's file doc comment): a 2xx
+// response whose body will not decode answers 502, not the 500 .NET's
+// uncaught JsonException would produce. No SkipContract here — 502 is
+// documented for this operation, so the exchange validates normally.
+func TestBrregLookup_MalformedBodyMapsToBadGateway(t *testing.T) {
 	t.Parallel()
 	transport := &fakeBrregTransport{}
 	transport.setOnRequest(func(*http.Request) (*http.Response, error) {
@@ -369,9 +414,67 @@ func TestBrregLookup_MalformedBodyIsNotBadGateway(t *testing.T) {
 	h := newHarness(t, modtest.WithTransport(transport))
 	c := h.SignIn(t, "customers:lookup-view")
 
-	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil,
-		modtest.SkipContract("a malformed upstream body forces the generic internal-error path, 500, which is not in this operation's documented response set"))
-	if r.Status != http.StatusInternalServerError {
-		t.Errorf("status %d body %s, want 500 (an internal error, not a sanitized 502)", r.Status, r.Body)
+	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
+	if r.Status != http.StatusBadGateway {
+		t.Fatalf("status %d body %s, want 502 (a malformed upstream body is an upstream failure, not an internal one)", r.Status, r.Body)
+	}
+	var problem brregProblemJSON
+	r.JSON(&problem)
+	if problem.Status != http.StatusBadGateway {
+		t.Errorf("status field = %d, want 502", problem.Status)
+	}
+	if problem.Title != "Lookup service unavailable" {
+		t.Errorf("title = %q, want %q", problem.Title, "Lookup service unavailable")
+	}
+}
+
+// TestBrregLookup_RetriesOnRequestTimeoutStatus proves 408, not just 5xx, is
+// retried — isRetryableStatus's other arm, unexercised until now.
+func TestBrregLookup_RetriesOnRequestTimeoutStatus(t *testing.T) {
+	t.Parallel()
+	transport := &fakeBrregTransport{}
+	transport.setOnRequest(func(r *http.Request) (*http.Response, error) {
+		if transport.Attempts() == 1 {
+			return jsonResponse(http.StatusRequestTimeout, ""), nil
+		}
+		return defaultBrregResponse(r), nil
+	})
+	h := newHarness(t, modtest.WithTransport(transport), modtest.WithBackoff(zeroBackoff))
+	c := h.SignIn(t, "customers:lookup-view")
+
+	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?search=equinor", nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var body brregLookupResponseJSON
+	r.JSON(&body)
+	if len(body.Data) != 2 {
+		t.Errorf("len(Data) = %d, want 2", len(body.Data))
+	}
+	if got := transport.Attempts(); got != 2 {
+		t.Errorf("attempts = %d, want 2 (a 408 is retried)", got)
+	}
+}
+
+// TestBrregLookup_LegalIdWinsOverSearchWhenBothGiven pins the port's own
+// call, documented but previously unpinned in validateBrregLookupQuery's
+// doc comment: when legalId and search are both supplied, legalId decides
+// the query, agreeing with the .NET query-building switch's own precedence
+// (BrregLookupEndpoint.cs:31-33) rather than the earlier-checked search
+// branch of Validate.
+func TestBrregLookup_LegalIdWinsOverSearchWhenBothGiven(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, modtest.WithTransport(&fakeBrregTransport{}))
+	c := h.SignIn(t, "customers:lookup-view")
+
+	r := c.Do(http.MethodGet, "/api/v1/customers/lookup/brreg?legalId=923609016&search=equinor", nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var body brregLookupResponseJSON
+	r.JSON(&body)
+	want := []brregLookupResultJSON{{LegalId: "923609016", LegalName: "STUB ENTITY AS"}}
+	if !slices.Equal(body.Data, want) {
+		t.Errorf("Data = %+v, want %+v (legalId's exact-match shape, not search's)", body.Data, want)
 	}
 }

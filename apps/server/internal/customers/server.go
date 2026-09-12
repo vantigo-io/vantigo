@@ -11,9 +11,8 @@ import (
 )
 
 // server implements gen.StrictServerInterface, the module's contract
-// operations. Each area implements its operations as methods in its own file;
-// unimplemented.go holds the stubs of every area not yet built, so the build
-// itself proves the interface is complete.
+// operations. Each area implements its operations as methods in its own
+// file.
 type server struct {
 	deps  module.Deps
 	brreg *brregClient
@@ -22,10 +21,11 @@ type server struct {
 var _ gen.StrictServerInterface = (*server)(nil)
 
 // newServer builds the module's operations over d. The Brreg client is built
-// once, here, from config and d.HTTPTransport (nil in production, a fake in
-// every test — brreg.go, customers inventory §5).
+// once, here, from config and d.HTTPTransport/d.HTTPBackoff (nil in
+// production, a fake/zero-delay in every test — brreg.go, customers
+// inventory §5).
 func newServer(d module.Deps) *server {
-	return &server{deps: d, brreg: newBrregClient(d.Config.BrregBaseURL, d.Config.BrregTimeout, d.HTTPTransport)}
+	return &server{deps: d, brreg: newBrregClient(d.Config.BrregBaseURL, d.Config.BrregTimeout, d.HTTPTransport, d.HTTPBackoff)}
 }
 
 // requestKey is the context key withRequest stores the underlying

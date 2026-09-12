@@ -151,6 +151,54 @@ func TestUpdateCustomer_WithUnreadableIdentityPayload_ReturnsSanitizedProblemDet
 	}
 }
 
+// TestPutCustomersByIdLegalIdentity_WithDotNetOriginalPayload_ReturnsSanitizedValidationProblem
+// sends .NET's actual UpdateCustomer_WithUnreadableIdentityPayload_ReturnsSanitizedProblemDetails
+// payload (CustomersEndpointsTests.cs:308-319) verbatim — well-formed JSON
+// missing every one of LegalIdentityRequest's required top-level members
+// (country/type/id/name/source), not unparsable JSON. .NET's
+// required-member deserialization rejects this before the handler runs;
+// oapi-codegen's generated types are not required-member-aware, so it binds
+// cleanly with every field defaulting to "" (the body's own top-level
+// "name": "" happens to agree with that default) and reaches
+// validateLegalIdentity as five blank fields — an ordinary sanitized 400
+// ValidationProblem, not a crash and not a 500. This is the fix-round
+// addition confirming the substitution above (a body encoding/json itself
+// cannot parse) didn't leave .NET's actual payload unpinned.
+func TestPutCustomersByIdLegalIdentity_WithDotNetOriginalPayload_ReturnsSanitizedValidationProblem(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Identity Validation Co")
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/legal-identity", created.Id), map[string]any{
+		"name": "",
+		"identity": map[string]any{
+			"country": "", "type": "business", "id": " ", "name": "Acme AS", "source": "manual",
+		},
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+
+	var problem struct {
+		Title  string              `json:"title"`
+		Status int                 `json:"status"`
+		Errors map[string][]string `json:"errors"`
+	}
+	r.JSON(&problem)
+	if problem.Status != http.StatusBadRequest {
+		t.Errorf("status field = %d, want 400", problem.Status)
+	}
+	if problem.Title != "Invalid legal identity" {
+		t.Errorf("title = %q, want %q", problem.Title, "Invalid legal identity")
+	}
+	for _, field := range []string{"country", "type", "id", "name", "source"} {
+		if len(problem.Errors[field]) != 1 {
+			t.Errorf("errors[%q] = %v, want exactly one message (every required field is missing from this payload)", field, problem.Errors[field])
+		}
+	}
+}
+
 // TestGetCustomersByIdLegalIdentity_ReturnsIdentityWhenPresent pins
 // LegalIdentityEndpoints.Get's 200 path (LegalIdentityEndpoints.cs:13-29):
 // not a port (see the file doc comment) — CreateCustomer_WithLegalIdentity_PersistsIdentity
