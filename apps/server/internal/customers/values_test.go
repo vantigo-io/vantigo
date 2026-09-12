@@ -321,11 +321,13 @@ func TestValidatePersonName_Trims(t *testing.T) {
 }
 
 // Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
-// PersonNameTests.TryCreate_WithBlankValue_Fails.
+// PersonNameTests.TryCreate_WithBlankValue_Fails. Exact message text: this
+// module's only error vocabulary (inventory §1/§2.2).
 func TestValidatePersonName_BlankIsInvalid(t *testing.T) {
+	const want = "A name cannot be null or empty"
 	for _, v := range []string{"", "   "} {
-		if _, err := validatePersonName(v); err == "" {
-			t.Errorf("validatePersonName(%q) = no error, want one", v)
+		if _, err := validatePersonName(v); err != want {
+			t.Errorf("validatePersonName(%q) = error %q, want %q", v, err, want)
 		}
 	}
 }
@@ -334,8 +336,9 @@ func TestValidatePersonName_BlankIsInvalid(t *testing.T) {
 // PersonNameTests.TryCreate_WithTooLongValue_Fails.
 func TestValidatePersonName_TooLongIsInvalid(t *testing.T) {
 	v := strings.Repeat("a", 101)
-	if _, err := validatePersonName(v); err == "" {
-		t.Error("validatePersonName(101 chars) = no error, want one")
+	want := "A name cannot be longer than 100 characters, the given value was 101 characters"
+	if _, err := validatePersonName(v); err != want {
+		t.Errorf("validatePersonName(101 chars) = error %q, want %q", err, want)
 	}
 }
 
@@ -350,13 +353,58 @@ func TestValidatePhoneNumber_CommonFormatsSucceed(t *testing.T) {
 	}
 }
 
-// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
-// PhoneNumberTests.TryCreate_WithInvalidCharactersOrNoDigits_Fails.
-func TestValidatePhoneNumber_InvalidCharactersOrNoDigitsFails(t *testing.T) {
-	for _, v := range []string{"not a number", "+47 934 89 731 ext#2", "+-() ."} {
-		if _, err := validatePhoneNumber(v); err == "" {
-			t.Errorf("validatePhoneNumber(%q) = no error, want one", v)
+// Not a port: PhoneNumberTests has no dedicated blank/too-long test in .NET,
+// but both are real branches in PhoneNumber.Validate with their own exact
+// message, so pin them directly.
+func TestValidatePhoneNumber_BlankIsInvalid(t *testing.T) {
+	const want = "A phone number cannot be null or empty"
+	for _, v := range []string{"", "   "} {
+		if _, err := validatePhoneNumber(v); err != want {
+			t.Errorf("validatePhoneNumber(%q) = error %q, want %q", v, err, want)
 		}
+	}
+}
+
+func TestValidatePhoneNumber_TooLongIsInvalid(t *testing.T) {
+	v := strings.Repeat("1", 31)
+	want := "A phone number cannot be longer than 30 characters, the given value was 31 characters"
+	if _, err := validatePhoneNumber(v); err != want {
+		t.Errorf("validatePhoneNumber(31 chars) = error %q, want %q", err, want)
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// PhoneNumberTests.TryCreate_WithInvalidCharactersOrNoDigits_Fails. Exact
+// message per case: the two invalid-character values and the
+// no-digit-but-otherwise-allowed value fail on different branches with
+// different text (PhoneNumber.cs's Validate switch, in order: blank,
+// length, character class, digit presence).
+func TestValidatePhoneNumber_InvalidCharactersOrNoDigitsFails(t *testing.T) {
+	const invalidChars = "A phone number can only contain digits, spaces and the characters + - ( ) ."
+	const noDigit = "A phone number must contain at least one digit"
+	cases := map[string]string{
+		"not a number":         invalidChars,
+		"+47 934 89 731 ext#2": invalidChars,
+		"+-() .":               noDigit,
+	}
+	for v, want := range cases {
+		if _, err := validatePhoneNumber(v); err != want {
+			t.Errorf("validatePhoneNumber(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+// Not a port: pins the .NET divergence PhoneNumber.Validate's character and
+// digit checks must not diverge on (item 5a of the Task 7 fix round).
+// char.IsDigit is Unicode-aware in .NET — true for any Unicode decimal
+// digit, not only ASCII 0-9 — so a phone number built entirely of
+// non-ASCII decimal digits (Arabic-Indic here) must still be both
+// "all allowed characters" and "has at least one digit".
+func TestValidatePhoneNumber_UnicodeDigitsAreDigits(t *testing.T) {
+	v := "٢٢ ٨٦ ٤٤ ٠٠" // Arabic-Indic digits for "22 86 44 00"
+	got, err := validatePhoneNumber(v)
+	if err != "" || got != v {
+		t.Errorf("validatePhoneNumber(%q) = %q, %q, want %q, no error", v, got, err, v)
 	}
 }
 
@@ -375,15 +423,36 @@ func TestValidateEmailAddress_NormalizesToLowercase(t *testing.T) {
 	}
 }
 
+// Not a port: EmailAddressTests has no dedicated blank/too-long test in
+// .NET, but both are real branches in EmailAddress.Validate with their own
+// exact message, so pin them directly.
+func TestValidateEmailAddress_BlankIsInvalid(t *testing.T) {
+	const want = "An email address cannot be null or empty"
+	for _, v := range []string{"", "   "} {
+		if _, err := validateEmailAddress(v); err != want {
+			t.Errorf("validateEmailAddress(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+func TestValidateEmailAddress_TooLongIsInvalid(t *testing.T) {
+	v := strings.Repeat("a", 251) + "@a.io" // 251 + 5 = 256 characters
+	want := "An email address cannot be longer than 255 characters, the given value was 256 characters"
+	if _, err := validateEmailAddress(v); err != want {
+		t.Errorf("validateEmailAddress(256 chars) = error %q, want %q", err, want)
+	}
+}
+
 // Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
 // EmailAddressTests.TryCreate_WithInvalidShape_Fails.
 func TestValidateEmailAddress_InvalidShapeFails(t *testing.T) {
+	const want = "An email address must have the shape 'name@domain.tld'"
 	for _, v := range []string{
 		"no-at-sign", "@vantigo.io", "anders@", "anders@vantigo", "anders@vantigo.",
 		"an ders@vantigo.io", "anders@@vantigo.io",
 	} {
-		if _, err := validateEmailAddress(v); err == "" {
-			t.Errorf("validateEmailAddress(%q) = no error, want one", v)
+		if _, err := validateEmailAddress(v); err != want {
+			t.Errorf("validateEmailAddress(%q) = error %q, want %q", v, err, want)
 		}
 	}
 }
@@ -392,8 +461,20 @@ func TestValidateEmailAddress_InvalidShapeFails(t *testing.T) {
 // NamePartTests.TryCreate_WithTooLongValue_Fails.
 func TestValidateNamePart_TooLongIsInvalid(t *testing.T) {
 	v := strings.Repeat("a", 21)
-	if _, err := validateNamePart(v); err == "" {
-		t.Error("validateNamePart(21 chars) = no error, want one")
+	want := "A name part cannot be longer than 20 characters, the given value was 21 characters"
+	if _, err := validateNamePart(v); err != want {
+		t.Errorf("validateNamePart(21 chars) = error %q, want %q", err, want)
+	}
+}
+
+// Not a port: NamePartTests has no blank-value test in .NET, but it is a
+// real branch in NamePart.Validate with its own exact message.
+func TestValidateNamePart_BlankIsInvalid(t *testing.T) {
+	const want = "A name part cannot be null or empty"
+	for _, v := range []string{"", "   "} {
+		if _, err := validateNamePart(v); err != want {
+			t.Errorf("validateNamePart(%q) = error %q, want %q", v, err, want)
+		}
 	}
 }
 
@@ -416,11 +497,41 @@ func TestValidateContactRole_TrimsAndSucceeds(t *testing.T) {
 }
 
 // Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
-// ContactRoleTests.TryCreate_WithBlankValue_Fails.
+// ContactRoleTests.TryCreate_WithBlankValue_Fails. Exact message text: the
+// mutation a Task 7 review round planted here (paraphrasing this string)
+// survived because no test asserted it before.
 func TestValidateContactRole_BlankIsInvalid(t *testing.T) {
+	const want = "A role cannot be null or empty"
 	for _, v := range []string{"", "   "} {
-		if _, err := validateContactRole(v); err == "" {
-			t.Errorf("validateContactRole(%q) = no error, want one", v)
+		if _, err := validateContactRole(v); err != want {
+			t.Errorf("validateContactRole(%q) = error %q, want %q", v, err, want)
 		}
+	}
+}
+
+// Not a port: ContactRoleTests has no too-long test in .NET, but it is a
+// real branch in ContactRole.Validate with its own exact message.
+func TestValidateContactRole_TooLongIsInvalid(t *testing.T) {
+	v := strings.Repeat("a", 256)
+	want := "A role cannot be longer than 255 characters, the given value was 256 characters"
+	if _, err := validateContactRole(v); err != want {
+		t.Errorf("validateContactRole(256 chars) = error %q, want %q", err, want)
+	}
+}
+
+// Not a port: pins the .NET divergence GetContactsEndpoint.Handler's search
+// term split must not diverge on (item 5b of the Task 7 fix round). .NET
+// splits on the ' ' character only
+// (`request.Search.Split(' ', RemoveEmptyEntries | TrimEntries)`); a
+// strings.Fields-based split would treat any Unicode whitespace, tabs
+// included, as a separator, turning "foo\tbar" into two terms ("foo" and
+// "bar", each independently required to match) instead of .NET's one
+// ("foo\tbar" verbatim).
+func TestSearchPatterns_SplitsOnSpaceCharacterOnly(t *testing.T) {
+	search := "foo\tbar"
+	got := searchPatterns(&search)
+	want := []string{likePattern("foo\tbar")}
+	if !slices.Equal(got, want) {
+		t.Errorf("searchPatterns(%q) = %v, want %v (tab is not a term separator)", search, got, want)
 	}
 }
