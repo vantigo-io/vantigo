@@ -1,8 +1,10 @@
 package customers_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -763,5 +765,229 @@ func TestGetContactCustomers_WhenContactDoesNotExist_ReturnsNotFound(t *testing.
 	r := c.Do(http.MethodGet, "/api/v1/customers/contacts/999999/customers", nil)
 	if r.Status != http.StatusNotFound {
 		t.Errorf("status %d body %s, want 404", r.Status, r.Body)
+	}
+}
+
+// This section is not a port: it pins the four contact-association
+// generated-timeline-event payloads (contacts_timeline.go, ported from
+// SV/CustomerTimelineRecorder.cs:87-124) and the relationship-updated no-op
+// suppression (UpdateCustomerContactEndpoint.cs:43-49, customers inventory
+// §2.4), added in the Task 7 fix round because no test anywhere read
+// payload_json back for these four events, and none forced change
+// detection false. Task 9 ports only customer-scoped generated-event
+// assertions, so nothing downstream would ever have covered these either.
+
+// timelineEventRow is one customers_timeline_entries row's summary,
+// payload_version and decoded payload_json, read back directly since none
+// of this task's contract surface exposes them (the timeline read endpoints
+// are Task 9's).
+type timelineEventRow struct {
+	Summary        string
+	PayloadVersion int32
+	Payload        map[string]any
+}
+
+// fetchTimelineEvent reads the most recent timeline entry of eventType
+// recorded against customerID, failing the test if none exists.
+func fetchTimelineEvent(t *testing.T, h *modtest.Harness, customerID int32, eventType string) timelineEventRow {
+	t.Helper()
+	var row timelineEventRow
+	var payloadJSON []byte
+	err := h.Pool().QueryRow(t.Context(), `
+		SELECT summary, payload_version, payload_json
+		FROM customers.customers_timeline_entries
+		WHERE customer_id = $1 AND event_type = $2
+		ORDER BY id DESC LIMIT 1`, customerID, eventType).Scan(&row.Summary, &row.PayloadVersion, &payloadJSON)
+	if err != nil {
+		t.Fatalf("fetchTimelineEvent(%d, %q): %v", customerID, eventType, err)
+	}
+	if err := json.Unmarshal(payloadJSON, &row.Payload); err != nil {
+		t.Fatalf("fetchTimelineEvent(%d, %q): decode payload: %v", customerID, eventType, err)
+	}
+	return row
+}
+
+// countTimelineEvents counts the timeline entries of eventType recorded
+// against customerID.
+func countTimelineEvents(t *testing.T, h *modtest.Harness, customerID int32, eventType string) int {
+	t.Helper()
+	return h.Count(t, `SELECT count(*) FROM customers.customers_timeline_entries WHERE customer_id = $1 AND event_type = $2`, customerID, eventType)
+}
+
+// TestAttachContact_RecordsTimelineEvent pins customer.contact_attached's
+// summary, payload_version and full payload. It also pins the trap a Task 7
+// review found while verifying this: .NET's RecordContactAttached passes
+// "Contact attached" as AddContact's summary parameter, but AddContact's
+// own eventType switch overrides it to "Contact linked" for this exact
+// event type regardless — the summary this test asserts is what a caller
+// actually sees, not what the recorder call site's argument might suggest.
+func TestAttachContact_RecordsTimelineEvent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	contact := createContact(t, c, map[string]any{"firstName": "Timeline", "lastName": "Attachsen", "middleName": "Middleman"})
+	customer := createCustomer(t, c, "Timeline Attach Co")
+
+	r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/contacts", customer.Id), map[string]any{
+		"contactId": contact.Id, "role": "CEO", "phone": "+47 11 22 33 44",
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("attach: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	event := fetchTimelineEvent(t, h, customer.Id, "customer.contact_attached")
+	wantSummary := fmt.Sprintf("Contact linked: Timeline Middleman Attachsen (#%d)", contact.Id)
+	if event.Summary != wantSummary {
+		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
+	}
+	if event.PayloadVersion != 1 {
+		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	}
+	wantPayload := map[string]any{
+		"customerId":  float64(customer.Id),
+		"contactId":   float64(contact.Id),
+		"displayName": "Timeline Middleman Attachsen",
+		"firstName":   "Timeline",
+		"middleName":  "Middleman",
+		"lastName":    "Attachsen",
+		"role":        "CEO",
+		"phone":       "+47 11 22 33 44",
+		"email":       nil,
+	}
+	if !reflect.DeepEqual(event.Payload, wantPayload) {
+		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)
+	}
+}
+
+// TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent pins
+// customer.contact_relationship_updated's summary, payload_version and
+// payload for an update that actually changes role/phone/email.
+func TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	contact := createContact(t, c, map[string]any{"firstName": "Timeline", "lastName": "Updatesen"})
+	customer := createCustomer(t, c, "Timeline Update Co")
+	attachContact(t, c, customer.Id, contact.Id, "CEO")
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{
+		"role": "Chairman", "email": "chair@timeline.co",
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("update: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	event := fetchTimelineEvent(t, h, customer.Id, "customer.contact_relationship_updated")
+	wantSummary := fmt.Sprintf("Contact relationship updated: Timeline Updatesen (#%d)", contact.Id)
+	if event.Summary != wantSummary {
+		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
+	}
+	if event.PayloadVersion != 1 {
+		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	}
+	wantPayload := map[string]any{
+		"customerId":  float64(customer.Id),
+		"contactId":   float64(contact.Id),
+		"displayName": "Timeline Updatesen",
+		"firstName":   "Timeline",
+		"middleName":  nil,
+		"lastName":    "Updatesen",
+		"role":        "Chairman",
+		"phone":       nil,
+		"email":       "chair@timeline.co",
+	}
+	if !reflect.DeepEqual(event.Payload, wantPayload) {
+		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)
+	}
+}
+
+// TestUpdateCustomerContact_NoChange_RecordsNoEvent pins the no-op
+// suppression UpdateCustomerContactEndpoint.cs:43-49 requires (customers
+// inventory §2.4): resubmitting the same role/phone/email records nothing,
+// unlike TestUpdateCustomerContact_RecordsRelationshipUpdatedEvent above.
+func TestUpdateCustomerContact_NoChange_RecordsNoEvent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	contact := createContact(t, c, map[string]any{"firstName": "Timeline", "lastName": "Nochangesen"})
+	customer := createCustomer(t, c, "Timeline NoChange Co")
+	attachContact(t, c, customer.Id, contact.Id, "CEO")
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), map[string]any{
+		"role": "CEO", // identical to the attach above: no phone, no email either time
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("update: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	if n := countTimelineEvents(t, h, customer.Id, "customer.contact_relationship_updated"); n != 0 {
+		t.Errorf("relationship_updated events = %d, want 0 (resubmitting the same values must not record one)", n)
+	}
+}
+
+// TestDetachContact_RecordsTimelineEvent pins customer.contact_detached's
+// summary, payload_version and payload.
+func TestDetachContact_RecordsTimelineEvent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	contact := createContact(t, c, map[string]any{"firstName": "Timeline", "lastName": "Detachsen"})
+	customer := createCustomer(t, c, "Timeline Detach Co")
+	attachContact(t, c, customer.Id, contact.Id, "CTO")
+
+	r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/%d/contacts/%d", customer.Id, contact.Id), nil)
+	if r.Status != http.StatusNoContent {
+		t.Fatalf("detach: status %d body %s, want 204", r.Status, r.Body)
+	}
+
+	event := fetchTimelineEvent(t, h, customer.Id, "customer.contact_detached")
+	wantSummary := fmt.Sprintf("Contact unlinked: Timeline Detachsen (#%d)", contact.Id)
+	if event.Summary != wantSummary {
+		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
+	}
+	if event.PayloadVersion != 1 {
+		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	}
+	wantPayload := map[string]any{
+		"customerId": float64(customer.Id), "contactId": float64(contact.Id),
+		"displayName": "Timeline Detachsen", "firstName": "Timeline", "middleName": nil, "lastName": "Detachsen",
+		"role": "CTO", "phone": nil, "email": nil,
+	}
+	if !reflect.DeepEqual(event.Payload, wantPayload) {
+		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)
+	}
+}
+
+// TestDeleteContact_RecordsRemovedTimelineEvent pins
+// customer.contact_removed's summary, payload_version and payload, recorded
+// by DeleteContact's cascade over each surviving association.
+func TestDeleteContact_RecordsRemovedTimelineEvent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	contact := createContact(t, c, map[string]any{"firstName": "Timeline", "lastName": "Removesen"})
+	customer := createCustomer(t, c, "Timeline Remove Co")
+	attachContact(t, c, customer.Id, contact.Id, "Custodian")
+
+	r := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/customers/contacts/%d", contact.Id), nil)
+	if r.Status != http.StatusNoContent {
+		t.Fatalf("delete contact: status %d body %s, want 204", r.Status, r.Body)
+	}
+
+	event := fetchTimelineEvent(t, h, customer.Id, "customer.contact_removed")
+	wantSummary := fmt.Sprintf("Contact removed: Timeline Removesen (#%d)", contact.Id)
+	if event.Summary != wantSummary {
+		t.Errorf("Summary = %q, want %q", event.Summary, wantSummary)
+	}
+	if event.PayloadVersion != 1 {
+		t.Errorf("PayloadVersion = %d, want 1", event.PayloadVersion)
+	}
+	wantPayload := map[string]any{
+		"customerId": float64(customer.Id), "contactId": float64(contact.Id),
+		"displayName": "Timeline Removesen", "firstName": "Timeline", "middleName": nil, "lastName": "Removesen",
+		"role": "Custodian", "phone": nil, "email": nil,
+	}
+	if !reflect.DeepEqual(event.Payload, wantPayload) {
+		t.Errorf("Payload = %+v, want %+v", event.Payload, wantPayload)
 	}
 }

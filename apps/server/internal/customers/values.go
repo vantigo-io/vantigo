@@ -3,6 +3,7 @@ package customers
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 )
 
@@ -147,9 +148,11 @@ func validateNamePart(raw string) (string, string) {
 }
 
 // isAllowedPhoneCharacter is PhoneNumber.IsAllowedCharacter
-// (DM/Contacts/Common/PhoneNumber.cs:46-47).
+// (DM/Contacts/Common/PhoneNumber.cs:46-47): char.IsDigit(character) is
+// Unicode-aware in .NET (true for any Unicode decimal digit, not only
+// ASCII), so unicode.IsDigit is the faithful port, not an ASCII range check.
 func isAllowedPhoneCharacter(r rune) bool {
-	if r >= '0' && r <= '9' {
+	if unicode.IsDigit(r) {
 		return true
 	}
 	switch r {
@@ -182,7 +185,7 @@ func validatePhoneNumber(raw string) (string, string) {
 	}
 	hasDigit := false
 	for _, r := range raw {
-		if r >= '0' && r <= '9' {
+		if unicode.IsDigit(r) {
 			hasDigit = true
 			break
 		}

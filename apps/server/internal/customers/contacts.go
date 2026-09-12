@@ -174,22 +174,25 @@ func validateGetContactsParams(p gen.GetCustomersContactsParams) []string {
 	return errs
 }
 
-// searchPatterns splits search on whitespace and escapes each term as
-// customers.go's likePattern does (GetContactsEndpoint.cs:41-45): one
+// searchPatterns splits search on the space character and escapes each term
+// as customers.go's likePattern does (GetContactsEndpoint.cs:41-45:
+// `request.Search.Split(' ', RemoveEmptyEntries | TrimEntries)`): one
 // already-globbed, already-ILIKE-escaped pattern per term, for
 // CountContacts/ListContactsBy{ID,Name}'s "every term matches at least one
-// field" predicate.
+// field" predicate. Splitting on ' ' alone, not strings.Fields' full
+// Unicode-whitespace class, matters: .NET treats a tab-separated "a\tb" as
+// one term, never two.
 func searchPatterns(search *string) []string {
 	if search == nil {
 		return nil
 	}
-	terms := strings.Fields(*search)
-	if len(terms) == 0 {
-		return nil
-	}
-	patterns := make([]string, len(terms))
-	for i, term := range terms {
-		patterns[i] = likePattern(term)
+	var patterns []string
+	for _, term := range strings.Split(*search, " ") {
+		term = strings.TrimSpace(term)
+		if term == "" {
+			continue
+		}
+		patterns = append(patterns, likePattern(term))
 	}
 	return patterns
 }
