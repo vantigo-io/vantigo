@@ -89,6 +89,17 @@ jobs:
         # a plain run, so the per-package default of 10m is too tight.
         run: go test -race -count=1 -timeout 20m ./...
 
+      - name: 🌍 Energy tests under a non-UTC time zone
+        working-directory: apps/server
+        # pgx decodes timestamptz in the process's local zone, so a handler
+        # that offset-checks a value read back from Postgres passes under UTC
+        # and 400s everywhere else. That bug shipped once and this run is the
+        # only thing that would catch it again: every other job here runs UTC.
+        # Energy owns the timestamp-sensitive handlers, so it alone is enough.
+        env:
+          TZ: Europe/Oslo
+        run: go test -count=1 -timeout 10m ./internal/energy/...
+
       - name: 🛡️ govulncheck
         working-directory: apps/server
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
