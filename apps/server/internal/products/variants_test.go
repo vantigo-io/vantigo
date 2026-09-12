@@ -69,7 +69,18 @@ func TestUpdateVariant_SkuChangeOnActiveProduct_ReturnsConflict(t *testing.T) {
 	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/products/%d/variants/%d", created.Id, variant.Id),
 		map[string]any{"sku": sku(t, "active-sku-new")})
 	if r.Status != http.StatusConflict {
-		t.Errorf("status %d body %s, want 409", r.Status, r.Body)
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	// The body is the client-visible contract here, not just the status:
+	// rewriting either string is a behavioural change a status-only
+	// assertion would not notice.
+	var problem problemJSON
+	r.JSON(&problem)
+	if problem.Title != "SKU is immutable" {
+		t.Errorf("Title = %q, want %q", problem.Title, "SKU is immutable")
+	}
+	if want := "The SKU cannot be changed after the product has been activated."; problem.Detail != want {
+		t.Errorf("Detail = %q, want %q", problem.Detail, want)
 	}
 }
 
@@ -85,6 +96,14 @@ func TestVariantCrud_RejectsDeletingLastVariant(t *testing.T) {
 	lastDelete := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/products/%d/variants/%d", created.Id, first.Id), nil)
 	if lastDelete.Status != http.StatusConflict {
 		t.Fatalf("delete the only variant: status %d body %s, want 409", lastDelete.Status, lastDelete.Body)
+	}
+	var problem problemJSON
+	lastDelete.JSON(&problem)
+	if problem.Title != "Last variant" {
+		t.Errorf("Title = %q, want %q", problem.Title, "Last variant")
+	}
+	if want := "A product must have at least one variant."; problem.Detail != want {
+		t.Errorf("Detail = %q, want %q", problem.Detail, want)
 	}
 
 	add := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/products/%d/variants", created.Id), map[string]any{
@@ -103,7 +122,52 @@ func TestVariantCrud_RejectsDeletingLastVariant(t *testing.T) {
 
 	firstDeleteAgain := c.Do(http.MethodDelete, fmt.Sprintf("/api/v1/products/%d/variants/%d", created.Id, first.Id), nil)
 	if firstDeleteAgain.Status != http.StatusConflict {
-		t.Errorf("delete the now-only variant: status %d body %s, want 409", firstDeleteAgain.Status, firstDeleteAgain.Body)
+		t.Fatalf("delete the now-only variant: status %d body %s, want 409", firstDeleteAgain.Status, firstDeleteAgain.Body)
+	}
+	var again problemJSON
+	firstDeleteAgain.JSON(&again)
+	if again.Title != "Last variant" {
+		t.Errorf("second 409 Title = %q, want %q", again.Title, "Last variant")
+	}
+	if want := "A product must have at least one variant."; again.Detail != want {
+		t.Errorf("second 409 Detail = %q, want %q", again.Detail, want)
+	}
+}
+
+// TestPostProductsByIdVariants_InvalidBodyAgainstMissingProduct_Returns400
+// pins AddProductVariantEndpoint.cs:16-59's order, which variants.go's doc
+// comment states as "(2) field validation; (3) product exists (404)": an
+// invalid body aimed at a missing product answers 400, never 404.
+func TestPostProductsByIdVariants_InvalidBodyAgainstMissingProduct_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	r := c.Do(http.MethodPost, "/api/v1/products/999999/variants", map[string]any{"sku": ""})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if _, ok := problem.Errors["sku"]; !ok {
+		t.Errorf("errors = %v, want a key \"sku\"", problem.Errors)
+	}
+}
+
+// TestPutProductsByIdVariantsByVariantId_InvalidBodyAgainstMissingVariant_Returns400
+// pins UpdateProductVariantEndpoint.cs:13-66's order (variants.go's doc
+// comment: "field validation -> variant exists scoped to (id, variantId)
+// (404)"): an invalid body aimed at a missing variant answers 400, never 404.
+func TestPutProductsByIdVariantsByVariantId_InvalidBodyAgainstMissingVariant_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	created := createProduct(t, c, newProductBody(taxCategoryID, "Variant Ordering", sku(t, "variant-order")))
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/products/%d/variants/999999", created.Id), map[string]any{"sku": ""})
+	if r.Status != http.StatusBadRequest {
+		t.Errorf("status %d body %s, want 400 (validation must run before the existence check)", r.Status, r.Body)
 	}
 }
 
