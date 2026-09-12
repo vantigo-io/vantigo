@@ -1755,15 +1755,25 @@ type PostCustomersResponseObject interface {
 	VisitPostCustomersResponse(w http.ResponseWriter) error
 }
 
-type PostCustomers201JSONResponse CreateCustomerResponse
+type PostCustomers201ResponseHeaders struct {
+	Location *string
+}
+
+type PostCustomers201JSONResponse struct {
+	Body    CreateCustomerResponse
+	Headers PostCustomers201ResponseHeaders
+}
 
 func (response PostCustomers201JSONResponse) VisitPostCustomersResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
