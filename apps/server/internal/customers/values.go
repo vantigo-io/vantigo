@@ -120,6 +120,128 @@ func validateLegalType(raw string) (string, string) {
 	return strings.ToLower(strings.TrimSpace(raw)), ""
 }
 
+// validatePersonName is PersonName's Validate and constructor
+// (DM/Contacts/Common/PersonName.cs): non-blank, at most 100 UTF-16 code
+// units, trimmed but case-preserved.
+func validatePersonName(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "A name cannot be null or empty"
+	}
+	if n := utf16Length(raw); n > 100 {
+		return "", fmt.Sprintf("A name cannot be longer than 100 characters, the given value was %d characters", n)
+	}
+	return strings.TrimSpace(raw), ""
+}
+
+// validateNamePart is NamePart's Validate and constructor
+// (DM/Contacts/Common/NamePart.cs): non-blank, at most 20 UTF-16 code units,
+// trimmed but case-preserved.
+func validateNamePart(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "A name part cannot be null or empty"
+	}
+	if n := utf16Length(raw); n > 20 {
+		return "", fmt.Sprintf("A name part cannot be longer than 20 characters, the given value was %d characters", n)
+	}
+	return strings.TrimSpace(raw), ""
+}
+
+// isAllowedPhoneCharacter is PhoneNumber.IsAllowedCharacter
+// (DM/Contacts/Common/PhoneNumber.cs:46-47).
+func isAllowedPhoneCharacter(r rune) bool {
+	if r >= '0' && r <= '9' {
+		return true
+	}
+	switch r {
+	case ' ', '+', '-', '(', ')', '.':
+		return true
+	default:
+		return false
+	}
+}
+
+// validatePhoneNumber is PhoneNumber's Validate and constructor
+// (DM/Contacts/Common/PhoneNumber.cs): non-blank, at most 30 UTF-16 code
+// units, only digits/space/+-().  and at least one digit, trimmed but
+// case-preserved (it has no case). The check order — blank, length,
+// character class, then digit presence — matters: "+-() ." contains only
+// allowed characters but no digit, so it fails on the digit check, not the
+// character-class one.
+func validatePhoneNumber(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "A phone number cannot be null or empty"
+	}
+	if n := utf16Length(raw); n > 30 {
+		return "", fmt.Sprintf("A phone number cannot be longer than 30 characters, the given value was %d characters", n)
+	}
+	trimmed := strings.TrimSpace(raw)
+	for _, r := range trimmed {
+		if !isAllowedPhoneCharacter(r) {
+			return "", "A phone number can only contain digits, spaces and the characters + - ( ) ."
+		}
+	}
+	hasDigit := false
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			hasDigit = true
+			break
+		}
+	}
+	if !hasDigit {
+		return "", "A phone number must contain at least one digit"
+	}
+	return trimmed, ""
+}
+
+// hasValidEmailShape is EmailAddress.HasValidShape
+// (DM/Contacts/Common/EmailAddress.cs:45-54): exactly one '@' at a positive
+// index, a '.' somewhere after it with at least one character in between,
+// not trailing, and no space anywhere.
+func hasValidEmailShape(value string) bool {
+	at := strings.IndexByte(value, '@')
+	if at <= 0 || at != strings.LastIndexByte(value, '@') {
+		return false
+	}
+	dot := strings.IndexByte(value[at:], '.')
+	if dot == -1 || dot+at <= at+1 {
+		return false
+	}
+	if strings.HasSuffix(value, ".") {
+		return false
+	}
+	return !strings.Contains(value, " ")
+}
+
+// validateEmailAddress is EmailAddress's Validate and constructor
+// (DM/Contacts/Common/EmailAddress.cs): non-blank, at most 255 UTF-16 code
+// units, a plausible shape (not full RFC 5322), trimmed and lowercased.
+func validateEmailAddress(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "An email address cannot be null or empty"
+	}
+	if n := utf16Length(raw); n > 255 {
+		return "", fmt.Sprintf("An email address cannot be longer than 255 characters, the given value was %d characters", n)
+	}
+	trimmed := strings.TrimSpace(raw)
+	if !hasValidEmailShape(trimmed) {
+		return "", "An email address must have the shape 'name@domain.tld'"
+	}
+	return strings.ToLower(trimmed), ""
+}
+
+// validateContactRole is ContactRole's Validate and constructor
+// (DM/Contacts/Common/ContactRole.cs): non-blank, at most 255 UTF-16 code
+// units, trimmed but case-preserved.
+func validateContactRole(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "A role cannot be null or empty"
+	}
+	if n := utf16Length(raw); n > 255 {
+		return "", fmt.Sprintf("A role cannot be longer than 255 characters, the given value was %d characters", n)
+	}
+	return strings.TrimSpace(raw), ""
+}
+
 // legalIdentity is a customer's normalized legal identity: the five value
 // objects LegalIdentity.cs composes, always all-set-or-all-unset together
 // (inventory §2.1). A nil *legalIdentity is "no identity"; every field of a

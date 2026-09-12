@@ -265,3 +265,117 @@ func TestValidateLegalIdentity_UnknownSourceReportsSourceOnly(t *testing.T) {
 		t.Error(`validateLegalIdentity errors missing "source"`)
 	}
 }
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// PersonNameTests.Construction_TrimsTheValue.
+func TestValidatePersonName_Trims(t *testing.T) {
+	got, err := validatePersonName("  Anders  ")
+	if err != "" || got != "Anders" {
+		t.Errorf("validatePersonName(%q) = %q, %q, want \"Anders\", no error", "  Anders  ", got, err)
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// PersonNameTests.TryCreate_WithBlankValue_Fails.
+func TestValidatePersonName_BlankIsInvalid(t *testing.T) {
+	for _, v := range []string{"", "   "} {
+		if _, err := validatePersonName(v); err == "" {
+			t.Errorf("validatePersonName(%q) = no error, want one", v)
+		}
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// PersonNameTests.TryCreate_WithTooLongValue_Fails.
+func TestValidatePersonName_TooLongIsInvalid(t *testing.T) {
+	v := strings.Repeat("a", 101)
+	if _, err := validatePersonName(v); err == "" {
+		t.Error("validatePersonName(101 chars) = no error, want one")
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// PhoneNumberTests.TryCreate_WithCommonFormats_Succeeds.
+func TestValidatePhoneNumber_CommonFormatsSucceed(t *testing.T) {
+	for _, v := range []string{"+47 934 89 731", "(555) 123-4567", "22.86.44.00"} {
+		got, err := validatePhoneNumber(v)
+		if err != "" || got != v {
+			t.Errorf("validatePhoneNumber(%q) = %q, %q, want %q, no error", v, got, err, v)
+		}
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// PhoneNumberTests.TryCreate_WithInvalidCharactersOrNoDigits_Fails.
+func TestValidatePhoneNumber_InvalidCharactersOrNoDigitsFails(t *testing.T) {
+	for _, v := range []string{"not a number", "+47 934 89 731 ext#2", "+-() ."} {
+		if _, err := validatePhoneNumber(v); err == "" {
+			t.Errorf("validatePhoneNumber(%q) = no error, want one", v)
+		}
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// EmailAddressTests.TryCreate_WithValidValue_NormalizesToLowercase.
+func TestValidateEmailAddress_NormalizesToLowercase(t *testing.T) {
+	cases := map[string]string{
+		"anders@vantigo.io":     "anders@vantigo.io",
+		"  Anders@Vantigo.IO  ": "anders@vantigo.io",
+	}
+	for v, want := range cases {
+		got, err := validateEmailAddress(v)
+		if err != "" || got != want {
+			t.Errorf("validateEmailAddress(%q) = %q, %q, want %q, no error", v, got, err, want)
+		}
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// EmailAddressTests.TryCreate_WithInvalidShape_Fails.
+func TestValidateEmailAddress_InvalidShapeFails(t *testing.T) {
+	for _, v := range []string{
+		"no-at-sign", "@vantigo.io", "anders@", "anders@vantigo", "anders@vantigo.",
+		"an ders@vantigo.io", "anders@@vantigo.io",
+	} {
+		if _, err := validateEmailAddress(v); err == "" {
+			t.Errorf("validateEmailAddress(%q) = no error, want one", v)
+		}
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// NamePartTests.TryCreate_WithTooLongValue_Fails.
+func TestValidateNamePart_TooLongIsInvalid(t *testing.T) {
+	v := strings.Repeat("a", 21)
+	if _, err := validateNamePart(v); err == "" {
+		t.Error("validateNamePart(21 chars) = no error, want one")
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// NamePartTests.TryCreate_WithValidValue_Succeeds.
+func TestValidateNamePart_ValidValueSucceeds(t *testing.T) {
+	got, err := validateNamePart("Dr.")
+	if err != "" || got != "Dr." {
+		t.Errorf("validateNamePart(%q) = %q, %q, want \"Dr.\", no error", "Dr.", got, err)
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// ContactRoleTests.TryCreate_WithValidValue_TrimsAndSucceeds.
+func TestValidateContactRole_TrimsAndSucceeds(t *testing.T) {
+	got, err := validateContactRole("  CEO  ")
+	if err != "" || got != "CEO" {
+		t.Errorf("validateContactRole(%q) = %q, %q, want \"CEO\", no error", "  CEO  ", got, err)
+	}
+}
+
+// Ported from Domain/Contacts/Common/ContactValueObjectTests.cs.
+// ContactRoleTests.TryCreate_WithBlankValue_Fails.
+func TestValidateContactRole_BlankIsInvalid(t *testing.T) {
+	for _, v := range []string{"", "   "} {
+		if _, err := validateContactRole(v); err == "" {
+			t.Errorf("validateContactRole(%q) = no error, want one", v)
+		}
+	}
+}

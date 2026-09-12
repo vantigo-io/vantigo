@@ -8,9 +8,15 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
 )
+
+// clientTimeout bounds every exchange a Client makes. Without it a hung
+// server (or a test that forgets to advance the harness clock past some
+// server-side wait) would block Do forever instead of failing the test.
+const clientTimeout = 30 * time.Second
 
 // Client is one browser: its own cookie jar and its own client address, every
 // exchange validated against the module's contract. It never follows
@@ -40,6 +46,7 @@ func (h *Harness) Client(t testing.TB) *Client {
 			Jar:           jar,
 			Transport:     h.recorder.Transport(t, h.srv.Client().Transport),
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			Timeout:       clientTimeout,
 		},
 	}
 }

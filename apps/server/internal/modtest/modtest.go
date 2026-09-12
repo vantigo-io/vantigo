@@ -91,7 +91,6 @@ const indexHTML = `<!doctype html><html><head><title>Vantigo</title>` +
 // tests using one can run in parallel.
 type Harness struct {
 	pool     *pgxpool.Pool
-	cfg      *config.Config
 	deps     module.Deps
 	recorder *contracttest.Recorder
 	srv      *httptest.Server
@@ -178,7 +177,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		t.Fatalf("modtest: %v", err)
 	}
 
-	h := &Harness{pool: pool, cfg: cfg, recorder: s.recorder, clock: Start, log: &syncBuffer{}}
+	h := &Harness{pool: pool, recorder: s.recorder, clock: Start, log: &syncBuffer{}}
 	logger := slog.New(slog.NewJSONHandler(h.log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	// The limiter runs on the harness clock too, so a throttle window turns
 	// over when a test advances the clock and never mid-test on the wall clock.

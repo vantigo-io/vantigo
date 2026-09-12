@@ -19,16 +19,19 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 }
 
 // authenticatedClient signs in a caller holding every permission the
-// customers CRUD and dashboard-stats operations (Task 6) can exercise —
-// .NET's CustomersApiFactory.CreateAuthenticatedClient, which the ported
-// tests assume throughout (TS/CustomersEndpointsTests.cs and friends).
-// legal-identity-manage is included: this client is meant to represent a
-// caller with no restrictions, so the permission-gate tests that need a
-// caller *without* it sign in separately with a narrower set.
+// customers CRUD/dashboard-stats (Task 6) and contacts/association (Task 7)
+// operations can exercise — .NET's CustomersApiFactory.CreateAuthenticatedClient,
+// which the ported tests assume throughout (TS/CustomersEndpointsTests.cs,
+// TS/ContactsEndpointsTests.cs and friends). legal-identity-manage is
+// included: this client is meant to represent a caller with no restrictions,
+// so the permission-gate tests that need a caller *without* some permission
+// sign in separately with a narrower set.
 func authenticatedClient(t *testing.T, h *modtest.Harness) *modtest.Client {
 	t.Helper()
 	return h.SignIn(t, "customers:view", "customers:create", "customers:update", "customers:delete",
-		"customers:legal-identity-view", "customers:legal-identity-manage")
+		"customers:legal-identity-view", "customers:legal-identity-manage",
+		"customers:contacts-view", "customers:contacts-manage",
+		"customers:associations-view", "customers:associations-manage")
 }
 
 // insertCustomer creates a customer with the given name and status and returns
