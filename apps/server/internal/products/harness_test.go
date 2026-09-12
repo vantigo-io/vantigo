@@ -40,9 +40,10 @@ func authenticatedClient(t *testing.T, h *modtest.Harness) *modtest.Client {
 		"products:tax-categories-view", "products:tax-categories-manage")
 }
 
-// insertTaxCategory creates a tax category directly (categories/tax
-// categories are Task 12's own operations, not yet implemented) and returns
-// its id. rate is the fraction (e.g. 0.25 for 25%).
+// insertTaxCategory creates a tax category directly via SQL, for tests that
+// only need a valid taxCategoryId and would rather not depend on
+// postProductsTaxCategories' own behavior. rate is the fraction (e.g. 0.25
+// for 25%).
 func insertTaxCategory(t *testing.T, h *modtest.Harness, name string, rate float64) int32 {
 	t.Helper()
 	return modtest.One[int32](t, h, `

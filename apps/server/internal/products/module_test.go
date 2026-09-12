@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
-	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/products"
 )
 
@@ -68,25 +67,5 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	}
 	if m.Directory != nil {
 		t.Error("Module declares a customer directory, want nil: products publishes no contracts.CustomerDirectory")
-	}
-}
-
-// TestModule_StubbedOperationAnswers501 proves every not-yet-implemented
-// operation is still routed: a signed-in caller holding the operation's
-// permission passes the access check and reaches the stub, which answers 501
-// rather than a 404 from an unregistered route or a 500 from a nil handler.
-// getProductsCategories is Task 12's (categories, tax categories and
-// stats); products/variants/pricing (this task) are implemented and no
-// longer answer 501, so the stub proof moves here.
-func TestModule_StubbedOperationAnswers501(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-
-	// Off-contract by design: a 501 is the platform's answer to a handler that
-	// does not exist yet, and no operation documents one.
-	r := h.SignIn(t, "products:categories-view").
-		Do(http.MethodGet, "/api/v1/products/categories", nil, modtest.SkipContract("the operation is not implemented yet"))
-	if r.Status != http.StatusNotImplemented {
-		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
 	}
 }

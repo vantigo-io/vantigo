@@ -1,7 +1,10 @@
 package products
 
 import (
+	"errors"
 	"net/http"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
@@ -73,4 +76,31 @@ func forbiddenBody() apicommon.AuthErrorResponse {
 	body.Error.Code = forbiddenCode
 	body.Error.Message = forbiddenMessage
 	return body
+}
+
+// isRestrictConflict reports whether err is a Postgres restrict_violation
+// (23001) or foreign_key_violation (23503) — the two SQLSTATEs a delete
+// blocked by category_id/tax_category_id/parent_id's Restrict foreign keys
+// can raise (products inventory §3/§4/§7 oddity 7, corrected 2026-09-12): a
+// literal `ON DELETE RESTRICT` raises 23001, confirmed against a real
+// Postgres instance in internal/db/schema_test.go; 23503 is the FK default
+// (NO ACTION) this schema's tables never use, but stays mapped too since a
+// cascade or deferred path can still raise it (this is not this module's
+// invention — the products inventory itself calls this out as a case a
+// port "should handle both codes" for).
+//
+// .NET's global exception handler special-cases only unique_violation
+// (23505) and exclusion_violation (23P01)
+// (HOST/Diagnostics/VantigoExceptionHandler.cs:83-98) — neither 23001 nor
+// 23503 is in its IsConstraintConflict list, so a Restrict-FK race falls
+// through to a bare 500 in .NET. This module answers the documented 409
+// instead: a deliberate divergence from .NET, not a bug fix disguised as a
+// faithful port. categories.go's DeleteProductsCategoriesById and
+// taxcategories.go's DeleteProductsTaxCategoriesById are the two callers.
+func isRestrictConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "23001" || pgErr.Code == "23503"
 }

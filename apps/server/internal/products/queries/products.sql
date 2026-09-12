@@ -306,3 +306,158 @@ RETURNING id, variant_id, currency, amount, valid_from, valid_to;
 
 -- name: DeleteProductPrice :exec
 DELETE FROM products.product_prices WHERE id = @id;
+
+-- Categories (Task 12, EP/Categories/*Endpoint.cs). GetCategoryRef and
+-- ListCategoryParents above already cover the compact ref a product embeds
+-- and the whole id->parentId adjacency list category CRUD reuses for
+-- existence checks and WouldCreateCycle.
+
+-- name: InsertCategory :one
+-- InsertCategory is CreateCategoryEndpoint.cs:46-53.
+INSERT INTO products.product_categories (name, parent_id)
+VALUES (@name, @parent_id)
+RETURNING id, name, parent_id;
+
+-- name: GetCategoryByID :one
+-- GetCategoryByID is GetCategoryEndpoint's/UpdateCategoryEndpoint's/
+-- DeleteCategoryEndpoint's own-row lookup (the full row, parent_id
+-- included — unlike GetCategoryRef, which only serves a product's embedded
+-- reference).
+SELECT id, name, parent_id FROM products.product_categories WHERE id = @id;
+
+-- name: ListCategoriesOrdered :many
+-- ListCategoriesOrdered is GetCategoriesEndpoint.cs:20-24: the flat
+-- adjacency list, ordered by name then id.
+SELECT id, name, parent_id FROM products.product_categories ORDER BY name, id;
+
+-- name: ListCategoryProductCounts :many
+-- ListCategoryProductCounts is GetCategoriesEndpoint.cs:26-30's direct
+-- (not subtree) product count per category; a category with none is
+-- simply absent from the result, GetValueOrDefault's 0 (categories.go
+-- fills the gap).
+SELECT category_id AS id, count(*) AS count
+FROM products.products
+WHERE category_id IS NOT NULL
+GROUP BY category_id;
+
+-- name: CategoryExists :one
+-- CategoryExists is CreateCategoryEndpoint's parentId existence pre-check
+-- (:27-28).
+SELECT EXISTS(SELECT 1 FROM products.product_categories WHERE id = @id);
+
+-- name: CategorySiblingNameExists :one
+-- CategorySiblingNameExists is CreateCategoryEndpoint's duplicate-sibling
+-- check (:36-38). IS NOT DISTINCT FROM, not =, so two root categories
+-- (parent_id NULL on both sides) collide the same way the table's own
+-- NULLS NOT DISTINCT unique index does (products inventory §3).
+SELECT EXISTS(
+    SELECT 1 FROM products.product_categories
+    WHERE parent_id IS NOT DISTINCT FROM @parent_id AND name = @name
+);
+
+-- name: CategorySiblingNameExistsExcluding :one
+-- CategorySiblingNameExistsExcluding is UpdateCategoryEndpoint's duplicate-
+-- sibling check, excluding the category being renamed (:66-68).
+SELECT EXISTS(
+    SELECT 1 FROM products.product_categories
+    WHERE parent_id IS NOT DISTINCT FROM @parent_id AND name = @name AND id != @id
+);
+
+-- name: CategoryHasSubcategories :one
+-- CategoryHasSubcategories is DeleteCategoryEndpoint's first guard (:27-28).
+-- The explicit cast keeps id a plain (never-null) int32 in Go: it is always
+-- a real category's own id, even though it is compared against the
+-- nullable parent_id column.
+SELECT EXISTS(SELECT 1 FROM products.product_categories WHERE parent_id = @id::int);
+
+-- name: CategoryHasProducts :one
+-- CategoryHasProducts is DeleteCategoryEndpoint's second guard (:35-36).
+SELECT EXISTS(SELECT 1 FROM products.products WHERE category_id = @id::int);
+
+-- name: UpdateCategory :one
+-- UpdateCategory applies UpdateCategoryEndpoint's validated name/parentId
+-- (:76-78).
+UPDATE products.product_categories
+SET name = @name, parent_id = @parent_id
+WHERE id = @id
+RETURNING id, name, parent_id;
+
+-- name: DeleteCategory :exec
+DELETE FROM products.product_categories WHERE id = @id;
+
+-- Tax categories (Task 12, EP/TaxCategories/*Endpoint.cs). GetTaxCategoryRef
+-- above already covers the compact ref a product embeds.
+
+-- name: InsertTaxCategory :one
+-- InsertTaxCategory is CreateTaxCategoryEndpoint.cs:31-33 (TaxCategoryRequest.ToDomain).
+INSERT INTO products.tax_categories (name, kind, rate, created_at, updated_at)
+VALUES (@name, @kind, @rate, @now::timestamptz, @now::timestamptz)
+RETURNING id, name, kind, rate, created_at, updated_at;
+
+-- name: ListTaxCategoriesOrdered :many
+-- ListTaxCategoriesOrdered is GetTaxCategoriesEndpoint.cs:15-19: ordered by
+-- name.
+SELECT id, name, kind, rate FROM products.tax_categories ORDER BY name;
+
+-- name: TaxCategoryNameExists :one
+-- TaxCategoryNameExists is CreateTaxCategoryEndpoint's duplicate-name check
+-- (:23).
+SELECT EXISTS(SELECT 1 FROM products.tax_categories WHERE name = @name);
+
+-- name: TaxCategoryNameExistsExcluding :one
+-- TaxCategoryNameExistsExcluding is UpdateTaxCategoryEndpoint's
+-- duplicate-name check, excluding the category being renamed (:31-32).
+SELECT EXISTS(SELECT 1 FROM products.tax_categories WHERE name = @name AND id != @id);
+
+-- name: TaxCategoryHasProducts :one
+-- TaxCategoryHasProducts is DeleteTaxCategoryEndpoint's guard (:21-22).
+SELECT EXISTS(SELECT 1 FROM products.products WHERE tax_category_id = @id);
+
+-- name: UpdateTaxCategory :one
+-- UpdateTaxCategory applies UpdateTaxCategoryEndpoint's validated fields
+-- (:40-43).
+UPDATE products.tax_categories
+SET name = @name, kind = @kind, rate = @rate, updated_at = @updated_at::timestamptz
+WHERE id = @id
+RETURNING id, name, kind, rate, created_at, updated_at;
+
+-- name: DeleteTaxCategory :exec
+DELETE FROM products.tax_categories WHERE id = @id;
+
+-- Stats (Task 12, EP/ProductStatsEndpoints.cs). Mirrors the customers
+-- module's own CustomerStatsSummaryCustomerCounts/CustomerCreationBuckets
+-- query shape, the completed broader template.
+
+-- name: ProductStatsSummaryCounts :one
+-- ProductStatsSummaryCounts is ProductStatsEndpoints.Summary's four product
+-- counts (:42-49): previous_from..period_from is the immediately preceding
+-- window of the same length as [period_from, period_to).
+SELECT
+    count(*) FILTER (WHERE status = 'Active') AS active,
+    count(*) FILTER (WHERE status = 'Active' AND created_at < @period_from::timestamptz) AS active_at_period_start,
+    count(*) FILTER (WHERE created_at >= @period_from::timestamptz AND created_at < @period_to::timestamptz) AS new_products,
+    count(*) FILTER (WHERE created_at >= @previous_from::timestamptz AND created_at < @period_from::timestamptz) AS previous_new_products
+FROM products.products;
+
+-- name: ProductStatusCounts :many
+-- ProductStatusCounts is ProductStatsEndpoints.Summary's current
+-- per-status counts (:51-54), every status present in the table.
+SELECT status, count(*) AS value FROM products.products GROUP BY status;
+
+-- name: ProductStatusCountsBefore :many
+-- ProductStatusCountsBefore is ProductStatsEndpoints.Summary's per-status
+-- counts as of period.From (:55-59), used to compute each status's delta.
+SELECT status, count(*) AS value
+FROM products.products
+WHERE created_at < @before::timestamptz
+GROUP BY status;
+
+-- name: ProductCreationBuckets :many
+-- ProductCreationBuckets is the timeseries's newProducts metric
+-- (ProductStatsEndpoints.cs:92-97): one row per UTC calendar day with at
+-- least one product created in [range_from, range_to).
+SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS value
+FROM products.products
+WHERE created_at >= @range_from::timestamptz AND created_at < @range_to::timestamptz
+GROUP BY day
+ORDER BY day;
