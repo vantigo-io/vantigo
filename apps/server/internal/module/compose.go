@@ -21,9 +21,14 @@ import (
 // answers every other /api path with httpx.NotFound. It fails on a
 // duplicate name, an invalid or duplicate permission, a Mount error, a path
 // two modules both declare, a component two modules declare differently
-// under the same name, or two modules both declaring a customer directory
-// (naming both).
+// under the same name, two modules both declaring a customer directory
+// (naming both), or a nil Deps.Config: enablement (which modules MODULES
+// turns on) is meaningless without one, and every real caller already loads
+// one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
+	if deps.Config == nil {
+		return nil, fmt.Errorf("module: Compose requires a non-nil Deps.Config to know which modules MODULES enables")
+	}
 	return compose(deps, openapi.Load, mods...)
 }
 
