@@ -319,3 +319,55 @@ type PlatformRateLimit struct {
 	WindowStart time.Time
 	Hits        int32
 }
+
+type ProductsProduct struct {
+	ID            int32
+	Name          string
+	Description   *string
+	CategoryID    *int32
+	Type          string
+	Status        string
+	TaxCategoryID int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type ProductsProductCategory struct {
+	ID       int32
+	Name     string
+	ParentID *int32
+}
+
+type ProductsProductPrice struct {
+	ID        int32
+	VariantID int32
+	Currency  string
+	Amount    pgtype.Numeric
+	ValidFrom *time.Time
+	ValidTo   *time.Time
+}
+
+type ProductsProductVariant struct {
+	ID           int32
+	ProductID    int32
+	Sku          string
+	Barcode      *string
+	Unit         string
+	StandardCost pgtype.Numeric
+	WeightKg     pgtype.Numeric
+	LengthCm     pgtype.Numeric
+	WidthCm      pgtype.Numeric
+	HeightCm     pgtype.Numeric
+	OptionValues []byte
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+type ProductsTaxCategory struct {
+	ID        int32
+	Name      string
+	Kind      string
+	Rate      pgtype.Numeric
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}

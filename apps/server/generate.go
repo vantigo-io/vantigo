@@ -24,3 +24,8 @@ package server
 // is already on PATH by the time go generate runs.
 //go:generate sqlc generate -f internal/identity/sqlc.yaml
 //go:generate sqlc generate -f internal/customers/sqlc.yaml
+// internal/products/sqlc.yaml is not wired in here yet: sqlc refuses to run
+// over a queries directory with no .sql files in it, and products.yaml's
+// queries directory is still empty at this task (schema, skeleton and
+// catalog only, no query needs a generated method yet). Task 11 adds the
+// first query and this line together.
