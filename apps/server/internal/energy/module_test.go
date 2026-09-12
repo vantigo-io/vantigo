@@ -102,9 +102,11 @@ func TestModule_StubbedOperationAnswers501(t *testing.T) {
 	h := newHarness(t)
 
 	// Off-contract by design: a 501 is the platform's answer to a handler
-	// that does not exist yet, and no operation documents one.
-	r := h.SignIn(t, "energy:metering-points-view", "energy:meters-view").
-		Do(http.MethodGet, "/api/v1/energy/metering-points", nil, modtest.SkipContract("the operation is not implemented yet"))
+	// that does not exist yet, and no operation documents one. Task 14
+	// implemented metering points, meters and supply periods; this pins a
+	// still-unimplemented operation (consumption/stats, Task 15's scope).
+	r := h.SignIn(t, "energy:consumption-view", "energy:metering-points-view", "energy:meters-view", "energy:supply-periods-view").
+		Do(http.MethodGet, "/api/v1/energy/stats/summary", nil, modtest.SkipContract("the operation is not implemented yet"))
 	if r.Status != http.StatusNotImplemented {
 		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
 	}
