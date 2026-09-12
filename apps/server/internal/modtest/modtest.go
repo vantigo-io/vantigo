@@ -347,23 +347,28 @@ func (h *Harness) SignIn(t testing.TB, permissions ...string) *Client {
 	return c
 }
 
-// SignInDisabled is SignIn for a caller whose account is disabled: same
-// seeded user, role and session, but identity.users.is_disabled is set
-// before the session cookie is minted. Session lookup itself already
-// excludes a disabled user's row, so the returned client answers 401 rather
-// than reaching any permission check — a module's own authorization test can
-// assert on that without duplicating SignIn's seedUser/seedRole/session
-// plumbing to build one disabled principal itself.
+// SignInDisabled is SignIn for a caller whose account is disabled: it
+// delegates to SignIn for the actual seeded user, role and session, then
+// flips identity.users.is_disabled for the user that session belongs to —
+// found by re-deriving the session's token hash from the client's own
+// cookie jar (sessionCookie, the same base64url-then-SHA-256 shape session()
+// itself uses), rather than duplicating seedUser/seedRole/session here.
+// Session lookup itself already excludes a disabled user's row, so the
+// returned client answers 401 rather than reaching any permission check.
 func (h *Harness) SignInDisabled(t testing.TB, permissions ...string) *Client {
 	t.Helper()
-	userID := h.seedUser(t)
-	if len(permissions) > 0 {
-		roleID := h.seedRole(t, permissions)
-		h.Exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, userID, roleID)
+	c := h.SignIn(t, permissions...)
+	raw, ok := c.sessionCookie()
+	if !ok {
+		t.Fatalf("modtest: SignInDisabled: SignIn did not plant a session cookie")
 	}
-	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, userID)
-	c := h.Client(t)
-	c.SetCookie(sessionCookieName, h.session(t, userID))
+	token, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		t.Fatalf("modtest: SignInDisabled: decode session token: %v", err)
+	}
+	hash := sha256.Sum256(token)
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true
+	           WHERE id = (SELECT user_id FROM identity.sessions WHERE token_hash = $1)`, hash[:])
 	return c
 }
 

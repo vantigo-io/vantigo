@@ -3,6 +3,7 @@ package energy
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,28 @@ const energyStatsAttentionWindowDays = 30
 // invalidEnergyPeriodDetail is TryNormalizePeriod's problem detail
 // (:145-147), shared verbatim by Summary and Timeseries.
 const invalidEnergyPeriodDetail = "The 'from' value must be earlier than or equal to the 'to' value."
+
+// clampInt32 narrows a bigint count to int32, saturating at the int32
+// bounds rather than silently wrapping — EnergyStatsSummaryCounts' four
+// counts are Postgres COUNT(*) results (bigint/int64), but
+// EnergyStatsSummaryResponse's fields are int32 (matching .NET's int).
+// Fix-round finding: the unguarded int32(n) conversion this replaced would
+// wrap a count past 2^31-1 into a negative number with no error and no log
+// line — a dashboard silently lying is worse than one capped at a
+// deliberately-visible ceiling no real installation is expected to reach.
+// Deltas are computed at int64 precision by the caller *before* this narrows
+// them, so a delta near the boundary is not itself corrupted by narrowing
+// each side first and subtracting after.
+func clampInt32(n int64) int32 {
+	switch {
+	case n > math.MaxInt32:
+		return math.MaxInt32
+	case n < math.MinInt32:
+		return math.MinInt32
+	default:
+		return int32(n)
+	}
+}
 
 // normalizeEnergyStatsPeriod is EnergyStatsEndpoints.TryNormalizePeriod
 // (:132-149): to defaults to now, from defaults to 30 days before to; ok is
@@ -100,13 +123,15 @@ func (s *server) GetEnergyStatsSummary(ctx context.Context, req gen.GetEnergySta
 
 	consumptionKwh := floatFromNumeric(counts.ConsumptionKwh)
 	previousConsumptionKwh := floatFromNumeric(counts.PreviousConsumptionKwh)
+	meteringPointCountDelta := counts.MeteringPointCount - counts.MeteringPointCountAtPeriodStart
+	activeSupplyPeriodsDelta := counts.ActiveSupplyPeriods - counts.ActiveSupplyPeriodsAtPeriodStart
 	return gen.GetEnergyStatsSummary200JSONResponse{
 		From:                     periodFrom,
 		To:                       periodTo,
-		MeteringPointCount:       int32(counts.MeteringPointCount),
-		MeteringPointCountDelta:  int32(counts.MeteringPointCount) - int32(counts.MeteringPointCountAtPeriodStart),
-		ActiveSupplyPeriods:      int32(counts.ActiveSupplyPeriods),
-		ActiveSupplyPeriodsDelta: int32(counts.ActiveSupplyPeriods) - int32(counts.ActiveSupplyPeriodsAtPeriodStart),
+		MeteringPointCount:       clampInt32(counts.MeteringPointCount),
+		MeteringPointCountDelta:  clampInt32(meteringPointCountDelta),
+		ActiveSupplyPeriods:      clampInt32(counts.ActiveSupplyPeriods),
+		ActiveSupplyPeriodsDelta: clampInt32(activeSupplyPeriodsDelta),
 		ConsumptionKwh:           consumptionKwh,
 		ConsumptionKwhDelta:      consumptionKwh - previousConsumptionKwh,
 		PreviousConsumptionKwh:   previousConsumptionKwh,
