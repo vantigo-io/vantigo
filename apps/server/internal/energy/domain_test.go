@@ -85,3 +85,53 @@ func TestSupplyPeriod_Overlaps(t *testing.T) {
 		}
 	})
 }
+
+// Ported from TS/Domain/MarketTimeZoneTests.cs. The unknown ("XX1") and nil
+// facts are the whole point of this test (§4.1, this task's dispatch
+// correction 1): Oslo is a default, not a match on "NO" — a lookup table
+// with an explicit NO->Oslo entry would still pass every other fact here
+// and only fail on these two.
+func TestMarketTimeZone_GetId(t *testing.T) {
+	t.Parallel()
+	no1, se4, dk2, fi1, xx1 := "NO1", "SE4", "DK2", "FI1", "XX1"
+	cases := []struct {
+		priceArea *string
+		want      string
+	}{
+		{&no1, "Europe/Oslo"},
+		{&se4, "Europe/Stockholm"},
+		{&dk2, "Europe/Copenhagen"},
+		{&fi1, "Europe/Helsinki"},
+		{&xx1, "Europe/Oslo"},
+		{nil, "Europe/Oslo"},
+	}
+	for _, c := range cases {
+		if got := marketTimeZone(c.priceArea); got != c.want {
+			area := "nil"
+			if c.priceArea != nil {
+				area = *c.priceArea
+			}
+			t.Errorf("marketTimeZone(%q) = %q, want %q", area, got, c.want)
+		}
+	}
+}
+
+// Ported from TS/Domain/ConsumptionIntervalTests.cs.
+func TestConsumptionInterval_Validate(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 12, 12, 0, 0, 0, time.UTC)
+
+	t.Run("rejects end before start", func(t *testing.T) {
+		t.Parallel()
+		if got := validateConsumptionInterval(now, now.Add(-time.Hour), 1); got != "End must be later than start." {
+			t.Errorf("validateConsumptionInterval = %q, want the end-before-start message", got)
+		}
+	})
+
+	t.Run("rejects negative quantity", func(t *testing.T) {
+		t.Parallel()
+		if got := validateConsumptionInterval(now, now.Add(time.Hour), -1); got != "Quantity must be zero or greater." {
+			t.Errorf("validateConsumptionInterval = %q, want the negative-quantity message", got)
+		}
+	})
+}

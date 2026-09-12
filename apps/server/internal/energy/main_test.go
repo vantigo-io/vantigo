@@ -25,22 +25,12 @@ func loadContract() *openapi3.T {
 	return doc
 }
 
-// pendingOperations are the contract's operations no test covers yet. Every
-// one of the module's 20 operations is a stub answering 501, so all 20 are
-// pending; each later task removes the operations of the area it
-// implements, and RequireCoverage fails the run if an entry left here was
-// in fact exercised.
-var pendingOperations = []string{
-	"getEnergyCustomersByCustomerIdConsumption",
-	"getEnergyCustomersByCustomerIdConsumptionAggregate",
-	"getEnergyCustomersByCustomerIdMeteringPoints",
-	"getEnergyMeteringPointsByIdConsumption",
-	"getEnergyMeteringPointsByIdConsumptionAggregate",
-	"getEnergyStatsAttention",
-	"getEnergyStatsSummary",
-	"getEnergyStatsTimeseries",
-	"postEnergyMeteringPointsByIdConsumption",
-}
+// pendingOperations are the contract's operations no test covers yet. Task
+// 15 implements consumption, aggregation and stats — the module's last
+// area — so every one of the 20 contract operations now has a real handler
+// and a test; RequireCoverage still fails the run if any operation is
+// exercised without being covered by the contract, or vice versa.
+var pendingOperations = []string{}
 
 func TestMain(m *testing.M) {
 	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))
