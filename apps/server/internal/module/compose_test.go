@@ -434,6 +434,90 @@ func TestCompose_DoesNotMutateModulesDocs(t *testing.T) {
 	}
 }
 
+// fakeDirectory is a minimal contracts.CustomerDirectory: these tests only
+// need a distinct, comparable value to inject through Deps and assert on,
+// never its actual lookup behaviour.
+type fakeDirectory struct{}
+
+func (*fakeDirectory) Customer(context.Context, int32) (*contracts.CustomerEntry, error) {
+	return nil, nil
+}
+
+func (*fakeDirectory) Contact(context.Context, int32) (*contracts.ContactEntry, error) {
+	return nil, nil
+}
+
+func (*fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.ContactMatch, error) {
+	return nil, nil
+}
+
+// Decision 3: the module that declares Directory has it resolved before any
+// Mount runs, and the result reaches every module's Deps — including a
+// module that does not provide one itself, and the provider's own Mount.
+func TestCompose_DirectoryProviderReachesEveryModulesMount(t *testing.T) {
+	fake := &fakeDirectory{}
+	var gotInAlpha, gotInBeta contracts.CustomerDirectory
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			gotInAlpha = d.Directory
+			return staticHandler("alpha")(d)
+		}},
+		Module{
+			Name:      "beta",
+			Directory: func(Deps) contracts.CustomerDirectory { return fake },
+			Mount: func(d Deps) (http.Handler, error) {
+				gotInBeta = d.Directory
+				return staticHandler("beta")(d)
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if gotInAlpha != fake {
+		t.Errorf("alpha's Deps.Directory = %v, want the directory beta provides", gotInAlpha)
+	}
+	if gotInBeta != fake {
+		t.Errorf("beta's own Deps.Directory = %v, want the directory it provides", gotInBeta)
+	}
+}
+
+// With no module declaring Directory, Deps.Directory is nil in every Mount:
+// Compose never invents a directory, and a consumer sees a plain nil rather
+// than some zero-value stand-in.
+func TestCompose_NoDirectoryProviderLeavesItNil(t *testing.T) {
+	var got contracts.CustomerDirectory = &fakeDirectory{} // starts non-nil so a no-op would be caught
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d.Directory
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got != nil {
+		t.Errorf("Deps.Directory = %v, want nil with no provider", got)
+	}
+}
+
+// Two modules both declaring Directory is a compose error naming both, in
+// the style of the duplicate-name and duplicate-permission errors above.
+func TestCompose_TwoDirectoryProvidersFails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Directory: func(Deps) contracts.CustomerDirectory { return &fakeDirectory{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Directory: func(Deps) contracts.CustomerDirectory { return &fakeDirectory{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare a customer directory")
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
 func TestDecodeError(t *testing.T) {
 	write := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
