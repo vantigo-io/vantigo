@@ -23,3 +23,4 @@ package server
 // sqlc's typed query layer. Pinned in mise.toml ("aqua:sqlc-dev/sqlc"), so it
 // is already on PATH by the time go generate runs.
 //go:generate sqlc generate -f internal/identity/sqlc.yaml
+//go:generate sqlc generate -f internal/customers/sqlc.yaml
