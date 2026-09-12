@@ -93,8 +93,10 @@ const PoolMaxConns = 16
 // migrators. Beyond it this fails with SQLSTATE 53200, "out of shared memory",
 // on a different arbitrary subset of tests every run, which reads as a flaky
 // test rather than a resource limit. Run the suite with taskset -c 0-3 (CI's
-// sizing) or -parallel 8 on a many-core host; see CONTRIBUTING.md's Go server
-// section. The migration advisory lock cannot serialise this: advisory locks
+// sizing) or -p 4 on a many-core host; see CONTRIBUTING.md's Go server
+// section. -p is the knob that matters: it bounds how many packages run at
+// once, which is what bounds concurrent migrators. -parallel bounds parallel
+// tests within one package and caps nothing across them. The migration advisory lock cannot serialise this: advisory locks
 // are per-database and every test has its own database, which is why
 // production, migrating one database, never sees it.
 func Migrated(t testing.TB) (*pgxpool.Pool, string) {

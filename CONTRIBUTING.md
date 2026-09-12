@@ -149,7 +149,7 @@ for extraction, not the SPA paths.
 - **A rich domain model** — value objects own validation and request handlers only
   work with valid domain values.
 - **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
-  `/api/v1/customers`, `/api/v1/communications` and `/api/v1/products`.
+  `/api/v1/customers`, `/api/v1/products` and `/api/v1/energy`.
 - **In-process contracts** — module collaboration uses contracts such as
   `ICustomerDirectory` from `Vantigo.Contracts`, not service-to-service API keys.
 - **Form-friendly errors** — validation errors use camelCase JSON field paths.
@@ -161,8 +161,8 @@ for extraction, not the SPA paths.
 
 All endpoints are versioned by URL segment and documented per version at
 `/openapi/v1.json` (browsable through Scalar when running AppHost). Module prefixes
-are `/api/v1/identity`, `/api/v1/customers`, `/api/v1/communications` and
-`/api/v1/products`.
+are `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products` and
+`/api/v1/energy`.
 
 Validation errors use RFC 9457 problem details with keys matching the JSON field path:
 
@@ -281,8 +281,14 @@ Rules the code relies on:
 **Run the Go tests pinned to four CPUs on a many-core machine:**
 
 ```bash
-cd apps/server && taskset -c 0-3 go test ./... -count=1     # or: -parallel 8
+cd apps/server && taskset -c 0-3 go test ./... -count=1     # or: -p 4
 ```
+
+`-p` is the knob, not `-parallel`. `-p` bounds how many **packages** run at
+once, which is what bounds how many migrators apply migration 5 at the same
+time. `-parallel` bounds parallel tests **within** one package and caps nothing
+across packages, so it does not limit concurrent migrators and is not a
+substitute.
 
 A full-parallelism run on a many-core host is **not** a valid gate: it fails
 with `ERROR: out of shared memory (SQLSTATE 53200)` while applying migration 5,
@@ -301,6 +307,17 @@ pass (8 × 648 = 5184) and forty-four do not (44 × 648 = 28512). The migration
 advisory lock does not help, because advisory locks are per-database and every
 test has its own database — which is exactly why production, migrating one
 database, never sees this.
+
+**The same table, in production: a cold month's first write takes an exclusive
+lock.** `EnsureConsumptionPartition` (`internal/energy/consumption.go`) runs
+`CREATE TABLE ... PARTITION OF` *inside the request transaction*, so the first
+consumption write into a month that has no partition yet holds an `ACCESS
+EXCLUSIVE` lock on `energy.consumption_intervals` for the remainder of that
+transaction, and every concurrent read or write of the table waits behind it.
+This mirrors .NET and needs no code change — the lock is held for one short
+transaction, once per month — but it is why the first write after a month
+boundary can show a latency spike the next one does not. An operator chasing
+that spike should look here rather than at the query plan.
 
 Because the failure strikes whichever tests happen to be creating a database at
 that moment, the set of failing tests differs on every run. CI uses four CPUs
@@ -399,6 +416,18 @@ either without `customers` fails startup naming both. A disabled module
 contributes no route, no permission and no contract path, and its paths answer
 the `/api` catch-all 404 — but every schema is migrated regardless, so enabling
 a module later needs no migration.
+
+`MODULES=communications` is accepted and mounts nothing. The known-module set
+(`knownModules` in `internal/config/config.go`) is derived from
+`openapi.Modules`, the single place the contract names are written, and
+`communications.yaml` is already one of them — so the name passes validation,
+while no `communications` `Module()` exists for `module.Compose` to mount. The
+result is a deployment that starts cleanly and serves no communications routes:
+its paths answer the `/api` 404 like any other unmounted path. This is
+deliberate rather than an oversight. Communications is contract-only until its
+own sub-project builds it, and rejecting a name the contract set already carries
+would have to be reverted the week that module lands. Listing it buys nothing;
+it is not an error.
 
 The customer directory is the only sanctioned cross-module read. No module
 imports another (enforced by depguard) and no module queries another's schema

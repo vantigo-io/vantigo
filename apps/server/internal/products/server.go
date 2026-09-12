@@ -65,11 +65,15 @@ const (
 
 // hasPermission reports whether the signed-in caller holds key, evaluated
 // the same way module.Router evaluates x-vantigo-access. Any failure,
-// infrastructure errors included, reads as false. This is the project's one
-// sanctioned handler-side permission check (Global Constraints,
-// "Contract-driven access": "Handlers never re-check what the router
-// already checked, with one exception: the conditional pricing permission
-// in Task 11") — postProducts and postProductsByIdVariants additionally
+// infrastructure errors included, reads as false. This is one of the
+// project's two sanctioned handler-side permission gates (Global
+// Constraints, "Contract-driven access": handlers never re-check what the
+// router already checked, with exactly two exceptions, both a permission
+// conditional on request-body content the router cannot see). The other is
+// customers' legal-identity gate (internal/customers/server.go's
+// legalIdentityManage), which has the same shape and fails closed the same
+// way; neither is "the one" — postProducts and postProductsByIdVariants
+// additionally
 // require pricing-view AND pricing-manage when the submitted payload
 // carries pricing data (a non-null standardCost or a non-empty prices
 // array on any variant), because whether pricing is involved at all depends

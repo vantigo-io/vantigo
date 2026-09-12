@@ -225,15 +225,32 @@ Go behaviour, .NET's behaviour, and the reason.
 1. **A malformed Brreg response body answers 502.** .NET let the
    `JsonException` raised by deserializing an unparseable body propagate to
    the host as an unhandled 500. Go answers the operation's documented 502
-   (`internal/customers/brreg.go`). Reason: the contract documents 502 for an
-   upstream failure and never documents 500 on that operation, so preserving
-   the 500 would have required a `SkipContract` on the exchange — switching
-   the validating transport off for the whole response and blinding the
-   validator for every other case on `getCustomersLookupBrreg`, not just this
-   one.
-2. **Brreg retry backoff uses a ~200 ms base capped near 1 s** (jittered;
-   `brregBackoffBase`, `brregBackoffCap`). .NET's Polly standard resilience
-   handler defaults to a 2 s base. Reason: a 2 s base across the three
+   (`internal/customers/brreg.go`). Reason: contract completeness, on its
+   own. The operation documents 502 for an upstream failure and documents no
+   500 at all, and a response the server can actually return should be one
+   the contract declares. An external service answering with unparsable data
+   is an upstream failure by any honest reading, so the declared 502 is the
+   status that fits it.
+
+   *Correction.* An earlier version of this entry justified the 502 by
+   claiming that preserving .NET's 500 "would have required a `SkipContract`
+   on the exchange — switching the validating transport off for the whole
+   response and blinding the validator for every other case on
+   `getCustomersLookupBrreg`". That reason was false and is withdrawn:
+   `SkipContract` is per **exchange**, not per operation
+   (`internal/modtest/client.go` documents it as opting *one exchange* out of
+   contract validation, and it is used per call at
+   `customers/customers_test.go`), so a skip on the malformed-body test would
+   have blinded that one exchange and nothing else. The 502 behaviour was and
+   is correct; only the stated reason was wrong.
+2. **Brreg retry backoff uses a ~200 ms base, reaching 800 ms at most**
+   (jittered; `brregBackoffBase`). With `brregRetryAttempts = 3` the
+   pre-jitter delays are 200/400/800 ms, so about 1.4 s of sleep across the
+   three retries in the worst case. `brregBackoffCap` is 1 s, which this
+   attempt count never reaches: it guards the doubling should the attempt
+   count ever rise (a fourth retry would want 1.6 s) rather than binding
+   anything today, so the real maximum is 800 ms and not the cap.
+   .NET's Polly standard resilience handler defaults to a 2 s base. Reason: a 2 s base across the three
    retries implies roughly 14 s of sleep, which cannot fit inside the 15 s
    `BRREG_TIMEOUT` total-request budget this spec sets — the retries would be
    cut off by the budget rather than completed by the policy.
@@ -244,9 +261,17 @@ Go behaviour, .NET's behaviour, and the reason.
    actually raises, verified twice against a real Postgres — and `23503` to
    the operation's documented 409, in its own `isRestrictConflict`. This is
    deliberately **not** a platform-wide mapping: `httpx.WriteError` still
-   maps only `23505`/`23P01` for every other module, because products is the
-   only schema here with `RESTRICT` foreign keys a request can reach. A
-   later module that gains one must opt in the same way.
+   maps only `23505`/`23P01` for every other module.
+
+   Scoped precisely, because the obvious generalisation is wrong twice over.
+   Products is not the only schema here with a `RESTRICT` foreign key —
+   energy has one too (`00005_energy_baseline.sql`) — it is only the one
+   whose keys a request can actually reach, because no energy endpoint
+   deletes a referenced row. And products is not the first module to map
+   these codes: identity's user deletion already maps `23001`/`23503` for its
+   SCIM-mapping and delegation keys (`internal/identity/users.go`). So this
+   entry records one more module-local mapping in an established pattern, not
+   a new convention and not a general `RESTRICT`→409 rule.
 4. **An association deleted by a concurrent writer between the pre-read and
    the write answers 204/200 idempotently.** Both association endpoints
    pre-read the row and answer **404** when it is genuinely absent
