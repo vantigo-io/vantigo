@@ -74,6 +74,21 @@ components:
         id: { type: integer }
 `
 
+// identityContract is a fixture standing in for the real identity module: a
+// module named "identity", the one name enabledModules always mounts
+// regardless of Deps.Config.Modules.
+const identityContract = `
+openapi: 3.0.3
+info: { title: Identity, version: "1" }
+paths:
+  /api/v1/identity/z:
+    get:
+      operationId: getIdentityZ
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
 // gammaDuplicatePathContract declares the exact same path alphaContract
 // does, under a different module name — a path two modules both declare.
 const gammaDuplicatePathContract = `
@@ -181,6 +196,68 @@ func TestCompose_DisabledModuleContributesNothing(t *testing.T) {
 	}
 	if _, ok := gotCatalog["beta:manage"]; ok {
 		t.Error("catalog holds the disabled module's permission")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/openapi.json", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("openapi.json: status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	var doc struct {
+		Paths map[string]any `json:"paths"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("openapi.json: invalid JSON: %v", err)
+	}
+	if _, ok := doc.Paths["/api/v1/alpha/x"]; !ok {
+		t.Error("combined contract is missing the enabled module's path")
+	}
+	if _, ok := doc.Paths["/api/v1/beta/y"]; ok {
+		t.Error("combined contract holds the disabled module's path")
+	}
+}
+
+// Identity is always mounted, even against the production shape of
+// Deps.Config, where Modules never contains "identity" itself (config.Load
+// never puts it there). A module Config.Modules does not enable still gets
+// nothing, alongside it.
+func TestCompose_IdentityMountsRegardlessOfConfigModules(t *testing.T) {
+	handler, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"identity": identityContract, "beta": betaContract}),
+		Module{Name: "identity", Mount: staticHandler("identity")},
+		Module{Name: "beta", Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/identity/z", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if want := "identity:/api/v1/identity/z"; rec.Body.String() != want {
+		t.Errorf("identity: body = %q, want %q", rec.Body.String(), want)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/beta/y", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("beta (disabled, not in Config.Modules): status = %d, want 404", rec.Code)
+	}
+}
+
+// The exported Compose fails closed without a Config: enablement is
+// meaningless without one, and every real caller (cmd/vantigo, the identity
+// test harness) already loads a real one before composing.
+func TestCompose_RequiresAConfig(t *testing.T) {
+	_, err := Compose(Deps{Access: &fakeAccess{}}, Module{Name: "identity", Mount: staticHandler("identity")})
+	if err == nil {
+		t.Fatal("Compose: want an error when Deps.Config is nil")
+	}
+	if !strings.Contains(err.Error(), "Config") {
+		t.Errorf("error %q does not name the missing config", err)
 	}
 }
 
@@ -358,7 +435,9 @@ func TestCompose_MergesTheSixRealContracts(t *testing.T) {
 		mods[i] = Module{Name: name, Mount: func(Deps) (http.Handler, error) { return http.NotFoundHandler(), nil }}
 	}
 
-	handler, err := Compose(Deps{Access: access}, mods...)
+	// Every business module contract here must actually mount, so all of
+	// them are enabled; identity mounts regardless.
+	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications"}}}, mods...)
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
@@ -406,7 +485,7 @@ func TestCompose_DoesNotMutateModulesDocs(t *testing.T) {
 		}},
 		{Name: "customers", Mount: func(Deps) (http.Handler, error) { return http.NotFoundHandler(), nil }},
 	}
-	if _, err := Compose(Deps{Access: &fakeAccess{}}, mods...); err != nil {
+	if _, err := Compose(Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"customers"}}}, mods...); err != nil {
 		t.Fatalf("Compose: %v", err)
 	}
 	if identityDoc == nil {
@@ -515,6 +594,36 @@ func TestCompose_TwoDirectoryProvidersFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
 		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// enabledModules filters before the directory scan runs, so a disabled
+// module's Directory never counts toward the two-provider check and is
+// never resolved: two modules declare Directory, only one (alpha) is
+// enabled, Compose succeeds, and the enabled provider's own directory is
+// what its Mount sees.
+func TestCompose_DisabledDirectoryProviderDoesNotCount(t *testing.T) {
+	enabled := &fakeDirectory{}
+	var gotInAlpha contracts.CustomerDirectory
+
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{
+			Name:      "alpha",
+			Directory: func(Deps) contracts.CustomerDirectory { return enabled },
+			Mount: func(d Deps) (http.Handler, error) {
+				gotInAlpha = d.Directory
+				return staticHandler("alpha")(d)
+			},
+		},
+		Module{Name: "beta", Directory: func(Deps) contracts.CustomerDirectory { return &fakeDirectory{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v, want no error: beta's Directory is disabled and must not count toward the two-provider check", err)
+	}
+	if gotInAlpha != enabled {
+		t.Errorf("alpha's Deps.Directory = %v, want its own directory", gotInAlpha)
 	}
 }
 
