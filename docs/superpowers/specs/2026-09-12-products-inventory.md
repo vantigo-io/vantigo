@@ -246,9 +246,12 @@ What actually answers a conflict:
   omitted, `detail` = the fixed string `"The request conflicts with data that already exists. Verify the values
   and try again."`) — **not** the endpoint's specific title/detail. `TS/Integration/ProductConcurrencyConflictTests.cs:21-38`
   proves this end-to-end: 4 concurrent `POST /products` with the same SKU yield exactly one 201 and three 409s.
-  `23503` (foreign_key_violation, e.g. `Restrict` FKs on `category_id`/`tax_category_id`) is **not** in
+  `23001` (restrict_violation — what a literal `ON DELETE RESTRICT` FK such as `category_id`/`tax_category_id`
+  actually raises; **corrected 2026-09-12**, this section previously said `23503`, reproduced independently twice
+  against a real Postgres instance during Task 10) is **not** in
   `IsConstraintConflict` (`VantigoExceptionHandler.cs:97-98`) — only `23505` and `23P01` (exclusion_violation)
-  are mapped to 409. So a race where a category/tax-category is deleted concurrently with a product being
+  are mapped to 409. Neither is `23503` (foreign_key_violation), which a `NO ACTION`/deferred or cascade-path
+  violation can still raise, so a port mapping these to 409 should handle both codes. So a race where a category/tax-category is deleted concurrently with a product being
   assigned to it (or vice versa) can surface as an **unmapped 500**, not a 409, because there is no unique or
   exclusion constraint backing those particular checks, only `Restrict` FKs. Whether this is intentional or a
   latent gap is unverified; the Go port should decide deliberately rather than inherit it silently.
@@ -377,9 +380,11 @@ re-expression for Go's connection-pooling model rather than a literal port.
    "campaign vs. base price" invariant. The parent design doc's GiST mention is about Energy, not Products; a
    porter should not go looking for one here, and should decide anew whether to add DB enforcement.
 7. **`Restrict`-FK races are unmapped to 409.** The global exception handler only special-cases Postgres
-   `unique_violation`/`exclusion_violation` (`23505`/`23P01`); `foreign_key_violation` (`23503`) — which is what
-   actually backs the "category/tax-category still referenced" and "duplicate name" `Restrict` FKs — falls
-   through to a generic 500. The friendly app-level pre-checks make this rare in practice, but it is not
+   `unique_violation`/`exclusion_violation` (`23505`/`23P01`); `restrict_violation` (`23001`) — which is what
+   actually backs the "category/tax-category still referenced" and "duplicate name" `Restrict` FKs
+   (**corrected 2026-09-12**: this said `23503`, but a literal `ON DELETE RESTRICT` raises `23001`; verified
+   independently twice against a real Postgres instance) — falls
+   through to a generic 500, as does `23503` (foreign_key_violation) on any cascade or deferred path. The friendly app-level pre-checks make this rare in practice, but it is not
    race-proof.
 8. **List validation uses one error shape, mutation validation uses another.** `GET /products`'s query-parameter
    errors return `ProblemDetails` with a single joined `detail` sentence (`GetProductsEndpoint.cs:130-133`)
