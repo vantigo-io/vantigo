@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port the Customers, Products and Energy modules from .NET to Go — 75 operations, 222 ported tests — served by `cmd/vantigo` behind the platform sub-project 3 built.
+**Goal:** Port the Customers, Products and Energy modules from .NET to Go — 75 operations, 215 ported tests (corrected from 222; see Global Constraints) — served by `cmd/vantigo` behind the platform sub-project 3 built.
 
 **Architecture:** Three modules, each an island: its own PostgreSQL schema, its own sqlc queries, its own permission catalog, mounted by `module.Compose` through a router that enforces the contract's `x-vantigo-access` rule. The platform gains three things first: precedence-aware routing, `MODULES` enablement, and `contracts.CustomerDirectory` as the only sanctioned cross-module read.
 
@@ -18,7 +18,7 @@
 
 ## Global Constraints
 
-- **The .NET test is the specification.** Every ported test carries `// Ported from <Class>.<Method>`. Tenancy-only tests are dropped. Targets: customers 100, products 79, energy 43 — 222 total.
+- **The .NET test is the specification.** Every ported test carries `// Ported from <Class>.<Method>`. Tenancy-only tests are dropped. Targets: customers 100, products 72, energy 43 — 215 total. (Products and the total were corrected in Task 16, from 79 and 222. Two independent errors: (1) `IProductCatalog` is listed in products inventory §5 as "published for other modules", but the design doc makes `contracts.CustomerDirectory` the only cross-module read in this sub-project, so nothing here consumes `IProductCatalog` — the interface is deliberately not built and `ProductCatalogContractTests`' 7 methods, 6 portable plus 1 tenancy-only, are out of scope; (2) the inventory's census was off by one, `CategoriesEndpointsTests` having 13 facts rather than 14, so the .NET suite is 79 methods, not 80. 79 − 7 = 72.)
 - **No tenancy.** No `tenant_id` column, index component, or parameter anywhere. Where a .NET key is `(tenant_id, x)`, the Go key is `(x)`.
 - **One schema per module**, no cross-schema references in migrations or queries. `internal/db/schema_test.go` already scans all five schemas.
 - **Contract-driven access.** Every operation's `x-vantigo-access` is enforced by `module.Router`. Handlers never re-check what the router already checked, with one exception: the conditional pricing permission in Task 11.
@@ -336,5 +336,5 @@ The 8 permissions, all `Category: "Energy"`, `Delegable: true`, none sensitive (
 ## Self-review against the spec
 
 - **Spec coverage.** Precedence routing → Task 1. `MODULES` → Task 2. Customer directory → Task 3, consumed in Task 14. Schemas and baselines → Tasks 4, 10, 13. Conditional pricing permission → Task 11. Money and column scales → Tasks 10–12. RFC 3339 timestamps → Task 15. FK `RESTRICT` → 409 → Task 12. Parity quirks (`PUT` ignoring variants, the attention stub, camelCased option keys) → Tasks 11–12. Brreg, including its config and the dropped circuit breaker → Task 8. GiST constraint and partitioning → Task 13, raced in Task 14. Aggregation SQL → Task 15. Smoke, docs and coverage closure → Task 16.
-- **Test coverage.** Customers 100 across Tasks 6–9; products 79 across Tasks 10–12; energy 43 across Tasks 13–15; 222 total, each marked.
+- **Test coverage.** Customers 100 across Tasks 6–9; products 72 across Tasks 10–12 and 16; energy 43 across Tasks 13–15; 215 total, each marked. (Corrected from 79/222 in Task 16, which also ported the last five owed products tests: the re-expressed `DatabaseContextRegistrationTests` fact and the four `ProductsAuthorizationEndpointsTests` matrix facts.)
 - **Type consistency.** `CustomerDirectory`, `CustomerEntry`, `ContactEntry` and `ContactMatch` are declared once in Task 3 and used unchanged in Task 14. `Deps.Directory` is the only new `Deps` field. `Module.Directory` is the only new `Module` field.
