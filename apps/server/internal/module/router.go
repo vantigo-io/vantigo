@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -41,13 +43,117 @@ type RouterOptions struct {
 // HandlerWithOptions mounts on.
 type Router struct {
 	opts RouterOptions
-	mux  *http.ServeMux
+
+	routes map[string][]*route // HTTP method → every route registered for it, each split into segments once, in registration order
 
 	ops          map[string]*openapi3.Operation // "METHOD /path" → operation, from opts.Doc
 	operationIDs map[string]bool                // every known operationId, from opts.Doc
-	registered   map[string]bool                // "METHOD /path" → HandleFunc found a contract operation for it
+	registered   map[string]bool                // "METHOD /path" → HandleFunc found a contract operation for it (and, on a second call for the same pattern, the duplicate check)
 
 	problems []string // recorded as HandleFunc runs; Err adds the two checks it can only make once registration is done
+}
+
+// route is one pattern HandleFunc registered, split into path segments once
+// so ServeHTTP never re-parses a pattern.
+type route struct {
+	segments []routeSegment
+	handler  http.HandlerFunc
+}
+
+// routeSegment is one segment of a registered pattern: either a literal that
+// a request's decoded segment must equal exactly, or a "{name}" that matches
+// any single decoded segment and is bound under name (see (*Request).SetPathValue)
+// for the generated handler to read with r.PathValue(name).
+type routeSegment struct {
+	literal string
+	name    string // param name; empty for a literal segment
+	param   bool
+}
+
+// splitSegments splits a contract path ("/api/v1/x/{id}") into its segments.
+// The contract has no root path and no trailing slash, so path always starts
+// with "/" and TrimPrefix always has something to split.
+func splitSegments(path string) []routeSegment {
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	segments := make([]routeSegment, len(parts))
+	for i, p := range parts {
+		if strings.HasPrefix(p, "{") && strings.HasSuffix(p, "}") {
+			segments[i] = routeSegment{name: p[1 : len(p)-1], param: true}
+		} else {
+			segments[i] = routeSegment{literal: p}
+		}
+	}
+	return segments
+}
+
+// decodeSegments splits an EscapedPath into segments and decodes each one,
+// exactly as stdlib http.ServeMux does: splitting the still-escaped path
+// first keeps a %2F inside one segment from being mistaken for the
+// separator between two, and decoding each segment afterwards is what lets a
+// literal route segment match a request whose matching text arrived percent-
+// encoded. (r.URL.Path, by contrast, is already fully decoded before a mux
+// ever sees segment boundaries, which is exactly what would let a %2F split
+// one segment into two.) A segment that fails to decode is left as-is, so it
+// can still match a route by coincidence but never panics — the same
+// fallback stdlib's private pathUnescape uses.
+func decodeSegments(escapedPath string) []string {
+	parts := strings.Split(strings.TrimPrefix(escapedPath, "/"), "/")
+	for i, p := range parts {
+		if s, err := url.PathUnescape(p); err == nil {
+			parts[i] = s
+		}
+	}
+	return parts
+}
+
+// match returns the most specific route in routes whose segment count equals
+// segments' and whose literal segments all equal it. "Most specific" is
+// literal-before-parameter precedence: at the first segment where two
+// matching routes differ between a literal and a {param}, the literal one
+// wins, whatever the segments around it were — see moreSpecific. HandleFunc
+// rejects two operations registering the identical pattern, so among
+// survivors that precedence is a strict order with a single greatest
+// element; match returns it, or nil if no route survives.
+func match(routes []*route, segments []string) *route {
+	var best *route
+	for _, rt := range routes {
+		if !matches(rt, segments) {
+			continue
+		}
+		if best == nil || moreSpecific(rt, best) {
+			best = rt
+		}
+	}
+	return best
+}
+
+// matches reports whether rt's segment count equals segments' and every one
+// of rt's literal segments equals the corresponding one; a {param} segment
+// matches anything.
+func matches(rt *route, segments []string) bool {
+	if len(rt.segments) != len(segments) {
+		return false
+	}
+	for i, seg := range rt.segments {
+		if !seg.param && seg.literal != segments[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// moreSpecific reports whether a takes precedence over b. Both already match
+// the same request and have the same segment count, so the first segment at
+// which one is a literal and the other a {param} decides: the literal one
+// wins, regardless of the segments before or after it.
+func moreSpecific(a, b *route) bool {
+	for i, seg := range a.segments {
+		if seg.param == b.segments[i].param {
+			continue
+		}
+		return !seg.param
+	}
+	return false
 }
 
 // NewRouter returns a router that implements every generated package's
@@ -59,7 +165,7 @@ type Router struct {
 func NewRouter(o RouterOptions) *Router {
 	r := &Router{
 		opts:         o,
-		mux:          http.NewServeMux(),
+		routes:       map[string][]*route{},
 		ops:          map[string]*openapi3.Operation{},
 		operationIDs: map[string]bool{},
 		registered:   map[string]bool{},
@@ -74,24 +180,22 @@ func NewRouter(o RouterOptions) *Router {
 			}
 		}
 	}
-	// The contract documents no 405: an unknown path and a wrong method on a
-	// known one both answer the same 404 problem, never the inner
-	// http.ServeMux's plain-text default. This is the least specific
-	// pattern, so it only ever catches what nothing else matched — including
-	// a GET pattern's built-in HEAD match, which stdlib ServeMux still
-	// resolves first.
-	r.mux.HandleFunc("/", httpx.NotFound)
 	return r
 }
 
 // HandleFunc registers h for pattern, exactly as StdHTTPServerOptions.BaseRouter
 // does. pattern must be the contract's method and path ("METHOD /path",
-// oapi-codegen's BaseURL is always ""); anything else is recorded as a
-// problem (see Err) and not mounted, rather than panicking.
+// oapi-codegen's BaseURL is always ""); anything else — including the same
+// pattern registered a second time — is recorded as a problem (see Err) and
+// not mounted.
 func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
 	op, ok := r.ops[pattern]
 	if !ok {
 		r.problems = append(r.problems, fmt.Sprintf("module: pattern %q matches no contract operation", pattern))
+		return
+	}
+	if r.registered[pattern] {
+		r.problems = append(r.problems, fmt.Sprintf("module: pattern %q is registered more than once", pattern))
 		return
 	}
 
@@ -110,26 +214,12 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		}
 	}
 
-	if r.mount(pattern, r.wrap(op, rule, r.bodyLimit(op.OperationID), h)) {
-		r.registered[pattern] = true
-	}
-}
-
-// mount registers h for pattern on the inner mux, recovering from the panic
-// http.ServeMux.HandleFunc raises on a duplicate or ambiguous route (real
-// contracts have these — see openapi.knownServeMuxConflicts — and letting
-// one crash Mount/Compose would take the whole process down). A recovered
-// pattern is recorded as a problem and left unregistered, so it also shows
-// up under Err's "never registered" check.
-func (r *Router) mount(pattern string, h http.HandlerFunc) (ok bool) {
-	defer func() {
-		if v := recover(); v != nil {
-			r.problems = append(r.problems, fmt.Sprintf("module: %s: conflicts with an existing route: %v", pattern, v))
-			ok = false
-		}
-	}()
-	r.mux.HandleFunc(pattern, h)
-	return true
+	method, path, _ := strings.Cut(pattern, " ") // pattern is a key of r.ops, so it always has the "METHOD /path" shape NewRouter built
+	r.routes[method] = append(r.routes[method], &route{
+		segments: splitSegments(path),
+		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), h),
+	})
+	r.registered[pattern] = true
 }
 
 // bodyLimit is the request-body cap for operationID: its BodyLimits entry,
@@ -188,17 +278,40 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 	}
 }
 
-// ServeHTTP dispatches to the handlers HandleFunc registered.
+// ServeHTTP dispatches to the handler of the most specific route registered
+// for req's method and path (see match), falling back to a route registered
+// for GET when req's method is HEAD — the same built-in match stdlib
+// http.ServeMux makes. The contract documents no 405: an unknown path and a
+// wrong method on a known one both answer the same 404 problem httpx.NotFound
+// writes everywhere else, never a bare stdlib default. There is no trailing-
+// slash redirect and no path cleaning — the contract has no route that needs
+// either, so a path that doesn't match exactly (a trailing slash included)
+// falls straight through to that same 404.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	r.mux.ServeHTTP(w, req)
+	segments := decodeSegments(req.URL.EscapedPath())
+
+	rt := match(r.routes[req.Method], segments)
+	if rt == nil && req.Method == http.MethodHead {
+		rt = match(r.routes[http.MethodGet], segments)
+	}
+	if rt == nil {
+		httpx.NotFound(w, req)
+		return
+	}
+
+	for i, seg := range rt.segments {
+		if seg.param {
+			req.SetPathValue(seg.name, segments[i])
+		}
+	}
+	rt.handler(w, req)
 }
 
 // Err reports every registration problem: a nil Access, a nil Limiter when
 // Limits is non-empty, a pattern with no contract operation, an operation
-// without a valid x-vantigo-access, a permission missing from Catalog, a
-// route that conflicts with one already registered, a Limits key naming no
-// operation, and contract operations that were never registered (a
-// conflicting route counts as never registered). Call it after every
+// without a valid x-vantigo-access, a permission missing from Catalog, the
+// same pattern registered more than once, a Limits key naming no operation,
+// and contract operations that were never registered. Call it after every
 // HandleFunc call (HandlerWithOptions registers everything in one call, so
 // Mount calls Err right after it).
 func (r *Router) Err() error {

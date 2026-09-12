@@ -65,26 +65,51 @@ paths:
         "204": { description: ok }
 `
 
-// conflictingRoutesContract has two operations that stdlib http.ServeMux
-// refuses to register together (it has no notion of route constraints, so it
-// can't tell an {id} will never literally equal "contacts" — the same
-// ambiguity internal/openapi.knownServeMuxConflicts pins for the real
-// customers contract).
-const conflictingRoutesContract = `
+// precedenceContract has the shape of a real conflicting pair: stdlib
+// http.ServeMux refuses to register these two together (it has no notion of
+// route constraints, so it can't tell an {id} will never literally equal
+// "contacts" — the same ambiguity internal/openapi.KnownServeMuxConflicts
+// pins for the real contract's GET /customers/contacts/{id} vs GET
+// /customers/{id}/contacts). The precedence-aware router mounts both and
+// must route each request to the right one.
+const precedenceContract = `
 openapi: 3.0.3
 info:
   title: Test
   version: "1"
 paths:
   /api/v1/x/contacts/{id}:
-    delete:
-      operationId: deleteContactsById
+    get:
+      operationId: getContactsById
       x-vantigo-access: anonymous
       responses:
         "204": { description: ok }
-  /api/v1/x/{id}/legal-identity:
-    delete:
-      operationId: deleteByIdLegalIdentity
+  /api/v1/x/{id}/contacts:
+    get:
+      operationId: getByIdContacts
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
+// escapedSlashContract has a one-{id} route and a two-{param} route of the
+// same shape, so a request whose id segment contains an escaped slash can
+// only match the one-segment route if %2F is not split into two segments.
+const escapedSlashContract = `
+openapi: 3.0.3
+info:
+  title: Test
+  version: "1"
+paths:
+  /api/v1/x/one/{id}:
+    get:
+      operationId: getOne
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+  /api/v1/x/one/{a}/{b}:
+    get:
+      operationId: getTwo
       x-vantigo-access: anonymous
       responses:
         "204": { description: ok }
@@ -224,17 +249,81 @@ func TestRouter_RegistrationProblems(t *testing.T) {
 	})
 }
 
-// A route that conflicts with one already registered on the inner
-// http.ServeMux (the real customers/products contracts have these — see
-// internal/openapi.knownServeMuxConflicts) is recorded as a problem, not a
-// panic that would crash Mount/Compose.
-func TestRouter_ConflictingRoutesDoNotPanic(t *testing.T) {
-	r := NewRouter(RouterOptions{Doc: loadDoc(t, conflictingRoutesContract), Access: &fakeAccess{}})
-	r.HandleFunc("DELETE /api/v1/x/contacts/{id}", noopHandler)
-	r.HandleFunc("DELETE /api/v1/x/{id}/legal-identity", noopHandler) // must not panic
+// A true duplicate — the same method and identical pattern registered twice
+// — is a problem Err() reports, detected directly rather than by recovering
+// a panic: stdlib http.ServeMux would itself panic on this, and letting that
+// crash Mount/Compose is exactly what the old recovered-panic check existed
+// to prevent.
+func TestRouter_DuplicateRegistrationIsAProblem(t *testing.T) {
+	r := NewRouter(RouterOptions{Doc: loadDoc(t, fourOpsContract), Access: &fakeAccess{}})
+	r.HandleFunc("GET /api/v1/x/session", noopHandler)
+	r.HandleFunc("GET /api/v1/x/session", noopHandler) // must not panic
 
 	if err := r.Err(); err == nil {
-		t.Fatal("Err() = nil, want a problem for the conflicting route")
+		t.Fatal("Err() = nil, want a problem for the duplicate registration")
+	}
+}
+
+// A literal path segment beats a {param} segment at the same position,
+// whatever the segments around it are. stdlib http.ServeMux refuses to
+// register precedenceContract's pair at all; the real customers and
+// products contracts have eight such pairs (internal/openapi.
+// KnownServeMuxConflicts), and this router must resolve every one of them.
+func TestRouter_LiteralBeatsParameterAtTheSamePosition(t *testing.T) {
+	r := NewRouter(RouterOptions{Doc: loadDoc(t, precedenceContract), Access: &fakeAccess{}})
+	r.HandleFunc("GET /api/v1/x/contacts/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Route", "literal")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	r.HandleFunc("GET /api/v1/x/{id}/contacts", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Route", "param")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("Err() = %v, want nil", err)
+	}
+
+	get := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := get("/api/v1/x/contacts/7"); rec.Header().Get("X-Route") != "literal" {
+		t.Errorf("GET /api/v1/x/contacts/7: routed to %q, want the literal route", rec.Header().Get("X-Route"))
+	}
+	if rec := get("/api/v1/x/7/contacts"); rec.Header().Get("X-Route") != "param" {
+		t.Errorf("GET /api/v1/x/7/contacts: routed to %q, want the {id}/contacts route", rec.Header().Get("X-Route"))
+	}
+}
+
+// A %2F inside a path segment is not a segment separator: it must keep
+// matching the one-{id} route it decodes to, never the two-{param} route its
+// decoded form would otherwise also fit.
+func TestRouter_EscapedSlashDoesNotSplitASegment(t *testing.T) {
+	r := NewRouter(RouterOptions{Doc: loadDoc(t, escapedSlashContract), Access: &fakeAccess{}})
+	var got string
+	r.HandleFunc("GET /api/v1/x/one/{id}", func(w http.ResponseWriter, req *http.Request) {
+		got = req.PathValue("id")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	r.HandleFunc("GET /api/v1/x/one/{a}/{b}", func(http.ResponseWriter, *http.Request) {
+		t.Error("the two-segment route matched a request whose %2F should have stayed inside one segment")
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("Err() = %v, want nil", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/x/one/foo%2Fbar", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (the one-segment route)", rec.Code)
+	}
+	if got != "foo/bar" {
+		t.Errorf("id = %q, want %q (the segment decoded, not split)", got, "foo/bar")
 	}
 }
 
