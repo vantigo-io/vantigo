@@ -1,6 +1,7 @@
 package energy
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -154,4 +155,30 @@ func TestConsumptionInterval_Validate(t *testing.T) {
 			t.Errorf("validateConsumptionInterval = %q, want the negative-quantity message", got)
 		}
 	})
+}
+
+// TestClampInt32 pins the fix-round item bounding stats.go's bigint-to-int32
+// count narrowing: values inside int32's range pass through unchanged,
+// values outside it saturate rather than wrap. An unguarded int32(n)
+// conversion would instead wrap math.MaxInt32+1 into math.MinInt32 — a
+// dashboard count silently going negative with no error.
+func TestClampInt32(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   int64
+		want int32
+	}{
+		{0, 0},
+		{5, 5},
+		{-5, -5},
+		{math.MaxInt32, math.MaxInt32},
+		{math.MaxInt32 + 1, math.MaxInt32},
+		{math.MinInt32, math.MinInt32},
+		{math.MinInt32 - 1, math.MinInt32},
+	}
+	for _, c := range cases {
+		if got := clampInt32(c.in); got != c.want {
+			t.Errorf("clampInt32(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
 }

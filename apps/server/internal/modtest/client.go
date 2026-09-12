@@ -56,6 +56,19 @@ func (c *Client) SetCookie(name, value string) {
 	c.http.Jar.SetCookies(c.h.base, []*http.Cookie{{Name: name, Value: value, Path: "/"}})
 }
 
+// sessionCookie returns the raw session token this client's jar carries for
+// the harness's own base URL, if SignIn (or SetCookie) planted one —
+// SignInDisabled's own way of finding *which* user to disable without
+// duplicating SignIn's seedUser/seedRole/session plumbing itself.
+func (c *Client) sessionCookie() (string, bool) {
+	for _, ck := range c.http.Jar.Cookies(c.h.base) {
+		if ck.Name == sessionCookieName {
+			return ck.Value, true
+		}
+	}
+	return "", false
+}
+
 // RequestOption adjusts one request.
 type RequestOption func(*request)
 

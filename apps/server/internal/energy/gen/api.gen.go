@@ -2448,6 +2448,20 @@ func (response PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd404Response
 	return nil
 }
 
+type PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd409ApplicationProblemPlusJSONResponse) VisitPostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEndResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetEnergyStatsAttentionRequestObject struct {
 }
 

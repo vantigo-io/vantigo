@@ -213,6 +213,27 @@ func TestEveryEnergyEndpointRequiresItsRegisteredPermission(t *testing.T) {
 			if r.Status != http.StatusUnauthorized && r.Status != http.StatusForbidden {
 				t.Errorf("disabled user reached %s %s: status %d body %s, want 401 or 403", ec.method, ec.path, r.Status, r.Body)
 			}
+
+			// Fix-round finding: the four checks above cannot detect a
+			// *narrowed* AND-set. For an operation whose permissions are all
+			// drawn from one of viewPermissions/managePermissions (e.g.
+			// getEnergyCustomersByCustomerIdMeteringPoints' three view-only
+			// permissions), viewOnly or manageOnly already holds a superset
+			// of both the correct set and any narrowed subset of it, so
+			// dropping one of the operation's own permissions from the
+			// router's real rule changes nothing those four checks can see.
+			// This loop closes that gap directly: a client holding exactly
+			// this operation's own declared permissions minus one, for each
+			// one in turn, must still be forbidden — proving every
+			// permission in the AND-set is independently load-bearing, not
+			// just present alongside others that alone would suffice.
+			for _, missing := range ec.permissions {
+				narrow := h.SignIn(t, without(ec.permissions, missing)...)
+				r := ec.do(narrow, now)
+				if r.Status != http.StatusForbidden {
+					t.Errorf("missing %s (holding %v): status %d body %s, want 403", missing, without(ec.permissions, missing), r.Status, r.Body)
+				}
+			}
 		})
 	}
 }

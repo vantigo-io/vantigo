@@ -1232,6 +1232,12 @@ paths:
                     description: Forbidden
                 "404":
                     description: Not Found
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict
             summary: End a supply period
             tags:
                 - Energy metering points

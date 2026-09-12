@@ -250,8 +250,14 @@ func TestConsumptionAggregate_UsesOsloDayAndMonthBoundaries(t *testing.T) {
 	c := h.SignIn(t, allEnergyPermissions...)
 	point := createMeteringPoint(t, c)
 
-	addConsumption(t, c, point.Id, utc(2026, time.January, 5, 23), utc(2026, time.January, 6, 0).Add(30*time.Minute), 1)
-	addConsumption(t, c, point.Id, utc(2026, time.January, 5, 23).AddDate(0, 0, 1), utc(2026, time.January, 6, 0).Add(30*time.Minute).AddDate(0, 0, 1), 2)
+	// 23:30Z->00:30Z, the exact worked case energy inventory §4 line 345
+	// quotes: Oslo local 00:30->01:30, landing entirely in the local day
+	// that starts at 23:00Z. Fix-round finding: the original fixture used
+	// 23:00Z, an interval starting exactly *at* local midnight — a weaker
+	// case that never exercises date_trunc actually flooring a non-midnight
+	// local instant down to the local day boundary.
+	addConsumption(t, c, point.Id, utc(2026, time.January, 5, 23).Add(30*time.Minute), utc(2026, time.January, 6, 0).Add(30*time.Minute), 1)
+	addConsumption(t, c, point.Id, utc(2026, time.January, 5, 23).Add(30*time.Minute).AddDate(0, 0, 1), utc(2026, time.January, 6, 0).Add(30*time.Minute).AddDate(0, 0, 1), 2)
 	addConsumption(t, c, point.Id, utc(2026, time.February, 1, 0), utc(2026, time.February, 1, 1), 4)
 
 	daily := c.Do(http.MethodGet, fmt.Sprintf(
@@ -336,6 +342,60 @@ func TestConsumptionAggregate_MarksEstimatedAndHandlesOsloDstDay(t *testing.T) {
 	}
 	if row.BucketEnd.Sub(row.BucketStart) != 23*time.Hour {
 		t.Errorf("bucket span = %v, want 23h (the local Oslo day crossing DST spring-forward is 23 hours of UTC, not 24)", row.BucketEnd.Sub(row.BucketStart))
+	}
+}
+
+// TestConsumptionAggregate_HandlesOsloAutumnDstDay is the fall-back mirror
+// of the spring-forward test above — correct under the same verbatim query
+// today, but fix-round finding: untested, so a mutation that only broke the
+// "gain an hour" direction (e.g. a bucket-width computation that clamped at
+// 24h, or one that only handled the spring case) could ship unnoticed. Last
+// Sunday of October 2026 (2026-10-25) is when Europe/Oslo falls back from
+// CEST (+02:00) to CET (+01:00) at 01:00Z; the local Oslo day of Oct 25
+// therefore runs [2026-10-24T22:00Z, 2026-10-25T23:00Z) — 25 hours of UTC,
+// not 24 — the same date_trunc-in-local-time mechanism as the spring case,
+// just gaining an hour instead of losing one.
+func TestConsumptionAggregate_HandlesOsloAutumnDstDay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, allEnergyPermissions...)
+	point := createMeteringPoint(t, c)
+
+	base := utc(2026, time.October, 24, 22)
+	for hour := 0; hour < 25; hour++ {
+		addElhubConsumption(t, h, point.Id, base.Add(time.Duration(hour)*time.Hour), base.Add(time.Duration(hour+1)*time.Hour), 1)
+	}
+
+	r := c.Do(http.MethodGet, fmt.Sprintf(
+		"/api/v1/energy/metering-points/%d/consumption/aggregate?from=2026-10-24T22:00:00Z&to=2026-10-25T23:00:00Z&resolution=day", point.Id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var rows []consumptionAggregateJSON
+	r.JSON(&rows)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	row := rows[0]
+	if row.QuantityKwh != 25 {
+		t.Errorf("QuantityKwh = %v, want 25", row.QuantityKwh)
+	}
+	if row.IntervalCount != 25 {
+		t.Errorf("IntervalCount = %d, want 25", row.IntervalCount)
+	}
+	if !row.HasEstimated {
+		t.Error("HasEstimated = false, want true (every row in the bucket is Quality=Estimated)")
+	}
+	wantStart := time.Date(2026, time.October, 24, 22, 0, 0, 0, time.UTC)
+	wantEnd := time.Date(2026, time.October, 25, 23, 0, 0, 0, time.UTC)
+	if !row.BucketStart.Equal(wantStart) {
+		t.Errorf("BucketStart = %v, want %v", row.BucketStart, wantStart)
+	}
+	if !row.BucketEnd.Equal(wantEnd) {
+		t.Errorf("BucketEnd = %v, want %v", row.BucketEnd, wantEnd)
+	}
+	if row.BucketEnd.Sub(row.BucketStart) != 25*time.Hour {
+		t.Errorf("bucket span = %v, want 25h (the local Oslo day crossing DST fall-back is 25 hours of UTC, not 24)", row.BucketEnd.Sub(row.BucketStart))
 	}
 }
 

@@ -485,6 +485,50 @@ func TestEndSupplyPeriod(t *testing.T) {
 		}
 	})
 
+	// TestEndSupplyPeriod_RejectsNonUTCEnd is the HTTP-level counterpart of
+	// TestValidateSupplyPeriodEnd_DoesNotOffsetCheckStart (domain_test.go):
+	// that test pins the pure validator's own behaviour directly; this one
+	// proves the same thing through the real handler and a real request
+	// body, catching a regression the unit test alone could not — e.g. the
+	// route never calling validateSupplyPeriodEnd at all, or calling it with
+	// arguments swapped so end's own offset is never actually checked.
+	// Create and Switch both already have this HTTP-level assertion (the
+	// "UTC check before existence" subtest above,
+	// TestSwitchSupplyPeriod_Ordering's own UTC subtest); End did not,
+	// found in Task 14's fix-round re-review: narrowing validation to
+	// request-supplied values only (the critical fix) carries the inverse
+	// risk of under-validating end, which is exactly what this closes.
+	t.Run("rejects non-UTC end", func(t *testing.T) {
+		t.Parallel()
+		point := createMeteringPoint(t, c)
+		start := h.Now()
+		create := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods", point.Id),
+			map[string]any{"customerId": 1001, "start": start})
+		var period supplyPeriodJSON
+		create.JSON(&period)
+
+		// A raw non-UTC-offset literal in the JSON body — a Go time.Time
+		// value would always marshal as UTC ("Z"), so this bypasses that
+		// and exercises the real wire shape a non-UTC client would send.
+		// Chronologically after start (in the +02:00 offset's own instant
+		// terms) so the UTC check, not the ordering check, is what fires.
+		nonUTCEnd := start.Add(2*time.Hour).Format("2006-01-02T15:04:05") + "+02:00"
+		r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods/%d/end", point.Id, period.Id),
+			map[string]any{"end": nonUTCEnd})
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+		}
+		var problem validationProblemJSON
+		r.JSON(&problem)
+		if problem.Title != "Invalid supply period" {
+			t.Errorf("Title = %q, want %q", problem.Title, "Invalid supply period")
+		}
+		want := "Start and end must be UTC timestamps."
+		if got := problem.Errors["end"]; len(got) != 1 || got[0] != want {
+			t.Errorf("Errors[end] = %v, want [%q]", got, want)
+		}
+	})
+
 	// TestEndSupplyPeriod_CancelledPeriod pins dispatch/inventory oddity 2:
 	// this branch's 400 is a *plain* Problem body (title/detail, no
 	// "errors" field) despite the contract's declared

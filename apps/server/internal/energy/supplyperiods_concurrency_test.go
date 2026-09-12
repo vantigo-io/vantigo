@@ -216,16 +216,15 @@ func TestConcurrentEndSupplyPeriodExtensions_YieldOneSuccessAndConflicts(t *test
 
 	extendWith := func(periodID int32) func() *modtest.Response {
 		return func() *modtest.Response {
-			// SkipContract: this operation's contract declares no 409 (it
-			// was auto-generated from EndSupplyPeriodEndpoint.cs's own
-			// Results<> signature, which names no Conflict-producing
-			// branch — only the .NET host-wide exception handler's
-			// fallback can produce one, invisible to that generator) even
-			// though a genuine race here really can raise one, as this
-			// test proves — a gap in the *contract*, not a divergence
-			// this port introduced; see this task's report.
+			// The contract now declares this operation's 409 (fix-round
+			// item 2: it was auto-generated from EndSupplyPeriodEndpoint.cs's
+			// own Results<> signature, which names no Conflict-producing
+			// branch — only the .NET host-wide exception handler's fallback
+			// can produce one, invisible to that generator — a gap in the
+			// *contract*, not a divergence this port introduced), so this
+			// exchange is validated like every other one; no SkipContract.
 			return c.Do(http.MethodPost, fmt.Sprintf("/api/v1/energy/metering-points/%d/supply-periods/%d/end", point.Id, periodID),
-				map[string]any{"end": farEnd}, modtest.SkipContract("the contract declares no 409 for this operation, but a real exclusion-constraint race can raise one"))
+				map[string]any{"end": farEnd})
 		}
 	}
 
