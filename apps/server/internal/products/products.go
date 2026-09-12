@@ -549,9 +549,26 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 		status = *parsed.Status
 	}
 
+	// updated_at moves only when a field actually changed, matching EF's
+	// change-tracker semantics (StampTimestamps only stamps an entity in
+	// EntityState.Modified) and internal/customers/customers.go:432-436's
+	// identical "changed" convention for the same reason: an unexplained
+	// divergence between two modules in one port is worse than either
+	// behaviour alone.
+	changed := existing.Name != parsed.Name ||
+		!stringPtrEqual(existing.Description, parsed.Description) ||
+		!int32PtrEqual(existing.CategoryID, parsed.CategoryID) ||
+		existing.Type != parsed.Type ||
+		existing.TaxCategoryID != parsed.TaxCategoryID ||
+		status != existing.Status
+	updatedAt := existing.UpdatedAt
+	if changed {
+		updatedAt = s.deps.Clock()
+	}
+
 	updated, err := q.UpdateProduct(ctx, store.UpdateProductParams{
 		Name: parsed.Name, Description: parsed.Description, CategoryID: parsed.CategoryID,
-		Type: parsed.Type, Status: status, TaxCategoryID: parsed.TaxCategoryID, UpdatedAt: s.deps.Clock(), ID: req.Id,
+		Type: parsed.Type, Status: status, TaxCategoryID: parsed.TaxCategoryID, UpdatedAt: updatedAt, ID: req.Id,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("products: update product: %w", err)

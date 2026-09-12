@@ -213,9 +213,13 @@ ORDER BY product_id, id;
 SELECT status FROM products.products WHERE id = @id;
 
 -- name: VariantSkuExists :one
+-- VariantSkuExists is AddProductVariantEndpoint's catalog-wide duplicate-SKU
+-- check for a single new variant (:46).
 SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE sku = @sku);
 
 -- name: VariantSkuExistsExcluding :one
+-- VariantSkuExistsExcluding is UpdateProductVariantEndpoint's duplicate-SKU
+-- check, excluding the variant being renamed (:44).
 SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE sku = @sku AND id != @id);
 
 -- name: VariantAnySkuExists :one
@@ -224,9 +228,14 @@ SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE sku = @sku AND id !=
 SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE sku = ANY(@skus::text[]));
 
 -- name: VariantBarcodeExists :one
+-- VariantBarcodeExists is AddProductVariantEndpoint's catalog-wide
+-- duplicate-barcode check for a single new variant (:51).
 SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE barcode = @barcode);
 
 -- name: VariantBarcodeExistsExcluding :one
+-- VariantBarcodeExistsExcluding is UpdateProductVariantEndpoint's
+-- duplicate-barcode check, excluding the variant being updated (:50), which
+-- runs unconditionally even when the SKU did not change.
 SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE barcode = @barcode AND id != @id);
 
 -- name: VariantAnyBarcodeExists :one
@@ -260,6 +269,8 @@ RETURNING id, product_id, sku, barcode, unit, standard_cost, weight_kg, length_c
 SELECT count(*) FROM products.product_variants WHERE product_id = @product_id AND id != @id;
 
 -- name: DeleteProductVariant :exec
+-- DeleteProductVariant is DeleteProductVariantEndpoint's own delete
+-- (:25-26), run only once the last-variant guard above has passed.
 DELETE FROM products.product_variants WHERE id = @id;
 
 -- name: InsertProductPrice :one
@@ -305,6 +316,8 @@ WHERE id = @id
 RETURNING id, variant_id, currency, amount, valid_from, valid_to;
 
 -- name: DeleteProductPrice :exec
+-- DeleteProductPrice is DeleteProductPriceEndpoint's own delete (:29-30):
+-- no "last price" rule, a variant may end up with zero prices.
 DELETE FROM products.product_prices WHERE id = @id;
 
 -- Categories (Task 12, EP/Categories/*Endpoint.cs). GetCategoryRef and
