@@ -102,6 +102,16 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		// module's router the request path unchanged (no StripPrefix): the
 		// module's own router matches full paths from its own Doc.
 		outer.Handle("/api/v1/"+mod.Name+"/", handler)
+		// The subtree pattern alone does not cover the module's own root path.
+		// A contract that declares "/api/v1/customers" (the listing and its
+		// create) would have those requests answered by http.ServeMux's
+		// automatic redirect to the trailing-slash form instead — a path no
+		// contract declares, and one the module's router would then answer 404.
+		// Registering the bare path explicitly both suppresses that redirect
+		// and delivers the request, path unchanged, to the module.
+		if doc.Paths.Find("/api/v1/"+mod.Name) != nil {
+			outer.Handle("/api/v1/"+mod.Name, handler)
+		}
 
 		// mergeContract (via InternalizeRefs) mutates the *openapi3.T it
 		// merges in place. doc was just handed to Mount as modDeps.Doc and a

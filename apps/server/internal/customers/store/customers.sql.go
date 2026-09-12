@@ -10,6 +10,121 @@ import (
 	"time"
 )
 
+const directoryContact = `-- name: DirectoryContact :one
+SELECT id, first_name, last_name, email
+FROM customers.contacts
+WHERE id = $1
+`
+
+type DirectoryContactRow struct {
+	ID        int32
+	FirstName string
+	LastName  string
+	Email     *string
+}
+
+// DirectoryContact is contracts.CustomerDirectory.Contact's row
+// (SV/ApplicationServiceCollectionExtensions.cs:30-32).
+func (q *Queries) DirectoryContact(ctx context.Context, id int32) (DirectoryContactRow, error) {
+	row := q.db.QueryRow(ctx, directoryContact, id)
+	var i DirectoryContactRow
+	err := row.Scan(
+		&i.ID,
+		&i.FirstName,
+		&i.LastName,
+		&i.Email,
+	)
+	return i, err
+}
+
+const directoryContactsByEmail = `-- name: DirectoryContactsByEmail :many
+WITH matching AS (
+    SELECT c.id,
+           coalesce(lower(btrim(c.email)) = $1::text, false) AS canonical
+    FROM customers.contacts c
+    WHERE lower(btrim(c.email)) = $1::text
+       OR EXISTS (
+           SELECT 1
+           FROM customers.customers_contacts cc
+           WHERE cc.contact_id = c.id
+             AND lower(btrim(cc.email)) = $1::text
+       )
+)
+SELECT m.id AS contact_id,
+       coalesce(
+           array_agg(cc.customer_id ORDER BY cc.customer_id) FILTER (WHERE cc.customer_id IS NOT NULL),
+           '{}'
+       )::integer[] AS candidate_customer_ids
+FROM matching m
+LEFT JOIN customers.customers_contacts cc
+       ON cc.contact_id = m.id
+      AND (m.canonical OR lower(btrim(cc.email)) = $1::text)
+GROUP BY m.id
+ORDER BY m.id
+`
+
+type DirectoryContactsByEmailRow struct {
+	ContactID            int32
+	CandidateCustomerIds []int32
+}
+
+// DirectoryContactsByEmail is contracts.CustomerDirectory.ContactsByEmail's
+// rows (SV/ApplicationServiceCollectionExtensions.cs:41-104): one row per
+// contact whose canonical email, or any of whose customer-specific
+// association emails, is the given address, together with the customers that
+// match makes candidates. A contact matched on its canonical email offers
+// every customer it is linked to; one matched only through an association
+// offers just the customers whose association carries that address. The email
+// itself never leaves this query, so no caller can learn an address it did not
+// already have.
+//
+// .NET compared stored values that were canonical by construction; here both
+// sides are lower-cased and trimmed, so a row stored in another casing still
+// resolves. Neither column is indexed (the .NET schema had no index either),
+// so the functions cost nothing a bare comparison would have saved.
+func (q *Queries) DirectoryContactsByEmail(ctx context.Context, email string) ([]DirectoryContactsByEmailRow, error) {
+	rows, err := q.db.Query(ctx, directoryContactsByEmail, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryContactsByEmailRow
+	for rows.Next() {
+		var i DirectoryContactsByEmailRow
+		if err := rows.Scan(&i.ContactID, &i.CandidateCustomerIds); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const directoryCustomer = `-- name: DirectoryCustomer :one
+SELECT id, name, status = 'archived' AS archived
+FROM customers.customers
+WHERE id = $1
+`
+
+type DirectoryCustomerRow struct {
+	ID       int32
+	Name     string
+	Archived bool
+}
+
+// DirectoryCustomer is contracts.CustomerDirectory.Customer's row
+// (SV/ApplicationServiceCollectionExtensions.cs:22-28): a customer of any
+// status, archived included, since a consumer holding a historical reference
+// must still be able to name it.
+func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCustomerRow, error) {
+	row := q.db.QueryRow(ctx, directoryCustomer, id)
+	var i DirectoryCustomerRow
+	err := row.Scan(&i.ID, &i.Name, &i.Archived)
+	return i, err
+}
+
 const getCustomer = `-- name: GetCustomer :one
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
        created_at, updated_at
