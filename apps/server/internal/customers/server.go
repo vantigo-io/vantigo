@@ -27,11 +27,12 @@ func newServer(d module.Deps) *server {
 
 // requestKey is the context key withRequest stores the underlying
 // *http.Request under. The generated strict handlers only pass a context to
-// a business method, but a couple of this module's handlers need a second,
-// narrower permission check the router's own x-vantigo-access rule does not
-// cover — whether the caller may see legal-identity data (inventory §6,
-// "Business view exposed twice") — which means calling deps.Access.Check a
-// second time, and Check needs the request. Mirrors
+// a business method, but some of this module's handlers need a permission
+// check beyond what the router's own x-vantigo-access rule covers —
+// whether the caller may see legal-identity data (inventory §6, "Business
+// view exposed twice"), and whether it may write it
+// (legal-identity-manage, inventory §1.1/§1.4) — which means calling
+// deps.Access.Check a second time, and Check needs the request. Mirrors
 // internal/identity/server.go's withRequest/requestFrom, which depguard
 // forbids importing directly.
 type requestKey struct{}
@@ -76,8 +77,12 @@ const legalIdentityManage = "customers:legal-identity-manage"
 
 // hasPermission reports whether the signed-in caller holds key, evaluated
 // the same way module.Router evaluates x-vantigo-access. Any failure,
-// infrastructure errors included, reads as false: a response-shaping check
-// must never turn into a request failure.
+// infrastructure errors included, reads as false. hasPermission itself never
+// writes a response either way — it only answers the question — but its two
+// callers use "false" for opposite purposes: legalIdentityView's
+// response-shaping callers treat it as "omit the data", never a request
+// failure; legalIdentityManage's gating callers (PostCustomers,
+// PutCustomersById) treat it as "deny", which does answer 403.
 func (s *server) hasPermission(ctx context.Context, key string) bool {
 	r, err := requestFrom(ctx)
 	if err != nil {

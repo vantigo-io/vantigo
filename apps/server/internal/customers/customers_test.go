@@ -316,6 +316,69 @@ func TestGetCustomer_WhenCustomerDoesNotExist_ReturnsNotFound(t *testing.T) {
 	}
 }
 
+// TestGetCustomer_WithoutLegalIdentityViewPermission_OmitsIdentity is not a
+// port (customers inventory §7 has no dedicated permission-matrix class in
+// Task 6's ported set — CustomersPermissionIntegrationTests.cs would cover
+// it), but pins the same response-shaping behaviour §6 documents
+// ("Business view exposed twice") that /stats already has coverage for
+// (TestStats_OmitsIdentityFigures_WithoutLegalIdentityViewPermission):
+// GetCustomerEndpoint.cs:51-52's includeIdentity re-check. A caller who can
+// view the customer but not its legal identity must never see it, even
+// though one exists.
+func TestGetCustomer_WithoutLegalIdentityViewPermission_OmitsIdentity(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner := authenticatedClient(t, h)
+	create := owner.Do(http.MethodPost, "/api/v1/customers", map[string]any{
+		"name": "Hidden Identity Co",
+		"identity": map[string]any{
+			"country": "no", "type": "business", "id": "923609016", "name": "Hidden Identity AS", "source": "manual",
+		},
+	})
+	var created createdCustomerJSON
+	create.JSON(&created)
+
+	viewer := h.SignIn(t, "customers:view") // no legal-identity-view
+	r := viewer.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d", created.Id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var customer customerJSON
+	r.JSON(&customer)
+	if customer.Identity != nil {
+		t.Errorf("Identity = %+v, want nil without legal-identity-view, even though the customer has one", customer.Identity)
+	}
+}
+
+// TestGetCustomers_WithoutLegalIdentityViewPermission_OmitsIdentity is the
+// list-endpoint counterpart, GetCustomersEndpoint.cs:37-38/90-97's
+// includeIdentity re-check.
+func TestGetCustomers_WithoutLegalIdentityViewPermission_OmitsIdentity(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner := authenticatedClient(t, h)
+	owner.Do(http.MethodPost, "/api/v1/customers", map[string]any{
+		"name": "Hidden Identity List Co",
+		"identity": map[string]any{
+			"country": "no", "type": "business", "id": "923609016", "name": "Hidden Identity List AS", "source": "manual",
+		},
+	})
+
+	viewer := h.SignIn(t, "customers:view") // no legal-identity-view
+	r := viewer.Do(http.MethodGet, "/api/v1/customers?search="+url.QueryEscape("Hidden Identity List Co"), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var list customerListJSON
+	r.JSON(&list)
+	if len(list.Data) != 1 {
+		t.Fatalf("data = %+v, want exactly one entry", list.Data)
+	}
+	if list.Data[0].Identity != nil {
+		t.Errorf("Identity = %+v, want nil without legal-identity-view, even though the customer has one", list.Data[0].Identity)
+	}
+}
+
 // Ported from Integration/CustomersEndpointsTests.cs.
 // UpdateCustomer_WithValidName_UpdatesName.
 func TestUpdateCustomer_WithValidName_UpdatesName(t *testing.T) {
@@ -430,6 +493,104 @@ func TestUpdateCustomer_InvalidIdentityAgainstMissingCustomer_Returns404(t *test
 	})
 	if r.Status != http.StatusNotFound {
 		t.Errorf("status %d body %s, want 404 (existence wins over the deferred identity validation)", r.Status, r.Body)
+	}
+}
+
+// TestUpdateCustomer_InvalidNameAgainstMissingCustomer_Returns400 is the
+// other half of inventory §1.4's decisive pair, and is not a port either:
+// name/status validation runs and wins BEFORE the existence check (unlike
+// identity, re-validated only after it), so an invalid name against a
+// missing id answers 400, not 404 — the mirror image of
+// TestUpdateCustomer_InvalidIdentityAgainstMissingCustomer_Returns404 above.
+// A handler that moved name/status validation to after the lookup would
+// still pass every other ported test; only this one catches it.
+func TestUpdateCustomer_InvalidNameAgainstMissingCustomer_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	r := c.Do(http.MethodPut, "/api/v1/customers/999999", map[string]any{"name": ""})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (validation wins over the missing id)", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if _, ok := problem.Errors["name"]; !ok {
+		t.Errorf("errors = %v, want a key \"name\"", problem.Errors)
+	}
+}
+
+// TestUpdateCustomer_OmittedIdentityPreservesExisting pins
+// UpdateCustomerEndpoint.cs:71-87's actual behaviour: request.Identity is
+// only read when present; when it is omitted, customerIdentity keeps the
+// value it was seeded with, customer.Identity, so the persisted identity is
+// left untouched. This is not what the endpoint's own doc comment claims
+// ("removed"), and is not a port: no .NET test exercises PUT-with-no-identity
+// against a customer that already has one (the test named for that claim,
+// UpdateCustomer_WithoutIdentity_RemovesExistingIdentity, calls
+// DELETE .../legal-identity instead — a Task 8 operation, see the file doc
+// comment above). The code, not the doc comment, is the port's ground truth.
+func TestUpdateCustomer_OmittedIdentityPreservesExisting(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	created := createCustomer(t, c, "Identity Persists")
+
+	seed := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", created.Id), map[string]any{
+		"name": "Identity Persists",
+		"identity": map[string]any{
+			"country": "no", "type": "business", "id": "923609016", "name": "Persists AS", "source": "manual",
+		},
+	})
+	if seed.Status != http.StatusOK {
+		t.Fatalf("seed update: status %d body %s, want 200", seed.Status, seed.Body)
+	}
+
+	r := c.Do(http.MethodPut, fmt.Sprintf("/api/v1/customers/%d", created.Id), map[string]any{"name": "Identity Persists Renamed"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var updated customerJSON
+	r.JSON(&updated)
+	if updated.Name != "Identity Persists Renamed" {
+		t.Errorf("Name = %q, want Identity Persists Renamed", updated.Name)
+	}
+	if updated.Identity == nil || updated.Identity.Country != "no" || updated.Identity.Type != "business" || updated.Identity.Id != "923609016" {
+		t.Errorf("Identity = %+v, want it preserved as {no business 923609016}", updated.Identity)
+	}
+	if row := fetchLegalRow(t, h, created.Id); row.Name != "Persists AS" || row.Source != "manual" {
+		t.Errorf("persisted legal name/source = %+v, want them preserved as {Persists AS manual}", row)
+	}
+}
+
+// TestCreateCustomer_CustomerNumberSurvivesADeletedHighNumberedCustomer pins
+// the counters upsert (NextCounterValue, customers inventory §3/§4): the
+// next customer_number always continues from the persisted counter row,
+// never from max(customer_number) recomputed over the live table. The two
+// agree as long as no row ever leaves the table; customers.counters exists
+// specifically to survive that. The module itself only ever archives
+// (DeleteCustomersById), never hard-deletes, so the row is removed directly
+// here only to prove the point: a `coalesce(max(customer_number), 1000) + 1`
+// allocator would reuse a number once its holder is gone, exactly as this
+// test's fixture insertCustomer helper does (deliberately, for tests that
+// don't care) — the real allocator must not.
+func TestCreateCustomer_CustomerNumberSurvivesADeletedHighNumberedCustomer(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+
+	a := createCustomer(t, c, "Counter A")
+	b := createCustomer(t, c, "Counter B")
+	if b.CustomerNumber != a.CustomerNumber+1 {
+		t.Fatalf("CustomerNumber sequence = %d, %d, want consecutive", a.CustomerNumber, b.CustomerNumber)
+	}
+
+	h.Exec(t, `DELETE FROM customers.customers WHERE id = $1`, b.Id)
+
+	cc := createCustomer(t, c, "Counter C")
+	if cc.CustomerNumber != b.CustomerNumber+1 {
+		t.Errorf("CustomerNumber = %d, want %d: it must continue the counter, not recompute max(customer_number) over the live table (which, with B gone, would go backward)",
+			cc.CustomerNumber, b.CustomerNumber+1)
 	}
 }
 

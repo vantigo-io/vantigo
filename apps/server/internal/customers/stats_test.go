@@ -49,17 +49,19 @@ func TestStats_ReturnsGlobalCounts_WithIdentityFiguresForPermittedCaller(t *test
 	var stats statsJSON
 	r.JSON(&stats)
 
-	// The shared database may contain customers from other tests, so the
-	// counts are asserted as lower bounds and for internal consistency
-	// rather than exact values, as the .NET test does.
-	if stats.TotalCount < 3 || stats.ActiveCount < 3 || stats.NewLast30DaysCount < 3 {
-		t.Errorf("stats = %+v, want TotalCount/ActiveCount/NewLast30DaysCount >= 3", stats)
+	// The .NET test asserts lower bounds because its database is shared
+	// across the whole test run; each Go test gets its own migrated
+	// database (internal/modtest), so the exact three customers created
+	// above are the only ones that exist and the counts can be pinned
+	// exactly.
+	if stats.TotalCount != 3 || stats.ActiveCount != 3 || stats.NewLast30DaysCount != 3 {
+		t.Errorf("stats = %+v, want TotalCount=ActiveCount=NewLast30DaysCount=3", stats)
 	}
 	if stats.BusinessCount == nil || stats.PersonCount == nil || stats.MissingIdentityCount == nil || stats.DistinctCountryCount == nil {
 		t.Fatalf("stats = %+v, want every identity figure non-nil for a legal-identity-view holder", stats)
 	}
-	if *stats.BusinessCount < 1 || *stats.PersonCount < 1 || *stats.MissingIdentityCount < 1 || *stats.DistinctCountryCount < 2 {
-		t.Errorf("stats = %+v, want BusinessCount/PersonCount/MissingIdentityCount >= 1 and DistinctCountryCount >= 2", stats)
+	if *stats.BusinessCount != 1 || *stats.PersonCount != 1 || *stats.MissingIdentityCount != 1 || *stats.DistinctCountryCount != 2 {
+		t.Errorf("stats = %+v, want BusinessCount=PersonCount=MissingIdentityCount=1 and DistinctCountryCount=2 (no, se)", stats)
 	}
 	if stats.TotalCount != *stats.BusinessCount+*stats.PersonCount+*stats.MissingIdentityCount {
 		t.Errorf("TotalCount = %d, want BusinessCount+PersonCount+MissingIdentityCount = %d",
@@ -83,8 +85,8 @@ func TestStats_OmitsIdentityFigures_WithoutLegalIdentityViewPermission(t *testin
 	var stats statsJSON
 	r.JSON(&stats)
 
-	if stats.TotalCount < 1 {
-		t.Errorf("TotalCount = %d, want >= 1", stats.TotalCount)
+	if stats.TotalCount != 1 {
+		t.Errorf("TotalCount = %d, want 1 (this test's own isolated database)", stats.TotalCount)
 	}
 	if stats.BusinessCount != nil || stats.PersonCount != nil || stats.MissingIdentityCount != nil || stats.DistinctCountryCount != nil {
 		t.Errorf("stats = %+v, want every identity figure nil without legal-identity-view", stats)
@@ -228,11 +230,13 @@ func TestGetCustomersStatsSummary_CountsNewCustomersWithinTheDefaultPeriod(t *te
 	}
 	var summary summaryJSON
 	r.JSON(&summary)
-	if summary.NewCustomers < 1 {
-		t.Errorf("NewCustomers = %d, want >= 1", summary.NewCustomers)
+	// This test's own isolated database holds exactly the one customer
+	// created above, so the counts are exact, not lower bounds.
+	if summary.NewCustomers != 1 {
+		t.Errorf("NewCustomers = %d, want 1", summary.NewCustomers)
 	}
-	if summary.TotalActiveCustomers < 1 {
-		t.Errorf("TotalActiveCustomers = %d, want >= 1", summary.TotalActiveCustomers)
+	if summary.TotalActiveCustomers != 1 {
+		t.Errorf("TotalActiveCustomers = %d, want 1", summary.TotalActiveCustomers)
 	}
 	if !summary.From.Before(summary.To) {
 		t.Errorf("From = %v, To = %v, want From before To", summary.From, summary.To)
@@ -272,12 +276,11 @@ func TestGetCustomersStatsTimeseries_BucketsNewCustomersByDay(t *testing.T) {
 		Value int64  `json:"value"`
 	}
 	r.JSON(&buckets)
-	var total int64
-	for _, b := range buckets {
-		total += b.Value
-	}
-	if total < 1 {
-		t.Errorf("bucket total = %d, want >= 1 for the customer just created", total)
+	// This test's own isolated database holds exactly the one customer
+	// created above, all in the same UTC calendar day (the harness clock
+	// only advanced by a second): exactly one bucket, exactly one count.
+	if len(buckets) != 1 || buckets[0].Value != 1 {
+		t.Errorf("buckets = %+v, want exactly one bucket with value 1", buckets)
 	}
 }
 

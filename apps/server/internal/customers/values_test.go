@@ -8,11 +8,15 @@ import (
 )
 
 // Ported from Domain/Customers/Common/FriendlyNameTests.cs.
-// Constructor_WithNullOrWhitespace_ThrowsDomainException.
+// Constructor_WithNullOrWhitespace_ThrowsDomainException. Asserts the exact
+// message text: this module's only error vocabulary (inventory §1/§2.2),
+// and the whole reason FriendlyName.cs's Validate exists rather than a bare
+// bool.
 func TestValidateFriendlyName_BlankIsInvalid(t *testing.T) {
+	const want = "A friendly name cannot be null or empty"
 	for _, v := range []string{"", "   "} {
-		if _, err := validateFriendlyName(v); err == "" {
-			t.Errorf("validateFriendlyName(%q) = no error, want one", v)
+		if _, err := validateFriendlyName(v); err != want {
+			t.Errorf("validateFriendlyName(%q) = error %q, want %q", v, err, want)
 		}
 	}
 }
@@ -21,8 +25,9 @@ func TestValidateFriendlyName_BlankIsInvalid(t *testing.T) {
 // Constructor_WithValueLongerThanMaxLength_ThrowsDomainException.
 func TestValidateFriendlyName_TooLongIsInvalid(t *testing.T) {
 	v := strings.Repeat("a", 256)
-	if _, err := validateFriendlyName(v); err == "" {
-		t.Error("validateFriendlyName(256 chars) = no error, want one")
+	want := "A friendly name cannot be longer than 255 characters, the given value was 256 characters"
+	if _, err := validateFriendlyName(v); err != want {
+		t.Errorf("validateFriendlyName(256 chars) = error %q, want %q", err, want)
 	}
 }
 
@@ -48,9 +53,10 @@ func TestValidateFriendlyName_TrimsButPreservesCasing(t *testing.T) {
 // Ported from Domain/Customers/Common/CountryCodeTests.cs.
 // Constructor_WithNullOrWhitespace_ThrowsDomainException.
 func TestValidateCountryCode_BlankIsInvalid(t *testing.T) {
+	const want = "A country code cannot be null or empty"
 	for _, v := range []string{"", "   "} {
-		if _, err := validateCountryCode(v); err == "" {
-			t.Errorf("validateCountryCode(%q) = no error, want one", v)
+		if _, err := validateCountryCode(v); err != want {
+			t.Errorf("validateCountryCode(%q) = error %q, want %q", v, err, want)
 		}
 	}
 }
@@ -67,9 +73,10 @@ func TestValidateCountryCode_TrimsAndLowercases(t *testing.T) {
 // Ported from Domain/Customers/Common/LegalIdTests.cs.
 // Constructor_WithNullOrWhitespace_ThrowsDomainException.
 func TestValidateLegalID_BlankIsInvalid(t *testing.T) {
+	const want = "A legal id cannot be null or empty"
 	for _, v := range []string{"", "   "} {
-		if _, err := validateLegalID(v); err == "" {
-			t.Errorf("validateLegalID(%q) = no error, want one", v)
+		if _, err := validateLegalID(v); err != want {
+			t.Errorf("validateLegalID(%q) = error %q, want %q", v, err, want)
 		}
 	}
 }
@@ -78,8 +85,9 @@ func TestValidateLegalID_BlankIsInvalid(t *testing.T) {
 // Constructor_WithValueLongerThanMaxLength_ThrowsDomainException.
 func TestValidateLegalID_TooLongIsInvalid(t *testing.T) {
 	v := strings.Repeat("1", 51)
-	if _, err := validateLegalID(v); err == "" {
-		t.Error("validateLegalID(51 chars) = no error, want one")
+	want := "A legal id cannot be longer than 50 characters, the given value was 51 characters"
+	if _, err := validateLegalID(v); err != want {
+		t.Errorf("validateLegalID(51 chars) = error %q, want %q", err, want)
 	}
 }
 
@@ -105,9 +113,10 @@ func TestValidateLegalID_TrimsAndLowercases(t *testing.T) {
 // Ported from Domain/Customers/Common/LegalNameTests.cs.
 // Constructor_WithNullOrWhitespace_ThrowsDomainException.
 func TestValidateLegalName_BlankIsInvalid(t *testing.T) {
+	const want = "A legal name cannot be null or empty"
 	for _, v := range []string{"", "   "} {
-		if _, err := validateLegalName(v); err == "" {
-			t.Errorf("validateLegalName(%q) = no error, want one", v)
+		if _, err := validateLegalName(v); err != want {
+			t.Errorf("validateLegalName(%q) = error %q, want %q", v, err, want)
 		}
 	}
 }
@@ -116,8 +125,9 @@ func TestValidateLegalName_BlankIsInvalid(t *testing.T) {
 // Constructor_WithValueLongerThanMaxLength_ThrowsDomainException.
 func TestValidateLegalName_TooLongIsInvalid(t *testing.T) {
 	v := strings.Repeat("a", 256)
-	if _, err := validateLegalName(v); err == "" {
-		t.Error("validateLegalName(256 chars) = no error, want one")
+	want := "A legal name cannot be longer than 255 characters, the given value was 256 characters"
+	if _, err := validateLegalName(v); err != want {
+		t.Errorf("validateLegalName(256 chars) = error %q, want %q", err, want)
 	}
 }
 
@@ -143,9 +153,10 @@ func TestValidateLegalName_TrimsButPreservesCasing(t *testing.T) {
 // Ported from Domain/Customers/Common/LegalTypeTests.cs.
 // Constructor_WithNullOrWhitespace_ThrowsDomainException.
 func TestValidateLegalType_BlankIsInvalid(t *testing.T) {
+	const want = "A legal type cannot be null or empty"
 	for _, v := range []string{"", "   "} {
-		if _, err := validateLegalType(v); err == "" {
-			t.Errorf("validateLegalType(%q) = no error, want one", v)
+		if _, err := validateLegalType(v); err != want {
+			t.Errorf("validateLegalType(%q) = error %q, want %q", v, err, want)
 		}
 	}
 }
@@ -177,11 +188,45 @@ func TestValidateLegalType_WellKnownValues(t *testing.T) {
 // §7 lists none), so this is not a port; it is a unit-level pin of the
 // behaviour that CreateCustomer_WithInvalidLegalSource_ReturnsBadRequestWithFieldError
 // (Integration/CustomersEndpointsTests.cs, ported in customers_test.go)
-// otherwise only exercises indirectly through the HTTP layer.
+// otherwise only exercises indirectly through the HTTP layer. Exact message
+// text, including the raw (unnormalized) value LegalSource.cs's message
+// quotes back for the two rejected-but-non-blank cases.
 func TestValidateLegalSource_InvalidIsRejected(t *testing.T) {
-	for _, v := range []string{"", "   ", "bogus", "BRREG!"} {
-		if _, err := validateLegalSource(v); err == "" {
-			t.Errorf("validateLegalSource(%q) = no error, want one", v)
+	cases := map[string]string{
+		"":       "A legal source cannot be null or empty",
+		"   ":    "A legal source cannot be null or empty",
+		"bogus":  "A legal source must be one of 'brreg', 'manual', but was 'bogus'",
+		"BRREG!": "A legal source must be one of 'brreg', 'manual', but was 'BRREG!'",
+	}
+	for v, want := range cases {
+		if _, err := validateLegalSource(v); err != want {
+			t.Errorf("validateLegalSource(%q) = error %q, want %q", v, err, want)
+		}
+	}
+}
+
+// No dedicated .NET test class exists for CustomerStatus either (customers
+// inventory §7 lists none); this pins its exact messages, which
+// UpdatingWithInvalidStatus_ReturnsValidationProblem (customers_test.go)
+// otherwise only exercises indirectly through the HTTP layer.
+func TestValidateCustomerStatus_ExactMessages(t *testing.T) {
+	cases := map[string]string{
+		"":        "A customer status cannot be null or empty",
+		"   ":     "A customer status cannot be null or empty",
+		"deleted": "A customer status must be one of 'active', 'disabled' or 'archived', but was 'deleted'",
+	}
+	for v, want := range cases {
+		if _, err := validateCustomerStatus(v); err != want {
+			t.Errorf("validateCustomerStatus(%q) = error %q, want %q", v, err, want)
+		}
+	}
+	for _, v := range []string{"active", "Disabled", " ARCHIVED "} {
+		got, err := validateCustomerStatus(v)
+		if err != "" {
+			t.Errorf("validateCustomerStatus(%q) = error %q, want none", v, err)
+		}
+		if want := strings.ToLower(strings.TrimSpace(v)); got != want {
+			t.Errorf("validateCustomerStatus(%q) = %q, want %q", v, got, want)
 		}
 	}
 }
