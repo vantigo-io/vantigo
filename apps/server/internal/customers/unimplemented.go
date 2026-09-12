@@ -12,33 +12,10 @@ import (
 // them all is what satisfies module.Router's "never registered" check, so the
 // contract is fully routed from the first commit and each later task replaces
 // the stubs of the area it implements. Contacts and customer-contact
-// associations (Task 7) and customer CRUD/stats (Task 6) are implemented in
-// contacts.go and customers.go/stats.go respectively; legal identity,
-// timeline and lookup remain here.
-
-// GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
-// (GET /api/v1/customers/lookup/brreg)
-func (s *server) GetCustomersLookupBrreg(context.Context, gen.GetCustomersLookupBrregRequestObject) (gen.GetCustomersLookupBrregResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteCustomersByIdLegalIdentity Remove a customer's legal identity
-// (DELETE /api/v1/customers/{id}/legal-identity)
-func (s *server) DeleteCustomersByIdLegalIdentity(context.Context, gen.DeleteCustomersByIdLegalIdentityRequestObject) (gen.DeleteCustomersByIdLegalIdentityResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomersByIdLegalIdentity Get a customer's legal identity
-// (GET /api/v1/customers/{id}/legal-identity)
-func (s *server) GetCustomersByIdLegalIdentity(context.Context, gen.GetCustomersByIdLegalIdentityRequestObject) (gen.GetCustomersByIdLegalIdentityResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutCustomersByIdLegalIdentity Replace a customer's legal identity
-// (PUT /api/v1/customers/{id}/legal-identity)
-func (s *server) PutCustomersByIdLegalIdentity(context.Context, gen.PutCustomersByIdLegalIdentityRequestObject) (gen.PutCustomersByIdLegalIdentityResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
+// associations (Task 7), customer CRUD/stats (Task 6) and legal identity and
+// the Brreg lookup (Task 8) are implemented in contacts.go,
+// customers.go/stats.go and legal_identity.go/brreg.go respectively; the
+// timeline remains here.
 
 // GetCustomersByIdTimeline List a customer's timeline
 // (GET /api/v1/customers/{id}/timeline)

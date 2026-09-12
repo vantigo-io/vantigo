@@ -39,6 +39,12 @@ type Deps struct {
 	// declares Module.Directory; it is nil when no enabled module provides
 	// one.
 	Directory contracts.CustomerDirectory
+	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
+	// (customers' Brreg lookup, so far the only one) dials through. nil in
+	// production, meaning http.DefaultTransport; a test harness sets it to a
+	// fake so no test ever touches the network, the same shape as Clock
+	// makes time controllable.
+	HTTPTransport http.RoundTripper
 }
 
 // Module is one business module: its name (the path segment it mounts under,

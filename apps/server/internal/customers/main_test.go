@@ -26,20 +26,17 @@ func loadContract() *openapi3.T {
 }
 
 // pendingOperations are the contract's operations no test covers yet. Task 6
-// implemented customer CRUD and dashboard stats (nine operations) and Task 7
-// implements contacts and customer-contact associations (ten more); each
-// removes the operations of the area it implements from this list, and
-// RequireCoverage fails the run if an entry left here was in fact exercised.
+// implemented customer CRUD and dashboard stats (nine operations), Task 7
+// contacts and customer-contact associations (ten more), and Task 8 legal
+// identity and the Brreg lookup (four more); each removes the operations of
+// the area it implements from this list, and RequireCoverage fails the run
+// if an entry left here was in fact exercised.
 var pendingOperations = []string{
-	"deleteCustomersByIdLegalIdentity",
 	"deleteCustomersByIdTimelineByEntryId",
-	"getCustomersByIdLegalIdentity",
 	"getCustomersByIdTimeline",
 	"getCustomersByIdTimelineByEntryId",
 	"getCustomersByIdTimelineByEntryIdRevisions",
-	"getCustomersLookupBrreg",
 	"postCustomersByIdTimeline",
-	"putCustomersByIdLegalIdentity",
 	"putCustomersByIdTimelineByEntryId",
 }
 

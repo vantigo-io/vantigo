@@ -41,6 +41,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"sync"
@@ -110,9 +111,10 @@ type Harness struct {
 // configuration from, the modules it composes beside identity, and the
 // Recorder its clients validate through.
 type setup struct {
-	env      map[string]string
-	modules  []module.Module
-	recorder *contracttest.Recorder
+	env       map[string]string
+	modules   []module.Module
+	recorder  *contracttest.Recorder
+	transport http.RoundTripper
 }
 
 // Option adjusts a harness before it is built.
@@ -135,6 +137,15 @@ func WithRecorder(rec *contracttest.Recorder) Option {
 // a timeout, a narrower MODULES).
 func WithEnv(k, v string) Option {
 	return func(s *setup) { s.env[k] = v }
+}
+
+// WithTransport sets the RoundTripper Deps.HTTPTransport carries, for a
+// module whose own outbound HTTP client (customers' Brreg lookup) must never
+// touch the network in a test: rt stands in for the real transport, the same
+// role .NET's StubBrregHandler played over CustomersApiFactory. Unset, a
+// module falls back to its own production default.
+func WithTransport(rt http.RoundTripper) Option {
+	return func(s *setup) { s.transport = rt }
 }
 
 // New builds a harness for t. It fails t when no Recorder or no module was
@@ -182,13 +193,14 @@ func New(t *testing.T, opts ...Option) *Harness {
 	// The limiter runs on the harness clock too, so a throttle window turns
 	// over when a test advances the clock and never mid-test on the wall clock.
 	h.deps = module.Deps{
-		Config:  cfg,
-		Pool:    pool,
-		Logger:  logger,
-		Clock:   h.Now,
-		Mail:    &mail.Fake{},
-		Secrets: box,
-		Limiter: ratelimit.NewWithClock(pool, h.Now),
+		Config:        cfg,
+		Pool:          pool,
+		Logger:        logger,
+		Clock:         h.Now,
+		Mail:          &mail.Fake{},
+		Secrets:       box,
+		Limiter:       ratelimit.NewWithClock(pool, h.Now),
+		HTTPTransport: s.transport,
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access
