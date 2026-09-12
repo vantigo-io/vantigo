@@ -44,6 +44,91 @@ func (q *Queries) ArchiveProduct(ctx context.Context, arg ArchiveProductParams) 
 	return i, err
 }
 
+const categoryExists = `-- name: CategoryExists :one
+SELECT EXISTS(SELECT 1 FROM products.product_categories WHERE id = $1)
+`
+
+// CategoryExists is CreateCategoryEndpoint's parentId existence pre-check
+// (:27-28).
+func (q *Queries) CategoryExists(ctx context.Context, id int32) (bool, error) {
+	row := q.db.QueryRow(ctx, categoryExists, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const categoryHasProducts = `-- name: CategoryHasProducts :one
+SELECT EXISTS(SELECT 1 FROM products.products WHERE category_id = $1::int)
+`
+
+// CategoryHasProducts is DeleteCategoryEndpoint's second guard (:35-36).
+func (q *Queries) CategoryHasProducts(ctx context.Context, id int32) (bool, error) {
+	row := q.db.QueryRow(ctx, categoryHasProducts, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const categoryHasSubcategories = `-- name: CategoryHasSubcategories :one
+SELECT EXISTS(SELECT 1 FROM products.product_categories WHERE parent_id = $1::int)
+`
+
+// CategoryHasSubcategories is DeleteCategoryEndpoint's first guard (:27-28).
+// The explicit cast keeps id a plain (never-null) int32 in Go: it is always
+// a real category's own id, even though it is compared against the
+// nullable parent_id column.
+func (q *Queries) CategoryHasSubcategories(ctx context.Context, id int32) (bool, error) {
+	row := q.db.QueryRow(ctx, categoryHasSubcategories, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const categorySiblingNameExists = `-- name: CategorySiblingNameExists :one
+SELECT EXISTS(
+    SELECT 1 FROM products.product_categories
+    WHERE parent_id IS NOT DISTINCT FROM $1 AND name = $2
+)
+`
+
+type CategorySiblingNameExistsParams struct {
+	ParentID *int32
+	Name     string
+}
+
+// CategorySiblingNameExists is CreateCategoryEndpoint's duplicate-sibling
+// check (:36-38). IS NOT DISTINCT FROM, not =, so two root categories
+// (parent_id NULL on both sides) collide the same way the table's own
+// NULLS NOT DISTINCT unique index does (products inventory §3).
+func (q *Queries) CategorySiblingNameExists(ctx context.Context, arg CategorySiblingNameExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, categorySiblingNameExists, arg.ParentID, arg.Name)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const categorySiblingNameExistsExcluding = `-- name: CategorySiblingNameExistsExcluding :one
+SELECT EXISTS(
+    SELECT 1 FROM products.product_categories
+    WHERE parent_id IS NOT DISTINCT FROM $1 AND name = $2 AND id != $3
+)
+`
+
+type CategorySiblingNameExistsExcludingParams struct {
+	ParentID *int32
+	Name     string
+	ID       int32
+}
+
+// CategorySiblingNameExistsExcluding is UpdateCategoryEndpoint's duplicate-
+// sibling check, excluding the category being renamed (:66-68).
+func (q *Queries) CategorySiblingNameExistsExcluding(ctx context.Context, arg CategorySiblingNameExistsExcludingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, categorySiblingNameExistsExcluding, arg.ParentID, arg.Name, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const countOtherVariantsOfProduct = `-- name: CountOtherVariantsOfProduct :one
 SELECT count(*) FROM products.product_variants WHERE product_id = $1 AND id != $2
 `
@@ -101,6 +186,15 @@ func (q *Queries) CountProducts(ctx context.Context, arg CountProductsParams) (i
 	return count, err
 }
 
+const deleteCategory = `-- name: DeleteCategory :exec
+DELETE FROM products.product_categories WHERE id = $1
+`
+
+func (q *Queries) DeleteCategory(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, deleteCategory, id)
+	return err
+}
+
 const deleteProductPrice = `-- name: DeleteProductPrice :exec
 DELETE FROM products.product_prices WHERE id = $1
 `
@@ -117,6 +211,30 @@ DELETE FROM products.product_variants WHERE id = $1
 func (q *Queries) DeleteProductVariant(ctx context.Context, id int32) error {
 	_, err := q.db.Exec(ctx, deleteProductVariant, id)
 	return err
+}
+
+const deleteTaxCategory = `-- name: DeleteTaxCategory :exec
+DELETE FROM products.tax_categories WHERE id = $1
+`
+
+func (q *Queries) DeleteTaxCategory(ctx context.Context, id int32) error {
+	_, err := q.db.Exec(ctx, deleteTaxCategory, id)
+	return err
+}
+
+const getCategoryByID = `-- name: GetCategoryByID :one
+SELECT id, name, parent_id FROM products.product_categories WHERE id = $1
+`
+
+// GetCategoryByID is GetCategoryEndpoint's/UpdateCategoryEndpoint's/
+// DeleteCategoryEndpoint's own-row lookup (the full row, parent_id
+// included — unlike GetCategoryRef, which only serves a product's embedded
+// reference).
+func (q *Queries) GetCategoryByID(ctx context.Context, id int32) (ProductsProductCategory, error) {
+	row := q.db.QueryRow(ctx, getCategoryByID, id)
+	var i ProductsProductCategory
+	err := row.Scan(&i.ID, &i.Name, &i.ParentID)
+	return i, err
 }
 
 const getCategoryRef = `-- name: GetCategoryRef :one
@@ -270,6 +388,30 @@ func (q *Queries) GetVariantByProductAndID(ctx context.Context, arg GetVariantBy
 	return i, err
 }
 
+const insertCategory = `-- name: InsertCategory :one
+
+INSERT INTO products.product_categories (name, parent_id)
+VALUES ($1, $2)
+RETURNING id, name, parent_id
+`
+
+type InsertCategoryParams struct {
+	Name     string
+	ParentID *int32
+}
+
+// Categories (Task 12, EP/Categories/*Endpoint.cs). GetCategoryRef and
+// ListCategoryParents above already cover the compact ref a product embeds
+// and the whole id->parentId adjacency list category CRUD reuses for
+// existence checks and WouldCreateCycle.
+// InsertCategory is CreateCategoryEndpoint.cs:46-53.
+func (q *Queries) InsertCategory(ctx context.Context, arg InsertCategoryParams) (ProductsProductCategory, error) {
+	row := q.db.QueryRow(ctx, insertCategory, arg.Name, arg.ParentID)
+	var i ProductsProductCategory
+	err := row.Scan(&i.ID, &i.Name, &i.ParentID)
+	return i, err
+}
+
 const insertProduct = `-- name: InsertProduct :one
 INSERT INTO products.products (
     name, description, category_id, type, status, tax_category_id, created_at, updated_at
@@ -416,6 +558,68 @@ func (q *Queries) InsertProductVariant(ctx context.Context, arg InsertProductVar
 	return i, err
 }
 
+const insertTaxCategory = `-- name: InsertTaxCategory :one
+
+INSERT INTO products.tax_categories (name, kind, rate, created_at, updated_at)
+VALUES ($1, $2, $3, $4::timestamptz, $4::timestamptz)
+RETURNING id, name, kind, rate, created_at, updated_at
+`
+
+type InsertTaxCategoryParams struct {
+	Name string
+	Kind string
+	Rate pgtype.Numeric
+	Now  time.Time
+}
+
+// Tax categories (Task 12, EP/TaxCategories/*Endpoint.cs). GetTaxCategoryRef
+// above already covers the compact ref a product embeds.
+// InsertTaxCategory is CreateTaxCategoryEndpoint.cs:31-33 (TaxCategoryRequest.ToDomain).
+func (q *Queries) InsertTaxCategory(ctx context.Context, arg InsertTaxCategoryParams) (ProductsTaxCategory, error) {
+	row := q.db.QueryRow(ctx, insertTaxCategory,
+		arg.Name,
+		arg.Kind,
+		arg.Rate,
+		arg.Now,
+	)
+	var i ProductsTaxCategory
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Kind,
+		&i.Rate,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listCategoriesOrdered = `-- name: ListCategoriesOrdered :many
+SELECT id, name, parent_id FROM products.product_categories ORDER BY name, id
+`
+
+// ListCategoriesOrdered is GetCategoriesEndpoint.cs:20-24: the flat
+// adjacency list, ordered by name then id.
+func (q *Queries) ListCategoriesOrdered(ctx context.Context) ([]ProductsProductCategory, error) {
+	rows, err := q.db.Query(ctx, listCategoriesOrdered)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProductsProductCategory
+	for rows.Next() {
+		var i ProductsProductCategory
+		if err := rows.Scan(&i.ID, &i.Name, &i.ParentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCategoryParents = `-- name: ListCategoryParents :many
 SELECT id, parent_id FROM products.product_categories
 `
@@ -439,6 +643,42 @@ func (q *Queries) ListCategoryParents(ctx context.Context) ([]ListCategoryParent
 	for rows.Next() {
 		var i ListCategoryParentsRow
 		if err := rows.Scan(&i.ID, &i.ParentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCategoryProductCounts = `-- name: ListCategoryProductCounts :many
+SELECT category_id AS id, count(*) AS count
+FROM products.products
+WHERE category_id IS NOT NULL
+GROUP BY category_id
+`
+
+type ListCategoryProductCountsRow struct {
+	ID    *int32
+	Count int64
+}
+
+// ListCategoryProductCounts is GetCategoriesEndpoint.cs:26-30's direct
+// (not subtree) product count per category; a category with none is
+// simply absent from the result, GetValueOrDefault's 0 (categories.go
+// fills the gap).
+func (q *Queries) ListCategoryProductCounts(ctx context.Context) ([]ListCategoryProductCountsRow, error) {
+	rows, err := q.db.Query(ctx, listCategoryProductCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCategoryProductCountsRow
+	for rows.Next() {
+		var i ListCategoryProductCountsRow
+		if err := rows.Scan(&i.ID, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -779,6 +1019,44 @@ func (q *Queries) ListProductsBySku(ctx context.Context, arg ListProductsBySkuPa
 	return items, nil
 }
 
+const listTaxCategoriesOrdered = `-- name: ListTaxCategoriesOrdered :many
+SELECT id, name, kind, rate FROM products.tax_categories ORDER BY name
+`
+
+type ListTaxCategoriesOrderedRow struct {
+	ID   int32
+	Name string
+	Kind string
+	Rate pgtype.Numeric
+}
+
+// ListTaxCategoriesOrdered is GetTaxCategoriesEndpoint.cs:15-19: ordered by
+// name.
+func (q *Queries) ListTaxCategoriesOrdered(ctx context.Context) ([]ListTaxCategoriesOrderedRow, error) {
+	rows, err := q.db.Query(ctx, listTaxCategoriesOrdered)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTaxCategoriesOrderedRow
+	for rows.Next() {
+		var i ListTaxCategoriesOrderedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Kind,
+			&i.Rate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTaxCategoryRefs = `-- name: ListTaxCategoryRefs :many
 SELECT id, name, kind, rate FROM products.tax_categories WHERE id = ANY($1::int[])
 `
@@ -905,6 +1183,47 @@ func (q *Queries) ListVariantsByProductIDs(ctx context.Context, productIds []int
 	return items, nil
 }
 
+const productCreationBuckets = `-- name: ProductCreationBuckets :many
+SELECT (created_at AT TIME ZONE 'UTC')::date AS day, count(*) AS value
+FROM products.products
+WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz
+GROUP BY day
+ORDER BY day
+`
+
+type ProductCreationBucketsParams struct {
+	RangeFrom time.Time
+	RangeTo   time.Time
+}
+
+type ProductCreationBucketsRow struct {
+	Day   pgtype.Date
+	Value int64
+}
+
+// ProductCreationBuckets is the timeseries's newProducts metric
+// (ProductStatsEndpoints.cs:92-97): one row per UTC calendar day with at
+// least one product created in [range_from, range_to).
+func (q *Queries) ProductCreationBuckets(ctx context.Context, arg ProductCreationBucketsParams) ([]ProductCreationBucketsRow, error) {
+	rows, err := q.db.Query(ctx, productCreationBuckets, arg.RangeFrom, arg.RangeTo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProductCreationBucketsRow
+	for rows.Next() {
+		var i ProductCreationBucketsRow
+		if err := rows.Scan(&i.Day, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const productExists = `-- name: ProductExists :one
 SELECT EXISTS(SELECT 1 FROM products.products WHERE id = $1)
 `
@@ -916,6 +1235,177 @@ func (q *Queries) ProductExists(ctx context.Context, id int32) (bool, error) {
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const productStatsSummaryCounts = `-- name: ProductStatsSummaryCounts :one
+
+SELECT
+    count(*) FILTER (WHERE status = 'Active') AS active,
+    count(*) FILTER (WHERE status = 'Active' AND created_at < $1::timestamptz) AS active_at_period_start,
+    count(*) FILTER (WHERE created_at >= $1::timestamptz AND created_at < $2::timestamptz) AS new_products,
+    count(*) FILTER (WHERE created_at >= $3::timestamptz AND created_at < $1::timestamptz) AS previous_new_products
+FROM products.products
+`
+
+type ProductStatsSummaryCountsParams struct {
+	PeriodFrom   time.Time
+	PeriodTo     time.Time
+	PreviousFrom time.Time
+}
+
+type ProductStatsSummaryCountsRow struct {
+	Active              int64
+	ActiveAtPeriodStart int64
+	NewProducts         int64
+	PreviousNewProducts int64
+}
+
+// Stats (Task 12, EP/ProductStatsEndpoints.cs). Mirrors the customers
+// module's own CustomerStatsSummaryCustomerCounts/CustomerCreationBuckets
+// query shape, the completed broader template.
+// ProductStatsSummaryCounts is ProductStatsEndpoints.Summary's four product
+// counts (:42-49): previous_from..period_from is the immediately preceding
+// window of the same length as [period_from, period_to).
+func (q *Queries) ProductStatsSummaryCounts(ctx context.Context, arg ProductStatsSummaryCountsParams) (ProductStatsSummaryCountsRow, error) {
+	row := q.db.QueryRow(ctx, productStatsSummaryCounts, arg.PeriodFrom, arg.PeriodTo, arg.PreviousFrom)
+	var i ProductStatsSummaryCountsRow
+	err := row.Scan(
+		&i.Active,
+		&i.ActiveAtPeriodStart,
+		&i.NewProducts,
+		&i.PreviousNewProducts,
+	)
+	return i, err
+}
+
+const productStatusCounts = `-- name: ProductStatusCounts :many
+SELECT status, count(*) AS value FROM products.products GROUP BY status
+`
+
+type ProductStatusCountsRow struct {
+	Status string
+	Value  int64
+}
+
+// ProductStatusCounts is ProductStatsEndpoints.Summary's current
+// per-status counts (:51-54), every status present in the table.
+func (q *Queries) ProductStatusCounts(ctx context.Context) ([]ProductStatusCountsRow, error) {
+	rows, err := q.db.Query(ctx, productStatusCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProductStatusCountsRow
+	for rows.Next() {
+		var i ProductStatusCountsRow
+		if err := rows.Scan(&i.Status, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const productStatusCountsBefore = `-- name: ProductStatusCountsBefore :many
+SELECT status, count(*) AS value
+FROM products.products
+WHERE created_at < $1::timestamptz
+GROUP BY status
+`
+
+type ProductStatusCountsBeforeRow struct {
+	Status string
+	Value  int64
+}
+
+// ProductStatusCountsBefore is ProductStatsEndpoints.Summary's per-status
+// counts as of period.From (:55-59), used to compute each status's delta.
+func (q *Queries) ProductStatusCountsBefore(ctx context.Context, before time.Time) ([]ProductStatusCountsBeforeRow, error) {
+	rows, err := q.db.Query(ctx, productStatusCountsBefore, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProductStatusCountsBeforeRow
+	for rows.Next() {
+		var i ProductStatusCountsBeforeRow
+		if err := rows.Scan(&i.Status, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taxCategoryHasProducts = `-- name: TaxCategoryHasProducts :one
+SELECT EXISTS(SELECT 1 FROM products.products WHERE tax_category_id = $1)
+`
+
+// TaxCategoryHasProducts is DeleteTaxCategoryEndpoint's guard (:21-22).
+func (q *Queries) TaxCategoryHasProducts(ctx context.Context, id int32) (bool, error) {
+	row := q.db.QueryRow(ctx, taxCategoryHasProducts, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const taxCategoryNameExists = `-- name: TaxCategoryNameExists :one
+SELECT EXISTS(SELECT 1 FROM products.tax_categories WHERE name = $1)
+`
+
+// TaxCategoryNameExists is CreateTaxCategoryEndpoint's duplicate-name check
+// (:23).
+func (q *Queries) TaxCategoryNameExists(ctx context.Context, name string) (bool, error) {
+	row := q.db.QueryRow(ctx, taxCategoryNameExists, name)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const taxCategoryNameExistsExcluding = `-- name: TaxCategoryNameExistsExcluding :one
+SELECT EXISTS(SELECT 1 FROM products.tax_categories WHERE name = $1 AND id != $2)
+`
+
+type TaxCategoryNameExistsExcludingParams struct {
+	Name string
+	ID   int32
+}
+
+// TaxCategoryNameExistsExcluding is UpdateTaxCategoryEndpoint's
+// duplicate-name check, excluding the category being renamed (:31-32).
+func (q *Queries) TaxCategoryNameExistsExcluding(ctx context.Context, arg TaxCategoryNameExistsExcludingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, taxCategoryNameExistsExcluding, arg.Name, arg.ID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const updateCategory = `-- name: UpdateCategory :one
+UPDATE products.product_categories
+SET name = $1, parent_id = $2
+WHERE id = $3
+RETURNING id, name, parent_id
+`
+
+type UpdateCategoryParams struct {
+	Name     string
+	ParentID *int32
+	ID       int32
+}
+
+// UpdateCategory applies UpdateCategoryEndpoint's validated name/parentId
+// (:76-78).
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) (ProductsProductCategory, error) {
+	row := q.db.QueryRow(ctx, updateCategory, arg.Name, arg.ParentID, arg.ID)
+	var i ProductsProductCategory
+	err := row.Scan(&i.ID, &i.Name, &i.ParentID)
+	return i, err
 }
 
 const updatePrice = `-- name: UpdatePrice :one
@@ -1069,6 +1559,43 @@ func (q *Queries) UpdateProductVariant(ctx context.Context, arg UpdateProductVar
 		&i.WidthCm,
 		&i.HeightCm,
 		&i.OptionValues,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTaxCategory = `-- name: UpdateTaxCategory :one
+UPDATE products.tax_categories
+SET name = $1, kind = $2, rate = $3, updated_at = $4::timestamptz
+WHERE id = $5
+RETURNING id, name, kind, rate, created_at, updated_at
+`
+
+type UpdateTaxCategoryParams struct {
+	Name      string
+	Kind      string
+	Rate      pgtype.Numeric
+	UpdatedAt time.Time
+	ID        int32
+}
+
+// UpdateTaxCategory applies UpdateTaxCategoryEndpoint's validated fields
+// (:40-43).
+func (q *Queries) UpdateTaxCategory(ctx context.Context, arg UpdateTaxCategoryParams) (ProductsTaxCategory, error) {
+	row := q.db.QueryRow(ctx, updateTaxCategory,
+		arg.Name,
+		arg.Kind,
+		arg.Rate,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i ProductsTaxCategory
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Kind,
+		&i.Rate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

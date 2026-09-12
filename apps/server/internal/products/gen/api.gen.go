@@ -1509,15 +1509,25 @@ type PostProductsCategoriesResponseObject interface {
 	VisitPostProductsCategoriesResponse(w http.ResponseWriter) error
 }
 
-type PostProductsCategories201JSONResponse CategoryResponse
+type PostProductsCategories201ResponseHeaders struct {
+	Location *string
+}
+
+type PostProductsCategories201JSONResponse struct {
+	Body    CategoryResponse
+	Headers PostProductsCategories201ResponseHeaders
+}
 
 func (response PostProductsCategories201JSONResponse) VisitPostProductsCategoriesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
@@ -2024,15 +2034,25 @@ type PostProductsTaxCategoriesResponseObject interface {
 	VisitPostProductsTaxCategoriesResponse(w http.ResponseWriter) error
 }
 
-type PostProductsTaxCategories201JSONResponse TaxCategoryResponse
+type PostProductsTaxCategories201ResponseHeaders struct {
+	Location *string
+}
+
+type PostProductsTaxCategories201JSONResponse struct {
+	Body    TaxCategoryResponse
+	Headers PostProductsTaxCategories201ResponseHeaders
+}
 
 func (response PostProductsTaxCategories201JSONResponse) VisitPostProductsTaxCategoriesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
 	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
