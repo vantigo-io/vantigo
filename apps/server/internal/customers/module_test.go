@@ -67,16 +67,18 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 // declares is in fact routed is router.Err()'s guarantee (checked at Compose
 // time by every test's newHarness call, TestModule_ComposesAndDemandsAPermission
 // included), not something this one request could prove on its own.
-// getCustomersLookupBrreg is Task 8's; customer CRUD/stats (Task 6) and
-// contacts/associations (Task 7) are implemented by the time this test runs,
-// so it targets an operation still pending.
+// getCustomersByIdTimeline is the timeline's (Task 9); customer CRUD/stats
+// (Task 6), contacts/associations (Task 7) and legal identity/the Brreg
+// lookup (Task 8) are implemented by the time this test runs, so it targets
+// an operation still pending.
 func TestModule_StubbedOperationAnswers501(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
 	// Off-contract by design: a 501 is the platform's answer to a handler that
-	// does not exist yet, and no operation documents one.
-	r := h.SignIn(t, "customers:lookup-view").Do(http.MethodGet, "/api/v1/customers/lookup/brreg", nil,
+	// does not exist yet, and no operation documents one. The stub never
+	// looks up the customer, so an arbitrary id is enough to reach it.
+	r := h.SignIn(t, "customers:timeline-view").Do(http.MethodGet, "/api/v1/customers/1/timeline", nil,
 		modtest.SkipContract("the operation is not implemented yet"))
 	if r.Status != http.StatusNotImplemented {
 		t.Errorf("status %d body %s, want 501", r.Status, r.Body)

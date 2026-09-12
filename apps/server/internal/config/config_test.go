@@ -839,3 +839,30 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want exactly customers,energy,communications", cfg.Modules)
 	}
 }
+
+func TestLoad_BrregBaseURL(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.BrregBaseURL != "https://data.brreg.no" {
+		t.Errorf("BrregBaseURL = %q, want the data.brreg.no default when unset", cfg.BrregBaseURL)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "BRREG_BASE_URL", "https://brreg.example.test/")); cfg.BrregBaseURL != "https://brreg.example.test" {
+		t.Errorf("BrregBaseURL = %q, want the trailing slash trimmed", cfg.BrregBaseURL)
+	}
+	if msg := loadError(t, with(validEnv(), "BRREG_BASE_URL", "not-a-url")); !strings.Contains(msg, "BRREG_BASE_URL: must be an absolute http or https URL") {
+		t.Errorf("error = %q", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "BRREG_BASE_URL", "ftp://brreg.example.test")); !strings.Contains(msg, "BRREG_BASE_URL: must be an absolute http or https URL") {
+		t.Errorf("error = %q, want a non-http(s) scheme rejected", msg)
+	}
+}
+
+func TestLoad_BrregTimeout(t *testing.T) {
+	if cfg := mustLoad(t, validEnv()); cfg.BrregTimeout != 15*time.Second {
+		t.Errorf("BrregTimeout = %v, want 15s by default", cfg.BrregTimeout)
+	}
+	if cfg := mustLoad(t, with(validEnv(), "BRREG_TIMEOUT", "5s")); cfg.BrregTimeout != 5*time.Second {
+		t.Errorf("BrregTimeout = %v", cfg.BrregTimeout)
+	}
+	if msg := loadError(t, with(validEnv(), "BRREG_TIMEOUT", "not-a-duration")); !strings.Contains(msg, "BRREG_TIMEOUT: must be a positive duration") {
+		t.Errorf("error = %q", msg)
+	}
+}

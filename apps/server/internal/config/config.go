@@ -144,6 +144,14 @@ type Config struct {
 	// appears here; module.Compose mounts only the modules this list enables
 	// plus identity.
 	Modules []string
+
+	// BrregBaseURL is the origin the customers module's Brreg lookup client
+	// calls (BRREG_BASE_URL, customers inventory §5, CFG/BrregLookupOptions.cs:11);
+	// no trailing slash. The module's only outbound HTTP dependency.
+	BrregBaseURL string
+	// BrregTimeout bounds one lookup end to end, retries included
+	// (BRREG_TIMEOUT); .NET's total-request timeout.
+	BrregTimeout time.Duration
 }
 
 // IsDevelopment reports whether APP_ENV=development.
@@ -228,6 +236,9 @@ func Load(env map[string]string) (*Config, error) {
 	c.TrustedProxyCIDRs = trustedProxyCIDRs(&p, env, c)
 
 	c.Modules = modules(&p, env)
+
+	c.BrregBaseURL = brregBaseURL(&p, env)
+	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)
 
 	if c.EnforcesTransportSecurity() {
 		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
@@ -339,6 +350,28 @@ func basePath(p *problems, env map[string]string) string {
 		}
 	}
 	return v
+}
+
+// defaultBrregBaseURL is data.brreg.no, Brønnøysundregisteret's public
+// Enhetsregisteret API origin (customers inventory §5).
+const defaultBrregBaseURL = "https://data.brreg.no"
+
+// brregBaseURL validates BRREG_BASE_URL as appOrigin validates APP_URL: an
+// absolute http or https URL. Unlike APP_URL it may carry a path (a test
+// harness's httptest-free fake still needs only an origin, but nothing
+// requires one), and any trailing slash is trimmed so the client's fixed
+// path never ends up with a doubled one.
+func brregBaseURL(p *problems, env map[string]string) string {
+	v := env["BRREG_BASE_URL"]
+	if v == "" {
+		return defaultBrregBaseURL
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		p.add("BRREG_BASE_URL", "must be an absolute http or https URL")
+		return defaultBrregBaseURL
+	}
+	return strings.TrimSuffix(v, "/")
 }
 
 func invalidPathRune(r rune) bool {
