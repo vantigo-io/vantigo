@@ -190,7 +190,7 @@ func validateNonNegative(field string, v *float64) string {
 // success (ProductPriceRequest.ToDomain:41).
 func validateCurrency(raw string) (string, string) {
 	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || len(trimmed) != currencyLength || !isASCIILetters(trimmed) {
+	if trimmed == "" || utf16Length(trimmed) != currencyLength || !isASCIILetters(trimmed) {
 		return "", "'currency' must be a three-letter ISO 4217 currency code."
 	}
 	return strings.ToUpper(trimmed), ""
@@ -275,4 +275,21 @@ func camelizeOptionValueKeys(m map[string]string) map[string]string {
 		out[camelCase(k)] = v
 	}
 	return out
+}
+
+// stringPtrEqual and int32PtrEqual report whether two optional fields carry
+// the same value, nil included, for PutProductsById's "did anything actually
+// change" comparison (products.go).
+func stringPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func int32PtrEqual(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

@@ -199,6 +199,8 @@ const deleteProductPrice = `-- name: DeleteProductPrice :exec
 DELETE FROM products.product_prices WHERE id = $1
 `
 
+// DeleteProductPrice is DeleteProductPriceEndpoint's own delete (:29-30):
+// no "last price" rule, a variant may end up with zero prices.
 func (q *Queries) DeleteProductPrice(ctx context.Context, id int32) error {
 	_, err := q.db.Exec(ctx, deleteProductPrice, id)
 	return err
@@ -208,6 +210,8 @@ const deleteProductVariant = `-- name: DeleteProductVariant :exec
 DELETE FROM products.product_variants WHERE id = $1
 `
 
+// DeleteProductVariant is DeleteProductVariantEndpoint's own delete
+// (:25-26), run only once the last-variant guard above has passed.
 func (q *Queries) DeleteProductVariant(ctx context.Context, id int32) error {
 	_, err := q.db.Exec(ctx, deleteProductVariant, id)
 	return err
@@ -1633,6 +1637,8 @@ const variantBarcodeExists = `-- name: VariantBarcodeExists :one
 SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE barcode = $1)
 `
 
+// VariantBarcodeExists is AddProductVariantEndpoint's catalog-wide
+// duplicate-barcode check for a single new variant (:51).
 func (q *Queries) VariantBarcodeExists(ctx context.Context, barcode *string) (bool, error) {
 	row := q.db.QueryRow(ctx, variantBarcodeExists, barcode)
 	var exists bool
@@ -1649,6 +1655,9 @@ type VariantBarcodeExistsExcludingParams struct {
 	ID      int32
 }
 
+// VariantBarcodeExistsExcluding is UpdateProductVariantEndpoint's
+// duplicate-barcode check, excluding the variant being updated (:50), which
+// runs unconditionally even when the SKU did not change.
 func (q *Queries) VariantBarcodeExistsExcluding(ctx context.Context, arg VariantBarcodeExistsExcludingParams) (bool, error) {
 	row := q.db.QueryRow(ctx, variantBarcodeExistsExcluding, arg.Barcode, arg.ID)
 	var exists bool
@@ -1660,6 +1669,8 @@ const variantSkuExists = `-- name: VariantSkuExists :one
 SELECT EXISTS(SELECT 1 FROM products.product_variants WHERE sku = $1)
 `
 
+// VariantSkuExists is AddProductVariantEndpoint's catalog-wide duplicate-SKU
+// check for a single new variant (:46).
 func (q *Queries) VariantSkuExists(ctx context.Context, sku string) (bool, error) {
 	row := q.db.QueryRow(ctx, variantSkuExists, sku)
 	var exists bool
@@ -1676,6 +1687,8 @@ type VariantSkuExistsExcludingParams struct {
 	ID  int32
 }
 
+// VariantSkuExistsExcluding is UpdateProductVariantEndpoint's duplicate-SKU
+// check, excluding the variant being renamed (:44).
 func (q *Queries) VariantSkuExistsExcluding(ctx context.Context, arg VariantSkuExistsExcludingParams) (bool, error) {
 	row := q.db.QueryRow(ctx, variantSkuExistsExcluding, arg.Sku, arg.ID)
 	var exists bool
