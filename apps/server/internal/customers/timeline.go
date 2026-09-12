@@ -154,7 +154,12 @@ func validateManualTimelineRequest(body gen.TimelineManualTimelineRequest, now t
 	if body.SourceUrl != nil {
 		u, err := url.Parse(*body.SourceUrl)
 		switch {
-		case err != nil || !u.IsAbs() || (u.Scheme != "http" && u.Scheme != "https"):
+		// .NET's Uri.TryCreate(..., Absolute, ...) requires a host for an
+		// http(s) URI; Go's url.Parse happily accepts "https://" or
+		// "https:///path" with Host == "", wider than .NET's shape, so the
+		// host check is required alongside IsAbs()/scheme, not implied by
+		// them.
+		case err != nil || !u.IsAbs() || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "":
 			errs["sourceUrl"] = []string{"SourceUrl must be an absolute http(s) URL"}
 		case utf16Length(*body.SourceUrl) > 2048:
 			errs["sourceUrl"] = []string{"SourceUrl cannot be longer than 2048 characters"}
@@ -272,6 +277,16 @@ type timelineCursorPayload struct {
 	EventTypes   []string `json:"eventTypes,omitempty"`
 	OccurredFrom *string  `json:"occurredFrom,omitempty"`
 	OccurredTo   *string  `json:"occurredTo,omitempty"`
+
+	// occurredAtTime is OccurredAt parsed exactly once, by
+	// decodeTimelineCursor, and never re-parsed afterward: re-parsing later
+	// (in the List handler, after cursorMatches had already accepted the
+	// cursor) is what let an unparsable occurredAt reach time.Parse's error
+	// as a 500 instead of decodeTimelineCursor's own 400 — customers
+	// inventory §1.4 requires every malformed cursor, occurredAt included,
+	// to answer 400. Unexported: it is decode-time-only derived data, never
+	// part of the wire payload.
+	occurredAtTime *time.Time
 }
 
 func formatFilterDate(t *time.Time) *string {
@@ -324,6 +339,13 @@ func decodeTimelineCursor(value string) (timelineCursorPayload, bool) {
 	if _, err := parseISODate(payload.OccurredOn); err != nil {
 		return timelineCursorPayload{}, false
 	}
+	if payload.OccurredAt != nil {
+		at, err := time.Parse(time.RFC3339Nano, *payload.OccurredAt)
+		if err != nil {
+			return timelineCursorPayload{}, false
+		}
+		payload.occurredAtTime = &at
+	}
 	return payload, true
 }
 
@@ -349,7 +371,14 @@ func stringSliceEqual(a, b []string) bool {
 // cursorMatches is the cursor-vs-filters comparison List makes before
 // applying a cursor (TimelineEndpoints.cs:68-74): a cursor scoped to another
 // customer or a different set of filters is rejected, never silently
-// reinterpreted.
+// reinterpreted. It deliberately does not compare OccurredOn/OccurredAt/ID:
+// those are the cursor's pagination position, not a filter, and .NET's own
+// TimelineFilters.GetDigest — the value this comparison stands in for —
+// never hashes them either (TimelineEndpoints.cs:566-577 hashes only
+// customerId/provenance/eventTypes/occurredFrom/occurredTo). Comparing the
+// position fields here would reject every second page of a multi-page
+// listing, since each page's cursor legitimately carries a different
+// position while scoped to the same customer and filters.
 func cursorMatches(c timelineCursorPayload, customerID int32, f timelineFilters) bool {
 	return c.CustomerID == customerID &&
 		stringPtrEqual(c.Provenance, f.Provenance) &&
@@ -560,13 +589,9 @@ func (s *server) GetCustomersByIdTimeline(ctx context.Context, req gen.GetCustom
 		}
 		params.CursorOccurredOn = pgtype.Date{Time: cursorOn, Valid: true}
 		params.CursorID = cursor.ID
-		if cursor.OccurredAt != nil {
-			at, err := time.Parse(time.RFC3339Nano, *cursor.OccurredAt)
-			if err != nil {
-				return nil, fmt.Errorf("customers: re-parse cursor instant: %w", err)
-			}
+		if cursor.occurredAtTime != nil {
 			params.CursorHasOccurredAt = true
-			params.CursorOccurredAt = at
+			params.CursorOccurredAt = *cursor.occurredAtTime
 		}
 	}
 

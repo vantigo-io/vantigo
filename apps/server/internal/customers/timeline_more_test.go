@@ -1,8 +1,11 @@
 package customers_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -242,5 +245,76 @@ func TestPostCustomersByIdTimeline_OccurredAtInFuture_Returns400(t *testing.T) {
 	r.JSON(&problem)
 	if got := problem.Errors["occurredAt"]; len(got) != 1 || got[0] != "An occurrence instant cannot be in the future" {
 		t.Errorf("errors[occurredAt] = %v, want the future-instant message", got)
+	}
+}
+
+// malformedOccurredAtCursor hand-builds an otherwise well-formed timeline
+// cursor whose occurredAt is not a parseable RFC3339 instant, the same shape
+// encodeTimelineCursor produces (customers.go's timelineCursorPayload is
+// unexported, so this package cannot reuse that type directly — the wire
+// shape, base64(json), is the contract this test exercises anyway).
+func malformedOccurredAtCursor(t *testing.T, customerID, entryID int32, occurredOn string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{
+		"customerId": customerID,
+		"occurredOn": occurredOn,
+		"occurredAt": "not-a-timestamp",
+		"id":         entryID,
+	})
+	if err != nil {
+		t.Fatalf("marshal cursor payload: %v", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// A cursor whose occurredAt cannot be parsed must answer 400, the same as
+// any other malformed cursor (customers inventory §1.4): decodeTimelineCursor
+// validates occurredOn but, before this fix, never validated occurredAt at
+// all, so an unparsable value survived decode and cursorMatches, then failed
+// later at the List handler's own time.Parse — an error return from the
+// handler, which the generic response-error path turns into a 500, not the
+// 400 this test requires.
+func TestGetCustomersByIdTimeline_CursorWithUnparsableOccurredAt_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Timeline Cursor OccurredAt Co")
+	entry := createManual(t, c, customer.Id, "2026-07-27", "seed")
+
+	cursor := malformedOccurredAtCursor(t, customer.Id, entry.Id, "2026-07-27")
+	r := c.Do(http.MethodGet, fmt.Sprintf("/api/v1/customers/%d/timeline?cursor=%s", customer.Id, url.QueryEscape(cursor)), nil)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	want := "The cursor is malformed"
+	if got := problem.Errors["cursor"]; len(got) != 1 || got[0] != want {
+		t.Errorf("errors[cursor] = %v, want [%q]", got, want)
+	}
+}
+
+// .NET's Uri.TryCreate(..., Absolute, ...) requires a host for an http(s)
+// URI; "https://" and "https:///path" both parse in Go with Host == "",
+// which the shape check alone (scheme + IsAbs()) did not reject.
+func TestPostCustomersByIdTimeline_HostlessSourceUrl_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	customer := createCustomer(t, c, "Timeline Hostless URL Co")
+
+	for _, sourceURL := range []string{"https://", "https:///path"} {
+		r := c.Do(http.MethodPost, fmt.Sprintf("/api/v1/customers/%d/timeline", customer.Id), map[string]any{
+			"eventType": "note", "occurredOn": "2026-07-27", "note": "n/a", "sourceUrl": sourceURL,
+		})
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("sourceUrl=%q: status %d body %s, want 400", sourceURL, r.Status, r.Body)
+		}
+		var problem validationProblemJSON
+		r.JSON(&problem)
+		want := "SourceUrl must be an absolute http(s) URL"
+		if got := problem.Errors["sourceUrl"]; len(got) != 1 || got[0] != want {
+			t.Errorf("sourceUrl=%q: errors[sourceUrl] = %v, want [%q]", sourceURL, got, want)
+		}
 	}
 }
