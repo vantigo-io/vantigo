@@ -150,11 +150,24 @@ func TestIdentityBaseline_AppliesAndSeedsBuiltInRoles(t *testing.T) {
 	}
 }
 
-// applyUpDownUp applies every migration, rolls back the most recent one
-// (00003_customers_baseline.sql, at the time this test was written), and
-// applies it again, proving the customers baseline's down migration is a
-// clean inverse of its up migration.
-func applyUpDownUp(t *testing.T, databaseURL string) {
+// applyUpDownUp applies every migration, rolls all the way back down to
+// (and including) the migration numbered version — goose's version is a
+// migration file's leading number, so 00003_customers_baseline.sql is
+// version 3 — and applies everything again, proving that migration's down
+// path is a clean inverse of its up path.
+//
+// It uses DownTo(version-1) rather than a single Down(), deliberately:
+// Down() only ever rolls back the single most-recently-applied migration,
+// so calling it once genuinely exercises version's own down script only
+// while version happens to be the newest migration in the tree. The moment
+// a later migration lands on top, a bare Down() would roll back that later
+// migration instead, and version's down path would silently stop being
+// tested — exactly the blind spot a caller adding a baseline in this style
+// must not inherit. DownTo(version-1) rolls back every migration from the
+// current head down through version, in descending order, so version's own
+// down runs (and is proven to compose with whatever sits above it)
+// regardless of how many migrations that is.
+func applyUpDownUp(t *testing.T, databaseURL string, version int64) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -176,8 +189,8 @@ func applyUpDownUp(t *testing.T, databaseURL string) {
 	if _, err := provider.Up(ctx); err != nil {
 		t.Fatalf("up: %v", err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("down: %v", err)
+	if _, err := provider.DownTo(ctx, version-1); err != nil {
+		t.Fatalf("down to version %d: %v", version-1, err)
 	}
 	if _, err := provider.Up(ctx); err != nil {
 		t.Fatalf("up again: %v", err)
@@ -192,7 +205,7 @@ func applyUpDownUp(t *testing.T, databaseURL string) {
 // anywhere in the schema.
 func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
-	applyUpDownUp(t, url)
+	applyUpDownUp(t, url, 3) // 00003_customers_baseline.sql
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)
@@ -262,7 +275,7 @@ func TestCustomersBaseline_AppliesAndIsIdempotent(t *testing.T) {
 // should: sku unique alone, no tenant_id column anywhere in the schema.
 func TestProductsBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
-	applyUpDownUp(t, url)
+	applyUpDownUp(t, url, 4) // 00004_products_baseline.sql
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)
@@ -526,7 +539,7 @@ func TestProductVariantsAndPrices_CascadeFromTheirParent(t *testing.T) {
 // inventory §3, the partition-key requirement).
 func TestEnergyBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	url := testdb.URL(t)
-	applyUpDownUp(t, url)
+	applyUpDownUp(t, url, 5) // 00005_energy_baseline.sql
 
 	ctx := context.Background()
 	pool, err := db.Open(ctx, url)
@@ -683,6 +696,38 @@ func TestSupplyPeriods_ExclusionConstraintAllowsOverlappingCancelledPeriods(t *t
 		INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
 		VALUES ($1, 1002, '2026-01-15T00:00:00Z', '2026-03-01T00:00:00Z', 'Active')`, meteringPointID); err != nil {
 		t.Fatalf("insert overlapping active period against a cancelled one: err = %v, want no error", err)
+	}
+}
+
+// TestSupplyPeriods_ExclusionConstraintAdmitsAdjacentNonCancelledPeriods
+// proves the constraint's half-open '[)' boundary (energy inventory §3.2,
+// §2.3's Overlaps predicate; .NET asserts this directly in
+// SupplyPeriodTests.cs:8-12, Adjacent_periods_do_not_overlap): a period
+// ending exactly when the next one starts does not overlap it, so both may
+// exist even though both are non-Cancelled — this is exactly the shape a
+// supply-period switch produces (the new period starts precisely where the
+// ended one stops, so a strict '[]' boundary would reject every legitimate
+// switch). Neither of the two tests above probes the boundary itself —
+// mutating '[)' to '[]' leaves both green — so this is the one that must
+// flip: the shared instant 2026-02-01T00:00:00Z, inclusive on the first
+// period's end and inclusive on the second period's start, only collides
+// under '[]'.
+func TestSupplyPeriods_ExclusionConstraintAdmitsAdjacentNonCancelledPeriods(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	meteringPointID := insertTestMeteringPoint(t, ctx, pool)
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
+		VALUES ($1, 1001, '2026-01-01T00:00:00Z', '2026-02-01T00:00:00Z', 'Ended')`, meteringPointID); err != nil {
+		t.Fatalf("insert first period: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO energy.supply_periods (metering_point_id, customer_id, start, "end", status)
+		VALUES ($1, 1002, '2026-02-01T00:00:00Z', '2026-03-01T00:00:00Z', 'Active')`, meteringPointID); err != nil {
+		t.Fatalf("insert second period starting exactly when the first ends: %v, want no error (half-open '[)' boundary — SupplyPeriodTests.cs's Adjacent_periods_do_not_overlap)", err)
 	}
 }
 
