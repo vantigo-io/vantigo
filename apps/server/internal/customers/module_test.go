@@ -60,13 +60,16 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	}
 }
 
-// TestModule_StubbedOperationAnswers501 proves every operation is routed
-// before any is implemented: a signed-in caller holding the operation's
-// permission passes the access check and reaches the stub, which answers 501
-// rather than a 404 from an unregistered route or a 500 from a nil handler.
-// getCustomersLookupBrreg is Task 8's; customer CRUD and stats (Task 6) are
-// implemented by the time this test runs, so it targets an operation still
-// pending.
+// TestModule_StubbedOperationAnswers501 proves one still-pending operation
+// reaches its stub rather than a 404 from an unregistered route or a 500 from
+// a nil handler: a signed-in caller holding the operation's permission passes
+// the access check and gets back 501. That every operation the contract
+// declares is in fact routed is router.Err()'s guarantee (checked at Compose
+// time by every test's newHarness call, TestModule_ComposesAndDemandsAPermission
+// included), not something this one request could prove on its own.
+// getCustomersLookupBrreg is Task 8's; customer CRUD/stats (Task 6) and
+// contacts/associations (Task 7) are implemented by the time this test runs,
+// so it targets an operation still pending.
 func TestModule_StubbedOperationAnswers501(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

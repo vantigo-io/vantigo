@@ -37,8 +37,15 @@ func writeDecodeError(w http.ResponseWriter, r *http.Request) {
 // 400s this module answers (GetCustomers's query-parameter errors, the
 // dashboard stats endpoints' invalid period/metric).
 func problem(title, detail string) apicommon.ProblemDetails {
-	status := int32(http.StatusBadRequest)
-	return apicommon.ProblemDetails{Title: &title, Detail: &detail, Status: &status}
+	return problemStatus(title, detail, http.StatusBadRequest)
+}
+
+// problemStatus is problem with an explicit status, for the one business-rule
+// refusal in this module that is not a 400: AttachCustomerContactEndpoint's
+// 409 "Contact already associated" (customers inventory §1.4).
+func problemStatus(title, detail string, status int) apicommon.ProblemDetails {
+	s := int32(status)
+	return apicommon.ProblemDetails{Title: &title, Detail: &detail, Status: &s}
 }
 
 // validationProblem builds an RFC 7807 HttpValidationProblemDetails, .NET's

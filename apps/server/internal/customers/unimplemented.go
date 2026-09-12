@@ -11,71 +11,14 @@ import (
 // which the strict server's response-error handler turns into a 501. Mounting
 // them all is what satisfies module.Router's "never registered" check, so the
 // contract is fully routed from the first commit and each later task replaces
-// the stubs of the area it implements.
-
-// GetCustomersContacts List all contacts
-// (GET /api/v1/customers/contacts)
-func (s *server) GetCustomersContacts(context.Context, gen.GetCustomersContactsRequestObject) (gen.GetCustomersContactsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostCustomersContacts Create a new contact
-// (POST /api/v1/customers/contacts)
-func (s *server) PostCustomersContacts(context.Context, gen.PostCustomersContactsRequestObject) (gen.PostCustomersContactsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteCustomersContactsById Delete a contact
-// (DELETE /api/v1/customers/contacts/{id})
-func (s *server) DeleteCustomersContactsById(context.Context, gen.DeleteCustomersContactsByIdRequestObject) (gen.DeleteCustomersContactsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetContact Get a contact by id
-// (GET /api/v1/customers/contacts/{id})
-func (s *server) GetContact(context.Context, gen.GetContactRequestObject) (gen.GetContactResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutCustomersContactsById Update a contact
-// (PUT /api/v1/customers/contacts/{id})
-func (s *server) PutCustomersContactsById(context.Context, gen.PutCustomersContactsByIdRequestObject) (gen.PutCustomersContactsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomersContactsByIdCustomers List the customers a contact is associated with
-// (GET /api/v1/customers/contacts/{id}/customers)
-func (s *server) GetCustomersContactsByIdCustomers(context.Context, gen.GetCustomersContactsByIdCustomersRequestObject) (gen.GetCustomersContactsByIdCustomersResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
+// the stubs of the area it implements. Contacts and customer-contact
+// associations (Task 7) and customer CRUD/stats (Task 6) are implemented in
+// contacts.go and customers.go/stats.go respectively; legal identity,
+// timeline and lookup remain here.
 
 // GetCustomersLookupBrreg Look up business entities in Brønnøysundregisteret
 // (GET /api/v1/customers/lookup/brreg)
 func (s *server) GetCustomersLookupBrreg(context.Context, gen.GetCustomersLookupBrregRequestObject) (gen.GetCustomersLookupBrregResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCustomersByIdContacts List the contacts associated with a customer
-// (GET /api/v1/customers/{id}/contacts)
-func (s *server) GetCustomersByIdContacts(context.Context, gen.GetCustomersByIdContactsRequestObject) (gen.GetCustomersByIdContactsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostCustomersByIdContacts Associate a contact with a customer
-// (POST /api/v1/customers/{id}/contacts)
-func (s *server) PostCustomersByIdContacts(context.Context, gen.PostCustomersByIdContactsRequestObject) (gen.PostCustomersByIdContactsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteCustomersByIdContactsByContactId Remove a contact association from a customer
-// (DELETE /api/v1/customers/{id}/contacts/{contactId})
-func (s *server) DeleteCustomersByIdContactsByContactId(context.Context, gen.DeleteCustomersByIdContactsByContactIdRequestObject) (gen.DeleteCustomersByIdContactsByContactIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutCustomersByIdContactsByContactId Update a customer's contact association
-// (PUT /api/v1/customers/{id}/contacts/{contactId})
-func (s *server) PutCustomersByIdContactsByContactId(context.Context, gen.PutCustomersByIdContactsByContactIdRequestObject) (gen.PutCustomersByIdContactsByContactIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }
 
