@@ -73,7 +73,17 @@ the endpoint handler or its model binding runs.
 | GET `/stats/timeseries` | getProductsStatsTimeseries | same 5 | **only `metric=newProducts` is implemented**; anything else → 400 (`EP/ProductStatsEndpoints.cs:84-90`) |
 | GET `/stats/attention` | getProductsStatsAttention | same 5 | **stub**: always returns `[]` regardless of DB state (`EP/ProductStatsEndpoints.cs:103-104`) — §7 oddity 4 |
 
-### 1.3 Validation/refusal order (mutating endpoints)
+#**`productCount` is always 0 except on the list endpoint** (added 2026-09-12, from source rather than from this
+document's earlier summary). `CategoryResponse.FromDomain` takes `int productCount = 0`
+(`EP/Categories/Dtos/CategoryResponse.cs:18`) and only `GetCategoriesEndpoint` ever computes and passes a real
+count (`GetCategoriesEndpoint.cs:32-36`, a `GroupBy`/`ToDictionary` over `Products` then
+`productCounts.GetValueOrDefault(category.Id)`). All three other category responses call `FromDomain(category)`
+with no second argument — `CreateCategoryEndpoint.cs:56`, `GetCategoryEndpoint.cs:28` and
+`UpdateCategoryEndpoint.cs:80` — so `POST /categories`, `GET /categories/{id}` and `PUT /categories/{id}` report
+`productCount: 0` for a category with assigned products, while `GET /categories` reports the true count for the
+same category in the same installation. See §7 oddity 13; ported faithfully and pinned by a test.
+
+## 1.3 Validation/refusal order (mutating endpoints)
 
 Order matters because early checks short-circuit and the response envelope differs (`ValidationProblem`
 `{errors}` for field errors vs. `ProblemDetails` `{title,detail}` for named conflicts, both under
@@ -297,7 +307,14 @@ What actually answers a conflict:
 
   `TS/Integration/ProductsAuthorizationEndpointsTests.cs:27-37` asserts the catalog contains exactly these 10
   keys for module `products` — a startup drift test the Go port should keep an equivalent of.
-- **Published for other modules**: `IProductCatalog` (`CT/Products/IProductCatalog.cs`), implemented by
+- **Published for other modules** — **not ported; out of scope for this sub-project** (decided 2026-09-12, Task
+  16). The business-modules design doc makes `contracts.CustomerDirectory` the only cross-module read in this
+  sub-project, and nothing in it consumes a product catalog: energy reads customers, and communications belongs
+  to sub-project 5. So the Go port deliberately does not build this interface, and
+  `ProductCatalogContractTests`' 7 methods are out of scope (§6). The description below stands as the
+  specification for whichever later sub-project first needs one.
+
+  `IProductCatalog` (`CT/Products/IProductCatalog.cs`), implemented by
   `SV/ProductCatalog.cs`, registered `AddScoped` (`DB/ProductsDatabaseConfiguration.cs:43`). Two methods:
   `SearchAsync(query, take≤10, ct)` and `GetByIdAsync(productId, ct)`. Both hard-filter to **`Status == Active`**
   only (Draft/Discontinued are invisible to other modules regardless of caller permissions) and both deliberately
@@ -330,7 +347,7 @@ equivalent test harness is.
 | `Domain/Products/GtinTests` | 0 | 4 (16) | GTIN-8/12/13/14 check-digit validation: correct, wrong, unsupported length, non-digit | port |
 | `Domain/Products/ProductCategoryHierarchyTests` | 6 | 0 | cycle detection (descendant, self, unrelated, root) and self+descendant id collection | port |
 | `Domain/Products/ProductPricingTests` | 13 | 0 | effective-price resolution (base/campaign/expired/future/none/other-currency/multi-currency/overlapping-campaign-tiebreak) and `Conflicts` (same/diff currency, campaign-vs-base, overlapping/disjoint campaigns) | port |
-| `Integration/CategoriesEndpointsTests` | 14 | 0 | category CRUD, root/subcategory creation, product counts, missing-name/unknown-parent field errors, duplicate-sibling conflict, rename/reparent, cycle rejection, self-parent field error, delete guards (children, products), delete happy path, unknown-id 404 | port |
+| `Integration/CategoriesEndpointsTests` | 13 | 0 | category CRUD, root/subcategory creation, product counts, missing-name/unknown-parent field errors, duplicate-sibling conflict, rename/reparent, cycle rejection, self-parent field error, delete guards (children, products), delete happy path, unknown-id 404 | port |
 | `Integration/DatabaseContextRegistrationTests` | 1 | 0 | asserts `ProductsDbContext` uses the process's shared `NpgsqlDataSource` (not per-context pools) | port — re-express as "one connection pool is shared", not tenancy |
 | `Integration/ProductCatalogContractTests` | 7 | 0 | `IProductCatalog`: active-only visibility, name/sku/barcode/category matching, take clamp + blank-query throw, safe projection (no cost field, reflection-asserted), missing/draft/discontinued → null, cancellation honored, **tenant isolation + same-SKU-across-tenants** | 1 of 7 (`Catalog_isolates_products_and_allows_the_same_sku_per_tenant`) is **tenancy-only, drop**; 6 port |
 | `Integration/ProductCatalogFieldsTests` | 9 | 0 | catalog fields round-trip (weight/dims/barcode) on create/update, clearing fields, invalid-GTIN field error, duplicate-barcode conflict (create and update-onto-another-product), unknown-category field error, search by exact barcode / SKU / description | port |
@@ -339,10 +356,22 @@ equivalent test harness is.
 | `Integration/ProductsEndpointsTests` | 15 | 0 | create (flattened single variant, missing-variants error, prices→effective-price resolution, duplicate SKU conflict), update-variant duplicate SKU conflict, conflicting base-price field error, update-shared-fields-only, SKU change allowed on Draft / conflict on Active, last-variant delete guard, multi-variant non-flattening, price sub-resource scoping, overlapping open-ended price conflict, invalid validity-window field error, unknown-id 404 | port |
 | `Integration/TaxCategoriesEndpointsTests` | 4 | 0 | CRUD round trip, delete-in-use conflict, unknown-tax-category field error on product create, tax category embedded with rate on product response | port |
 
-**Totals**: 80 test methods (76 `[Fact]` + 4 `[Theory]` covering 16 cases). **1 is tenancy-only and dropped**
-(`ProductCatalogContractTests.Catalog_isolates_products_and_allows_the_same_sku_per_tenant`). **79 methods carry
-over** (75 Facts + 4 Theories/16 cases), the large majority verbatim; `DatabaseContextRegistrationTests` needs
-re-expression for Go's connection-pooling model rather than a literal port.
+**Totals** (census corrected 2026-09-12 in Task 16, by counting `[Fact]`/`[Theory]` attributes across
+`Products.Module.Tests` directly; this section previously said 80 methods and 14 `CategoriesEndpointsTests`
+facts, both wrong): **79 test methods** (75 `[Fact]` + 4 `[Theory]` covering 16 cases).
+
+**7 are out of scope for the Go port** — the whole of `ProductCatalogContractTests`, because it tests
+`IProductCatalog` and the Go port does not build that interface. The business-modules design doc makes
+`contracts.CustomerDirectory` the *only* cross-module read in this sub-project, so no Go module consumes a
+product catalog; 1 of the 7 was tenancy-only and would have been dropped regardless, and the other 6 are
+deliberately not ported. Should a later sub-project need a product catalog, this class is the specification for
+it.
+
+**72 methods carry over** (79 − 7), the large majority verbatim, with one re-expression:
+`DatabaseContextRegistrationTests` asserts EF's shared-`NpgsqlDataSource` registration, which has no literal Go
+analogue, so it is ported as "the module's data layer uses the one shared `*pgxpool.Pool` it was handed through
+`module.Deps` and never opens one of its own" (§6 line 334's instruction), pinned two ways in
+`internal/products/pool_test.go`.
 
 ## 7. Oddities (likely port mistakes)
 
@@ -407,6 +436,17 @@ re-expression for Go's connection-pooling model rather than a literal port.
     `numeric(p,s)` truncates/rounds on write. Since the Go port has no implicit column-scale coercion the way EF
     + Postgres provide it, this rounding must be implemented explicitly (and a rounding-mode choice made) or the
     stored/returned values will silently differ from .NET's behavior at the boundary.
+13. **`productCount` is 0 on every category response except the list's.** `CategoryResponse.FromDomain`'s
+    `productCount` parameter defaults to 0 (`CategoryResponse.cs:18`) and only `GetCategoriesEndpoint` passes a
+    real count (`GetCategoriesEndpoint.cs:32-36`); `CreateCategoryEndpoint.cs:56`, `GetCategoryEndpoint.cs:28`
+    and `UpdateCategoryEndpoint.cs:80` all omit the argument. So `POST /categories`, `GET /categories/{id}` and
+    `PUT /categories/{id}` report `productCount: 0` even for a category with products assigned, while
+    `GET /categories` reports the true count for that same category — a client that caches the single-category
+    response will show 0 until it refetches the list. The field is `required` in the DTO, so the zero is
+    indistinguishable from a genuine empty category. Found by reading source (this document did not record it
+    until 2026-09-12); ported faithfully rather than fixed, and pinned by
+    `TestCategoryResponses_ProductCountIsZeroExceptOnTheList` so the parity is deliberate and visible. See §1.2.
+
 12. **Framework-default query-parameter binding is unverified.** `GetProductsEndpoint`'s `[AsParameters] Request`
     uses nullable `int?`/`bool?`/`string?` properties bound from the query string by ASP.NET's minimal-API model
     binder; what happens for a syntactically invalid value (e.g. `?page=abc`) is a framework default
