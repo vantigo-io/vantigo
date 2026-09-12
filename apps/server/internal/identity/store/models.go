@@ -96,6 +96,54 @@ type CustomersCustomersTimelineEntry struct {
 	DeletedAt       *time.Time
 }
 
+type EnergyConsumptionInterval struct {
+	ID              int64
+	MeteringPointID int32
+	Start           time.Time
+	End             time.Time
+	QuantityKwh     pgtype.Numeric
+	Quality         string
+	Source          string
+	ReceivedAt      time.Time
+	IsCurrent       bool
+	SupersedesID    *int64
+	SupersedesStart *time.Time
+}
+
+type EnergyMeter struct {
+	ID              int32
+	MeteringPointID int32
+	MeterNumber     string
+	InstalledAt     time.Time
+	RemovedAt       *time.Time
+}
+
+type EnergyMeteringPoint struct {
+	ID                           int32
+	Gsrn                         string
+	StreetAddress                string
+	PostalCode                   string
+	City                         string
+	CountryCode                  string
+	PriceArea                    string
+	GridArea                     *string
+	ExpectedAnnualConsumptionKwh pgtype.Numeric
+	Latitude                     *float64
+	Longitude                    *float64
+	ConnectionStatus             string
+	CreatedAt                    time.Time
+	UpdatedAt                    time.Time
+}
+
+type EnergySupplyPeriod struct {
+	ID              int32
+	MeteringPointID int32
+	CustomerID      int32
+	Start           time.Time
+	End             *time.Time
+	Status          string
+}
+
 type IdentityAccessGroup struct {
 	ID          uuid.UUID
 	DisplayName string
