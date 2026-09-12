@@ -48,7 +48,8 @@ type Router struct {
 
 	ops          map[string]*openapi3.Operation // "METHOD /path" → operation, from opts.Doc
 	operationIDs map[string]bool                // every known operationId, from opts.Doc
-	registered   map[string]bool                // "METHOD /path" → HandleFunc found a contract operation for it (and, on a second call for the same pattern, the duplicate check)
+	registered   map[string]bool                // "METHOD /path" → HandleFunc found a contract operation for it
+	normalized   map[string]string              // normalizeKey(method, segments) → the first pattern registered with that route shape (see HandleFunc's duplicate check)
 
 	problems []string // recorded as HandleFunc runs; Err adds the two checks it can only make once registration is done
 }
@@ -111,9 +112,14 @@ func decodeSegments(escapedPath string) []string {
 // literal-before-parameter precedence: at the first segment where two
 // matching routes differ between a literal and a {param}, the literal one
 // wins, whatever the segments around it were — see moreSpecific. HandleFunc
-// rejects two operations registering the identical pattern, so among
-// survivors that precedence is a strict order with a single greatest
-// element; match returns it, or nil if no route survives.
+// rejects two operations registering the same route shape (see normalizeKey),
+// so among survivors that precedence is a strict order with a single
+// greatest element; match returns it, or nil if no route survives.
+//
+// This is a linear scan — cost is O(routes registered for this method ×
+// segment count), not bounded by depth alone — which is the right trade for
+// a module's route count (tens of operations, not thousands); a trie is not
+// warranted.
 func match(routes []*route, segments []string) *route {
 	var best *route
 	for _, rt := range routes {
@@ -129,13 +135,23 @@ func match(routes []*route, segments []string) *route {
 
 // matches reports whether rt's segment count equals segments' and every one
 // of rt's literal segments equals the corresponding one; a {param} segment
-// matches anything.
+// matches any non-empty segment. An empty segment — the trailing slash on a
+// {param}-ended route, or a doubled "//" anywhere — matches nothing: there
+// is no trailing-slash redirect or path-cleaning to fold it away (see
+// ServeHTTP), so it must fall through to the 404 problem rather than bind a
+// {param} to "".
 func matches(rt *route, segments []string) bool {
 	if len(rt.segments) != len(segments) {
 		return false
 	}
 	for i, seg := range rt.segments {
-		if !seg.param && seg.literal != segments[i] {
+		if seg.param {
+			if segments[i] == "" {
+				return false
+			}
+			continue
+		}
+		if seg.literal != segments[i] {
 			return false
 		}
 	}
@@ -156,6 +172,27 @@ func moreSpecific(a, b *route) bool {
 	return false
 }
 
+// normalizeKey reduces method and segments to the route's shape: method plus
+// every segment, with a {param} collapsed to the same placeholder regardless
+// of its name. Two patterns with the same shape — "GET /a/{x}" and
+// "GET /a/{y}" — match exactly the same requests, so HandleFunc keys its
+// duplicate check on this rather than the raw pattern string: keying on the
+// string alone would let such a pair both register, with the first
+// registered always winning and the second silently unreachable.
+func normalizeKey(method string, segments []routeSegment) string {
+	var sb strings.Builder
+	sb.WriteString(method)
+	for _, seg := range segments {
+		sb.WriteByte('/')
+		if seg.param {
+			sb.WriteString("{}")
+		} else {
+			sb.WriteString(seg.literal)
+		}
+	}
+	return sb.String()
+}
+
 // NewRouter returns a router that implements every generated package's
 // ServeMux interface. Each pattern the generated server registers is looked
 // up in Doc; the handler is wrapped: rate limit (if Limits has the
@@ -169,6 +206,7 @@ func NewRouter(o RouterOptions) *Router {
 		ops:          map[string]*openapi3.Operation{},
 		operationIDs: map[string]bool{},
 		registered:   map[string]bool{},
+		normalized:   map[string]string{},
 	}
 	if o.Doc != nil && o.Doc.Paths != nil {
 		for path, item := range o.Doc.Paths.Map() {
@@ -185,17 +223,22 @@ func NewRouter(o RouterOptions) *Router {
 
 // HandleFunc registers h for pattern, exactly as StdHTTPServerOptions.BaseRouter
 // does. pattern must be the contract's method and path ("METHOD /path",
-// oapi-codegen's BaseURL is always ""); anything else — including the same
-// pattern registered a second time — is recorded as a problem (see Err) and
-// not mounted.
+// oapi-codegen's BaseURL is always ""); anything else — including a pattern
+// whose route shape (see normalizeKey) was already registered, whether by
+// the identical pattern or one differing only in a {param}'s name — is
+// recorded as a problem (see Err) and not mounted.
 func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
 	op, ok := r.ops[pattern]
 	if !ok {
 		r.problems = append(r.problems, fmt.Sprintf("module: pattern %q matches no contract operation", pattern))
 		return
 	}
-	if r.registered[pattern] {
-		r.problems = append(r.problems, fmt.Sprintf("module: pattern %q is registered more than once", pattern))
+
+	method, path, _ := strings.Cut(pattern, " ") // pattern is a key of r.ops, so it always has the "METHOD /path" shape NewRouter built
+	segments := splitSegments(path)
+	key := normalizeKey(method, segments)
+	if other, dup := r.normalized[key]; dup {
+		r.problems = append(r.problems, fmt.Sprintf("module: pattern %q has the same route as already-registered %q", pattern, other))
 		return
 	}
 
@@ -214,11 +257,11 @@ func (r *Router) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Re
 		}
 	}
 
-	method, path, _ := strings.Cut(pattern, " ") // pattern is a key of r.ops, so it always has the "METHOD /path" shape NewRouter built
 	r.routes[method] = append(r.routes[method], &route{
-		segments: splitSegments(path),
+		segments: segments,
 		handler:  r.wrap(op, rule, r.bodyLimit(op.OperationID), h),
 	})
+	r.normalized[key] = pattern
 	r.registered[pattern] = true
 }
 
@@ -285,8 +328,10 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 // wrong method on a known one both answer the same 404 problem httpx.NotFound
 // writes everywhere else, never a bare stdlib default. There is no trailing-
 // slash redirect and no path cleaning — the contract has no route that needs
-// either, so a path that doesn't match exactly (a trailing slash included)
-// falls straight through to that same 404.
+// either — so a path that doesn't match any route exactly falls straight
+// through to that same 404, including a trailing slash or a doubled "//"
+// that would otherwise need an empty segment to bind to a {param} (matches
+// refuses that).
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	segments := decodeSegments(req.URL.EscapedPath())
 
@@ -309,11 +354,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 // Err reports every registration problem: a nil Access, a nil Limiter when
 // Limits is non-empty, a pattern with no contract operation, an operation
-// without a valid x-vantigo-access, a permission missing from Catalog, the
-// same pattern registered more than once, a Limits key naming no operation,
-// and contract operations that were never registered. Call it after every
-// HandleFunc call (HandlerWithOptions registers everything in one call, so
-// Mount calls Err right after it).
+// without a valid x-vantigo-access, a permission missing from Catalog, a
+// route shape registered more than once (the identical pattern, or two
+// patterns differing only in a {param}'s name), a Limits key naming no
+// operation, and contract operations that were never registered. Call it
+// after every HandleFunc call (HandlerWithOptions registers everything in
+// one call, so Mount calls Err right after it).
 func (r *Router) Err() error {
 	var problems []string
 	if r.opts.Access == nil {

@@ -115,6 +115,53 @@ paths:
         "204": { description: ok }
 `
 
+// twinParamNamesContract has two operations whose paths differ only in a
+// {param}'s name — "{a}" vs "{b}" — the same route shape, so at most one of
+// them can ever be reachable no matter which mounts first.
+const twinParamNamesContract = `
+openapi: 3.0.3
+info:
+  title: Test
+  version: "1"
+paths:
+  /api/v1/x/{a}:
+    get:
+      operationId: getA
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+  /api/v1/x/{b}:
+    get:
+      operationId: getB
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
+// paramContract has the shape the empty-segment defect was found on: a
+// single-{param} route and, mirroring the real GET
+// /customers/{id}/timeline/{entryId}, a two-{param} route sharing its
+// prefix.
+const paramContract = `
+openapi: 3.0.3
+info:
+  title: Test
+  version: "1"
+paths:
+  /api/v1/x/{id}:
+    get:
+      operationId: getById
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+  /api/v1/x/{id}/timeline/{entryId}:
+    get:
+      operationId: getTimelineEntry
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
 func loadDoc(t *testing.T, yaml string) *openapi3.T {
 	t.Helper()
 	doc, err := openapi3.NewLoader().LoadFromData([]byte(yaml))
@@ -261,6 +308,21 @@ func TestRouter_DuplicateRegistrationIsAProblem(t *testing.T) {
 
 	if err := r.Err(); err == nil {
 		t.Fatal("Err() = nil, want a problem for the duplicate registration")
+	}
+}
+
+// Two patterns with the same route shape but different {param} names are a
+// duplicate too: keying the duplicate check on the raw pattern string alone
+// would let both mount — GET /api/v1/x/{a} and GET /api/v1/x/{b} match
+// exactly the same requests — with the first registered always winning and
+// the second silently unreachable.
+func TestRouter_DuplicateRouteShapeWithDifferentParamNamesIsAProblem(t *testing.T) {
+	r := NewRouter(RouterOptions{Doc: loadDoc(t, twinParamNamesContract), Access: &fakeAccess{}})
+	r.HandleFunc("GET /api/v1/x/{a}", noopHandler)
+	r.HandleFunc("GET /api/v1/x/{b}", noopHandler)
+
+	if err := r.Err(); err == nil {
+		t.Fatal("Err() = nil, want a problem for the duplicate route shape")
 	}
 }
 
@@ -545,6 +607,41 @@ func TestRouter_UnknownPathAndWrongMethodAnswer404(t *testing.T) {
 		}
 		if got := access.checked[len(access.checked)-1].Kind; got != contracts.RuleSession {
 			t.Errorf("Check's rule = %v, want RuleSession (the GET operation's own rule)", got)
+		}
+	})
+
+	// A {param} segment must never match an empty one: paramContract mirrors
+	// the real GET /customers/{id}/timeline/{entryId} shape the defect was
+	// found on, where a trailing slash or a doubled "//" would otherwise bind
+	// a {param} to "" and route into the wrong operation's handler instead of
+	// answering the same 404 problem.
+	t.Run("a {param} never matches an empty segment", func(t *testing.T) {
+		paramAccess := &fakeAccess{}
+		pr := NewRouter(RouterOptions{Doc: loadDoc(t, paramContract), Access: paramAccess})
+		pr.HandleFunc("GET /api/v1/x/{id}", noopHandler)
+		pr.HandleFunc("GET /api/v1/x/{id}/timeline/{entryId}", noopHandler)
+		if err := pr.Err(); err != nil {
+			t.Fatalf("Err() = %v, want nil", err)
+		}
+
+		for _, tc := range []struct {
+			name string
+			path string
+		}{
+			{"trailing slash after a single {param}", "/api/v1/x/"},
+			{"trailing slash after the last of two {param}s", "/api/v1/x/7/timeline/"},
+			{"an empty segment for the first {param}, between two literals", "/api/v1/x//timeline/9"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				checkedBefore := len(paramAccess.checked)
+				req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+				rec := httptest.NewRecorder()
+				pr.ServeHTTP(rec, req)
+				assertNotFoundProblem(t, rec)
+				if len(paramAccess.checked) != checkedBefore {
+					t.Errorf("Access.Check was called for %s, want no route to match an empty segment", tc.path)
+				}
+			})
 		}
 	})
 }
