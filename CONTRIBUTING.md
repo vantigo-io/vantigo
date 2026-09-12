@@ -112,7 +112,9 @@ into its own deployable without a rewrite.
 ### Database
 
 One PostgreSQL database, one schema per module: `identity`, `customers`,
-`communications` and `products`. Schemas are hard boundaries:
+`products` and `energy`. (`communications` is declared in the contract but has
+no schema or Go module yet — see the module list below.) Schemas are hard
+boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
