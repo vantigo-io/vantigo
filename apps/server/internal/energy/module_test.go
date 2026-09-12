@@ -7,7 +7,6 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/energy"
-	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // TestModule_ComposesAndDemandsAPermission proves energy mounts through
@@ -92,22 +91,11 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	}
 }
 
-// TestModule_StubbedOperationAnswers501 proves every operation is routed
-// before any is implemented: a signed-in caller holding the operation's
-// permissions passes the access check and reaches the stub, which answers
-// 501 rather than a 404 from an unregistered route or a 500 from a nil
-// handler.
-func TestModule_StubbedOperationAnswers501(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-
-	// Off-contract by design: a 501 is the platform's answer to a handler
-	// that does not exist yet, and no operation documents one. Task 14
-	// implemented metering points, meters and supply periods; this pins a
-	// still-unimplemented operation (consumption/stats, Task 15's scope).
-	r := h.SignIn(t, "energy:consumption-view", "energy:metering-points-view", "energy:meters-view", "energy:supply-periods-view").
-		Do(http.MethodGet, "/api/v1/energy/stats/summary", nil, modtest.SkipContract("the operation is not implemented yet"))
-	if r.Status != http.StatusNotImplemented {
-		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
-	}
-}
+// There is no TestModule_StubbedOperationAnswers501 any more: that test
+// pinned getEnergyStatsSummary as the one operation still answering
+// unimplemented.go's 501 stub before Task 15. Task 15 implements
+// consumption, aggregation and stats — the module's last area — so
+// unimplemented.go is gone and every one of the 20 contract operations now
+// has a real handler; router.Err()'s "never registered" check
+// (TestModule_ComposesAndDemandsAPermission's newHarness call) is what
+// still proves every operation is routed.

@@ -132,3 +132,23 @@ func floatPtrFromNumeric(n pgtype.Numeric) *float64 {
 	}
 	return &f.Float64
 }
+
+// numericFromFloat is numericFromFloatPtr's non-nullable counterpart, for a
+// required numeric(14,3) field (ManualConsumptionRequest.QuantityKwh):
+// formatted the same way — shortest round-tripping decimal text, with
+// rounding left to Postgres's column scale.
+func numericFromFloat(v float64) pgtype.Numeric {
+	var n pgtype.Numeric
+	_ = n.Scan(strconv.FormatFloat(v, 'f', -1, 64))
+	return n
+}
+
+// floatFromNumeric is floatPtrFromNumeric's non-nullable counterpart, for a
+// required numeric(14,3) response field. A NULL/invalid value — never
+// produced by this module's own writes — reads back as zero.
+func floatFromNumeric(n pgtype.Numeric) float64 {
+	if v := floatPtrFromNumeric(n); v != nil {
+		return *v
+	}
+	return 0
+}

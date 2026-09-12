@@ -347,6 +347,26 @@ func (h *Harness) SignIn(t testing.TB, permissions ...string) *Client {
 	return c
 }
 
+// SignInDisabled is SignIn for a caller whose account is disabled: same
+// seeded user, role and session, but identity.users.is_disabled is set
+// before the session cookie is minted. Session lookup itself already
+// excludes a disabled user's row, so the returned client answers 401 rather
+// than reaching any permission check — a module's own authorization test can
+// assert on that without duplicating SignIn's seedUser/seedRole/session
+// plumbing to build one disabled principal itself.
+func (h *Harness) SignInDisabled(t testing.TB, permissions ...string) *Client {
+	t.Helper()
+	userID := h.seedUser(t)
+	if len(permissions) > 0 {
+		roleID := h.seedRole(t, permissions)
+		h.Exec(t, `INSERT INTO identity.user_roles (user_id, role_id) VALUES ($1, $2)`, userID, roleID)
+	}
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, userID)
+	c := h.Client(t)
+	c.SetCookie(sessionCookieName, h.session(t, userID))
+	return c
+}
+
 // seedUser creates a user with no password and no roles: it signs in through
 // the session this harness plants, never through a sign-in endpoint.
 func (h *Harness) seedUser(t testing.TB) uuid.UUID {
