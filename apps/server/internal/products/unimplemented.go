@@ -7,23 +7,14 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 )
 
-// Every operation of products.yaml, each answering module.ErrNotImplemented,
-// which the strict server's response-error handler turns into a 501. Mounting
-// them all is what satisfies module.Router's "never registered" check, so the
-// contract is fully routed from the first commit and each later task replaces
-// the stubs of the area it implements.
-
-// GetProducts List all products
-// (GET /api/v1/products)
-func (s *server) GetProducts(context.Context, gen.GetProductsRequestObject) (gen.GetProductsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostProducts Create a new product
-// (POST /api/v1/products)
-func (s *server) PostProducts(context.Context, gen.PostProductsRequestObject) (gen.PostProductsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
+// Every operation of products.yaml not yet implemented, each answering
+// module.ErrNotImplemented, which the strict server's response-error
+// handler turns into a 501. Mounting them all is what satisfies
+// module.Router's "never registered" check, so the contract is fully
+// routed from the first commit and each later task replaces the stubs of
+// the area it implements. Task 11 implemented products.go, variants.go and
+// prices.go's thirteen operations; this file now holds only categories, tax
+// categories and stats (Task 12).
 
 // GetProductsCategories List all categories
 // (GET /api/v1/products/categories)
@@ -100,71 +91,5 @@ func (s *server) GetTaxCategory(context.Context, gen.GetTaxCategoryRequestObject
 // PutProductsTaxCategoriesById Update a tax category
 // (PUT /api/v1/products/tax-categories/{id})
 func (s *server) PutProductsTaxCategoriesById(context.Context, gen.PutProductsTaxCategoriesByIdRequestObject) (gen.PutProductsTaxCategoriesByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteProductsById Archive a product
-// (DELETE /api/v1/products/{id})
-func (s *server) DeleteProductsById(context.Context, gen.DeleteProductsByIdRequestObject) (gen.DeleteProductsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetProduct Get a product by id
-// (GET /api/v1/products/{id})
-func (s *server) GetProduct(context.Context, gen.GetProductRequestObject) (gen.GetProductResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutProductsById Update a product
-// (PUT /api/v1/products/{id})
-func (s *server) PutProductsById(context.Context, gen.PutProductsByIdRequestObject) (gen.PutProductsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetProductsByIdVariants List variants of a product
-// (GET /api/v1/products/{id}/variants)
-func (s *server) GetProductsByIdVariants(context.Context, gen.GetProductsByIdVariantsRequestObject) (gen.GetProductsByIdVariantsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostProductsByIdVariants Add a variant to a product
-// (POST /api/v1/products/{id}/variants)
-func (s *server) PostProductsByIdVariants(context.Context, gen.PostProductsByIdVariantsRequestObject) (gen.PostProductsByIdVariantsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteProductsByIdVariantsByVariantId Remove a product variant
-// (DELETE /api/v1/products/{id}/variants/{variantId})
-func (s *server) DeleteProductsByIdVariantsByVariantId(context.Context, gen.DeleteProductsByIdVariantsByVariantIdRequestObject) (gen.DeleteProductsByIdVariantsByVariantIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutProductsByIdVariantsByVariantId Update a product variant
-// (PUT /api/v1/products/{id}/variants/{variantId})
-func (s *server) PutProductsByIdVariantsByVariantId(context.Context, gen.PutProductsByIdVariantsByVariantIdRequestObject) (gen.PutProductsByIdVariantsByVariantIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetProductsByIdVariantsByVariantIdPrices List prices of a variant
-// (GET /api/v1/products/{id}/variants/{variantId}/prices)
-func (s *server) GetProductsByIdVariantsByVariantIdPrices(context.Context, gen.GetProductsByIdVariantsByVariantIdPricesRequestObject) (gen.GetProductsByIdVariantsByVariantIdPricesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostProductsByIdVariantsByVariantIdPrices Add a price to a variant
-// (POST /api/v1/products/{id}/variants/{variantId}/prices)
-func (s *server) PostProductsByIdVariantsByVariantIdPrices(context.Context, gen.PostProductsByIdVariantsByVariantIdPricesRequestObject) (gen.PostProductsByIdVariantsByVariantIdPricesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteProductsByIdVariantsByVariantIdPricesByPriceId Remove a variant price
-// (DELETE /api/v1/products/{id}/variants/{variantId}/prices/{priceId})
-func (s *server) DeleteProductsByIdVariantsByVariantIdPricesByPriceId(context.Context, gen.DeleteProductsByIdVariantsByVariantIdPricesByPriceIdRequestObject) (gen.DeleteProductsByIdVariantsByVariantIdPricesByPriceIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutProductsByIdVariantsByVariantIdPricesByPriceId Update a variant price
-// (PUT /api/v1/products/{id}/variants/{variantId}/prices/{priceId})
-func (s *server) PutProductsByIdVariantsByVariantIdPricesByPriceId(context.Context, gen.PutProductsByIdVariantsByVariantIdPricesByPriceIdRequestObject) (gen.PutProductsByIdVariantsByVariantIdPricesByPriceIdResponseObject, error) {
 	return nil, module.ErrNotImplemented
 }

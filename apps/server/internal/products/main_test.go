@@ -25,36 +25,23 @@ func loadContract() *openapi3.T {
 	return doc
 }
 
-// pendingOperations are the contract's operations no test covers yet. Every
-// one of the module's 26 operations is a stub answering 501, so all 26 are
-// pending; each later task removes the operations of the area it implements,
-// and RequireCoverage fails the run if an entry left here was in fact
-// exercised.
+// pendingOperations are the contract's operations no test covers yet. Task
+// 11 implemented and removed the thirteen products/variants/pricing
+// operations; the remaining thirteen (categories, tax categories, stats)
+// are Task 12's, and RequireCoverage fails the run if an entry left here
+// was in fact exercised.
 var pendingOperations = []string{
-	"deleteProductsById",
-	"deleteProductsByIdVariantsByVariantId",
-	"deleteProductsByIdVariantsByVariantIdPricesByPriceId",
 	"deleteProductsCategoriesById",
 	"deleteProductsTaxCategoriesById",
 	"getCategory",
-	"getProduct",
-	"getProducts",
-	"getProductsByIdVariants",
-	"getProductsByIdVariantsByVariantIdPrices",
 	"getProductsCategories",
 	"getProductsStatsAttention",
 	"getProductsStatsSummary",
 	"getProductsStatsTimeseries",
 	"getProductsTaxCategories",
 	"getTaxCategory",
-	"postProducts",
-	"postProductsByIdVariants",
-	"postProductsByIdVariantsByVariantIdPrices",
 	"postProductsCategories",
 	"postProductsTaxCategories",
-	"putProductsById",
-	"putProductsByIdVariantsByVariantId",
-	"putProductsByIdVariantsByVariantIdPricesByPriceId",
 	"putProductsCategoriesById",
 	"putProductsTaxCategoriesById",
 }
