@@ -559,6 +559,8 @@ export interface operations {
             /** @description Created */
             201: {
                 headers: {
+                    /** @description The path of the newly created product, /api/v1/products/{id}. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -820,6 +822,8 @@ export interface operations {
             /** @description Created */
             201: {
                 headers: {
+                    /** @description The path of the newly created variant, /api/v1/products/{id}/variants/{variantId}. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1063,6 +1067,8 @@ export interface operations {
             /** @description Created */
             201: {
                 headers: {
+                    /** @description The path of the variant's prices collection, /api/v1/products/{id}/variants/{variantId}/prices — not the new price itself; this is a faithfully-ported upstream defect (see the handler). */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1286,6 +1292,8 @@ export interface operations {
             /** @description Created */
             201: {
                 headers: {
+                    /** @description The path of the newly created category, /api/v1/products/categories/{id}. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1693,6 +1701,8 @@ export interface operations {
             /** @description Created */
             201: {
                 headers: {
+                    /** @description The path of the newly created tax category, /api/v1/products/tax-categories/{id}. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {

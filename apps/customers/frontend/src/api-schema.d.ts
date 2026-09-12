@@ -666,6 +666,8 @@ export interface operations {
             /** @description Created */
             201: {
                 headers: {
+                    /** @description The path of the newly created customer, /api/v1/customers/{id}. */
+                    Location?: string;
                     [name: string]: unknown;
                 };
                 content: {
