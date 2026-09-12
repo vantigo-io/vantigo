@@ -19,7 +19,7 @@ import (
 // Sensitive=false — all ten permissions here are non-sensitive and
 // delegable.
 var permissions = []contracts.Permission{
-	{Key: "products:products-view", Display: "View products", Description: "View products, variants, and pricing.", Category: "Products", Sensitive: false, Delegable: true},
+	{Key: "products:products-view", Display: "View products", Description: "View products and their details.", Category: "Products", Sensitive: false, Delegable: true},
 	{Key: "products:products-manage", Display: "Manage products", Description: "Create, update, and archive products.", Category: "Products", Sensitive: false, Delegable: true},
 	{Key: "products:variants-view", Display: "View variants", Description: "View product variants.", Category: "Variants", Sensitive: false, Delegable: true},
 	{Key: "products:variants-manage", Display: "Manage variants", Description: "Create, update, and delete product variants.", Category: "Variants", Sensitive: false, Delegable: true},
@@ -61,7 +61,7 @@ func mount(d module.Deps) (http.Handler, error) {
 		Limits:  limits,
 		Catalog: d.Catalog,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+	strict := gen.NewStrictHandlerWithOptions(newServer(d), []gen.StrictMiddlewareFunc{withRequest}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

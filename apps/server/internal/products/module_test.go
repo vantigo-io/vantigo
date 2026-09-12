@@ -38,7 +38,7 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	m := products.Module()
 
 	want := []contracts.Permission{
-		{Key: "products:products-view", Display: "View products", Description: "View products, variants, and pricing.", Category: "Products", Sensitive: false, Delegable: true},
+		{Key: "products:products-view", Display: "View products", Description: "View products and their details.", Category: "Products", Sensitive: false, Delegable: true},
 		{Key: "products:products-manage", Display: "Manage products", Description: "Create, update, and archive products.", Category: "Products", Sensitive: false, Delegable: true},
 		{Key: "products:variants-view", Display: "View variants", Description: "View product variants.", Category: "Variants", Sensitive: false, Delegable: true},
 		{Key: "products:variants-manage", Display: "Manage variants", Description: "Create, update, and delete product variants.", Category: "Variants", Sensitive: false, Delegable: true},
@@ -71,18 +71,21 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	}
 }
 
-// TestModule_StubbedOperationAnswers501 proves every operation is routed
-// before any is implemented: a signed-in caller holding the operation's
+// TestModule_StubbedOperationAnswers501 proves every not-yet-implemented
+// operation is still routed: a signed-in caller holding the operation's
 // permission passes the access check and reaches the stub, which answers 501
 // rather than a 404 from an unregistered route or a 500 from a nil handler.
+// getProductsCategories is Task 12's (categories, tax categories and
+// stats); products/variants/pricing (this task) are implemented and no
+// longer answer 501, so the stub proof moves here.
 func TestModule_StubbedOperationAnswers501(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 
 	// Off-contract by design: a 501 is the platform's answer to a handler that
 	// does not exist yet, and no operation documents one.
-	r := h.SignIn(t, "products:products-view", "products:variants-view", "products:pricing-view", "products:categories-view", "products:tax-categories-view").
-		Do(http.MethodGet, "/api/v1/products", nil, modtest.SkipContract("the operation is not implemented yet"))
+	r := h.SignIn(t, "products:categories-view").
+		Do(http.MethodGet, "/api/v1/products/categories", nil, modtest.SkipContract("the operation is not implemented yet"))
 	if r.Status != http.StatusNotImplemented {
 		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
 	}
