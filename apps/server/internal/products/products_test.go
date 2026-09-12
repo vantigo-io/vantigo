@@ -136,6 +136,71 @@ func TestCreateProduct_WithDuplicateSku_ReturnsConflict(t *testing.T) {
 	}
 }
 
+// TestCreateProduct_WithDuplicateSku_WithinRequest_QuotesTheRepeatedSku pins
+// the exact message text when two variants of the *same* create request
+// share a SKU: CreateProductEndpoint.cs:46-47's GroupBy finds the repeated
+// key itself, so the quoted value is that key.
+func TestCreateProduct_WithDuplicateSku_WithinRequest_QuotesTheRepeatedSku(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+	repeated := sku(t, "within-request-dup")
+
+	r := c.Do(http.MethodPost, "/api/v1/products", map[string]any{
+		"name": "Within Request Duplicate", "type": "Goods", "taxCategoryId": taxCategoryID,
+		"variants": []map[string]any{{"sku": repeated}, {"sku": repeated}},
+	})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var problem problemJSON
+	r.JSON(&problem)
+	if problem.Title != "Duplicate SKU" {
+		t.Errorf("Title = %q, want %q", problem.Title, "Duplicate SKU")
+	}
+	want := fmt.Sprintf("A variant with SKU '%s' already exists.", repeated)
+	if problem.Detail != want {
+		t.Errorf("Detail = %q, want %q", problem.Detail, want)
+	}
+}
+
+// TestCreateProduct_WithDuplicateSku_AgainstExistingCatalog_QuotesTheFirstVariantRegardless
+// pins products inventory §6's CreateProductEndpoint oddity verbatim
+// (CreateProductEndpoint.cs:51-54): when there is no within-request
+// duplicate but the catalog already has one of the batch's SKUs, the
+// message always quotes variants[0].Sku — even when, as here, it is the
+// *second* variant (index 1) that actually collides. This is a faithful
+// port of .NET's own quirk, not a bug to "improve" in Go: a mutation that
+// quoted the actually-conflicting SKU instead would flip this assertion.
+func TestCreateProduct_WithDuplicateSku_AgainstExistingCatalog_QuotesTheFirstVariantRegardless(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := authenticatedClient(t, h)
+	taxCategoryID := insertTaxCategory(t, h, "Standard rate", 0.25)
+
+	existingSku := sku(t, "already-exists")
+	existing := createProduct(t, c, newProductBody(taxCategoryID, "Pre-existing", existingSku))
+	if existing.Id <= 0 {
+		t.Fatalf("failed to seed the pre-existing SKU")
+	}
+
+	firstSku := sku(t, "innocent-first")
+	r := c.Do(http.MethodPost, "/api/v1/products", map[string]any{
+		"name": "Batch With A Catalog Collision", "type": "Goods", "taxCategoryId": taxCategoryID,
+		"variants": []map[string]any{{"sku": firstSku}, {"sku": existingSku}},
+	})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var problem problemJSON
+	r.JSON(&problem)
+	want := fmt.Sprintf("A variant with SKU '%s' already exists.", firstSku)
+	if problem.Detail != want {
+		t.Errorf("Detail = %q, want %q (variants[0].Sku, not the SKU that actually conflicts)", problem.Detail, want)
+	}
+}
+
 // Ported from Integration/ProductsEndpointsTests.cs.
 // CreateProduct_WithConflictingBasePrices_ReturnsFieldError.
 func TestCreateProduct_WithConflictingBasePrices_ReturnsFieldError(t *testing.T) {
