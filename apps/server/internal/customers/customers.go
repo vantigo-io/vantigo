@@ -2,10 +2,8 @@ package customers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -226,24 +224,6 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 	}, nil
 }
 
-// createdCustomerResponse is PostCustomers' 201. The generated
-// PostCustomers201JSONResponse has no Location header because the contract
-// declares none for this response; this type adds it directly, the way
-// .NET's TypedResults.CreatedAtRoute does
-// (CreateCustomerEndpoint.cs:105-108) — pinned by
-// CreateCustomer_WithNameOnly_ReturnsCreatedWithLocation.
-type createdCustomerResponse struct {
-	body     gen.CreateCustomerResponse
-	location string
-}
-
-func (r createdCustomerResponse) VisitPostCustomersResponse(w http.ResponseWriter) error {
-	w.Header().Set("Location", r.location)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	return json.NewEncoder(w).Encode(r.body)
-}
-
 // PostCustomers Create a new customer
 // (POST /api/v1/customers)
 //
@@ -259,6 +239,13 @@ func (r createdCustomerResponse) VisitPostCustomersResponse(w http.ResponseWrite
 // handler is the only place it can live, the same shape as Task 11's
 // conditional pricing permission (Global Constraints, "Contract-driven
 // access"). It reuses hasPermission/requestFrom, never a second mechanism.
+//
+// The 201's Location header is faithful, not invented: CreateCustomerEndpoint.cs:106-109
+// returns TypedResults.CreatedAtRoute, whose entire purpose (distinct from
+// a plain Created/Ok result) is setting Location to the named route's URI —
+// so customers.yaml now declares it and oapi-codegen generates
+// PostCustomers201ResponseHeaders for it, rather than a hand-written
+// response type.
 func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequestObject) (gen.PostCustomersResponseObject, error) {
 	body := gen.CreateCustomerRequest{}
 	if req.Body != nil {
@@ -331,9 +318,10 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		return nil, fmt.Errorf("customers: create customer: %w", err)
 	}
 
-	return createdCustomerResponse{
-		body:     gen.CreateCustomerResponse{Id: created.ID, CustomerNumber: created.CustomerNumber},
-		location: fmt.Sprintf("%s/api/v1/customers/%d", s.deps.Config.BasePath, created.ID),
+	location := fmt.Sprintf("%s/api/v1/customers/%d", s.deps.Config.BasePath, created.ID)
+	return gen.PostCustomers201JSONResponse{
+		Body:    gen.CreateCustomerResponse{Id: created.ID, CustomerNumber: created.CustomerNumber},
+		Headers: gen.PostCustomers201ResponseHeaders{Location: &location},
 	}, nil
 }
 

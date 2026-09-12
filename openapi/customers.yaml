@@ -700,6 +700,11 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/CreateCustomerResponse'
                     description: Created
+                    headers:
+                        Location:
+                            description: The path of the newly created customer, /api/v1/customers/{id}.
+                            schema:
+                                type: string
                 "400":
                     content:
                         application/json:
