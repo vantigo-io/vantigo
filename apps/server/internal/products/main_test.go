@@ -25,13 +25,6 @@ func loadContract() *openapi3.T {
 	return doc
 }
 
-// pendingOperations are the contract's operations no test covers yet. Task
-// 11 implemented and removed the thirteen products/variants/pricing
-// operations; Task 12 implemented and removed the remaining thirteen
-// (categories, tax categories, stats) — every products.yaml operation now
-// has a test, so this is empty.
-var pendingOperations = []string{}
-
 func TestMain(m *testing.M) {
-	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))
+	os.Exit(contracttest.RequireCoverage(m, recorder))
 }

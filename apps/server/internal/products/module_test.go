@@ -25,6 +25,11 @@ func TestModule_ComposesAndDemandsAPermission(t *testing.T) {
 	}
 }
 
+// Ported from Integration/ProductsAuthorizationEndpointsTests.cs.
+// ProductsCatalogContainsEveryEndpointPermission — .NET asserted the
+// catalog holds exactly the ten `products` keys; this pins the same fact and
+// more (every field, not just the key set).
+//
 // TestModule_DeclaresItsPermissionCatalog pins the module's name and all ten
 // permissions, field for field, against the .NET catalog
 // (AZ/ProductsPermissionCatalog.cs, products inventory §5): every key is

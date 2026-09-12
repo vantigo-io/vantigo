@@ -325,6 +325,66 @@ func TestServe_ServesTheWholeStackAndDrainsOnCancel(t *testing.T) {
 	}
 }
 
+// bodyNoRedirect is body() with redirects surfaced instead of followed, so a
+// test can tell a 307 from whatever the redirect target would have answered.
+func bodyNoRedirect(t *testing.T, target string) (int, string, http.Header) {
+	t.Helper()
+	c := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := c.Get(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b), resp.Header
+}
+
+// TestServe_ServesTheBusinessModules proves api mode composes the three
+// business modules MODULES enables by default, not identity alone: each
+// module's own listing answers its contract's 401 without a session, rather
+// than the platform's /api 404 catch-all (which is what a module that was
+// never passed to Compose would answer).
+func TestServe_ServesTheBusinessModules(t *testing.T) {
+	base, stop := startServe(t, true)
+	defer stop()
+
+	for _, path := range []string{"/api/v1/customers", "/api/v1/products", "/api/v1/energy/metering-points"} {
+		code, payload, _ := body(t, base+path)
+		if code != http.StatusUnauthorized || !strings.Contains(payload, "unauthenticated") {
+			t.Errorf("%s: %d %q, want 401 unauthenticated", path, code, payload)
+		}
+	}
+}
+
+// TestServe_DoubledAndTrailingSlashesAnswerTheNotFoundProblem is the
+// whole-stack confirmation for the path-cleaning suppression in
+// internal/server and internal/module: through the real server.New and the
+// real customers contract, a doubled or trailing slash answers the 404
+// problem rather than a 307 redirect (server.New's mux cleaned these before
+// the API handler ever saw them) or a 204 (which is what binding the empty
+// segment to a {param} would have produced).
+func TestServe_DoubledAndTrailingSlashesAnswerTheNotFoundProblem(t *testing.T) {
+	base, stop := startServe(t, true)
+	defer stop()
+
+	for _, path := range []string{
+		"/api/v1/customers/",
+		"/api/v1/customers//timeline",
+		"/api/v1/customers//",
+		"/api/v1/customers/7/timeline/",
+	} {
+		code, _, hdr := bodyNoRedirect(t, base+path)
+		if code != http.StatusNotFound {
+			t.Errorf("%s: status = %d (Location %q), want 404 and never a 307 or a 204",
+				path, code, hdr.Get("Location"))
+			continue
+		}
+		if ct := hdr.Get("Content-Type"); ct != "application/problem+json" {
+			t.Errorf("%s: Content-Type = %q, want application/problem+json", path, ct)
+		}
+	}
+}
+
 // TestServe_ServesTheIdentityModule proves api mode wires module.Compose's
 // handler into server.Options.API: the identity module answers its own
 // contract, not the platform's 404 catch-all.

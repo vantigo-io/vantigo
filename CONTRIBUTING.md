@@ -345,6 +345,48 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
+### Customers, products and energy
+
+Three business modules mount on that platform, each serving its own contract and
+owning its own schema:
+
+- `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
+  customers, contacts, customer-contact associations, legal identity, the
+  customer timeline and the Brønnøysundregisteret (Brreg) lookup.
+- `internal/products` → `/api/v1/products/*` from `openapi/products.yaml`:
+  products, variants, prices, categories and tax categories.
+- `internal/energy` → `/api/v1/energy/*` from `openapi/energy.yaml`: metering
+  points, meters, supply periods, consumption and the two aggregations.
+
+`MODULES` chooses which of them a deployment serves: a comma-separated list,
+parsed once at startup, defaulting to `customers,products,energy`. Identity is
+always mounted and is never listed. A name the binary does not know fails
+startup, naming the name and the known set. `energy` (and, later,
+`communications`) reads customer data through `contracts.CustomerDirectory`, so
+either without `customers` fails startup naming both. A disabled module
+contributes no route, no permission and no contract path, and its paths answer
+the `/api` catch-all 404 — but every schema is migrated regardless, so enabling
+a module later needs no migration.
+
+The customer directory is the only sanctioned cross-module read. No module
+imports another (enforced by depguard) and no module queries another's schema
+(enforced by `internal/db/schema_test.go`).
+
+Two settings configure the Brreg lookup:
+
+- `BRREG_BASE_URL` (default `https://data.brreg.no`) — the upstream origin.
+- `BRREG_TIMEOUT` (default `15s`) — the budget for one lookup end to end,
+  retries included. Within it a failed GET is retried up to 3 times with a 4 s
+  per-attempt timeout and a jittered backoff. An upstream failure answers 502.
+
+Each module's tests work like identity's: every HTTP exchange runs through a
+contract-validating client, so a response that does not match the module's YAML
+fails the test that produced it, and the package gates on operation coverage —
+every operation in the contract must have been exercised by at least one
+successful exchange, with no allow-list, so a newly added operation without a
+passing test fails the whole package. No test touches the network; the Brreg
+client dials a fake transport.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to

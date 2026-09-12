@@ -213,6 +213,49 @@ func TestCompose_RoutesTheModulesOwnRootPath(t *testing.T) {
 	}
 }
 
+// A doubled slash inside a module's subtree reaches the module verbatim
+// instead of being folded onto the real path by http.ServeMux's cleaning
+// and answered with a redirect. .NET answered 404 for these paths, and
+// Router.matches deliberately refuses the empty segment a doubled slash
+// produces so it falls through to the module's own 404 problem — a guard the
+// outer mux's redirect reached around before dispatchModules existed. The
+// module's handler here echoes the path it was given, so the assertion is
+// that the path arrives unchanged and the status is not a redirect.
+func TestCompose_DoubledSlashReachesTheModuleUnchanged(t *testing.T) {
+	handler, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaRootContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: staticHandler("alpha")},
+		Module{Name: "beta", Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+
+	for _, path := range []string{
+		"/api/v1/alpha//x",  // a doubled slash mid-path: 307 to /api/v1/alpha/x before the fix
+		"/api/v1/alpha//",   // a doubled trailing slash: 307 to /api/v1/alpha/
+		"/api/v1/alpha///x", // more than two
+		"/api/v1/alpha/",    // a plain trailing slash, which never redirected
+		"/api/v1/alpha/x/",
+		"/api/v1/beta//x", // a module without its own root path, same subtree rule
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		modName := "alpha"
+		if strings.HasPrefix(path, "/api/v1/beta") {
+			modName = "beta"
+		}
+		if want := modName + ":" + path; rec.Body.String() != want {
+			t.Errorf("%s: body = %q, want %q (the path must reach the module unchanged)", path, rec.Body.String(), want)
+		}
+		if rec.Code == http.StatusTemporaryRedirect || rec.Code == http.StatusMovedPermanently {
+			t.Errorf("%s: status = %d with Location %q, want the module's own answer and no redirect",
+				path, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+}
+
 // A module cfg.Modules does not enable contributes no route, no
 // permission-catalog entry and no contract path: its paths fall through to
 // the /api 404 problem, exactly as if it had never been passed to Compose.

@@ -228,10 +228,12 @@ func TestPutVariant_RequiresPricingManageUnconditionally(t *testing.T) {
 	}
 }
 
+// Ported from Integration/ProductsAuthorizationEndpointsTests.cs.
+// VariantDeleteRequiresPricingManageBecauseItCascadesPrices.
+//
 // TestDeleteVariant_RequiresPricingManageBecauseItCascadesPrices is the
 // route-level analogue for deleteProductsByIdVariantsByVariantId (products
-// inventory §1.1 line 52, ported from
-// ProductsAuthorizationEndpointsTests.VariantDeleteRequiresPricingManageBecauseItCascadesPrices).
+// inventory §1.1 line 52).
 func TestDeleteVariant_RequiresPricingManageBecauseItCascadesPrices(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

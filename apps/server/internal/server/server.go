@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
@@ -49,9 +50,24 @@ func New(o Options) http.Handler {
 
 	mux := http.NewServeMux()
 	mux.Handle("/health/", o.Health)
-	mux.Handle("/api/", apiHandler)
-	mux.Handle("/api", apiHandler)
 	mux.Handle("/", web.Handler(o.Assets, o.Index))
+
+	// The API subtree is matched here rather than registered on mux, because
+	// http.ServeMux cleans the request path and redirects when the cleaned
+	// form differs: "/api/v1/customers//contacts" would answer 307 pointing
+	// at the real path instead of reaching the API at all. .NET answered 404
+	// there, and the module router's own matcher deliberately refuses the
+	// empty segment a doubled slash produces so it falls through to the 404
+	// problem. Every API path is declared exactly by a contract, so nothing
+	// under /api wants cleaning; health and the SPA keep mux's, which they do
+	// want.
+	root := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if path := r.URL.EscapedPath(); path == "/api" || strings.HasPrefix(path, "/api/") {
+			apiHandler.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 
 	// config.Load refuses hops without CIDRs outside development, so in a
 	// loaded configuration this only ever fires in development.
@@ -59,7 +75,7 @@ func New(o Options) http.Handler {
 		o.Logger.Warn("TRUSTED_PROXY_HOPS is set without TRUSTED_PROXY_CIDRS; forwarded headers are trusted from any peer")
 	}
 
-	return httpx.Chain(mux,
+	return httpx.Chain(root,
 		httpx.Forwarded(o.Config.TrustedProxyHops, o.Config.TrustedProxyCIDRs),
 		httpx.RequestID,
 		httpx.RequestLog(o.Logger, o.Config.BasePath),
