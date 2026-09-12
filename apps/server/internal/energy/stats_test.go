@@ -15,7 +15,7 @@ import (
 // (products/stats_test.go and customers/stats_test.go document the same gap
 // for their own modules' dashboard endpoints). These tests are this task's
 // own, written directly against EnergyStatsEndpoints.cs's behavior; the
-// module's coverage gate (main_test.go's pendingOperations) requires every
+// module's coverage gate (main_test.go's RequireCoverage) requires every
 // implemented operation be exercised regardless of a .NET original to port.
 
 // insertActiveSupplyPeriod inserts a supply period whose status is Active

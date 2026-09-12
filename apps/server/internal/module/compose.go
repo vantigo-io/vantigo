@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -82,6 +83,7 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 	}
 
 	outer := http.NewServeMux()
+	mounts := make([]moduleMount, 0, len(mods))
 	docs := make(map[string]*openapi3.T, len(mods))
 	order := make([]string, 0, len(mods))
 
@@ -102,6 +104,10 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		// module's router the request path unchanged (no StripPrefix): the
 		// module's own router matches full paths from its own Doc.
 		outer.Handle("/api/v1/"+mod.Name+"/", handler)
+		// The same subtree, matched again ahead of outer by dispatch below, so
+		// http.ServeMux's path cleaning never folds a doubled slash inside a
+		// module's subtree onto the real path (see moduleMount).
+		mounts = append(mounts, moduleMount{prefix: "/api/v1/" + mod.Name + "/", handler: handler})
 		// The subtree pattern alone does not cover the module's own root path.
 		// A contract that declares "/api/v1/customers" (the listing and its
 		// create) would have those requests answered by http.ServeMux's
@@ -111,6 +117,7 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		// and delivers the request, path unchanged, to the module.
 		if doc.Paths.Find("/api/v1/"+mod.Name) != nil {
 			outer.Handle("/api/v1/"+mod.Name, handler)
+			mounts[len(mounts)-1].root = "/api/v1/" + mod.Name
 		}
 
 		// mergeContract (via InternalizeRefs) mutates the *openapi3.T it
@@ -151,7 +158,46 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 
 	outer.HandleFunc("/api/", httpx.NotFound)
 
-	return outer, nil
+	return dispatchModules(mounts, outer), nil
+}
+
+// moduleMount is one module's mounted handler and the paths that reach it:
+// prefix is its subtree ("/api/v1/customers/"), root the bare path its own
+// contract declares ("/api/v1/customers"), empty when it declares none.
+type moduleMount struct {
+	prefix  string
+	root    string
+	handler http.Handler
+}
+
+// dispatchModules matches each module's subtree itself, on the still-escaped
+// path, before falling back to fallback (the http.ServeMux carrying
+// /api/openapi.json, the /api catch-all, and the subtree patterns a module
+// without its own root path still redirects through).
+//
+// The interception exists for one reason: http.ServeMux cleans the request
+// path and redirects when the cleaned form differs, which folds
+// "/api/v1/customers//contacts" onto the real "/api/v1/customers/contacts"
+// and answers 307. .NET answered 404 there, and Router.matches deliberately
+// refuses the empty segment a doubled slash produces so it falls through to
+// the 404 problem — a guard the outer mux's redirect was reaching around
+// before the module's router ever saw the path. Matching here delivers the
+// path to the module verbatim, so the router's guard decides, as it does for
+// a trailing slash.
+func dispatchModules(mounts []moduleMount, fallback http.Handler) http.Handler {
+	if len(mounts) == 0 {
+		return fallback
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.EscapedPath()
+		for _, m := range mounts {
+			if strings.HasPrefix(path, m.prefix) || (m.root != "" && path == m.root) {
+				m.handler.ServeHTTP(w, r)
+				return
+			}
+		}
+		fallback.ServeHTTP(w, r)
+	})
 }
 
 // enabledModules keeps identity, always mounted, and any module deps.Config

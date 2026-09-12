@@ -141,6 +141,15 @@ pass "identity session demands authentication"
 curl -fsS "$base/api/v1/identity/bootstrap-status" | grep -q '"available":true' || fail "identity bootstrap-status has no available:true"
 pass "identity bootstrap-status is available"
 
+[ "$(status "$base/api/v1/customers")" = 401 ] || fail "customers is not 401 without a session"
+pass "customers demands authentication"
+
+[ "$(status "$base/api/v1/products")" = 401 ] || fail "products is not 401 without a session"
+pass "products demands authentication"
+
+[ "$(status "$base/api/v1/energy/metering-points")" = 401 ] || fail "energy metering-points is not 401 without a session"
+pass "energy demands authentication"
+
 docker exec "$APP" /app/vantigo healthcheck || fail "the healthcheck command failed inside the container"
 health=""
 for _ in $(seq 1 30); do

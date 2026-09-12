@@ -28,6 +28,57 @@ type fixture struct {
 	logs    *bytes.Buffer
 }
 
+// TestNew_DoesNotCleanAPIPaths proves the /api subtree bypasses
+// http.ServeMux's path cleaning. Registering /api/ on the mux made it
+// answer "/api/v1/customers//contacts" with a 307 to the cleaned
+// "/api/v1/customers/contacts", so the request never reached the API at all
+// — where .NET answered 404 and where the module router's own matcher
+// deliberately refuses the empty segment a doubled slash produces. Every
+// API path is declared exactly by a contract, so nothing under /api wants
+// cleaning; health and the SPA keep the mux's, which they do want.
+//
+// The API handler is replaced with one that records the path it was given,
+// because the fixture's default API is itself an http.ServeMux and would
+// clean the path a second time, hiding the behaviour under test.
+func TestNew_DoesNotCleanAPIPaths(t *testing.T) {
+	var seen []string
+	f := newFixture(t, func(_ *config.Config, o *Options) {
+		o.API = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			seen = append(seen, r.URL.EscapedPath())
+			httpx.NotFound(w, r)
+		})
+	})
+
+	paths := []string{
+		"/api/v1//ping",
+		"/api/v1/customers//contacts",
+		"/api//v1/ping",
+		"/api/v1/customers//",
+		"/api/v1/customers/7/timeline/",
+	}
+	for _, path := range paths {
+		req := httptest.NewRequest(http.MethodGet, "https://vantigo.example.com"+path, nil)
+		rec := httptest.NewRecorder()
+		f.handler.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusTemporaryRedirect || rec.Code == http.StatusMovedPermanently {
+			t.Errorf("%s: status = %d with Location %q, want the API handler's own answer and no redirect",
+				path, rec.Code, rec.Header().Get("Location"))
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want the API handler's 404 problem", path, rec.Code)
+		}
+	}
+	if len(seen) != len(paths) {
+		t.Fatalf("the API handler saw %d of %d requests (%q): every /api path must reach it", len(seen), len(paths), seen)
+	}
+	for i, path := range paths {
+		if seen[i] != path {
+			t.Errorf("the API handler saw %q, want %q unchanged", seen[i], path)
+		}
+	}
+}
+
 func newFixture(t *testing.T, mutate func(*config.Config, *Options)) fixture {
 	t.Helper()
 	cfg := &config.Config{

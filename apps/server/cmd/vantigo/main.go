@@ -31,11 +31,14 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/customers"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/energy"
 	"github.com/vantigo-io/vantigo/server/internal/health"
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
+	"github.com/vantigo-io/vantigo/server/internal/products"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/server"
@@ -248,7 +251,17 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		}
 		access := identity.NewAccess(deps)
 		deps.Access = access
-		api, err := module.Compose(deps, identity.Module(access))
+		// Every module this binary knows is passed to Compose, which keeps
+		// identity — always mounted, never listed in MODULES — plus whichever
+		// of the rest MODULES enables, and injects customers' customer
+		// directory into every enabled module's Deps. A disabled module
+		// contributes no route, no permission and no contract path.
+		api, err := module.Compose(deps,
+			identity.Module(access),
+			customers.Module(),
+			products.Module(),
+			energy.Module(),
+		)
 		if err != nil {
 			logger.Error("startup failed", "error", err)
 			return 1
