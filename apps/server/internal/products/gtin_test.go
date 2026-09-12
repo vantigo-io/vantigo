@@ -1,9 +1,13 @@
 package products
 
-// Ported from Domain/Products/GtinTests.cs.
+// Ports Domain/Products/GtinTests.cs. Each .NET test is a [Theory] whose
+// InlineData cases become one Go test's table, so the four methods map
+// one-to-one and each carries its own marker below.
 
 import "testing"
 
+// Ported from Domain/Products/GtinTests.cs.
+// IsValid_WithCorrectCheckDigit_ReturnsTrue.
 func TestIsValidGTIN_WithCorrectCheckDigit_ReturnsTrue(t *testing.T) {
 	t.Parallel()
 	cases := []string{
@@ -20,6 +24,8 @@ func TestIsValidGTIN_WithCorrectCheckDigit_ReturnsTrue(t *testing.T) {
 	}
 }
 
+// Ported from Domain/Products/GtinTests.cs.
+// IsValid_WithWrongCheckDigit_ReturnsFalse.
 func TestIsValidGTIN_WithWrongCheckDigit_ReturnsFalse(t *testing.T) {
 	t.Parallel()
 	cases := []string{"96385075", "4006381333932", "00012345600013"}
@@ -30,6 +36,8 @@ func TestIsValidGTIN_WithWrongCheckDigit_ReturnsFalse(t *testing.T) {
 	}
 }
 
+// Ported from Domain/Products/GtinTests.cs.
+// IsValid_WithUnsupportedLength_ReturnsFalse.
 func TestIsValidGTIN_WithUnsupportedLength_ReturnsFalse(t *testing.T) {
 	t.Parallel()
 	cases := []string{"", "1234567", "123456789", "12345678901", "123456789012345"}
@@ -40,6 +48,9 @@ func TestIsValidGTIN_WithUnsupportedLength_ReturnsFalse(t *testing.T) {
 	}
 }
 
+// Ported from Domain/Products/GtinTests.cs.
+// IsValid_WithNonDigitCharacters_ReturnsFalse.
+//
 // TestIsValidGTIN_WithNonDigitCharacters_ReturnsFalse pins that a non-digit
 // character anywhere, including a space or a dash inside an otherwise
 // valid digit string, is rejected — not just filtered out.
