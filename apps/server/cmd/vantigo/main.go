@@ -4,9 +4,11 @@
 //
 // It is also the dispatch table — one image, several commands:
 //
-//	api          migrate under the advisory lock, then serve SPA + API + health
-//	server       serve only; never migrates (what replicas run)
-//	worker       background work plus health (health only until workers exist)
+//	api          migrate under the advisory lock, then serve SPA + API + health,
+//	             plus every enabled module's background workers when
+//	             WORKERS_IN_PROCESS=1 (the default)
+//	server       serve only; never migrates and never runs workers (what replicas run)
+//	worker       every enabled module's background workers, plus health
 //	migrate      apply migrations and exit 0/1
 //	seed         development data (APP_ENV=development only)
 //	healthcheck  probe this container's /health/ready and exit 0/1
@@ -22,12 +24,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	// The distroless image has no zoneinfo; embed it so time.LoadLocation
 	// works for every zone, not just UTC.
 	_ "time/tzdata"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/buildinfo"
 	"github.com/vantigo-io/vantigo/server/internal/config"
@@ -44,6 +49,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/server"
 	"github.com/vantigo-io/vantigo/server/internal/telemetry"
 	"github.com/vantigo-io/vantigo/server/internal/web"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 const usage = "usage: vantigo <api|server|worker|migrate|seed|healthcheck>"
@@ -177,7 +183,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		logger.Error("cannot listen", "port", cfg.Port, "error", err)
 		return 1
 	}
-	return serve(ctx, logger, cfg, ln, m != modeWorker)
+	return serve(ctx, logger, cfg, ln, m)
 }
 
 func healthcheck(port string, stderr io.Writer) int {
@@ -204,9 +210,86 @@ func migrate(logger *slog.Logger, cfg *config.Config) int {
 	return 0
 }
 
+// commandName is m's label in logs and in the "worker"/"api" mode this file
+// otherwise only tracks as a bool: server always builds the same handler as
+// api (withAPI below), so the label is the one place they are told apart.
+func commandName(m mode) string {
+	switch m {
+	case modeAPI:
+		return "api"
+	case modeServer:
+		return "server"
+	default:
+		return "worker"
+	}
+}
+
+// runWorkers reports whether m should start every enabled module's
+// background workers: always in worker mode, in api mode only when
+// WORKERS_IN_PROCESS=1, and never in server mode regardless of that
+// setting — server is "what replicas run" (design §3.2), and a fleet of
+// server replicas all claiming the same outbox row would defeat the
+// conditional-update claim Tasks 11-13 build on.
+func runWorkers(m mode, cfg *config.Config) bool {
+	switch m {
+	case modeWorker:
+		return true
+	case modeAPI:
+		return cfg.WorkersInProcess
+	default:
+		return false
+	}
+}
+
+// moduleDeps assembles the module.Deps and identity's Access every command
+// that needs a module — Compose (api, server) or the worker runner (worker,
+// or api with WORKERS_IN_PROCESS=1) — shares. Building it is cheap: neither
+// mail.New nor secrets.New dials out, so worker-only mode pays no more at
+// startup than api mode already did.
+func moduleDeps(cfg *config.Config, pool *pgxpool.Pool, logger *slog.Logger) (module.Deps, *identity.Access, error) {
+	sender, err := mail.New(cfg, logger)
+	if err != nil {
+		return module.Deps{}, nil, err
+	}
+	box, err := secrets.New(cfg.AppSecret)
+	if err != nil {
+		return module.Deps{}, nil, err
+	}
+	deps := module.Deps{
+		Config:  cfg,
+		Pool:    pool,
+		Logger:  logger,
+		Clock:   time.Now,
+		Mail:    sender,
+		Secrets: box,
+		Limiter: ratelimit.New(pool),
+	}
+	access := identity.NewAccess(deps)
+	deps.Access = access
+	return deps, access, nil
+}
+
+// businessModules is every module this binary knows, identity included —
+// the same list Compose mounts and module.Workers resolves background
+// workers from. A disabled module (MODULES) contributes no route, no
+// permission, no contract path and, as of this task, no worker.
+func businessModules(access *identity.Access) []module.Module {
+	return []module.Module{
+		identity.Module(access),
+		customers.Module(),
+		products.Module(),
+		energy.Module(),
+	}
+}
+
 // serve builds the handler for this command and runs it on ln until ctx is
-// cancelled. withAPI=false is worker mode: health only.
-func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.Listener, withAPI bool) int {
+// cancelled, starting every enabled module's background workers first when
+// runWorkers(m, cfg) says to. extraWorkers is appended to whatever
+// module.Workers resolves from the real module list; production code always
+// passes nil — it exists so a test can prove serve really starts and stops
+// what it is handed, without a real module implementing Worker yet (nothing
+// does before Tasks 11-13).
+func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.Listener, m mode, extraWorkers ...worker.Worker) int {
 	defer func() { _ = ln.Close() }()
 
 	// Startup is not cancelled by the shutdown signal: a SIGTERM during boot
@@ -220,9 +303,16 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 
 	healthHandler := health.Handler(logger, buildinfo.Version, health.Check{Name: "postgres", Run: pool.Ping})
 	handler := healthHandler
-	command := "worker"
+	command := commandName(m)
+
+	withAPI := m != modeWorker
+	wantWorkers := runWorkers(m, cfg)
+
+	var deps module.Deps
+	var access *identity.Access
+	var haveDeps bool
+
 	if withAPI {
-		command = "api"
 		assets := web.Assets()
 		index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding)
 		if err != nil {
@@ -230,38 +320,19 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			return 1
 		}
 
-		sender, err := mail.New(cfg, logger)
+		deps, access, err = moduleDeps(cfg, pool, logger)
 		if err != nil {
 			logger.Error("startup failed", "error", err)
 			return 1
 		}
-		box, err := secrets.New(cfg.AppSecret)
-		if err != nil {
-			logger.Error("startup failed", "error", err)
-			return 1
-		}
-		deps := module.Deps{
-			Config:  cfg,
-			Pool:    pool,
-			Logger:  logger,
-			Clock:   time.Now,
-			Mail:    sender,
-			Secrets: box,
-			Limiter: ratelimit.New(pool),
-		}
-		access := identity.NewAccess(deps)
-		deps.Access = access
+		haveDeps = true
+
 		// Every module this binary knows is passed to Compose, which keeps
 		// identity — always mounted, never listed in MODULES — plus whichever
 		// of the rest MODULES enables, and injects customers' customer
 		// directory into every enabled module's Deps. A disabled module
 		// contributes no route, no permission and no contract path.
-		api, err := module.Compose(deps,
-			identity.Module(access),
-			customers.Module(),
-			products.Module(),
-			energy.Module(),
-		)
+		api, err := module.Compose(deps, businessModules(access)...)
 		if err != nil {
 			logger.Error("startup failed", "error", err)
 			return 1
@@ -285,6 +356,20 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		}), cfg.BasePath)
 	}
 
+	var runner *worker.Runner
+	if wantWorkers {
+		if !haveDeps {
+			deps, access, err = moduleDeps(cfg, pool, logger)
+			if err != nil {
+				logger.Error("startup failed", "error", err)
+				return 1
+			}
+		}
+		workers := append(module.Workers(deps, businessModules(access)...), extraWorkers...)
+		runner = worker.NewRunner(logger)
+		runner.Start(ctx, workers)
+	}
+
 	srv := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
@@ -297,13 +382,17 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	if cfg.AllowInsecureTransport {
 		logger.Warn("ALLOW_INSECURE_TRANSPORT=1: plaintext HTTP, database and SMTP transport are accepted; local and evaluation use only")
 	}
-	return serveUntilDone(ctx, logger, srv, ln, cfg.ShutdownTimeout)
+	return serveUntilDone(ctx, logger, srv, ln, cfg.ShutdownTimeout, runner)
 }
 
 // serveUntilDone serves until ctx is cancelled, then drains in-flight
-// requests for up to timeout. The orchestrator's termination grace period
-// must exceed it.
-func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, ln net.Listener, timeout time.Duration) int {
+// requests and waits for runner's workers (if any) to stop, both bounded by
+// the same timeout — the orchestrator's termination grace period must
+// exceed it — and run concurrently rather than one after the other, so a
+// slow drain and a slow worker cannot each eat into the other's share of
+// the budget. runner may be nil (server mode, or api with
+// WORKERS_IN_PROCESS=0): Runner.Wait on a nil *Runner returns immediately.
+func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, ln net.Listener, timeout time.Duration, runner *worker.Runner) int {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 
@@ -319,8 +408,23 @@ func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, 
 	logger.Info("shutdown signal received; draining", "timeout", timeout)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Error("in-flight requests did not finish in time", "error", err)
+
+	var wg sync.WaitGroup
+	var httpErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		httpErr = srv.Shutdown(shutdownCtx)
+	}()
+	workersErr := runner.Wait(shutdownCtx)
+	wg.Wait()
+
+	if httpErr != nil {
+		logger.Error("in-flight requests did not finish in time", "error", httpErr)
+		return 1
+	}
+	if workersErr != nil {
+		logger.Error("workers did not finish in time", "error", workersErr)
 		return 1
 	}
 	logger.Info("shutdown complete")

@@ -1,7 +1,9 @@
 // Package module is the platform every business module (identity, customers,
 // products, energy, communications) mounts through: a router that enforces
-// each operation's x-vantigo-access rule and rate limit at runtime, and a
-// Compose that assembles the modules under /api.
+// each operation's x-vantigo-access rule and rate limit at runtime, a
+// Compose that assembles the modules under /api, and a Workers (workers.go)
+// that collects the background workers the enabled modules contribute for
+// cmd/vantigo's worker runner to start.
 package module
 
 import (
@@ -17,6 +19,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // Deps are the dependencies every module's Mount can use.
@@ -65,4 +68,10 @@ type Module struct {
 	// set it; Compose calls it before any Mount runs and puts the result on
 	// every module's Deps, including the provider's own.
 	Directory func(Deps) contracts.CustomerDirectory
+	// Workers builds this module's background workers (worker.Worker), if
+	// it has any. Unlike Directory, any number of enabled modules may set
+	// it; Workers (workers.go) resolves it from deps the same way — before
+	// any Mount runs — for every module MODULES enables, and concatenates
+	// the results in mods order. A module with none leaves it nil.
+	Workers func(Deps) []worker.Worker
 }
