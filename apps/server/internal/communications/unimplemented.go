@@ -26,20 +26,5 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(context
 	return nil, module.ErrNotImplemented
 }
 
-// GetCommunicationsStatsSummary Get communications dashboard summary
-// (GET /api/v1/communications/stats/summary)
-func (s *server) GetCommunicationsStatsSummary(context.Context, gen.GetCommunicationsStatsSummaryRequestObject) (gen.GetCommunicationsStatsSummaryResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCommunicationsStatsTimeseries Get communications dashboard time series
-// (GET /api/v1/communications/stats/timeseries)
-func (s *server) GetCommunicationsStatsTimeseries(context.Context, gen.GetCommunicationsStatsTimeseriesRequestObject) (gen.GetCommunicationsStatsTimeseriesResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCommunicationsStatsAttention Get communications dashboard attention items
-// (GET /api/v1/communications/stats/attention)
-func (s *server) GetCommunicationsStatsAttention(context.Context, gen.GetCommunicationsStatsAttentionRequestObject) (gen.GetCommunicationsStatsAttentionResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
+// GetCommunicationsStatsSummary, GetCommunicationsStatsTimeseries and
+// GetCommunicationsStatsAttention moved to stats.go in task 9.

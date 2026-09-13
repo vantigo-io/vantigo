@@ -3,6 +3,7 @@ package communications
 import (
 	"net/http"
 
+	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 )
@@ -65,4 +66,15 @@ func fieldsErrorBody(code, message string, fields map[string][]string) gen.Commu
 	resp.Error.Message = message
 	resp.Error.Fields = &fields
 	return resp
+}
+
+// problem builds a bare RFC 7807 ProblemDetails, .NET's TypedResults.Problem
+// (title/detail text, no machine-readable code) — the shape the three stats
+// endpoints alone use (CommunicationsStatsEndpoints.cs:85-88, :169-172,
+// inventory §3 item 2). Every other refusal in this module goes through
+// validationErrorBody / flatErrorBody / fieldsErrorBody above instead;
+// nothing outside stats.go may call this.
+func problem(title, detail string) apicommon.ProblemDetails {
+	status := int32(http.StatusBadRequest)
+	return apicommon.ProblemDetails{Title: &title, Detail: &detail, Status: &status}
 }
