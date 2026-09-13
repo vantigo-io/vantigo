@@ -7,6 +7,7 @@
 package module
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -53,6 +54,16 @@ type Deps struct {
 	// client's own real backoff; a test harness sets it (typically to a
 	// function returning 0) so a retry loop's tests never actually sleep.
 	HTTPBackoff func(attempt int) time.Duration
+	// SMTPVerify is the function a module's own SMTP connectivity check
+	// (communications' channel verification, so far the only one) calls to
+	// connect, authenticate and disconnect against a caller-supplied SMTP
+	// configuration — no message sent. nil in production, meaning
+	// mail.VerifyConnection itself, which dials through internal/mail's
+	// real DNS-rebinding guard; a test harness sets it to a fake so a
+	// verify-succeeds test can exercise a handler's success path without a
+	// live SMTP server or the guard's network reach, the same shape
+	// HTTPTransport gives an outbound HTTP client.
+	SMTPVerify func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
 }
 
 // Module is one business module: its name (the path segment it mounts under,

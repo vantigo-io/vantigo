@@ -14,36 +14,6 @@ import (
 // routed from the first commit and each later task replaces the stubs of
 // the area it implements.
 
-// GetCommunicationsChannels List configured channels
-// (GET /api/v1/communications/channels)
-func (s *server) GetCommunicationsChannels(context.Context, gen.GetCommunicationsChannelsRequestObject) (gen.GetCommunicationsChannelsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostCommunicationsChannels Create a channel
-// (POST /api/v1/communications/channels)
-func (s *server) PostCommunicationsChannels(context.Context, gen.PostCommunicationsChannelsRequestObject) (gen.PostCommunicationsChannelsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCommunicationsChannelsById Get a channel
-// (GET /api/v1/communications/channels/{id})
-func (s *server) GetCommunicationsChannelsById(context.Context, gen.GetCommunicationsChannelsByIdRequestObject) (gen.GetCommunicationsChannelsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PutCommunicationsChannelsById Update a channel
-// (PUT /api/v1/communications/channels/{id})
-func (s *server) PutCommunicationsChannelsById(context.Context, gen.PutCommunicationsChannelsByIdRequestObject) (gen.PutCommunicationsChannelsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostCommunicationsChannelsByIdVerify Verify a channel
-// (POST /api/v1/communications/channels/{id}/verify)
-func (s *server) PostCommunicationsChannelsByIdVerify(context.Context, gen.PostCommunicationsChannelsByIdVerifyRequestObject) (gen.PostCommunicationsChannelsByIdVerifyResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 // GetCommunicationsConversations List conversations
 // (GET /api/v1/communications/conversations)
 func (s *server) GetCommunicationsConversations(context.Context, gen.GetCommunicationsConversationsRequestObject) (gen.GetCommunicationsConversationsResponseObject, error) {

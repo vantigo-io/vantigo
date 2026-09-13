@@ -26,3 +26,4 @@ package server
 //go:generate sqlc generate -f internal/customers/sqlc.yaml
 //go:generate sqlc generate -f internal/products/sqlc.yaml
 //go:generate sqlc generate -f internal/energy/sqlc.yaml
+//go:generate sqlc generate -f internal/communications/sqlc.yaml

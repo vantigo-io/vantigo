@@ -114,6 +114,31 @@ func (s *smtpSender) Send(ctx context.Context, m Message) error {
 	return nil
 }
 
+// VerifyConnection builds a client over cfg exactly as NewSMTP does — the
+// same guarded, DNS-rebinding-safe dial path, the same TLS mode and auth
+// handling, the same fail-closed checks — but only connects, authenticates
+// if a username is configured, and disconnects: no message is ever built or
+// sent. Communications channel verification
+// (POST .../channels/{id}/verify, communications inventory §15.2's
+// "VerifyAsync runs the same ExecuteAsync path... and then immediately
+// disconnects") is this function's one caller; it exists so that endpoint
+// reuses the exact guard NewSMTP's Sender dials through rather than
+// re-implementing SMTP connection handling for a verify-only path.
+func VerifyConnection(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error {
+	sender, err := NewSMTP(cfg, allowInsecure)
+	if err != nil {
+		return err
+	}
+	s, ok := sender.(*smtpSender)
+	if !ok {
+		return fmt.Errorf("mail: unexpected sender implementation %T", sender)
+	}
+	if err := s.client.DialWithContext(ctx); err != nil {
+		return err
+	}
+	return s.client.Close()
+}
+
 // guardedDialContext returns a DialContextFunc that resolves the SMTP
 // host, checks the resolved address with guard, and connects directly to
 // that vetted address — never re-resolving the hostname — so a DNS answer

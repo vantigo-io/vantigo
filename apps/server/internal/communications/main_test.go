@@ -34,8 +34,6 @@ var pendingOperations = []string{
 	"deleteCommunicationsConversationsByIdTagsByTagId",
 	"deleteCommunicationsSuppressionsById",
 	"getCommunicationsAttachmentsByIdDownload",
-	"getCommunicationsChannels",
-	"getCommunicationsChannelsById",
 	"getCommunicationsConversations",
 	"getCommunicationsConversationsByConversationIdAttachmentsByAttachmentId",
 	"getCommunicationsConversationsById",
@@ -46,8 +44,6 @@ var pendingOperations = []string{
 	"getCommunicationsSuppressionsById",
 	"getCommunicationsTags",
 	"patchCommunicationsConversationsById",
-	"postCommunicationsChannels",
-	"postCommunicationsChannelsByIdVerify",
 	"postCommunicationsConversations",
 	"postCommunicationsConversationsByIdAiCustomerSuggestion",
 	"postCommunicationsConversationsByIdAiDraft",
@@ -57,7 +53,6 @@ var pendingOperations = []string{
 	"postCommunicationsConversationsByIdReply",
 	"postCommunicationsSuppressions",
 	"postCommunicationsTags",
-	"putCommunicationsChannelsById",
 	"putCommunicationsConversationsByIdTagsByTagId",
 }
 

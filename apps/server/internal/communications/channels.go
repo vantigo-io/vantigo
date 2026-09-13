@@ -1,0 +1,612 @@
+package communications
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
+	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/mail"
+)
+
+// This file is the Channels area (EP/ChannelEndpoints.cs, communications
+// inventory §1.1, §2's CreateChannel/UpdateChannel/VerifyChannel bullets,
+// §15.6): getCommunicationsChannels, postCommunicationsChannels,
+// getCommunicationsChannelsById, putCommunicationsChannelsById and
+// postCommunicationsChannelsByIdVerify. All five require channels-manage
+// only (communications.yaml's x-vantigo-access on each of the four
+// operations under /channels and /channels/{id}/verify) — module.Router
+// already enforces it, so no handler here re-checks it.
+//
+// Mailgun-branch PORT DECISION (task 4's report has the full reasoning):
+// this port keeps only SMTP channels. channels.provider stays a full-width
+// column with no CHECK (design doc §1: "channels.kind survives so a future
+// non-SMTP provider is additive"), but every validated create and update
+// below refuses any provider other than "smtp", so no channel of a
+// non-SMTP kind is ever creatable through this API. VerifyChannel's
+// provider dispatch (inventory §1.1's "Mailgun branch") therefore never
+// sees a non-SMTP channel through ordinary use; verifyChannel still checks
+// defensively and answers 422 verification_failed rather than panicking if
+// one exists some other way (a fixture, a future migration).
+
+// channelCredentialPurpose is this port's internal/secrets purpose string
+// for a channel's SMTP password — the domain-separation label
+// PORT:379/inventory §15.6 says to carry over from .NET's
+// "Communications.MailboxProvider.v1" (MailboxCredentialProtector). A value
+// sealed under this purpose can never be opened under any other.
+const channelCredentialPurpose = "communications/channel-smtp-credential"
+
+// verifyTimeout bounds VerifyChannel's SMTP connection attempt (inventory
+// §1.1's "10s timeout"; §15.2: "EP/ChannelEndpoints.cs:49 wraps
+// verification in a 10-second CTS").
+const verifyTimeout = 10 * time.Second
+
+// errUnsupportedChannelProvider is verifyChannel's defensive refusal for a
+// channel whose provider is not "smtp" — unreachable through this API's own
+// create/update validation (see the Mailgun-branch note above), but handled
+// rather than left to panic.
+var errUnsupportedChannelProvider = errors.New("communications: channel verification is only supported for smtp channels")
+
+// smtpProviderSettings is SmtpProviderSettings, camelCase-serialized into
+// channel_credentials.settings_json (inventory §15.6: "SettingsJson =
+// camelCase-serialized SmtpProviderSettings(host, port, useSsl, username)").
+// The password never appears here — it lives only in secret_ciphertext,
+// sealed under channelCredentialPurpose.
+type smtpProviderSettings struct {
+	Host     string  `json:"host"`
+	Port     int32   `json:"port"`
+	UseSsl   bool    `json:"useSsl"`
+	Username *string `json:"username,omitempty"`
+}
+
+// channelRow is the channel-table fields every one of ListChannels,
+// GetChannelByID, InsertChannel and UpdateChannel returns, in whatever
+// sqlc-generated shape that particular query happens to produce — one seam
+// so channelResponseOf only has to know one shape.
+type channelRow struct {
+	ID          uuid.UUID
+	Type        string
+	Address     string
+	DisplayName *string
+	Provider    string
+	IsDefault   bool
+	IsActive    bool
+	CreatedAt   time.Time
+}
+
+func channelRowFromChannel(c store.CommunicationsChannel) channelRow {
+	return channelRow{
+		ID: c.ID, Type: c.Type, Address: c.Address, DisplayName: c.DisplayName,
+		Provider: c.Provider, IsDefault: c.IsDefault, IsActive: c.IsActive, CreatedAt: c.CreatedAt,
+	}
+}
+
+func channelRowFromGet(c store.GetChannelByIDRow) channelRow {
+	return channelRow{
+		ID: c.ID, Type: c.Type, Address: c.Address, DisplayName: c.DisplayName,
+		Provider: c.Provider, IsDefault: c.IsDefault, IsActive: c.IsActive, CreatedAt: c.CreatedAt,
+	}
+}
+
+func channelRowFromList(c store.ListChannelsRow) channelRow {
+	return channelRow{
+		ID: c.ID, Type: c.Type, Address: c.Address, DisplayName: c.DisplayName,
+		Provider: c.Provider, IsDefault: c.IsDefault, IsActive: c.IsActive, CreatedAt: c.CreatedAt,
+	}
+}
+
+// channelResponseOf is ToChannelResponse (EP/ChannelEndpoints.cs:51,
+// inventory §15.6 item 13): the secret is never exposed, structurally —
+// settingsJSON (nil when the channel has no credential row at all) decodes
+// only host/port/useSsl/username; domain/region stay nil because Mailgun is
+// out of scope (see this file's header note).
+func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelResponse, error) {
+	resp := gen.ChannelResponse{
+		Id: row.ID, Type: row.Type, Address: row.Address, DisplayName: row.DisplayName,
+		Provider: row.Provider, IsDefault: row.IsDefault, IsActive: row.IsActive, CreatedAt: row.CreatedAt,
+	}
+	if settingsJSON == nil {
+		return resp, nil
+	}
+	resp.HasCredentials = true
+	var settings smtpProviderSettings
+	if err := json.Unmarshal([]byte(*settingsJSON), &settings); err != nil {
+		return gen.ChannelResponse{}, fmt.Errorf("communications: decode channel settings: %w", err)
+	}
+	resp.Settings = &struct {
+		Domain   *string `json:"domain"`
+		Host     *string `json:"host"`
+		Port     *int32  `json:"port"`
+		Region   *string `json:"region"`
+		UseSsl   *bool   `json:"useSsl"`
+		Username *string `json:"username"`
+	}{
+		Host:     ptr(settings.Host),
+		Port:     ptr(settings.Port),
+		UseSsl:   ptr(settings.UseSsl),
+		Username: settings.Username,
+	}
+	return resp, nil
+}
+
+// resolveSmtpCredential validates c's host and port — "SMTP credentials
+// require a host and valid port." (inventory §3.1), port 1-65535 — and, when
+// valid, returns the settings to persist and the request's password
+// pointer (nil when the caller omitted it; what "omitted" means is the
+// caller's decision: required on create, "reuse the existing one" on
+// update). ok is false, and the other two results zero, for a nil c, a
+// blank host, a nil port, or a port outside 1-65535.
+func resolveSmtpCredential(c *gen.SmtpChannelCredentialRequest) (settings smtpProviderSettings, password *string, ok bool) {
+	if c == nil || c.Host == nil || strings.TrimSpace(*c.Host) == "" || c.Port == nil || !validSMTPPort(*c.Port) {
+		return smtpProviderSettings{}, nil, false
+	}
+	var username *string
+	if c.Username != nil && strings.TrimSpace(*c.Username) != "" {
+		u := strings.TrimSpace(*c.Username)
+		username = &u
+	}
+	return smtpProviderSettings{
+		Host: strings.TrimSpace(*c.Host), Port: *c.Port,
+		UseSsl: c.UseSsl != nil && *c.UseSsl, Username: username,
+	}, c.Password, true
+}
+
+// createChannelInput is what validateCreateChannel resolved once every
+// field passed: everything InsertChannel/InsertChannelCredential need.
+type createChannelInput struct {
+	channelType string
+	address     string
+	displayName *string
+	isDefault   bool
+	settings    smtpProviderSettings
+	password    string
+}
+
+// validateCreateChannel is ValidateChannel (EP/Dtos/CommunicationValidation.cs,
+// inventory §3.1's field table), collecting every field's error rather than
+// stopping at the first — the same "report every failure together" style
+// this codebase's other validators use (e.g. energy's ReplaceMeter,
+// customers' validateLegalIdentity). provider's domain is narrowed to
+// "smtp" (see this file's header note): a request naming any other
+// provider, or supplying a mailgun credential at all, fails validation
+// through the exact messages inventory §3.1 already specifies for the
+// SMTP-vs-selected-provider mismatch — no new message text is invented for
+// "mailgun is unsupported".
+func validateCreateChannel(body gen.CreateChannelRequest) (createChannelInput, map[string][]string) {
+	errs := map[string][]string{}
+	var in createChannelInput
+
+	channelType := ""
+	if body.Type != nil {
+		channelType = *body.Type
+	}
+	if channelType != "email" {
+		errs["type"] = []string{"Only the email channel is currently supported."}
+	}
+	in.channelType = channelType
+
+	address := ""
+	if body.Address != nil {
+		address = *body.Address
+	}
+	if !validChannelAddress(address) {
+		errs["address"] = []string{"A valid channel email address is required."}
+	}
+	in.address = address
+
+	if body.DisplayName != nil && *body.DisplayName != "" {
+		if !validDisplayName(*body.DisplayName) {
+			errs["displayName"] = []string{"DisplayName is invalid."}
+		} else {
+			in.displayName = body.DisplayName
+		}
+	}
+
+	in.isDefault = body.IsDefault != nil && *body.IsDefault
+
+	if body.Mailgun != nil {
+		errs["credentials"] = []string{"Only the selected provider credential may be supplied."}
+	}
+
+	provider := "smtp"
+	if body.Provider != nil && strings.TrimSpace(*body.Provider) != "" {
+		provider = strings.TrimSpace(*body.Provider)
+	}
+	switch {
+	case !strings.EqualFold(provider, "smtp"):
+		errs["smtp"] = []string{"SMTP credentials require the smtp provider."}
+	default:
+		settings, password, ok := resolveSmtpCredential(body.Smtp)
+		if !ok {
+			errs["smtp"] = []string{"SMTP credentials require a host and valid port."}
+		} else {
+			in.settings = settings
+			if password != nil {
+				in.password = *password
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return createChannelInput{}, errs
+	}
+	return in, nil
+}
+
+func encodeCiphertext(sealed []byte) string { return base64.StdEncoding.EncodeToString(sealed) }
+
+func decodeCiphertext(s string) ([]byte, error) { return base64.StdEncoding.DecodeString(s) }
+
+// GetCommunicationsChannels List configured channels
+// (GET /api/v1/communications/channels)
+//
+// GetChannelsEndpoint: a bare array, no pagination, ordered CreatedAt
+// ascending (inventory §1.1's `:18`/`:25` note, §19.2 item 19).
+func (s *server) GetCommunicationsChannels(ctx context.Context, _ gen.GetCommunicationsChannelsRequestObject) (gen.GetCommunicationsChannelsResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	rows, err := q.ListChannels(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("communications: list channels: %w", err)
+	}
+	data := make([]gen.ChannelResponse, 0, len(rows))
+	for _, row := range rows {
+		resp, err := channelResponseOf(channelRowFromList(row), row.CredentialSettingsJson)
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, resp)
+	}
+	return gen.GetCommunicationsChannels200JSONResponse(data), nil
+}
+
+// PostCommunicationsChannels Create a channel
+// (POST /api/v1/communications/channels)
+//
+// CreateChannel (inventory §2): (1) ValidateChannel -> 400; (2) no
+// existence check; (3) insert, a unique violation on (type, address) -> 409
+// channel_exists. IsDefault is computed before insert as
+// `request.IsDefault == true || !AnyChannelExists` — the first channel ever
+// created is forced default, and any explicit default demotes every other
+// row in the same call.
+func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCommunicationsChannelsRequestObject) (gen.PostCommunicationsChannelsResponseObject, error) {
+	body := gen.CreateChannelRequest{}
+	if req.Body != nil {
+		body = *req.Body
+	}
+
+	in, errs := validateCreateChannel(body)
+	if len(errs) > 0 {
+		return gen.PostCommunicationsChannels400JSONResponse(validationErrorBody(errs)), nil
+	}
+
+	settingsJSON, err := json.Marshal(in.settings)
+	if err != nil {
+		return nil, fmt.Errorf("communications: encode channel settings: %w", err)
+	}
+	sealed, err := s.deps.Secrets.Seal(channelCredentialPurpose, []byte(in.password))
+	if err != nil {
+		return nil, fmt.Errorf("communications: seal channel credential: %w", err)
+	}
+	now := s.deps.Clock()
+
+	var resp gen.ChannelResponse
+	txErr := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		anyExists, err := q.AnyChannelExists(ctx)
+		if err != nil {
+			return err
+		}
+		isDefault := in.isDefault || !anyExists
+		if isDefault {
+			if err := q.ClearDefaultChannels(ctx); err != nil {
+				return err
+			}
+		}
+		channel, err := q.InsertChannel(ctx, store.InsertChannelParams{
+			ID: uuid.New(), Type: in.channelType, Address: in.address, DisplayName: in.displayName,
+			Provider: "smtp", IsDefault: isDefault, IsActive: true, CreatedAt: now,
+		})
+		if err != nil {
+			return err
+		}
+		if err := q.InsertChannelCredential(ctx, store.InsertChannelCredentialParams{
+			ID: uuid.New(), ChannelID: channel.ID, SettingsJson: string(settingsJSON),
+			SecretCiphertext: encodeCiphertext(sealed), CreatedAt: now,
+		}); err != nil {
+			return err
+		}
+		settingsStr := string(settingsJSON)
+		resp, err = channelResponseOf(channelRowFromChannel(channel), &settingsStr)
+		return err
+	})
+	if txErr != nil {
+		if db.IsUniqueViolation(txErr, "ux_channels_type_address") {
+			return gen.PostCommunicationsChannels409JSONResponse(flatErrorBody(
+				"channel_exists", "A channel with this address already exists.")), nil
+		}
+		return nil, fmt.Errorf("communications: create channel: %w", txErr)
+	}
+	return gen.PostCommunicationsChannels201JSONResponse(resp), nil
+}
+
+// GetCommunicationsChannelsById Get a channel
+// (GET /api/v1/communications/channels/{id})
+func (s *server) GetCommunicationsChannelsById(ctx context.Context, req gen.GetCommunicationsChannelsByIdRequestObject) (gen.GetCommunicationsChannelsByIdResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	row, err := q.GetChannelByID(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.GetCommunicationsChannelsById404Response{}, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("communications: get channel: %w", err)
+	}
+	resp, err := channelResponseOf(channelRowFromGet(row), row.CredentialSettingsJson)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetCommunicationsChannelsById200JSONResponse(resp), nil
+}
+
+// PutCommunicationsChannelsById Update a channel
+// (PUT /api/v1/communications/channels/{id})
+//
+// UpdateChannel — split validation across the 404 (inventory §2, the
+// facts-correction in this task's brief): (1) field validation (displayName
+// only) -> 400, before the lookup; (2) channel lookup -> 404 bare; (3)
+// field assignment; (4) credential validation -> 400, keyed by "smtp" or
+// "credentials", after the lookup. So an invalid displayName against a
+// missing id is 400, while an invalid or absent credential against a
+// missing id is 404 — the single most likely thing to get backwards in
+// this task.
+func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutCommunicationsChannelsByIdRequestObject) (gen.PutCommunicationsChannelsByIdResponseObject, error) {
+	if req.Body == nil {
+		return gen.PutCommunicationsChannelsById400JSONResponse(validationErrorBody(map[string][]string{
+			"request": {"A request body is required."},
+		})), nil
+	}
+	body := *req.Body
+
+	// Step 1: field validation, entirely before the lookup.
+	fieldErrs := map[string][]string{}
+	clearDisplayName := false
+	var newDisplayName *string
+	if body.DisplayName != nil {
+		switch {
+		case *body.DisplayName == "":
+			clearDisplayName = true // inventory §19.2 item 11: "" clears to null.
+		case !validDisplayName(*body.DisplayName):
+			fieldErrs["displayName"] = []string{"DisplayName is invalid."}
+		default:
+			newDisplayName = body.DisplayName
+		}
+	}
+	if len(fieldErrs) > 0 {
+		return gen.PutCommunicationsChannelsById400JSONResponse(validationErrorBody(fieldErrs)), nil
+	}
+
+	// Step 2: the lookup.
+	q := store.New(s.deps.Pool)
+	existing, err := q.GetChannelByID(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PutCommunicationsChannelsById404Response{}, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("communications: get channel: %w", err)
+	}
+
+	// Step 4 (there is no step 3 worth naming separately — field assignment
+	// happens inside the transaction below): credential validation, only
+	// now that the channel is known to exist.
+	credErrs := map[string][]string{}
+	provider := "smtp"
+	if body.Provider != nil && strings.TrimSpace(*body.Provider) != "" {
+		provider = strings.TrimSpace(*body.Provider)
+	}
+	if body.Mailgun != nil {
+		credErrs["credentials"] = []string{"Only the selected provider credential may be supplied."}
+	}
+
+	var rewriteCredential bool
+	var newSettingsJSON, newCiphertext string
+	switch {
+	case !strings.EqualFold(provider, "smtp"):
+		credErrs["smtp"] = []string{"SMTP credentials require the smtp provider."}
+	case body.Smtp != nil:
+		settings, password, ok := resolveSmtpCredential(body.Smtp)
+		if !ok {
+			credErrs["smtp"] = []string{"SMTP credentials require a host and valid port."}
+			break
+		}
+		plain := ""
+		switch {
+		case password != nil:
+			plain = *password
+		case existing.CredentialSettingsJson != nil:
+			cred, cerr := q.GetChannelCredentialByChannelID(ctx, req.Id)
+			if cerr != nil {
+				return nil, fmt.Errorf("communications: get channel credential: %w", cerr)
+			}
+			// A ciphertext that fails to open (wrong purpose, tampered, a
+			// rotated APP_SECRET) silently becomes an empty password rather
+			// than an error — the same swallow-the-failure behaviour
+			// inventory §15.6 documents for .NET's TryUpdateCredential.
+			if sealed, derr := decodeCiphertext(cred.SecretCiphertext); derr == nil {
+				if opened, oerr := s.deps.Secrets.Open(channelCredentialPurpose, sealed); oerr == nil {
+					plain = string(opened)
+				}
+			}
+		}
+		sealed, serr := s.deps.Secrets.Seal(channelCredentialPurpose, []byte(plain))
+		if serr != nil {
+			return nil, fmt.Errorf("communications: seal channel credential: %w", serr)
+		}
+		b, merr := json.Marshal(settings)
+		if merr != nil {
+			return nil, fmt.Errorf("communications: encode channel settings: %w", merr)
+		}
+		newSettingsJSON, newCiphertext, rewriteCredential = string(b), encodeCiphertext(sealed), true
+	default:
+		if existing.CredentialSettingsJson == nil {
+			credErrs["smtp"] = []string{"Credentials for the selected provider are required."}
+		}
+	}
+	if len(credErrs) > 0 {
+		return gen.PutCommunicationsChannelsById400JSONResponse(validationErrorBody(credErrs)), nil
+	}
+
+	isActive := existing.IsActive
+	if body.IsActive != nil {
+		isActive = *body.IsActive
+	}
+	// inventory §19.2 item 10: IsDefault is write-once-true — an explicit
+	// false is silently ignored, there is no way to clear the default flag
+	// through this API.
+	wantDefault := body.IsDefault != nil && *body.IsDefault
+
+	var resp gen.ChannelResponse
+	txErr := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		isDefault := existing.IsDefault
+		if wantDefault {
+			if err := txq.ClearOtherDefaultChannels(ctx, req.Id); err != nil {
+				return err
+			}
+			isDefault = true
+		}
+		finalDisplayName := existing.DisplayName
+		switch {
+		case clearDisplayName:
+			finalDisplayName = nil
+		case newDisplayName != nil:
+			finalDisplayName = newDisplayName
+		}
+		updated, err := txq.UpdateChannel(ctx, store.UpdateChannelParams{
+			ID: req.Id, DisplayName: finalDisplayName, IsActive: isActive, IsDefault: isDefault,
+		})
+		if err != nil {
+			return err
+		}
+		settingsJSON := existing.CredentialSettingsJson
+		if rewriteCredential {
+			if err := txq.UpdateChannelCredential(ctx, store.UpdateChannelCredentialParams{
+				ChannelID: req.Id, SettingsJson: newSettingsJSON, SecretCiphertext: newCiphertext,
+			}); err != nil {
+				return err
+			}
+			settingsJSON = &newSettingsJSON
+		}
+		resp, err = channelResponseOf(channelRowFromChannel(updated), settingsJSON)
+		return err
+	})
+	if txErr != nil {
+		return nil, fmt.Errorf("communications: update channel: %w", txErr)
+	}
+	return gen.PutCommunicationsChannelsById200JSONResponse(resp), nil
+}
+
+// smtpTLSMode is the TLS-mode half of SmtpDeliveryProvider.ExecuteAsync's
+// decision tree (inventory §15.2 item 3), as far as this port supports it:
+// no host-config-driven "Development + AllowInsecurePlaintext" escape
+// hatch — channel verification always demands a real answer from the
+// destination. useSsl -> implicit TLS; port 587 without useSsl -> STARTTLS;
+// anything else is refused before any connection is attempted, the same
+// refusal .NET's ExecuteAsync throws and VerifyChannel's generic catch
+// turns into 422 verification_failed.
+func smtpTLSMode(useSsl bool, port int32) (string, error) {
+	switch {
+	case useSsl:
+		return "implicit", nil
+	case port == 587:
+		return "starttls", nil
+	default:
+		return "", fmt.Errorf("communications: smtp tls is required: set useSsl for implicit TLS, or use port 587 for STARTTLS")
+	}
+}
+
+// verifyChannel is VerifyAsync (inventory §15.2): the same settings
+// resolution, timeout invariant, TLS decision, destination guard, connect
+// and auth as a real send — and then immediately disconnects, never
+// building or sending a message. See this file's header note for the
+// Mailgun-branch decision: a non-SMTP channel.Provider is refused here
+// defensively; this API's own create/update validation never lets one
+// exist in the first place. The actual connectivity check goes through
+// Deps.SMTPVerify (module.Deps' doc has the full reasoning) — nil in
+// production, meaning mail.VerifyConnection itself, so production always
+// dials through internal/mail's real destination guard; only a test
+// harness ever substitutes a fake.
+func (s *server) verifyChannel(ctx context.Context, q *store.Queries, channel store.GetChannelByIDRow) error {
+	if !strings.EqualFold(channel.Provider, "smtp") || channel.CredentialSettingsJson == nil {
+		return errUnsupportedChannelProvider
+	}
+	var settings smtpProviderSettings
+	if err := json.Unmarshal([]byte(*channel.CredentialSettingsJson), &settings); err != nil {
+		return fmt.Errorf("communications: decode channel settings: %w", err)
+	}
+	cred, err := q.GetChannelCredentialByChannelID(ctx, channel.ID)
+	if err != nil {
+		return fmt.Errorf("communications: get channel credential: %w", err)
+	}
+	password := ""
+	if sealed, derr := decodeCiphertext(cred.SecretCiphertext); derr == nil {
+		if opened, oerr := s.deps.Secrets.Open(channelCredentialPurpose, sealed); oerr == nil {
+			password = string(opened)
+		}
+	}
+	tlsMode, err := smtpTLSMode(settings.UseSsl, settings.Port)
+	if err != nil {
+		return err
+	}
+	username := ""
+	if settings.Username != nil {
+		username = *settings.Username
+	}
+
+	verify := s.deps.SMTPVerify
+	if verify == nil {
+		verify = mail.VerifyConnection
+	}
+	verifyCtx, cancel := context.WithTimeout(ctx, verifyTimeout)
+	defer cancel()
+	return verify(verifyCtx, config.MailConfig{
+		Driver: "smtp", Host: settings.Host, Port: int(settings.Port),
+		Username: username, Password: password, From: channel.Address, TLS: tlsMode,
+	}, false)
+}
+
+// PostCommunicationsChannelsByIdVerify Verify a channel
+// (POST /api/v1/communications/channels/{id}/verify)
+//
+// VerifyChannel (inventory §2): lookup -> 404 bare, before anything else;
+// then the provider dispatch above, with a 10s timeout; any
+// SmtpDestinationRejectedException-equivalent -> 422 destination_rejected
+// with the guard's own message, any other failure -> 422
+// verification_failed with a generic one. There is no request body, so
+// nothing to validate before the lookup.
+func (s *server) PostCommunicationsChannelsByIdVerify(ctx context.Context, req gen.PostCommunicationsChannelsByIdVerifyRequestObject) (gen.PostCommunicationsChannelsByIdVerifyResponseObject, error) {
+	q := store.New(s.deps.Pool)
+	channel, err := q.GetChannelByID(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PostCommunicationsChannelsByIdVerify404Response{}, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("communications: get channel: %w", err)
+	}
+
+	verifyErr := s.verifyChannel(ctx, q, channel)
+	if verifyErr == nil {
+		return gen.PostCommunicationsChannelsByIdVerify200JSONResponse(gen.ChannelVerifyResponse{Ok: true}), nil
+	}
+	if errors.Is(verifyErr, mail.ErrDestinationRejected) {
+		return gen.PostCommunicationsChannelsByIdVerify422JSONResponse(flatErrorBody(
+			"destination_rejected", verifyErr.Error())), nil
+	}
+	return gen.PostCommunicationsChannelsByIdVerify422JSONResponse(flatErrorBody(
+		"verification_failed", "Channel verification failed.")), nil
+}

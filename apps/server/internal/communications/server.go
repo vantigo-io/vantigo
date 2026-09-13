@@ -19,3 +19,9 @@ var _ gen.StrictServerInterface = (*server)(nil)
 func newServer(d module.Deps) *server {
 	return &server{deps: d}
 }
+
+// ptr returns a pointer to a copy of v, for the optional fields of a
+// generated response type (the same helper customers/server.go and
+// identity/scim_input.go each carry — depguard forbids sharing it across
+// modules for one line of code).
+func ptr[T any](v T) *T { return &v }
