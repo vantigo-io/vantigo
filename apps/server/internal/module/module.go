@@ -65,6 +65,16 @@ type Deps struct {
 	// live SMTP server or the guard's network reach, the same shape
 	// HTTPTransport gives an outbound HTTP client.
 	SMTPVerify func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
+	// SMTPSend is the function a module's own outbound mail path
+	// (communications' outbox delivery worker, so far the only one) calls to
+	// deliver one message through a *caller-supplied* SMTP configuration —
+	// the channel's own stored credentials, not the process's configured
+	// Mail sender, which is why this is a function taking a config rather
+	// than another mail.Sender. nil in production, meaning mail.SendOutbound
+	// itself, which dials through internal/mail's real DNS-rebinding guard;
+	// a test harness sets it to a fake that records the envelope, the same
+	// seam SMTPVerify gives the verify-only path.
+	SMTPSend func(ctx context.Context, cfg config.MailConfig, allowInsecure bool, msg mail.Outbound) error
 	// ObjectStore is the unscoped object store a module's own attachment
 	// paths (communications' staging and download, so far the only ones)
 	// put and get bytes through. nil in production, meaning that module

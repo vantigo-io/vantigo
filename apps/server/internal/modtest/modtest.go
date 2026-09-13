@@ -121,6 +121,7 @@ type setup struct {
 	backoff     func(int) time.Duration
 	directory   contracts.CustomerDirectory
 	smtpVerify  func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
+	smtpSend    func(ctx context.Context, cfg config.MailConfig, allowInsecure bool, msg mail.Outbound) error
 	objectStore storage.ObjectStore
 }
 
@@ -180,6 +181,17 @@ func WithDirectory(d contracts.CustomerDirectory) Option {
 // path production uses.
 func WithSMTPVerify(fn func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error) Option {
 	return func(s *setup) { s.smtpVerify = fn }
+}
+
+// WithSMTPSend sets the function Deps.SMTPSend carries, for a module whose
+// own outbound mail path (communications' outbox delivery worker) must send
+// in a test without a live SMTP server: fn stands in for mail.SendOutbound
+// itself, typically a function that records the envelope it was handed and
+// returns nil — or returns an error, to drive the retry and terminal-failure
+// paths deterministically. Unset, a module falls back to mail.SendOutbound,
+// the same guarded path production uses.
+func WithSMTPSend(fn func(ctx context.Context, cfg config.MailConfig, allowInsecure bool, msg mail.Outbound) error) Option {
+	return func(s *setup) { s.smtpSend = fn }
 }
 
 // WithObjectStore sets Deps.ObjectStore directly to store, for a module
@@ -292,6 +304,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		HTTPBackoff:   s.backoff,
 		Directory:     s.directory,
 		SMTPVerify:    s.smtpVerify,
+		SMTPSend:      s.smtpSend,
 		ObjectStore:   s.objectStore,
 	}
 	access := identity.NewAccess(h.deps)
