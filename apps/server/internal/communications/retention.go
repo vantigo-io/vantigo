@@ -211,6 +211,24 @@ func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
 		if err != nil {
 			return fmt.Errorf("communications: select retention candidates: %w", err)
 		}
+		if len(messageIDs) == 0 {
+			// A deliberate, small divergence (fix round 1, minor 2). .NET has
+			// no early return: every batch, the empty last one of each drain
+			// included, ends with two full-table anti-joins over
+			// conversation_participants and participants. A 10k-message drain
+			// at the default batch size is ~100 of those, all but the last
+			// scanning tables the batch did not touch.
+			//
+			// Skipping them here is safe because this worker is the only
+			// producer of the orphans they clean: a conversation loses its
+			// last message only in the step-6 delete below, and a participant
+			// loses its last link only in the step-7 delete that follows it.
+			// A batch that deleted no message can therefore have created no
+			// orphan, and the batch that DID delete messages already swept
+			// after itself. Pinned by
+			// TestRetention_AnEmptyBatchSkipsTheOrphanSweeps.
+			return nil
+		}
 
 		// Step 1, then step 2. NOT the other way round: see the header.
 		if err := q.DeleteMessageEventsByMessageIDs(ctx, messageIDs); err != nil {
@@ -298,48 +316,71 @@ func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
 // Without this, nothing in the port would ever expire a staged upload: the
 // 24-hour window staging stamps would be decorative and every abandoned upload
 // would keep its object forever.
+//
+// It DRAINS, one page of retentionUploadExpiryBatch per transaction, rather
+// than doing .NET's single page per call (fix round 1, minor 3). The constant
+// is .NET's, but its meaning is not portable: over there the sweep rode the
+// scanner's one-minute cadence, so 100 a page meant 6000 an hour; here it rides
+// retention's 60-minute poll, where one page would mean 100 an hour — a ceiling
+// low enough that a busy installation's staged uploads would accumulate faster
+// than they expire, which is exactly the leak D3 re-homed this sweep to
+// prevent. Draining keeps the per-transaction bound the constant was chosen for
+// while letting one cycle clear whatever is actually due. Each pass strictly
+// shrinks the eligible set — an expired row no longer matches the predicate,
+// and a row that lost the conditional claim is 'claimed' and excluded too — so
+// the loop terminates, and the two belt-and-braces breaks below bound it even
+// if that ever stopped being true.
 func (w *RetentionWorker) ExpireStagedUploads(ctx context.Context) (int, error) {
-	now := w.now()
-	q := store.New(w.deps.Pool)
-	candidates, err := q.SelectExpiredAttachmentUploads(ctx, store.SelectExpiredAttachmentUploadsParams{
-		Now: now, BatchSize: retentionUploadExpiryBatch,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("communications: select expired staged uploads: %w", err)
-	}
-	if len(candidates) == 0 {
-		// .NET returns before opening a transaction too (`:260`).
-		return 0, nil
-	}
-
-	expired := 0
-	err = db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		for _, candidate := range candidates {
-			// The conditional transition IS the expiry claim: a concurrent
-			// reply may have taken this upload clean -> claimed since the
-			// select, and this worker must not then queue its object for
-			// deletion (.NET's own comment, `:264-266`).
-			rows, err := txq.ExpireAttachmentUpload(ctx, store.ExpireAttachmentUploadParams{
-				ID: candidate.ID, Now: now,
-			})
-			if err != nil {
-				return fmt.Errorf("communications: expire staged upload: %w", err)
-			}
-			if rows != 1 {
-				continue
-			}
-			expired++
-			if err := queueObjectForDeletion(ctx, txq, candidate.StorageKey, nil, now); err != nil {
-				return err
-			}
+	total := 0
+	for {
+		now := w.now()
+		q := store.New(w.deps.Pool)
+		candidates, err := q.SelectExpiredAttachmentUploads(ctx, store.SelectExpiredAttachmentUploadsParams{
+			Now: now, BatchSize: retentionUploadExpiryBatch,
+		})
+		if err != nil {
+			return total, fmt.Errorf("communications: select expired staged uploads: %w", err)
 		}
-		return nil
-	})
-	if err != nil {
-		return 0, err
+		if len(candidates) == 0 {
+			// .NET returns before opening a transaction too (`:260`).
+			return total, nil
+		}
+
+		expired := 0
+		err = db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			txq := store.New(tx)
+			for _, candidate := range candidates {
+				// The conditional transition IS the expiry claim: a concurrent
+				// reply may have taken this upload clean -> claimed since the
+				// select, and this worker must not then queue its object for
+				// deletion (.NET's own comment, `:264-266`).
+				rows, err := txq.ExpireAttachmentUpload(ctx, store.ExpireAttachmentUploadParams{
+					ID: candidate.ID, Now: now,
+				})
+				if err != nil {
+					return fmt.Errorf("communications: expire staged upload: %w", err)
+				}
+				if rows != 1 {
+					continue
+				}
+				expired++
+				if err := queueObjectForDeletion(ctx, txq, candidate.StorageKey, nil, now); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return total, err
+		}
+		total += expired
+		// A short page means the queue is drained; a page that expired
+		// nothing means every candidate was claimed out from under this
+		// worker, and the next cycle can have them.
+		if expired == 0 || len(candidates) < retentionUploadExpiryBatch {
+			return total, nil
+		}
 	}
-	return expired, nil
 }
 
 // retentionDays is `max(1, Communications:Retention:Days)`, default 365
