@@ -507,7 +507,7 @@ export interface components {
                     displayName: string | null;
                     /** Format: uuid */
                     id: string;
-                };
+                } | null;
                 subject: string | null;
                 textBody: string | null;
             }[];

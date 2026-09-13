@@ -1,6 +1,7 @@
 package communications_test
 
 import (
+	"bytes"
 	"net/http"
 	"strings"
 	"testing"
@@ -469,6 +470,235 @@ func TestCreateConversation_ValidCustomerIsAssociatedManually(t *testing.T) {
 	}
 }
 
+// ---- POST /conversations, the recipients[] (generic) delivery path ----
+//
+// Task 5 fix round 1, item 3: resolveGenericDeliveries
+// (conversations_create.go) — AddGenericDeliveriesAsync's other branch,
+// taken whenever the request supplies `recipients` — had no test coverage
+// at all; neither did the recipients[]-specific validation rules in
+// conversations_validation.go. The tests below close that gap.
+
+// newConversationBodyWithRecipients is a valid CreateConversationRequest
+// using the generic recipients[] path instead of to/cc: subject and
+// textBody set, recipients populated, to/cc both omitted so
+// resolveGenericDeliveries — not resolveSimpleDeliveries — is the branch
+// PostCommunicationsConversations takes (conversations_create.go:
+// `len(recipients) == 0 && channelType == "email"` is false whenever
+// recipients is non-empty).
+func newConversationBodyWithRecipients(recipients []map[string]any) map[string]any {
+	return map[string]any{
+		"subject":    "Subject " + uuid.NewString(),
+		"textBody":   "Body text",
+		"recipients": recipients,
+	}
+}
+
+func messageDeliveries(t *testing.T, message map[string]any) []map[string]any {
+	t.Helper()
+	raw, ok := message["deliveries"].([]any)
+	if !ok {
+		t.Fatalf("message has no deliveries array: %v", message)
+	}
+	out := make([]map[string]any, 0, len(raw))
+	for _, d := range raw {
+		m, ok := d.(map[string]any)
+		if !ok {
+			t.Fatalf("delivery is not an object: %v", d)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// TestCreateConversation_RecipientsArrayByAddress proves the recipients[]
+// path resolves a bare address entry to a delivery: the participant is
+// found-or-created by its *normalised* address (EmailSuppression.Normalize
+// — uppercased, design doc D7), and — unlike the simple to/cc path, which
+// keeps the caller's raw address on the delivery row — the generic path
+// stores the delivery's destination from the resolved participant's own
+// (already normalised) address (conversations_create.go:
+// `recipientAddress: participant.Address`).
+func TestCreateConversation_RecipientsArrayByAddress(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+
+	body := newConversationBodyWithRecipients([]map[string]any{
+		{"address": "generic@example.test", "type": "cc"},
+	})
+	m := createConversation(t, c, body)
+
+	r := c.Do(http.MethodGet, "/api/v1/communications/conversations/"+m.ConversationId, nil)
+	var detail conversationDetailJSON
+	r.JSON(&detail)
+	if len(detail.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(detail.Messages))
+	}
+	deliveries := messageDeliveries(t, detail.Messages[0])
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries = %d, want 1", len(deliveries))
+	}
+	if got := deliveries[0]["destination"]; got != "GENERIC@EXAMPLE.TEST" {
+		t.Errorf("destination = %v, want the normalised (uppercased) address", got)
+	}
+	if got := deliveries[0]["recipientType"]; got != "cc" {
+		t.Errorf("recipientType = %v, want cc", got)
+	}
+}
+
+// TestCreateConversation_RecipientsArrayByParticipantId proves the
+// participantId branch: a recipient naming an existing participant on the
+// same channel (by id) resolves without needing an address at all, and
+// defaults recipientType to "to" when the entry omits it.
+func TestCreateConversation_RecipientsArrayByParticipantId(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+
+	first := createConversation(t, c, newConversationBody("shared@example.test"))
+	firstDetail := conversationDetailJSON{}
+	c.Do(http.MethodGet, "/api/v1/communications/conversations/"+first.ConversationId, nil).JSON(&firstDetail)
+	if len(firstDetail.Participants) != 1 {
+		t.Fatalf("first conversation participants = %d, want 1", len(firstDetail.Participants))
+	}
+	participantID := firstDetail.Participants[0].Id
+
+	body := newConversationBodyWithRecipients([]map[string]any{
+		{"participantId": participantID},
+	})
+	second := createConversation(t, c, body)
+
+	var secondDetail conversationDetailJSON
+	c.Do(http.MethodGet, "/api/v1/communications/conversations/"+second.ConversationId, nil).JSON(&secondDetail)
+	deliveries := messageDeliveries(t, secondDetail.Messages[0])
+	if len(deliveries) != 1 {
+		t.Fatalf("deliveries = %d, want 1", len(deliveries))
+	}
+	if got := deliveries[0]["recipientType"]; got != "to" {
+		t.Errorf("recipientType = %v, want to (the default when omitted)", got)
+	}
+	if got := deliveries[0]["destination"]; got != "SHARED@EXAMPLE.TEST" {
+		t.Errorf("destination = %v, want the existing participant's stored (normalised) address", got)
+	}
+}
+
+// TestCreateConversation_RecipientsArrayValidation_InvalidEntry pins the
+// per-index recipients[i] field error (inventory §3.1): an entry with
+// neither a participantId nor a valid address is rejected before any
+// delivery resolution is attempted.
+func TestCreateConversation_RecipientsArrayValidation_InvalidEntry(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply")
+
+	body := newConversationBodyWithRecipients([]map[string]any{
+		{"address": "not-an-email"},
+	})
+	r := c.Do(http.MethodPost, "/api/v1/communications/conversations", body, modtest.Header("Idempotency-Key", uuid.NewString()))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if got := errBody.field("recipients[0]"); len(got) != 1 || got[0] != "A participant id or valid channel address is required." {
+		t.Errorf("fields[recipients[0]] = %v, want the required message", got)
+	}
+}
+
+// TestCreateConversation_RecipientsArrayValidation_TooMany pins the
+// recipients[] count cap.
+func TestCreateConversation_RecipientsArrayValidation_TooMany(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply")
+
+	recipients := make([]map[string]any, 101)
+	for i := range recipients {
+		recipients[i] = map[string]any{"participantId": uuid.NewString()}
+	}
+	body := newConversationBodyWithRecipients(recipients)
+	r := c.Do(http.MethodPost, "/api/v1/communications/conversations", body, modtest.Header("Idempotency-Key", uuid.NewString()))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if got := errBody.field("recipients"); len(got) != 1 || got[0] != "At most 100 recipients are allowed." {
+		t.Errorf("fields[recipients] = %v, want the count-limit message", got)
+	}
+}
+
+// TestCreateConversation_RecipientsArrayContactId proves the contactId
+// branch both ways: a contactId contracts.CustomerDirectory resolves (2001,
+// fakeDirectory in harness_test.go) succeeds; one it does not resolve
+// throws unhandled in .NET (`AddGenericDeliveriesAsync:430-431`) and is
+// ported as errContactNotFound, surfacing as a 500 — deliberately, not
+// hardened into a 4xx (the same faithful treatment task 5 dispatch point 7
+// asks for on PATCH's assignedUserId).
+func TestCreateConversation_RecipientsArrayContactId(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply")
+
+	t.Run("known contact succeeds", func(t *testing.T) {
+		t.Parallel()
+		body := newConversationBodyWithRecipients([]map[string]any{
+			{"address": "known-contact@example.test", "contactId": 2001},
+		})
+		r := c.Do(http.MethodPost, "/api/v1/communications/conversations", body, modtest.Header("Idempotency-Key", uuid.NewString()))
+		if r.Status != http.StatusCreated {
+			t.Fatalf("status %d body %s, want 201", r.Status, r.Body)
+		}
+	})
+
+	t.Run("unknown contact is a 500", func(t *testing.T) {
+		t.Parallel()
+		body := newConversationBodyWithRecipients([]map[string]any{
+			{"address": "unknown-contact@example.test", "contactId": 999999},
+		})
+		r := c.Do(http.MethodPost, "/api/v1/communications/conversations", body, modtest.Header("Idempotency-Key", uuid.NewString()),
+			modtest.SkipContract("deliberately unvalidated per .NET's unhandled InvalidOperationException; the 500 is expected, not documented as a contract response"))
+		if r.Status != http.StatusInternalServerError {
+			t.Fatalf("status %d body %s, want 500", r.Status, r.Body)
+		}
+	})
+}
+
+// TestCreateConversation_RecipientsArrayUnresolvableEntryIsSkippedSilently
+// pins a genuine .NET oddity this port reproduces faithfully: a recipient
+// naming a participantId that does not exist, with no address to fall back
+// on, passes ValidateConversation (a participantId alone satisfies its
+// per-entry check) but resolves to nothing at delivery time and is silently
+// dropped — `if (participant is null) continue;` — rather than erroring.
+// The conversation is still created, with a message that carries zero
+// deliveries.
+func TestCreateConversation_RecipientsArrayUnresolvableEntryIsSkippedSilently(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+
+	body := newConversationBodyWithRecipients([]map[string]any{
+		{"participantId": uuid.NewString()},
+	})
+	m := createConversation(t, c, body)
+
+	var detail conversationDetailJSON
+	c.Do(http.MethodGet, "/api/v1/communications/conversations/"+m.ConversationId, nil).JSON(&detail)
+	if len(detail.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1", len(detail.Messages))
+	}
+	deliveries := messageDeliveries(t, detail.Messages[0])
+	if len(deliveries) != 0 {
+		t.Errorf("deliveries = %v, want none (the recipient's participantId does not exist and it carries no address)", deliveries)
+	}
+}
+
 // ---- GetCommunicationsConversationsById (Get) ----
 
 func TestGetConversation_NotFound(t *testing.T) {
@@ -514,6 +744,39 @@ func TestGetConversation_ReplyRecipientsAreAlwaysAllNegative(t *testing.T) {
 	}
 }
 
+// TestGetConversation_MessageParticipantIsNullNotZeroValue is task 5 fix
+// round 1's item 4 teeth check: before the fix, participant was a
+// non-pointer field in the generated contract, so a message with no
+// participant (every message this port ever writes — neither AddNote nor
+// CreateConversation sets participant_id, matching .NET) rendered as the
+// zero-value participant object instead of JSON null. The contract now
+// marks it nullable (openapi/communications.yaml) and the handler emits a
+// nil pointer; this asserts the wire shape directly, since
+// conversationDetailJSON's Messages field decodes generically
+// (map[string]any) rather than through a typed, necessarily-non-nil struct
+// that would hide the difference.
+func TestGetConversation_MessageParticipantIsNullNotZeroValue(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, c, newConversationBody("x@example.test"))
+
+	r := c.Do(http.MethodGet, "/api/v1/communications/conversations/"+m.ConversationId, nil)
+	var detail conversationDetailJSON
+	r.JSON(&detail)
+	if len(detail.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1 (the outbound message CreateConversation wrote)", len(detail.Messages))
+	}
+	participant, present := detail.Messages[0]["participant"]
+	if !present {
+		t.Fatal(`messages[0] has no "participant" key at all, want the key present with a null value`)
+	}
+	if participant != nil {
+		t.Errorf("messages[0].participant = %v, want null (this message was written with no participant_id)", participant)
+	}
+}
+
 func TestGetConversation_RequiresView(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -548,6 +811,40 @@ func TestPatchConversation_NullBodyIs400BeforeLookup(t *testing.T) {
 	r.JSON(&body)
 	if body.Error.Code != "invalid_request" || body.Error.Message != "Status must be open, closed, or archived." {
 		t.Errorf("error = %+v, want invalid_request / %q", body.Error, "Status must be open, closed, or archived.")
+	}
+}
+
+// TestPatchConversation_OversizedBodyIsDecodeErrorNotNullBody is task 5 fix
+// round 1's item 5 teeth check: a body withRawPatchBody fails to *read* —
+// here, one over this operation's MaxBytesReader cap — must not be treated
+// as "the caller sent nothing." Before the fix, any read error fell through
+// to the handler with an empty body, indistinguishable from a genuine null
+// body and answering the same "Status must be open, closed, or archived."
+// 400. The fix routes a read failure through the platform's own
+// decode-error response instead (module.go's writeDecodeError,
+// application/problem+json) — a different shape entirely from this
+// module's flat CommunicationErrorResponse 400s.
+func TestPatchConversation_OversizedBodyIsDecodeErrorNotNullBody(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	reply := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, reply, newConversationBody("x@example.test"))
+	c := h.SignIn(t, "communications:conversations-manage", "communications:conversations-view")
+
+	oversized := append([]byte(`{"status":"closed","padding":"`), bytes.Repeat([]byte("x"), 2*1024*1024)...)
+	oversized = append(oversized, []byte(`"}`)...)
+	r := c.Do(http.MethodPatch, "/api/v1/communications/conversations/"+m.ConversationId, nil,
+		modtest.RawBody("application/json", oversized),
+		modtest.SkipContract("an oversized body's 400 is the platform's generic decode-error problem, not this operation's documented CommunicationErrorResponse shape"))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	if ct := r.Header("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json (the generic decode-error shape, not this module's own CommunicationErrorResponse)", ct)
+	}
+	if strings.Contains(string(r.Body), "Status must be open") {
+		t.Errorf("body = %s, want the platform's generic decode-error problem, not PATCH's null-body message", r.Body)
 	}
 }
 

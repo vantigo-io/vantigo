@@ -168,7 +168,7 @@ type ConversationDetailResponse struct {
 		HtmlBody    *string            `json:"htmlBody"`
 		Id          openapi_types.UUID `json:"id"`
 		OccurredAt  time.Time          `json:"occurredAt"`
-		Participant struct {
+		Participant *struct {
 			Address     string             `json:"address"`
 			ChannelId   openapi_types.UUID `json:"channelId"`
 			ContactId   *int32             `json:"contactId"`
