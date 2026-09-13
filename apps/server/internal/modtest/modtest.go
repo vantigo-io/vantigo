@@ -43,6 +43,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -175,9 +177,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 
 	// httptest's peer is always 127.0.0.1, the one trusted proxy, so each
 	// client's X-Forwarded-For address becomes its httpx.ClientIP and every
-	// IP-keyed limit is per client. MODULES is left at its default, which
-	// enables all three business modules, so any module under test is mounted
-	// without the test having to say so.
+	// IP-keyed limit is per client.
 	env := map[string]string{
 		"APP_ENV":             "development",
 		"DATABASE_URL":        databaseURL,
@@ -196,6 +196,35 @@ func New(t *testing.T, opts ...Option) *Harness {
 	if len(s.modules) == 0 {
 		t.Fatal("modtest: no module under test; pass modtest.WithModule(m)")
 	}
+
+	// MODULES is set explicitly from the modules WithModule registered,
+	// rather than left at config's own default (customers, products,
+	// energy): that default is a production choice — communications, for
+	// one, is deliberately not on it yet (config.go's defaultModules
+	// comment) — and a harness's job is to mount whatever module it was
+	// asked to test, not whatever happens to ship enabled today. Without
+	// this, a module absent from the production default would compose
+	// silently short of every route it declares, and every test built on
+	// this harness would see 404s that look like a routing bug rather than
+	// what they actually are: enabledModules filtering the module out.
+	//
+	// "customers" is always included alongside whatever was requested:
+	// config.go's modules() rejects "energy" or "communications" without it
+	// (both read contracts.CustomerDirectory), so a harness testing either
+	// would otherwise fail configuration validation before Compose ever
+	// runs. Including it unconditionally costs nothing for a harness that
+	// did not ask for it and keeps this file from having to mirror
+	// config.go's dependency rule as new modules grow their own.
+	moduleSet := map[string]bool{"customers": true}
+	for _, m := range s.modules {
+		moduleSet[m.Name] = true
+	}
+	names := make([]string, 0, len(moduleSet))
+	for name := range moduleSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	env["MODULES"] = strings.Join(names, ",")
 
 	cfg, err := config.Load(env)
 	if err != nil {
