@@ -14,12 +14,6 @@ import (
 // routed from the first commit and each later task replaces the stubs of
 // the area it implements.
 
-// PostCommunicationsConversationsByIdReply Reply to a conversation
-// (POST /api/v1/communications/conversations/{id}/reply)
-func (s *server) PostCommunicationsConversationsByIdReply(context.Context, gen.PostCommunicationsConversationsByIdReplyRequestObject) (gen.PostCommunicationsConversationsByIdReplyResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 // PostCommunicationsConversationsByIdAiDraft Generate an AI reply draft
 // (POST /api/v1/communications/conversations/{id}/ai/draft)
 func (s *server) PostCommunicationsConversationsByIdAiDraft(context.Context, gen.PostCommunicationsConversationsByIdAiDraftRequestObject) (gen.PostCommunicationsConversationsByIdAiDraftResponseObject, error) {

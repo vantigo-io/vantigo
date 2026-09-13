@@ -114,3 +114,52 @@ WHERE id = @id;
 UPDATE communications.attachment_cleanup_records
 SET status = 'owned', reservation_expires_at = NULL, lease_id = NULL, lease_until = NULL, last_error = NULL
 WHERE storage_key = @storage_key;
+
+-- Task 7 (Reply / QueueOutboundAsync, `:291-332`, inventory §5.5's "exactly
+-- where it is enforced"): the scanStatus gate's own two enforcement points,
+-- preflight and claim, plus the promotion writes that follow a successful
+-- claim.
+
+-- name: ListStagedAttachmentsForClaim :many
+-- The step-8 preflight (`:292-295`, inventory §5.5 item 1): every id in ids
+-- that is still staged, owned by caller on this conversation, clean and
+-- unexpired. The caller compares len(result) against len(ids) — a mismatch
+-- (an id that does not exist, belongs to someone else, or has expired)
+-- answers 409 attachments_not_ready before any write is attempted.
+SELECT id, file_name, content_type, size_bytes, content_hash, content_id, storage_key, is_inline
+FROM communications.attachment_uploads
+WHERE id = ANY(@ids::uuid[]) AND conversation_id = @conversation_id AND uploaded_by_user_id = @uploaded_by_user_id
+  AND scan_status = 'clean' AND expires_at > @now;
+
+-- name: ClaimStagedAttachments :execrows
+-- The step-10 conditional claim (`:310-315`, inventory §5.5 item 2): the
+-- exact same predicate as the preflight above, but as an UPDATE rather than
+-- a SELECT — the race fence against a concurrent expiry sweep or a second
+-- reply racing to consume the same staged upload. The caller compares the
+-- affected-row count against len(ids); a mismatch means something claimed
+-- or expired an id between the preflight and here, and the whole
+-- transaction rolls back to the same 409 attachments_not_ready the
+-- preflight itself answers.
+UPDATE communications.attachment_uploads
+SET scan_status = 'claimed'
+WHERE id = ANY(@ids::uuid[]) AND conversation_id = @conversation_id AND uploaded_by_user_id = @uploaded_by_user_id
+  AND scan_status = 'clean' AND expires_at > @now;
+
+-- name: InsertMessageAttachment :exec
+-- The promotion write (`:325`): one message_attachments row per claimed
+-- staged upload, copying its metadata verbatim — scan_status is always
+-- 'clean' (the value the claimed upload itself already carried; D2 means
+-- every staged upload is born clean, so this is never anything else) and
+-- the object itself is never moved or re-keyed (storage_key carries over
+-- unchanged, inventory §5.5's closing note).
+INSERT INTO communications.message_attachments
+    (id, message_id, file_name, content_type, size_bytes, content_hash, content_id, storage_key, scan_status, is_inline, created_at)
+VALUES (@id, @message_id, @file_name, @content_type, @size_bytes, @content_hash, @content_id, @storage_key, 'clean', @is_inline, @created_at);
+
+-- name: DeleteClaimedAttachmentUploads :exec
+-- The staging-row cleanup half of the same promotion (`:331`): once
+-- MarkCleanupRecordOwned has transferred object ownership, the now-redundant
+-- attachment_uploads rows (still carrying the 'claimed' status this same
+-- transaction just set) are deleted.
+DELETE FROM communications.attachment_uploads
+WHERE id = ANY(@ids::uuid[]) AND scan_status = 'claimed';

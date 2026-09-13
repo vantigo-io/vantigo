@@ -39,7 +39,6 @@ var pendingOperations = []string{
 	"getCommunicationsSuppressionsById",
 	"postCommunicationsConversationsByIdAiCustomerSuggestion",
 	"postCommunicationsConversationsByIdAiDraft",
-	"postCommunicationsConversationsByIdReply",
 	"postCommunicationsSuppressions",
 }
 

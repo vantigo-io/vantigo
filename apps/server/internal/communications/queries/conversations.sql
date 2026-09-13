@@ -251,3 +251,64 @@ RETURNING id, channel_id, address, display_name, contact_id, created_at;
 INSERT INTO communications.conversation_participants (conversation_id, participant_id, role)
 VALUES (@conversation_id, @participant_id, 'participant')
 ON CONFLICT DO NOTHING;
+
+-- Task 7 (Reply / QueueOutboundAsync, `:264-338`): the composer's own
+-- lookups. GetConversationForReply's channel join replaces the two-query
+-- shape (conversation, then channel) task 5's create path uses, matching
+-- .NET's single `Include(item => item.Channel)` eager load at `:268`.
+
+-- name: GetConversationForReply :one
+-- QueueOutboundAsync's own conversation+channel load (`:268`): id and
+-- current subject (BuildOutboundMessage's `request.Subject ?? conversation.Subject`,
+-- `:282`, and its own fill-once `conversation.Subject ??= subject`, `:389`,
+-- applied by UpdateConversationActivityForReply below), plus the channel's
+-- is_active (step 5's 422 channel_inactive, checked here rather than a
+-- second round trip) and type (step 9's `conversation.Channel.Type == "email"`
+-- suppression gate).
+SELECT c.id, c.subject, c.channel_id, ch.is_active AS channel_is_active, ch.type AS channel_type
+FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
+WHERE c.id = @id;
+
+-- name: GetLatestInboundParticipantAddress :one
+-- The non-constant half of ReplyRecipients (`:446-455`) that QueueOutboundAsync
+-- inlines directly (`:277`, `:283`): the latest, by occurred_at, inbound
+-- message's participant address. Structurally this can never return a row
+-- in this port — conversation_messages.direction's own CHECK constraint
+-- (migration 00006_communications_baseline.sql, "dispatch correction 3")
+-- admits only 'outbound' and 'internal_note', so no row with
+-- direction = 'inbound' can ever exist, not even through a raw fixture
+-- insert. Written as a real query rather than a hardcoded miss anyway
+-- (replyRecipientsOf's sibling comment in conversations.go explains why:
+-- faithful structure now, so a future inbound producer needs no change
+-- here) — its permanent zero-rows result is what step 7's
+-- 422 recipients_missing pins (design doc §1.1; task 7 dispatch's
+-- "outbound-only consequence").
+SELECT p.address
+FROM communications.conversation_messages m
+JOIN communications.participants p ON p.id = m.participant_id
+WHERE m.conversation_id = @conversation_id AND m.direction = 'inbound'
+ORDER BY m.occurred_at DESC
+LIMIT 1;
+
+-- name: ListSuppressedAddresses :many
+-- QueueOutboundAsync's suppression check (`:301-302`): every address in
+-- destinations that has a live suppression row, keyed by the already-
+-- normalised (uppercased, D7) form both sides compare on.
+SELECT normalized_email_address
+FROM communications.suppressions
+WHERE normalized_email_address = ANY(@addresses::text[]);
+
+-- name: UpdateConversationActivityForReply :exec
+-- BuildOutboundMessage's tracked-entity mutation for Reply (`:389`):
+-- `conversation.Subject ??= subject` — fill-once, matched here with
+-- COALESCE so an already-set subject is never overwritten — plus
+-- LastActivityAt and PreviewText, which always advance. Run only from
+-- inside queueReply's transaction, after every refusal check (steps 8, 9,
+-- 10) has passed: inventory §19.2 item 16 warns that .NET applies these
+-- same three fields to the *tracked* entity before its own refusal checks,
+-- but nothing persists on those paths because SaveChangesAsync is never
+-- reached — a Go port writing SQL directly must not apply them early either.
+UPDATE communications.conversations
+SET subject = COALESCE(subject, @message_subject), last_activity_at = @last_activity_at, preview_text = @preview_text
+WHERE id = @id;

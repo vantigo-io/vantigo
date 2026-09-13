@@ -183,6 +183,61 @@ func validateConversation(body gen.CreateConversationRequest) map[string][]strin
 	return errs
 }
 
+// normalizedReplyMode is `request.ReplyMode?.Trim().ToLowerInvariant() ??
+// "reply"` role in both ValidateReply (`:31`) and QueueOutboundAsync
+// (`:278`, `var replyMode = request.ReplyMode?.Trim().ToLowerInvariant() ??
+// "reply"`) — a single helper so validateReply's acceptance rule and the
+// handler's own use of the resolved mode can never drift apart. An omitted
+// replyMode defaults to "reply" (the contract's own documented default,
+// design doc §4.1; ConversationDtos.cs:17's DTO-level initialiser is what
+// makes omission valid at all) and is never rejected.
+func normalizedReplyMode(v *string) string {
+	if v == nil {
+		return "reply"
+	}
+	return strings.ToLower(strings.TrimSpace(*v))
+}
+
+// validateReply is ValidateReply (`:28-37`): unlike ValidateConversation,
+// subject is optional (subjectRequired: false — a reply's subject falls
+// back to the conversation's own, EP/ConversationEndpoints.cs:282), and two
+// fields ValidateConversation never touches are added: replyMode (must
+// normalise to "reply" or "reply_all") and attachmentIds (at most 20, no
+// duplicate id — the duplicate message overwrites the count message
+// exactly as inventory §19.2 item 6 describes for this same field).
+func validateReply(body gen.ReplyRequest) map[string][]string {
+	errs := validateSubjectAndBody(body.Subject, body.TextBody, body.HtmlBody, false)
+
+	mode := normalizedReplyMode(body.ReplyMode)
+	if mode != "reply" && mode != "reply_all" {
+		errs["replyMode"] = []string{"ReplyMode must be reply or reply_all."}
+	}
+
+	if body.AttachmentIds != nil {
+		ids := *body.AttachmentIds
+		if len(ids) > 20 {
+			errs["attachmentIds"] = []string{"At most 20 attachments are allowed."}
+		}
+		seen := make(map[string]bool, len(ids))
+		duplicate := false
+		for _, id := range ids {
+			key := id.String()
+			if seen[key] {
+				duplicate = true
+				break
+			}
+			seen[key] = true
+		}
+		if duplicate {
+			// Overwrites the count message above, matching .NET's second
+			// `if` unconditionally replacing whatever `errors["attachmentIds"]`
+			// already held (`:34-35`).
+			errs["attachmentIds"] = []string{"An attachment may appear only once."}
+		}
+	}
+	return errs
+}
+
 // validateNote is ValidateNote (`:39-44`).
 func validateNote(body gen.NoteRequest) map[string][]string {
 	errs := map[string][]string{}

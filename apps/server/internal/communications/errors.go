@@ -51,3 +51,18 @@ func flatErrorBody(code, message string) gen.CommunicationErrorResponse {
 	resp.Error.Message = message
 	return resp
 }
+
+// fieldsErrorBody is CommunicationEndpointHelpers.Error's other overload
+// (:31-32), the one call site outside ValidationError that still carries a
+// `fields` dictionary alongside a fixed code: Reply's own
+// recipient_suppressed (`EP/ConversationEndpoints.cs:304`,
+// `fields["recipients"] = suppressed`). Unlike validationErrorBody, code and
+// message are whatever the caller passes, not the fixed invalid_request
+// pair.
+func fieldsErrorBody(code, message string, fields map[string][]string) gen.CommunicationErrorResponse {
+	var resp gen.CommunicationErrorResponse
+	resp.Error.Code = code
+	resp.Error.Message = message
+	resp.Error.Fields = &fields
+	return resp
+}
