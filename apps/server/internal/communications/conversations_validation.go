@@ -205,11 +205,23 @@ func normalizedReplyMode(v *string) string {
 // normalise to "reply" or "reply_all") and attachmentIds (at most 20, no
 // duplicate id — the duplicate message overwrites the count message
 // exactly as inventory §19.2 item 6 describes for this same field).
-func validateReply(body gen.ReplyRequest) map[string][]string {
+//
+// replyModeExplicitlyNull is the caller's own answer (via module.go's raw
+// JSON body capture) to a question body.ReplyMode alone cannot answer: was
+// the "replyMode" key present in the request with a JSON null, as opposed
+// to absent entirely? Inventory §4.1: an *omitted* replyMode is valid (the
+// DTO's own default supplies "reply"), but an *explicit* null defeats that
+// default and hits .NET's null branch — `request?.ReplyMode?.Trim()...` on
+// a null ReplyMode is null, which is not "reply" or "reply_all" either, so
+// it fails the exact same check an unrecognised string would. Both readings
+// collapse to the same nil *string in Go, so this parameter is what tells
+// them apart.
+func validateReply(body gen.ReplyRequest, replyModeExplicitlyNull bool) map[string][]string {
 	errs := validateSubjectAndBody(body.Subject, body.TextBody, body.HtmlBody, false)
 
-	mode := normalizedReplyMode(body.ReplyMode)
-	if mode != "reply" && mode != "reply_all" {
+	if replyModeExplicitlyNull {
+		errs["replyMode"] = []string{"ReplyMode must be reply or reply_all."}
+	} else if mode := normalizedReplyMode(body.ReplyMode); mode != "reply" && mode != "reply_all" {
 		errs["replyMode"] = []string{"ReplyMode must be reply or reply_all."}
 	}
 

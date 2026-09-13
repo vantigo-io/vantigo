@@ -47,7 +47,7 @@ import (
 // immediately, so a request with both a bad status and a bad customerId
 // never reaches step 5 at all, existing conversation or not.
 func (s *server) PatchCommunicationsConversationsById(ctx context.Context, req gen.PatchCommunicationsConversationsByIdRequestObject) (gen.PatchCommunicationsConversationsByIdResponseObject, error) {
-	raw, _ := rawPatchBodyFrom(ctx)
+	raw, _ := rawJSONBodyFrom(ctx)
 	nullBody := req.Body == nil || strings.TrimSpace(string(raw)) == "null"
 
 	var status *string
