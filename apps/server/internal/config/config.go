@@ -152,6 +152,21 @@ type Config struct {
 	// BrregTimeout bounds one lookup end to end, retries included
 	// (BRREG_TIMEOUT); .NET's total-request timeout.
 	BrregTimeout time.Duration
+
+	// StorageProvider selects the internal/storage backend: "" (unset,
+	// STORAGE_PROVIDER) or "fs". When unset, internal/storage.New still
+	// returns a store rather than failing to start; every operation on it
+	// reports storage as not configured (docs/storage.md, design §2).
+	StorageProvider string
+	// StorageFSRoot is the fs driver's root directory (STORAGE_FS_ROOT),
+	// required and validated as an absolute path only when StorageProvider
+	// is "fs".
+	StorageFSRoot string
+	// StorageFSAllowInsecureRoot relaxes the fs driver's group/world-writable
+	// root check (STORAGE_FS_ALLOW_INSECURE_ROOT). Accepted only when Env is
+	// Development; set outside development it is a configuration error, the
+	// same shape as MAIL_DRIVER=log and OWNERS_ALLOW_INSECURE_NO_MFA.
+	StorageFSAllowInsecureRoot bool
 }
 
 // IsDevelopment reports whether APP_ENV=development.
@@ -239,6 +254,8 @@ func Load(env map[string]string) (*Config, error) {
 
 	c.BrregBaseURL = brregBaseURL(&p, env)
 	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)
+
+	objectStorage(&p, env, c)
 
 	if c.EnforcesTransportSecurity() {
 		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
@@ -372,6 +389,42 @@ func brregBaseURL(p *problems, env map[string]string) string {
 		return defaultBrregBaseURL
 	}
 	return strings.TrimSuffix(v, "/")
+}
+
+// objectStorage resolves STORAGE_PROVIDER, STORAGE_FS_ROOT and
+// STORAGE_FS_ALLOW_INSECURE_ROOT (design §7; docs/storage.md "Local
+// filesystem"). STORAGE_PROVIDER is the on/off switch: unset leaves storage
+// unconfigured rather than refusing to start — internal/storage.New returns
+// a store whose every operation fails closed, mirroring .NET's host, which
+// starts even with storage unconfigured (docs/storage.md).
+// STORAGE_FS_ALLOW_INSECURE_ROOT follows the same shape as MAIL_DRIVER=log
+// and OWNERS_ALLOW_INSECURE_NO_MFA: accepted, and meaningful, only when the
+// environment truly is development; set outside development it is a
+// configuration error regardless of what it would have done.
+func objectStorage(p *problems, env map[string]string, c *Config) {
+	switch env["STORAGE_PROVIDER"] {
+	case "":
+		// Unconfigured: fails closed at each operation, not at startup.
+	case "fs":
+		c.StorageProvider = "fs"
+	default:
+		p.add("STORAGE_PROVIDER", `must be "fs" if set`)
+	}
+
+	c.StorageFSRoot = env["STORAGE_FS_ROOT"]
+	switch {
+	case c.StorageProvider == "fs" && strings.TrimSpace(c.StorageFSRoot) == "":
+		p.add("STORAGE_FS_ROOT", `is required when STORAGE_PROVIDER is "fs"`)
+	case c.StorageProvider == "fs" && !filepath.IsAbs(c.StorageFSRoot):
+		p.add("STORAGE_FS_ROOT", "must be an absolute path")
+	case c.StorageProvider != "fs" && c.StorageFSRoot != "":
+		p.add("STORAGE_FS_ROOT", `is only valid when STORAGE_PROVIDER is "fs"`)
+	}
+
+	c.StorageFSAllowInsecureRoot = flag(p, env, "STORAGE_FS_ALLOW_INSECURE_ROOT")
+	if c.StorageFSAllowInsecureRoot && !c.IsDevelopment() {
+		p.add("STORAGE_FS_ALLOW_INSECURE_ROOT", "must not be 1 outside development")
+	}
 }
 
 func invalidPathRune(r rune) bool {
