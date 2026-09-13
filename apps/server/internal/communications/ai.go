@@ -185,6 +185,34 @@ func errorTypeName(err error) string {
 	return limitUTF16(name, aiMaxErrorSummaryChars)
 }
 
+// callerGaveUp reports whether a failed provider call is the CALLER
+// disappearing rather than the provider failing. .NET's catch is explicitly
+// "any NON-CANCELLATION exception" (inventory §17.2 step 11), so a cancelled
+// request must not be recorded as a provider outage — an audit table that
+// logs outages which never happened is worse than no audit table, because
+// someone will eventually trust it.
+//
+// Both halves matter. ctx.Err() catches the inbound request being cancelled
+// or timing out; errors.Is catches the outbound call reporting that same
+// cancellation, which is how a client disconnect actually surfaces here,
+// since complete() derives its context from this one. A DEADLINE from this
+// module's own provider timeout is deliberately not cancellation: that is a
+// real provider failure and is recorded as one.
+func callerGaveUp(ctx context.Context, err error) bool {
+	return ctx.Err() != nil || errors.Is(err, context.Canceled)
+}
+
+// recordInteraction writes the one ai_interactions row a call produces.
+// Every outcome funnels through here — success, both guards, the validation
+// rejection and the exception path — so inventory §17.5's "exactly one row
+// per non-503 call" rule lives in one statement instead of seven copies.
+func (s *server) recordInteraction(ctx context.Context, q *store.Queries, row store.InsertAiInteractionParams) error {
+	if err := q.InsertAiInteraction(ctx, row); err != nil {
+		return fmt.Errorf("communications: record AI interaction: %w", err)
+	}
+	return nil
+}
+
 // aiDigest is the lowercase SHA-256 hex of v (:282).
 func aiDigest(v string) string {
 	sum := sha256.Sum256([]byte(v))
@@ -396,14 +424,20 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 	row.DurationMs = ptr(time.Since(started).Milliseconds())
 
 	if callErr != nil {
+		if callerGaveUp(ctx, callErr) {
+			// Not a provider failure: the caller is gone. No row and no
+			// response — httpx.WriteError has its own cancellation branch
+			// that stays silent rather than answering a caller who left.
+			return nil, callErr
+		}
 		// The exception path (:77-85): the row is still written, carrying
 		// only the error's type name — never its message — and no
 		// result_summary.
 		s.deps.Logger.WarnContext(ctx, "communications: AI draft failed",
 			"conversationId", req.Id, "error", errorTypeName(callErr))
 		row.ErrorSummary = ptr(errorTypeName(callErr))
-		if err := q.InsertAiInteraction(ctx, row); err != nil {
-			return nil, fmt.Errorf("communications: record AI interaction: %w", err)
+		if err := s.recordInteraction(ctx, q, row); err != nil {
+			return nil, err
 		}
 		return gen.PostCommunicationsConversationsByIdAiDraft422JSONResponse(
 			flatErrorBody(aiFailedCode, aiDraftFailedMessage)), nil
@@ -414,8 +448,8 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 	row.OutputTokenCount = completion.outputTokens
 	row.ResultSummary = ptr(summaryDraftGenerated)
 	row.ValidationSummary = ptr(fmt.Sprintf("text_chars=%d;product_data=%t", utf16Length(text), aiProductDataUsed))
-	if err := q.InsertAiInteraction(ctx, row); err != nil {
-		return nil, fmt.Errorf("communications: record AI interaction: %w", err)
+	if err := s.recordInteraction(ctx, q, row); err != nil {
+		return nil, err
 	}
 
 	return gen.PostCommunicationsConversationsByIdAiDraft200JSONResponse(gen.AiDraftResponse{
@@ -446,10 +480,23 @@ func suggestionPrompt(csv, digestContext string) string {
 // prompt-injection guard: a model persuaded by injected text to name some
 // other customer cannot make this function return true.
 func parseSuggestion(raw string, candidates []int32) (customerID int32, confidence float64, rationale, validation string, ok bool) {
-	var probe any
-	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
+	// json.Valid first, because Decode below stops at the end of the first
+	// value and would accept trailing garbage that JsonDocument.Parse rejects.
+	if !json.Valid([]byte(raw)) {
 		// invalid_json is also the summary a parse throw yields in .NET,
 		// whose catch returns false without resetting the initial value.
+		return 0, 0, "", validationInvalidJSON, false
+	}
+	// UseNumber keeps each JSON number as the literal the model actually
+	// wrote instead of widening it to float64. That is what lets customerId
+	// be checked the way .NET's TryGetInt32 checks it: {"customerId": 1002.0}
+	// is mathematically integral but is not an int32 token, and .NET rejects
+	// it. Once a number has been through float64 there is no way to tell 1002
+	// from 1002.0 at all, so the distinction has to survive decoding.
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.UseNumber()
+	var probe any
+	if err := decoder.Decode(&probe); err != nil {
 		return 0, 0, "", validationInvalidJSON, false
 	}
 	obj, isObject := probe.(map[string]any)
@@ -457,20 +504,25 @@ func parseSuggestion(raw string, candidates []int32) (customerID int32, confiden
 		return 0, 0, "", validationFieldsOrRange, false
 	}
 
-	idRaw, idOK := obj["customerId"].(float64)
-	confidence, confOK := obj["confidence"].(float64)
+	idNumber, idOK := obj["customerId"].(json.Number)
+	confidenceNumber, confOK := obj["confidence"].(json.Number)
 	rationaleRaw, rationaleOK := obj["rationale"].(string)
 	if !idOK || !confOK || !rationaleOK {
 		return 0, 0, "", validationFieldsOrRange, false
 	}
-	if math.IsNaN(confidence) || math.IsInf(confidence, 0) || confidence < 0 || confidence > 1 {
+
+	// ParseInt on the literal is TryGetInt32: it rejects a fractional or
+	// exponent form ("1002.0", "1e3") and anything outside int32 alike.
+	id64, err := strconv.ParseInt(idNumber.String(), 10, 32)
+	if err != nil {
 		return 0, 0, "", validationFieldsOrRange, false
 	}
-	if idRaw != math.Trunc(idRaw) || idRaw < math.MinInt32 || idRaw > math.MaxInt32 {
+	confidence, err = strconv.ParseFloat(confidenceNumber.String(), 64)
+	if err != nil || math.IsNaN(confidence) || math.IsInf(confidence, 0) || confidence < 0 || confidence > 1 {
 		return 0, 0, "", validationFieldsOrRange, false
 	}
 
-	customerID = int32(idRaw)
+	customerID = int32(id64)
 	if !slices.Contains(candidates, customerID) {
 		return 0, 0, "", validationNotCandidate, false
 	}
@@ -547,8 +599,8 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	if conv.CustomerID != nil || associated {
 		row.ResultSummary = ptr(summaryProtected)
 		row.ValidationSummary = ptr(validationProtected)
-		if err := q.InsertAiInteraction(ctx, row); err != nil {
-			return nil, fmt.Errorf("communications: record AI interaction: %w", err)
+		if err := s.recordInteraction(ctx, q, row); err != nil {
+			return nil, err
 		}
 		return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion409JSONResponse(
 			flatErrorBody(aiProtectedCode, aiProtectedMessage)), nil
@@ -559,8 +611,8 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	if len(candidates) < 2 {
 		row.ResultSummary = ptr(summaryInsufficient)
 		row.ValidationSummary = ptr(validationInsufficient)
-		if err := q.InsertAiInteraction(ctx, row); err != nil {
-			return nil, fmt.Errorf("communications: record AI interaction: %w", err)
+		if err := s.recordInteraction(ctx, q, row); err != nil {
+			return nil, err
 		}
 		return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion422JSONResponse(
 			flatErrorBody(aiInsufficientCode, aiInsufficientMsg)), nil
@@ -571,6 +623,11 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	row.DurationMs = ptr(time.Since(started).Milliseconds())
 
 	if callErr != nil {
+		if callerGaveUp(ctx, callErr) {
+			// As on the draft path: a vanished caller is not an outage, so
+			// nothing is audited and nothing is answered.
+			return nil, callErr
+		}
 		// The exception path, and the module's most surprising response: a
 		// provider outage here answers **200**, not an error.
 		//
@@ -599,8 +656,8 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 		s.deps.Logger.WarnContext(ctx, "communications: AI customer suggestion failed",
 			"conversationId", req.Id, "error", errorTypeName(callErr))
 		row.ErrorSummary = ptr(errorTypeName(callErr))
-		if err := q.InsertAiInteraction(ctx, row); err != nil {
-			return nil, fmt.Errorf("communications: record AI interaction: %w", err)
+		if err := s.recordInteraction(ctx, q, row); err != nil {
+			return nil, err
 		}
 		return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion200JSONResponse(gen.AiCustomerSuggestionResponse{
 			InteractionId: row.ID,
@@ -618,8 +675,8 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	row.ValidationSummary = ptr(validation)
 	if !ok {
 		row.ResultSummary = ptr(summaryMalformed)
-		if err := q.InsertAiInteraction(ctx, row); err != nil {
-			return nil, fmt.Errorf("communications: record AI interaction: %w", err)
+		if err := s.recordInteraction(ctx, q, row); err != nil {
+			return nil, err
 		}
 		return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion422JSONResponse(
 			flatErrorBody(aiInvalidResponse, aiInvalidResponseMsg)), nil
@@ -649,8 +706,8 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 		}
 	}
 	row.ResultSummary = ptr(outcome)
-	if err := q.InsertAiInteraction(ctx, row); err != nil {
-		return nil, fmt.Errorf("communications: record AI interaction: %w", err)
+	if err := s.recordInteraction(ctx, q, row); err != nil {
+		return nil, err
 	}
 
 	return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion200JSONResponse(gen.AiCustomerSuggestionResponse{

@@ -62,8 +62,13 @@ const (
 // a bare *url.Error would reduce to the useless name "Error".
 type (
 	// aiTransportError is a request that never produced a response: a dial
-	// failure, a timeout, a cancelled context, or an unreadable body.
-	aiTransportError struct{}
+	// failure, a timeout, a cancelled context, or an unreadable body. It
+	// keeps the underlying cause so callers can tell a cancellation apart
+	// from a genuine provider failure with errors.Is — see callerGaveUp in
+	// ai.go, which must not record a vanished caller as an outage. The cause
+	// is never rendered into error_summary: errorTypeName reads the type, not
+	// the message.
+	aiTransportError struct{ err error }
 	// aiStatusError is a response with a non-2xx status.
 	aiStatusError struct{ status int }
 	// aiDecodeError is a 2xx response whose body is not the shape the
@@ -75,6 +80,10 @@ type (
 )
 
 func (aiTransportError) Error() string { return "communications: the AI provider could not be reached" }
+
+// Unwrap exposes the cause to errors.Is only; nothing ever formats it into a
+// persisted or returned string.
+func (e aiTransportError) Unwrap() error { return e.err }
 func (e aiStatusError) Error() string {
 	return fmt.Sprintf("communications: the AI provider responded %d", e.status)
 }
@@ -156,20 +165,20 @@ func (c *aiChatClient) complete(ctx context.Context, prompt string) (chatComplet
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, aiBaseURL+aiChatCompletionsPath, bytes.NewReader(payload))
 	if err != nil {
-		return chatCompletion{}, aiTransportError{}
+		return chatCompletion{}, aiTransportError{err: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return chatCompletion{}, aiTransportError{}
+		return chatCompletion{}, aiTransportError{err: err}
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return chatCompletion{}, aiTransportError{}
+		return chatCompletion{}, aiTransportError{err: err}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return chatCompletion{}, aiStatusError{status: resp.StatusCode}

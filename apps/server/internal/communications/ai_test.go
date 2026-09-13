@@ -1,10 +1,12 @@
 package communications_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -172,12 +174,12 @@ func draftBody(tone, instruction string) map[string]any {
 	return map[string]any{"tone": tone, "instruction": instruction}
 }
 
-func doDraft(c *modtest.Client, convID string, body map[string]any) *modtest.Response {
-	return c.Do(http.MethodPost, "/api/v1/communications/conversations/"+convID+"/ai/draft", body)
+func doDraft(c *modtest.Client, convID string, body map[string]any, opts ...modtest.RequestOption) *modtest.Response {
+	return c.Do(http.MethodPost, "/api/v1/communications/conversations/"+convID+"/ai/draft", body, opts...)
 }
 
-func doSuggest(c *modtest.Client, convID string) *modtest.Response {
-	return c.Do(http.MethodPost, "/api/v1/communications/conversations/"+convID+"/ai/customer-suggestion", nil)
+func doSuggest(c *modtest.Client, convID string, opts ...modtest.RequestOption) *modtest.Response {
+	return c.Do(http.MethodPost, "/api/v1/communications/conversations/"+convID+"/ai/customer-suggestion", nil, opts...)
 }
 
 // draftClient and suggestClient sign in with each operation's own permission
@@ -500,21 +502,34 @@ func TestAiDraft_ContextOnlyUsesInboundMessages(t *testing.T) {
 	})}
 	h := newAIHarness(t, tr)
 	convID := aiConversation(t, h)
+
+	// Every marker is unique to this run. An earlier version asserted the
+	// absence of "Body text", the body newConversationBody happens to use:
+	// editing that shared fixture would have turned this assertion vacuous
+	// while it carried on passing, which is precisely how a real assertion
+	// was lost elsewhere in this module. A string no other fixture can
+	// produce cannot be disarmed from a distance.
+	noteMarker := "internal-note-" + uuid.NewString()
+	outboundMarker := "outbound-body-" + uuid.NewString()
+	inboundMarker := "inbound-body-" + uuid.NewString()
+
 	h.Exec(t, `INSERT INTO communications.conversation_messages (id, conversation_id, direction, text_body, occurred_at, created_at)
-		VALUES ($1, $2, 'internal_note', 'secret internal note', $3, $3)`, uuid.New(), uuid.MustParse(convID), h.Now())
-	insertInboundMessage(t, h, convID, "the inbound one", h.Now())
+		VALUES ($1, $2, 'internal_note', $3, $4, $4)`, uuid.New(), uuid.MustParse(convID), noteMarker, h.Now())
+	h.Exec(t, `INSERT INTO communications.conversation_messages (id, conversation_id, direction, text_body, occurred_at, created_at)
+		VALUES ($1, $2, 'outbound', $3, $4, $4)`, uuid.New(), uuid.MustParse(convID), outboundMarker, h.Now())
+	insertInboundMessage(t, h, convID, inboundMarker, h.Now())
 
 	if r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply.")); r.Status != http.StatusOK {
 		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
 	}
 	prompt := tr.lastPrompt(t)
-	if strings.Contains(prompt, "secret internal note") {
+	if strings.Contains(prompt, noteMarker) {
 		t.Error("prompt leaked an internal note into the AI context")
 	}
-	if strings.Contains(prompt, "Body text") {
-		t.Error("prompt leaked the outbound message body into the AI context")
+	if strings.Contains(prompt, outboundMarker) {
+		t.Error("prompt leaked an outbound message body into the AI context")
 	}
-	if !strings.Contains(prompt, "the inbound one") {
+	if !strings.Contains(prompt, inboundMarker) {
 		t.Error("prompt is missing the inbound message")
 	}
 }
@@ -954,6 +969,11 @@ func TestAiCustomerSuggestion_InvalidResponsesAre422(t *testing.T) {
 		{"missing fields", `{"customerId":1001}`, "required_fields_or_ranges_invalid"},
 		{"confidence out of range", `{"customerId":1001,"confidence":1.5,"rationale":"x"}`, "required_fields_or_ranges_invalid"},
 		{"customer not a candidate", `{"customerId":4242,"confidence":0.9,"rationale":"x"}`, "customer_not_in_candidates"},
+		// 1002 IS a candidate, so this is rejected purely for the shape of
+		// the number: .NET's TryGetInt32 refuses a fractional token, and a
+		// float64 round-trip could not tell 1002.0 from 1002 to refuse it.
+		{"customerId is not an int32 token", `{"customerId":1002.0,"confidence":0.9,"rationale":"x"}`, "required_fields_or_ranges_invalid"},
+		{"customerId in exponent form", `{"customerId":1.002e3,"confidence":0.9,"rationale":"x"}`, "required_fields_or_ranges_invalid"},
 		{"rationale blank", `{"customerId":1001,"confidence":0.9,"rationale":"   "}`, "rationale_length_or_content_invalid"},
 		{"rationale too long", fmt.Sprintf(`{"customerId":1001,"confidence":0.9,"rationale":%q}`, strings.Repeat("x", 301)), "rationale_length_or_content_invalid"},
 	} {
@@ -1117,5 +1137,239 @@ func TestAiProvider_ReceivesTheConfiguredCredential(t *testing.T) {
 	}
 	if calls[0].Model != "gpt-4o-mini" {
 		t.Errorf("model = %q, want the configured model", calls[0].Model)
+	}
+}
+
+// ---- caller cancellation is not a provider failure ----
+
+// TestAiOperations_CallerCancellationWritesNoInteractionRow pins inventory
+// §17.2 step 11's "any NON-CANCELLATION exception": a request the caller
+// abandoned must not be recorded as a provider outage.
+//
+// The fake returns an error wrapping context.Canceled, which is exactly how a
+// client disconnect reaches this code in production — complete() derives its
+// context from the inbound request, so when the caller goes away the outbound
+// call fails with precisely this error. The audit row is the assertion that
+// matters: an ai_interactions table that logs outages which never happened is
+// worse than no table at all, because it will eventually be believed.
+func TestAiOperations_CallerCancellationWritesNoInteractionRow(t *testing.T) {
+	t.Parallel()
+	cancelled := func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("the caller went away: %w", context.Canceled)
+	}
+
+	t.Run("draft", func(t *testing.T) {
+		t.Parallel()
+		h := newAIHarness(t, &fakeChatTransport{respond: cancelled})
+		convID := aiConversation(t, h)
+
+		doDraft(draftClient(t, h), convID, draftBody("concise", "Reply."),
+			modtest.SkipContract("a cancelled request has no caller left to answer, so no documented status applies"))
+		if n := interactionCount(t, h, convID); n != 0 {
+			t.Errorf("ai_interactions rows = %d, want 0: a cancelled caller is not a provider failure", n)
+		}
+	})
+
+	t.Run("customer suggestion", func(t *testing.T) {
+		t.Parallel()
+		h := newAIHarness(t, &fakeChatTransport{respond: cancelled})
+		convID := suggestable(t, h)
+
+		doSuggest(suggestClient(t, h), convID,
+			modtest.SkipContract("a cancelled request has no caller left to answer, so no documented status applies"))
+		if n := interactionCount(t, h, convID); n != 0 {
+			t.Errorf("ai_interactions rows = %d, want 0: a cancelled caller is not a provider failure", n)
+		}
+	})
+}
+
+// TestAiDraft_ProviderTimeoutIsStillAnOutage is the other side of the
+// cancellation guard, and the reason it tests for context.Canceled
+// specifically rather than "any context error": this module's own provider
+// timeout produces a DEADLINE, which is a genuine provider failure and must
+// still be audited and still answer 422.
+func TestAiDraft_ProviderTimeoutIsStillAnOutage(t *testing.T) {
+	t.Parallel()
+	h := newAIHarness(t, &fakeChatTransport{respond: func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("provider too slow: %w", context.DeadlineExceeded)
+	}})
+	convID := aiConversation(t, h)
+
+	r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply."))
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d body %s, want 422: a deadline is an outage, not a cancellation", r.Status, r.Body)
+	}
+	if n := interactionCount(t, h, convID); n != 1 {
+		t.Errorf("ai_interactions rows = %d, want 1: a provider timeout is audited", n)
+	}
+}
+
+// ---- the exact prompt limits ----
+
+// TestAiDraft_TruncatesEachContextMessageTo1500Characters pins
+// MaxMessageCharacters. The marker sits immediately past the boundary, so the
+// test fails if the limit moves in either direction.
+func TestAiDraft_TruncatesEachContextMessageTo1500Characters(t *testing.T) {
+	t.Parallel()
+	tr := &fakeChatTransport{respond: respondWith(func() *http.Response {
+		return completion(`{"subject":"S","text":"T"}`, 1, 1)
+	})}
+	h := newAIHarness(t, tr)
+	convID := aiConversation(t, h)
+
+	kept := strings.Repeat("a", 1500)
+	marker := "TRUNCATED-" + uuid.NewString()
+	insertInboundMessage(t, h, convID, kept+marker, h.Now())
+
+	if r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply.")); r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	prompt := tr.lastPrompt(t)
+	if !strings.Contains(prompt, kept) {
+		t.Error("prompt lost part of the first 1500 characters of the message")
+	}
+	if strings.Contains(prompt, marker) {
+		t.Error("prompt kept text past 1500 characters, want each message truncated")
+	}
+}
+
+// TestAiDraft_TruncatesTheDraftTo10000Characters pins MaxDraftCharacters on
+// the response body and on the interaction row's text_chars in one go.
+func TestAiDraft_TruncatesTheDraftTo10000Characters(t *testing.T) {
+	t.Parallel()
+	marker := "OVERFLOW"
+	tr := &fakeChatTransport{respond: respondWith(func() *http.Response {
+		return completion(fmt.Sprintf(`{"subject":"S","text":%q}`, strings.Repeat("b", 10000)+marker), 1, 1)
+	})}
+	h := newAIHarness(t, tr)
+	convID := aiConversation(t, h)
+
+	r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply."))
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var body aiDraftJSON
+	r.JSON(&body)
+	if len(body.Text) != 10000 {
+		t.Errorf("text length = %d, want exactly 10000", len(body.Text))
+	}
+	if strings.Contains(body.Text, marker) {
+		t.Error("text kept content past 10000 characters")
+	}
+	got := modtest.One[*string](t, h,
+		`SELECT validation_summary FROM communications.ai_interactions WHERE id = $1`, uuid.MustParse(body.InteractionId))
+	if want := "text_chars=10000;product_data=false"; got == nil || *got != want {
+		t.Errorf("validation_summary = %v, want %q", got, want)
+	}
+}
+
+// TestAiDraft_TruncatesTheSubjectTo998Characters pins the subject bound on a
+// model-supplied subject. The conversation's own subject cannot exercise it —
+// conversations.subject is varchar(998), so the column caps it before the
+// code ever sees an over-long value.
+func TestAiDraft_TruncatesTheSubjectTo998Characters(t *testing.T) {
+	t.Parallel()
+	marker := "OVERFLOW"
+	tr := &fakeChatTransport{respond: respondWith(func() *http.Response {
+		return completion(fmt.Sprintf(`{"subject":%q,"text":"T"}`, strings.Repeat("s", 998)+marker), 1, 1)
+	})}
+	h := newAIHarness(t, tr)
+	convID := aiConversation(t, h)
+
+	r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply."))
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var body aiDraftJSON
+	r.JSON(&body)
+	if body.Subject == nil || len(*body.Subject) != 998 {
+		t.Errorf("subject length = %v, want exactly 998", body.Subject)
+	}
+	if body.Subject != nil && strings.Contains(*body.Subject, marker) {
+		t.Error("subject kept content past 998 characters")
+	}
+}
+
+// ---- the digest covers tone and instruction ----
+
+// TestAiDraft_DigestVariesWithToneAndInstruction pins that the digest is
+// taken over the context PLUS tone and instruction (:49), not the context
+// alone. Same conversation, same context, three digests: if tone and
+// instruction dropped out of the digest, two audit rows for materially
+// different requests would be indistinguishable.
+func TestAiDraft_DigestVariesWithToneAndInstruction(t *testing.T) {
+	t.Parallel()
+	tr := &fakeChatTransport{respond: respondWith(func() *http.Response {
+		return completion(`{"subject":"S","text":"T"}`, 1, 1)
+	})}
+	h := newAIHarness(t, tr)
+	convID := aiConversation(t, h)
+	c := draftClient(t, h)
+
+	digestOf := func(tone, instruction string) string {
+		r := doDraft(c, convID, draftBody(tone, instruction))
+		if r.Status != http.StatusOK {
+			t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+		}
+		var body aiDraftJSON
+		r.JSON(&body)
+		return modtest.One[string](t, h,
+			`SELECT context_digest FROM communications.ai_interactions WHERE id = $1`, uuid.MustParse(body.InteractionId))
+	}
+
+	base := digestOf("concise", "Reassure the customer.")
+	otherTone := digestOf("formal", "Reassure the customer.")
+	otherInstruction := digestOf("concise", "Apologise for the delay.")
+	repeat := digestOf("concise", "Reassure the customer.")
+
+	if base == otherTone {
+		t.Error("the digest did not change when only the tone changed")
+	}
+	if base == otherInstruction {
+		t.Error("the digest did not change when only the instruction changed")
+	}
+	if base != repeat {
+		t.Error("the digest changed for an identical request, want it stable over the same context/tone/instruction")
+	}
+}
+
+// ---- the 20-candidate window ----
+
+// TestAiCustomerSuggestion_TakesTheTwentyLowestCandidateIds is the
+// candidate-side twin of the 25-message context fixture, and exists for the
+// same reason: with 20 or fewer candidates, truncation and no truncation are
+// indistinguishable. With 25 the window has to prove which 20 it kept —
+// ordered by customer_id, Take(20), so 1001-1020 survive and 1021-1025 do not.
+func TestAiCustomerSuggestion_TakesTheTwentyLowestCandidateIds(t *testing.T) {
+	t.Parallel()
+	tr := &fakeChatTransport{respond: respondWith(func() *http.Response {
+		return completion(`{"customerId":1001,"confidence":0.9,"rationale":"ok"}`, 5, 5)
+	})}
+	h := newAIHarness(t, tr)
+	convID := aiConversation(t, h)
+	for id := 1001; id <= 1025; id++ {
+		insertCandidate(t, h, convID, int32(id))
+	}
+
+	if r := doSuggest(suggestClient(t, h), convID); r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	prompt := tr.lastPrompt(t)
+
+	wanted := make([]string, 0, 20)
+	for id := 1001; id <= 1020; id++ {
+		wanted = append(wanted, strconv.Itoa(id))
+	}
+	csv := strings.Join(wanted, ",")
+	if !strings.Contains(prompt, "candidates="+csv) {
+		t.Errorf("prompt does not carry the 20 lowest candidate ids as %q:\n%s", "candidates="+csv, prompt)
+	}
+	if !strings.Contains(prompt, "customerId must be one of ["+csv+"].") {
+		t.Error("the prompt's allowed-id list disagrees with the candidate window")
+	}
+	for id := 1021; id <= 1025; id++ {
+		if strings.Contains(prompt, strconv.Itoa(id)) {
+			t.Errorf("prompt contains candidate %d, which is outside the 20-candidate window", id)
+		}
 	}
 }
