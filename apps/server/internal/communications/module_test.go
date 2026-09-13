@@ -108,11 +108,12 @@ func TestModule_StubbedOperationAnswers501(t *testing.T) {
 	// Off-contract by design: a 501 is the platform's answer to a handler
 	// that does not exist yet, and no operation documents one.
 	// getCommunicationsConversations moved to a real implementation in task
-	// 5, so this now exercises a still-unimplemented operation instead
-	// (getCommunicationsSuppressions, task 5's dispatch does not cover
-	// suppressions).
-	r := h.SignIn(t, "communications:suppressions-manage").
-		Do(http.MethodGet, "/api/v1/communications/suppressions", nil, modtest.SkipContract("the operation is not implemented yet"))
+	// 5 and getCommunicationsSuppressions in task 8, so this now exercises
+	// getCommunicationsStatsSummary instead — stats stays a stub until task
+	// 9, and shares conversations-view with the operation this test
+	// previously used.
+	r := h.SignIn(t, "communications:conversations-view").
+		Do(http.MethodGet, "/api/v1/communications/stats/summary", nil, modtest.SkipContract("the operation is not implemented yet"))
 	if r.Status != http.StatusNotImplemented {
 		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
 	}
