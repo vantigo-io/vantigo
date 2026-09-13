@@ -61,27 +61,39 @@ var _ gen.StrictServerInterface = (*server)(nil)
 // *config.Config stands in for it, the same StorageProvider="" unconfigured
 // shape a real deployment with no STORAGE_PROVIDER gets.
 func newServer(d module.Deps) (*server, error) {
-	store := d.ObjectStore
-	if store == nil {
-		cfg := d.Config
-		if cfg == nil {
-			cfg = &config.Config{}
-		}
-		base, err := storage.New(cfg)
-		if err != nil {
-			return nil, fmt.Errorf("communications: build object store: %w", err)
-		}
-		scoped, err := storage.NewScope(base, storageScope)
-		if err != nil {
-			return nil, fmt.Errorf("communications: scope object store: %w", err)
-		}
-		store = scoped
+	store, err := moduleObjectStore(d)
+	if err != nil {
+		return nil, err
 	}
 	// newAIChatClient answers nil for any unconfigured or non-"openai"
 	// setup, which is exactly the 503 ai_unavailable state — so this never
 	// fails the mount, and a server built from a bare module.Deps (d.Config
 	// nil, module_internal_test.go) simply has no AI.
 	return &server{deps: d, store: store, ai: newAIChatClient(d.Config, d.HTTPTransport)}, nil
+}
+
+// moduleObjectStore is this module's object store: d.ObjectStore when a test
+// harness set one, otherwise this module's own storageScope-scoped wrapper over
+// internal/storage.New(d.Config). Shared by newServer (the HTTP operations) and
+// NewOutboxWorker (which reads attachment bytes for an outbound message), so
+// both reach the object store through exactly one construction and one scope.
+func moduleObjectStore(d module.Deps) (storage.ObjectStore, error) {
+	if d.ObjectStore != nil {
+		return d.ObjectStore, nil
+	}
+	cfg := d.Config
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	base, err := storage.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("communications: build object store: %w", err)
+	}
+	scoped, err := storage.NewScope(base, storageScope)
+	if err != nil {
+		return nil, fmt.Errorf("communications: scope object store: %w", err)
+	}
+	return scoped, nil
 }
 
 // ptr returns a pointer to a copy of v, for the optional fields of a
