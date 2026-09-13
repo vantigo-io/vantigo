@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
+	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
@@ -43,10 +45,18 @@ func mustLoadCommunicationsContract() *openapi3.T {
 // (recipients_missing) always fires first, since this port can never write
 // a row with conversation_messages.direction = 'inbound' (see
 // GetLatestInboundParticipantAddress's comment in queries/conversations.sql).
-// queueReply is exercised directly here, exactly the way task 4's
-// verifyChannel is exercised by channels_internal_test.go: the "steps 8-10
-// are provably unreachable, but must still be tested" solution the task 7
-// dispatch's emphasis on the double attachment gate calls for.
+//
+// Fix round 1 corrected how steps 8-10 are exercised here. The original
+// shape called queueReply directly with hand-supplied caller/channelType/
+// fingerprint/now — bypassing PostCommunicationsConversationsByIdReply
+// entirely, so the *production wiring* of those five values (the handler's
+// own call into queueReply) was never under test: deleting that call left
+// the whole package green. Every test below now drives the real handler,
+// doInternalReply, past step 7 by overriding only srv.resolveReplyRecipientsFunc
+// (server.go's own comment on that field has the full reasoning) — the same
+// "override one seam, drive the real thing" shape task 4's verifyChannel
+// established via channels_internal_test.go, moved one step earlier so the
+// handler's own wiring is genuinely exercised, not assumed.
 //
 // Step 6 (idempotency replay) is reachable through the real HTTP handler —
 // nothing about it depends on a resolved recipient — but exercising the
@@ -59,8 +69,9 @@ func mustLoadCommunicationsContract() *openapi3.T {
 // test: the same modtest composition harness_test.go's newHarness builds
 // (package communications_test), duplicated here because that helper is
 // unexported in a different package. srv is a *server built directly over
-// the harness's own module.Deps (h.Deps()), so queueReply can be called
-// without going through HTTP — the seam this file exists to use.
+// the harness's own module.Deps (h.Deps()), so its handler methods can be
+// called without going through HTTP, and its resolveReplyRecipientsFunc
+// field can be overridden per test — the seam this file exists to use.
 func newInternalHarness(t *testing.T) (*modtest.Harness, *server) {
 	t.Helper()
 	h := modtest.New(t, modtest.WithRecorder(internalRecorder), modtest.WithModule(Module()),
@@ -73,6 +84,35 @@ func newInternalHarness(t *testing.T) (*modtest.Harness, *server) {
 		t.Fatalf("newServer: %v", err)
 	}
 	return h, srv
+}
+
+// withFixedRecipient overrides srv's recipient-resolution seam to answer
+// address unconditionally — standing in for the inbound participant this
+// port's own database can never produce (see resolveReplyRecipients' own
+// comment). Every other step of PostCommunicationsConversationsByIdReply
+// still runs for real: the conversation/channel lookup, the channel-active
+// check, the fingerprint computation, the idempotency replay lookup, and
+// queueReply's own steps 8-10, all against the real database through the
+// real handler.
+func withFixedRecipient(srv *server, address string) {
+	srv.resolveReplyRecipientsFunc = func(context.Context, *store.Queries, uuid.UUID) (string, bool, error) {
+		return address, true, nil
+	}
+}
+
+// doInternalReply calls the real PostCommunicationsConversationsByIdReply
+// directly (no HTTP round trip, but the exact same production method the
+// mounted handler calls), with caller attached to ctx the same way
+// module.Router's Access.Check attaches a real Principal for every mounted
+// request.
+func doInternalReply(ctx context.Context, srv *server, caller, conversationID uuid.UUID, key string, body gen.ReplyRequest) (gen.PostCommunicationsConversationsByIdReplyResponseObject, error) {
+	ctx = contracts.WithPrincipal(ctx, contracts.Principal{UserID: caller})
+	req := gen.PostCommunicationsConversationsByIdReplyRequestObject{
+		Id:     conversationID,
+		Params: gen.PostCommunicationsConversationsByIdReplyParams{IdempotencyKey: key},
+		Body:   &body,
+	}
+	return srv.PostCommunicationsConversationsByIdReply(ctx, req)
 }
 
 // internalSetupChannel creates one active email channel through the real
@@ -145,20 +185,17 @@ func replyBodyFor(text string) gen.ReplyRequest {
 func TestQueueReply_AttachmentsNotReady_UnknownId(t *testing.T) {
 	t.Parallel()
 	h, srv := newInternalHarness(t)
-	chID := internalSetupChannel(t, h)
-	_ = chID
+	internalSetupChannel(t, h)
 	owner := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
 	convID := internalCreateConversation(t, owner)
 	caller := uuid.New()
+	withFixedRecipient(srv, "unknown-id@example.test")
 
 	body := replyBodyFor("hi")
 	body.AttachmentIds = &[]uuid.UUID{uuid.New()}
-	resp, err := srv.queueReply(context.Background(), replyQueueParams{
-		conversationID: convID, channelType: "email", caller: caller, key: uuid.NewString(),
-		fingerprint: "fp", body: body, primaryAddress: "unknown-id@example.test", now: h.Now(),
-	})
+	resp, err := doInternalReply(context.Background(), srv, caller, convID, uuid.NewString(), body)
 	if err != nil {
-		t.Fatalf("queueReply: %v", err)
+		t.Fatalf("reply: %v", err)
 	}
 	assertReplyErrorStatus(t, resp, http.StatusConflict, "attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")
 }
@@ -174,22 +211,23 @@ func TestQueueReply_AttachmentsNotReady_Expired(t *testing.T) {
 	convID := internalCreateConversation(t, owner)
 	caller := uuid.New()
 	uploadID, _ := insertStagedAttachment(t, h, convID, caller, "clean", h.Now().Add(-time.Minute))
+	withFixedRecipient(srv, "expired@example.test")
 
 	body := replyBodyFor("hi")
 	body.AttachmentIds = &[]uuid.UUID{uploadID}
-	resp, err := srv.queueReply(context.Background(), replyQueueParams{
-		conversationID: convID, channelType: "email", caller: caller, key: uuid.NewString(),
-		fingerprint: "fp", body: body, primaryAddress: "expired@example.test", now: h.Now(),
-	})
+	resp, err := doInternalReply(context.Background(), srv, caller, convID, uuid.NewString(), body)
 	if err != nil {
-		t.Fatalf("queueReply: %v", err)
+		t.Fatalf("reply: %v", err)
 	}
 	assertReplyErrorStatus(t, resp, http.StatusConflict, "attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")
 }
 
 // TestQueueReply_AttachmentsNotReady_WrongUploader pins the preflight's own
 // uploader scoping: a staged upload that exists, is clean and unexpired,
-// but belongs to a different caller, is invisible to this reply.
+// but belongs to a different caller, is invisible to this reply. caller
+// here flows into the real handler through doInternalReply's context
+// principal, exercising the actual callerUserID(ctx) -> queueReply wiring,
+// not a value the test hands queueReply directly.
 func TestQueueReply_AttachmentsNotReady_WrongUploader(t *testing.T) {
 	t.Parallel()
 	h, srv := newInternalHarness(t)
@@ -199,15 +237,13 @@ func TestQueueReply_AttachmentsNotReady_WrongUploader(t *testing.T) {
 	uploader := uuid.New()
 	caller := uuid.New() // deliberately not uploader
 	uploadID, _ := insertStagedAttachment(t, h, convID, uploader, "clean", h.Now().Add(time.Hour))
+	withFixedRecipient(srv, "wrong-uploader@example.test")
 
 	body := replyBodyFor("hi")
 	body.AttachmentIds = &[]uuid.UUID{uploadID}
-	resp, err := srv.queueReply(context.Background(), replyQueueParams{
-		conversationID: convID, channelType: "email", caller: caller, key: uuid.NewString(),
-		fingerprint: "fp", body: body, primaryAddress: "wrong-uploader@example.test", now: h.Now(),
-	})
+	resp, err := doInternalReply(context.Background(), srv, caller, convID, uuid.NewString(), body)
 	if err != nil {
-		t.Fatalf("queueReply: %v", err)
+		t.Fatalf("reply: %v", err)
 	}
 	assertReplyErrorStatus(t, resp, http.StatusConflict, "attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")
 }
@@ -227,15 +263,13 @@ func TestQueueReply_AttachmentsPrecedeSuppression(t *testing.T) {
 	address := "both-broken-" + uuid.NewString() + "@example.test"
 	h.Exec(t, `INSERT INTO communications.suppressions (id, normalized_email_address, reason, created_at) VALUES ($1, $2, NULL, $3)`,
 		uuid.New(), normalizeEmail(address), h.Now())
+	withFixedRecipient(srv, address)
 
 	body := replyBodyFor("hi")
 	body.AttachmentIds = &[]uuid.UUID{uuid.New()} // unknown -> preflight fails
-	resp, err := srv.queueReply(context.Background(), replyQueueParams{
-		conversationID: convID, channelType: "email", caller: caller, key: uuid.NewString(),
-		fingerprint: "fp", body: body, primaryAddress: address, now: h.Now(),
-	})
+	resp, err := doInternalReply(context.Background(), srv, caller, convID, uuid.NewString(), body)
 	if err != nil {
-		t.Fatalf("queueReply: %v", err)
+		t.Fatalf("reply: %v", err)
 	}
 	assertReplyErrorStatus(t, resp, http.StatusConflict, "attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")
 }
@@ -244,9 +278,9 @@ func TestQueueReply_AttachmentsPrecedeSuppression(t *testing.T) {
 
 // TestQueueReply_RecipientSuppressed pins step 9's shape exactly: 422
 // recipient_suppressed, fields.recipients carrying the suppressed
-// address(es) in their stored, uppercased form (D7) — the primaryAddress
-// passed in here is deliberately lowercase, proving the echoed value comes
-// from normalisation, not from echoing the input verbatim.
+// address(es) in their stored, uppercased form (D7) — the fixed recipient
+// address is deliberately lowercase, proving the echoed value comes from
+// normalisation, not from echoing the input verbatim.
 func TestQueueReply_RecipientSuppressed(t *testing.T) {
 	t.Parallel()
 	h, srv := newInternalHarness(t)
@@ -257,13 +291,11 @@ func TestQueueReply_RecipientSuppressed(t *testing.T) {
 	address := "suppressed-" + uuid.NewString() + "@example.test"
 	h.Exec(t, `INSERT INTO communications.suppressions (id, normalized_email_address, reason, created_at) VALUES ($1, $2, NULL, $3)`,
 		uuid.New(), normalizeEmail(address), h.Now())
+	withFixedRecipient(srv, address)
 
-	resp, err := srv.queueReply(context.Background(), replyQueueParams{
-		conversationID: convID, channelType: "email", caller: caller, key: uuid.NewString(),
-		fingerprint: "fp", body: replyBodyFor("hi"), primaryAddress: address, now: h.Now(),
-	})
+	resp, err := doInternalReply(context.Background(), srv, caller, convID, uuid.NewString(), replyBodyFor("hi"))
 	if err != nil {
-		t.Fatalf("queueReply: %v", err)
+		t.Fatalf("reply: %v", err)
 	}
 	r422, ok := resp.(gen.PostCommunicationsConversationsByIdReply422JSONResponse)
 	if !ok {
@@ -301,15 +333,13 @@ func TestQueueReply_SuppressionPrecedesAttachmentClaim(t *testing.T) {
 	h.Exec(t, `INSERT INTO communications.suppressions (id, normalized_email_address, reason, created_at) VALUES ($1, $2, NULL, $3)`,
 		uuid.New(), normalizeEmail(address), h.Now())
 	uploadID, _ := insertStagedAttachment(t, h, convID, caller, "clean", h.Now().Add(time.Hour))
+	withFixedRecipient(srv, address)
 
 	body := replyBodyFor("hi")
 	body.AttachmentIds = &[]uuid.UUID{uploadID}
-	resp, err := srv.queueReply(context.Background(), replyQueueParams{
-		conversationID: convID, channelType: "email", caller: caller, key: uuid.NewString(),
-		fingerprint: "fp", body: body, primaryAddress: address, now: h.Now(),
-	})
+	resp, err := doInternalReply(context.Background(), srv, caller, convID, uuid.NewString(), body)
 	if err != nil {
-		t.Fatalf("queueReply: %v", err)
+		t.Fatalf("reply: %v", err)
 	}
 	assertReplyErrorStatus(t, resp, http.StatusUnprocessableEntity, "recipient_suppressed", "One or more recipients are suppressed.")
 
@@ -324,11 +354,13 @@ func TestQueueReply_SuppressionPrecedesAttachmentClaim(t *testing.T) {
 // TestQueueReply_Success_PromotesAttachmentVerbatim is the happy path with
 // one staged attachment: 201, a message_attachments row carrying the
 // staged upload's scan_status and content_hash verbatim (not recomputed —
-// the coordinator's addendum on this task), the attachment_uploads row
-// deleted, its cleanup record transitioned to 'owned', an outbox job and
-// idempotency record written, and the conversation's activity fields
-// advanced (LastActivityAt, PreviewText, and Subject filled once since this
-// conversation already has one).
+// the coordinator's addendum on task 7 named content_hash specifically),
+// the attachment_uploads row deleted, its cleanup record transitioned to
+// 'owned', an outbox job and idempotency record written, and the
+// conversation's activity fields advanced (LastActivityAt, PreviewText, and
+// Subject filled once since this conversation already has one) —
+// everything the real handler computes and wires into queueReply, not
+// values this test supplies.
 func TestQueueReply_Success_PromotesAttachmentVerbatim(t *testing.T) {
 	t.Parallel()
 	h, srv := newInternalHarness(t)
@@ -338,16 +370,14 @@ func TestQueueReply_Success_PromotesAttachmentVerbatim(t *testing.T) {
 	caller := uuid.New()
 	uploadID, storageKey := insertStagedAttachment(t, h, convID, caller, "clean", h.Now().Add(time.Hour))
 	wantHash := modtest.One[string](t, h, `SELECT content_hash FROM communications.attachment_uploads WHERE id = $1`, uploadID)
+	withFixedRecipient(srv, "recipient@example.test")
 
 	body := replyBodyFor("A reply with an attachment")
 	body.AttachmentIds = &[]uuid.UUID{uploadID}
 	key := uuid.NewString()
-	resp, err := srv.queueReply(context.Background(), replyQueueParams{
-		conversationID: convID, channelType: "email", caller: caller, key: key,
-		fingerprint: "fp-success", body: body, primaryAddress: "recipient@example.test", now: h.Now(),
-	})
+	resp, err := doInternalReply(context.Background(), srv, caller, convID, key, body)
 	if err != nil {
-		t.Fatalf("queueReply: %v", err)
+		t.Fatalf("reply: %v", err)
 	}
 	r201, ok := resp.(gen.PostCommunicationsConversationsByIdReply201JSONResponse)
 	if !ok {
@@ -455,7 +485,8 @@ func awaitReplyLockWaiters(t *testing.T, h *modtest.Harness, n int, finished <-c
 
 // TestQueueReply_ConcurrentAttachmentClaimRace is the teeth check for why
 // the transactional claim (step 10) exists at all, not just the preflight
-// (step 8): two replies race to claim the same staged attachment. Both
+// (step 8): two replies — through the real handler, each with its own
+// idempotency key — race to claim the same staged attachment. Both
 // preflights (plain SELECTs) can pass — nothing locks between them — but
 // only one transaction's conditional clean -> claimed UPDATE can actually
 // flip the row; the loser's claimed count comes back short and it answers
@@ -471,7 +502,7 @@ func TestQueueReply_ConcurrentAttachmentClaimRace(t *testing.T) {
 	convID := internalCreateConversation(t, owner)
 	caller := uuid.New()
 	uploadID, _ := insertStagedAttachment(t, h, convID, caller, "clean", h.Now().Add(time.Hour))
-	now := h.Now()
+	withFixedRecipient(srv, "race@example.test")
 
 	ctx := context.Background()
 	gate, err := h.Pool().Begin(ctx)
@@ -486,10 +517,7 @@ func TestQueueReply_ConcurrentAttachmentClaimRace(t *testing.T) {
 	run := func(key string) (gen.PostCommunicationsConversationsByIdReplyResponseObject, error) {
 		body := replyBodyFor("racing reply")
 		body.AttachmentIds = &[]uuid.UUID{uploadID}
-		return srv.queueReply(ctx, replyQueueParams{
-			conversationID: convID, channelType: "email", caller: caller, key: key,
-			fingerprint: "fp-" + key, body: body, primaryAddress: "race@example.test", now: now,
-		})
+		return doInternalReply(ctx, srv, caller, convID, key, body)
 	}
 
 	var responses [2]gen.PostCommunicationsConversationsByIdReplyResponseObject
@@ -510,7 +538,7 @@ func TestQueueReply_ConcurrentAttachmentClaimRace(t *testing.T) {
 	var created, conflicted int
 	for i, resp := range responses {
 		if errs[i] != nil {
-			t.Fatalf("queueReply[%d]: %v", i, errs[i])
+			t.Fatalf("reply[%d]: %v", i, errs[i])
 		}
 		switch r := resp.(type) {
 		case gen.PostCommunicationsConversationsByIdReply201JSONResponse:

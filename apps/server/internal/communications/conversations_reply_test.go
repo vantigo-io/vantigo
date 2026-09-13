@@ -1,15 +1,14 @@
 package communications_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/communications"
+	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -97,6 +96,86 @@ func TestReply_InvalidReplyModeIs400(t *testing.T) {
 	r.JSON(&errBody)
 	if got := errBody.field("replyMode"); len(got) != 1 || got[0] != "ReplyMode must be reply or reply_all." {
 		t.Errorf("fields[replyMode] = %v, want the required message", got)
+	}
+}
+
+// TestReply_ReplyModeOmittedDefaultsToReply pins inventory §4.1's first
+// half explicitly: a request that omits replyMode entirely passes
+// validation and proceeds past step 2 exactly like an explicit "reply"
+// would — both reach step 7's recipients_missing, never invalid_request.
+func TestReply_ReplyModeOmittedDefaultsToReply(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, c, newConversationBody("x@example.test"))
+
+	r := doReply(c, m.ConversationId, uuid.NewString(), replyBody()) // omits replyMode entirely
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d body %s, want 422 (validation passed; an omitted replyMode must not itself 400)", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "recipients_missing" {
+		t.Errorf("code = %q, want recipients_missing", errBody.Error.Code)
+	}
+}
+
+// TestReply_ReplyModeExplicitNullIs400 pins inventory §4.1's other half —
+// the asymmetry a previous fix round parked as identical-behaviour and then
+// un-parked once Task 9's pre-dispatch check traced it: .NET's
+// `request?.ReplyMode?.Trim().ToLowerInvariant() is not ("reply" or
+// "reply_all")` treats a present-but-null ReplyMode exactly like an
+// unrecognised string (null matches neither pattern), defeating the DTO's
+// own "reply" default — 400, unlike an omitted key. module.go's
+// withRawJSONBody (extended to this route in this fix round, the same
+// machinery task 5's PATCH handler already uses for customerId/assignedUserId)
+// is what makes the distinction possible in Go at all, since encoding/json
+// otherwise collapses "omitted" and "present as null" into the same nil
+// pointer.
+func TestReply_ReplyModeExplicitNullIs400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, c, newConversationBody("x@example.test"))
+
+	body := replyBody()
+	body["replyMode"] = nil
+	r := doReply(c, m.ConversationId, uuid.NewString(), body)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400 (an explicit null defeats the default, unlike an omitted key)", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if got := errBody.field("replyMode"); len(got) != 1 || got[0] != "ReplyMode must be reply or reply_all." {
+		t.Errorf("fields[replyMode] = %v, want the required message", got)
+	}
+}
+
+// TestReply_ReplyAllIsAcceptedButInert pins fix round 1's item 3: replyMode
+// "reply_all" is a recognised mode and passes validation, but this port
+// never derives a non-empty replyAllCc (design doc §1.1: doing so needs
+// inbound thread metadata this port never writes), so it behaves
+// identically to plain "reply" today — both reach the same
+// recipients_missing 422, never a distinct code path or message.
+func TestReply_ReplyAllIsAcceptedButInert(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, c, newConversationBody("x@example.test"))
+
+	body := replyBody()
+	body["replyMode"] = "reply_all"
+	r := doReply(c, m.ConversationId, uuid.NewString(), body)
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d body %s, want 422 (reply_all is accepted, not rejected)", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "recipients_missing" {
+		t.Errorf("code = %q, want recipients_missing (reply_all is inert here — no inbound metadata exists to derive cc from)", errBody.Error.Code)
 	}
 }
 
@@ -299,35 +378,27 @@ func TestReply_NoInboundParticipantIsRecipientsMissing(t *testing.T) {
 
 // ---- Step 6, reachable through the real handler: a bare replay ----
 
-// replyFingerprintForTest duplicates conversations_reply.go's own
-// replyFingerprint (json.Marshal of exactly {conversationId, textBody,
-// htmlBody, subject, replyMode, attachmentIds}, SHA-256 hex) so this
-// black-box test can build an idempotency_records fixture whose
-// payload_fingerprint the handler will actually match, without access to
-// the unexported function that computes it. This is the one test in this
-// file that reaches a genuine 200 through the real handler — the
-// contract-coverage recorder (main_test.go) counts an operation exercised
-// only on a below-400 response, and the recorder here is the shared
-// package-level one, unlike conversations_reply_internal_test.go's own
-// (whose white-box replay tests use the real, unexported replyFingerprint
-// directly, more precisely, but against a *different* recorder instance
-// that this package's coverage gate never reads).
+// replyFingerprintForTest is communications.ReplyFingerprintForTest
+// (export_test.go's re-export of the real, unexported replyFingerprint),
+// used to build an idempotency_records fixture whose payload_fingerprint
+// the handler will actually match. Fix round 1's review confirmed the
+// original hand-duplicated struct shape here failed loudly rather than
+// silently if it ever drifted from the real function, but a construction
+// that cannot drift at all — the same func value — is strictly better. This
+// is the one test in this file that reaches a genuine 200 through the real
+// handler — the contract-coverage recorder (main_test.go) counts an
+// operation exercised only on a below-400 response, and the recorder here
+// is the shared package-level one, unlike conversations_reply_internal_test.go's
+// own (whose white-box replay tests use replyFingerprint directly, but
+// against a *different* recorder instance that this package's coverage
+// gate never reads).
 func replyFingerprintForTest(t *testing.T, conversationID uuid.UUID, textBody *string) string {
 	t.Helper()
-	payload := struct {
-		ConversationId uuid.UUID    `json:"conversationId"`
-		TextBody       *string      `json:"textBody"`
-		HtmlBody       *string      `json:"htmlBody"`
-		Subject        *string      `json:"subject"`
-		ReplyMode      *string      `json:"replyMode"`
-		AttachmentIds  *[]uuid.UUID `json:"attachmentIds"`
-	}{ConversationId: conversationID, TextBody: textBody}
-	b, err := json.Marshal(payload)
+	fp, err := communications.ReplyFingerprintForTest(conversationID, gen.ReplyRequest{TextBody: textBody})
 	if err != nil {
-		t.Fatalf("marshal fingerprint payload: %v", err)
+		t.Fatalf("ReplyFingerprintForTest: %v", err)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+	return fp
 }
 
 // TestReply_IdempotencyReplaySameFingerprintIs200 pins step 6's 200 half

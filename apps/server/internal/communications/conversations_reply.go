@@ -1,7 +1,9 @@
 package communications
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -45,12 +47,24 @@ import (
 // unconditionally first, because this port can never produce a row with
 // conversation_messages.direction = 'inbound' (the CHECK constraint added
 // in migration 00006_communications_baseline.sql, "dispatch correction 3" —
-// see GetLatestInboundParticipantAddress's own comment). queueReply is
-// exposed as its own method, taking an already-resolved recipient, for
-// exactly this reason: it is the seam a white-box test
-// (conversations_reply_internal_test.go) uses to exercise steps 8, 9 and 10
-// directly, the same way task 4's verifyChannel is exercised by
-// channels_internal_test.go.
+// see GetLatestInboundParticipantAddress's own comment).
+//
+// Fix round 1 corrected where the test seam for this lives. The original
+// shape exposed queueReply as its own method and had tests call it
+// directly with hand-supplied params (caller, channelType, messageSubject,
+// fingerprint, now) — which meant the *production call site* wiring those
+// five values (below, in PostCommunicationsConversationsByIdReply's own
+// return statement) was never exercised: deleting that call left the whole
+// package green. The seam now lives one step earlier, at recipient
+// resolution: server.go's resolveReplyRecipientsFunc field, overridable in
+// a white-box test (conversations_reply_internal_test.go), defaults to
+// resolveReplyRecipients (wired in newServer) in every production server.
+// A test overrides only that field, then drives
+// PostCommunicationsConversationsByIdReply itself — the real handler, not a
+// bypassed continuation — so every wiring value queueReply receives is
+// genuinely computed by production code. Deleting the production call to
+// queueReply (this file, PostCommunicationsConversationsByIdReply's own
+// return statement) now turns conversations_reply_internal_test.go red.
 
 // errAttachmentsNotReadyRace is queueReply's own signal that the step-10
 // claim (inside the transaction) affected fewer rows than the step-8
@@ -126,7 +140,25 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 	// (inventory §2's closing note): this runs before the conversation is
 	// ever looked up, so an invalid body against an unknown conversation id
 	// answers 400, not 404 (conversations_reply_test.go pins this).
-	if errs := validateReply(body); len(errs) > 0 {
+	//
+	// replyModeExplicitlyNull recovers inventory §4.1's explicit-null
+	// asymmetry: encoding/json collapses "replyMode omitted" (valid,
+	// defaults to "reply") and "replyMode: null" (invalid — it defeats the
+	// DTO's own default and hits .NET's null branch, 400) into the same nil
+	// *string. module.go's withRawJSONBody/rawJSONBodyFrom (task 5's
+	// PATCH-body machinery, extended to this route in fix round 2) captures
+	// the raw body so this handler can tell them apart the same way
+	// conversations_patch.go already does for customerId/assignedUserId.
+	replyModeExplicitlyNull := false
+	if raw, ok := rawJSONBodyFrom(ctx); ok && len(raw) > 0 {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err == nil {
+			if v, present := fields["replyMode"]; present && string(bytes.TrimSpace(v)) == "null" {
+				replyModeExplicitlyNull = true
+			}
+		}
+	}
+	if errs := validateReply(body, replyModeExplicitlyNull); len(errs) > 0 {
 		return gen.PostCommunicationsConversationsByIdReply400JSONResponse(validationErrorBody(errs)), nil
 	}
 
@@ -182,8 +214,14 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 	// Step 7: no inbound participant -> 422 recipients_missing. This is the
 	// outbound-only consequence design doc §1.1 and task 7's dispatch both
 	// name: this port has no inbound path, so this branch is taken for
-	// every conversation created through the API, unconditionally.
-	primaryAddress, ok, err := s.resolveReplyRecipients(ctx, q, req.Id)
+	// every conversation created through the API, unconditionally. Called
+	// through s.resolveReplyRecipientsFunc, not the method directly — the
+	// seam fix round 1 asked for (server.go's own comment on the field has
+	// the full reasoning): a white-box test overrides this field alone and
+	// drives this handler for real, so every wiring value below (caller,
+	// channelType, messageSubject, fingerprint, now) is genuinely computed
+	// by production code, not supplied by the test.
+	primaryAddress, ok, err := s.resolveReplyRecipientsFunc(ctx, q, req.Id)
 	if err != nil {
 		return nil, err
 	}
