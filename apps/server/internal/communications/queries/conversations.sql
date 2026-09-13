@@ -238,8 +238,31 @@ SELECT id, channel_id, address, display_name, contact_id, created_at
 FROM communications.participants WHERE id = @id AND channel_id = @channel_id;
 
 -- name: InsertParticipant :one
+-- The insert half of findOrCreateParticipantByAddress. The ON CONFLICT is
+-- task 14's fix for ux_participants_channel_id_address, the module's last
+-- known-open unguarded unique constraint: the Go lookup-then-insert (like
+-- .NET's own FirstOrDefaultAsync-then-Add) is not atomic, so two concurrent
+-- conversation creates naming the same new address on the same channel both
+-- miss the lookup and both insert. The loser's 23505 aborts its whole
+-- transaction — conversation, message, deliveries, outbox job and all — and
+-- escapes to httpx.WriteError's host-wide fallback as a bare RFC 7807 409,
+-- which is neither this module's error vocabulary nor a status
+-- postCommunicationsConversations declares.
+--
+-- DO UPDATE rather than DO NOTHING, and the difference matters: DO NOTHING
+-- returns no row when it conflicts, so the caller would need a follow-up
+-- SELECT, and that SELECT finds nothing at all if the conflicting
+-- transaction rolled back instead of committing. DO UPDATE always yields the
+-- live row — the winner's if there is one, this statement's own insert
+-- otherwise — in a single round trip with no second failure mode.
+--
+-- The SET is a deliberate no-op write of the conflict key itself.
+-- display_name and contact_id are NOT touched: .NET never assigns either on
+-- an existing Participant (findOrCreateParticipantByAddress's own comment),
+-- so a race must not become the one path that overwrites them.
 INSERT INTO communications.participants (id, channel_id, address, display_name, contact_id, created_at)
 VALUES (@id, @channel_id, @address, @display_name, @contact_id, @created_at)
+ON CONFLICT (channel_id, address) DO UPDATE SET address = excluded.address
 RETURNING id, channel_id, address, display_name, contact_id, created_at;
 
 -- name: InsertConversationParticipant :exec

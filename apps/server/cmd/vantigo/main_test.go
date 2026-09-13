@@ -435,7 +435,7 @@ func bodyNoRedirect(t *testing.T, target string) (int, string, http.Header) {
 	return resp.StatusCode, string(b), resp.Header
 }
 
-// TestServe_ServesTheBusinessModules proves api mode composes the three
+// TestServe_ServesTheBusinessModules proves api mode composes the four
 // business modules MODULES enables by default, not identity alone: each
 // module's own listing answers its contract's 401 without a session, rather
 // than the platform's /api 404 catch-all (which is what a module that was
@@ -444,7 +444,10 @@ func TestServe_ServesTheBusinessModules(t *testing.T) {
 	base, stop := startServe(t, modeAPI)
 	defer stop()
 
-	for _, path := range []string{"/api/v1/customers", "/api/v1/products", "/api/v1/energy/metering-points"} {
+	for _, path := range []string{
+		"/api/v1/customers", "/api/v1/products", "/api/v1/energy/metering-points",
+		"/api/v1/communications/conversations",
+	} {
 		code, payload, _ := body(t, base+path)
 		if code != http.StatusUnauthorized || !strings.Contains(payload, "unauthenticated") {
 			t.Errorf("%s: %d %q, want 401 unauthenticated", path, code, payload)

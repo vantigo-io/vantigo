@@ -877,8 +877,8 @@ func TestLoad_SystemAdminEmail(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy"}) {
-		t.Errorf("Modules = %v, want the default customers,products,energy when MODULES is unset", cfg.Modules)
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications"}) {
+		t.Errorf("Modules = %v, want the default customers,products,energy,communications when MODULES is unset", cfg.Modules)
 	}
 
 	cfg := mustLoad(t, with(validEnv(), "MODULES", " Customers ,, ENERGY,products "))

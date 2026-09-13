@@ -284,24 +284,35 @@ func readAttachmentForm(mr *multipart.Reader, maxBytes int64) attachmentFormResu
 	}
 }
 
-// deterministicUploadID is ObjectOwnershipLifecycle.DeterministicGuid's role
-// for the staged-upload id (`:32-36`, `EP/ConversationEndpoints.cs:132`,
-// inventory §12.3, §16.2): the same (uploaderUserId, idempotencyKey) always
-// maps to the same id, and therefore the same storage key below, so a
-// crash-retry with the same Idempotency-Key overwrites the exact object a
-// prior, uncommitted attempt left behind instead of leaking a second one.
-// This Go port does not reproduce .NET's exact byte order (a Guid built
-// from a SHA-256 prefix interpreted little-endian in its first 8 bytes) —
-// nothing here ever compares this id against a value a .NET process
-// produced, so only self-consistency (same inputs -> same id, every time,
-// in this process and any other Go process reading the same database)
-// matters, the same "same conclusion, not same bytes" latitude
-// fingerprintOf already takes in conversations_create.go.
+// deterministicUploadID is the staged-upload id: .NET's
+// `ObjectOwnershipLifecycle.DeterministicGuid(userId.Value,
+// $"staged-upload:{key}")` (`EP/ConversationEndpoints.cs:132`, inventory
+// §12.3, §16.2). The same (uploaderUserId, idempotencyKey) always maps to
+// the same id, and therefore the same storage key, so a crash-retry with the
+// same Idempotency-Key overwrites the exact object a prior, uncommitted
+// attempt left behind instead of leaking a second one.
+//
+// It delegates to objects.go's deterministicGUID rather than hashing here,
+// which task 14 made it do. Until then this file had its own second
+// convention, and it differed from the first in TWO ways at once: the seed
+// was rendered as a dashed UUID string where .NET's interpolation uses the
+// "N" format (32 hex, no dashes), and the digest was handed to the naive
+// uuid.FromBytes byte order rather than the little-endian-in-the-first-eight
+// layout .NET's Guid(ReadOnlySpan<byte>) constructor applies. Either
+// difference alone produces a different id from the same inputs; both
+// together made "the same deterministic id as .NET" simply untrue, for a
+// value whose entire job is to be recomputable.
+//
+// The earlier comment argued that only self-consistency matters because
+// nothing compares this id against a .NET-produced value. That is true of
+// this deployment and is not a reason to keep a second convention in a file
+// next door to the first: inventory `:1620` records that .NET derives THIS
+// id with THAT function, the module's other deterministic id already ports
+// the byte order exactly (with a test pinning it against values computed
+// outside the package), and two conventions for one .NET helper is how a
+// later reader picks the wrong one.
 func deterministicUploadID(uploaderUserID uuid.UUID, idempotencyKey string) uuid.UUID {
-	sum := sha256.Sum256([]byte(uploaderUserID.String() + ":staged-upload:" + idempotencyKey))
-	var id uuid.UUID
-	copy(id[:], sum[:16])
-	return id
+	return deterministicGUID(uploaderUserID, "staged-upload:"+idempotencyKey)
 }
 
 // hexN is a uuid rendered as 32 lowercase hex characters with no dashes —

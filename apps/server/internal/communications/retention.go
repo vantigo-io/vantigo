@@ -292,8 +292,12 @@ func (w *RetentionWorker) CleanupBatch(ctx context.Context) (int, error) {
 			return fmt.Errorf("communications: delete conversation messages: %w", err)
 		}
 
-		// Step 7, run on every batch exactly as .NET runs it — including a
-		// batch that deleted no message at all.
+		// Step 7, run on every batch that actually deleted messages. .NET
+		// runs it on every batch including an empty one; the early return
+		// above skips it there, for the reason that return documents. (This
+		// comment said "including a batch that deleted no message at all"
+		// until task 14 — a description of .NET that the early return had
+		// already made false here.)
 		if err := q.DeleteOrphanConversationParticipants(ctx); err != nil {
 			return fmt.Errorf("communications: delete orphan conversation participants: %w", err)
 		}

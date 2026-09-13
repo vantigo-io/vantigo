@@ -1186,12 +1186,31 @@ owner** (`:92-102`, comment `:101`; step 5 above). The keys queued are:
   `status='deleting'`, `lease_id = new 32-hex`, `lease_until = now + 5 minutes` (`:52-58`). 0 rows → skip.
   Same "conditional update is the lock" idiom as the outbox (§13.2) — **no advisory lock**.
 - **Delete** (`:63-81`): `objectStore.DeleteAsync(record.StorageKey)`; on success → `status='completed'`,
-  lease cleared. On any non-cancellation exception → `status='pending'`, `Attempts++`,
-  `LastError = "Object cleanup failed."`, `NextAttemptAt = now + min(3600, pow(2, min(Attempts, 10)))`
-  (`:77`) — **the same backoff expression and the same effectively-1024 s cap as the outbox** (cf. D1, §11).
+  `LeaseId = null`, `LeaseUntil = null`. On any non-cancellation exception → `status='pending'`,
+  `Attempts++`, `LastError = "Object cleanup failed."`,
+  `NextAttemptAt = now + min(3600, pow(2, min(Attempts, 10)))` (`:77`), **and `LeaseId`/`LeaseUntil`
+  cleared here too** (`:78-79`) — **the same backoff expression and the same effectively-1024 s cap as the
+  outbox** (cf. D1, §11).
   **There is no terminal state for cleanup** — a permanently failing key retries forever at 1024 s intervals.
   All records in the batch are flushed in one `SaveChanges` (`:82`); the return value is `records.Count`
   (claimed, not succeeded).
+  *(Corrected 2026-09-13, task 14, from the in-tree source. An earlier version of this bullet mentioned the
+  lease being cleared only on the success path. It is cleared on **both**: a failed delete releases the record
+  immediately rather than holding it until the five-minute lease expires, so the retry is governed purely by
+  `NextAttemptAt`. The Go port implements the source's behaviour and pins it; the inventory was the thing that
+  was wrong.)*
+- **Two things the above leaves implicit, stated outright** (both confirmed from the in-tree source, both
+  load-bearing for a port):
+  - **The claim does NOT increment `Attempts`.** The conditional `ExecuteUpdateAsync` at `:52-58` sets only
+    status, lease id and lease until; `Attempts++` happens exclusively in the delete's catch block (`:75`).
+    This is the opposite of the outbox, whose claim *does* increment (§13.2 step 4) — which is why an outbox
+    job's first failure backs off 2 s (`Attempts` already 1) while a cleanup record's first failure also backs
+    off 2 s but for the different reason that the failure itself is what made `Attempts` 1. A port that copied
+    the outbox's claim here would double-count every attempt and halve the retry budget's reach.
+  - **The worker acts on the post-claim re-read, not the candidate row.** After a successful claim the service
+    re-reads the record (`SingleAsync(item => item.Id == id)`, `:59`) and appends *that* entity to the batch it
+    then deletes objects for. The candidate projection selected ids only, so the re-read is not an optimisation
+    to skip: it is where `StorageKey` and `Attempts` come from, and it sees the claim's own writes.
 - Deleting a missing key is a success by contract (`STA/IObjectStore.cs:24-25`), so a double-delete is
   harmless.
 

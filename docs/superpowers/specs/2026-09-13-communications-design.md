@@ -211,6 +211,63 @@ contact linker lowercases. The asymmetry is faithful, and the inventory records 
    without a CHECK constraint so a future provider stays additive, which is why the
    handler also keeps an unreachable defensive 422 for a non-SMTP row.
 
+**Added 2026-09-13 (task 14).** Six more, ruled during implementation and not written down
+until the module was composed:
+
+7. **Outbox tuning is frozen as package constants** (`outboxPollInterval`, `outboxLeaseDuration`,
+   `outboxClaimAttempts`, `outboxMaxAttempts`), where .NET reads `Outbox:ClaimAttempts` and
+   `Outbox:MaxAttempts` from configuration (inventory `:1271`, `:1333`). §7 above enumerates this
+   module's configuration and lists no `Outbox:*` key, so the choice is between four
+   un-exercised environment variables and four constants carrying .NET's own defaults. A
+   deployment that needs to tune one gets a config key on the day it needs it.
+8. **Configuration rejects out-of-range values where .NET clamps them**: `_DAYS` to `[1, 36500]`,
+   `_BATCH_SIZE` to `[1, 1000]`, `_POLL` to positive. .NET silently applies `max(1, days)` and
+   `Math.Clamp(value, 1, 1000)`, so a typo becomes a retention window nobody asked for; here it
+   is a startup error naming the variable. **The 36500 upper bound is this port's own invention**
+   — .NET has no upper bound on retention days at all — chosen because a hundred years is past
+   any real policy and a five-digit typo is not.
+9. **The AI customer-suggestion path answers 200 on a provider outage**, asymmetric with draft's
+   422 for the identical failure. This is genuine .NET behaviour that inventory §17.4 item 10
+   calls apparently unintended: the endpoint's guard chain tests three outcomes and a final
+   `Outcome == "invalid"`, none of which `"failed"` matches, so control falls through to
+   `TypedResults.Ok`. Ported faithfully and pinned by a test that fails if someone "harmonises"
+   the two.
+10. **Retention's orphan sweeps skip empty batches.** .NET runs both full-table anti-joins on
+    every batch including the empty last one of each drain; this port returns early. Safe because
+    retention is the only producer of those orphans — a batch that deleted no message created no
+    orphan, and the batch that did delete already swept after itself.
+11. **Retention's expiry sweep drains rather than running one fixed page.** The .NET constant it
+    inherited was a transaction bound whose throughput implication did not survive the move to a
+    60-minute cadence.
+12. **The default `MODULES` set includes `communications`.** Until this task the name parsed but
+    mounted nothing, and the list deliberately omitted it; now that `Module()` exists there is
+    nothing to omit. A deployment that does not want the module names the others explicitly.
+
+**Divergences introduced by task 14's unique-constraint audit.** Both are single-statement changes
+that make a concurrent path safe without changing any sequential behaviour:
+
+13. **`InsertParticipant` carries `ON CONFLICT (channel_id, address) DO UPDATE`** where .NET does a
+    bare `Add`. The lookup-then-insert in `findOrCreateParticipantByAddress` is .NET's own shape and
+    its own race; the difference is that .NET's loser throws into an unmapped 500 while this port's
+    loser would have produced a bare RFC 7807 409 in the wrong vocabulary and rolled back its entire
+    conversation-create transaction. The `DO UPDATE` writes the conflict key back to itself and
+    leaves `display_name` and `contact_id` untouched, preserving .NET's rule that an existing
+    participant is never reassigned.
+14. **`ClearOtherDefaultChannels` drops the `is_default` term from its `WHERE`.** With it, two
+    concurrent "make me the default" updates each fail to see the other's uncommitted row under READ
+    COMMITTED and collide on `ux_channels_type_is_default` — a 23505 that
+    `putCommunicationsChannelsById`'s contract (200/400/401/403/404) has no status to carry. Without
+    it the statement visits, blocks on and re-checks the winner's row, and the race resolves as
+    last-writer-wins. The cost is writing `false` over rows that already hold it, on a table with a
+    handful of rows.
+
+**Fidelity fixes, recorded so they are not mistaken for divergences.** Each removes a difference from
+.NET rather than adding one: inline `Content-ID` is bracketed to match MimeKit (§15.5; go-mail writes
+the value verbatim, and unbracketed no client can resolve `src="cid:…"` under RFC 2392), and the
+staged-upload id now derives from the same `deterministicGUID` as every other deterministic id in the
+module (inventory `:1620`) rather than a second convention that differed from .NET in both byte order
+and seed rendering.
+
 ## 7. Configuration
 
 `STORAGE_PROVIDER` (`fs`, fail-closed when unset), `STORAGE_FS_ROOT`,
