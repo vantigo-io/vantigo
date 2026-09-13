@@ -15,6 +15,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // permissions is the module's permission catalog
@@ -79,7 +80,16 @@ func Module() module.Module {
 		Name:        "communications",
 		Permissions: permissions,
 		Mount:       mount,
+		Workers:     workers,
 	}
+}
+
+// workers is this module's background work (design §4): the outbox delivery
+// worker so far, with retention and attachment cleanup joining it. cmd/vantigo
+// starts these through module.Workers in worker mode, and in api mode when
+// WORKERS_IN_PROCESS=1 — never in server mode.
+func workers(d module.Deps) []worker.Worker {
+	return []worker.Worker{NewOutboxWorker(d)}
 }
 
 // mount registers every contract operation on the platform router, which wraps
