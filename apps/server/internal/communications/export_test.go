@@ -13,3 +13,9 @@ package communications
 // better). Being the same func value, this cannot drift: any change to
 // replyFingerprint is this var's change too.
 var ReplyFingerprintForTest = replyFingerprint
+
+// RetentionLeaseKeyForTest is retentionLeaseKey (retention.go), exported by
+// the same convention so retention_test.go can take the real lease from its
+// own connection and watch the worker skip its cycle. A test that hardcoded
+// the constant would still pass if the worker started using a different key.
+const RetentionLeaseKeyForTest = retentionLeaseKey
