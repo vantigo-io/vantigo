@@ -26,30 +26,6 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(context
 	return nil, module.ErrNotImplemented
 }
 
-// GetCommunicationsSuppressions List suppressed addresses
-// (GET /api/v1/communications/suppressions)
-func (s *server) GetCommunicationsSuppressions(context.Context, gen.GetCommunicationsSuppressionsRequestObject) (gen.GetCommunicationsSuppressionsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// PostCommunicationsSuppressions Suppress an address
-// (POST /api/v1/communications/suppressions)
-func (s *server) PostCommunicationsSuppressions(context.Context, gen.PostCommunicationsSuppressionsRequestObject) (gen.PostCommunicationsSuppressionsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCommunicationsSuppressionsById Get a suppressed address
-// (GET /api/v1/communications/suppressions/{id})
-func (s *server) GetCommunicationsSuppressionsById(context.Context, gen.GetCommunicationsSuppressionsByIdRequestObject) (gen.GetCommunicationsSuppressionsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// DeleteCommunicationsSuppressionsById Remove a suppressed address
-// (DELETE /api/v1/communications/suppressions/{id})
-func (s *server) DeleteCommunicationsSuppressionsById(context.Context, gen.DeleteCommunicationsSuppressionsByIdRequestObject) (gen.DeleteCommunicationsSuppressionsByIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 // GetCommunicationsStatsSummary Get communications dashboard summary
 // (GET /api/v1/communications/stats/summary)
 func (s *server) GetCommunicationsStatsSummary(context.Context, gen.GetCommunicationsStatsSummaryRequestObject) (gen.GetCommunicationsStatsSummaryResponseObject, error) {
