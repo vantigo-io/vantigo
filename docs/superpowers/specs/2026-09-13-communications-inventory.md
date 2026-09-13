@@ -914,6 +914,16 @@ meaning in every case below.
 | `outbox_jobs` ix `(tenant_id, Status, NextAttemptAt)` | ix `(Status, NextAttemptAt)` | Yes |
 | `ai_interactions` ix `(tenant_id, ConversationId, CreatedAt)` / `(tenant_id, Operation)` | ix `(ConversationId, CreatedAt)` / `(Operation)` | Yes |
 
+> **Correction (2026-09-13): this table is not the complete index set.** It lists the *explicit*
+> tenant-prefixed indexes and their remainders. EF also emits **convention indexes** on foreign-key
+> columns, which this table mentions only in passing (rows for `channel_credentials`,
+> `conversation_participants`, `message_attachments`, `message_deliveries`) and never enumerates.
+> `Migrations/20260816005403_Initial.cs` is the authority for the full set — it declares, among
+> others, `IX_outbox_jobs_MessageId` (`:928`) plus six further convention indexes (`:765`, `:729`,
+> `:910`, `:639`, `:759`, `:790`) that appear nowhere above. A port that treats this table as
+> exhaustive will drop legitimate indexes; one was nearly removed on exactly that reasoning during
+> Task 3. **Check the migration, not this table, before concluding an index is invented.**
+
 **No constraint becomes *wrong*.** Every unique above is genuinely installation-scoped once there is one
 tenant. The nearest thing to a behavioural change is an **asymmetry that the drop makes newly visible**:
 `idempotency_records` is unique on `Key` alone — a client `Idempotency-Key` is global across *all users* —
