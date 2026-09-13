@@ -519,6 +519,39 @@ func TestStageAttachment_AttachmentLimitBoundary(t *testing.T) {
 	}
 }
 
+// TestStageAttachment_SizeCheckedBeforeAttachmentLimit pins the ordering
+// between dispatch item 2's size bound (step 6) and attachment_limit (step
+// 7), which TestStageAttachment_AttachmentLimitBoundary alone does not:
+// every one of that test's 21 requests carries a valid size, so it cannot
+// tell "size checked first" from "limit checked first" apart — both
+// orderings answer 201 x20 then 409. Fix round 2's item 1: at exactly the
+// cap of 20 live uploads, a 21st request whose *size* is also invalid (here,
+// zero bytes) must still answer 413 attachment_too_large, not 409
+// attachment_limit — if the two checks were ever swapped, this is the only
+// test that would turn 409 and catch it.
+func TestStageAttachment_SizeCheckedBeforeAttachmentLimit(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID := stagingConversation(t, h, c)
+
+	for i := range 20 {
+		r := stageAttachment(t, c, convID, uuid.NewString(), fmt.Sprintf("f%d.txt", i), "text/plain", []byte(fmt.Sprintf("content-%d", i)))
+		if r.Status != http.StatusCreated {
+			t.Fatalf("upload %d: status %d body %s, want 201", i, r.Status, r.Body)
+		}
+	}
+	r := stageAttachment(t, c, convID, uuid.NewString(), "invalid.bin", "application/octet-stream", []byte{})
+	if r.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("21st upload, zero bytes, at the cap: status %d body %s, want 413 (size must be checked before the attachment limit)", r.Status, r.Body)
+	}
+	var e commErrorJSON
+	r.JSON(&e)
+	if e.Error.Code != "attachment_too_large" {
+		t.Errorf("code = %q, want attachment_too_large", e.Error.Code)
+	}
+}
+
 // TestStageAttachment_StorageFailureIs503 pins the object-store write's own
 // boundary: any Put failure answers 503 attachment_storage_unavailable, and
 // — because the reservation (attachment_cleanup_records) is written and
