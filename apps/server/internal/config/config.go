@@ -189,6 +189,35 @@ type Config struct {
 	// Staging itself only ever sets attachment_uploads.expires_at to
 	// now+this value; nothing in this task sweeps it.
 	CommunicationsUploadExpiry time.Duration
+
+	// CommunicationsAIEnabled turns the communications AI draft and
+	// customer-suggestion operations on (COMMUNICATIONS_AI_ENABLED, .NET's
+	// CommunicationsAiOptions.Enabled, default false). It is one of the three
+	// values availability is computed from (communications inventory §17.1):
+	// both operations answer 503 ai_unavailable unless this is set, the
+	// provider is "openai", and an API key is configured. Read as this file's
+	// strict "0"/"1" switch rather than .NET's more permissive bool binding,
+	// the same shape every other flag here uses.
+	CommunicationsAIEnabled bool
+	// CommunicationsAIProvider names the chat provider
+	// (COMMUNICATIONS_AI_PROVIDER, default "openai"). .NET registers a chat
+	// client only when this equals "openai" case-insensitively
+	// (DB/CommunicationsDatabaseConfiguration.cs:45-57), and so does this
+	// port: any other value leaves the feature unavailable rather than
+	// refusing to start, so a second provider stays additive.
+	CommunicationsAIProvider string
+	// CommunicationsAIModel is the chat model (COMMUNICATIONS_AI_MODEL,
+	// default "gpt-4o-mini"). communications applies .NET's own 150-character
+	// limit (SV/CommunicationsAiService.cs:37) where it uses the value, which
+	// is also ai_interactions.model's column width.
+	CommunicationsAIModel string
+	// CommunicationsAIAPIKey is the provider credential
+	// (COMMUNICATIONS_AI_API_KEY, .NET's CommunicationsAiOptions.ApiKey,
+	// nullable). Blank leaves the feature unavailable, and per inventory
+	// §17.1 no chat client, network client or provider dependency is
+	// constructed at all in that state. Redacted by redact.go's mirror like
+	// every other secret in this file.
+	CommunicationsAIAPIKey string
 }
 
 // IsDevelopment reports whether APP_ENV=development.
@@ -280,6 +309,7 @@ func Load(env map[string]string) (*Config, error) {
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
+	communicationsAI(&p, env, c)
 
 	if c.EnforcesTransportSecurity() {
 		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
@@ -457,6 +487,26 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 func communicationsAttachments(p *problems, env map[string]string, c *Config) {
 	c.CommunicationsAttachmentMaxBytes = int64(integer(p, env, "COMMUNICATIONS_ATTACHMENT_MAX_BYTES", 10*1024*1024, 1, 50*1024*1024))
 	c.CommunicationsUploadExpiry = duration(p, env, "COMMUNICATIONS_UPLOAD_EXPIRY", 24*time.Hour)
+}
+
+// communicationsAI loads CommunicationsAiOptions (communications inventory
+// §17.1, design doc §7): the on/off switch, the provider and model names,
+// and the API key. Nothing here refuses to start — an unset or half-set AI
+// configuration is the documented "unavailable" state the two AI operations
+// answer 503 for, not a misconfiguration, exactly as .NET simply declines to
+// register a chat client for it. Only COMMUNICATIONS_AI_ENABLED can be
+// rejected, and only for not being the strict "0"/"1" flag reads.
+func communicationsAI(p *problems, env map[string]string, c *Config) {
+	c.CommunicationsAIEnabled = flag(p, env, "COMMUNICATIONS_AI_ENABLED")
+	c.CommunicationsAIProvider = strings.TrimSpace(env["COMMUNICATIONS_AI_PROVIDER"])
+	if c.CommunicationsAIProvider == "" {
+		c.CommunicationsAIProvider = "openai"
+	}
+	c.CommunicationsAIModel = strings.TrimSpace(env["COMMUNICATIONS_AI_MODEL"])
+	if c.CommunicationsAIModel == "" {
+		c.CommunicationsAIModel = "gpt-4o-mini"
+	}
+	c.CommunicationsAIAPIKey = strings.TrimSpace(env["COMMUNICATIONS_AI_API_KEY"])
 }
 
 func invalidPathRune(r rune) bool {

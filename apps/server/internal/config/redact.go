@@ -43,6 +43,7 @@ func (c Config) redacted() redactedConfig {
 	}
 	v.BootstrapSecret = redact(v.BootstrapSecret)
 	v.SystemAdminEmail = redact(v.SystemAdminEmail)
+	v.CommunicationsAIAPIKey = redact(v.CommunicationsAIAPIKey)
 	return v
 }
 

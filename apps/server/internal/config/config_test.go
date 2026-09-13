@@ -936,3 +936,59 @@ func TestLoad_StorageFSAllowInsecureRoot(t *testing.T) {
 		t.Error("StorageFSAllowInsecureRoot = false, want true when accepted in development")
 	}
 }
+
+// TestLoad_CommunicationsAIDefaults pins CommunicationsAiOptions' defaults
+// (communications inventory §17.1): off, "openai", "gpt-4o-mini", no key —
+// the state in which the two AI operations answer 503 ai_unavailable. An
+// unconfigured AI feature is never a load error, exactly as .NET simply
+// declines to register a chat client for it.
+func TestLoad_CommunicationsAIDefaults(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.CommunicationsAIEnabled {
+		t.Error("CommunicationsAIEnabled = true, want false by default")
+	}
+	if cfg.CommunicationsAIProvider != "openai" {
+		t.Errorf("CommunicationsAIProvider = %q, want %q", cfg.CommunicationsAIProvider, "openai")
+	}
+	if cfg.CommunicationsAIModel != "gpt-4o-mini" {
+		t.Errorf("CommunicationsAIModel = %q, want %q", cfg.CommunicationsAIModel, "gpt-4o-mini")
+	}
+	if cfg.CommunicationsAIAPIKey != "" {
+		t.Errorf("CommunicationsAIAPIKey = %q, want empty", cfg.CommunicationsAIAPIKey)
+	}
+}
+
+// TestLoad_CommunicationsAIConfigured pins that each value is read and
+// trimmed, that a blank provider or model falls back to its default rather
+// than becoming empty, and that COMMUNICATIONS_AI_ENABLED is this file's
+// strict "0"/"1" flag.
+func TestLoad_CommunicationsAIConfigured(t *testing.T) {
+	cfg := mustLoad(t, with(validEnv(),
+		"COMMUNICATIONS_AI_ENABLED", "1",
+		"COMMUNICATIONS_AI_PROVIDER", "  openai  ",
+		"COMMUNICATIONS_AI_MODEL", "  gpt-4.1-mini  ",
+		"COMMUNICATIONS_AI_API_KEY", "  sk-test-key  ",
+	))
+	if !cfg.CommunicationsAIEnabled {
+		t.Error("CommunicationsAIEnabled = false, want true")
+	}
+	if cfg.CommunicationsAIProvider != "openai" {
+		t.Errorf("CommunicationsAIProvider = %q, want it trimmed", cfg.CommunicationsAIProvider)
+	}
+	if cfg.CommunicationsAIModel != "gpt-4.1-mini" {
+		t.Errorf("CommunicationsAIModel = %q, want it trimmed", cfg.CommunicationsAIModel)
+	}
+	if cfg.CommunicationsAIAPIKey != "sk-test-key" {
+		t.Errorf("CommunicationsAIAPIKey = %q, want it trimmed", cfg.CommunicationsAIAPIKey)
+	}
+
+	blank := mustLoad(t, with(validEnv(), "COMMUNICATIONS_AI_PROVIDER", "   ", "COMMUNICATIONS_AI_MODEL", "   "))
+	if blank.CommunicationsAIProvider != "openai" || blank.CommunicationsAIModel != "gpt-4o-mini" {
+		t.Errorf("provider/model = %q/%q, want the defaults for a blank value",
+			blank.CommunicationsAIProvider, blank.CommunicationsAIModel)
+	}
+
+	if msg := loadError(t, with(validEnv(), "COMMUNICATIONS_AI_ENABLED", "true")); !strings.Contains(msg, "COMMUNICATIONS_AI_ENABLED") {
+		t.Errorf("error = %q, want a non-0/1 flag value rejected", msg)
+	}
+}
