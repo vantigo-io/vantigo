@@ -54,6 +54,48 @@ func loadError(t *testing.T, env map[string]string) string {
 	return err.Error()
 }
 
+// TestLoad_CommunicationsRetention pins the three retention settings
+// (communications inventory §12.1): .NET's defaults of 365 days, 100 messages
+// per batch and a 60-minute poll, and the bounds this file enforces where .NET
+// silently clamps — a mistyped window is a startup error, not a retention
+// policy nobody chose.
+func TestLoad_CommunicationsRetention(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.CommunicationsRetentionDays != 365 {
+		t.Errorf("CommunicationsRetentionDays = %d, want 365", cfg.CommunicationsRetentionDays)
+	}
+	if cfg.CommunicationsRetentionBatchSize != 100 {
+		t.Errorf("CommunicationsRetentionBatchSize = %d, want 100", cfg.CommunicationsRetentionBatchSize)
+	}
+	if cfg.CommunicationsRetentionPoll != time.Hour {
+		t.Errorf("CommunicationsRetentionPoll = %v, want 1h", cfg.CommunicationsRetentionPoll)
+	}
+
+	tuned := mustLoad(t, with(validEnv(),
+		"COMMUNICATIONS_RETENTION_DAYS", "30",
+		"COMMUNICATIONS_RETENTION_BATCH_SIZE", "1000",
+		"COMMUNICATIONS_RETENTION_POLL", "5m"))
+	if tuned.CommunicationsRetentionDays != 30 {
+		t.Errorf("CommunicationsRetentionDays = %d, want 30", tuned.CommunicationsRetentionDays)
+	}
+	if tuned.CommunicationsRetentionBatchSize != 1000 {
+		t.Errorf("CommunicationsRetentionBatchSize = %d, want 1000", tuned.CommunicationsRetentionBatchSize)
+	}
+	if tuned.CommunicationsRetentionPoll != 5*time.Minute {
+		t.Errorf("CommunicationsRetentionPoll = %v, want 5m", tuned.CommunicationsRetentionPoll)
+	}
+
+	for _, bad := range [][2]string{
+		{"COMMUNICATIONS_RETENTION_DAYS", "0"},
+		{"COMMUNICATIONS_RETENTION_BATCH_SIZE", "1001"},
+		{"COMMUNICATIONS_RETENTION_POLL", "0s"},
+	} {
+		if msg := loadError(t, with(validEnv(), bad[0], bad[1])); !strings.Contains(msg, bad[0]) {
+			t.Errorf("%s=%q: error %q does not name the field", bad[0], bad[1], msg)
+		}
+	}
+}
+
 func TestLoad_MinimalProductionConfigGetsDefaults(t *testing.T) {
 	cfg := mustLoad(t, validEnv())
 

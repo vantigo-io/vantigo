@@ -184,11 +184,35 @@ type Config struct {
 	// (EP/ConversationEndpoints.cs:117) applies to its configured value.
 	CommunicationsAttachmentMaxBytes int64
 	// CommunicationsUploadExpiry is how long a staged attachment stays valid
-	// before a future retention worker sweeps it (COMMUNICATIONS_UPLOAD_EXPIRY,
+	// before the retention worker sweeps it (COMMUNICATIONS_UPLOAD_EXPIRY,
 	// communications design doc D3: "expiry moves to the retention worker").
-	// Staging itself only ever sets attachment_uploads.expires_at to
-	// now+this value; nothing in this task sweeps it.
+	// Staging sets attachment_uploads.expires_at to now+this value, and
+	// communications' RetentionWorker.ExpireStagedUploads is what acts on it.
 	CommunicationsUploadExpiry time.Duration
+
+	// CommunicationsRetentionDays is how old terminal communication history
+	// must be before the retention worker deletes it
+	// (COMMUNICATIONS_RETENTION_DAYS, .NET's Communications:Retention:Days,
+	// default 365 — the conservative twelve months the operator guidance
+	// recommends; communications inventory §12.1). .NET silently clamps its
+	// configured value with max(1, days); this file rejects a value outside
+	// [1, 36500] instead, the same treatment
+	// COMMUNICATIONS_ATTACHMENT_MAX_BYTES gets, so a typo is a startup error
+	// rather than a retention window nobody asked for. The upper bound is
+	// this port's own: .NET has none, and a hundred years is well past any
+	// real policy.
+	CommunicationsRetentionDays int
+	// CommunicationsRetentionBatchSize is how many messages one retention
+	// batch may delete (COMMUNICATIONS_RETENTION_BATCH_SIZE,
+	// Communications:Retention:BatchSize, default 100). .NET's
+	// Math.Clamp(value, 1, 1000) becomes the same bound, enforced here.
+	CommunicationsRetentionBatchSize int
+	// CommunicationsRetentionPoll is how often the retention worker runs a
+	// cycle (COMMUNICATIONS_RETENTION_POLL, Communications:Retention:PollMinutes,
+	// default 60 minutes). .NET's max(1, minutes) floor exists because its
+	// unit is whole minutes; here the unit is a duration and the equivalent
+	// rule is duration()'s own "must be positive".
+	CommunicationsRetentionPoll time.Duration
 
 	// CommunicationsAIEnabled turns the communications AI draft and
 	// customer-suggestion operations on (COMMUNICATIONS_AI_ENABLED, .NET's
@@ -309,6 +333,7 @@ func Load(env map[string]string) (*Config, error) {
 
 	objectStorage(&p, env, c)
 	communicationsAttachments(&p, env, c)
+	communicationsRetention(&p, env, c)
 	communicationsAI(&p, env, c)
 
 	if c.EnforcesTransportSecurity() {
@@ -487,6 +512,16 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 func communicationsAttachments(p *problems, env map[string]string, c *Config) {
 	c.CommunicationsAttachmentMaxBytes = int64(integer(p, env, "COMMUNICATIONS_ATTACHMENT_MAX_BYTES", 10*1024*1024, 1, 50*1024*1024))
 	c.CommunicationsUploadExpiry = duration(p, env, "COMMUNICATIONS_UPLOAD_EXPIRY", 24*time.Hour)
+}
+
+// communicationsRetention loads CommunicationsOptions.Retention
+// (communications inventory §12.1, design doc §7): the retention window, the
+// per-batch cap and the worker's poll cadence, whose .NET defaults are 365
+// days, 100 messages and 60 minutes.
+func communicationsRetention(p *problems, env map[string]string, c *Config) {
+	c.CommunicationsRetentionDays = integer(p, env, "COMMUNICATIONS_RETENTION_DAYS", 365, 1, 36500)
+	c.CommunicationsRetentionBatchSize = integer(p, env, "COMMUNICATIONS_RETENTION_BATCH_SIZE", 100, 1, 1000)
+	c.CommunicationsRetentionPoll = duration(p, env, "COMMUNICATIONS_RETENTION_POLL", time.Hour)
 }
 
 // communicationsAI loads CommunicationsAiOptions (communications inventory

@@ -85,11 +85,15 @@ func Module() module.Module {
 }
 
 // workers is this module's background work (design §4): the outbox delivery
-// worker so far, with retention and attachment cleanup joining it. cmd/vantigo
-// starts these through module.Workers in worker mode, and in api mode when
-// WORKERS_IN_PROCESS=1 — never in server mode.
+// worker and the retention worker so far, with attachment cleanup joining
+// them. cmd/vantigo starts these through module.Workers in worker mode, and in
+// api mode when WORKERS_IN_PROCESS=1 — never in server mode.
+//
+// Only retention takes the advisory lease (inventory §14); delivery relies on
+// its conditional-update claim, and cleanup will too. Nothing here arbitrates
+// that — each worker owns its own exclusion.
 func workers(d module.Deps) []worker.Worker {
-	return []worker.Worker{NewOutboxWorker(d)}
+	return []worker.Worker{NewOutboxWorker(d), NewRetentionWorker(d)}
 }
 
 // mount registers every contract operation on the platform router, which wraps
