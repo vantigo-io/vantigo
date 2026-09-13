@@ -12,6 +12,41 @@ import (
 	"github.com/google/uuid"
 )
 
+const claimStagedAttachments = `-- name: ClaimStagedAttachments :execrows
+UPDATE communications.attachment_uploads
+SET scan_status = 'claimed'
+WHERE id = ANY($1::uuid[]) AND conversation_id = $2 AND uploaded_by_user_id = $3
+  AND scan_status = 'clean' AND expires_at > $4
+`
+
+type ClaimStagedAttachmentsParams struct {
+	Ids              []uuid.UUID
+	ConversationID   uuid.UUID
+	UploadedByUserID uuid.UUID
+	Now              time.Time
+}
+
+// The step-10 conditional claim (`:310-315`, inventory §5.5 item 2): the
+// exact same predicate as the preflight above, but as an UPDATE rather than
+// a SELECT — the race fence against a concurrent expiry sweep or a second
+// reply racing to consume the same staged upload. The caller compares the
+// affected-row count against len(ids); a mismatch means something claimed
+// or expired an id between the preflight and here, and the whole
+// transaction rolls back to the same 409 attachments_not_ready the
+// preflight itself answers.
+func (q *Queries) ClaimStagedAttachments(ctx context.Context, arg ClaimStagedAttachmentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, claimStagedAttachments,
+		arg.Ids,
+		arg.ConversationID,
+		arg.UploadedByUserID,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countLiveAttachmentUploads = `-- name: CountLiveAttachmentUploads :one
 SELECT count(*)
 FROM communications.attachment_uploads
@@ -35,6 +70,20 @@ func (q *Queries) CountLiveAttachmentUploads(ctx context.Context, arg CountLiveA
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const deleteClaimedAttachmentUploads = `-- name: DeleteClaimedAttachmentUploads :exec
+DELETE FROM communications.attachment_uploads
+WHERE id = ANY($1::uuid[]) AND scan_status = 'claimed'
+`
+
+// The staging-row cleanup half of the same promotion (`:331`): once
+// MarkCleanupRecordOwned has transferred object ownership, the now-redundant
+// attachment_uploads rows (still carrying the 'claimed' status this same
+// transaction just set) are deleted.
+func (q *Queries) DeleteClaimedAttachmentUploads(ctx context.Context, ids []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteClaimedAttachmentUploads, ids)
+	return err
 }
 
 const findAttachmentUploadByUploaderAndKey = `-- name: FindAttachmentUploadByUploaderAndKey :one
@@ -293,6 +342,116 @@ func (q *Queries) InsertCleanupRecord(ctx context.Context, arg InsertCleanupReco
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const insertMessageAttachment = `-- name: InsertMessageAttachment :exec
+INSERT INTO communications.message_attachments
+    (id, message_id, file_name, content_type, size_bytes, content_hash, content_id, storage_key, scan_status, is_inline, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'clean', $9, $10)
+`
+
+type InsertMessageAttachmentParams struct {
+	ID          uuid.UUID
+	MessageID   uuid.UUID
+	FileName    string
+	ContentType string
+	SizeBytes   int64
+	ContentHash string
+	ContentID   *string
+	StorageKey  string
+	IsInline    bool
+	CreatedAt   time.Time
+}
+
+// The promotion write (`:325`): one message_attachments row per claimed
+// staged upload, copying its metadata verbatim — scan_status is always
+// 'clean' (the value the claimed upload itself already carried; D2 means
+// every staged upload is born clean, so this is never anything else) and
+// the object itself is never moved or re-keyed (storage_key carries over
+// unchanged, inventory §5.5's closing note).
+func (q *Queries) InsertMessageAttachment(ctx context.Context, arg InsertMessageAttachmentParams) error {
+	_, err := q.db.Exec(ctx, insertMessageAttachment,
+		arg.ID,
+		arg.MessageID,
+		arg.FileName,
+		arg.ContentType,
+		arg.SizeBytes,
+		arg.ContentHash,
+		arg.ContentID,
+		arg.StorageKey,
+		arg.IsInline,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const listStagedAttachmentsForClaim = `-- name: ListStagedAttachmentsForClaim :many
+
+SELECT id, file_name, content_type, size_bytes, content_hash, content_id, storage_key, is_inline
+FROM communications.attachment_uploads
+WHERE id = ANY($1::uuid[]) AND conversation_id = $2 AND uploaded_by_user_id = $3
+  AND scan_status = 'clean' AND expires_at > $4
+`
+
+type ListStagedAttachmentsForClaimParams struct {
+	Ids              []uuid.UUID
+	ConversationID   uuid.UUID
+	UploadedByUserID uuid.UUID
+	Now              time.Time
+}
+
+type ListStagedAttachmentsForClaimRow struct {
+	ID          uuid.UUID
+	FileName    string
+	ContentType string
+	SizeBytes   int64
+	ContentHash string
+	ContentID   *string
+	StorageKey  string
+	IsInline    bool
+}
+
+// Task 7 (Reply / QueueOutboundAsync, `:291-332`, inventory §5.5's "exactly
+// where it is enforced"): the scanStatus gate's own two enforcement points,
+// preflight and claim, plus the promotion writes that follow a successful
+// claim.
+// The step-8 preflight (`:292-295`, inventory §5.5 item 1): every id in ids
+// that is still staged, owned by caller on this conversation, clean and
+// unexpired. The caller compares len(result) against len(ids) — a mismatch
+// (an id that does not exist, belongs to someone else, or has expired)
+// answers 409 attachments_not_ready before any write is attempted.
+func (q *Queries) ListStagedAttachmentsForClaim(ctx context.Context, arg ListStagedAttachmentsForClaimParams) ([]ListStagedAttachmentsForClaimRow, error) {
+	rows, err := q.db.Query(ctx, listStagedAttachmentsForClaim,
+		arg.Ids,
+		arg.ConversationID,
+		arg.UploadedByUserID,
+		arg.Now,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStagedAttachmentsForClaimRow
+	for rows.Next() {
+		var i ListStagedAttachmentsForClaimRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.FileName,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.ContentHash,
+			&i.ContentID,
+			&i.StorageKey,
+			&i.IsInline,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markCleanupRecordOwned = `-- name: MarkCleanupRecordOwned :exec

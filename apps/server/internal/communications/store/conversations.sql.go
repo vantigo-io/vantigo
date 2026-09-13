@@ -128,6 +128,46 @@ func (q *Queries) GetConversationByID(ctx context.Context, id uuid.UUID) (Commun
 	return i, err
 }
 
+const getConversationForReply = `-- name: GetConversationForReply :one
+
+SELECT c.id, c.subject, c.channel_id, ch.is_active AS channel_is_active, ch.type AS channel_type
+FROM communications.conversations c
+JOIN communications.channels ch ON ch.id = c.channel_id
+WHERE c.id = $1
+`
+
+type GetConversationForReplyRow struct {
+	ID              uuid.UUID
+	Subject         *string
+	ChannelID       uuid.UUID
+	ChannelIsActive bool
+	ChannelType     string
+}
+
+// Task 7 (Reply / QueueOutboundAsync, `:264-338`): the composer's own
+// lookups. GetConversationForReply's channel join replaces the two-query
+// shape (conversation, then channel) task 5's create path uses, matching
+// .NET's single `Include(item => item.Channel)` eager load at `:268`.
+// QueueOutboundAsync's own conversation+channel load (`:268`): id and
+// current subject (BuildOutboundMessage's `request.Subject ?? conversation.Subject`,
+// `:282`, and its own fill-once `conversation.Subject ??= subject`, `:389`,
+// applied by UpdateConversationActivityForReply below), plus the channel's
+// is_active (step 5's 422 channel_inactive, checked here rather than a
+// second round trip) and type (step 9's `conversation.Channel.Type == "email"`
+// suppression gate).
+func (q *Queries) GetConversationForReply(ctx context.Context, id uuid.UUID) (GetConversationForReplyRow, error) {
+	row := q.db.QueryRow(ctx, getConversationForReply, id)
+	var i GetConversationForReplyRow
+	err := row.Scan(
+		&i.ID,
+		&i.Subject,
+		&i.ChannelID,
+		&i.ChannelIsActive,
+		&i.ChannelType,
+	)
+	return i, err
+}
+
 const getConversationMessagesByConversationID = `-- name: GetConversationMessagesByConversationID :many
 SELECT m.id, m.direction, m.author_user_id, m.subject, m.text_body, m.html_body,
        m.occurred_at, m.created_at,
@@ -256,6 +296,35 @@ func (q *Queries) GetIdempotencyRecordByKey(ctx context.Context, key string) (Co
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getLatestInboundParticipantAddress = `-- name: GetLatestInboundParticipantAddress :one
+SELECT p.address
+FROM communications.conversation_messages m
+JOIN communications.participants p ON p.id = m.participant_id
+WHERE m.conversation_id = $1 AND m.direction = 'inbound'
+ORDER BY m.occurred_at DESC
+LIMIT 1
+`
+
+// The non-constant half of ReplyRecipients (`:446-455`) that QueueOutboundAsync
+// inlines directly (`:277`, `:283`): the latest, by occurred_at, inbound
+// message's participant address. Structurally this can never return a row
+// in this port — conversation_messages.direction's own CHECK constraint
+// (migration 00006_communications_baseline.sql, "dispatch correction 3")
+// admits only 'outbound' and 'internal_note', so no row with
+// direction = 'inbound' can ever exist, not even through a raw fixture
+// insert. Written as a real query rather than a hardcoded miss anyway
+// (replyRecipientsOf's sibling comment in conversations.go explains why:
+// faithful structure now, so a future inbound producer needs no change
+// here) — its permanent zero-rows result is what step 7's
+// 422 recipients_missing pins (design doc §1.1; task 7 dispatch's
+// "outbound-only consequence").
+func (q *Queries) GetLatestInboundParticipantAddress(ctx context.Context, conversationID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, getLatestInboundParticipantAddress, conversationID)
+	var address string
+	err := row.Scan(&address)
+	return address, err
 }
 
 const insertConversation = `-- name: InsertConversation :one
@@ -917,6 +986,35 @@ func (q *Queries) ListMessageDeliveriesByMessageIDs(ctx context.Context, message
 	return items, nil
 }
 
+const listSuppressedAddresses = `-- name: ListSuppressedAddresses :many
+SELECT normalized_email_address
+FROM communications.suppressions
+WHERE normalized_email_address = ANY($1::text[])
+`
+
+// QueueOutboundAsync's suppression check (`:301-302`): every address in
+// destinations that has a live suppression row, keyed by the already-
+// normalised (uppercased, D7) form both sides compare on.
+func (q *Queries) ListSuppressedAddresses(ctx context.Context, addresses []string) ([]string, error) {
+	rows, err := q.db.Query(ctx, listSuppressedAddresses, addresses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var normalized_email_address string
+		if err := rows.Scan(&normalized_email_address); err != nil {
+			return nil, err
+		}
+		items = append(items, normalized_email_address)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateConversationActivity = `-- name: UpdateConversationActivity :one
 UPDATE communications.conversations
 SET last_activity_at = $1, preview_text = $2
@@ -938,6 +1036,38 @@ func (q *Queries) UpdateConversationActivity(ctx context.Context, arg UpdateConv
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const updateConversationActivityForReply = `-- name: UpdateConversationActivityForReply :exec
+UPDATE communications.conversations
+SET subject = COALESCE(subject, $1), last_activity_at = $2, preview_text = $3
+WHERE id = $4
+`
+
+type UpdateConversationActivityForReplyParams struct {
+	MessageSubject *string
+	LastActivityAt time.Time
+	PreviewText    *string
+	ID             uuid.UUID
+}
+
+// BuildOutboundMessage's tracked-entity mutation for Reply (`:389`):
+// `conversation.Subject ??= subject` — fill-once, matched here with
+// COALESCE so an already-set subject is never overwritten — plus
+// LastActivityAt and PreviewText, which always advance. Run only from
+// inside queueReply's transaction, after every refusal check (steps 8, 9,
+// 10) has passed: inventory §19.2 item 16 warns that .NET applies these
+// same three fields to the *tracked* entity before its own refusal checks,
+// but nothing persists on those paths because SaveChangesAsync is never
+// reached — a Go port writing SQL directly must not apply them early either.
+func (q *Queries) UpdateConversationActivityForReply(ctx context.Context, arg UpdateConversationActivityForReplyParams) error {
+	_, err := q.db.Exec(ctx, updateConversationActivityForReply,
+		arg.MessageSubject,
+		arg.LastActivityAt,
+		arg.PreviewText,
+		arg.ID,
+	)
+	return err
 }
 
 const updateConversationFields = `-- name: UpdateConversationFields :one
