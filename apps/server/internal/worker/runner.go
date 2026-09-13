@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 )
 
@@ -44,7 +45,11 @@ func (r *Runner) run(ctx context.Context, w Worker) {
 	defer r.wg.Done()
 	defer func() {
 		if rec := recover(); rec != nil {
-			r.logger.Error("worker panicked", "worker", w.Name(), "panic", rec)
+			// debug.Stack() here, not the recover site's caller (this defer's
+			// own frame): it captures the goroutine's stack as of the panic,
+			// including w.Run's frames, which is what makes a recovered panic
+			// actionable instead of just a one-line "something panicked".
+			r.logger.Error("worker panicked", "worker", w.Name(), "panic", rec, "stack", string(debug.Stack()))
 		}
 	}()
 
