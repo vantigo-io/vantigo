@@ -54,7 +54,7 @@ func TestModule_ContributesItsWorkers(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	want := []string{"communications-outbox", "communications-retention"}
+	want := []string{"communications-attachment-cleanup", "communications-outbox", "communications-retention"}
 	if !slices.Equal(names, want) {
 		t.Errorf("workers = %v, want exactly %v", names, want)
 	}
