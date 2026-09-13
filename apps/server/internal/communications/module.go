@@ -6,6 +6,9 @@
 package communications
 
 import (
+	"bytes"
+	"context"
+	"io"
 	"net/http"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
@@ -76,5 +79,60 @@ func mount(d module.Deps) (http.Handler, error) {
 	if err := router.Err(); err != nil {
 		return nil, err
 	}
-	return handler, nil
+	return withRawPatchBody(handler), nil
+}
+
+// rawPatchBodyContextKey is unexported so only withRawPatchBody and
+// conversations.go's PATCH handler share it.
+type rawPatchBodyContextKey struct{}
+
+// withRawPatchBody captures every PATCH request's raw JSON body into the
+// request context before the generated decoder consumes it, then restores
+// r.Body so decoding proceeds exactly as it otherwise would.
+//
+// It exists for one reason: PATCH /conversations/{id} — the only PATCH
+// operation this contract declares (communications.yaml has exactly one
+// `patch:` block, so gating on method alone can never catch a different
+// operation) — must tell "customerId omitted" from "customerId: null"
+// apart, and from "assignedUserId omitted" vs "assignedUserId: null".
+// encoding/json collapses all three into the same nil *interface{}: its
+// documented rule for unmarshaling a JSON null into a pointer field is to
+// set that pointer to nil, applied identically whether the key was absent
+// or present-and-null, and unmarshaling a top-level null into a non-pointer
+// struct (PatchCommunicationsConversationsByIdJSONRequestBody itself) is a
+// silent no-op rather than a nil request. .NET tells every one of these
+// apart natively (JsonElement.ValueKind: Undefined vs Null, and a JSON null
+// body binding a nullable record parameter to an actual C# null). This is
+// the smallest way to recover the same distinctions in Go without changing
+// the generated contract code or its request-body type.
+func withRawPatchBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.Body == nil || r.Body == http.NoBody {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Bounded by the same ceiling module.Router's own MaxBytesReader
+		// enforces for this operation (no BodyLimits override in this
+		// module's RouterOptions, so every operation uses
+		// module.DefaultMaxBodyBytes): a body the router would reject as
+		// too large is truncated here too, and the generated decoder still
+		// rejects it downstream exactly as it would without this wrapper —
+		// this capture never makes an oversized body succeed.
+		raw, err := io.ReadAll(io.LimitReader(r.Body, module.DefaultMaxBodyBytes+1))
+		_ = r.Body.Close()
+		if err != nil {
+			r.Body = io.NopCloser(bytes.NewReader(nil))
+			next.ServeHTTP(w, r)
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), rawPatchBodyContextKey{}, raw)))
+	})
+}
+
+// rawPatchBodyFrom returns the raw JSON bytes withRawPatchBody captured for
+// this request, if any.
+func rawPatchBodyFrom(ctx context.Context) ([]byte, bool) {
+	b, ok := ctx.Value(rawPatchBodyContextKey{}).([]byte)
+	return b, ok
 }
