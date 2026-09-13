@@ -40,17 +40,25 @@ faithfully, keep them contract-complete, and document the limitation here, in th
 inventory's hazards section and in `CONTRIBUTING.md`. We do not invent an inbound path,
 and we do not delete endpoints the contract declares.
 
-**Sharpened (2026-09-13, from Task 7).** "Reply is unusable" understates it. Because the
-`conversation_messages.direction` CHECK encodes only what this port can produce
-(`outbound`, `internal_note` — see §3), no inbound message can exist, so
-`recipients_missing` fires at step 7 of reply's ten-step order and **steps 8, 9 and 10 are
-unreachable through HTTP**: the doubly-enforced `attachments_not_ready` gate and the
-`recipient_suppressed` check are dead through the API. They are still ported, still
-correct, and tested directly rather than through the handler, because they become live the
-moment an inbound provider lands — which is a migration widening the CHECK plus the
-provider, nothing structural. Two consequences worth stating for whoever picks this up:
-attachments can be staged but never sent, and suppression is enforced only by the outbox
-worker's own checks, not by reply.
+**Sharpened (2026-09-13, from Task 7).** "Reply is unusable" understates it. **No production
+path writes an inbound message** — the inbound worker was the only writer and it is out of
+scope — so `recipients_missing` fires at step 7 of reply's ten-step order and steps 8, 9 and
+10 never run **in production**: the doubly-enforced `attachments_not_ready` gate and the
+`recipient_suppressed` check are dead through the API. Two consequences worth stating for
+whoever picks this up: attachments can be staged but never sent, and suppression is enforced
+only by the outbox worker's own checks, not by reply.
+
+**Correction (2026-09-13, Task 7 fix round 2).** An earlier version of this section, and
+Task 3's schema ruling behind it, went further: the `direction` CHECK was narrowed to
+`('outbound', 'internal_note')` on the principle that the schema should encode only what the
+port can produce. That was wrong, and the bill came due twice. It made the real
+recipient-resolution query permanently unexercisable — no fixture could insert an inbound
+row, so no test could drive the query's success branch, and a seam added to compensate
+merely relocated the blindness. And it would have required a migration on the day an inbound
+provider landed. The CHECK now matches .NET's own set, **including `inbound`**. Nothing in
+this port writes such a row, so the outbound-only reality above is unchanged; what changes is
+that the schema stops asserting a restriction .NET never made, fixtures can exercise the real
+query and reply's full order, and the inbound provider arrives without a schema change.
 
 ## 2. Platform additions
 
@@ -81,7 +89,9 @@ Migration `00006_communications_baseline.sql` owning schema `communications`: 19
 (`scan_attempts`, `next_scan_at`, `scan_lease_id`, `scan_lease_until`, `scan_error`) and
 keeping only `scan_status`, which is contract-visible and gates replies — see D4's
 correction — and `conversation_messages` keeping `raw_payload_storage_key` and its
-`direction` column even though `inbound` becomes unreachable.
+`direction` column, whose CHECK matches .NET's full set **including `inbound`** even though
+no production path writes that value (see §1.1's correction: narrowing it made the real
+recipient query unexercisable and would have forced a migration when inbound lands).
 
 sqlc queries, a module skeleton in the shape Tasks 5/10/13 established, and the
 five-permission catalog verbatim from `CommunicationsPermissionCatalog.cs`, with
