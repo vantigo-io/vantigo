@@ -327,7 +327,17 @@ func stagedAttachmentStorageKey(conversationID, uploaderUserID, uploadID uuid.UU
 // s.deps.Pool, outside any transaction shared with the later
 // attachment_uploads insert: those two writes must land in two separate
 // commits, not one, for the durability guarantee to mean anything.
-func (s *server) reserveStorageKey(ctx context.Context, key string, now time.Time) error {
+//
+// uploadID identifies the reservation in a wrapped error instead of key
+// itself (fix round 2, item 2): key is the physical storage key, and
+// wrapping it into an error string that reaches httpx.WriteError's generic
+// "request failed" log line — the only unhandled-error path this function's
+// caller can take — would put it in server logs, which never gets back to
+// a caller (the contract rule holds either way) but is still an exposure no
+// endpoint should manufacture. uploadID is already the identifier the
+// caller, the database, and anyone reading that log line's other fields can
+// correlate the reservation to.
+func (s *server) reserveStorageKey(ctx context.Context, uploadID uuid.UUID, key string, now time.Time) error {
 	q := store.New(s.deps.Pool)
 	existing, err := q.FindLatestCleanupRecordByStorageKey(ctx, key)
 	switch {
@@ -337,7 +347,7 @@ func (s *server) reserveStorageKey(ctx context.Context, key string, now time.Tim
 			ReservationExpiresAt: ptr(now.Add(reservationLifetime)), CreatedAt: now,
 		})
 	case err != nil:
-		return fmt.Errorf("communications: find cleanup record for %q: %w", key, err)
+		return fmt.Errorf("communications: find cleanup record for upload %s: %w", uploadID, err)
 	case existing.Status == "owned" || existing.Status == "deleting":
 		return errStorageKeyAlreadyOwned
 	default:
@@ -448,8 +458,8 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 	storageKey := stagedAttachmentStorageKey(req.Id, caller, uploadID)
 	now := s.deps.Clock()
 
-	if err := s.reserveStorageKey(ctx, storageKey, now); err != nil {
-		return nil, fmt.Errorf("communications: reserve storage key: %w", err)
+	if err := s.reserveStorageKey(ctx, uploadID, storageKey, now); err != nil {
+		return nil, fmt.Errorf("communications: reserve storage key for upload %s: %w", uploadID, err)
 	}
 
 	if err := s.store.Put(ctx, storageKey, bytes.NewReader(form.fileData), contentType); err != nil {
