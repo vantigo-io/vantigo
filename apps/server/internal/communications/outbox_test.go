@@ -15,7 +15,6 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
-	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // This file is task 11: the outbox delivery worker (SV/OutboxJobProcessor.cs,
@@ -1014,30 +1013,8 @@ func TestOutboxWorker_RunDrainsTheQueueAndStopsWithTheContext(t *testing.T) {
 	}
 }
 
-// TestCommunicationsModule_ContributesTheOutboxWorker proves the worker is
-// reachable the way production starts it — through Module().Workers, which
-// module.Workers collects for cmd/vantigo's runner — and not only through the
-// constructor these tests call directly.
-func TestCommunicationsModule_ContributesTheOutboxWorker(t *testing.T) {
-	t.Parallel()
-	f := &fakeSMTP{}
-	h := newOutboxHarness(t, f)
-
-	workers := module.Workers(h.Deps(), communications.Module())
-	var names []string
-	for _, w := range workers {
-		names = append(names, w.Name())
-		if w.Interval() <= 0 {
-			t.Errorf("worker %s has interval %v, want a positive poll interval", w.Name(), w.Interval())
-		}
-	}
-	found := false
-	for _, n := range names {
-		if n == "communications-outbox" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("workers = %v, want one named communications-outbox", names)
-	}
-}
+// The outbox worker's registration is pinned by module_test.go's
+// TestModule_ContributesItsWorkers, which asserts this module's whole worker
+// set rather than one name: the single-worker version that lived here let a
+// second, fully tested worker go unregistered without a single test noticing
+// (fix round 1, important 1).

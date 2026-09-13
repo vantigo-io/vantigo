@@ -7,6 +7,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/communications"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 )
 
 // TestModule_ComposesAndDemandsAPermission proves communications mounts
@@ -22,6 +23,40 @@ func TestModule_ComposesAndDemandsAPermission(t *testing.T) {
 	r := h.Client(t).Do(http.MethodGet, "/api/v1/communications/channels", nil)
 	if r.Status != http.StatusUnauthorized || r.Code() != "unauthenticated" {
 		t.Errorf("status %d code %q body %s, want 401 unauthenticated", r.Status, r.Code(), r.Body)
+	}
+}
+
+// TestModule_ContributesItsWorkers proves every background worker this module
+// owns is reachable the way production starts it — through Module().Workers,
+// which module.Workers collects for cmd/vantigo's runner — and not only
+// through the constructors the worker tests call directly.
+//
+// It is an EXACT-SET assertion, and deliberately module-wide rather than one
+// test per worker. The earlier version checked only for communications-outbox,
+// which meant deleting NewRetentionWorker(d) from workers() left the whole
+// suite green while retention silently never ran in production (fix round 1,
+// important 1) — a worker fully implemented, fully tested, and never started.
+//
+// **Adding a worker to this module means adding its name here.** If you have
+// written a worker and this test still passes unchanged, that is the symptom:
+// it is not registered. The interval check is part of the same guard — the
+// runner logs a worker's cadence and a zero interval would make a poll loop
+// spin.
+func TestModule_ContributesItsWorkers(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	var names []string
+	for _, w := range module.Workers(h.Deps(), communications.Module()) {
+		names = append(names, w.Name())
+		if w.Interval() <= 0 {
+			t.Errorf("worker %s has interval %v, want a positive poll interval", w.Name(), w.Interval())
+		}
+	}
+	slices.Sort(names)
+	want := []string{"communications-outbox", "communications-retention"}
+	if !slices.Equal(names, want) {
+		t.Errorf("workers = %v, want exactly %v", names, want)
 	}
 }
 

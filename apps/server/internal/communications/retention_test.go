@@ -718,6 +718,88 @@ func TestRetention_ExpirySkipsUnexpiredClaimedAndAlreadyExpiredUploads(t *testin
 	}
 }
 
+// TestRetention_AnEmptyBatchSkipsTheOrphanSweeps pins fix round 1's minor 2
+// and the divergence it introduces. .NET runs the two orphan anti-joins on
+// every batch; this port skips the whole batch body when no message is due,
+// because retention is the only producer of the orphans those sweeps clean —
+// a conversation loses its last message, and a participant its last link, only
+// inside a batch that deleted something.
+//
+// So a pre-existing orphan survives an empty batch (asserted first) and is
+// swept by the next batch that does real work (asserted second). If someone
+// later reinstates the unconditional sweeps, the first assertion fails and
+// this comment is where they should land.
+func TestRetention_AnEmptyBatchSkipsTheOrphanSweeps(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	// An orphan with no messages anywhere near it, and nothing old enough to
+	// delete: the batch has no work.
+	orphan := seedRetentionMessage(t, h, retentionSeed{age: time.Hour})
+	h.Exec(t, `DELETE FROM communications.message_events WHERE message_id = $1`, orphan.messageID)
+	h.Exec(t, `DELETE FROM communications.message_deliveries WHERE message_id = $1`, orphan.messageID)
+	h.Exec(t, `DELETE FROM communications.conversation_messages WHERE id = $1`, orphan.messageID)
+
+	w := communications.NewRetentionWorker(h.Deps())
+	deleted, err := w.CleanupBatch(context.Background())
+	if err != nil {
+		t.Fatalf("CleanupBatch: %v", err)
+	}
+	if deleted != 0 {
+		t.Fatalf("deleted = %d, want 0: nothing is due", deleted)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.participants WHERE id = $1`, orphan.participantID); n != 1 {
+		t.Errorf("participants rows = %d, want 1: an empty batch does no sweeping", n)
+	}
+
+	// A batch that does delete something sweeps as it always did.
+	seedRetentionMessage(t, h, retentionSeed{age: 400 * 24 * time.Hour})
+	if _, err := w.CleanupBatch(context.Background()); err != nil {
+		t.Fatalf("CleanupBatch: %v", err)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.participants WHERE id = $1`, orphan.participantID); n != 0 {
+		t.Errorf("participants rows = %d, want 0: a productive batch still sweeps orphans", n)
+	}
+}
+
+// TestRetention_ExpiryDrainsPastOnePage pins fix round 1's minor 3: the sweep
+// keeps its 100-row transaction but no longer stops there. One cycle has to
+// clear whatever is actually due, because the page size arrived from a
+// one-minute scanner cadence and now rides a 60-minute poll — a single page
+// would cap expiry at 100 an hour, under which a busy installation's staged
+// uploads accumulate faster than they expire.
+func TestRetention_ExpiryDrainsPastOnePage(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	fx := seedRetentionMessage(t, h, retentionSeed{age: time.Hour})
+
+	const uploads = 101 // one more than the page size
+	uploader := uuid.New()
+	for i := 0; i < uploads; i++ {
+		h.Exec(t, `INSERT INTO communications.attachment_uploads
+			(id, conversation_id, uploaded_by_user_id, file_name, content_type, size_bytes, content_hash,
+			 storage_key, is_inline, idempotency_key, expires_at, created_at)
+			VALUES ($1, $2, $3, 'a.bin', 'application/octet-stream', 2, 'hash', $4, false, $5, $6, $6)`,
+			uuid.New(), fx.conversationID, uploader,
+			"staged-attachments/"+uuid.NewString()+"/a.bin", uuid.NewString(),
+			h.Now().Add(-time.Hour))
+	}
+
+	expired, err := communications.NewRetentionWorker(h.Deps()).ExpireStagedUploads(context.Background())
+	if err != nil {
+		t.Fatalf("ExpireStagedUploads: %v", err)
+	}
+	if expired != uploads {
+		t.Errorf("expired = %d, want %d: the sweep drains rather than stopping at one page", expired, uploads)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE scan_status <> 'expired'`); n != 0 {
+		t.Errorf("unexpired uploads left = %d, want 0", n)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_cleanup_records WHERE status = 'pending'`); n != uploads {
+		t.Errorf("pending cleanup records = %d, want %d", n, uploads)
+	}
+}
+
 // ---- the lease ----
 
 // TestRetentionWorker_SkipsTheCycleWhenTheLeaseIsHeld is
