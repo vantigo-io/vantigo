@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
+	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
 // testAppSecret is a fixture value only: 32+ bytes, never a real secret.
@@ -70,6 +72,29 @@ func TestParseArgs(t *testing.T) {
 		}
 		if got, _ := parseArgs(argv); got != want {
 			t.Errorf("parseArgs(%q) = %v, want %v", args, got, want)
+		}
+	}
+}
+
+// TestRunWorkers pins the exact rule design §3.2 states: workers run
+// always in worker mode, in api mode only when WORKERS_IN_PROCESS=1, and
+// never in server mode regardless of that setting.
+func TestRunWorkers(t *testing.T) {
+	for _, tc := range []struct {
+		m                mode
+		workersInProcess bool
+		want             bool
+	}{
+		{modeWorker, false, true},
+		{modeWorker, true, true},
+		{modeAPI, true, true},
+		{modeAPI, false, false},
+		{modeServer, true, false},
+		{modeServer, false, false},
+	} {
+		cfg := &config.Config{WorkersInProcess: tc.workersInProcess}
+		if got := runWorkers(tc.m, cfg); got != tc.want {
+			t.Errorf("runWorkers(%v, WorkersInProcess=%v) = %v, want %v", tc.m, tc.workersInProcess, got, tc.want)
 		}
 	}
 }
@@ -236,10 +261,20 @@ func TestRun_SIGTERMDuringMigrationWaitsForItToFinish(t *testing.T) {
 
 // startServe runs serve on a loopback listener and returns its base URL and a
 // func that stops it and returns the exit code.
-func startServe(t *testing.T, withAPI bool) (string, func() int) {
+func startServe(t *testing.T, m mode) (string, func() int) {
+	t.Helper()
+	return startServeEnv(t, m, nil)
+}
+
+// startServeEnv is startServe with env overrides applied on top of the usual
+// fixture (WORKERS_IN_PROCESS among them) and extraWorkers appended to
+// whatever module.Workers resolves from the real module list — production
+// always passes none; a test passes a fake to prove serve really starts and
+// stops what it is handed.
+func startServeEnv(t *testing.T, m mode, env map[string]string, extraWorkers ...worker.Worker) (string, func() int) {
 	t.Helper()
 	_, databaseURL := testdb.Migrated(t)
-	cfg, err := config.Load(map[string]string{
+	envMap := map[string]string{
 		"DATABASE_URL":             databaseURL,
 		"APP_URL":                  "http://localhost:8080",
 		"ALLOW_INSECURE_TRANSPORT": "1",
@@ -248,7 +283,11 @@ func startServe(t *testing.T, withAPI bool) (string, func() int) {
 		"BOOTSTRAP_SECRET":         "main-test-bootstrap-secret",
 		"SMTP_HOST":                "smtp.example.invalid",
 		"SMTP_FROM":                "noreply@example.invalid",
-	})
+	}
+	for k, v := range env {
+		envMap[k] = v
+	}
+	cfg, err := config.Load(envMap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +297,7 @@ func startServe(t *testing.T, withAPI bool) (string, func() int) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
-	go func() { done <- serve(ctx, slog.New(slog.DiscardHandler), cfg, ln, withAPI) }()
+	go func() { done <- serve(ctx, slog.New(slog.DiscardHandler), cfg, ln, m, extraWorkers...) }()
 
 	base := "http://" + ln.Addr().String()
 	waitReady(t, base)
@@ -279,6 +318,43 @@ func startServe(t *testing.T, withAPI bool) (string, func() int) {
 			t.Fatal("serve did not return after cancellation")
 			return -1
 		}
+	}
+}
+
+// recordingWorker is a minimal worker.Worker: it signals started once, via
+// close, the first time Run is entered, records how many times Run was
+// invoked, and blocks on ctx.Done() before returning — so a test can prove
+// both that serve actually started it and that cancellation actually
+// stopped it, without sleeping to simulate its poll interval.
+type recordingWorker struct {
+	name    string
+	started chan struct{}
+	calls   atomic.Int32
+	stopped atomic.Bool
+}
+
+func newRecordingWorker(name string) *recordingWorker {
+	return &recordingWorker{name: name, started: make(chan struct{})}
+}
+
+func (w *recordingWorker) Name() string            { return w.name }
+func (w *recordingWorker) Interval() time.Duration { return time.Millisecond }
+func (w *recordingWorker) Run(ctx context.Context) error {
+	w.calls.Add(1)
+	close(w.started)
+	<-ctx.Done()
+	w.stopped.Store(true)
+	return nil
+}
+
+// waitStarted blocks until w.started fires, failing the test if it does not
+// within a generous guard — a hang-safety net, not a simulated poll delay.
+func waitStarted(t *testing.T, w *recordingWorker) {
+	t.Helper()
+	select {
+	case <-w.started:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("worker %q never started", w.name)
 	}
 }
 
@@ -309,7 +385,7 @@ func body(t *testing.T, target string) (int, string, http.Header) {
 }
 
 func TestServe_ServesTheWholeStackAndDrainsOnCancel(t *testing.T) {
-	base, stop := startServe(t, true)
+	base, stop := startServe(t, modeAPI)
 
 	if code, html, hdr := body(t, base+"/"); code != http.StatusOK || !strings.Contains(html, "window.__VANTIGO_APP__") || hdr.Get("Content-Security-Policy") == "" {
 		t.Errorf("SPA: %d, CSP %q, body %q", code, hdr.Get("Content-Security-Policy"), html)
@@ -345,7 +421,7 @@ func bodyNoRedirect(t *testing.T, target string) (int, string, http.Header) {
 // than the platform's /api 404 catch-all (which is what a module that was
 // never passed to Compose would answer).
 func TestServe_ServesTheBusinessModules(t *testing.T) {
-	base, stop := startServe(t, true)
+	base, stop := startServe(t, modeAPI)
 	defer stop()
 
 	for _, path := range []string{"/api/v1/customers", "/api/v1/products", "/api/v1/energy/metering-points"} {
@@ -364,7 +440,7 @@ func TestServe_ServesTheBusinessModules(t *testing.T) {
 // the API handler ever saw them) or a 204 (which is what binding the empty
 // segment to a {param} would have produced).
 func TestServe_DoubledAndTrailingSlashesAnswerTheNotFoundProblem(t *testing.T) {
-	base, stop := startServe(t, true)
+	base, stop := startServe(t, modeAPI)
 	defer stop()
 
 	for _, path := range []string{
@@ -389,7 +465,7 @@ func TestServe_DoubledAndTrailingSlashesAnswerTheNotFoundProblem(t *testing.T) {
 // handler into server.Options.API: the identity module answers its own
 // contract, not the platform's 404 catch-all.
 func TestServe_ServesTheIdentityModule(t *testing.T) {
-	base, stop := startServe(t, true)
+	base, stop := startServe(t, modeAPI)
 	defer stop()
 
 	code, status, _ := body(t, base+"/api/v1/identity/system/status")
@@ -399,10 +475,82 @@ func TestServe_ServesTheIdentityModule(t *testing.T) {
 }
 
 func TestServe_WorkerServesOnlyHealth(t *testing.T) {
-	base, stop := startServe(t, false)
+	base, stop := startServe(t, modeWorker)
 	defer stop()
 	if code, _, _ := body(t, base+"/"); code != http.StatusNotFound {
 		t.Errorf("worker served / with %d", code)
+	}
+}
+
+// TestServe_WorkerModeRunsAndStopsWorkers is the end-to-end bite for worker
+// mode: serve really starts what module.Workers (plus extraWorkers, its
+// test-only seam) hands the runner, and really waits for it to stop on
+// shutdown. No real module implements Worker yet (Tasks 11-13), so this
+// injects a fake through extraWorkers instead.
+func TestServe_WorkerModeRunsAndStopsWorkers(t *testing.T) {
+	w := newRecordingWorker("fake")
+	_, stop := startServeEnv(t, modeWorker, nil, w)
+	waitStarted(t, w)
+
+	if code := stop(); code != 0 {
+		t.Errorf("exit %d after a clean shutdown", code)
+	}
+	if !w.stopped.Load() {
+		t.Error("stop() returned before the worker observed cancellation")
+	}
+	if w.calls.Load() != 1 {
+		t.Errorf("calls = %d, want 1 (the runner must not restart a worker)", w.calls.Load())
+	}
+}
+
+// TestServe_APIModeRunsWorkersOnlyWhenConfigured is the end-to-end bite for
+// "api mode runs them when WORKERS_IN_PROCESS=1 and not otherwise": the
+// same fake worker actually starts under =1 and never starts under =0.
+func TestServe_APIModeRunsWorkersOnlyWhenConfigured(t *testing.T) {
+	t.Run("WORKERS_IN_PROCESS=1", func(t *testing.T) {
+		w := newRecordingWorker("fake")
+		_, stop := startServeEnv(t, modeAPI, map[string]string{"WORKERS_IN_PROCESS": "1"}, w)
+		waitStarted(t, w)
+		if code := stop(); code != 0 {
+			t.Errorf("exit %d after a clean shutdown", code)
+		}
+		if !w.stopped.Load() {
+			t.Error("stop() returned before the worker observed cancellation")
+		}
+	})
+
+	t.Run("WORKERS_IN_PROCESS=0", func(t *testing.T) {
+		w := newRecordingWorker("fake")
+		_, stop := startServeEnv(t, modeAPI, map[string]string{"WORKERS_IN_PROCESS": "0"}, w)
+		// waitReady inside startServeEnv already blocked on a real HTTP round
+		// trip through the loopback listener, which gives any goroutine the
+		// runner would have started far longer to run than it needs; this
+		// guard only backstops that instead of standing in for it.
+		select {
+		case <-w.started:
+			t.Fatal("api mode started a worker with WORKERS_IN_PROCESS=0")
+		case <-time.After(200 * time.Millisecond):
+		}
+		if code := stop(); code != 0 {
+			t.Errorf("exit %d after a clean shutdown", code)
+		}
+	})
+}
+
+// TestServe_ServerModeNeverRunsWorkersEvenWhenInjected is the strongest
+// version of "server mode never runs workers": it injects a worker directly
+// through extraWorkers, bypassing module.Workers' own enablement, so the
+// only thing that can still stop it from running is serve's own mode gate.
+func TestServe_ServerModeNeverRunsWorkersEvenWhenInjected(t *testing.T) {
+	w := newRecordingWorker("fake")
+	_, stop := startServeEnv(t, modeServer, nil, w)
+	select {
+	case <-w.started:
+		t.Fatal("server mode ran an injected worker")
+	case <-time.After(200 * time.Millisecond):
+	}
+	if code := stop(); code != 0 {
+		t.Errorf("exit %d after a clean shutdown", code)
 	}
 }
 
@@ -419,7 +567,7 @@ func TestServeUntilDone_LetsInFlightRequestsFinish(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
-	go func() { done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second) }()
+	go func() { done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, nil) }()
 
 	result := make(chan string, 1)
 	go func() {
@@ -447,5 +595,88 @@ func TestServeUntilDone_LetsInFlightRequestsFinish(t *testing.T) {
 	}
 	if code := <-done; code != 0 {
 		t.Errorf("exit %d, want 0", code)
+	}
+}
+
+// TestServeUntilDone_WaitsForWorkersConcurrentlyWithHTTPDrain proves
+// shutdown draining HTTP and waiting for workers run at the same time,
+// bounded by one shared timeout, rather than the worker wait only starting
+// once HTTP has finished draining (which would let the two each eat into
+// what should be the other's share of the budget).
+func TestServeUntilDone_WaitsForWorkersConcurrentlyWithHTTPDrain(t *testing.T) {
+	srv := &http.Server{Handler: http.NotFoundHandler()}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := newRecordingWorker("fake")
+	runner := worker.NewRunner(slog.New(slog.DiscardHandler))
+	ctx, cancel := context.WithCancel(context.Background())
+	runner.Start(ctx, []worker.Worker{w})
+	waitStarted(t, w)
+
+	done := make(chan int, 1)
+	go func() { done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, runner) }()
+	cancel()
+
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("exit %d, want 0", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveUntilDone did not return")
+	}
+	if !w.stopped.Load() {
+		t.Error("serveUntilDone returned 0 before the worker actually stopped")
+	}
+}
+
+// blockingWorker ignores ctx entirely until unblock fires — a deliberately
+// buggy worker, standing in for one that hangs — so
+// TestServeUntilDone_WorkerExceedingTheTimeoutFailsShutdown can prove
+// serveUntilDone still returns once its own timeout elapses instead of
+// hanging on it forever.
+type blockingWorker struct {
+	name    string
+	unblock <-chan struct{}
+}
+
+func (w *blockingWorker) Name() string            { return w.name }
+func (w *blockingWorker) Interval() time.Duration { return time.Millisecond }
+func (w *blockingWorker) Run(context.Context) error {
+	<-w.unblock
+	return nil
+}
+
+func TestServeUntilDone_WorkerExceedingTheTimeoutFailsShutdown(t *testing.T) {
+	srv := &http.Server{Handler: http.NotFoundHandler()}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unblock := make(chan struct{})
+	t.Cleanup(func() { close(unblock) }) // let the goroutine finish so it does not outlive the test
+
+	runner := worker.NewRunner(slog.New(slog.DiscardHandler))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runner.Start(ctx, []worker.Worker{&blockingWorker{name: "stuck", unblock: unblock}})
+
+	done := make(chan int, 1)
+	go func() {
+		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 50*time.Millisecond, runner)
+	}()
+	cancel()
+
+	select {
+	case code := <-done:
+		if code != 1 {
+			t.Errorf("exit %d, want 1 when a worker outlives the shutdown timeout", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveUntilDone did not return")
 	}
 }

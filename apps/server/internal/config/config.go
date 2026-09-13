@@ -145,6 +145,14 @@ type Config struct {
 	// plus identity.
 	Modules []string
 
+	// WorkersInProcess is WORKERS_IN_PROCESS: whether api mode also runs
+	// every enabled module's background workers in-process, alongside
+	// serving. worker mode always runs them and server mode never does,
+	// regardless of this setting (design §3.2). Defaults on, for the
+	// single-container deployment shape; a deployment that splits api and
+	// worker into separate replicas sets it to 0 on the api ones.
+	WorkersInProcess bool
+
 	// BrregBaseURL is the origin the customers module's Brreg lookup client
 	// calls (BRREG_BASE_URL, customers inventory §5, CFG/BrregLookupOptions.cs:11);
 	// no trailing slash. The module's only outbound HTTP dependency.
@@ -251,6 +259,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.TrustedProxyCIDRs = trustedProxyCIDRs(&p, env, c)
 
 	c.Modules = modules(&p, env)
+	c.WorkersInProcess = workersInProcess(&p, env)
 
 	c.BrregBaseURL = brregBaseURL(&p, env)
 	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)
@@ -987,6 +996,25 @@ func modules(p *problems, env map[string]string) []string {
 	}
 
 	return out
+}
+
+// workersInProcess parses WORKERS_IN_PROCESS, a strict "0"/"1" switch that
+// defaults to 1 (on): single-container deployments run api and worker
+// together unless an operator explicitly splits worker out into its own
+// replicas (design §3.2), the opposite default from flag's off-by-default
+// switches.
+func workersInProcess(p *problems, env map[string]string) bool {
+	switch env["WORKERS_IN_PROCESS"] {
+	case "":
+		return true
+	case "0":
+		return false
+	case "1":
+		return true
+	default:
+		p.add("WORKERS_IN_PROCESS", `must be "0" or "1"`)
+		return true
+	}
 }
 
 // prefixes parses a comma list of CIDR prefixes. Empty means none.

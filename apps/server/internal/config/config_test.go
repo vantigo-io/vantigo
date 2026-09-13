@@ -78,6 +78,9 @@ func TestLoad_MinimalProductionConfigGetsDefaults(t *testing.T) {
 	if cfg.AllowInsecureTransport || cfg.CSPReportOnly {
 		t.Error("flags default to on, want off")
 	}
+	if !cfg.WorkersInProcess {
+		t.Error("WorkersInProcess defaults to off, want on")
+	}
 }
 
 func TestLoad_ReportsEveryProblemAtOnce(t *testing.T) {
@@ -249,6 +252,25 @@ func TestLoad_FlagsAreStrict(t *testing.T) {
 	}
 	if !mustLoad(t, with(validEnv(), "CSP_REPORT_ONLY", "1")).CSPReportOnly {
 		t.Error("CSP_REPORT_ONLY=1 did not enable report-only mode")
+	}
+}
+
+// TestLoad_WorkersInProcess proves the opposite default from flag's
+// off-by-default switches (design §3.2: single-container deployments run
+// api and worker together unless split out), and that it stays a strict
+// "0"/"1" switch like every other one.
+func TestLoad_WorkersInProcess(t *testing.T) {
+	if !mustLoad(t, validEnv()).WorkersInProcess {
+		t.Error("WORKERS_IN_PROCESS unset did not default to on")
+	}
+	if mustLoad(t, with(validEnv(), "WORKERS_IN_PROCESS", "0")).WorkersInProcess {
+		t.Error("WORKERS_IN_PROCESS=0 did not disable it")
+	}
+	if !mustLoad(t, with(validEnv(), "WORKERS_IN_PROCESS", "1")).WorkersInProcess {
+		t.Error("WORKERS_IN_PROCESS=1 did not enable it")
+	}
+	if msg := loadError(t, with(validEnv(), "WORKERS_IN_PROCESS", "true")); !strings.Contains(msg, `WORKERS_IN_PROCESS: must be "0" or "1"`) {
+		t.Errorf("error = %q", msg)
 	}
 }
 
