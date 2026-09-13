@@ -55,7 +55,6 @@ type CommunicationsAttachmentUpload struct {
 	ContentID        *string
 	StorageKey       string
 	ScanStatus       string
-	NextScanAt       time.Time
 	IsInline         bool
 	IdempotencyKey   string
 	ExpiresAt        time.Time
@@ -155,7 +154,6 @@ type CommunicationsMessageAttachment struct {
 	ContentID   *string
 	StorageKey  string
 	ScanStatus  string
-	NextScanAt  time.Time
 	IsInline    bool
 	CreatedAt   time.Time
 }

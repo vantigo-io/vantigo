@@ -197,17 +197,18 @@ CREATE INDEX ix_conversation_participants_participant_id ON communications.conve
 -- scanner-related columns in .NET (ScanStatus, ScanAttempts, NextScanAt,
 -- ScanLeaseId, ScanLeaseUntil, ScanError — inventory §5.7). This port drops
 -- the ClamAV client and the scanner worker entirely (design doc §1), and
--- with them go the four columns only the scanner ever touched —
--- scan_attempts, scan_lease_id, scan_lease_until, scan_error: "no
--- non-scanner writer exists on either table. Fully dead." (inventory
--- §5.7). scan_status and next_scan_at are kept on both tables, against the
--- design doc's own summary line ("losing their six scan columns each",
--- design §3): D2 requires scan_status to exist and be readable (Task 6's
--- ready = scan_status == "clean" derivation, and the download/reply/outbox
--- gates in §5.5), and D4 explicitly calls out next_scan_at as a NOT NULL
--- column needing a DDL default. Keeping these two and dropping the other
--- four is the reading this port commits to; see the task report for the
--- full reasoning.
+-- with them go five of the six: scan_attempts, scan_lease_id,
+-- scan_lease_until, scan_error ("no non-scanner writer exists on either
+-- table. Fully dead.", inventory §5.7), and next_scan_at ("still written
+-- once (staging, entity default) but never advanced and never read", its
+-- only index the scanner's own claim-query index, which dies with the
+-- scope cut). Only scan_status survives, on both tables: it is
+-- contract-visible (Task 6's ready == scan_status == "clean" derivation)
+-- and gates replies, downloads and the outbox (§5.5) — see design doc D2,
+-- corrected 2026-09-13 to resolve a self-contradiction (§3 said both
+-- tables lose "their six scan columns each" while D4 listed next_scan_at
+-- among the defaults to add; a column cannot be both dropped and
+-- defaulted).
 CREATE TABLE communications.message_attachments (
     id            uuid PRIMARY KEY,
     message_id    uuid NOT NULL REFERENCES communications.conversation_messages (id) ON DELETE CASCADE,
@@ -224,12 +225,6 @@ CREATE TABLE communications.message_attachments (
     -- here too, not .NET's "pending". A raw insert that forgot the column
     -- gets the value every real write path produces.
     scan_status   varchar(20) NOT NULL DEFAULT 'clean',
-    -- D4: NextScanAt = DateTimeOffset.UtcNow is a C#-only initialiser
-    -- (inventory §10 item 10, §5.7). Its only reader was the scanner's claim
-    -- query, which is gone, so this column is now write-only — kept because
-    -- D4 names it explicitly and dropping a column silently is a bigger
-    -- surprise than carrying one nobody reads.
-    next_scan_at  timestamptz NOT NULL DEFAULT now(),
     is_inline     boolean NOT NULL,
     created_at    timestamptz NOT NULL
 );
@@ -237,8 +232,8 @@ CREATE TABLE communications.message_attachments (
 -- duplicates the EF convention index on the same column (inventory §8).
 CREATE INDEX ix_message_attachments_message_id ON communications.message_attachments (message_id);
 -- No (scan_status, next_scan_at) index: .NET's was the scanner's claim
--- query index (inventory §8), and nothing queries this predicate once the
--- scanner worker is gone.
+-- query index (inventory §8), and next_scan_at itself is gone along with
+-- the scanner worker it existed for.
 
 CREATE TABLE communications.attachment_uploads (
     id                   uuid PRIMARY KEY,
@@ -260,8 +255,6 @@ CREATE TABLE communications.attachment_uploads (
     -- attachments_not_ready 409 gate at reply time never actually fires
     -- post-port.
     scan_status          varchar(20) NOT NULL DEFAULT 'clean',
-    -- D4, same reasoning as message_attachments.next_scan_at above.
-    next_scan_at         timestamptz NOT NULL DEFAULT now(),
     is_inline            boolean NOT NULL,
     -- Unbounded in .NET (no HasMaxLength anywhere; inventory §10 item 12) —
     -- the 200-character cap is endpoint-side validation only, so the
@@ -279,7 +272,7 @@ CREATE UNIQUE INDEX ux_attachment_uploads_uploaded_by_user_id_idempotency_key ON
 -- ExpiresAt); reduces to the same tuple without tenant_id, and subsumes
 -- the EF convention index that would otherwise sit on ConversationId alone.
 CREATE INDEX ix_attachment_uploads_conversation_id_uploaded_by_user_id_expires_at ON communications.attachment_uploads (conversation_id, uploaded_by_user_id, expires_at);
--- No (scan_status, next_scan_at) index, same reasoning as message_attachments.
+-- No (scan_status, next_scan_at) index, same reasoning as message_attachments above.
 
 CREATE TABLE communications.message_deliveries (
     id                        uuid PRIMARY KEY,
