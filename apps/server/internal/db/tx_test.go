@@ -188,4 +188,18 @@ func TestIsUniqueViolation(t *testing.T) {
 	if db.IsUniqueViolation(errors.New("boom"), "") {
 		t.Error("IsUniqueViolation matched a non-pgconn error")
 	}
+
+	// Variadic form: a caller whose write is guarded by more than one
+	// unique index (e.g. communications.channels' (type, address) and its
+	// partial (type, is_default)) needs to match any one of several names
+	// in a single call, not just the first it remembered to check.
+	if !db.IsUniqueViolation(err, "some_other_constraint", "ux_users_normalized_email") {
+		t.Error("IsUniqueViolation(err, wrong, right) = false, want true (matches the second name)")
+	}
+	if db.IsUniqueViolation(err, "some_other_constraint", "yet_another_constraint") {
+		t.Error("IsUniqueViolation matched when none of several names were right")
+	}
+	if !db.IsUniqueViolation(err) {
+		t.Error("IsUniqueViolation(err) with no names = false, want true (no constraints given matches any 23505, same as \"\")")
+	}
 }

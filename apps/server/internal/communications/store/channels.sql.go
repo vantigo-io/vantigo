@@ -290,22 +290,37 @@ func (q *Queries) UpdateChannel(ctx context.Context, arg UpdateChannelParams) (C
 	return i, err
 }
 
-const updateChannelCredential = `-- name: UpdateChannelCredential :exec
-UPDATE communications.channel_credentials
-SET settings_json = $1, secret_ciphertext = $2
-WHERE channel_id = $3
+const upsertChannelCredential = `-- name: UpsertChannelCredential :exec
+INSERT INTO communications.channel_credentials (id, channel_id, settings_json, secret_ciphertext, created_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (channel_id) DO UPDATE
+    SET settings_json = excluded.settings_json, secret_ciphertext = excluded.secret_ciphertext
 `
 
-type UpdateChannelCredentialParams struct {
+type UpsertChannelCredentialParams struct {
+	ID               uuid.UUID
+	ChannelID        uuid.UUID
 	SettingsJson     string
 	SecretCiphertext string
-	ChannelID        uuid.UUID
+	CreatedAt        time.Time
 }
 
-// UpdateChannelCredential rewrites the credential row when PutChannelById
+// UpsertChannelCredential rewrites the credential row when PutChannelById
 // was given a new smtp block (host/port validated, password resolved —
-// reused from the existing secret when omitted).
-func (q *Queries) UpdateChannelCredential(ctx context.Context, arg UpdateChannelCredentialParams) error {
-	_, err := q.db.Exec(ctx, updateChannelCredential, arg.SettingsJson, arg.SecretCiphertext, arg.ChannelID)
+// reused from the existing secret when omitted). An UPDATE alone matches
+// zero rows for a channel whose credential row is absent (deleted directly,
+// or — the case fix round 1 found live — any future path that can leave a
+// channel briefly without one), silently discarding the write while the
+// handler still answers 200 with hasCredentials:true. ON CONFLICT
+// (channel_id), backed by ux_channel_credentials_channel_id, makes this
+// write unconditional: insert when absent, replace when present.
+func (q *Queries) UpsertChannelCredential(ctx context.Context, arg UpsertChannelCredentialParams) error {
+	_, err := q.db.Exec(ctx, upsertChannelCredential,
+		arg.ID,
+		arg.ChannelID,
+		arg.SettingsJson,
+		arg.SecretCiphertext,
+		arg.CreatedAt,
+	)
 	return err
 }
