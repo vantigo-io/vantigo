@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"net"
 	"net/http/httptest"
 	"strconv"
@@ -376,6 +377,65 @@ func TestSMTP_SendsOverImplicitTLS(t *testing.T) {
 	defer srv.mu.Unlock()
 	if !strings.Contains(srv.rcptTo, "person@example.test") {
 		t.Fatalf("RCPT TO = %q, want it to contain the recipient", srv.rcptTo)
+	}
+}
+
+// TestSMTP_VerifyConnectionSucceedsWithoutSending proves VerifyConnection
+// dials, negotiates STARTTLS and authenticates over the guarded path — then
+// disconnects without ever issuing MAIL/RCPT/DATA, the same "connect, auth,
+// disconnect" shape communications' channel verification needs (inventory
+// §15.2).
+func TestSMTP_VerifyConnectionSucceedsWithoutSending(t *testing.T) {
+	cert, pool := testTLSMaterial(t)
+	restore := mail.AllowLoopbackForTests(pool)
+	defer restore()
+
+	srv := newSMTPTestServer(t, cert, func(s *smtpTestServer) {
+		s.offerSTARTTLS = true
+		s.offerAUTH = true
+	})
+	host, port := hostPort(t, srv.addr())
+
+	err := mail.VerifyConnection(context.Background(), config.MailConfig{
+		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test",
+		Username: "smtp-user", Password: "smtp-pass", TLS: "starttls",
+	}, false)
+	if err != nil {
+		t.Fatalf("VerifyConnection() = %v, want nil", err)
+	}
+	srv.waitDone(t)
+
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	if !srv.sawTLS {
+		t.Fatal("the server never saw a STARTTLS upgrade")
+	}
+	if srv.authUser != "smtp-user" || srv.authPass != "smtp-pass" {
+		t.Fatalf("AUTH PLAIN credentials = %q/%q, want smtp-user/smtp-pass", srv.authUser, srv.authPass)
+	}
+	if srv.mailFrom != "" || srv.rcptTo != "" || srv.data != "" {
+		t.Fatalf("VerifyConnection sent a message (MAIL FROM %q, RCPT TO %q, DATA %q), want none — verify never sends",
+			srv.mailFrom, srv.rcptTo, srv.data)
+	}
+}
+
+// TestSMTP_VerifyConnectionGuardRejectsLoopbackByDefault proves
+// VerifyConnection runs through the same DNS-rebinding guard NewSMTP's
+// Sender does, wrapping ErrDestinationRejected — the error communications'
+// channel verification maps to 422 destination_rejected.
+func TestSMTP_VerifyConnectionGuardRejectsLoopbackByDefault(t *testing.T) {
+	cert, _ := testTLSMaterial(t)
+	srv := newSMTPTestServer(t, cert, func(s *smtpTestServer) { s.offerSTARTTLS = true })
+	host, port := hostPort(t, srv.addr())
+
+	err := mail.VerifyConnection(context.Background(), config.MailConfig{
+		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test", TLS: "starttls",
+	}, false)
+	if err == nil {
+		t.Fatal("VerifyConnection() = nil error, want the guard to reject a loopback destination")
+	}
+	if !errors.Is(err, mail.ErrDestinationRejected) {
+		t.Fatalf("VerifyConnection() = %v, want an error wrapping ErrDestinationRejected", err)
 	}
 }
 

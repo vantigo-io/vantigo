@@ -3,6 +3,7 @@ package communications
 import (
 	"net/http"
 
+	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/httpx"
 )
 
@@ -26,4 +27,27 @@ import (
 // parse.
 func writeDecodeError(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteProblem(w, r, http.StatusBadRequest, "")
+}
+
+// validationErrorBody is CommunicationEndpointHelpers.ValidationError
+// (EP/CommunicationEndpointHelpers.cs:29, inventory §3): code is always
+// "invalid_request" and message always "The request is invalid." — the
+// per-field detail lives entirely in fields, never in message.
+func validationErrorBody(fields map[string][]string) gen.CommunicationErrorResponse {
+	var resp gen.CommunicationErrorResponse
+	resp.Error.Code = "invalid_request"
+	resp.Error.Message = "The request is invalid."
+	resp.Error.Fields = &fields
+	return resp
+}
+
+// flatErrorBody is CommunicationEndpointHelpers.Error (:31-32) for a
+// fields-less refusal: a fixed machine-readable code and a human message,
+// no per-field detail (inventory §3.2's flat-error table — channel_exists,
+// destination_rejected, verification_failed and the rest).
+func flatErrorBody(code, message string) gen.CommunicationErrorResponse {
+	var resp gen.CommunicationErrorResponse
+	resp.Error.Code = code
+	resp.Error.Message = message
+	return resp
 }

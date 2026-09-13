@@ -113,12 +113,13 @@ type Harness struct {
 // configuration from, the modules it composes beside identity, and the
 // Recorder its clients validate through.
 type setup struct {
-	env       map[string]string
-	modules   []module.Module
-	recorder  *contracttest.Recorder
-	transport http.RoundTripper
-	backoff   func(int) time.Duration
-	directory contracts.CustomerDirectory
+	env        map[string]string
+	modules    []module.Module
+	recorder   *contracttest.Recorder
+	transport  http.RoundTripper
+	backoff    func(int) time.Duration
+	directory  contracts.CustomerDirectory
+	smtpVerify func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
 }
 
 // Option adjusts a harness before it is built.
@@ -166,6 +167,17 @@ func WithBackoff(fn func(attempt int) time.Duration) Option {
 // survives Compose unchanged.
 func WithDirectory(d contracts.CustomerDirectory) Option {
 	return func(s *setup) { s.directory = d }
+}
+
+// WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
+// whose own SMTP connectivity check (communications' channel verification)
+// must succeed in a test without a live SMTP server or the production
+// destination guard's network reach: fn stands in for mail.VerifyConnection
+// itself, typically a function that records its arguments and returns nil.
+// Unset, a module falls back to mail.VerifyConnection, the same guarded
+// path production uses.
+func WithSMTPVerify(fn func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error) Option {
+	return func(s *setup) { s.smtpVerify = fn }
 }
 
 // New builds a harness for t. It fails t when no Recorder or no module was
@@ -250,6 +262,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		HTTPTransport: s.transport,
 		HTTPBackoff:   s.backoff,
 		Directory:     s.directory,
+		SMTPVerify:    s.smtpVerify,
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access
