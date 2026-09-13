@@ -260,11 +260,11 @@ func TestStageAttachment_ConversationNotFoundIsBare404(t *testing.T) {
 	}
 }
 
-// TestStageAttachment_ReplaySameFingerprintIs200 pins the dispatch's
-// correction to the brief: a replay of the same (uploaderUserId,
-// idempotencyKey) whose file content matches the original answers 200 with
-// the original upload — not a second row.
-func TestStageAttachment_ReplaySameFingerprintIs200(t *testing.T) {
+// TestStageAttachment_ReplaySameKeySameBytesIs200OriginalUpload pins the
+// plain replay case: a replay of the same (uploaderUserId, idempotencyKey)
+// with identical bytes answers 200 with the original upload — not a second
+// row.
+func TestStageAttachment_ReplaySameKeySameBytesIs200OriginalUpload(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
@@ -293,52 +293,57 @@ func TestStageAttachment_ReplaySameFingerprintIs200(t *testing.T) {
 	}
 }
 
-// TestStageAttachment_ReplayDifferentPayloadIs409 pins the fork's other
-// half: a replay under the same key whose file content differs answers 409
-// idempotency_key_reused, byte for byte the same message text
-// idempotency_key_reused carries for CreateConversation and Reply — and
-// never creates a second row or silently overwrites the first, unlike
-// .NET's own StageAttachment (inventory §5.1).
-func TestStageAttachment_ReplayDifferentPayloadIs409(t *testing.T) {
+// TestStageAttachment_ReplayWithDifferentPayloadStillReturns200OriginalUpload
+// pins the surprising half of StageAttachment's replay (inventory §5.1):
+// unlike CreateConversation and Reply, staging carries no payload
+// fingerprint at all — a replay under the same key with a *completely
+// different file* still answers 200, with the *original* upload's metadata,
+// and the second file is silently discarded. Fix round 1 removed a
+// fingerprint-based 409 fork here that the task dispatch had mistakenly
+// asked for (a mix-up with CreateConversation's and Reply's own fingerprint
+// mechanism); this test exists specifically to say the real behaviour out
+// loud, since it is surprising enough that a future reader might otherwise
+// assume the 409 fork was the intended fix.
+func TestStageAttachment_ReplayWithDifferentPayloadStillReturns200OriginalUpload(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
 	convID := stagingConversation(t, h, c)
 	key := uuid.NewString()
 
-	first := stageAttachment(t, c, convID, key, "a.txt", "text/plain", []byte("original bytes"))
+	first := stageAttachment(t, c, convID, key, "original.txt", "text/plain", []byte("original bytes"))
 	if first.Status != http.StatusCreated {
 		t.Fatalf("first: status %d body %s, want 201", first.Status, first.Body)
 	}
 	var firstUpload attachmentUploadJSON
 	first.JSON(&firstUpload)
 
-	second := stageAttachment(t, c, convID, key, "a.txt", "text/plain", []byte("a completely different file"))
-	if second.Status != http.StatusConflict {
-		t.Fatalf("second: status %d body %s, want 409", second.Status, second.Body)
+	second := stageAttachment(t, c, convID, key, "different.txt", "text/plain", []byte("a completely different file"))
+	if second.Status != http.StatusOK {
+		t.Fatalf("second (different payload, same key): status %d body %s, want 200 — .NET's own StageAttachment has no fingerprint and this port now matches it exactly", second.Status, second.Body)
 	}
-	var body commErrorJSON
-	second.JSON(&body)
-	if body.Error.Code != "idempotency_key_reused" {
-		t.Errorf("code = %q, want idempotency_key_reused", body.Error.Code)
+	var secondUpload attachmentUploadJSON
+	second.JSON(&secondUpload)
+	if secondUpload.Id != firstUpload.Id {
+		t.Errorf("replay id = %s, want %s (the original upload, unchanged)", secondUpload.Id, firstUpload.Id)
 	}
-	if body.Error.Message != "The Idempotency-Key was already used with a different payload." {
-		t.Errorf("message = %q, want the exact idempotency_key_reused text", body.Error.Message)
+	if secondUpload.FileName != "original.txt" {
+		t.Errorf("replay fileName = %q, want %q — the second file's own metadata must never surface", secondUpload.FileName, "original.txt")
 	}
 	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE conversation_id = $1`, convID); n != 1 {
-		t.Errorf("attachment_uploads rows = %d, want 1 (the mismatched replay must not create a second)", n)
+		t.Errorf("attachment_uploads rows = %d, want 1 (the second file was never persisted at all)", n)
 	}
-	if got := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE id = $1 AND file_name = 'a.txt'`, firstUpload.Id); got != 1 {
-		t.Errorf("the original row must survive unchanged")
+	if got := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE id = $1 AND file_name = 'original.txt'`, firstUpload.Id); got != 1 {
+		t.Errorf("the original row must survive completely unchanged")
 	}
 }
 
 // TestStageAttachment_ReplayNeverChecksConversationExistence pins dispatch
-// item 2's headline correction directly: the replay decision (whichever way
-// it forks) never touches req.Id's conversation lookup at all. A replay
-// against a URL naming a conversation id that never existed still answers
-// 200 for a matching payload — if the handler ever moved the replay lookup
-// after the conversation-existence check, this would regress to 404.
+// item 2's headline correction directly: the replay decision never touches
+// req.Id's conversation lookup at all. A replay against a URL naming a
+// conversation id that never existed still answers 200 — if the handler
+// ever moved the replay lookup after the conversation-existence check, this
+// would regress to 404.
 func TestStageAttachment_ReplayNeverChecksConversationExistence(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -573,6 +578,97 @@ func TestStageAttachment_ReservationTransitionsToOwnedOnSuccess(t *testing.T) {
 	}
 	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_cleanup_records WHERE status = 'staged'`); n != 0 {
 		t.Errorf("attachment_cleanup_records rows with status='staged' = %d, want 0 (none left behind on success)", n)
+	}
+}
+
+// TestStageAttachment_ConcurrentIdenticalReplayRaceAnswersOneWinner is fix
+// round 1 item 3's teeth check for the unique-violation race branch: N
+// concurrent stagings of the *same* (uploaderUserId, idempotencyKey, file
+// bytes) — the crash-retry-storm shape the reservation protocol exists for
+// — all pass the upfront replay lookup (nothing exists yet) and race to
+// insert into attachment_uploads, which only one can win under
+// ux_attachment_uploads_uploaded_by_user_id_idempotency_key. Gated on the
+// same pattern channels_concurrency_test.go's
+// TestCreateChannel_ConcurrentDefaultRaceAnswersModuleShape and
+// energy/customers' own concurrency tests use: a gate transaction holds
+// communications.attachment_uploads in EXCLUSIVE MODE, compatible with the
+// plain SELECTs every request's replay lookup, conversation lookup and
+// attachment-limit count run, but not with the ROW EXCLUSIVE lock each
+// request's own INSERT needs — so every request queues at that INSERT,
+// after every earlier read (and the object-store Put, which is
+// unaffected by this table's lock) has already happened, and only the
+// gate's release lets Postgres's own unique index decide a winner.
+func TestStageAttachment_ConcurrentIdenticalReplayRaceAnswersOneWinner(t *testing.T) {
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID := stagingConversation(t, h, c)
+	key := uuid.NewString()
+	data := []byte("raced upload bytes, identical across every attempt")
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.attachment_uploads IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock attachment_uploads: %v", err)
+	}
+
+	const n = 4
+	fns := make([]func() *modtest.Response, n)
+	for i := range n {
+		fns[i] = func() *modtest.Response {
+			return stageAttachment(t, c, convID, key, "race.bin", "application/octet-stream", data)
+		}
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, n, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	var created, replayed int
+	var winnerID string
+	for _, r := range responses {
+		switch r.Status {
+		case http.StatusCreated:
+			created++
+			var u attachmentUploadJSON
+			r.JSON(&u)
+			winnerID = u.Id
+		case http.StatusOK:
+			replayed++
+			var u attachmentUploadJSON
+			r.JSON(&u)
+			if u.FileName != "race.bin" {
+				t.Errorf("loser fileName = %q, want race.bin", u.FileName)
+			}
+		default:
+			t.Errorf("status %d body %s, want 201 or 200", r.Status, r.Body)
+		}
+	}
+	if created != 1 {
+		t.Errorf("created = %d, want exactly 1", created)
+	}
+	if replayed != n-1 {
+		t.Errorf("replayed (200) = %d, want exactly %d", replayed, n-1)
+	}
+	if winnerID == "" {
+		t.Fatal("no response ever answered 201; the race produced no winner to check against")
+	}
+	if got := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE conversation_id = $1`, convID); got != 1 {
+		t.Errorf("attachment_uploads rows = %d, want exactly 1 (the unique index must have serialized every insert but one)", got)
+	}
+	if got := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE id = $1`, winnerID); got != 1 {
+		t.Errorf("the winning row (%s) must be the one row that survived", winnerID)
 	}
 }
 
