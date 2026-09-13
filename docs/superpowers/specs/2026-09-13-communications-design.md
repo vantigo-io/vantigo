@@ -181,6 +181,13 @@ contact linker lowercases. The asymmetry is faithful, and the inventory records 
    corrected with it.
 5. The Mailgun and scanning sections of `docs/communications.md` are removed, since the
    endpoints and workers they document no longer exist.
+6. Rejecting a non-SMTP channel provider reports `SMTP credentials require the smtp
+   provider.` rather than .NET's `Provider must be smtp or mailgun.` The .NET message
+   names a provider this port does not implement, so repeating it would advertise a
+   capability that does not exist; the replacement is itself verbatim .NET text from the
+   same validator, so no wire string is invented. `channels.provider` is deliberately left
+   without a CHECK constraint so a future provider stays additive, which is why the
+   handler also keeps an unreachable defensive 422 for a non-SMTP row.
 
 ## 7. Configuration
 
