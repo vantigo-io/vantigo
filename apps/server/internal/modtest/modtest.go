@@ -180,6 +180,39 @@ func WithSMTPVerify(fn func(ctx context.Context, cfg config.MailConfig, allowIns
 	return func(s *setup) { s.smtpVerify = fn }
 }
 
+// modulesEnv returns the MODULES value a harness composing mods should set,
+// rather than leaving MODULES unset and falling back to config's own default
+// (customers, products, energy): that default is a production choice —
+// communications, for one, is deliberately not on it yet (config.go's
+// defaultModules comment) — and a harness's job is to mount whatever module
+// it was asked to test, not whatever happens to ship enabled today. Without
+// this, a module absent from the production default would compose silently
+// short of every route it declares, and every test built on this harness
+// would see 404s that look like a routing bug rather than what they
+// actually are: enabledModules filtering the module out.
+//
+// "customers" is always included alongside whatever mods names: config.go's
+// modules() rejects "energy" or "communications" without it (both read
+// contracts.CustomerDirectory), so a harness testing either would otherwise
+// fail configuration validation before Compose ever runs. Including it
+// unconditionally costs nothing for a harness that did not ask for it and
+// keeps this file from having to mirror config.go's dependency rule as new
+// modules grow their own. The result is sorted and comma-joined, with no
+// duplicates even when "customers" is itself one of mods or a name repeats
+// across more than one WithModule call.
+func modulesEnv(mods []module.Module) string {
+	moduleSet := map[string]bool{"customers": true}
+	for _, m := range mods {
+		moduleSet[m.Name] = true
+	}
+	names := make([]string, 0, len(moduleSet))
+	for name := range moduleSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
+}
+
 // New builds a harness for t. It fails t when no Recorder or no module was
 // given: a harness without either would run tests that prove nothing about the
 // module or its contract.
@@ -209,34 +242,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		t.Fatal("modtest: no module under test; pass modtest.WithModule(m)")
 	}
 
-	// MODULES is set explicitly from the modules WithModule registered,
-	// rather than left at config's own default (customers, products,
-	// energy): that default is a production choice — communications, for
-	// one, is deliberately not on it yet (config.go's defaultModules
-	// comment) — and a harness's job is to mount whatever module it was
-	// asked to test, not whatever happens to ship enabled today. Without
-	// this, a module absent from the production default would compose
-	// silently short of every route it declares, and every test built on
-	// this harness would see 404s that look like a routing bug rather than
-	// what they actually are: enabledModules filtering the module out.
-	//
-	// "customers" is always included alongside whatever was requested:
-	// config.go's modules() rejects "energy" or "communications" without it
-	// (both read contracts.CustomerDirectory), so a harness testing either
-	// would otherwise fail configuration validation before Compose ever
-	// runs. Including it unconditionally costs nothing for a harness that
-	// did not ask for it and keeps this file from having to mirror
-	// config.go's dependency rule as new modules grow their own.
-	moduleSet := map[string]bool{"customers": true}
-	for _, m := range s.modules {
-		moduleSet[m.Name] = true
-	}
-	names := make([]string, 0, len(moduleSet))
-	for name := range moduleSet {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	env["MODULES"] = strings.Join(names, ",")
+	env["MODULES"] = modulesEnv(s.modules)
 
 	cfg, err := config.Load(env)
 	if err != nil {
