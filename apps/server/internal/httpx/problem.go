@@ -99,6 +99,22 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		// the predicate the communications module's own callerGaveUp uses,
 		// which is in turn .NET's `cancellationToken.IsCancellationRequested`
 		// exception filter; the two agreeing is the point.
+		//
+		// THE BREADTH THIS BUYS, stated plainly because it applies to all
+		// ~16 callers of WriteError and not just the one that motivated it:
+		// once the request context is done, NO response is written and NO
+		// error-level line is logged, whatever the error was — a genuine bug
+		// that happened to surface after the client disconnected is demoted
+		// to Debug along with the disconnect itself.
+		//
+		// That is safe HERE because ctx.Err() on a server request context is
+		// non-nil only when the client actually went away: this server sets
+		// no BaseContext, no ReadTimeout or WriteTimeout that could cancel a
+		// live request (cmd/vantigo/main.go documents that absence as
+		// deliberate — attachment uploads and downloads stream), and no
+		// timeout middleware anywhere in the chain. Add any one of those and
+		// this branch starts swallowing real failures owed to real callers,
+		// so it must be revisited at that point rather than trusted.
 		logger.DebugContext(ctx, "request aborted by the caller", "method", r.Method, "path", r.URL.Path)
 	case errors.As(err, &pgErr) && (pgErr.Code == "23505" || pgErr.Code == "23P01"):
 		logger.WarnContext(ctx, "request conflicts with existing data",

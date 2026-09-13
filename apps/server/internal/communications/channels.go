@@ -316,6 +316,12 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 	var resp gen.ChannelResponse
 	txErr := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
+		// First statement of the transaction, before AnyChannelExists: the
+		// "first channel ever created is forced default" decision races too,
+		// so the read it is based on must be inside the lock, not before it.
+		if err := lockDefaultChannelSlot(ctx, q, in.channelType); err != nil {
+			return err
+		}
 		anyExists, err := q.AnyChannelExists(ctx)
 		if err != nil {
 			return err
@@ -350,13 +356,23 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		}
 		// The (type, is_default) partial unique index (migration
 		// 00006_communications_baseline.sql:48) is the *other* thing this
-		// insert can collide on: two concurrent creates that both read
+		// insert could collide on: two concurrent creates that both read
 		// AnyChannelExists()=false (or both explicitly requested
-		// isDefault:true) race to become the one default row. Left
-		// unhandled this escapes as a raw 23505 to httpx.WriteError's
+		// isDefault:true) racing to become the one default row. Left
+		// unhandled that escapes as a raw 23505 to httpx.WriteError's
 		// host-wide fallback — a bare RFC 7807 409, the wrong vocabulary
 		// for every non-stats endpoint in this module (design doc §3).
-		// Caught here instead, same shape as the address conflict above.
+		//
+		// **This is now a DEFENSIVE path, not a reachable one.**
+		// lockDefaultChannelSlot at the top of this transaction serialises
+		// every writer for this channel type, so the AnyChannelExists()
+		// read and the demote above both run after any concurrent create or
+		// update has committed — concurrent creates behave exactly as
+		// sequential ones do and no longer collide (design §6 item 15;
+		// TestCreateChannel_ConcurrentCreatesSerialiseIntoExactlyOneDefault).
+		// The guard stays because the index is the real invariant and a
+		// future writer that forgets the lock must not resurface the bare
+		// 409, but no test can drive it through this path any more.
 		if db.IsUniqueViolation(txErr, "ux_channels_type_is_default") {
 			return gen.PostCommunicationsChannels409JSONResponse(flatErrorBody(
 				"default_channel_conflict", "Another request just set the default channel. Retry the request.")), nil
@@ -502,6 +518,15 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	var resp gen.ChannelResponse
 	txErr := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+		// Taken unconditionally, not only when wantDefault: UpdateChannel
+		// writes is_default = existing.IsDefault even when the caller asked
+		// for nothing, and that value was read BEFORE this transaction. A
+		// concurrent create that demoted this row in between would otherwise
+		// have its demotion undone by this write, reintroducing a second
+		// default and the 23505 with it.
+		if err := lockDefaultChannelSlot(ctx, txq, existing.Type); err != nil {
+			return err
+		}
 		isDefault := existing.IsDefault
 		if wantDefault {
 			if err := txq.ClearOtherDefaultChannels(ctx, req.Id); err != nil {
@@ -547,6 +572,35 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		return nil, fmt.Errorf("communications: update channel: %w", txErr)
 	}
 	return gen.PutCommunicationsChannelsById200JSONResponse(resp), nil
+}
+
+// channelDefaultLockClass namespaces lockDefaultChannelSlot's advisory-lock
+// key away from every other pg_advisory_xact_lock caller in the
+// installation. It uses the two-int32 overload, exactly as energy's
+// lockSupplyPeriods does and for the same reason: retention's
+// CommunicationsAdvisoryLease and internal/db's migration lock both use the
+// single-bigint overload, which is a separate key space, and a collision
+// inside this overload would need another caller's class to equal this one.
+const channelDefaultLockClass = 0x43484E44 // "CHND", arbitrary but memorable
+
+// lockDefaultChannelSlot takes the transaction-scoped advisory lock that
+// serialises every writer able to change which channel of one type is the
+// default. See queries/channels.sql's LockDefaultChannelSlot for why a lock
+// rather than a smarter statement or a caught violation: the PUT-vs-POST
+// pair collides on a row that does not exist yet, which no predicate can
+// visit and no row lock can reach, and the only other remedy would add a 409
+// this operation's contract does not declare.
+//
+// Keyed by channel TYPE, since ux_channels_type_is_default is per type — two
+// types never wait on each other. Released automatically at commit or
+// rollback, so no path can leak it.
+func lockDefaultChannelSlot(ctx context.Context, q *store.Queries, channelType string) error {
+	if err := q.LockDefaultChannelSlot(ctx, store.LockDefaultChannelSlotParams{
+		LockClass: channelDefaultLockClass, ChannelType: channelType,
+	}); err != nil {
+		return fmt.Errorf("communications: lock the default-channel slot: %w", err)
+	}
+	return nil
 }
 
 // smtpTLSMode is the TLS-mode half of SmtpDeliveryProvider.ExecuteAsync's

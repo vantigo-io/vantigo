@@ -367,7 +367,13 @@ func (s *server) reserveStorageKey(ctx context.Context, uploadID uuid.UUID, key 
 			ReservationExpiresAt: ptr(now.Add(reservationLifetime)), CreatedAt: now,
 		}
 		insertErr := q.InsertCleanupRecord(ctx, params)
-		if db.IsUniqueViolation(insertErr) {
+		// Named, not a bare any-23505 check: the only collision this fallback
+		// is meant to absorb is the deterministic id already being taken by a
+		// completed historical record for a reused key. An unnamed check would
+		// also swallow a violation on some other constraint of this table and
+		// retry it with a fresh id, turning an unrelated defect into a silent
+		// second insert attempt.
+		if db.IsUniqueViolation(insertErr, "attachment_cleanup_records_pkey") {
 			params.ID = uuid.New()
 			insertErr = q.InsertCleanupRecord(ctx, params)
 		}

@@ -254,12 +254,47 @@ that make a concurrent path safe without changing any sequential behaviour:
     leaves `display_name` and `contact_id` untouched, preserving .NET's rule that an existing
     participant is never reassigned.
 14. **`ClearOtherDefaultChannels` drops the `is_default` term from its `WHERE`.** With it, two
-    concurrent "make me the default" updates each fail to see the other's uncommitted row under READ
-    COMMITTED and collide on `ux_channels_type_is_default` — a 23505 that
+    concurrent "make me the default" **updates** each fail to see the other's uncommitted row under
+    READ COMMITTED and collide on `ux_channels_type_is_default` — a 23505 that
     `putCommunicationsChannelsById`'s contract (200/400/401/403/404) has no status to carry. Without
-    it the statement visits, blocks on and re-checks the winner's row, and the race resolves as
-    last-writer-wins. The cost is writing `false` over rows that already hold it, on a table with a
-    handful of rows.
+    it the statement visits, blocks on and re-checks the winner's row, and that pair resolves as
+    last-writer-wins. The cost is writing `false` over rows that already hold it, which widens the
+    statement's write set from "the current default" to "every other channel row".
+
+    **Scope, corrected:** this closes the **PUT-vs-PUT pair only**. An earlier version of this entry
+    said the race resolves "with no violation at all", which was true of the pair that had been
+    tested and false in general — see 15.
+
+15. **Both channel write paths take a type-keyed transaction advisory lock
+    (`lockDefaultChannelSlot`) before demoting.** The PUT-vs-POST pair cannot be fixed by any
+    statement: when an update demotes, the row a concurrent create is about to insert **does not
+    exist yet**, so no `WHERE` clause can visit it, `EvalPlanQual` has nothing to re-check, and
+    `SELECT ... FOR UPDATE` has nothing to lock. The update sets its own row true and collides.
+    The two alternatives were rejected deliberately — catching the violation would require adding a
+    409 to an operation whose contract declares none (a wire-contract change, and a divergence from
+    .NET), and row locking cannot reach a nonexistent row — so the writers are serialised instead,
+    which preserves the contract exactly: callers still observe last-writer-wins, never a conflict.
+    The lock uses the two-int32 overload under its own class constant, keyed by channel **type**
+    (the index is per type), so it shares no key space with retention's single-bigint lease and two
+    types never wait on each other. .NET has no such lock, which is what makes this a divergence
+    rather than a fidelity fix; .NET simply has the defect.
+
+    **Consequence worth recording: it makes task 3's `default_channel_conflict` 409 unreachable.**
+    Serialising the writers means concurrent creates now behave exactly as sequential ones do — each
+    one's "is there already a channel?" read and its demote run after the previous writer committed —
+    so the collision that 409 was invented to report no longer occurs. Concurrent creates all
+    succeed and the last writer holds the default slot. This is strictly better for the caller (it
+    gets the channel it asked for rather than a retry-me conflict) and matches what sequential
+    callers always saw, but it is a **behavioural change to a documented refusal**, not merely an
+    internal one. The guard itself is deliberately kept as a defensive backstop: the unique index
+    remains the real invariant, and a future write path that forgets the lock must not resurface the
+    bare RFC 7807 409.
+
+**A note on numbering, because this list is meant to be cited.** Entries 1–6 predate task 14 and are
+unchanged. Task 14 added 7–12 (12 is the `MODULES` default), then 13–15 from its constraint audit. The
+bracketed inline `Content-ID` change is **not** a numbered divergence — it is recorded in the fidelity
+fixes below, because it removes a difference from .NET rather than adding one. An earlier dispatch
+referred to it as "item 12"; the committed numbering here is what should be cited.
 
 **Fidelity fixes, recorded so they are not mistaken for divergences.** Each removes a difference from
 .NET rather than adding one: inline `Content-ID` is bracketed to match MimeKit (§15.5; go-mail writes
