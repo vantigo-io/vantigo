@@ -27,15 +27,15 @@ func loadContract() *openapi3.T {
 
 // pendingOperations are the contract's operations no test covers yet. Every
 // one of the module's 28 operations started as a stub answering 501; each
-// later task removes the operations of the area it implements, and
+// later task removed the operations of the area it implemented, and
 // RequireCoverage fails the run if an entry left here was in fact exercised.
-// Task 9 (stats) removed getCommunicationsStatsAttention,
-// getCommunicationsStatsSummary and getCommunicationsStatsTimeseries,
-// leaving only task 10's two AI operations.
-var pendingOperations = []string{
-	"postCommunicationsConversationsByIdAiCustomerSuggestion",
-	"postCommunicationsConversationsByIdAiDraft",
-}
+//
+// It is now empty, and stays empty: task 10 implemented the AI draft and
+// customer suggestion, the last two stubs, so every operation of
+// communications.yaml is exercised by a successful, contract-conforming
+// exchange in this package. A new operation added to the contract must be
+// implemented and covered rather than parked here.
+var pendingOperations = []string{}
 
 func TestMain(m *testing.M) {
 	os.Exit(contracttest.RequireCoverage(m, recorder, pendingOperations...))

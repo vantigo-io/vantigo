@@ -5,11 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"github.com/vantigo-io/vantigo/server/internal/communications"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
-	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // TestModule_ComposesAndDemandsAPermission proves communications mounts
@@ -98,32 +95,18 @@ func TestModule_DeclaresItsPermissionCatalog(t *testing.T) {
 	}
 }
 
-// TestModule_StubbedOperationAnswers501 proves every operation is routed
-// before any is implemented: a signed-in caller holding the operation's
-// permission passes the access check and reaches the stub, which answers
-// 501 rather than a 404 from an unregistered route or a 500 from a nil
-// handler.
-func TestModule_StubbedOperationAnswers501(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t)
-
-	// Off-contract by design: a 501 is the platform's answer to a handler
-	// that does not exist yet, and no operation documents one.
-	// getCommunicationsConversations moved to a real implementation in task
-	// 5, getCommunicationsSuppressions in task 8, and all three stats
-	// operations (including getCommunicationsStatsSummary, this test's
-	// previous target) in task 9, so this now exercises
-	// postCommunicationsConversationsByIdAiDraft instead — the AI area
-	// stays stubbed until task 10. Its own x-vantigo-access
-	// (communications.yaml) requires BOTH conversations-reply AND
-	// conversations-view, unlike the single-permission gate this test
-	// previously exercised. The stub answers 501 before any lookup, so a
-	// syntactically valid but nonexistent conversation id is enough — only
-	// the path parameter's own uuid format needs to decode.
-	r := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view").
-		Do(http.MethodPost, "/api/v1/communications/conversations/"+uuid.NewString()+"/ai/draft", map[string]any{},
-			modtest.SkipContract("the operation is not implemented yet"))
-	if r.Status != http.StatusNotImplemented {
-		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
-	}
-}
+// TestModule_StubbedOperationAnswers501 was retired in task 10, and is
+// recorded here rather than silently deleted because it guarded a real
+// property. It proved every operation was routed before any was implemented
+// — a signed-in caller reached the stub and got the platform's 501 rather
+// than a 404 from an unregistered route or a 500 from a nil handler — by
+// driving whichever area was still stubbed. Task 10 implemented the AI draft
+// and customer suggestion, the last two stubs, so there is no stub left to
+// drive and unimplemented.go itself is gone.
+//
+// The property is now guarded more strongly, in two places that cannot go
+// stale: server.go's `var _ gen.StrictServerInterface = (*server)(nil)`
+// fails the build if any operation is missing a method, and main_test.go's
+// pendingOperations is empty, so RequireCoverage fails the run unless EVERY
+// operation of communications.yaml answered a successful, contract-conforming
+// exchange — which neither an unregistered route nor a nil handler could do.
