@@ -83,10 +83,17 @@ SET display_name = @display_name, is_active = @is_active, is_default = @is_defau
 WHERE id = @id
 RETURNING id, type, address, display_name, provider, is_default, is_active, created_at;
 
--- name: UpdateChannelCredential :exec
--- UpdateChannelCredential rewrites the credential row when PutChannelById
+-- name: UpsertChannelCredential :exec
+-- UpsertChannelCredential rewrites the credential row when PutChannelById
 -- was given a new smtp block (host/port validated, password resolved —
--- reused from the existing secret when omitted).
-UPDATE communications.channel_credentials
-SET settings_json = @settings_json, secret_ciphertext = @secret_ciphertext
-WHERE channel_id = @channel_id;
+-- reused from the existing secret when omitted). An UPDATE alone matches
+-- zero rows for a channel whose credential row is absent (deleted directly,
+-- or — the case fix round 1 found live — any future path that can leave a
+-- channel briefly without one), silently discarding the write while the
+-- handler still answers 200 with hasCredentials:true. ON CONFLICT
+-- (channel_id), backed by ux_channel_credentials_channel_id, makes this
+-- write unconditional: insert when absent, replace when present.
+INSERT INTO communications.channel_credentials (id, channel_id, settings_json, secret_ciphertext, created_at)
+VALUES (@id, @channel_id, @settings_json, @secret_ciphertext, @created_at)
+ON CONFLICT (channel_id) DO UPDATE
+    SET settings_json = excluded.settings_json, secret_ciphertext = excluded.secret_ciphertext;

@@ -57,6 +57,20 @@ const verifyTimeout = 10 * time.Second
 // rather than left to panic.
 var errUnsupportedChannelProvider = errors.New("communications: channel verification is only supported for smtp channels")
 
+// errChannelMissingCredentials is verifyChannel's separate refusal for an
+// smtp channel that has no credential row at all — every channel this API
+// creates gets one atomically, so this is reachable only the same way
+// TestUpdateChannel_MissingCredentialWhenNoneExists reaches its own hazard
+// (a credential row deleted directly). Kept distinct from
+// errUnsupportedChannelProvider (fix round 1, item 4): before this split,
+// a caller with a perfectly valid smtp channel but no stored credentials
+// was told its provider "is only supported for smtp channels" — a
+// misdirecting message for a channel that already is smtp. Both still map
+// to the same 422 verification_failed on the wire (inventory §2 gives this
+// hazard no documented code of its own); the split is about which failure
+// the handler is actually reporting, not a new response shape.
+var errChannelMissingCredentials = errors.New("communications: channel has no stored credentials to verify")
+
 // smtpProviderSettings is SmtpProviderSettings, camelCase-serialized into
 // channel_credentials.settings_json (inventory §15.6: "SettingsJson =
 // camelCase-serialized SmtpProviderSettings(host, port, useSsl, username)").
@@ -334,6 +348,19 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 			return gen.PostCommunicationsChannels409JSONResponse(flatErrorBody(
 				"channel_exists", "A channel with this address already exists.")), nil
 		}
+		// The (type, is_default) partial unique index (migration
+		// 00006_communications_baseline.sql:48) is the *other* thing this
+		// insert can collide on: two concurrent creates that both read
+		// AnyChannelExists()=false (or both explicitly requested
+		// isDefault:true) race to become the one default row. Left
+		// unhandled this escapes as a raw 23505 to httpx.WriteError's
+		// host-wide fallback — a bare RFC 7807 409, the wrong vocabulary
+		// for every non-stats endpoint in this module (design doc §3).
+		// Caught here instead, same shape as the address conflict above.
+		if db.IsUniqueViolation(txErr, "ux_channels_type_is_default") {
+			return gen.PostCommunicationsChannels409JSONResponse(flatErrorBody(
+				"default_channel_conflict", "Another request just set the default channel. Retry the request.")), nil
+		}
 		return nil, fmt.Errorf("communications: create channel: %w", txErr)
 	}
 	return gen.PostCommunicationsChannels201JSONResponse(resp), nil
@@ -470,6 +497,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	// false is silently ignored, there is no way to clear the default flag
 	// through this API.
 	wantDefault := body.IsDefault != nil && *body.IsDefault
+	now := s.deps.Clock()
 
 	var resp gen.ChannelResponse
 	txErr := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -496,8 +524,17 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		}
 		settingsJSON := existing.CredentialSettingsJson
 		if rewriteCredential {
-			if err := txq.UpdateChannelCredential(ctx, store.UpdateChannelCredentialParams{
-				ChannelID: req.Id, SettingsJson: newSettingsJSON, SecretCiphertext: newCiphertext,
+			// Upsert, not a bare UPDATE: a channel can reach here with no
+			// credential row at all (TestUpdateChannel_MissingCredentialWhenNoneExists
+			// deletes one directly to exercise the hazard, and the credErrs
+			// branch above only refuses that case when body.Smtp is *absent* —
+			// a present, valid smtp block must still persist). A plain
+			// UPDATE ... WHERE channel_id = ... matches zero rows here and
+			// silently discards the write; fix round 1 caught this live: 200
+			// with hasCredentials:true, then a GET showing hasCredentials:false.
+			if err := txq.UpsertChannelCredential(ctx, store.UpsertChannelCredentialParams{
+				ID: uuid.New(), ChannelID: req.Id, SettingsJson: newSettingsJSON,
+				SecretCiphertext: newCiphertext, CreatedAt: now,
 			}); err != nil {
 				return err
 			}
@@ -543,8 +580,11 @@ func smtpTLSMode(useSsl bool, port int32) (string, error) {
 // dials through internal/mail's real destination guard; only a test
 // harness ever substitutes a fake.
 func (s *server) verifyChannel(ctx context.Context, q *store.Queries, channel store.GetChannelByIDRow) error {
-	if !strings.EqualFold(channel.Provider, "smtp") || channel.CredentialSettingsJson == nil {
+	if !strings.EqualFold(channel.Provider, "smtp") {
 		return errUnsupportedChannelProvider
+	}
+	if channel.CredentialSettingsJson == nil {
+		return errChannelMissingCredentials
 	}
 	var settings smtpProviderSettings
 	if err := json.Unmarshal([]byte(*channel.CredentialSettingsJson), &settings); err != nil {

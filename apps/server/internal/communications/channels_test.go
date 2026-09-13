@@ -553,6 +553,49 @@ func TestUpdateChannel_MissingCredentialWhenNoneExists(t *testing.T) {
 	}
 }
 
+// TestUpdateChannel_WritesCredentialsOntoAChannelThatHadNone is fix round
+// 1's item 1: a PUT that *does* supply a valid smtp block for a channel
+// whose credential row is absent writes via a plain UPDATE ... WHERE
+// channel_id, which matches zero rows when there is nothing to update —
+// and, before this fix, still answered 200 with hasCredentials:true. The
+// reviewer proved it live: 0 rows affected, then a GET showing
+// hasCredentials:false and settings:null. Reading the channel back after
+// the PUT, not just trusting the PUT's own response, is what catches that —
+// a lying response and an honest one look identical from the PUT call
+// alone.
+func TestUpdateChannel_WritesCredentialsOntoAChannelThatHadNone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:channels-manage")
+	ch := createChannel(t, c, newChannelBody(channelAddress(t)))
+	h.Exec(t, `DELETE FROM communications.channel_credentials WHERE channel_id = $1`, ch.Id)
+
+	r := c.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{
+		"smtp": map[string]any{"host": "recovered-smtp.example.test", "port": 587, "username": "svc"},
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var putBody channelJSON
+	r.JSON(&putBody)
+	if !putBody.HasCredentials {
+		t.Error("PUT response HasCredentials = false, want true")
+	}
+
+	getR := c.Do(http.MethodGet, "/api/v1/communications/channels/"+ch.Id, nil)
+	var got channelJSON
+	getR.JSON(&got)
+	if !got.HasCredentials {
+		t.Fatal("GET after the PUT: HasCredentials = false, want true — the write did not actually persist")
+	}
+	if got.Settings == nil || got.Settings.Host == nil || *got.Settings.Host != "recovered-smtp.example.test" {
+		t.Errorf("GET after the PUT: Settings = %+v, want host recovered-smtp.example.test", got.Settings)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM communications.channel_credentials WHERE channel_id = $1`, ch.Id); n != 1 {
+		t.Errorf("channel_credentials rows for %s = %d, want exactly 1", ch.Id, n)
+	}
+}
+
 // TestUpdateChannel_DisplayNameTriState pins the three-state displayName
 // rule (inventory §19.2 item 11): omit leaves it unchanged, "" clears it to
 // null, any other valid value sets it. A mutation collapsing "omitted" and
@@ -692,6 +735,91 @@ func TestUpdateChannel_CredentialsAreReplaced(t *testing.T) {
 	}
 	if got.Settings.Port == nil || *got.Settings.Port != 465 {
 		t.Errorf("Settings.Port = %v, want 465", got.Settings.Port)
+	}
+}
+
+// channelCredentialCiphertext reads communications.channel_credentials'
+// secret_ciphertext for id directly — the plaintext is never observable
+// through any response (task 4's own required assertion), so a test that
+// wants to know whether the stored credential actually changed has to read
+// it at this level.
+func channelCredentialCiphertext(t *testing.T, h *modtest.Harness, channelID string) string {
+	t.Helper()
+	return modtest.One[string](t, h, `SELECT secret_ciphertext FROM communications.channel_credentials WHERE channel_id = $1`, channelID)
+}
+
+// TestUpdateChannel_OmittingSmtpLeavesTheStoredCredentialByteForByteUnchanged
+// is fix round 1's item 3: the reviewer found this path unverified — a
+// mutation that discarded it entirely (always rewriting the credential row,
+// even with a blank password, whenever any field on the channel is updated)
+// left the whole suite green, because nothing read the ciphertext back.
+// Reading it before and after an update that never mentions `smtp` at all
+// closes that gap: the row must be byte-for-byte identical, not merely
+// "still present" or "still decryptable".
+func TestUpdateChannel_OmittingSmtpLeavesTheStoredCredentialByteForByteUnchanged(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:channels-manage")
+	body := newChannelBody(channelAddress(t))
+	body["smtp"] = map[string]any{"host": "smtp.example.test", "port": 587, "username": "svc", "password": "keep-me"}
+	ch := createChannel(t, c, body)
+
+	before := channelCredentialCiphertext(t, h, ch.Id)
+
+	r := c.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{"isActive": true})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	after := channelCredentialCiphertext(t, h, ch.Id)
+	if before != after {
+		t.Errorf("secret_ciphertext changed after an update that omitted smtp entirely:\n before = %q\n after  = %q", before, after)
+	}
+}
+
+// TestUpdateChannel_NewSettingsWithoutAPasswordReuseTheExistingOne is the
+// other half of fix round 1's item 3: an update that *does* supply a new
+// smtp block, but omits the password, must keep sending the old password —
+// inventory §15.6's documented .NET behaviour ("the existing password is
+// decrypted first and reused when the request omits one"). The stored
+// ciphertext itself is expected to change here (Seal uses a fresh nonce
+// every call, so re-sealing the same plaintext never reproduces the same
+// bytes) — the only way to prove *reuse*, as opposed to "some password
+// still there", is to observe what plaintext actually reaches a real send
+// attempt. modtest.WithSMTPVerify's fake is exactly that observation point,
+// reused from TestVerifyChannel_Succeeds's proof that it captures precisely
+// what the handler resolved.
+func TestUpdateChannel_NewSettingsWithoutAPasswordReuseTheExistingOne(t *testing.T) {
+	t.Parallel()
+
+	var gotPassword, gotHost string
+	h := newHarness(t, modtest.WithSMTPVerify(func(_ context.Context, cfg config.MailConfig, _ bool) error {
+		gotPassword, gotHost = cfg.Password, cfg.Host
+		return nil
+	}))
+	c := h.SignIn(t, "communications:channels-manage")
+	body := newChannelBody(channelAddress(t))
+	body["smtp"] = map[string]any{"host": "old-smtp.example.test", "port": 587, "password": "the-original-password"}
+	ch := createChannel(t, c, body)
+
+	// New host, same port family (587 -> starttls, still a supported TLS
+	// mode), password omitted entirely.
+	r := c.Do(http.MethodPut, "/api/v1/communications/channels/"+ch.Id, map[string]any{
+		"smtp": map[string]any{"host": "new-smtp.example.test", "port": 587},
+	})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	verifyR := c.Do(http.MethodPost, "/api/v1/communications/channels/"+ch.Id+"/verify", nil)
+	if verifyR.Status != http.StatusOK {
+		t.Fatalf("verify: status %d body %s, want 200", verifyR.Status, verifyR.Body)
+	}
+	if gotHost != "new-smtp.example.test" {
+		t.Errorf("verify saw host %q, want the new host new-smtp.example.test", gotHost)
+	}
+	if gotPassword != "the-original-password" {
+		t.Errorf("verify saw password %q, want the original password reused, not blanked out", gotPassword)
 	}
 }
 
