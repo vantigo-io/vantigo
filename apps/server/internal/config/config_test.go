@@ -866,3 +866,51 @@ func TestLoad_BrregTimeout(t *testing.T) {
 		t.Errorf("error = %q", msg)
 	}
 }
+
+func TestLoad_ObjectStorageUnconfigured(t *testing.T) {
+	cfg := mustLoad(t, validEnv())
+	if cfg.StorageProvider != "" || cfg.StorageFSRoot != "" || cfg.StorageFSAllowInsecureRoot {
+		t.Errorf("StorageProvider/StorageFSRoot/StorageFSAllowInsecureRoot = %q/%q/%v, want all zero when STORAGE_PROVIDER is unset",
+			cfg.StorageProvider, cfg.StorageFSRoot, cfg.StorageFSAllowInsecureRoot)
+	}
+}
+
+func TestLoad_StorageProvider(t *testing.T) {
+	cfg := mustLoad(t, with(validEnv(), "STORAGE_PROVIDER", "fs", "STORAGE_FS_ROOT", "/var/lib/vantigo/objects"))
+	if cfg.StorageProvider != "fs" || cfg.StorageFSRoot != "/var/lib/vantigo/objects" {
+		t.Errorf("StorageProvider/StorageFSRoot = %q/%q", cfg.StorageProvider, cfg.StorageFSRoot)
+	}
+
+	if msg := loadError(t, with(validEnv(), "STORAGE_PROVIDER", "s3")); !strings.Contains(msg, `STORAGE_PROVIDER: must be "fs" if set`) {
+		t.Errorf("error = %q, want an unknown provider rejected", msg)
+	}
+}
+
+func TestLoad_StorageFSRoot(t *testing.T) {
+	if msg := loadError(t, with(validEnv(), "STORAGE_PROVIDER", "fs")); !strings.Contains(msg, `STORAGE_FS_ROOT: is required when STORAGE_PROVIDER is "fs"`) {
+		t.Errorf("error = %q, want a missing root rejected", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "STORAGE_PROVIDER", "fs", "STORAGE_FS_ROOT", "relative/path")); !strings.Contains(msg, "STORAGE_FS_ROOT: must be an absolute path") {
+		t.Errorf("error = %q, want a relative root rejected", msg)
+	}
+	if msg := loadError(t, with(validEnv(), "STORAGE_FS_ROOT", "/var/lib/vantigo/objects")); !strings.Contains(msg, `STORAGE_FS_ROOT: is only valid when STORAGE_PROVIDER is "fs"`) {
+		t.Errorf("error = %q, want a root without a provider rejected", msg)
+	}
+}
+
+func TestLoad_StorageFSAllowInsecureRoot(t *testing.T) {
+	env := with(validEnv(), "STORAGE_PROVIDER", "fs", "STORAGE_FS_ROOT", "/var/lib/vantigo/objects")
+
+	if cfg := mustLoad(t, env); cfg.StorageFSAllowInsecureRoot {
+		t.Error("StorageFSAllowInsecureRoot = true, want false by default")
+	}
+
+	if msg := loadError(t, with(env, "STORAGE_FS_ALLOW_INSECURE_ROOT", "1")); !strings.Contains(msg, "STORAGE_FS_ALLOW_INSECURE_ROOT: must not be 1 outside development") {
+		t.Errorf("error = %q, want the escape hatch rejected outside development", msg)
+	}
+
+	devEnv := with(env, "APP_ENV", "development", "STORAGE_FS_ALLOW_INSECURE_ROOT", "1")
+	if cfg := mustLoad(t, devEnv); !cfg.StorageFSAllowInsecureRoot {
+		t.Error("StorageFSAllowInsecureRoot = false, want true when accepted in development")
+	}
+}
