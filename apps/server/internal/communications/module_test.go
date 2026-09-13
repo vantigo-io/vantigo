@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/communications"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
@@ -108,12 +110,19 @@ func TestModule_StubbedOperationAnswers501(t *testing.T) {
 	// Off-contract by design: a 501 is the platform's answer to a handler
 	// that does not exist yet, and no operation documents one.
 	// getCommunicationsConversations moved to a real implementation in task
-	// 5 and getCommunicationsSuppressions in task 8, so this now exercises
-	// getCommunicationsStatsSummary instead — stats stays a stub until task
-	// 9, and shares conversations-view with the operation this test
-	// previously used.
-	r := h.SignIn(t, "communications:conversations-view").
-		Do(http.MethodGet, "/api/v1/communications/stats/summary", nil, modtest.SkipContract("the operation is not implemented yet"))
+	// 5, getCommunicationsSuppressions in task 8, and all three stats
+	// operations (including getCommunicationsStatsSummary, this test's
+	// previous target) in task 9, so this now exercises
+	// postCommunicationsConversationsByIdAiDraft instead — the AI area
+	// stays stubbed until task 10. Its own x-vantigo-access
+	// (communications.yaml) requires BOTH conversations-reply AND
+	// conversations-view, unlike the single-permission gate this test
+	// previously exercised. The stub answers 501 before any lookup, so a
+	// syntactically valid but nonexistent conversation id is enough — only
+	// the path parameter's own uuid format needs to decode.
+	r := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view").
+		Do(http.MethodPost, "/api/v1/communications/conversations/"+uuid.NewString()+"/ai/draft", map[string]any{},
+			modtest.SkipContract("the operation is not implemented yet"))
 	if r.Status != http.StatusNotImplemented {
 		t.Errorf("status %d body %s, want 501", r.Status, r.Body)
 	}

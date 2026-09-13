@@ -26,14 +26,13 @@ func loadContract() *openapi3.T {
 }
 
 // pendingOperations are the contract's operations no test covers yet. Every
-// one of the module's 28 operations is a stub answering 501, so all 28 are
-// pending; each later task removes the operations of the area it
-// implements, and RequireCoverage fails the run if an entry left here was
-// in fact exercised.
+// one of the module's 28 operations started as a stub answering 501; each
+// later task removes the operations of the area it implements, and
+// RequireCoverage fails the run if an entry left here was in fact exercised.
+// Task 9 (stats) removed getCommunicationsStatsAttention,
+// getCommunicationsStatsSummary and getCommunicationsStatsTimeseries,
+// leaving only task 10's two AI operations.
 var pendingOperations = []string{
-	"getCommunicationsStatsAttention",
-	"getCommunicationsStatsSummary",
-	"getCommunicationsStatsTimeseries",
 	"postCommunicationsConversationsByIdAiCustomerSuggestion",
 	"postCommunicationsConversationsByIdAiDraft",
 }
