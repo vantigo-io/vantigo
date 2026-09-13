@@ -213,10 +213,14 @@ type CommunicationsStatsAttentionItemsRow struct {
 // CommunicationsStatsEndpoints.Attention (:115-151): failed deliveries
 // (status IN ('failed','submission_failed'), UNBOUNDED in time) concatenated
 // with open conversations whose last_activity_at is older than @cutoff AND
-// whose newest message (by occurred_at) is inbound -- a condition this
-// outbound-only port's data can never satisfy today (communications
-// inventory §1.6), ported anyway so the second arm activates the moment an
-// inbound provider lands. The inner UNION ALL order does not matter; the
+// whose newest message (by occurred_at) is inbound -- a condition no
+// production writer in this outbound-only port ever satisfies (communications
+// inventory §1.6, design doc §1.1), ported anyway so the second arm
+// activates the moment an inbound provider lands. A fixture CAN satisfy it
+// today (conversation_messages.direction's CHECK matches .NET's full
+// Direction domain since task 7 fix round 2), and does in
+// stats_test.go's TestGetCommunicationsStatsAttention_IncludesOpenConversationsWithAnInboundNewestMessage,
+// which proves this arm live rather than merely ported. The inner UNION ALL order does not matter; the
 // outer ORDER BY occurred_at ASC then LIMIT 100 is what the caller must
 // apply, and it is not a mistake to preserve: it is the hundred OLDEST
 // items, "reads like an accident but is what the code does" (inventory

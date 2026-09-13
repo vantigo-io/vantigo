@@ -369,6 +369,37 @@ func (s *server) PostCommunicationsConversations(ctx context.Context, req gen.Po
 		})
 	})
 	if txErr != nil {
+		// Fix round 2's item 2: ux_idempotency_records_key's own race. The
+		// replay check above (`:224`) and this transaction's own insert are
+		// not atomic together — two concurrent requests for the identical
+		// Idempotency-Key can both pass the check (neither's insert has
+		// committed yet) and both run this entire transaction, each
+		// building its own conversation/message/deliveries/outbox job. Only
+		// one INSERT into idempotency_records can win the unique index; the
+		// loser's failing INSERT aborts its whole transaction, so none of
+		// that request's other writes persist either — only the winner's
+		// do. Catch that specific violation and answer exactly what the
+		// replay check above would answer had it run after the winner
+		// committed: 200 with the winner's own conversationId/messageId on
+		// a matching fingerprint, 409 idempotency_key_reused otherwise —
+		// never the bare 500 an unhandled unique violation would surface
+		// as. The same defect class as the suppression dedupe race (fix
+		// round 1) and the attachment-replay race (task 6 fix round 1);
+		// TestCreateConversation_ConcurrentIdenticalCreateAnswersTheSameReplayTwice
+		// pins it.
+		if db.IsUniqueViolation(txErr, "ux_idempotency_records_key") {
+			existing, err2 := q.GetIdempotencyRecordByKey(ctx, key)
+			if err2 != nil {
+				return nil, fmt.Errorf("communications: re-read idempotency record after create race: %w", err2)
+			}
+			if existing.PayloadFingerprint == fingerprint {
+				return gen.PostCommunicationsConversations200JSONResponse(gen.ConversationMutationResponse{
+					ConversationId: existing.ConversationID, MessageId: &existing.MessageID, Status: "queued", IdempotencyKey: &key,
+				}), nil
+			}
+			return gen.PostCommunicationsConversations409JSONResponse(flatErrorBody(
+				"idempotency_key_reused", "The Idempotency-Key was already used with a different payload.")), nil
+		}
 		return nil, fmt.Errorf("communications: create conversation: %w", txErr)
 	}
 

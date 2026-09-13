@@ -1030,36 +1030,49 @@ func TestCommunicationsBaseline_ChannelRestrictsProtectHistory(t *testing.T) {
 	}
 }
 
-// TestCommunicationsBaseline_MessageDirectionRejectsInbound pins dispatch
-// correction 3: this port's only message producers write "outbound" (the
-// composer's reply) or "internal_note" (the composer's note), so the CHECK
-// on conversation_messages.direction — new in this port; .NET has no CHECK
-// here at all — must reject "inbound" even though .NET's own Direction
-// domain includes it (inventory §9 item 6). Losing this CHECK, or loosening
-// it to admit "inbound" again, both pass silently without this test.
-func TestCommunicationsBaseline_MessageDirectionRejectsInbound(t *testing.T) {
+// TestCommunicationsBaseline_MessageDirectionAcceptsDotNetsFullDomain pins
+// the CHECK on conversation_messages.direction — new in this port; .NET has
+// no CHECK here at all (inventory §10 item 7) — against .NET's own
+// Direction domain: {inbound, outbound, internal_note}, all three accepted,
+// anything else rejected.
+//
+// Task 7 fix round 2 correction (design doc §1.1's correction): an earlier
+// version of this test (then named
+// TestCommunicationsBaseline_MessageDirectionRejectsInbound) asserted the
+// opposite of its last assertion — that "inbound" must be *rejected*,
+// because this port's own writers (the composer's reply and note paths)
+// never produce it. That reasoning was wrong: narrowing the CHECK to this
+// port's current writers, rather than matching .NET's declared domain, made
+// an inbound row impossible to insert even from a test fixture, which in
+// turn made the real recipient-resolution query
+// (GetLatestInboundParticipantAddress) permanently unexercisable on its
+// success branch — no fixture could ever drive it there, so a test seam
+// added to compensate only relocated the blindness. This port still never
+// writes "inbound" in production (design doc §1.1: the inbound worker was
+// the only writer and it is out of scope, so recipients_missing still fires
+// for every conversation this port's own API can create) — but a fixture
+// now can, which is exactly what conversations_reply_test.go's own fixtures
+// rely on.
+func TestCommunicationsBaseline_MessageDirectionAcceptsDotNetsFullDomain(t *testing.T) {
 	pool, _ := testdb.Migrated(t)
 	ctx := context.Background()
 
 	channelID := insertTestChannel(t, ctx, pool)
 	conversationID := insertTestConversation(t, ctx, pool, channelID)
 
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
-		VALUES ($1, $2, 'outbound', now(), now())`, uuid.New(), conversationID); err != nil {
-		t.Errorf("insert an outbound message: %v, want no error", err)
-	}
-	if _, err := pool.Exec(ctx, `
-		INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
-		VALUES ($1, $2, 'internal_note', now(), now())`, uuid.New(), conversationID); err != nil {
-		t.Errorf("insert an internal_note message: %v, want no error", err)
+	for _, direction := range []string{"outbound", "internal_note", "inbound"} {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
+			VALUES ($1, $2, $3, now(), now())`, uuid.New(), conversationID, direction); err != nil {
+			t.Errorf("insert a %q message: %v, want no error", direction, err)
+		}
 	}
 
 	_, err := pool.Exec(ctx, `
 		INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
-		VALUES ($1, $2, 'inbound', now(), now())`, uuid.New(), conversationID)
+		VALUES ($1, $2, 'bogus', now(), now())`, uuid.New(), conversationID)
 	if !isCheckViolation(err) {
-		t.Fatalf("insert an inbound message: err = %v, want a check_violation", err)
+		t.Fatalf("insert a bogus-direction message: err = %v, want a check_violation", err)
 	}
 }
 

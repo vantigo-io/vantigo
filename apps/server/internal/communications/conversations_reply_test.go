@@ -1,9 +1,11 @@
 package communications_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -15,13 +17,22 @@ import (
 // This file is Reply's black-box tests (Reply -> QueueOutboundAsync,
 // EP/ConversationEndpoints.cs:96-101, :264-338; communications inventory
 // §2's "Reply -> QueueOutboundAsync" bullet, §19.1 item 3; design doc
-// §1.1). It covers the steps reachable through the real HTTP handler:
-// validation (2), Idempotency-Key validity (3), the 404 (4), channel
-// inactive (5) and recipients_missing (7), plus the permission pairing.
-// Steps 6, 8, 9 and 10 need a resolved recipient this port's own API can
-// never produce (step 7 always fires first — see conversations_reply.go's
-// own top-of-file comment) and are covered instead in
-// conversations_reply_internal_test.go, which calls queueReply directly.
+// §1.1). Every one of the ten steps, including 6, 8, 9 and 10, is reachable
+// and pinned through the real HTTP handler here — no white-box test file
+// exists for this operation any more.
+//
+// Steps 8, 9 and 10 need a resolved recipient, which needs a genuine
+// direction='inbound' conversation_messages row. No production path in
+// this port ever writes one (design doc §1.1: the inbound worker was the
+// only writer and it is out of scope), but replyableConversation below
+// inserts one directly as a fixture — legal since task 7 fix round 2
+// widened conversation_messages.direction's CHECK to match .NET's full
+// Direction domain (inbound included). Before that fix, no fixture could
+// construct this row at all, and fix round 1 worked around it with an
+// overridable recipient-resolution seam on *server; that seam is gone
+// (server.go's own comment on the removed field has the history) because
+// this file's own fixtures now drive the real query, and the real handler,
+// end to end.
 
 // replyBody is a valid ReplyRequest: a text body, nothing else —
 // ValidateReply's minimum (subject and replyMode are both optional; the
@@ -34,6 +45,38 @@ func replyBody() map[string]any {
 func doReply(c *modtest.Client, conversationID, idempotencyKey string, body map[string]any) *modtest.Response {
 	return c.Do(http.MethodPost, "/api/v1/communications/conversations/"+conversationID+"/reply", body,
 		modtest.Header("Idempotency-Key", idempotencyKey))
+}
+
+// insertInboundParticipant inserts a participant on chID with address, plus
+// a direction='inbound' conversation_messages row on convID naming that
+// participant as its author — the fixture a real inbound provider would
+// eventually write, legal only since task 7 fix round 2 (see this file's
+// own top-of-file comment). address is stored verbatim: callers pass it
+// already normalised (uppercased, D7) to match what a real participant row
+// actually contains, so a test reading it back needs no further
+// transformation.
+func insertInboundParticipant(t *testing.T, h *modtest.Harness, chID, convID, address string) uuid.UUID {
+	t.Helper()
+	participantID := uuid.New()
+	h.Exec(t, `INSERT INTO communications.participants (id, channel_id, address, created_at) VALUES ($1, $2, $3, $4)`,
+		participantID, uuid.MustParse(chID), address, h.Now())
+	h.Exec(t, `INSERT INTO communications.conversation_messages (id, conversation_id, direction, participant_id, occurred_at, created_at)
+		VALUES ($1, $2, 'inbound', $3, $4, $4)`, uuid.New(), uuid.MustParse(convID), participantID, h.Now())
+	return participantID
+}
+
+// replyableConversation creates a channel and a conversation through the
+// real API, then attaches a genuine inbound participant so a subsequent
+// reply resolves it as the recipient and reaches steps 8, 9 and 10 for
+// real. Returns the conversation id and the resolved (already-normalised,
+// uppercased) recipient address.
+func replyableConversation(t *testing.T, h *modtest.Harness, c *modtest.Client) (conversationID, address string) {
+	t.Helper()
+	chID := setupChannel(t, h)
+	m := createConversation(t, c, newConversationBody("seed@example.test"))
+	address = strings.ToUpper("inbound-" + uuid.NewString() + "@example.test")
+	insertInboundParticipant(t, h, chID, m.ConversationId, address)
+	return m.ConversationId, address
 }
 
 // ---- Step 2: validateReply, and "body validation wins over existence" ----
@@ -376,7 +419,7 @@ func TestReply_NoInboundParticipantIsRecipientsMissing(t *testing.T) {
 	}
 }
 
-// ---- Step 6, reachable through the real handler: a bare replay ----
+// ---- Step 6: idempotency replay, and step 5 preceding it ----
 
 // replyFingerprintForTest is communications.ReplyFingerprintForTest
 // (export_test.go's re-export of the real, unexported replyFingerprint),
@@ -384,14 +427,7 @@ func TestReply_NoInboundParticipantIsRecipientsMissing(t *testing.T) {
 // the handler will actually match. Fix round 1's review confirmed the
 // original hand-duplicated struct shape here failed loudly rather than
 // silently if it ever drifted from the real function, but a construction
-// that cannot drift at all — the same func value — is strictly better. This
-// is the one test in this file that reaches a genuine 200 through the real
-// handler — the contract-coverage recorder (main_test.go) counts an
-// operation exercised only on a below-400 response, and the recorder here
-// is the shared package-level one, unlike conversations_reply_internal_test.go's
-// own (whose white-box replay tests use replyFingerprint directly, but
-// against a *different* recorder instance that this package's coverage
-// gate never reads).
+// that cannot drift at all — the same func value — is strictly better.
 func replyFingerprintForTest(t *testing.T, conversationID uuid.UUID, textBody *string) string {
 	t.Helper()
 	fp, err := communications.ReplyFingerprintForTest(conversationID, gen.ReplyRequest{TextBody: textBody})
@@ -406,9 +442,7 @@ func replyFingerprintForTest(t *testing.T, conversationID uuid.UUID, textBody *s
 // payload as an existing idempotency record returns that record's
 // conversationId/messageId with 200, without ever reaching step 7 (this
 // conversation genuinely has no inbound participant, so if the replay check
-// did not short-circuit first, this would 422 instead — the same ordering
-// conversations_reply_internal_test.go's white-box tests pin more directly
-// for steps 5-vs-6).
+// did not short-circuit first, this would 422 instead).
 func TestReply_IdempotencyReplaySameFingerprintIs200(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -432,6 +466,67 @@ func TestReply_IdempotencyReplaySameFingerprintIs200(t *testing.T) {
 	r.JSON(&replayed)
 	if replayed.ConversationId != m.ConversationId || replayed.MessageId == nil || *replayed.MessageId != fakeMessageID.String() {
 		t.Errorf("replay = %+v, want conversationId=%s messageId=%s", replayed, m.ConversationId, fakeMessageID)
+	}
+}
+
+// TestReply_IdempotencyReplayDifferentPayloadIs409 pins step 6's 409 half.
+func TestReply_IdempotencyReplayDifferentPayloadIs409(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, c, newConversationBody("x@example.test"))
+	convID := uuid.MustParse(m.ConversationId)
+
+	key := uuid.NewString()
+	original := "original body"
+	fingerprint := replyFingerprintForTest(t, convID, &original)
+	h.Exec(t, `INSERT INTO communications.idempotency_records (id, key, payload_fingerprint, conversation_id, message_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`, uuid.New(), key, fingerprint, convID, uuid.New(), h.Now())
+
+	r := doReply(c, m.ConversationId, key, map[string]any{"textBody": "a different body"})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var body commErrorJSON
+	r.JSON(&body)
+	if body.Error.Code != "idempotency_key_reused" {
+		t.Errorf("code = %q, want idempotency_key_reused", body.Error.Code)
+	}
+}
+
+// TestReply_ChannelInactivePrecedesIdempotencyReplay is the mutation-order
+// test for steps 5 vs 6 — task 7's own named hazard: a replay of an
+// already-accepted request against a since-deactivated channel answers 422
+// channel_inactive, not the cached 200. Swapping steps 5 and 6 would make
+// this test observe 200 instead.
+func TestReply_ChannelInactivePrecedesIdempotencyReplay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	chID := setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	m := createConversation(t, c, newConversationBody("x@example.test"))
+	convID := uuid.MustParse(m.ConversationId)
+
+	key := uuid.NewString()
+	text := "accepted, then the channel dies"
+	fingerprint := replyFingerprintForTest(t, convID, &text)
+	h.Exec(t, `INSERT INTO communications.idempotency_records (id, key, payload_fingerprint, conversation_id, message_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`, uuid.New(), key, fingerprint, convID, uuid.New(), h.Now())
+
+	admin := h.SignIn(t, "communications:channels-manage")
+	if r := admin.Do(http.MethodPut, "/api/v1/communications/channels/"+chID, map[string]any{"isActive": false}); r.Status != http.StatusOK {
+		t.Fatalf("deactivate channel: status %d body %s, want 200", r.Status, r.Body)
+	}
+
+	r := doReply(c, m.ConversationId, key, map[string]any{"textBody": text})
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d body %s, want 422 (channel_inactive precedes the cached replay)", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "channel_inactive" {
+		t.Errorf("code = %q, want channel_inactive, not the replay's cached 200", errBody.Error.Code)
 	}
 }
 
@@ -461,6 +556,398 @@ func TestReply_RecipientsMissingPrecedesAttachmentPreflight(t *testing.T) {
 	r.JSON(&errBody)
 	if errBody.Error.Code != "recipients_missing" {
 		t.Errorf("code = %q, want recipients_missing (step 7 precedes the attachment preflight), not attachments_not_ready", errBody.Error.Code)
+	}
+}
+
+// ---- Step 8: the staged-attachment preflight ----
+
+// TestReply_AttachmentsNotReady_UnknownId pins the preflight for an
+// attachmentIds entry that matches no staged upload at all.
+func TestReply_AttachmentsNotReady_UnknownId(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, _ := replyableConversation(t, h, c)
+
+	body := replyBody()
+	body["attachmentIds"] = []string{uuid.NewString()}
+	r := doReply(c, convID, uuid.NewString(), body)
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "attachments_not_ready" {
+		t.Errorf("code = %q, want attachments_not_ready", errBody.Error.Code)
+	}
+	if errBody.Error.Message != "One or more attachments are still being scanned or are unavailable." {
+		t.Errorf("message = %q, want the exact attachments_not_ready text", errBody.Error.Message)
+	}
+}
+
+// TestReply_AttachmentsNotReady_Expired pins the preflight's expires_at >
+// now half of the gate: an otherwise-clean upload past its expiry is
+// treated exactly like a missing one.
+func TestReply_AttachmentsNotReady_Expired(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, _ := replyableConversation(t, h, c)
+	upload := mustStageAttachment(t, c, convID, []byte("hello"))
+	h.Exec(t, `UPDATE communications.attachment_uploads SET expires_at = $1 WHERE id = $2`,
+		h.Now().Add(-time.Minute), uuid.MustParse(upload.Id))
+
+	body := replyBody()
+	body["attachmentIds"] = []string{upload.Id}
+	r := doReply(c, convID, uuid.NewString(), body)
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "attachments_not_ready" {
+		t.Errorf("code = %q, want attachments_not_ready", errBody.Error.Code)
+	}
+}
+
+// TestReply_AttachmentsNotReady_WrongUploader pins the preflight's own
+// uploader scoping: a staged upload that exists, is clean and unexpired,
+// but belongs to a different caller, is invisible to this reply.
+func TestReply_AttachmentsNotReady_WrongUploader(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, _ := replyableConversation(t, h, owner)
+	upload := mustStageAttachment(t, owner, convID, []byte("hello"))
+
+	other := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	body := replyBody()
+	body["attachmentIds"] = []string{upload.Id}
+	r := doReply(other, convID, uuid.NewString(), body)
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "attachments_not_ready" {
+		t.Errorf("code = %q, want attachments_not_ready", errBody.Error.Code)
+	}
+}
+
+// TestReply_AttachmentsPrecedeSuppression is the mutation-order test for
+// steps 8 vs 9: an unready attachment AND a suppressed recipient in the
+// same request must answer 409 attachments_not_ready, never 422
+// recipient_suppressed — proving the preflight runs first. Swapping these
+// two steps would flip this test's expectation.
+func TestReply_AttachmentsPrecedeSuppression(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, address := replyableConversation(t, h, c)
+	h.Exec(t, `INSERT INTO communications.suppressions (id, normalized_email_address, reason, created_at) VALUES ($1, $2, NULL, $3)`,
+		uuid.New(), address, h.Now())
+
+	body := replyBody()
+	body["attachmentIds"] = []string{uuid.NewString()} // unknown -> preflight fails
+	r := doReply(c, convID, uuid.NewString(), body)
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409 (attachments_not_ready precedes suppression)", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "attachments_not_ready" {
+		t.Errorf("code = %q, want attachments_not_ready, not recipient_suppressed", errBody.Error.Code)
+	}
+}
+
+// ---- Step 9: suppression ----
+
+// TestReply_RecipientSuppressed pins step 9's shape exactly: 422
+// recipient_suppressed, fields.recipients carrying the suppressed
+// address(es) — the resolved recipient, already stored in its normalised
+// (uppercased, D7) form on the fixture participant row, exactly as a real
+// participant would carry it.
+func TestReply_RecipientSuppressed(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, address := replyableConversation(t, h, c)
+	h.Exec(t, `INSERT INTO communications.suppressions (id, normalized_email_address, reason, created_at) VALUES ($1, $2, NULL, $3)`,
+		uuid.New(), address, h.Now())
+
+	r := doReply(c, convID, uuid.NewString(), replyBody())
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d body %s, want 422", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "recipient_suppressed" {
+		t.Errorf("code = %q, want recipient_suppressed", errBody.Error.Code)
+	}
+	if errBody.Error.Message != "One or more recipients are suppressed." {
+		t.Errorf("message = %q, want the exact recipient_suppressed text", errBody.Error.Message)
+	}
+	got := errBody.field("recipients")
+	if len(got) != 1 || got[0] != address {
+		t.Errorf("fields[recipients] = %v, want [%q]", got, address)
+	}
+}
+
+// TestReply_SuppressionPrecedesAttachmentClaim is the mutation-order test
+// for steps 9 vs 10: a suppressed recipient with an otherwise-claimable
+// attachment must never reach the transaction at all — the staged upload's
+// scan_status must still read 'clean' afterward, proving step 10's claim
+// never ran. Swapping steps 9 and 10 would let the claim fire before the
+// suppression check and this assertion would fail.
+func TestReply_SuppressionPrecedesAttachmentClaim(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, address := replyableConversation(t, h, c)
+	h.Exec(t, `INSERT INTO communications.suppressions (id, normalized_email_address, reason, created_at) VALUES ($1, $2, NULL, $3)`,
+		uuid.New(), address, h.Now())
+	upload := mustStageAttachment(t, c, convID, []byte("hello"))
+
+	body := replyBody()
+	body["attachmentIds"] = []string{upload.Id}
+	r := doReply(c, convID, uuid.NewString(), body)
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d body %s, want 422 (suppression precedes the transactional claim)", r.Status, r.Body)
+	}
+	var errBody commErrorJSON
+	r.JSON(&errBody)
+	if errBody.Error.Code != "recipient_suppressed" {
+		t.Errorf("code = %q, want recipient_suppressed", errBody.Error.Code)
+	}
+
+	status := modtest.One[string](t, h, `SELECT scan_status FROM communications.attachment_uploads WHERE id = $1`, uuid.MustParse(upload.Id))
+	if status != "clean" {
+		t.Errorf("attachment scan_status = %q after a suppressed reply, want unchanged clean (the transaction must never have run)", status)
+	}
+}
+
+// ---- Step 10: the transactional claim, success, and its promotion ----
+
+// TestReply_Success_PromotesAttachmentVerbatim is the happy path with one
+// staged attachment: 201, a message_attachments row carrying the staged
+// upload's scan_status and content_hash verbatim (not recomputed), the
+// attachment_uploads row deleted, its cleanup record transitioned to
+// 'owned', an outbox job and idempotency record written, and the
+// conversation's activity fields advanced (Subject filled once since this
+// conversation already has one from CreateConversation).
+func TestReply_Success_PromotesAttachmentVerbatim(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, _ := replyableConversation(t, h, c)
+	upload := mustStageAttachment(t, c, convID, []byte("A reply attachment"))
+	wantHash := modtest.One[string](t, h, `SELECT content_hash FROM communications.attachment_uploads WHERE id = $1`, uuid.MustParse(upload.Id))
+	storageKey := modtest.One[string](t, h, `SELECT storage_key FROM communications.attachment_uploads WHERE id = $1`, uuid.MustParse(upload.Id))
+
+	body := replyBody()
+	body["attachmentIds"] = []string{upload.Id}
+	key := uuid.NewString()
+	r := doReply(c, convID, key, body)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("status %d body %s, want 201", r.Status, r.Body)
+	}
+	var resp conversationMutationJSON
+	r.JSON(&resp)
+	if resp.Status != "queued" {
+		t.Errorf("status = %q, want queued", resp.Status)
+	}
+	if resp.MessageId == nil {
+		t.Fatal("messageId is nil")
+	}
+	messageID := uuid.MustParse(*resp.MessageId)
+
+	gotHash := modtest.One[string](t, h, `SELECT content_hash FROM communications.message_attachments WHERE message_id = $1`, messageID)
+	if gotHash != wantHash {
+		t.Errorf("message_attachments.content_hash = %q, want %q (carried over, not recomputed)", gotHash, wantHash)
+	}
+	gotScanStatus := modtest.One[string](t, h, `SELECT scan_status FROM communications.message_attachments WHERE message_id = $1`, messageID)
+	if gotScanStatus != "clean" {
+		t.Errorf("message_attachments.scan_status = %q, want clean", gotScanStatus)
+	}
+	gotStorageKey := modtest.One[string](t, h, `SELECT storage_key FROM communications.message_attachments WHERE message_id = $1`, messageID)
+	if gotStorageKey != storageKey {
+		t.Errorf("message_attachments.storage_key = %q, want %q (never re-keyed)", gotStorageKey, storageKey)
+	}
+
+	if n := h.Count(t, `SELECT count(*) FROM communications.attachment_uploads WHERE id = $1`, uuid.MustParse(upload.Id)); n != 0 {
+		t.Errorf("attachment_uploads rows for %s = %d, want 0 (deleted after promotion)", upload.Id, n)
+	}
+	cleanupStatus := modtest.One[string](t, h, `SELECT status FROM communications.attachment_cleanup_records WHERE storage_key = $1`, storageKey)
+	if cleanupStatus != "owned" {
+		t.Errorf("cleanup record status = %q, want owned", cleanupStatus)
+	}
+
+	if n := h.Count(t, `SELECT count(*) FROM communications.outbox_jobs WHERE message_id = $1`, messageID); n != 1 {
+		t.Errorf("outbox_jobs rows = %d, want 1", n)
+	}
+	idempKey := modtest.One[string](t, h, `SELECT key FROM communications.idempotency_records WHERE message_id = $1`, messageID)
+	if idempKey != key {
+		t.Errorf("idempotency_records.key = %q, want %q", idempKey, key)
+	}
+
+	subject := modtest.One[*string](t, h, `SELECT subject FROM communications.conversations WHERE id = $1`, uuid.MustParse(convID))
+	if subject == nil {
+		t.Fatal("conversation subject is nil, want the one CreateConversation set (fill-once must not clear it)")
+	}
+}
+
+// TestReply_ConcurrentAttachmentClaimRace is the teeth check for why the
+// transactional claim (step 10) exists at all, not just the preflight
+// (step 8): two replies — through the real handler, each with its own
+// idempotency key — race to claim the same staged attachment. Both
+// preflights (plain SELECTs) can pass — nothing locks between them — but
+// only one transaction's conditional clean -> claimed UPDATE can actually
+// flip the row; the loser's claimed count comes back short and it answers
+// the same 409 attachments_not_ready the preflight itself would, rather
+// than double-sending the attachment or corrupting either message. The gate
+// (LOCK TABLE ... IN EXCLUSIVE MODE, released only once both requests are
+// confirmed waiting) reuses channels_concurrency_test.go's race/
+// awaitLockWaiters — same package, no duplication needed now that this
+// runs through the real handler rather than a white-box call.
+func TestReply_ConcurrentAttachmentClaimRace(t *testing.T) {
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, _ := replyableConversation(t, h, c)
+	upload := mustStageAttachment(t, c, convID, []byte("racing bytes"))
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.attachment_uploads IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock attachment_uploads: %v", err)
+	}
+
+	body := replyBody()
+	body["attachmentIds"] = []string{upload.Id}
+	fns := []func() *modtest.Response{
+		func() *modtest.Response { return doReply(c, convID, uuid.NewString(), body) },
+		func() *modtest.Response { return doReply(c, convID, uuid.NewString(), body) },
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, 2, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	var created, conflicted int
+	for _, r := range responses {
+		switch r.Status {
+		case http.StatusCreated:
+			created++
+		case http.StatusConflict:
+			conflicted++
+			var errBody commErrorJSON
+			r.JSON(&errBody)
+			if errBody.Error.Code != "attachments_not_ready" {
+				t.Errorf("loser code = %q, want attachments_not_ready", errBody.Error.Code)
+			}
+		default:
+			t.Errorf("status %d body %s, want 201 or 409", r.Status, r.Body)
+		}
+	}
+	if created != 1 {
+		t.Errorf("created = %d, want exactly 1", created)
+	}
+	if conflicted != 1 {
+		t.Errorf("conflicted = %d, want exactly 1", conflicted)
+	}
+}
+
+// TestReply_ConcurrentIdenticalReplyAnswersTheSameReplayTwice is fix round
+// 2 item 2's teeth check for reply's own ux_idempotency_records_key race —
+// the mirror image of
+// TestCreateConversation_ConcurrentIdenticalCreateAnswersTheSameReplayTwice
+// (conversations_test.go's own comment has the full reasoning, which
+// applies here unchanged): two concurrent replies carrying the identical
+// body and Idempotency-Key against a replyable conversation race past step
+// 6's replay check and both attempt the final INSERT into
+// idempotency_records inside queueReply's transaction. Only one can win
+// the unique index; the loser's failing INSERT aborts its whole
+// transaction, so none of that reply's other writes persist either — only
+// the winner's do. Run at -count=5 per fix round instructions since a race
+// this narrow does not always land the same way twice.
+func TestReply_ConcurrentIdenticalReplyAnswersTheSameReplayTwice(t *testing.T) {
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
+	convID, _ := replyableConversation(t, h, c)
+	key := uuid.NewString()
+	body := replyBody()
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.idempotency_records IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock idempotency_records: %v", err)
+	}
+
+	const n = 2
+	fns := make([]func() *modtest.Response, n)
+	for i := 0; i < n; i++ {
+		fns[i] = func() *modtest.Response { return doReply(c, convID, key, body) }
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, n, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	var created, replayed int
+	var messageIDs []string
+	for _, r := range responses {
+		switch r.Status {
+		case http.StatusCreated:
+			created++
+		case http.StatusOK:
+			replayed++
+		default:
+			t.Fatalf("status %d body %s, want 200 or 201 (never 500)", r.Status, r.Body)
+		}
+		var m conversationMutationJSON
+		r.JSON(&m)
+		if m.MessageId != nil {
+			messageIDs = append(messageIDs, *m.MessageId)
+		}
+	}
+	if created != 1 {
+		t.Errorf("created (201) = %d, want exactly 1", created)
+	}
+	if replayed != n-1 {
+		t.Errorf("replayed (200) = %d, want exactly %d", replayed, n-1)
+	}
+	if len(messageIDs) == 2 && messageIDs[0] != messageIDs[1] {
+		t.Errorf("messageIds = %v, want both responses to carry the winner's same id", messageIDs)
+	}
+
+	if len(messageIDs) > 0 {
+		count := h.Count(t, `SELECT count(*) FROM communications.conversation_messages WHERE id = $1`, uuid.MustParse(messageIDs[0]))
+		if count != 1 {
+			t.Errorf("conversation_messages rows for %s = %d, want exactly 1", messageIDs[0], count)
+		}
 	}
 }
 

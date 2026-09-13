@@ -2,6 +2,7 @@ package communications_test
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -405,6 +406,113 @@ func TestCreateConversation_IdempotencyKeyReusedWithDifferentPayloadIs409(t *tes
 	}
 }
 
+// TestCreateConversation_ConcurrentIdenticalCreateAnswersTheSameReplayTwice
+// is fix round 2 item 2's teeth check for the ux_idempotency_records_key
+// race: the replay lookup (`:224`) and this handler's own transactional
+// INSERT into idempotency_records are not atomic together, so two
+// concurrent POSTs carrying the identical body and Idempotency-Key can both
+// pass the lookup (neither's own transaction has committed yet) and both
+// attempt the final INSERT. Only one can win the unique index; the loser's
+// failing INSERT aborts its entire transaction, so none of that request's
+// other writes (its own conversation, message, deliveries, outbox job)
+// persist either — only the winner's do. Before the fix the loser's unique
+// violation reached the unhandled wrapped-error path (an opaque 500);
+// after it, the loser is answered exactly the sequential replay path's 200
+// with the SAME conversationId/messageId the winner's own 201 carries —
+// the same defect class, and the same fix shape, as the suppression
+// dedupe race (fix round 1) and the attachment-replay race (task 6 fix
+// round 1). The gate (LOCK TABLE ... IN EXCLUSIVE MODE, released only once
+// both requests are confirmed waiting) reuses
+// channels_concurrency_test.go's race/awaitLockWaiters. Run at -count=5
+// per fix round instructions since a race this narrow does not always land
+// the same way twice.
+func TestCreateConversation_ConcurrentIdenticalCreateAnswersTheSameReplayTwice(t *testing.T) {
+	h := newHarness(t)
+	setupChannel(t, h)
+	c := h.SignIn(t, "communications:conversations-reply")
+	address := "race-" + uuid.NewString() + "@example.test"
+	// Pre-create the "to" participant via one ordinary, completed request
+	// first, so the concurrent race below never touches
+	// findOrCreateParticipantByAddress's own find-or-create INSERT branch —
+	// a separate, already-known unguarded race
+	// (ux_participants_channel_id_address) this test is not about; gating
+	// only idempotency_records (below) leaves that race free to fire too if
+	// the participant does not already exist, which would fail this test
+	// for the wrong reason.
+	createConversation(t, c, newConversationBody(address))
+
+	key := uuid.NewString()
+	body := newConversationBody(address)
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.idempotency_records IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock idempotency_records: %v", err)
+	}
+
+	const n = 2
+	fns := make([]func() *modtest.Response, n)
+	for i := 0; i < n; i++ {
+		fns[i] = func() *modtest.Response {
+			return c.Do(http.MethodPost, "/api/v1/communications/conversations", body, modtest.Header("Idempotency-Key", key))
+		}
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, n, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	var created, replayed int
+	var conversationIDs, messageIDs []string
+	for _, r := range responses {
+		switch r.Status {
+		case http.StatusCreated:
+			created++
+		case http.StatusOK:
+			replayed++
+		default:
+			t.Fatalf("status %d body %s, want 200 or 201 (never 500)", r.Status, r.Body)
+		}
+		var m conversationMutationJSON
+		r.JSON(&m)
+		conversationIDs = append(conversationIDs, m.ConversationId)
+		if m.MessageId != nil {
+			messageIDs = append(messageIDs, *m.MessageId)
+		}
+	}
+	if created != 1 {
+		t.Errorf("created (201) = %d, want exactly 1", created)
+	}
+	if replayed != n-1 {
+		t.Errorf("replayed (200) = %d, want exactly %d", replayed, n-1)
+	}
+	if len(conversationIDs) == 2 && conversationIDs[0] != conversationIDs[1] {
+		t.Errorf("conversationIds = %v, want both responses to carry the winner's same id", conversationIDs)
+	}
+	if len(messageIDs) == 2 && messageIDs[0] != messageIDs[1] {
+		t.Errorf("messageIds = %v, want both responses to carry the winner's same id", messageIDs)
+	}
+
+	if len(conversationIDs) > 0 {
+		count := h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1`, uuid.MustParse(conversationIDs[0]))
+		if count != 1 {
+			t.Errorf("conversations rows for %s = %d, want exactly 1", conversationIDs[0], count)
+		}
+	}
+}
+
 // TestCreateConversation_ChannelInvalid422 pins the 422 channel_invalid
 // path for an unknown channelId.
 func TestCreateConversation_ChannelInvalid422(t *testing.T) {
@@ -715,11 +823,11 @@ func TestGetConversation_NotFound(t *testing.T) {
 }
 
 // TestGetConversation_ReplyRecipientsAreAlwaysAllNegative pins task 5
-// dispatch's explicit hazard: this port has no inbound path (design §1.1),
-// so canReply is false and replyAllCc is empty for every conversation
-// created through the API — the only value replyRecipientsOf can ever
-// produce (see its own comment on the CHECK constraint that makes the
-// alternative unreachable). Pinned rather than worked around.
+// dispatch's explicit hazard: this port has no inbound path (design §1.1;
+// no production writer ever produces a direction='inbound' message), so
+// canReply is false and replyAllCc is empty for every conversation created
+// through the API — the only value replyRecipientsOf can ever produce in
+// production (see its own comment). Pinned rather than worked around.
 func TestGetConversation_ReplyRecipientsAreAlwaysAllNegative(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

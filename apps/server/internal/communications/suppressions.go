@@ -37,8 +37,8 @@ import (
 // check (addDuplicateRecipientError). The uppercased form is what gets
 // stored (ux_suppressions_normalized_email_address, the migration's own
 // comment), what SuppressionResponse.emailAddress echoes back below, and
-// what reply's fields.recipients carries (conversations_reply_internal_test.go's
-// TestQueueReply_RecipientSuppressed already pins that half). The contact
+// what reply's fields.recipients carries (conversations_reply_test.go's
+// TestReply_RecipientSuppressed already pins that half). The contact
 // linker's ConversationContactLinker.NormalizeEmail lowercases instead
 // (inventory §19.1 item 7, §10 item 4, design doc D7) — a deliberate
 // asymmetry this module never harmonises; there is no shared "normalize"

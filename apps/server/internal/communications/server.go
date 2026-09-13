@@ -1,13 +1,9 @@
 package communications
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/google/uuid"
-
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
-	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/storage"
@@ -27,24 +23,19 @@ const storageScope = "communications"
 type server struct {
 	deps  module.Deps
 	store storage.ObjectStore
-
-	// resolveReplyRecipientsFunc is the seam Reply's own recipient
-	// resolution runs through: resolveReplyRecipients by default (wired
-	// below), so PostCommunicationsConversationsByIdReply always calls
-	// through this field, never the method directly. Fix round 1's own
-	// finding was that a *different* seam — a standalone queueReply tests
-	// called directly with hand-supplied params — left the production call
-	// site (conversations_reply.go's own call into queueReply) provably
-	// untested: deleting it left the whole package green, because nothing
-	// but the test itself ever reached that line. This field fixes that:
-	// a white-box test overrides it on a *server built via newServer, then
-	// drives PostCommunicationsConversationsByIdReply itself end to end, so
-	// every value the real handler computes and wires into queueReply
-	// (caller, channelType, the messageSubject fallback, fingerprint, now)
-	// is exercised for real, and deleting the production call now fails
-	// that test rather than leaving it oblivious.
-	resolveReplyRecipientsFunc func(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (address string, ok bool, err error)
 }
+
+// History: task 7 fix round 1 added a resolveReplyRecipientsFunc field here
+// — an overridable seam so a white-box test could drive
+// PostCommunicationsConversationsByIdReply past step 7 without a real
+// inbound row, which conversation_messages.direction's CHECK made
+// impossible to construct even from a fixture at the time. Fix round 2
+// removed that CHECK narrowing (design doc §1.1's correction; migration
+// 00006_communications_baseline.sql now matches .NET's full Direction
+// domain), so a fixture can insert a genuine direction='inbound' message
+// and drive resolveReplyRecipients's real query to its success branch. The
+// seam became redundant and was deleted along with it — every test that
+// used to override it now uses a real fixture instead (conversations_reply_test.go).
 
 var _ gen.StrictServerInterface = (*server)(nil)
 
@@ -76,9 +67,7 @@ func newServer(d module.Deps) (*server, error) {
 		}
 		store = scoped
 	}
-	srv := &server{deps: d, store: store}
-	srv.resolveReplyRecipientsFunc = srv.resolveReplyRecipients
-	return srv, nil
+	return &server{deps: d, store: store}, nil
 }
 
 // ptr returns a pointer to a copy of v, for the optional fields of a
