@@ -342,10 +342,25 @@ func (s *server) reserveStorageKey(ctx context.Context, uploadID uuid.UUID, key 
 	existing, err := q.FindLatestCleanupRecordByStorageKey(ctx, key)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		return q.InsertCleanupRecord(ctx, store.InsertCleanupRecordParams{
-			ID: uuid.New(), StorageKey: key, NextAttemptAt: now,
+		// ReserveAsync's id is DeterministicGuid(Guid.Empty, "cleanup:{key}")
+		// (`SV/ObjectOwnershipLifecycle.cs:54`, objects.go's cleanupRecordID),
+		// so a crash-retry for the same object key lands on the same row
+		// instead of accumulating reservations. .NET then falls back to a
+		// random id when that id is already taken, which happens legitimately
+		// when a completed historical record for a reused key still holds it
+		// (`:61-64`). .NET's check is a SELECT before the INSERT, which is a
+		// race under concurrent staging of the same key; letting the unique
+		// index decide is the same rule without the window.
+		params := store.InsertCleanupRecordParams{
+			ID: cleanupRecordID(key), StorageKey: key, NextAttemptAt: now,
 			ReservationExpiresAt: ptr(now.Add(reservationLifetime)), CreatedAt: now,
-		})
+		}
+		insertErr := q.InsertCleanupRecord(ctx, params)
+		if db.IsUniqueViolation(insertErr) {
+			params.ID = uuid.New()
+			insertErr = q.InsertCleanupRecord(ctx, params)
+		}
+		return insertErr
 	case err != nil:
 		return fmt.Errorf("communications: find cleanup record for upload %s: %w", uploadID, err)
 	case existing.Status == "owned" || existing.Status == "deleting":
