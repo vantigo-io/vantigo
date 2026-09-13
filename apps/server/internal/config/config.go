@@ -1066,9 +1066,12 @@ var knownModules = func() []string {
 }()
 
 // defaultModules are enabled when MODULES is unset: every business module
-// this sub-project ports. communications arrives in a later sub-project and
-// is not on by default.
-var defaultModules = []string{"customers", "products", "energy"}
+// this binary can mount. communications joined the list in its own
+// sub-project's final task, when Module() first existed for module.Compose
+// to mount — before that the name parsed but mounted nothing, which is why
+// it was deliberately left off this list. A deployment that does not want
+// it names the others in MODULES explicitly.
+var defaultModules = []string{"customers", "products", "energy", "communications"}
 
 // modules parses MODULES, a comma list of business module names this
 // deployment enables. Entries are trimmed and lower-cased; empty entries

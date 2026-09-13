@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -134,5 +135,49 @@ func TestWriteError_WritesNothingWhenTheCallerIsGone(t *testing.T) {
 
 	if rec.Body.Len() != 0 || rec.Header().Get("Content-Type") != "" {
 		t.Errorf("wrote a response to a caller that left: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+// TestWriteError_CancelledRequestStaysSilentWhateverTheErrorIs is the second
+// half of the same rule, and the one an earlier version got wrong: the
+// branch above required the error itself to wrap context.Canceled, so every
+// *consequence* of the disconnect — the driver reporting a closed
+// connection, a helper wrapping its own failure — fell through to the
+// default branch and produced an ERROR log plus a 500 for a caller who was
+// already gone. Whether anyone is still listening is a property of the
+// request, not of the error value.
+func TestWriteError_CancelledRequestStaysSilentWhateverTheErrorIs(t *testing.T) {
+	logs := captureDefaultLog(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	WriteError(rec, httptest.NewRequest(http.MethodGet, "/api/x", nil).WithContext(ctx),
+		errors.New("read tcp 10.0.0.1:5432: use of closed network connection"))
+
+	if rec.Body.Len() != 0 || rec.Header().Get("Content-Type") != "" {
+		t.Errorf("wrote a response to a caller that left: %d %q", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(logs.String(), `"level":"ERROR"`) {
+		t.Errorf("a vanished caller produced an error-level log line: %s", logs.String())
+	}
+}
+
+// TestWriteError_LiveRequestWithACancelledErrorIsStillAServerFault is the
+// converse, and the reason the branch tests the context rather than the
+// error: an outbound call can report context.Canceled for a cancellation of
+// its own while this request's caller waits. That is a failure someone is
+// still owed an answer for, and an operator is owed a log line about.
+func TestWriteError_LiveRequestWithACancelledErrorIsStillAServerFault(t *testing.T) {
+	logs := captureDefaultLog(t)
+	rec := httptest.NewRecorder()
+	WriteError(rec, httptest.NewRequest(http.MethodGet, "/api/x", nil),
+		fmt.Errorf("upstream gave up: %w", context.Canceled))
+
+	p := decodeProblem(t, rec)
+	if p.Status != http.StatusInternalServerError || p.Detail != UnexpectedErrorDetail {
+		t.Errorf("problem = %+v, want a sanitised 500", p)
+	}
+	if !strings.Contains(logs.String(), "upstream gave up") {
+		t.Errorf("the failure was not logged: %s", logs.String())
 	}
 }

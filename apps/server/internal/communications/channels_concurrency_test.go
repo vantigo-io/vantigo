@@ -157,3 +157,79 @@ func TestCreateChannel_ConcurrentDefaultRaceAnswersModuleShape(t *testing.T) {
 		t.Errorf("conflicted = %d, want exactly %d", conflicted, n-1)
 	}
 }
+
+// TestUpdateChannel_ConcurrentDefaultRaceLeavesExactlyOneDefault is task
+// 14's constraint audit finding, and the reason the audit re-examined a
+// constraint the ledger already called fixed: task 3 fixed
+// ux_channels_type_is_default on the CREATE path only. The UPDATE path
+// raced on the same index and nothing guarded it.
+//
+// Two PUTs each claiming the default for a different channel of the same
+// type: under READ COMMITTED the loser's ClearOtherDefaultChannels used to
+// take its snapshot before the winner committed, so the winner's row was
+// still is_default = false there, did not match the statement's own
+// `is_default AND id != @id` predicate, and was never visited. The loser
+// demoted nothing and then set its own row true — two defaults of one type,
+// and a 23505 the handler does not catch.
+//
+// It could not be caught the way CreateChannel's collision is, either:
+// putCommunicationsChannelsById's contract declares 200/400/401/403/404 and
+// no 409 at all, so the only correct answer was to stop producing the
+// violation. queries/channels.sql's ClearOtherDefaultChannels drops the
+// `is_default` term so the statement visits the winner's row, blocks on it,
+// and re-checks it under EvalPlanQual — which the surviving `id != @id`
+// still matches, so the loser demotes the winner and the race resolves as
+// last-writer-wins with no violation at all.
+//
+// Teeth: restore `AND is_default` in that query and this test fails with one
+// request answering a bare application/problem+json instead of 200.
+func TestUpdateChannel_ConcurrentDefaultRaceLeavesExactlyOneDefault(t *testing.T) {
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:channels-manage")
+
+	// The first channel is forced default; the next two are the contenders.
+	createChannel(t, c, newChannelBody(channelAddress(t)))
+	first := createChannel(t, c, newChannelBody(channelAddress(t)))
+	second := createChannel(t, c, newChannelBody(channelAddress(t)))
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.channels IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock channels: %v", err)
+	}
+
+	fns := make([]func() *modtest.Response, 0, 2)
+	for _, id := range []string{first.Id, second.Id} {
+		client := h.SignIn(t, "communications:channels-manage")
+		fns = append(fns, func() *modtest.Response {
+			return client.Do(http.MethodPut, "/api/v1/communications/channels/"+id,
+				map[string]any{"isDefault": true})
+		})
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, len(fns), finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	for i, r := range responses {
+		if r.Status != http.StatusOK {
+			t.Errorf("request %d: status %d body %s (Content-Type %q), want 200: setting the default is last-writer-wins, not a conflict",
+				i, r.Status, r.Body, r.Header("Content-Type"))
+		}
+	}
+	if got := h.Count(t, `SELECT count(*) FROM communications.channels WHERE is_default`); got != 1 {
+		t.Errorf("default channels = %d, want exactly 1: the partial unique index allows one per type", got)
+	}
+}

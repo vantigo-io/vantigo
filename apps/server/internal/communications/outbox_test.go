@@ -375,7 +375,8 @@ func TestOutboxWorker_ClaimClearsDeliveryAttemptedAt(t *testing.T) {
 	// statuses (inventory §13.2's IsSendable).
 	h.Exec(t, `UPDATE communications.message_deliveries SET status = 'relay_accepted' WHERE message_id = $1`, fx.messageID)
 
-	w := communications.NewOutboxWorker(h.Deps())
+	m := newMeterHarness(t)
+	w := m.worker(t, h)
 	processed, err := w.ProcessOne(context.Background())
 	if err != nil {
 		t.Fatalf("ProcessOne: %v", err)
@@ -396,7 +397,7 @@ func TestOutboxWorker_ClaimClearsDeliveryAttemptedAt(t *testing.T) {
 	}
 	// The candidate was processing with the marker set, so the
 	// possible-duplicate counter fires — on the lease-expired branch only.
-	if got := w.PossibleDuplicateSends(); got != 1 {
+	if got := m.count(t, possibleDuplicateSendsMetric); got != 1 {
 		t.Errorf("possible-duplicate counter = %d, want 1", got)
 	}
 }
@@ -418,12 +419,13 @@ func TestOutboxWorker_ReclaimsAnExpiredLeaseAndResendsTheSameMessageID(t *testin
 		fx.messageID, "ffffffffffffffffffffffffffffffff", h.Now().Add(-time.Second), h.Now().Add(-time.Minute))
 	h.Exec(t, `UPDATE communications.message_deliveries SET status = 'sending' WHERE message_id = $1`, fx.messageID)
 
-	w := communications.NewOutboxWorker(h.Deps())
+	m := newMeterHarness(t)
+	w := m.worker(t, h)
 	if _, err := w.ProcessOne(context.Background()); err != nil {
 		t.Fatalf("ProcessOne: %v", err)
 	}
 
-	if got := w.PossibleDuplicateSends(); got != 1 {
+	if got := m.count(t, possibleDuplicateSendsMetric); got != 1 {
 		t.Errorf("possible-duplicate counter = %d, want exactly 1", got)
 	}
 	sent := f.sends()
@@ -455,7 +457,8 @@ func TestOutboxWorker_LiveLeaseIsNotClaimable(t *testing.T) {
 	           SET status = 'processing', lease_id = $2, lease_until = $3 WHERE message_id = $1`,
 		fx.messageID, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", h.Now().Add(time.Minute))
 
-	w := communications.NewOutboxWorker(h.Deps())
+	m := newMeterHarness(t)
+	w := m.worker(t, h)
 	processed, err := w.ProcessOne(context.Background())
 	if err != nil {
 		t.Fatalf("ProcessOne: %v", err)
@@ -466,7 +469,7 @@ func TestOutboxWorker_LiveLeaseIsNotClaimable(t *testing.T) {
 	if len(f.sends()) != 0 {
 		t.Errorf("sends = %d, want 0", len(f.sends()))
 	}
-	if got := w.PossibleDuplicateSends(); got != 0 {
+	if got := m.count(t, possibleDuplicateSendsMetric); got != 0 {
 		t.Errorf("possible-duplicate counter = %d, want 0: the counter is for the lease-expired branch only", got)
 	}
 }

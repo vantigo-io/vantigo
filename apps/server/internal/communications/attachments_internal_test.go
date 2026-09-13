@@ -3,6 +3,7 @@ package communications
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"net/http/httptest"
@@ -85,5 +86,52 @@ func TestReserveStorageKey_ErrorNeverCarriesTheStorageKey(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), uploadID.String()) {
 		t.Errorf("the upload id did not reach the captured log output, want it in place of the key: %s", buf.String())
+	}
+}
+
+// TestDeterministicUploadID_UsesTheOneDeterministicGuidConvention is task
+// 14's guard on unifying the module's two deterministic-id conventions.
+//
+// .NET derives the staged-upload id with the SAME helper as every other
+// deterministic id in the module: `ObjectOwnershipLifecycle.DeterministicGuid(
+// userId.Value, $"staged-upload:{key}")` (`EP/ConversationEndpoints.cs:132`,
+// inventory `:1620`). Task 6 wrote a second convention instead, and it
+// differed in TWO independent ways at once — the seed was rendered as a
+// dashed UUID string rather than .NET's "N" format, and the digest was cut
+// with the naive uuid.FromBytes byte order rather than the little-endian
+// layout .NET's Guid(ReadOnlySpan<byte>) applies to the first eight bytes.
+//
+// The assertions are deliberately negative as well as positive: agreeing
+// with deterministicGUID is the property, but on its own that reads as a
+// restatement of a one-line function. Reproducing BOTH discarded conventions
+// here and demanding they differ is what makes a silent regression to either
+// one fail, and names which of the two came back.
+func TestDeterministicUploadID_UsesTheOneDeterministicGuidConvention(t *testing.T) {
+	user := uuid.MustParse("3f2504e0-4f89-11d3-9a0c-0305e82c3301")
+	const key = "idem-key-42"
+
+	got := deterministicUploadID(user, key)
+
+	if want := deterministicGUID(user, "staged-upload:"+key); got != want {
+		t.Errorf("deterministicUploadID = %s, want %s: the staged-upload id is DeterministicGuid(uploaderUserId, \"staged-upload:{key}\")",
+			got, want)
+	}
+
+	// The dashed-seed convention: .NET interpolates {seed:N} (32 hex, no
+	// dashes), so seeding with the dashed form hashes different bytes.
+	dashedSeed := sha256.Sum256([]byte(user.String() + ":staged-upload:" + key))
+	var dashed uuid.UUID
+	copy(dashed[:], dashedSeed[:16])
+	if got == dashed {
+		t.Error("deterministicUploadID seeds with the dashed UUID string; .NET's {seed:N} is 32 hex with no dashes")
+	}
+
+	// The naive byte order: correct seed, but the digest copied straight
+	// through instead of byte-swapped into .NET's Guid layout.
+	correctSeed := sha256.Sum256([]byte(hexN(user) + ":staged-upload:" + key))
+	var naive uuid.UUID
+	copy(naive[:], correctSeed[:16])
+	if got == naive {
+		t.Error("deterministicUploadID uses the naive uuid.FromBytes byte order; the first eight bytes must be byte-swapped (see deterministicGUID)")
 	}
 }

@@ -14,6 +14,19 @@ package communications
 // replyFingerprint is this var's change too.
 var ReplyFingerprintForTest = replyFingerprint
 
+// NewOutboxWorkerWithMeterForTest is newOutboxWorker (outbox.go) with the
+// meter provider chosen by the caller, so outbox_test.go can give one worker
+// its own sdk/metric reader and read exact counter values back. Production's
+// NewOutboxWorker resolves the global provider instead.
+//
+// The alternative — package-level instruments on the global provider — would
+// make every assertion in this package a race against every other parallel
+// test that happens to run a worker, since a global counter is shared by all
+// of them. This seam keeps the four counters (metrics.go) genuinely testable
+// without a process-wide otel.SetMeterProvider that no parallel test could
+// rely on.
+var NewOutboxWorkerWithMeterForTest = newOutboxWorker
+
 // RetentionLeaseKeyForTest is retentionLeaseKey (retention.go), exported by
 // the same convention so retention_test.go can take the real lease from its
 // own connection and watch the worker skip its cycle. A test that hardcoded

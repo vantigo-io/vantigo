@@ -396,9 +396,9 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products and energy
+### Customers, products, energy and communications
 
-Three business modules mount on that platform, each serving its own contract and
+Four business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
@@ -408,6 +408,11 @@ owning its own schema:
   products, variants, prices, categories and tax categories.
 - `internal/energy` → `/api/v1/energy/*` from `openapi/energy.yaml`: metering
   points, meters, supply periods, consumption and the two aggregations.
+- `internal/communications` → `/api/v1/communications/*` from
+  `openapi/communications.yaml`: channels (SMTP only), conversations and their
+  messages, the composer, staged attachments on object storage, delivery and
+  its event log, tags, suppressions, and the AI draft and customer-suggestion
+  features. It also owns the outbox and the module's three background workers.
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to `customers,products,energy`. Identity is
@@ -419,17 +424,42 @@ contributes no route, no permission and no contract path, and its paths answer
 the `/api` catch-all 404 — but every schema is migrated regardless, so enabling
 a module later needs no migration.
 
-`MODULES=communications` is accepted and mounts nothing. The known-module set
-(`knownModules` in `internal/config/config.go`) is derived from
-`openapi.Modules`, the single place the contract names are written, and
-`communications.yaml` is already one of them — so the name passes validation,
-while no `communications` `Module()` exists for `module.Compose` to mount. The
-result is a deployment that starts cleanly and serves no communications routes:
-its paths answer the `/api` 404 like any other unmounted path. This is
-deliberate rather than an oversight. Communications is contract-only until its
-own sub-project builds it, and rejecting a name the contract set already carries
-would have to be reverted the week that module lands. Listing it buys nothing;
-it is not an error.
+`communications` is now a real module and is on by default. Until its own
+sub-project's final task it was contract-only: the name passed validation
+(`knownModules` is derived from `openapi.Modules`, the single place the
+contract names are written) while no `Module()` existed for `module.Compose`
+to mount, so `MODULES=communications` started cleanly and served nothing. That
+gap is closed — `communications.Module()` mounts
+`/api/v1/communications/*` from `openapi/communications.yaml` and contributes
+three background workers — and the name has joined `defaultModules`.
+
+**The one thing to know before enabling it: this port is outbound-only, and
+that is a deliberate consequence of the scope cut, not a gap to fix in
+passing.** The Mailgun inbound webhook and the inbound worker are removed, and
+IMAP/inbound synchronisation never existed, so **no path in this codebase
+writes a `direction='inbound'` message**. Three user-visible behaviours follow,
+all of them contract-complete and all of them permanently in their negative
+state: a conversation created through `POST /conversations` cannot be replied
+to (reply answers 422 `recipients_missing`, because recipients resolve from the
+latest inbound message), `canReplyAll` is always false with an empty
+`replyAllCc`, and the AI draft builds its context from inbound messages and so
+drafts against an empty one, recording `product_data=false`. Attachments can be
+staged but never sent, and suppression is enforced only by the outbox worker,
+reply's own check being unreachable. The endpoints are ported faithfully and
+kept, so the existing frontend works and an inbound provider is additive.
+
+The module's deliberate divergences from the .NET original are listed in
+`docs/superpowers/specs/2026-09-13-communications-design.md` §6, and the
+behaviour they diverge from is pinned in
+`docs/superpowers/specs/2026-09-13-communications-inventory.md`. Two worth
+knowing without opening either: new attachment uploads are created `clean`
+rather than `pending`, because the ClamAV scanner that would have advanced them
+is out of scope and every attachment reply would otherwise 409 forever; and the
+outbox's documented 3600 s backoff cap is unreachable — the expression clamps
+to 1024 s and `max_attempts = 8` makes 128 s the largest backoff a live job
+ever waits.
+
+`docs/communications.md` is the module's deployment and integration guide.
 
 The customer directory is the only sanctioned cross-module read. No module
 imports another (enforced by depguard) and no module queries another's schema
@@ -443,9 +473,26 @@ started by `internal/worker.Runner`). `WORKERS_IN_PROCESS` (`0`/`1`, **default
 serving; `worker` mode always runs them and `server` mode never does,
 regardless of this setting — `server` is what a fleet of stateless replicas
 runs, and every replica racing to claim the same background job is exactly
-what `server` must not do. No module implements one yet; the three
-communications workers (outbox delivery, retention, attachment cleanup) are
-built in a later sub-project.
+what `server` must not do. Communications contributes the only three today:
+outbox delivery, retention, and attachment cleanup.
+
+Only the retention worker takes an advisory lease, so only it runs on one
+replica at a time. The other two rely on a conditional-update claim — the
+`UPDATE ... WHERE <the same predicate the candidate select used>` *is* the
+lock — so every replica runs them every cycle and the database decides who
+wins each row. Adding an advisory lock to either would be a defect, not a
+hardening: it is not how the original behaves and the claim already provides
+the exclusion.
+
+The module emits four counters on an OpenTelemetry meter named
+`Vantigo.Communications`, all of them the outbox's:
+`communications.outbox.possible_duplicate_sends` (a job re-claimed after a
+crash between the external send and its completion commit — each one is a
+possibly duplicated email), `.jobs_completed`, `.jobs_retried` and
+`.jobs_failed`. Alert on the last one: every increment is undelivered customer
+email. There are deliberately no others — no retention, cleanup, storage, SMTP
+or AI metrics, and no histograms — because the module being replaced had none,
+and a test fails if a fifth instrument appears under that meter.
 
 Two settings configure the Brreg lookup:
 

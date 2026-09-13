@@ -49,12 +49,36 @@ func (q *Queries) ClearDefaultChannels(ctx context.Context) error {
 }
 
 const clearOtherDefaultChannels = `-- name: ClearOtherDefaultChannels :exec
-UPDATE communications.channels SET is_default = false WHERE is_default AND id != $1
+UPDATE communications.channels SET is_default = false WHERE id != $1
 `
 
 // ClearOtherDefaultChannels is ClearDefaultChannels for UpdateChannel,
 // excluding the row being updated (it is set to the new default
 // separately, by UpdateChannel below).
+//
+// THE MISSING `AND is_default` IS THE POINT, and removing it is what makes
+// two concurrent "make me the default" updates safe (task 14's constraint
+// audit). With the predicate present, two PUTs on different channels of the
+// same type deadlock-free-but-wrong: under READ COMMITTED the loser's
+// statement takes its snapshot before the winner commits, so the winner's
+// row is still is_default = false in that snapshot, does not match
+// `is_default AND id != @id`, and is never visited — not even by
+// EvalPlanQual, which only re-checks rows the statement actually found. The
+// loser therefore demotes nothing, sets its own row to true, and collides
+// with the winner on ux_channels_type_is_default. That 23505 escapes to
+// httpx.WriteError's host-wide fallback as a bare RFC 7807 409 — the wrong
+// vocabulary for this module, AND a status putCommunicationsChannelsById's
+// contract does not declare at all (200/400/401/403/404 only), so it cannot
+// simply be caught and re-shaped the way CreateChannel's own collision is.
+//
+// Without the predicate the statement visits every other row, blocks on the
+// winner's lock, and EvalPlanQual re-checks the winner's NEW version against
+// `id != @id`, which still matches — so the loser demotes the winner and
+// the update proceeds to a correct last-writer-wins outcome with no
+// violation to map. The cost is writing is_default = false over rows that
+// already hold it, on a table with a handful of rows; there is no observable
+// behaviour change in the sequential case.
+// TestUpdateChannel_ConcurrentDefaultRaceLeavesExactlyOneDefault pins it.
 func (q *Queries) ClearOtherDefaultChannels(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, clearOtherDefaultChannels, id)
 	return err

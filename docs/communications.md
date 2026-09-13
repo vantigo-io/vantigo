@@ -20,9 +20,9 @@ VANTIGO_CONFIRM_RESET_COMMUNICATIONS=true dotnet run --project apps/host/backend
 `migrate` applies all enabled module migrations and exits. `seed` is
 Development-only. `api` hosts the application and does not migrate or seed.
 Enable or disable the module with `Modules__Communications__Enabled`. Disabling
-it removes the module completely: no services, no outbox/inbound/retention/
-attachment workers, no endpoints (its routes answer `404`), no permissions, and
-no migrations or seeding.
+it removes the module completely: no services, no outbox/retention/attachment
+workers, no endpoints (its routes answer `404`), no permissions, and no
+migrations or seeding.
 
 Normal `migrate` does not reset or repair a retired Communications schema. There
 is no production Communications data migration in this release. Development
@@ -46,9 +46,9 @@ Customer and Contact link values remain opaque domain values. Preserve them exac
 do not derive meaning from them or use them as authorization credentials. The
 in-process contract is responsible for authorized lookup and display of details.
 
-## SMTP and Mailgun
+## SMTP
 
-The default Communications mailbox delivery uses the host's `Smtp:*` configuration:
+Mailbox delivery uses the host's `Smtp:*` configuration:
 
 ```text
 Smtp__Host=smtp.example.com
@@ -59,14 +59,15 @@ Smtp__UseSsl=false
 Smtp__TimeoutSeconds=20
 ```
 
-Mailgun is configured per email channel through the Communications API with provider,
-domain, region, API key and inbound signing key fields. The API key and signing key
-are protected at rest; they are never
-placed in frontend code, browser storage, URLs, logs or deployment environment
-files. Mailgun credentials are not a service-to-service integration.
+Per-channel SMTP credentials are configured through the Communications API and
+are protected at rest; they are never placed in frontend code, browser storage,
+URLs, logs or deployment environment files. Host-level SMTP credentials must be
+kept in a secret store.
 
-SMTP credentials must be kept in a secret store. SMTP is for outbound mail;
-inbound mail synchronization and IMAP support are not implemented.
+**Communications is outbound-only.** There is no inbound mail path of any kind:
+no webhook, no IMAP, no inbound synchronisation, and therefore nothing that
+writes an inbound message. See "The outbound-only consequence" below for what
+that means for replies, reply-all and the AI draft.
 
 ### Delivery semantics
 
@@ -80,8 +81,8 @@ trade-off is deliberate: the alternative (at-most-once) silently loses mail.
 Three mechanisms keep this honest:
 
 - Every send uses a **deterministic `Message-Id`** derived from the message's
-  id (both SMTP and Mailgun), so a resent message carries the same identity
-  and receiving mail systems can collapse duplicates.
+  id, so a resent message carries the same identity and receiving mail systems
+  can collapse duplicates.
 - Immediately before the external call, the job is stamped with
   `DeliveryAttemptedAt` in its own committed write. A job re-claimed with
   that stamp set may already have been delivered; the resend still happens,
@@ -89,47 +90,36 @@ Three mechanisms keep this honest:
   `communications.outbox.possible_duplicate_sends` metric
   (meter `Vantigo.Communications`) — alert on it rather than discovering
   duplicates from customer reports.
-- There is deliberately **no HTTP-level retry** on the Mailgun send call: an
-  ambiguous timeout may already have delivered, and the outbox owns retries.
+- There is deliberately **no retry around the send call itself**: an ambiguous
+  timeout may already have delivered, and the outbox owns retries.
 
-### Mailgun Routes inbound
+A failed send is rescheduled with an exponential backoff of
+`min(3600, 2^min(attempts, 10))` seconds, and `attempts` is incremented when the
+job is claimed rather than when it fails. Two consequences of that expression are
+worth stating because the arithmetic is easy to read wrongly:
 
-Configure a Mailgun Route with `forward("https://your-host/api/v1/communications/inbound/mailgun/{channelId}")`
-and stop processing. The endpoint is anonymous and antiforgery-exempt, but accepts
-only a valid Mailgun HMAC signature using that channel's inbound signing key. The
-route must send Mailgun Routes form fields (`timestamp`, `token`, `signature`,
-`sender`, `from`, `recipient`, `subject`, `body-plain`, `body-html`, optional
-`body-mime`, `message-headers`, and multipart `attachment-*` files). This endpoint
-does not accept Mailgun event-webhook JSON.
+- **The 3600 s cap is unreachable.** The exponent is clamped at 10, so the term
+  never exceeds 1024 s and the `min` never binds.
+- **With the default `max_attempts = 8`, the largest backoff a live job ever
+  waits is 128 s.** The sequence is 2, 4, 8, 16, 32, 64, 128 s, and the eighth
+  attempt is terminal — so 256, 512 and 1024 s are never scheduled either.
 
-Signing keys are configured and rotated with the channel credentials API. During
-rotation, update Mailgun and the channel together; an old key is not retained.
-Successful, durably queued deliveries return `200`. Invalid signatures, stale or
-future timestamps, malformed requests, replays, and permanent size-limit failures
-return `406` so Mailgun does not retry. Temporary database/object-storage failures
-return a non-2xx response and are retryable.
+The advisory lease (`CommunicationsAdvisoryLease`) guards the **retention worker
+only**. Outbox delivery and attachment cleanup take no advisory lock: each
+claims work with a conditional update whose `WHERE` re-asserts the predicate its
+candidate query used, so a claim another worker already won matches nothing.
+Every replica runs those two workers every cycle, by design.
 
-Raw EML is stored outside `wwwroot` under generated opaque object keys and is linked
-to the normalized message only after processing. HTML is sanitized before it is
-persisted: scripts, active content, forms, event handlers, remote images and unsafe
-schemes are blocked; CID images are not exposed as downloadable content. Attachments
-are stored with generated keys, `pending` scan status, hashes, size/type metadata,
-and are not downloadable until a later scanning/download phase explicitly enables
-them. Raw MIME, terminal inbound jobs/receipts and attachments follow the configured
-communications retention period; failed terminal jobs without messages are included
-while non-terminal work is retained. Retention queues each raw key once before
-deleting terminal metadata, and cleanup retries object deletion through durable
-cleanup records. Staged object reservations have a bounded expiry so a process crash
-after the object write cannot strand the object.
+## Retention, cleanup and staged objects
 
-Default inbound limits are 25 MiB per request/raw MIME, 10 MiB per attachment and
-aggregate attachment bytes, 20 attachments, 8 MiB per text/HTML body, 100 form keys,
-and a five-minute timestamp past/future skew. These can be changed under
-`Communications:Inbound`; keep them aligned with Mailgun and deployment limits.
-
-Production warning: the shared ASP.NET Data Protection key ring must itself be
-protected with external key-ring encryption (certificate, KMS, or equivalent) so
-Mailgun API/signing credentials remain protected at rest.
+Terminal jobs, their receipts and their attachments follow the configured
+communications retention period; failed terminal jobs without messages are
+included, while non-terminal work is retained. Retention queues each object key
+once, through a durable cleanup record, before deleting the metadata that
+identifies its owner — it never calls the object store itself. The attachment
+cleanup worker drains those records and retries object deletion. Staged object
+reservations have a bounded expiry, so a process crash after the object write
+cannot strand the object.
 
 The communications schema uses a clean initial migration lineage. There is no
 production communications data to preserve; the deleted legacy outbound-only
@@ -160,13 +150,38 @@ response with the stored content type and sanitized filename; it never redirects
 provider URL or exposes a storage key. The `downloadPath` field in conversation DTOs is
 this same-origin application endpoint, not a direct object-storage URL. See
 [`docs/storage.md`](storage.md) for the provider-neutral storage contract. Files are
-limited to 10 MiB and staged uploads expire after 24 hours. ClamAV scanning uses bounded
-timeouts, size limits, and retries when configured; without a scanner, attachments remain
-pending.
+limited to 10 MiB and staged uploads expire after 24 hours.
+
+**There is no attachment scanner.** Nothing transitions an upload from `pending`
+to `clean`, so new uploads are created `clean` on the reasoning that there is
+nothing to scan. The `scanStatus` and `ready` fields, and every gate that reads
+them, are kept exactly as they are: the frontend is unchanged and a scanner can
+be added later without a contract change. Do not read a `clean` status as
+evidence that a file was inspected.
 
 Conversation detail exposes `replyRecipients` (`canReply`, `canReplyAll`, `replyTo`,
-and validated `replyAllCc`). Reply-all uses only the latest inbound message's CC,
-excluding the channel mailbox and latest sender.
+and validated `replyAllCc`).
+
+## The outbound-only consequence
+
+Reply-all resolves its recipients from the latest **inbound** message's CC, and
+the reply path resolves its recipients from that message's participants. With no
+inbound path, no such message exists, so these are permanently in their negative
+state rather than occasionally empty:
+
+- A conversation created through `POST /conversations` cannot be replied to:
+  reply answers 422 `recipients_missing`.
+- `canReplyAll` is always false and `replyAllCc` is always empty.
+- The AI draft builds its context from inbound messages, so it drafts against an
+  empty context and records `product_data=false`.
+
+Two further consequences are worth knowing when reading the code: attachments can
+be staged but never sent, and suppression is enforced only by the outbox worker's
+own re-check, because reply's suppression check sits behind the recipient
+resolution that always fails first.
+
+The endpoints are complete and conform to the contract, so the frontend keeps
+working and an inbound provider is purely additive.
 
 ## Retention and module security
 

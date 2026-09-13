@@ -8,11 +8,12 @@ import (
 	"io"
 	"log/slog"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/config"
@@ -109,13 +110,13 @@ type OutboxWorker struct {
 	// the jobs that actually carry attachments, exactly as an unconfigured
 	// store fails closed per operation rather than at boot (docs/storage.md).
 	storeErr error
-	// duplicates counts the possible-duplicate sends this worker detected —
-	// .NET's communications.outbox.possible_duplicate_sends counter
-	// (inventory §18). There is no metrics facility in this port yet (task
-	// 14's scope), so the counter lives here, is logged at warn level where
-	// .NET logs it, and is readable for tests and for whatever task 14 wires
-	// it into.
-	duplicates atomic.Int64
+	// metrics are the module's four outbox counters (metrics.go, inventory
+	// §18). Task 11 kept the possible-duplicate count as an atomic int here
+	// with a warn log beside it, because no metrics facility existed then;
+	// task 14 replaced that with the real instrument, so there is exactly one
+	// place the count lives. The warn log stays — .NET logs and counts at the
+	// same site.
+	metrics *outboxMetrics
 }
 
 var _ worker.Worker = (*OutboxWorker)(nil)
@@ -123,9 +124,22 @@ var _ worker.Worker = (*OutboxWorker)(nil)
 // NewOutboxWorker builds the worker over d. It never fails: an object store
 // that cannot be constructed is remembered and reported when a job actually
 // needs one (see OutboxWorker.storeErr).
+//
+// The meter provider is the global one, resolved here rather than at package
+// init: cmd/vantigo calls telemetry.Setup before it builds any module, so by
+// the time this runs the real MeterProvider is already installed when an OTLP
+// metrics endpoint is configured, and the no-op one is in place when it is not.
 func NewOutboxWorker(d module.Deps) *OutboxWorker {
+	return newOutboxWorker(d, otel.GetMeterProvider())
+}
+
+// newOutboxWorker is NewOutboxWorker with the meter provider chosen by the
+// caller, so a test can give one worker its own reader and assert exact
+// counter values instead of racing every other test in the package on a
+// process-global instrument (export_test.go exposes it).
+func newOutboxWorker(d module.Deps, mp metric.MeterProvider) *OutboxWorker {
 	store, err := moduleObjectStore(d)
-	return &OutboxWorker{deps: d, store: store, storeErr: err}
+	return &OutboxWorker{deps: d, store: store, storeErr: err, metrics: newOutboxMetrics(mp)}
 }
 
 // Name identifies this worker in the runner's logs.
@@ -133,11 +147,6 @@ func (w *OutboxWorker) Name() string { return outboxWorkerName }
 
 // Interval is the poll cadence between drains.
 func (w *OutboxWorker) Interval() time.Duration { return outboxPollInterval }
-
-// PossibleDuplicateSends is how many times this worker has claimed a job that
-// was already marked as attempted — a crash between a previous worker's send
-// and its completion commit, and therefore a probable duplicate mail.
-func (w *OutboxWorker) PossibleDuplicateSends() int64 { return w.duplicates.Load() }
 
 // Run is the worker loop (`:288-303`): drain the queue, sleep the poll
 // interval, repeat until ctx is done. A failing iteration is logged and the
@@ -236,7 +245,7 @@ func (w *OutboxWorker) claim(ctx context.Context) (*store.CommunicationsOutboxJo
 			// CANDIDATE — so a lost claim race still counts, and it can only
 			// ever fire on the lease-expired 'processing' branch.
 			if candidate.Status == "processing" && candidate.DeliveryAttemptedAt != nil {
-				w.duplicates.Add(1)
+				w.metrics.possibleDuplicateSends.Add(ctx, 1)
 				w.logger().Warn("possible duplicate outbound send",
 					"worker", outboxWorkerName, "job", candidate.ID, "message", candidate.MessageID,
 					"deliveryAttemptedAt", *candidate.DeliveryAttemptedAt)
@@ -322,7 +331,15 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 	// Step 3: nothing to send is a COMPLETION, not a failure — the job is done
 	// even though no mail leaves (`:138-143`, `:207-218`).
 	if len(sendable) == 0 {
-		return w.finishJob(ctx, w.deps.Pool, job.ID, "completed")
+		if err := w.finishJob(ctx, w.deps.Pool, job.ID, "completed"); err != nil {
+			return err
+		}
+		// CompleteWithoutSendingAsync increments the very same counter a real
+		// send's completion does (`OutboxJobProcessor.cs:213`, inventory §18's
+		// "and +1 on CompleteWithoutSendingAsync"). A job that had nothing
+		// left to send is a completed job.
+		w.metrics.jobsCompleted.Add(ctx, 1)
+		return nil
 	}
 
 	// Step 4: the fourth load-bearing "clean" site (inventory §5.5). One
@@ -386,7 +403,12 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 func (w *OutboxWorker) complete(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string,
 	sendable []store.ListMessageDeliveriesForSendRow) error {
 	now := w.now()
-	return db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	// Counted after the transaction commits, never inside it: .NET increments
+	// at `:177`, mid-transaction, and a rollback there would leave the counter
+	// claiming a completion that never happened. The two orderings differ only
+	// on the failure path, and only this one cannot over-report.
+	completed := false
+	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		current, err := q.GetOutboxJob(ctx, job.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -419,8 +441,19 @@ func (w *OutboxWorker) complete(ctx context.Context, job store.CommunicationsOut
 				return fmt.Errorf("communications: write relay_accepted event: %w", err)
 			}
 		}
+		completed = true
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	// Not incremented when the lease was taken over mid-send (the early
+	// return above): nothing was committed, the job is still processing, and
+	// the holder that finishes it will count it.
+	if completed {
+		w.metrics.jobsCompleted.Add(ctx, 1)
+	}
+	return nil
 }
 
 // cancelSuppressed is step 6 (`:220-247`): one suppressed recipient cancels the
@@ -457,7 +490,13 @@ func (w *OutboxWorker) cancelSuppressed(ctx context.Context, job store.Communica
 // lost its lease does not get to record a failure either.
 func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsOutboxJob, leaseID string, cause error) error {
 	now := w.now()
-	return db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+	// recorded stays false on both no-op paths (the row is gone, or the lease
+	// was taken over), so neither counter moves for a failure this worker was
+	// not allowed to record. terminal picks which of the two counters moves:
+	// .NET chooses the same way at `:258` / `:260`, one or the other, never
+	// both (inventory §13.4).
+	recorded, terminal := false, false
+	err := db.WithTx(ctx, w.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		q := store.New(tx)
 		current, err := q.GetOutboxJob(ctx, job.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -473,7 +512,7 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 		// Terminality on the POST-increment attempts value: max_attempts = 8
 		// means 8 total attempts, and the backoff for attempts = 7 (128 s) is
 		// therefore the largest one a default deployment ever waits.
-		terminal := current.Attempts >= outboxMaxAttempts
+		terminal = current.Attempts >= outboxMaxAttempts
 		jobStatus, deliveryStatus := "retry", "retrying"
 		if terminal {
 			jobStatus, deliveryStatus = "failed", "submission_failed"
@@ -511,8 +550,20 @@ func (w *OutboxWorker) markFailed(ctx context.Context, job store.CommunicationsO
 				return fmt.Errorf("communications: write failure event: %w", err)
 			}
 		}
+		recorded = true
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	switch {
+	case !recorded:
+	case terminal:
+		w.metrics.jobsFailed.Add(ctx, 1)
+	default:
+		w.metrics.jobsRetried.Add(ctx, 1)
+	}
+	return nil
 }
 
 // finishJob writes one terminal job status with its completion stamp and the

@@ -4,7 +4,6 @@
 package httpx
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -83,8 +82,23 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	var tooLarge *http.MaxBytesError
 
 	switch {
-	case ctx.Err() != nil && errors.Is(err, context.Canceled):
+	case ctx.Err() != nil:
 		// The caller is gone: there is no one to answer and nothing to alert on.
+		//
+		// The request context alone decides this, and deliberately so. An
+		// earlier version also required errors.Is(err, context.Canceled),
+		// which made two different things true at once: a handler whose
+		// error was some *consequence* of the cancellation (a driver
+		// reporting a closed connection, a provider returning its own
+		// wrapped failure) still took the default branch and logged a
+		// server fault plus a 500 nobody was left to read. Whether this
+		// request's caller is still there is a property of the request, not
+		// of the error value — errors.Is(err, context.Canceled) can be true
+		// for an outbound call cancelled for reasons of its own while the
+		// caller waits, and false for a genuine disconnect. This is also
+		// the predicate the communications module's own callerGaveUp uses,
+		// which is in turn .NET's `cancellationToken.IsCancellationRequested`
+		// exception filter; the two agreeing is the point.
 		logger.DebugContext(ctx, "request aborted by the caller", "method", r.Method, "path", r.URL.Path)
 	case errors.As(err, &pgErr) && (pgErr.Code == "23505" || pgErr.Code == "23P01"):
 		logger.WarnContext(ctx, "request conflicts with existing data",

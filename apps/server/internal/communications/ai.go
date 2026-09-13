@@ -192,14 +192,30 @@ func errorTypeName(err error) string {
 // logs outages which never happened is worse than no audit table, because
 // someone will eventually trust it.
 //
-// Both halves matter. ctx.Err() catches the inbound request being cancelled
-// or timing out; errors.Is catches the outbound call reporting that same
-// cancellation, which is how a client disconnect actually surfaces here,
-// since complete() derives its context from this one. A DEADLINE from this
-// module's own provider timeout is deliberately not cancellation: that is a
-// real provider failure and is recorded as one.
-func callerGaveUp(ctx context.Context, err error) bool {
-	return ctx.Err() != nil || errors.Is(err, context.Canceled)
+// **The request context is the whole test, and err is deliberately not
+// consulted.** .NET's exception filter is `when
+// (!cancellationToken.IsCancellationRequested)` — it asks the token, never
+// the exception's type — and this is the faithful translation of that. An
+// earlier version also returned true for any error wrapping
+// context.Canceled, which reads as belt-and-braces and is not: a provider
+// client is free to report context.Canceled for a cancellation of its own
+// while this request's caller is still waiting for an answer, and treating
+// that as "nobody is listening" drops a real outage silently, unaudited and
+// unanswered. It also disagreed with httpx.WriteError, which required BOTH
+// conditions — so an error this function classified as a vanished caller
+// reached WriteError and was logged and answered as a server fault. Both now
+// ask exactly one question: is this request's context done?
+//
+// A DEADLINE from this module's own provider timeout is still a real
+// provider failure: it cancels a *derived* context, never this one, so
+// ctx.Err() stays nil and the outage is recorded as one.
+//
+// err is kept in the signature: every call site has it, the symmetry with
+// .NET's filter (which is written beside the exception) is worth keeping,
+// and a future rule that does need to inspect it would otherwise have to
+// change every caller.
+func callerGaveUp(ctx context.Context, _ error) bool {
+	return ctx.Err() != nil
 }
 
 // recordInteraction writes the one ai_interactions row a call produces.

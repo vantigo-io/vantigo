@@ -388,10 +388,22 @@ type Storage interface {
   attachment cleanup. The outbox semantics in `docs/communications.md`
   are preserved exactly: claim by conditional update with lease, commit a
   `delivery_attempted_at` marker before the external send, complete after,
-  deterministic `Message-Id`, exponential backoff capped at 3600 s,
-  `max_attempts` terminal, possible-duplicate counter.
-- The advisory-lock lease (`CommunicationsAdvisoryLease`) is ported so two
-  workers never process the same queue.
+  deterministic `Message-Id`, exponential backoff, `max_attempts` terminal,
+  possible-duplicate counter.
+- **Corrected 2026-09-13 (communications sub-project, task 14).** Two
+  sentences here overstated what the code does, and the communications design
+  §6 records both as doc-versus-code divergences:
+  - The backoff is written `min(3600, 2^min(attempts, 10))`, so the 3600 s
+    cap is unreachable dead code — the exponent clamps the term to 1024 s —
+    and with the default `max_attempts = 8` a job goes terminal at
+    `attempts = 8`, making 128 s the largest backoff any live job is ever
+    scheduled for.
+  - The advisory lease (`CommunicationsAdvisoryLease`, one key) guards
+    **retention only**. Outbox delivery and attachment cleanup take no
+    advisory lock at all: their exclusion is the conditional-update claim,
+    and every replica runs both every cycle. "Ported so two workers never
+    process the same queue" described a protection the other two queues do
+    not have and do not need.
 
 ### 3.11 Security, transport and CSRF
 

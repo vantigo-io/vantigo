@@ -1142,20 +1142,31 @@ func TestAiProvider_ReceivesTheConfiguredCredential(t *testing.T) {
 
 // ---- caller cancellation is not a provider failure ----
 
-// TestAiOperations_CallerCancellationWritesNoInteractionRow pins inventory
-// §17.2 step 11's "any NON-CANCELLATION exception": a request the caller
-// abandoned must not be recorded as a provider outage.
+// TestAiOperations_ProviderCancellationWithALiveCallerIsStillAnOutage is the
+// HTTP half of task 14's callerGaveUp ruling, and it replaces a test that
+// asserted the opposite.
 //
-// The fake returns an error wrapping context.Canceled, which is exactly how a
-// client disconnect reaches this code in production — complete() derives its
-// context from the inbound request, so when the caller goes away the outbound
-// call fails with precisely this error. The audit row is the assertion that
-// matters: an ai_interactions table that logs outages which never happened is
-// worse than no table at all, because it will eventually be believed.
-func TestAiOperations_CallerCancellationWritesNoInteractionRow(t *testing.T) {
+// The fake returns an error wrapping context.Canceled while the caller is
+// still connected and waiting. That used to be classified as "the caller
+// gave up" — callerGaveUp returned true for any error wrapping
+// context.Canceled, whatever the request context said — so no audit row was
+// written and no answer was produced, and the exchange had to carry
+// SkipContract because the resulting status was documented nowhere.
+//
+// Both of those were symptoms of the same disagreement: httpx.WriteError
+// required the request context to be done AND the error to wrap
+// context.Canceled, while this module required either. An error is not
+// evidence about whether the caller is still there — a provider client may
+// report context.Canceled for a cancellation entirely its own — and .NET
+// asks only `cancellationToken.IsCancellationRequested`. Both now ask only
+// whether this request's context is done, so this case is what it looks
+// like: a provider that failed while someone was waiting. It is audited like
+// any other outage and answered with each operation's documented status, and
+// the SkipContract is gone with the ambiguity.
+func TestAiOperations_ProviderCancellationWithALiveCallerIsStillAnOutage(t *testing.T) {
 	t.Parallel()
 	cancelled := func(*http.Request) (*http.Response, error) {
-		return nil, fmt.Errorf("the caller went away: %w", context.Canceled)
+		return nil, fmt.Errorf("the provider cancelled its own call: %w", context.Canceled)
 	}
 
 	t.Run("draft", func(t *testing.T) {
@@ -1163,10 +1174,17 @@ func TestAiOperations_CallerCancellationWritesNoInteractionRow(t *testing.T) {
 		h := newAIHarness(t, &fakeChatTransport{respond: cancelled})
 		convID := aiConversation(t, h)
 
-		doDraft(draftClient(t, h), convID, draftBody("concise", "Reply."),
-			modtest.SkipContract("a cancelled request has no caller left to answer, so no documented status applies"))
-		if n := interactionCount(t, h, convID); n != 0 {
-			t.Errorf("ai_interactions rows = %d, want 0: a cancelled caller is not a provider failure", n)
+		r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply."))
+		if r.Status != http.StatusUnprocessableEntity {
+			t.Fatalf("status %d body %s, want 422 ai_failed: the caller is still there", r.Status, r.Body)
+		}
+		var body commErrorJSON
+		r.JSON(&body)
+		if body.Error.Code != "ai_failed" {
+			t.Errorf("code = %q, want ai_failed", body.Error.Code)
+		}
+		if n := interactionCount(t, h, convID); n != 1 {
+			t.Errorf("ai_interactions rows = %d, want 1: an outage with a live caller is audited", n)
 		}
 	})
 
@@ -1175,10 +1193,20 @@ func TestAiOperations_CallerCancellationWritesNoInteractionRow(t *testing.T) {
 		h := newAIHarness(t, &fakeChatTransport{respond: cancelled})
 		convID := suggestable(t, h)
 
-		doSuggest(suggestClient(t, h), convID,
-			modtest.SkipContract("a cancelled request has no caller left to answer, so no documented status applies"))
-		if n := interactionCount(t, h, convID); n != 0 {
-			t.Errorf("ai_interactions rows = %d, want 0: a cancelled caller is not a provider failure", n)
+		// 200 with outcome "failed", not an error status: the suggestion
+		// path's own asymmetry with draft (inventory §17.4 item 10), ported
+		// deliberately and unaffected by this ruling.
+		r := doSuggest(suggestClient(t, h), convID)
+		if r.Status != http.StatusOK {
+			t.Fatalf("status %d body %s, want 200: a suggestion outage answers 200", r.Status, r.Body)
+		}
+		var body aiSuggestionJSON
+		r.JSON(&body)
+		if body.Outcome != "failed" {
+			t.Errorf("outcome = %q, want failed", body.Outcome)
+		}
+		if n := interactionCount(t, h, convID); n != 1 {
+			t.Errorf("ai_interactions rows = %d, want 1: an outage with a live caller is audited", n)
 		}
 	})
 }

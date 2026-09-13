@@ -382,12 +382,21 @@ func TestCleanup_StagedReservationExpiryReclaimsAnAbandonedObject(t *testing.T) 
 	}
 }
 
-// TestCleanup_OwnedObjectIsNeverSelected is
+// TestCleanup_OwnedObjectIsNeverClaimed is
 // ObjectLifecycleTests.Owned_object_is_not_selected_by_cleanup_worker
-// (`:98-119`) verbatim: the batch claims nothing and the object survives. An
-// 'owned' record is a live attachment's object; sweeping it would delete a
-// file a message still points at.
-func TestCleanup_OwnedObjectIsNeverSelected(t *testing.T) {
+// (`:98-119`): the batch claims nothing and the object survives. An 'owned'
+// record is a live attachment's object; sweeping it would delete a file a
+// message still points at.
+//
+// It is named for what it proves. RunBatch reports records *claimed*, so a
+// regression that made the candidate SELECT return an 'owned' row would be
+// invisible here: the claim's own WHERE re-asserts the same predicate and
+// refuses the row, keeping the object safe either way. That duplication
+// between the select and the claim is deliberate and is .NET's own shape
+// (queries/cleanup.sql's ClaimCleanupRecord comment) — it is the reason the
+// invariant survives, not redundancy to remove. The select's negative
+// predicate has no independent coverage, which this name no longer claims.
+func TestCleanup_OwnedObjectIsNeverClaimed(t *testing.T) {
 	t.Parallel()
 	store := newCleanupStore()
 	h := newCleanupHarness(t, store)
