@@ -65,9 +65,11 @@ in Go today; `cmd/vantigo`'s `worker` mode currently serves only health.
 
 Migration `00006_communications_baseline.sql` owning schema `communications`: 19 tables
 — the inventory's 21 minus `inbound_receipts` and `inbound_email_jobs`, with
-`message_attachments` and `attachment_uploads` losing their six scan columns each, and
-`conversation_messages` keeping `raw_payload_storage_key` and its `direction` column
-even though `inbound` becomes unreachable.
+`message_attachments` and `attachment_uploads` each losing five of their six scan columns
+(`scan_attempts`, `next_scan_at`, `scan_lease_id`, `scan_lease_until`, `scan_error`) and
+keeping only `scan_status`, which is contract-visible and gates replies — see D4's
+correction — and `conversation_messages` keeping `raw_payload_storage_key` and its
+`direction` column even though `inbound` becomes unreachable.
 
 sqlc queries, a module skeleton in the shape Tasks 5/10/13 established, and the
 five-permission catalog verbatim from `CommunicationsPermissionCatalog.cs`, with
@@ -133,11 +135,21 @@ moves to the retention worker, which already drives durable object deletion thro
 defaults exist in .NET (`channels.provider='smtp'`, `is_default=false`, `is_active=true`);
 `conversations.status='open'`, `message_deliveries.status='queued'`,
 `outbox_jobs.status='pending'`, `attachment_cleanup_records.status='pending'`,
-`conversation_participants.role`, `scan_status` and `next_scan_at` are initialisers on
-`NOT NULL` columns with no DDL counterpart. The initialiser *is* the effective default,
-so we encode it in DDL. This cannot change observable behaviour — every write supplies
-the value — and it removes a class of NOT NULL failures in raw inserts. Recorded as a
-divergence.
+`conversation_participants.role` and `scan_status` are initialisers on `NOT NULL` columns
+with no DDL counterpart. The initialiser *is* the effective default, so we encode it in
+DDL. This cannot change observable behaviour — every write supplies the value — and it
+removes a class of NOT NULL failures in raw inserts. Recorded as a divergence.
+
+**Correction (2026-09-13).** This list originally also named `next_scan_at`, and §3 above
+originally said both attachment tables lose "their six scan columns each" while D2 keeps
+`scan_status` — a contradiction, since a column cannot be both dropped and defaulted. It
+was copied from the schema inventory without filtering for what survives the scope cut.
+Settled: of the six scan columns, **only `scan_status` survives** — it is contract-visible
+and gates replies. `next_scan_at` is dropped along with `scan_attempts`, `scan_lease_id`,
+`scan_lease_until` and `scan_error`, because the inventory establishes it is "still written
+once (staging, entity default) but never advanced and never read", and its only index is
+the scanner queue index, which dies with the scope cut. §3's wording below is corrected to
+match.
 
 **D5 — `conversation_customer_candidates` keeps its table and read paths** even though
 its only writer (the contact linker, reached only from the inbound processor) is gone.
