@@ -498,18 +498,28 @@ func TestCreateConversation_ConcurrentIdenticalCreateAnswersTheSameReplayTwice(t
 	if replayed != n-1 {
 		t.Errorf("replayed (200) = %d, want exactly %d", replayed, n-1)
 	}
-	if len(conversationIDs) == 2 && conversationIDs[0] != conversationIDs[1] {
+	// Fix round 3's finding 2: these were conditional on len(...) == 2 /
+	// len(...) > 0, which is vacuous exactly when it matters most — a race
+	// that produced the wrong number of rows would skip the very
+	// assertions meant to catch that, rather than fail. Asserted
+	// unconditionally now: a short slice fails the test via Fatalf instead
+	// of silently disarming the checks below it.
+	if len(conversationIDs) != n {
+		t.Fatalf("conversationIds = %v, want %d entries (one per response)", conversationIDs, n)
+	}
+	if conversationIDs[0] != conversationIDs[1] {
 		t.Errorf("conversationIds = %v, want both responses to carry the winner's same id", conversationIDs)
 	}
-	if len(messageIDs) == 2 && messageIDs[0] != messageIDs[1] {
+	if len(messageIDs) != n {
+		t.Fatalf("messageIds = %v, want %d entries (one per response)", messageIDs, n)
+	}
+	if messageIDs[0] != messageIDs[1] {
 		t.Errorf("messageIds = %v, want both responses to carry the winner's same id", messageIDs)
 	}
 
-	if len(conversationIDs) > 0 {
-		count := h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1`, uuid.MustParse(conversationIDs[0]))
-		if count != 1 {
-			t.Errorf("conversations rows for %s = %d, want exactly 1", conversationIDs[0], count)
-		}
+	count := h.Count(t, `SELECT count(*) FROM communications.conversations WHERE id = $1`, uuid.MustParse(conversationIDs[0]))
+	if count != 1 {
+		t.Errorf("conversations rows for %s = %d, want exactly 1", conversationIDs[0], count)
 	}
 }
 

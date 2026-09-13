@@ -664,18 +664,33 @@ func TestReply_AttachmentsPrecedeSuppression(t *testing.T) {
 
 // TestReply_RecipientSuppressed pins step 9's shape exactly: 422
 // recipient_suppressed, fields.recipients carrying the suppressed
-// address(es) — the resolved recipient, already stored in its normalised
-// (uppercased, D7) form on the fixture participant row, exactly as a real
-// participant would carry it.
+// address(es) in their normalised (uppercased, D7) form.
+//
+// Fix round 3's finding 1: this test used to read its recipient address
+// from replyableConversation, whose fixture stores the participant address
+// ALREADY uppercase (for every other test's convenience) — which let this
+// test pass without ever exercising normalizedDedup's own normalizeEmail
+// call, since the "normalised" and "as-stored" forms were textually
+// identical. Proven, not guessed: mutating normalizedDedup's `n :=
+// normalizeEmail(a)` (conversations_reply.go) to `n := a` left this test
+// (and its two siblings above) green. Fixed by storing the participant
+// address MIXED-CASE here — deliberately not going through
+// replyableConversation — so the suppression match (which compares against
+// the normalised form) and the echoed fields.recipients value both require
+// genuine normalisation to succeed and be correct.
 func TestReply_RecipientSuppressed(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c := h.SignIn(t, "communications:conversations-reply", "communications:conversations-view")
-	convID, address := replyableConversation(t, h, c)
+	chID := setupChannel(t, h)
+	m := createConversation(t, c, newConversationBody("seed@example.test"))
+	mixedCase := "Inbound-" + uuid.NewString() + "@Example.Test"
+	insertInboundParticipant(t, h, chID, m.ConversationId, mixedCase)
+	uppercased := strings.ToUpper(mixedCase)
 	h.Exec(t, `INSERT INTO communications.suppressions (id, normalized_email_address, reason, created_at) VALUES ($1, $2, NULL, $3)`,
-		uuid.New(), address, h.Now())
+		uuid.New(), uppercased, h.Now())
 
-	r := doReply(c, convID, uuid.NewString(), replyBody())
+	r := doReply(c, m.ConversationId, uuid.NewString(), replyBody())
 	if r.Status != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d body %s, want 422", r.Status, r.Body)
 	}
@@ -688,8 +703,8 @@ func TestReply_RecipientSuppressed(t *testing.T) {
 		t.Errorf("message = %q, want the exact recipient_suppressed text", errBody.Error.Message)
 	}
 	got := errBody.field("recipients")
-	if len(got) != 1 || got[0] != address {
-		t.Errorf("fields[recipients] = %v, want [%q]", got, address)
+	if len(got) != 1 || got[0] != uppercased {
+		t.Errorf("fields[recipients] = %v, want [%q] (uppercased, not the mixed-case stored participant address %q)", got, uppercased, mixedCase)
 	}
 }
 
@@ -939,15 +954,19 @@ func TestReply_ConcurrentIdenticalReplyAnswersTheSameReplayTwice(t *testing.T) {
 	if replayed != n-1 {
 		t.Errorf("replayed (200) = %d, want exactly %d", replayed, n-1)
 	}
-	if len(messageIDs) == 2 && messageIDs[0] != messageIDs[1] {
+	// Fix round 3's finding 2: unconditional now, matching
+	// conversations_test.go's own fix — a wrong count fails the test via
+	// Fatalf instead of silently skipping the checks below it.
+	if len(messageIDs) != n {
+		t.Fatalf("messageIds = %v, want %d entries (one per response)", messageIDs, n)
+	}
+	if messageIDs[0] != messageIDs[1] {
 		t.Errorf("messageIds = %v, want both responses to carry the winner's same id", messageIDs)
 	}
 
-	if len(messageIDs) > 0 {
-		count := h.Count(t, `SELECT count(*) FROM communications.conversation_messages WHERE id = $1`, uuid.MustParse(messageIDs[0]))
-		if count != 1 {
-			t.Errorf("conversation_messages rows for %s = %d, want exactly 1", messageIDs[0], count)
-		}
+	count := h.Count(t, `SELECT count(*) FROM communications.conversation_messages WHERE id = $1`, uuid.MustParse(messageIDs[0]))
+	if count != 1 {
+		t.Errorf("conversation_messages rows for %s = %d, want exactly 1", messageIDs[0], count)
 	}
 }
 
