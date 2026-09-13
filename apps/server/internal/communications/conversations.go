@@ -337,13 +337,13 @@ func replyRecipientsOf() struct {
 //
 // GetConversation (inventory §1.2, §2): lookup -> 404 bare, nothing else.
 // replyRecipients is always the all-negative constant (see
-// replyRecipientsOf). A message's participant is a non-nullable object in
-// this contract (communications.yaml's `participant` schema carries no
-// `nullable: true`, unlike its own properties) even though .NET emits
-// `"participant": null` for a note (direction=internal_note, which never has
-// one) — a pre-existing contract gap this task ports around rather than
-// silently "fixing" the spec: a note's participant renders as the zero
-// value (empty address, nil Guid) rather than null.
+// replyRecipientsOf). A message's participant is nullable in the contract
+// (openapi/communications.yaml's `participant` schema carries
+// `nullable: true`, task 5 fix round 1 item 4) and this port never sets
+// participant_id on any message it writes — neither AddNote's note message
+// nor CreateConversation's outbound message, matching .NET exactly (only
+// the removed inbound processor ever assigned ConversationMessage.ParticipantId)
+// — so participant renders `null` for every message, not only notes.
 func (s *server) GetCommunicationsConversationsById(ctx context.Context, req gen.GetCommunicationsConversationsByIdRequestObject) (gen.GetCommunicationsConversationsByIdResponseObject, error) {
 	caller, err := callerUserID(ctx)
 	if err != nil {
@@ -418,7 +418,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 	HtmlBody    *string            `json:"htmlBody"`
 	Id          openapi_types.UUID `json:"id"`
 	OccurredAt  time.Time          `json:"occurredAt"`
-	Participant struct {
+	Participant *struct {
 		Address     string             `json:"address"`
 		ChannelId   openapi_types.UUID `json:"channelId"`
 		ContactId   *int32             `json:"contactId"`
@@ -553,7 +553,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		HtmlBody    *string            `json:"htmlBody"`
 		Id          openapi_types.UUID `json:"id"`
 		OccurredAt  time.Time          `json:"occurredAt"`
-		Participant struct {
+		Participant *struct {
 			Address     string             `json:"address"`
 			ChannelId   openapi_types.UUID `json:"channelId"`
 			ContactId   *int32             `json:"contactId"`
@@ -564,15 +564,28 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 		TextBody *string `json:"textBody"`
 	}, 0, len(rows))
 	for _, r := range rows {
-		participant := struct {
+		// task 5 fix round 1, item 4: nil, not the zero value — participant
+		// is nullable in the contract (openapi/communications.yaml) exactly
+		// because it is unset for every message this port ever writes, not
+		// only notes. Neither AddNote nor CreateConversation's
+		// BuildOutboundMessage sets participant_id (see this file's and
+		// conversations_create.go's InsertConversationMessage calls, and
+		// .NET's own BuildOutboundMessage, which never assigns
+		// ConversationMessage.ParticipantId either — only the removed
+		// inbound processor ever did). So every row here has
+		// r.ParticipantID == nil, and participant stays nil for all of
+		// them; the pointer exists so a future inbound producer can set one
+		// without another contract change.
+		var participant *struct {
 			Address     string             `json:"address"`
 			ChannelId   openapi_types.UUID `json:"channelId"`
 			ContactId   *int32             `json:"contactId"`
 			DisplayName *string            `json:"displayName"`
 			Id          openapi_types.UUID `json:"id"`
-		}{}
+		}
 		if r.ParticipantID != nil {
-			participant = newParticipantJSON(*r.ParticipantID, *r.ParticipantChannelID, *r.ParticipantAddress, r.ParticipantDisplayName, r.ParticipantContactID)
+			p := newParticipantJSON(*r.ParticipantID, *r.ParticipantChannelID, *r.ParticipantAddress, r.ParticipantDisplayName, r.ParticipantContactID)
+			participant = &p
 		}
 		out = append(out, struct {
 			Attachments []struct {
@@ -602,7 +615,7 @@ func (s *server) conversationMessagesOf(ctx context.Context, q *store.Queries, c
 			HtmlBody    *string            `json:"htmlBody"`
 			Id          openapi_types.UUID `json:"id"`
 			OccurredAt  time.Time          `json:"occurredAt"`
-			Participant struct {
+			Participant *struct {
 				Address     string             `json:"address"`
 				ChannelId   openapi_types.UUID `json:"channelId"`
 				ContactId   *int32             `json:"contactId"`

@@ -410,6 +410,7 @@ components:
                                 format: date-time
                                 type: string
                             participant:
+                                nullable: true
                                 properties:
                                     address:
                                         type: string

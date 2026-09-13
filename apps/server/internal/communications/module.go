@@ -60,6 +60,16 @@ func Module() module.Module {
 // decodes it. It fails when the router reports a problem: an operation never
 // registered, a rule that does not parse, or a permission missing from the
 // catalog.
+//
+// BaseRouter is patchBodyMux, not router itself: task 5 fix round 1, item 1
+// found that an earlier version of this file wrapped the *returned handler*
+// with the PATCH raw-body capture — outside module.Router entirely, so a
+// forbidden or rate-limited PATCH still buffered its whole body before
+// anyone checked whether the caller could do anything at all, contradicting
+// router.go's own ordering guarantee (wrap: rate limit, then Access.Check,
+// then the body cap, only then the handler). patchBodyMux instead injects
+// the capture at HandleFunc-registration time, so it becomes part of the
+// handler router.wrap calls *after* all three — see patchBodyMux's comment.
 func mount(d module.Deps) (http.Handler, error) {
 	router := module.NewRouter(module.RouterOptions{
 		Doc:     d.Doc,
@@ -73,61 +83,97 @@ func mount(d module.Deps) (http.Handler, error) {
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
-		BaseRouter:       router,
+		BaseRouter:       patchBodyMux{router},
 		ErrorHandlerFunc: module.DecodeError(writeDecodeError),
 	})
 	if err := router.Err(); err != nil {
 		return nil, err
 	}
-	return withRawPatchBody(handler), nil
+	return handler, nil
+}
+
+// patchBodyPattern is the exact "METHOD /path" gen.HandlerWithOptions
+// registers PATCH /conversations/{id} under (gen/api.gen.go's own
+// `m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/communications/conversations/{id}", ...)`
+// call) — the only pattern patchBodyMux wraps. A future second PATCH
+// operation would need its own deliberate decision, not silently inherit
+// this one by matching on method alone.
+const patchBodyPattern = "PATCH /api/v1/communications/conversations/{id}"
+
+// patchBodyMux is module.Router wrapped so PATCH /conversations/{id}'s raw
+// JSON body is captured *inside* module.Router's own per-route wrap chain
+// (router.go's wrap: rate limit -> Access.Check -> the operation's
+// MaxBytesReader cap -> the handler), never before it.
+// gen.HandlerWithOptions builds every operation's final handler by calling
+// BaseRouter.HandleFunc(pattern, h) once per operation, and Router.HandleFunc
+// itself wraps whatever h it is given with router.wrap before registering
+// it (router.go's HandleFunc: `handler: r.wrap(op, rule, ..., h)`) — so
+// intercepting h here, before it reaches Router.HandleFunc, means the
+// capture ends up *inside* r.wrap's returned closure, running only after
+// wrap's own rate-limit/Access.Check/MaxBytesReader steps have already
+// passed. A forbidden or rate-limited PATCH is rejected by those steps
+// before withRawPatchBody ever runs, and the read it does perform is
+// bounded by the MaxBytesReader this same request already carries — this
+// operation's real limit (a BodyLimits override included), not a value
+// duplicated from module.DefaultMaxBodyBytes.
+type patchBodyMux struct {
+	*module.Router
+}
+
+func (m patchBodyMux) HandleFunc(pattern string, h func(http.ResponseWriter, *http.Request)) {
+	if pattern == patchBodyPattern {
+		h = withRawPatchBody(h)
+	}
+	m.Router.HandleFunc(pattern, h)
 }
 
 // rawPatchBodyContextKey is unexported so only withRawPatchBody and
-// conversations.go's PATCH handler share it.
+// conversations_patch.go's PATCH handler share it.
 type rawPatchBodyContextKey struct{}
 
-// withRawPatchBody captures every PATCH request's raw JSON body into the
-// request context before the generated decoder consumes it, then restores
-// r.Body so decoding proceeds exactly as it otherwise would.
+// withRawPatchBody captures PATCH /conversations/{id}'s raw JSON body into
+// the request context before the generated decoder consumes it, then
+// restores r.Body so decoding proceeds exactly as it otherwise would.
 //
-// It exists for one reason: PATCH /conversations/{id} — the only PATCH
-// operation this contract declares (communications.yaml has exactly one
-// `patch:` block, so gating on method alone can never catch a different
-// operation) — must tell "customerId omitted" from "customerId: null"
-// apart, and from "assignedUserId omitted" vs "assignedUserId: null".
-// encoding/json collapses all three into the same nil *interface{}: its
-// documented rule for unmarshaling a JSON null into a pointer field is to
-// set that pointer to nil, applied identically whether the key was absent
-// or present-and-null, and unmarshaling a top-level null into a non-pointer
-// struct (PatchCommunicationsConversationsByIdJSONRequestBody itself) is a
-// silent no-op rather than a nil request. .NET tells every one of these
-// apart natively (JsonElement.ValueKind: Undefined vs Null, and a JSON null
-// body binding a nullable record parameter to an actual C# null). This is
-// the smallest way to recover the same distinctions in Go without changing
-// the generated contract code or its request-body type.
-func withRawPatchBody(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch || r.Body == nil || r.Body == http.NoBody {
-			next.ServeHTTP(w, r)
+// It exists for one reason: this handler must tell "customerId omitted"
+// from "customerId: null" apart, and "assignedUserId omitted" from
+// "assignedUserId: null". encoding/json collapses all three into the same
+// nil *interface{}: its documented rule for unmarshaling a JSON null into a
+// pointer field is to set that pointer to nil, applied identically whether
+// the key was absent or present-and-null, and unmarshaling a top-level null
+// into a non-pointer struct (PatchCommunicationsConversationsByIdJSONRequestBody
+// itself) is a silent no-op rather than a nil request. .NET tells every one
+// of these apart natively (JsonElement.ValueKind: Undefined vs Null, and a
+// JSON null body binding a nullable record parameter to an actual C# null).
+// This is the smallest way to recover the same distinctions in Go without
+// changing the generated contract code or its request-body type.
+//
+// next is called by patchBodyMux only after module.Router's wrap has
+// already run rate limiting, Access.Check and applied this operation's
+// MaxBytesReader — see patchBodyMux's own comment for why that ordering
+// matters and how it is achieved.
+func withRawPatchBody(next func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Body == nil || r.Body == http.NoBody {
+			next(w, r)
 			return
 		}
-		// Bounded by the same ceiling module.Router's own MaxBytesReader
-		// enforces for this operation (no BodyLimits override in this
-		// module's RouterOptions, so every operation uses
-		// module.DefaultMaxBodyBytes): a body the router would reject as
-		// too large is truncated here too, and the generated decoder still
-		// rejects it downstream exactly as it would without this wrapper —
-		// this capture never makes an oversized body succeed.
-		raw, err := io.ReadAll(io.LimitReader(r.Body, module.DefaultMaxBodyBytes+1))
+		raw, err := io.ReadAll(r.Body)
 		_ = r.Body.Close()
 		if err != nil {
-			r.Body = io.NopCloser(bytes.NewReader(nil))
-			next.ServeHTTP(w, r)
+			// task 5 fix round 1, item 5: a read failure — including the
+			// MaxBytesReader's own *http.MaxBytesError for a body over
+			// this operation's limit — is not "the caller sent nothing".
+			// Treating it as an empty body would let an oversized or
+			// truncated request masquerade as PATCH's null-body 400
+			// instead of the decode-error response the router gives an
+			// unreadable body everywhere else in this module.
+			writeDecodeError(w, r)
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(raw))
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), rawPatchBodyContextKey{}, raw)))
-	})
+		next(w, r.WithContext(context.WithValue(r.Context(), rawPatchBodyContextKey{}, raw)))
+	}
 }
 
 // rawPatchBodyFrom returns the raw JSON bytes withRawPatchBody captured for
