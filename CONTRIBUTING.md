@@ -435,6 +435,18 @@ The customer directory is the only sanctioned cross-module read. No module
 imports another (enforced by depguard) and no module queries another's schema
 (enforced by `internal/db/schema_test.go`).
 
+A module can also contribute background workers (`internal/worker`: a `Worker`
+is `Run(ctx) error` plus a name and a poll interval, resolved from every
+enabled module's `Module.Workers` the same way `Module.Directory` is, and
+started by `internal/worker.Runner`). `WORKERS_IN_PROCESS` (`0`/`1`, **default
+`1`**) controls whether the `api` command also runs them in-process alongside
+serving; `worker` mode always runs them and `server` mode never does,
+regardless of this setting — `server` is what a fleet of stateless replicas
+runs, and every replica racing to claim the same background job is exactly
+what `server` must not do. No module implements one yet; the three
+communications workers (outbox delivery, retention, attachment cleanup) are
+built in a later sub-project.
+
 Two settings configure the Brreg lookup:
 
 - `BRREG_BASE_URL` (default `https://data.brreg.no`) — the upstream origin.

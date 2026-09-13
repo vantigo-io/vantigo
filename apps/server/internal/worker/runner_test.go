@@ -167,6 +167,12 @@ func TestRunner_PanicIsRecoveredAndDoesNotStopSiblingsOrTheProcess(t *testing.T)
 	if !strings.Contains(logs, `"worker":"a"`) || !strings.Contains(logs, "kaboom") {
 		t.Errorf("logs are missing a's panic: %s", logs)
 	}
+	// The stack must actually be the panicking goroutine's, not an empty or
+	// boilerplate string: it should name this test's own Run closure, which
+	// only appears in a real captured stack trace.
+	if !strings.Contains(logs, `"stack"`) || !strings.Contains(logs, "TestRunner_PanicIsRecoveredAndDoesNotStopSiblingsOrTheProcess") {
+		t.Errorf("logs are missing a's panic stack trace: %s", logs)
+	}
 }
 
 // TestRunner_CancellationStopsEveryWorkerAndWaitReturns is the bite for

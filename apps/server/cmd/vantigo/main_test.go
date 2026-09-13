@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/db"
+	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
@@ -267,11 +269,11 @@ func startServe(t *testing.T, m mode) (string, func() int) {
 }
 
 // startServeEnv is startServe with env overrides applied on top of the usual
-// fixture (WORKERS_IN_PROCESS among them) and extraWorkers appended to
-// whatever module.Workers resolves from the real module list — production
-// always passes none; a test passes a fake to prove serve really starts and
-// stops what it is handed.
-func startServeEnv(t *testing.T, m mode, env map[string]string, extraWorkers ...worker.Worker) (string, func() int) {
+// fixture (WORKERS_IN_PROCESS among them) and extraModules merged into the
+// module list serve resolves workers from (see serve's own doc) —
+// production always passes none; a test passes a module declaring a worker
+// (fakeWorkerModule) to drive it through that real resolution.
+func startServeEnv(t *testing.T, m mode, env map[string]string, extraModules ...module.Module) (string, func() int) {
 	t.Helper()
 	_, databaseURL := testdb.Migrated(t)
 	envMap := map[string]string{
@@ -297,7 +299,7 @@ func startServeEnv(t *testing.T, m mode, env map[string]string, extraWorkers ...
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
-	go func() { done <- serve(ctx, slog.New(slog.DiscardHandler), cfg, ln, m, extraWorkers...) }()
+	go func() { done <- serve(ctx, slog.New(slog.DiscardHandler), cfg, ln, m, extraModules...) }()
 
 	base := "http://" + ln.Addr().String()
 	waitReady(t, base)
@@ -355,6 +357,24 @@ func waitStarted(t *testing.T, w *recordingWorker) {
 	case <-w.started:
 	case <-time.After(5 * time.Second):
 		t.Fatalf("worker %q never started", w.name)
+	}
+}
+
+// fakeWorkerModule wraps w as a module.Module contributing exactly it, so a
+// test drives it through the real module.Workers resolution serve itself
+// calls (mods := append(businessModules(access), extraModules...); workers
+// := module.Workers(deps, mods...)) rather than around it. It is named
+// "identity" so module.Workers' own enablement (enabledModules) always
+// includes it regardless of MODULES — the same special case the real
+// identity module gets — without this test module needing to be a real,
+// contract-bearing module Compose could mount too. It is passed only to
+// startServeEnv's extraModules, which serve never hands to Compose, so the
+// duplicate "identity" name never reaches Compose's own duplicate-name
+// check.
+func fakeWorkerModule(w worker.Worker) module.Module {
+	return module.Module{
+		Name:    "identity",
+		Workers: func(module.Deps) []worker.Worker { return []worker.Worker{w} },
 	}
 }
 
@@ -483,13 +503,15 @@ func TestServe_WorkerServesOnlyHealth(t *testing.T) {
 }
 
 // TestServe_WorkerModeRunsAndStopsWorkers is the end-to-end bite for worker
-// mode: serve really starts what module.Workers (plus extraWorkers, its
-// test-only seam) hands the runner, and really waits for it to stop on
+// mode: serve really starts what module.Workers resolves from the real
+// module list (extraModules included), and really waits for it to stop on
 // shutdown. No real module implements Worker yet (Tasks 11-13), so this
-// injects a fake through extraWorkers instead.
+// registers a fake through a test module (fakeWorkerModule) instead —
+// proving the production resolution at serve's own module.Workers call,
+// not a bypass of it.
 func TestServe_WorkerModeRunsAndStopsWorkers(t *testing.T) {
 	w := newRecordingWorker("fake")
-	_, stop := startServeEnv(t, modeWorker, nil, w)
+	_, stop := startServeEnv(t, modeWorker, nil, fakeWorkerModule(w))
 	waitStarted(t, w)
 
 	if code := stop(); code != 0 {
@@ -509,7 +531,7 @@ func TestServe_WorkerModeRunsAndStopsWorkers(t *testing.T) {
 func TestServe_APIModeRunsWorkersOnlyWhenConfigured(t *testing.T) {
 	t.Run("WORKERS_IN_PROCESS=1", func(t *testing.T) {
 		w := newRecordingWorker("fake")
-		_, stop := startServeEnv(t, modeAPI, map[string]string{"WORKERS_IN_PROCESS": "1"}, w)
+		_, stop := startServeEnv(t, modeAPI, map[string]string{"WORKERS_IN_PROCESS": "1"}, fakeWorkerModule(w))
 		waitStarted(t, w)
 		if code := stop(); code != 0 {
 			t.Errorf("exit %d after a clean shutdown", code)
@@ -521,7 +543,7 @@ func TestServe_APIModeRunsWorkersOnlyWhenConfigured(t *testing.T) {
 
 	t.Run("WORKERS_IN_PROCESS=0", func(t *testing.T) {
 		w := newRecordingWorker("fake")
-		_, stop := startServeEnv(t, modeAPI, map[string]string{"WORKERS_IN_PROCESS": "0"}, w)
+		_, stop := startServeEnv(t, modeAPI, map[string]string{"WORKERS_IN_PROCESS": "0"}, fakeWorkerModule(w))
 		// waitReady inside startServeEnv already blocked on a real HTTP round
 		// trip through the loopback listener, which gives any goroutine the
 		// runner would have started far longer to run than it needs; this
@@ -538,12 +560,14 @@ func TestServe_APIModeRunsWorkersOnlyWhenConfigured(t *testing.T) {
 }
 
 // TestServe_ServerModeNeverRunsWorkersEvenWhenInjected is the strongest
-// version of "server mode never runs workers": it injects a worker directly
-// through extraWorkers, bypassing module.Workers' own enablement, so the
-// only thing that can still stop it from running is serve's own mode gate.
+// version of "server mode never runs workers": it registers a worker
+// through a real, always-enabled module (fakeWorkerModule), so the only
+// thing that can still stop it from running is serve's own mode gate — not
+// module enablement, and not this test module having been left out of the
+// list.
 func TestServe_ServerModeNeverRunsWorkersEvenWhenInjected(t *testing.T) {
 	w := newRecordingWorker("fake")
-	_, stop := startServeEnv(t, modeServer, nil, w)
+	_, stop := startServeEnv(t, modeServer, nil, fakeWorkerModule(w))
 	select {
 	case <-w.started:
 		t.Fatal("server mode ran an injected worker")
@@ -551,6 +575,69 @@ func TestServe_ServerModeNeverRunsWorkersEvenWhenInjected(t *testing.T) {
 	}
 	if code := stop(); code != 0 {
 		t.Errorf("exit %d after a clean shutdown", code)
+	}
+}
+
+// stuckDBWorker holds a real pool connection open across shutdown by
+// deliberately not respecting ctx (Acquire uses context.Background(), and
+// Run does not return until the test releases it), so
+// TestServe_WorkerOutlivingTheShutdownTimeoutDoesNotHangTheProcess
+// reproduces the exact scenario review fix round 1 flagged: a worker still
+// mid-query (here, still holding a checked-out connection) when shutdown's
+// deferred pool.Close would otherwise run.
+type stuckDBWorker struct {
+	pool    *pgxpool.Pool
+	started chan struct{}
+	release <-chan struct{}
+}
+
+func (w *stuckDBWorker) Name() string            { return "stuck-db" }
+func (w *stuckDBWorker) Interval() time.Duration { return time.Millisecond }
+func (w *stuckDBWorker) Run(context.Context) error {
+	conn, err := w.pool.Acquire(context.Background())
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+	close(w.started)
+	<-w.release // held open until the test says otherwise, ignoring ctx entirely
+	return nil
+}
+
+// TestServe_WorkerOutlivingTheShutdownTimeoutDoesNotHangTheProcess is the
+// end-to-end bite for review fix round 1, item 2: before the fix,
+// serve's deferred pool.Close blocked forever on stuckDBWorker's held
+// connection, and since serve does not return until its deferred calls do,
+// the whole process would hang past SHUTDOWN_TIMEOUT rather than exiting.
+// stop()'s own 10s guard would catch that as a hang; this test additionally
+// checks the elapsed time is nowhere near it, so a regression fails fast
+// instead of only at that outer guard.
+func TestServe_WorkerOutlivingTheShutdownTimeoutDoesNotHangTheProcess(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) }) // let the goroutine finish so it does not outlive the test
+
+	started := make(chan struct{})
+	mod := module.Module{
+		Name: "identity",
+		Workers: func(d module.Deps) []worker.Worker {
+			return []worker.Worker{&stuckDBWorker{pool: d.Pool, started: started, release: release}}
+		},
+	}
+
+	_, stop := startServeEnv(t, modeWorker, map[string]string{"SHUTDOWN_TIMEOUT": "200ms"}, mod)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stuckDBWorker never started")
+	}
+
+	start := time.Now()
+	code := stop()
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("stop() took %s, want well under the 10s hang guard (SHUTDOWN_TIMEOUT was 200ms)", elapsed)
+	}
+	if code != 1 {
+		t.Errorf("exit %d, want 1: a worker outlived the shutdown timeout", code)
 	}
 }
 
@@ -567,7 +654,9 @@ func TestServeUntilDone_LetsInFlightRequestsFinish(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan int, 1)
-	go func() { done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, nil) }()
+	go func() {
+		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, nil, func() {})
+	}()
 
 	result := make(chan string, 1)
 	go func() {
@@ -617,7 +706,12 @@ func TestServeUntilDone_WaitsForWorkersConcurrentlyWithHTTPDrain(t *testing.T) {
 	waitStarted(t, w)
 
 	done := make(chan int, 1)
-	go func() { done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, runner) }()
+	// cancelWorkers is a no-op here: this worker was started with ctx
+	// itself (as serve's graceful path derives workerCtx from ctx too), so
+	// cancel() below already stops it without a separate call.
+	go func() {
+		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, runner, func() {})
+	}()
 	cancel()
 
 	select {
@@ -667,7 +761,7 @@ func TestServeUntilDone_WorkerExceedingTheTimeoutFailsShutdown(t *testing.T) {
 
 	done := make(chan int, 1)
 	go func() {
-		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 50*time.Millisecond, runner)
+		done <- serveUntilDone(ctx, slog.New(slog.DiscardHandler), srv, ln, 50*time.Millisecond, runner, func() {})
 	}()
 	cancel()
 
@@ -678,5 +772,64 @@ func TestServeUntilDone_WorkerExceedingTheTimeoutFailsShutdown(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("serveUntilDone did not return")
+	}
+}
+
+// TestServeUntilDone_EarlyServeFailureCancelsAndWaitsForWorkers is the bite
+// for review fix round 1, item 3: when srv.Serve fails on its own — ctx is
+// never cancelled here, unlike every other serveUntilDone test — nothing
+// used to tell the workers to stop before returning. w blocks on ctx.Done()
+// (the same shape recordingWorker always uses), so if serveUntilDone's early
+// branch never calls cancelWorkers, w never stops and this test's own check
+// fails cleanly (it does not hang: nothing here waits on w finishing, only
+// on the flag it sets once it does).
+func TestServeUntilDone_EarlyServeFailureCancelsAndWaitsForWorkers(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	} // srv.Serve(ln) fails immediately on an already-closed listener
+
+	srv := &http.Server{Handler: http.NotFoundHandler()}
+
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	w := newRecordingWorker("fake")
+	runner := worker.NewRunner(slog.New(slog.DiscardHandler))
+	runner.Start(workerCtx, []worker.Worker{w})
+	waitStarted(t, w)
+
+	// The outer ctx is context.Background(): deliberately never cancelled,
+	// so the only way w can stop is serveUntilDone calling cancelWorkers
+	// itself in the early-failure branch.
+	code := serveUntilDone(context.Background(), slog.New(slog.DiscardHandler), srv, ln, 5*time.Second, runner, cancelWorkers)
+
+	if code != 1 {
+		t.Errorf("exit %d, want 1: srv.Serve failed", code)
+	}
+	if !w.stopped.Load() {
+		t.Error("the early srv.Serve failure path did not stop the worker before returning")
+	}
+}
+
+// TestRunBounded_ReturnsTrueWhenFnFinishesInTime and
+// TestRunBounded_ReturnsFalseWhenFnOutlivesTheTimeout are the unit-level
+// bite for review fix round 1, item 2: closePool's whole guarantee (the
+// process cannot hang past a fixed point waiting for pgxpool.Pool.Close,
+// which has no context parameter of its own) rests on runBounded actually
+// giving up when fn does not return in time.
+func TestRunBounded_ReturnsTrueWhenFnFinishesInTime(t *testing.T) {
+	if !runBounded(func() {}, time.Second) {
+		t.Error("runBounded = false, want true for a fn that returns immediately")
+	}
+}
+
+func TestRunBounded_ReturnsFalseWhenFnOutlivesTheTimeout(t *testing.T) {
+	stuck := make(chan struct{})
+	t.Cleanup(func() { close(stuck) }) // let the goroutine finish so it does not outlive the test
+
+	if runBounded(func() { <-stuck }, 20*time.Millisecond) {
+		t.Error("runBounded = true, want false for a fn that never returns within the timeout")
 	}
 }

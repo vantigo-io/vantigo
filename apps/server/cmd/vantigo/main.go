@@ -282,14 +282,49 @@ func businessModules(access *identity.Access) []module.Module {
 	}
 }
 
+// runBounded calls fn and reports whether it returned within timeout. There
+// is no way to cancel an arbitrary func, so fn keeps running in the
+// background if it does not return in time; runBounded only stops whoever
+// is waiting on it from hanging forever, it does not stop fn itself.
+func runBounded(fn func(), timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		fn()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// closePool closes pool but never blocks the process past timeout.
+// pgxpool.Pool.Close has no context parameter and blocks until every
+// checked-out connection is returned to the pool. serve already cancels and
+// (bounded, by this same timeout) waits for every worker before this defer
+// runs, so by the time it does, the only way a connection could still be
+// checked out is a worker that ignored cancellation entirely — a bug worker
+// code must not have, but not one this must hang the whole process over:
+// the close keeps running in the background, and the process is exiting
+// regardless.
+func closePool(pool *pgxpool.Pool, timeout time.Duration, logger *slog.Logger) {
+	if !runBounded(pool.Close, timeout) {
+		logger.Error("database pool did not close in time; a worker likely outlived the shutdown timeout and is still using it", "timeout", timeout)
+	}
+}
+
 // serve builds the handler for this command and runs it on ln until ctx is
 // cancelled, starting every enabled module's background workers first when
-// runWorkers(m, cfg) says to. extraWorkers is appended to whatever
-// module.Workers resolves from the real module list; production code always
-// passes nil — it exists so a test can prove serve really starts and stops
-// what it is handed, without a real module implementing Worker yet (nothing
-// does before Tasks 11-13).
-func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.Listener, m mode, extraWorkers ...worker.Worker) int {
+// runWorkers(m, cfg) says to. extraModules is appended to businessModules
+// only when resolving workers (module.Workers) — never passed to Compose,
+// which would fail on the duplicate module name. Production code always
+// passes none; a test passes a module that declares a worker, so it is
+// resolved through the same module.Workers call serve itself makes rather
+// than a bypass that only proves a worker can run once one is already in
+// hand.
+func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.Listener, m mode, extraModules ...module.Module) int {
 	defer func() { _ = ln.Close() }()
 
 	// Startup is not cancelled by the shutdown signal: a SIGTERM during boot
@@ -299,7 +334,15 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		logger.Error("startup failed", "error", err)
 		return 1
 	}
-	defer pool.Close()
+	// closePool (not a bare pool.Close) is deferred here, before
+	// cancelWorkers below, so — deferred calls run in reverse order —
+	// cancelWorkers and the bounded worker wait it triggers always run
+	// BEFORE this one, on every return path out of serve, early failures
+	// included. Closing the pool out from under a worker mid-query is
+	// exactly the failure that looks like an unrelated driver bug later;
+	// ordering this by defer, rather than by hand in every branch that
+	// returns, keeps the ordering true regardless of how serve returns.
+	defer func() { closePool(pool, cfg.ShutdownTimeout, logger) }()
 
 	healthHandler := health.Handler(logger, buildinfo.Version, health.Check{Name: "postgres", Run: pool.Ping})
 	handler := healthHandler
@@ -310,6 +353,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 
 	var deps module.Deps
 	var access *identity.Access
+	var mods []module.Module
 	var haveDeps bool
 
 	if withAPI {
@@ -326,13 +370,14 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			return 1
 		}
 		haveDeps = true
+		mods = businessModules(access)
 
 		// Every module this binary knows is passed to Compose, which keeps
 		// identity — always mounted, never listed in MODULES — plus whichever
 		// of the rest MODULES enables, and injects customers' customer
 		// directory into every enabled module's Deps. A disabled module
 		// contributes no route, no permission and no contract path.
-		api, err := module.Compose(deps, businessModules(access)...)
+		api, err := module.Compose(deps, mods...)
 		if err != nil {
 			logger.Error("startup failed", "error", err)
 			return 1
@@ -356,6 +401,15 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 		}), cfg.BasePath)
 	}
 
+	// workerCtx is cancelled explicitly (cancelWorkers), not left to be ctx
+	// itself: an early srv.Serve failure below does not cancel ctx — nothing
+	// sent a signal — so serveUntilDone needs its own way to tell every
+	// worker to stop before the deferred closePool runs. Deriving workerCtx
+	// from ctx means the normal shutdown path (SIGTERM cancels ctx) still
+	// cancels it too, with no separate call required there.
+	workerCtx, cancelWorkers := context.WithCancel(ctx)
+	defer cancelWorkers()
+
 	var runner *worker.Runner
 	if wantWorkers {
 		if !haveDeps {
@@ -364,10 +418,11 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 				logger.Error("startup failed", "error", err)
 				return 1
 			}
+			mods = businessModules(access)
 		}
-		workers := append(module.Workers(deps, businessModules(access)...), extraWorkers...)
+		workers := module.Workers(deps, append(mods, extraModules...)...)
 		runner = worker.NewRunner(logger)
-		runner.Start(ctx, workers)
+		runner.Start(workerCtx, workers)
 	}
 
 	srv := &http.Server{
@@ -382,17 +437,21 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	if cfg.AllowInsecureTransport {
 		logger.Warn("ALLOW_INSECURE_TRANSPORT=1: plaintext HTTP, database and SMTP transport are accepted; local and evaluation use only")
 	}
-	return serveUntilDone(ctx, logger, srv, ln, cfg.ShutdownTimeout, runner)
+	return serveUntilDone(ctx, logger, srv, ln, cfg.ShutdownTimeout, runner, cancelWorkers)
 }
 
-// serveUntilDone serves until ctx is cancelled, then drains in-flight
-// requests and waits for runner's workers (if any) to stop, both bounded by
-// the same timeout — the orchestrator's termination grace period must
-// exceed it — and run concurrently rather than one after the other, so a
-// slow drain and a slow worker cannot each eat into the other's share of
-// the budget. runner may be nil (server mode, or api with
-// WORKERS_IN_PROCESS=0): Runner.Wait on a nil *Runner returns immediately.
-func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, ln net.Listener, timeout time.Duration, runner *worker.Runner) int {
+// serveUntilDone serves until ctx is cancelled or srv.Serve fails on its
+// own, then either way cancels every worker (cancelWorkers) and waits for
+// them (runner.Wait, bounded by timeout) before returning — so serve's
+// deferred pool close never races a worker still using it. The graceful
+// path (ctx cancelled) additionally drains in-flight HTTP requests,
+// concurrently with the worker wait rather than after it, both bounded by
+// the same timeout: the orchestrator's termination grace period must exceed
+// it, and running the two waits one after the other would let each eat into
+// what should be the other's share of the budget. runner may be nil (server
+// mode, or api with WORKERS_IN_PROCESS=0): Runner.Wait on a nil *Runner
+// returns immediately.
+func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, ln net.Listener, timeout time.Duration, runner *worker.Runner, cancelWorkers context.CancelFunc) int {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 
@@ -401,11 +460,28 @@ func serveUntilDone(ctx context.Context, logger *slog.Logger, srv *http.Server, 
 		if !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server stopped unexpectedly", "error", err)
 		}
+		// srv.Serve failed on its own, not because ctx was cancelled: unlike
+		// the graceful path below, nothing has told the workers to stop yet.
+		// Do that now and wait (bounded) before returning, so serve's
+		// deferred pool close does not run out from under a worker that is
+		// still mid-query — the exact bug this branch used to leave open.
+		cancelWorkers()
+		waitCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		if werr := runner.Wait(waitCtx); werr != nil {
+			logger.Error("workers did not finish before shutdown", "error", werr)
+		}
 		return 1
 	case <-ctx.Done():
 	}
 
 	logger.Info("shutdown signal received; draining", "timeout", timeout)
+	// workerCtx (which runner's workers were started with) is already a
+	// child of ctx, so it is already done at this point; this call is
+	// redundant in practice but kept explicit rather than relied upon —
+	// a reader should not need to trace workerCtx's ancestry back in serve
+	// to see that workers are told to stop here too.
+	cancelWorkers()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
