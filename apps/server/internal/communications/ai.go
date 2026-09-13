@@ -41,7 +41,14 @@ import (
 //  2. Their 404s differ in shape: draft answers a coded body, suggestion a
 //     bare 404 with no body at all (inventory §17.4 item 1 calls this out as
 //     asymmetric with draft). They are not unified here.
-//  3. ai_failed carries a different message for each operation.
+//  3. A provider outage is an ERROR on draft and a SUCCESS on suggestion.
+//     Draft answers 422 ai_failed; the suggestion service sets the same
+//     Outcome="failed"/ai_failed internally, but its endpoint's guard chain
+//     (:35-38) matches none of not_found/protected_existing_customer/
+//     insufficient_candidates and its final guard requires Outcome=="invalid",
+//     which "failed" is not — so it falls through to a 200 carrying three
+//     nulls (inventory §17.4 item 10). Ported as-is; see the fall-through
+//     itself for why this is not harmonised.
 //  4. The draft's context string and its digest input differ; the
 //     suggestion's digest input IS its untrusted context, verbatim.
 //
@@ -96,7 +103,6 @@ const (
 	aiUnavailableMessage = "Communications AI is not available."
 	aiFailedCode         = "ai_failed"
 	aiDraftFailedMessage = "The AI draft could not be generated."
-	aiSuggestFailedMsg   = "The AI suggestion could not be generated."
 	aiInvalidRequestCode = "invalid_request"
 	aiInvalidRequestMsg  = "Tone must be concise, friendly, or formal and instruction must be 1-1000 characters."
 	aiNotFoundCode       = "not_found"
@@ -113,12 +119,16 @@ const (
 // These are the audit row's entire content besides the digest and the
 // numbers, so they are written out as constants rather than built inline.
 const (
-	summaryDraftGenerated   = "draft_generated"
-	summaryProtected        = "protected_existing_customer"
-	summaryInsufficient     = "insufficient_candidates"
-	summaryMalformed        = "malformed_or_invalid"
-	summaryBelowThreshold   = "below_threshold"
-	summarySuggestionSaved  = "suggestion_saved"
+	summaryDraftGenerated  = "draft_generated"
+	summaryProtected       = "protected_existing_customer"
+	summaryInsufficient    = "insufficient_candidates"
+	summaryMalformed       = "malformed_or_invalid"
+	summaryBelowThreshold  = "below_threshold"
+	summarySuggestionSaved = "suggestion_saved"
+	// outcomeFailed is an Outcome only, never a ResultSummary: on the
+	// exception path §17.5 leaves result_summary null and sets error_summary
+	// alone, while the response still reports "failed".
+	outcomeFailed           = "failed"
 	validationProtected     = "confirmed_customer_or_association_present"
 	validationInsufficient  = "at_least_two_candidates_required"
 	validationInvalidJSON   = "invalid_json"
@@ -561,23 +571,44 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	row.DurationMs = ptr(time.Since(started).Milliseconds())
 
 	if callErr != nil {
-		// The exception path. DIVERGENCE, deliberate and ruled by task 10's
-		// brief (correction 3): .NET's endpoint chain (:35-38) matches none
-		// of its branches for Outcome="failed" — the last one requires
-		// "invalid" — so a provider outage there falls through to a 200
-		// carrying three nulls. Inventory §17.4 item 10 records that, calls
-		// it asymmetric with the draft path and "looks unintended", and asks
-		// the port to decide. It is decided here as 422 ai_failed, so a
-		// provider outage is an error on both AI operations rather than an
-		// apparent success on one of them. The row is still written.
+		// The exception path, and the module's most surprising response: a
+		// provider outage here answers **200**, not an error.
+		//
+		// The service does set Outcome="failed" and code ai_failed, exactly
+		// as the draft path does. The endpoint then throws that error code
+		// away: its guard chain (:35-38) tests only not_found,
+		// protected_existing_customer and insufficient_candidates, and its
+		// final guard requires Outcome=="invalid" — which "failed" is not —
+		// so control reaches TypedResults.Ok at :39 and the response carries
+		// customerId, confidence and rationale all null with outcome
+		// "failed" (inventory §17.4 item 10).
+		//
+		// This is asymmetric with draft, which answers 422 ai_failed for the
+		// very same failure, and it is ported deliberately rather than
+		// harmonised. Inventory §17.4 item 10 calls it "a decision for the
+		// port"; the decision is fidelity, the same call decisions D4 and D7
+		// already made for this module — D7 in particular corrected the
+		// *documentation* rather than the behaviour. Harmonising the two
+		// operations would invent a 422 that no .NET caller ever receives and
+		// that the contract's own error list for this operation does not
+		// contain.
+		//
+		// The 200 changes only the wire response. Persistence is unchanged:
+		// the row is still written with error_summary set to the error's type
+		// name, and — per §17.5 — no result_summary and no validation_summary.
 		s.deps.Logger.WarnContext(ctx, "communications: AI customer suggestion failed",
 			"conversationId", req.Id, "error", errorTypeName(callErr))
 		row.ErrorSummary = ptr(errorTypeName(callErr))
 		if err := q.InsertAiInteraction(ctx, row); err != nil {
 			return nil, fmt.Errorf("communications: record AI interaction: %w", err)
 		}
-		return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion422JSONResponse(
-			flatErrorBody(aiFailedCode, aiSuggestFailedMsg)), nil
+		return gen.PostCommunicationsConversationsByIdAiCustomerSuggestion200JSONResponse(gen.AiCustomerSuggestionResponse{
+			InteractionId: row.ID,
+			CustomerId:    nil,
+			Confidence:    nil,
+			Rationale:     nil,
+			Outcome:       outcomeFailed,
+		}), nil
 	}
 
 	row.InputTokenCount = completion.inputTokens
@@ -597,7 +628,14 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	// The confidence threshold (:146-151). Below it nothing is written to the
 	// conversation and there is no error code, so the endpoint answers 200
 	// carrying the model's own numbers with outcome "below_threshold": a
-	// refusal is a successful response here, not a 4xx.
+	// refusal is a successful response here, not a 4xx. At or above it
+	// (:154-160) the three suggested_* columns are written and the outcome is
+	// "suggestion_saved". The boundary is `< 0.70`, so exactly 0.70 saves.
+	//
+	// Together with the "failed" fall-through above, every reachable outcome
+	// is one of below_threshold / suggestion_saved / failed, so the DTO's own
+	// `Outcome ?? "none"` fallback (:1802-1803) is unreachable — which is why
+	// no "none" constant exists here.
 	outcome := summaryBelowThreshold
 	if confidence >= aiConfidenceThreshold {
 		outcome = summarySuggestionSaved

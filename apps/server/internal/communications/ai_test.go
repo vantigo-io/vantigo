@@ -988,15 +988,19 @@ func TestAiCustomerSuggestion_InvalidResponsesAre422(t *testing.T) {
 	}
 }
 
-// TestAiCustomerSuggestion_ProviderFailureIs422AndStillWritesTheRow pins the
-// suggestion exception path. This is the port's one deliberate divergence in
-// this area: .NET's endpoint chain matches none of its branches for
-// Outcome="failed" and falls through to a 200 carrying three nulls
-// (inventory §17.4 item 10, which flags it as unintended and asks the port to
-// decide). The brief's correction 3 decides it — 422 ai_failed with the
-// suggestion's own message — so a provider outage is an error here, as it
-// already is on the draft path.
-func TestAiCustomerSuggestion_ProviderFailureIs422AndStillWritesTheRow(t *testing.T) {
+// TestAiCustomerSuggestion_ProviderFailureIs200WithNulls pins the module's
+// most surprising response, and the reason it is surprising is the point of
+// the test: a provider outage on the SUGGESTION path answers 200, while the
+// identical outage on the DRAFT path answers 422 ai_failed.
+//
+// .NET's service does set Outcome="failed"/ai_failed here too, but the
+// endpoint's guard chain (:35-38) never tests for "failed" — its last guard
+// requires "invalid" — so control falls through to TypedResults.Ok carrying
+// three nulls (inventory §17.4 item 10). Ported deliberately rather than
+// harmonised: the contract's error list for this operation contains no
+// ai_failed at all, so a 422 here would be a status no .NET caller ever
+// receives. The audit row is unaffected and still records the failure.
+func TestAiCustomerSuggestion_ProviderFailureIs200WithNulls(t *testing.T) {
 	t.Parallel()
 	tr := &fakeChatTransport{respond: respondWith(func() *http.Response {
 		return chatResponse(http.StatusBadGateway, `{"error":"upstream exploded"}`)
@@ -1005,14 +1009,23 @@ func TestAiCustomerSuggestion_ProviderFailureIs422AndStillWritesTheRow(t *testin
 	convID := suggestable(t, h)
 
 	r := doSuggest(suggestClient(t, h), convID)
-	if r.Status != http.StatusUnprocessableEntity {
-		t.Fatalf("status %d body %s, want 422", r.Status, r.Body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200 (the suggestion endpoint never surfaces ai_failed)", r.Status, r.Body)
 	}
-	var body commErrorJSON
+	var body aiSuggestionJSON
 	r.JSON(&body)
-	if body.Error.Code != "ai_failed" || body.Error.Message != "The AI suggestion could not be generated." {
-		t.Errorf("error = %+v, want ai_failed / %q", body.Error, "The AI suggestion could not be generated.")
+	if body.Outcome != "failed" {
+		t.Errorf("outcome = %q, want failed", body.Outcome)
 	}
+	if body.CustomerId != nil || body.Confidence != nil || body.Rationale != nil {
+		t.Errorf("customerId/confidence/rationale = %v/%v/%v, want all three null on the exception path",
+			body.CustomerId, body.Confidence, body.Rationale)
+	}
+	if body.InteractionId == "" {
+		t.Error("interactionId is empty, want the audit row's id even on the exception path")
+	}
+
+	// The 200 changes the wire response only: persistence is untouched.
 	if n := interactionCount(t, h, convID); n != 1 {
 		t.Fatalf("ai_interactions rows = %d, want 1 on the exception path", n)
 	}
@@ -1020,8 +1033,35 @@ func TestAiCustomerSuggestion_ProviderFailureIs422AndStillWritesTheRow(t *testin
 	if e := modtest.One[*string](t, h, `SELECT error_summary FROM communications.ai_interactions WHERE conversation_id = $1`, id); e == nil || *e == "" {
 		t.Error("error_summary is empty, want the error's type name")
 	}
+	if s := modtest.One[*string](t, h, `SELECT result_summary FROM communications.ai_interactions WHERE conversation_id = $1`, id); s != nil {
+		t.Errorf("result_summary = %q, want null on the exception path (§17.5 sets error_summary alone)", *s)
+	}
+	if v := modtest.One[*string](t, h, `SELECT validation_summary FROM communications.ai_interactions WHERE conversation_id = $1`, id); v != nil {
+		t.Errorf("validation_summary = %q, want null when no response was ever parsed", *v)
+	}
 	if got := modtest.One[*int32](t, h, `SELECT suggested_customer_id FROM communications.conversations WHERE id = $1`, id); got != nil {
 		t.Errorf("suggested_customer_id = %v, want nothing written on the exception path", *got)
+	}
+}
+
+// TestAiOperations_DisagreeOnAProviderOutage is the asymmetry itself, stated
+// once in one place: the same outage, the same conversation, two different
+// answers. Kept as its own test so a future "cleanup" that harmonises the two
+// paths fails here with an explanation rather than only in one of the two
+// operation-specific tests.
+func TestAiOperations_DisagreeOnAProviderOutage(t *testing.T) {
+	t.Parallel()
+	tr := &fakeChatTransport{respond: respondWith(func() *http.Response {
+		return chatResponse(http.StatusBadGateway, `{"error":"upstream exploded"}`)
+	})}
+	h := newAIHarness(t, tr)
+	convID := suggestable(t, h)
+
+	if r := doDraft(draftClient(t, h), convID, draftBody("concise", "Reply.")); r.Status != http.StatusUnprocessableEntity {
+		t.Errorf("draft: status %d body %s, want 422 on a provider outage", r.Status, r.Body)
+	}
+	if r := doSuggest(suggestClient(t, h), convID); r.Status != http.StatusOK {
+		t.Errorf("suggestion: status %d body %s, want 200 on the same provider outage", r.Status, r.Body)
 	}
 }
 
