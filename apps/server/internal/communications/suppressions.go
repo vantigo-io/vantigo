@@ -12,6 +12,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 )
 
 // This file is the Suppressions area (EP/SuppressionEndpoints.cs,
@@ -107,6 +108,26 @@ func (s *server) GetCommunicationsSuppressions(ctx context.Context, _ gen.GetCom
 // new reason, which is silently discarded; (4) otherwise insert -> 201.
 // Dedupe is 200, never 409: the unique index on normalized_email_address
 // exists to enforce the invariant, not to report a conflict to the caller.
+//
+// Fix round 1's finding: the lookup-then-insert above is not transactional
+// (neither is .NET's own SingleOrDefaultAsync-then-SaveChangesAsync — this
+// is a faithful port of .NET's own race, not a Go-specific gap), so two
+// concurrent requests for the same address can both pass the lookup and
+// both attempt the insert. .NET leaves the loser's SaveChangesAsync
+// exception unhandled -> an unmapped 500. Porting *that* part verbatim
+// would have meant letting the loser's unique violation reach
+// httpx.WriteError's host-wide 23505 fallback — a bare RFC 7807 409 that
+// is both the wrong vocabulary for this module (every operation but the
+// three stats endpoints answers {"error":{"code","message"}}, design doc
+// §3) and an undocumented status this operation's contract never declares
+// (only 200/201/400/401/403). Fidelity to .NET's *race* does not extend to
+// its *response*: this module rejects that shape everywhere else, and the
+// contract rejects that status outright. So the loser's insert failure is
+// caught here on the specific constraint and turned into exactly the same
+// 200-with-the-existing-row the sequential path already returns — the race
+// becomes indistinguishable from the ordinary dedupe case, which is what
+// the endpoint promises regardless of timing.
+// TestCreateSuppression_ConcurrentDedupeAnswers200TwiceNever409 pins this.
 func (s *server) PostCommunicationsSuppressions(ctx context.Context, req gen.PostCommunicationsSuppressionsRequestObject) (gen.PostCommunicationsSuppressionsResponseObject, error) {
 	var emailAddress string
 	var reason *string
@@ -148,6 +169,18 @@ func (s *server) PostCommunicationsSuppressions(ctx context.Context, req gen.Pos
 		CreatedAt:              s.deps.Clock(),
 	})
 	if err != nil {
+		if db.IsUniqueViolation(err, "ux_suppressions_normalized_email_address") {
+			// Lost the race: a concurrent request's insert committed
+			// between our lookup and ours. Re-read on the same normalised
+			// address and answer exactly the sequential dedupe path's 200
+			// with the winner's row — never the 409 the bare unique
+			// violation would otherwise surface as (see the comment above).
+			winner, err2 := q.GetSuppressionByNormalizedEmail(ctx, normalized)
+			if err2 != nil {
+				return nil, fmt.Errorf("communications: re-read suppression after dedupe race: %w", err2)
+			}
+			return gen.PostCommunicationsSuppressions200JSONResponse(suppressionResponseOf(winner)), nil
+		}
 		return nil, fmt.Errorf("communications: insert suppression: %w", err)
 	}
 	return gen.PostCommunicationsSuppressions201JSONResponse(suppressionResponseOf(row)), nil
