@@ -287,6 +287,19 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 	q := store.New(w.deps.Pool)
 
 	// Steps 1-2: the message with its conversation, channel and credential.
+	//
+	// The no-rows branch below is UNREACHABLE, here and in .NET, and is
+	// deliberately left without a test rather than left looking like missing
+	// coverage: GetOutboundMessageForSend inner-joins the conversation and the
+	// channel, conversations.channel_id and participants.channel_id are both
+	// ON DELETE RESTRICT (so a channel with any history cannot be deleted —
+	// channels are deactivated with is_active = false instead, inventory §10
+	// item 9), and outbox_jobs.message_id is ON DELETE CASCADE (so a deleted
+	// message takes its job with it). A job therefore always has a message,
+	// a conversation and a channel, and no fixture can construct the state
+	// this branch answers. It is implemented anyway because .NET implements
+	// it (`:136`) and because a future schema change that relaxes either FK
+	// should find a handled path here, not a nil dereference.
 	message, err := q.GetOutboundMessageForSend(ctx, job.MessageID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return errChannelGone
