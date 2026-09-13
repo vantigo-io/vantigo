@@ -119,13 +119,21 @@ func TestCreateConversation_ConcurrentNewRecipientCreatesOneParticipant(t *testi
 	}
 }
 
-// TestCreateConversation_ConcurrentNewRecipientKeepsTheWinnersContactId
-// guards the one thing ON CONFLICT DO UPDATE could plausibly have broken.
+// TestCreateConversation_ExistingParticipantKeepsItsContactId guards the one
+// thing ON CONFLICT DO UPDATE could plausibly have broken.
+//
+// It is deliberately SEQUENTIAL and named accordingly. An earlier name
+// ("ConcurrentNewRecipientKeepsTheWinnersContactId") claimed a race it does
+// not run — the two creates below are ordered, not concurrent — and a test
+// named for a race that does not race is precisely the failure mode this
+// module keeps producing. The property is about the conflict path's SET
+// clause, which the second create exercises whether or not it is racing, so
+// the sequential form is the right one; only the name was wrong.
 // .NET never assigns ContactId to an ALREADY EXISTING participant — neither
 // AddGenericDeliveriesAsync branch does — so the conflict path must not
 // become the single code path in this module that overwrites it. The SET
 // writes the conflict key back to itself for exactly this reason.
-func TestCreateConversation_ConcurrentNewRecipientKeepsTheWinnersContactId(t *testing.T) {
+func TestCreateConversation_ExistingParticipantKeepsItsContactId(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	channelID := setupChannel(t, h)

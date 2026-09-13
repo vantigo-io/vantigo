@@ -56,12 +56,11 @@ UPDATE communications.channels SET is_default = false WHERE id != $1
 // excluding the row being updated (it is set to the new default
 // separately, by UpdateChannel below).
 //
-// THE MISSING `AND is_default` IS THE POINT, and removing it is what makes
-// two concurrent "make me the default" updates safe (task 14's constraint
-// audit). With the predicate present, two PUTs on different channels of the
-// same type deadlock-free-but-wrong: under READ COMMITTED the loser's
-// statement takes its snapshot before the winner commits, so the winner's
-// row is still is_default = false in that snapshot, does not match
+// THE MISSING `AND is_default` IS THE POINT for the PUT-vs-PUT pair, and
+// that pair ONLY. With the predicate present, two PUTs on different channels
+// of the same type are deadlock-free-but-wrong: under READ COMMITTED the
+// loser's statement takes its snapshot before the winner commits, so the
+// winner's row is still is_default = false in that snapshot, does not match
 // `is_default AND id != @id`, and is never visited — not even by
 // EvalPlanQual, which only re-checks rows the statement actually found. The
 // loser therefore demotes nothing, sets its own row to true, and collides
@@ -73,12 +72,28 @@ UPDATE communications.channels SET is_default = false WHERE id != $1
 //
 // Without the predicate the statement visits every other row, blocks on the
 // winner's lock, and EvalPlanQual re-checks the winner's NEW version against
-// `id != @id`, which still matches — so the loser demotes the winner and
-// the update proceeds to a correct last-writer-wins outcome with no
-// violation to map. The cost is writing is_default = false over rows that
-// already hold it, on a table with a handful of rows; there is no observable
-// behaviour change in the sequential case.
-// TestUpdateChannel_ConcurrentDefaultRaceLeavesExactlyOneDefault pins it.
+// `id != @id`, which still matches — so the loser demotes the winner and the
+// update proceeds to a correct last-writer-wins outcome.
+//
+// **SCOPE, precisely: this closes PUT-vs-PUT and nothing else.** It does NOT
+// close PUT-vs-POST — a row that does not exist yet cannot be visited or
+// blocked on, whatever this predicate says — and an earlier version of this
+// comment claimed "no violation at all", which was true only of the pair it
+// had tested. LockDefaultChannelSlot above is what makes the remaining pairs
+// safe; this predicate and that lock are both required, for different pairs.
+//
+// COST, stated because it is not free: dropping the term widens the write set
+// from "the current default" to "every other channel row", so one PUT now
+// row-locks every other channel for the rest of its transaction. On this
+// table that is a handful of rows and no sequential behaviour changes, but it
+// is a lock-order surface: at scale, writers acquiring these rows in
+// different orders is how a lock-order inversion (40P01, surfacing as a 500)
+// would appear. LockDefaultChannelSlot also constrains this — every writer
+// for one type now passes through the advisory lock first, so they cannot
+// interleave their row acquisitions in conflicting orders.
+// TestUpdateChannel_ConcurrentDefaultRaceLeavesExactlyOneDefault pins the
+// PUT-vs-PUT pair; TestChannels_ConcurrentUpdateAndCreateDefaultRace pins
+// PUT-vs-POST.
 func (q *Queries) ClearOtherDefaultChannels(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, clearOtherDefaultChannels, id)
 	return err
@@ -273,6 +288,48 @@ func (q *Queries) ListChannels(ctx context.Context) ([]ListChannelsRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockDefaultChannelSlot = `-- name: LockDefaultChannelSlot :exec
+SELECT pg_advisory_xact_lock($1::int, hashtext($2::text))
+`
+
+type LockDefaultChannelSlotParams struct {
+	LockClass   int32
+	ChannelType string
+}
+
+// LockDefaultChannelSlot serialises every writer that can change which
+// channel of one type is the default. BOTH write paths take it as the first
+// statement of their transaction — CreateChannel and UpdateChannel — and it
+// is released automatically at commit or rollback.
+//
+// It exists because ux_channels_type_is_default has THREE writer pairs and
+// statement rewriting can only fix two of them. PUT-vs-PUT is fixed by
+// ClearOtherDefaultChannels' predicate below. **PUT-vs-POST is not, and
+// cannot be: the row POST is about to insert does not exist yet, so there is
+// nothing for PUT's demote to visit, block on, or re-check.** PUT takes its
+// snapshot, blocks on whatever row POST already locked, never sees POST's new
+// row, sets its own row true, and collides. No `WHERE` clause can see a row
+// that has not been written, and no `SELECT ... FOR UPDATE` can lock one.
+//
+// The two alternatives were rejected deliberately:
+//   - Catching the 23505 and answering 409 would require adding 409 to
+//     putCommunicationsChannelsById, which declares 200/400/401/403/404. That
+//     changes the wire contract and diverges from .NET.
+//   - Row locking cannot reach a row that does not exist (above).
+//
+// Serialising preserves the contract exactly and keeps the port faithful:
+// callers still see last-writer-wins, never a conflict.
+//
+// The key is the two-int32 overload, namespaced by a class constant the way
+// energy's lockSupplyPeriods namespaces its own, so it shares no key space
+// with retention's single-bigint COMMRET1 lease or internal/db's migration
+// lock. The second component is the channel TYPE, so channels of different
+// types (the unique index is per type) never serialise against each other.
+func (q *Queries) LockDefaultChannelSlot(ctx context.Context, arg LockDefaultChannelSlotParams) error {
+	_, err := q.db.Exec(ctx, lockDefaultChannelSlot, arg.LockClass, arg.ChannelType)
+	return err
 }
 
 const updateChannel = `-- name: UpdateChannel :one

@@ -1,6 +1,8 @@
 package communications
 
 import (
+	"log/slog"
+
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 )
@@ -77,25 +79,37 @@ type outboxMetrics struct {
 // this is a background worker's telemetry, and a module that refuses to
 // deliver mail because a counter could not be created would be trading a
 // real outage for an observability gap.
-func newOutboxMetrics(mp metric.MeterProvider) *outboxMetrics {
+func newOutboxMetrics(mp metric.MeterProvider, logger *slog.Logger) *outboxMetrics {
 	meter := mp.Meter(meterName)
 	return &outboxMetrics{
-		possibleDuplicateSends: counter(meter, "communications.outbox.possible_duplicate_sends",
+		possibleDuplicateSends: counter(meter, logger, "communications.outbox.possible_duplicate_sends",
 			"Outbox jobs re-claimed after a crash window in which the external send may already have happened."),
-		jobsCompleted: counter(meter, "communications.outbox.jobs_completed",
+		jobsCompleted: counter(meter, logger, "communications.outbox.jobs_completed",
 			"Outbox jobs that reached the completed state."),
-		jobsRetried: counter(meter, "communications.outbox.jobs_retried",
+		jobsRetried: counter(meter, logger, "communications.outbox.jobs_retried",
 			"Outbox jobs whose send attempt failed and was scheduled for retry."),
-		jobsFailed: counter(meter, "communications.outbox.jobs_failed",
+		jobsFailed: counter(meter, logger, "communications.outbox.jobs_failed",
 			"Outbox jobs that terminally failed after exhausting their attempts."),
 	}
 }
 
 // counter builds one Int64Counter, falling back to a no-op instrument rather
 // than propagating an error (see newOutboxMetrics).
-func counter(meter metric.Meter, name, description string) metric.Int64Counter {
+//
+// The failure is LOGGED at warn rather than swallowed. Degrading to a no-op
+// is the right behaviour — mail delivery must not stop because an instrument
+// could not be built — but doing it silently would leave an operator staring
+// at a counter that is permanently zero with nothing anywhere to explain it,
+// and "jobs_failed is always 0" is exactly the reading that must never be
+// wrong by accident.
+func counter(meter metric.Meter, logger *slog.Logger, name, description string) metric.Int64Counter {
 	c, err := meter.Int64Counter(name, metric.WithDescription(description))
 	if err != nil {
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Warn("communications: metric instrument could not be created; it will report nothing",
+			"meter", meterName, "metric", name, "error", err)
 		return noop.Int64Counter{}
 	}
 	return c

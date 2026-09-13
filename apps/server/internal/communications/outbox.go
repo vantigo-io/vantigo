@@ -139,7 +139,7 @@ func NewOutboxWorker(d module.Deps) *OutboxWorker {
 // process-global instrument (export_test.go exposes it).
 func newOutboxWorker(d module.Deps, mp metric.MeterProvider) *OutboxWorker {
 	store, err := moduleObjectStore(d)
-	return &OutboxWorker{deps: d, store: store, storeErr: err, metrics: newOutboxMetrics(mp)}
+	return &OutboxWorker{deps: d, store: store, storeErr: err, metrics: newOutboxMetrics(mp, d.Logger)}
 }
 
 // Name identifies this worker in the runner's logs.

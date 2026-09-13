@@ -415,8 +415,9 @@ owning its own schema:
   features. It also owns the outbox and the module's three background workers.
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
-parsed once at startup, defaulting to `customers,products,energy`. Identity is
-always mounted and is never listed. A name the binary does not know fails
+parsed once at startup, defaulting to `customers,products,energy,communications`
+— every module this binary can mount. Identity is always mounted and is never
+listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy` (and, later,
 `communications`) reads customer data through `contracts.CustomerDirectory`, so
 either without `customers` fails startup naming both. A disabled module
