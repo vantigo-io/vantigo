@@ -123,10 +123,10 @@ func (q *Queries) FinishOutboxJob(ctx context.Context, arg FinishOutboxJobParams
 }
 
 const getOutboundMessageForSend = `-- name: GetOutboundMessageForSend :one
-SELECT m.id, m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.rfc_message_id,
-       c.id AS conversation_id, c.subject AS conversation_subject,
-       ch.id AS channel_id, ch.type AS channel_type, ch.address AS channel_address,
-       ch.display_name AS channel_display_name, ch.provider AS channel_provider,
+SELECT m.id, m.subject, m.text_body, m.html_body, m.channel_metadata_json,
+       c.subject AS conversation_subject,
+       ch.type AS channel_type, ch.address AS channel_address,
+       ch.display_name AS channel_display_name,
        cred.settings_json AS credential_settings_json,
        cred.secret_ciphertext AS credential_secret_ciphertext
 FROM communications.conversation_messages m
@@ -142,14 +142,10 @@ type GetOutboundMessageForSendRow struct {
 	TextBody                   *string
 	HtmlBody                   *string
 	ChannelMetadataJson        []byte
-	RfcMessageID               *string
-	ConversationID             uuid.UUID
 	ConversationSubject        *string
-	ChannelID                  uuid.UUID
 	ChannelType                string
 	ChannelAddress             string
 	ChannelDisplayName         *string
-	ChannelProvider            string
 	CredentialSettingsJson     *string
 	CredentialSecretCiphertext *string
 }
@@ -159,6 +155,12 @@ type GetOutboundMessageForSendRow struct {
 // .NET's `InvalidOperationException("The message channel no longer exists.")`
 // (step 2) — here the inner joins simply return no row, which outbox.go turns
 // into that same failure.
+// Only the columns the send actually reads. rfc_message_id is deliberately NOT
+// selected even though the row exists: the envelope's Message-Id is recomputed
+// from the message id (EmailMessageId.For, inventory §15.4), and selecting the
+// stored column here would invite a future reader to "fix" the envelope to the
+// wrong source. conversation_id, channel_id and channel_provider are likewise
+// omitted rather than carried unread.
 func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (GetOutboundMessageForSendRow, error) {
 	row := q.db.QueryRow(ctx, getOutboundMessageForSend, id)
 	var i GetOutboundMessageForSendRow
@@ -168,14 +170,10 @@ func (q *Queries) GetOutboundMessageForSend(ctx context.Context, id uuid.UUID) (
 		&i.TextBody,
 		&i.HtmlBody,
 		&i.ChannelMetadataJson,
-		&i.RfcMessageID,
-		&i.ConversationID,
 		&i.ConversationSubject,
-		&i.ChannelID,
 		&i.ChannelType,
 		&i.ChannelAddress,
 		&i.ChannelDisplayName,
-		&i.ChannelProvider,
 		&i.CredentialSettingsJson,
 		&i.CredentialSecretCiphertext,
 	)
@@ -243,7 +241,7 @@ func (q *Queries) InsertMessageEventWithData(ctx context.Context, arg InsertMess
 }
 
 const listMessageAttachmentsForSend = `-- name: ListMessageAttachmentsForSend :many
-SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status, size_bytes
+SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status
 FROM communications.message_attachments
 WHERE message_id = $1
 ORDER BY created_at ASC, id ASC
@@ -257,7 +255,6 @@ type ListMessageAttachmentsForSendRow struct {
 	IsInline    bool
 	StorageKey  string
 	ScanStatus  string
-	SizeBytes   int64
 }
 
 // Step 4's gate (`:145-146`) and the envelope's attachment list (inventory
@@ -281,7 +278,6 @@ func (q *Queries) ListMessageAttachmentsForSend(ctx context.Context, messageID u
 			&i.IsInline,
 			&i.StorageKey,
 			&i.ScanStatus,
-			&i.SizeBytes,
 		); err != nil {
 			return nil, err
 		}

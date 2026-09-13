@@ -74,13 +74,9 @@ func SendOutbound(ctx context.Context, cfg config.MailConfig, allowInsecure bool
 	if len(out.To)+len(out.Cc)+len(out.Bcc) == 0 {
 		return fmt.Errorf("mail: an outbound message needs at least one recipient")
 	}
-	sender, err := NewSMTP(cfg, allowInsecure)
+	s, err := newSMTPClient(cfg, allowInsecure)
 	if err != nil {
 		return err
-	}
-	s, ok := sender.(*smtpSender)
-	if !ok {
-		return fmt.Errorf("mail: unexpected sender implementation %T", sender)
 	}
 	msg, err := out.message(s.from)
 	if err != nil {
@@ -90,6 +86,21 @@ func SendOutbound(ctx context.Context, cfg config.MailConfig, allowInsecure bool
 		return fmt.Errorf("mail: sending: %w", err)
 	}
 	return nil
+}
+
+// bracketedContentID returns id in the angle-bracketed form a Content-ID
+// header takes, adding the brackets only when the caller did not.
+//
+// go-mail writes the value verbatim, where MimeKit's ContentId setter (which
+// .NET's SmtpDeliveryProvider relies on, inventory §15.5) brackets it. An
+// unbracketed Content-ID does not match an HTML body's `src="cid:…"` under
+// RFC 2392, so an inline image would arrive unresolvable — which is why this
+// normalisation lives here rather than at every call site.
+func bracketedContentID(id string) string {
+	if strings.HasPrefix(id, "<") && strings.HasSuffix(id, ">") {
+		return id
+	}
+	return "<" + id + ">"
 }
 
 // message renders out as a go-mail message sent from the address from.
@@ -149,7 +160,7 @@ func (o Outbound) message(from string) (*gomail.Msg, error) {
 		// An inline part is embedded with its Content-ID so an HTML body's
 		// cid: reference resolves; everything else is a plain attachment.
 		if a.Inline && a.ContentID != "" {
-			opts = append(opts, gomail.WithFileContentID(a.ContentID))
+			opts = append(opts, gomail.WithFileContentID(bracketedContentID(a.ContentID)))
 			if err := msg.EmbedReader(a.FileName, bytes.NewReader(a.Content), opts...); err != nil {
 				return nil, fmt.Errorf("mail: embedding %q: %w", a.FileName, err)
 			}
