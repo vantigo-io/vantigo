@@ -20,6 +20,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
 
@@ -64,6 +65,15 @@ type Deps struct {
 	// live SMTP server or the guard's network reach, the same shape
 	// HTTPTransport gives an outbound HTTP client.
 	SMTPVerify func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
+	// ObjectStore is the unscoped object store a module's own attachment
+	// paths (communications' staging and download, so far the only ones)
+	// put and get bytes through. nil in production, meaning that module
+	// builds its own from Config.StorageProvider via internal/storage.New,
+	// wrapped in its own storage.NewScope; a test harness sets it to a fake
+	// so a storage-failure path (a 503) can be exercised deterministically,
+	// the same seam HTTPTransport and SMTPVerify give an outbound
+	// dependency a module cannot let a test touch for real.
+	ObjectStore storage.ObjectStore
 }
 
 // Module is one business module: its name (the path segment it mounts under,

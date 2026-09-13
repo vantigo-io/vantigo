@@ -42,6 +42,33 @@ var permissions = []contracts.Permission{
 // (communications inventory §1), the same as products and energy.
 var limits = map[string]ratelimit.Policy{}
 
+// attachmentBodySlack is added to Config.CommunicationsAttachmentMaxBytes to
+// get the staging operation's request-body cap: room for the multipart
+// framing and the form's other fields (contentId, isInline) on top of the
+// file part itself, the same margin identity's avatarBodyLimits (64 KiB)
+// adds over its own image bound.
+const attachmentBodySlack = 64 * 1024
+
+// bodyLimits is this module's module.RouterOptions.BodyLimits: every
+// operation but attachment staging is capped at module.DefaultMaxBodyBytes
+// (1 MiB, plenty for this module's JSON bodies), and staging alone is raised
+// to the configured attachment limit plus attachmentBodySlack. The router
+// puts its http.MaxBytesReader in place before the generated strict
+// server's multipart decoder (r.MultipartReader(), called on the raw body)
+// ever reads it, so this is the one cap on an upload — see
+// readAttachmentForm's comment for how a cap trip during the read
+// surfaces as this module's own 413 attachment_too_large rather than a
+// generic decode error.
+func bodyLimits(d module.Deps) map[string]int64 {
+	max := int64(10 * 1024 * 1024)
+	if d.Config != nil {
+		max = d.Config.CommunicationsAttachmentMaxBytes
+	}
+	return map[string]int64{
+		"postCommunicationsConversationsByIdAttachments": max + attachmentBodySlack,
+	}
+}
+
 // Module is communications as a platform module: its contract mounted under
 // /api/v1/communications/ and its five permissions in the composed catalog.
 // Like products and energy, communications publishes no
@@ -72,13 +99,18 @@ func Module() module.Module {
 // handler router.wrap calls *after* all three — see patchBodyMux's comment.
 func mount(d module.Deps) (http.Handler, error) {
 	router := module.NewRouter(module.RouterOptions{
-		Doc:     d.Doc,
-		Access:  d.Access,
-		Limiter: d.Limiter,
-		Limits:  limits,
-		Catalog: d.Catalog,
+		Doc:        d.Doc,
+		Access:     d.Access,
+		Limiter:    d.Limiter,
+		Limits:     limits,
+		Catalog:    d.Catalog,
+		BodyLimits: bodyLimits(d),
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+	srv, err := newServer(d)
+	if err != nil {
+		return nil, err
+	}
+	strict := gen.NewStrictHandlerWithOptions(srv, nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

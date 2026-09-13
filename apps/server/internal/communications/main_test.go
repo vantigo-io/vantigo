@@ -32,8 +32,6 @@ func loadContract() *openapi3.T {
 // in fact exercised.
 var pendingOperations = []string{
 	"deleteCommunicationsSuppressionsById",
-	"getCommunicationsAttachmentsByIdDownload",
-	"getCommunicationsConversationsByConversationIdAttachmentsByAttachmentId",
 	"getCommunicationsStatsAttention",
 	"getCommunicationsStatsSummary",
 	"getCommunicationsStatsTimeseries",
@@ -41,7 +39,6 @@ var pendingOperations = []string{
 	"getCommunicationsSuppressionsById",
 	"postCommunicationsConversationsByIdAiCustomerSuggestion",
 	"postCommunicationsConversationsByIdAiDraft",
-	"postCommunicationsConversationsByIdAttachments",
 	"postCommunicationsConversationsByIdReply",
 	"postCommunicationsSuppressions",
 }

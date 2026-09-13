@@ -20,25 +20,6 @@ func (s *server) PostCommunicationsConversationsByIdReply(context.Context, gen.P
 	return nil, module.ErrNotImplemented
 }
 
-// PostCommunicationsConversationsByIdAttachments Stage an attachment
-// (POST /api/v1/communications/conversations/{id}/attachments)
-func (s *server) PostCommunicationsConversationsByIdAttachments(context.Context, gen.PostCommunicationsConversationsByIdAttachmentsRequestObject) (gen.PostCommunicationsConversationsByIdAttachmentsResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentId
-// Get a staged attachment's status
-// (GET /api/v1/communications/conversations/{conversationId}/attachments/{attachmentId})
-func (s *server) GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentId(context.Context, gen.GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentIdRequestObject) (gen.GetCommunicationsConversationsByConversationIdAttachmentsByAttachmentIdResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
-// GetCommunicationsAttachmentsByIdDownload Download a message attachment
-// (GET /api/v1/communications/attachments/{id}/download)
-func (s *server) GetCommunicationsAttachmentsByIdDownload(context.Context, gen.GetCommunicationsAttachmentsByIdDownloadRequestObject) (gen.GetCommunicationsAttachmentsByIdDownloadResponseObject, error) {
-	return nil, module.ErrNotImplemented
-}
-
 // PostCommunicationsConversationsByIdAiDraft Generate an AI reply draft
 // (POST /api/v1/communications/conversations/{id}/ai/draft)
 func (s *server) PostCommunicationsConversationsByIdAiDraft(context.Context, gen.PostCommunicationsConversationsByIdAiDraftRequestObject) (gen.PostCommunicationsConversationsByIdAiDraftResponseObject, error) {
