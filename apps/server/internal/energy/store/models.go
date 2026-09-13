@@ -11,6 +11,213 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type CommunicationsAiInteraction struct {
+	ID                uuid.UUID
+	ConversationID    uuid.UUID
+	MessageID         *uuid.UUID
+	Operation         string
+	RequesterUserID   *uuid.UUID
+	Provider          string
+	Model             string
+	ContextDigest     string
+	ContextVersion    string
+	ResultSummary     *string
+	ValidationSummary *string
+	ErrorSummary      *string
+	DurationMs        *int64
+	InputTokenCount   *int32
+	OutputTokenCount  *int32
+	CreatedAt         time.Time
+}
+
+type CommunicationsAttachmentCleanupRecord struct {
+	ID                   uuid.UUID
+	MessageID            *uuid.UUID
+	StorageKey           string
+	Status               string
+	Attempts             int32
+	NextAttemptAt        time.Time
+	LeaseID              *string
+	LeaseUntil           *time.Time
+	ReservationExpiresAt *time.Time
+	LastError            *string
+	CreatedAt            time.Time
+}
+
+type CommunicationsAttachmentUpload struct {
+	ID               uuid.UUID
+	ConversationID   uuid.UUID
+	UploadedByUserID uuid.UUID
+	FileName         string
+	ContentType      string
+	SizeBytes        int64
+	ContentHash      string
+	ContentID        *string
+	StorageKey       string
+	ScanStatus       string
+	NextScanAt       time.Time
+	IsInline         bool
+	IdempotencyKey   string
+	ExpiresAt        time.Time
+	CreatedAt        time.Time
+}
+
+type CommunicationsChannel struct {
+	ID          uuid.UUID
+	Type        string
+	Address     string
+	DisplayName *string
+	Provider    string
+	IsDefault   bool
+	IsActive    bool
+	CreatedAt   time.Time
+}
+
+type CommunicationsChannelCredential struct {
+	ID               uuid.UUID
+	ChannelID        uuid.UUID
+	SettingsJson     string
+	SecretCiphertext string
+	CreatedAt        time.Time
+}
+
+type CommunicationsConversation struct {
+	ID                          uuid.UUID
+	ChannelID                   uuid.UUID
+	Subject                     *string
+	Status                      string
+	AssignedUserID              *uuid.UUID
+	CustomerID                  *int32
+	CustomerAssociationSource   *string
+	SuggestedCustomerID         *int32
+	SuggestedCustomerConfidence *float64
+	SuggestedCustomerReasoning  *string
+	LastActivityAt              time.Time
+	PreviewText                 *string
+	CreatedAt                   time.Time
+}
+
+type CommunicationsConversationCustomerCandidate struct {
+	ConversationID uuid.UUID
+	CustomerID     int32
+	CreatedAt      time.Time
+}
+
+type CommunicationsConversationMessage struct {
+	ID                   uuid.UUID
+	ConversationID       uuid.UUID
+	Direction            string
+	ParticipantID        *uuid.UUID
+	AuthorUserID         *uuid.UUID
+	Subject              *string
+	TextBody             *string
+	HtmlBody             *string
+	ChannelMetadataJson  []byte
+	RawPayloadStorageKey *string
+	OccurredAt           time.Time
+	CreatedAt            time.Time
+	RfcMessageID         *string
+}
+
+type CommunicationsConversationParticipant struct {
+	ConversationID uuid.UUID
+	ParticipantID  uuid.UUID
+	Role           string
+}
+
+type CommunicationsConversationReadState struct {
+	ConversationID uuid.UUID
+	UserID         uuid.UUID
+	LastReadAt     time.Time
+}
+
+type CommunicationsConversationTag struct {
+	ConversationID uuid.UUID
+	TagID          uuid.UUID
+}
+
+type CommunicationsIdempotencyRecord struct {
+	ID                 uuid.UUID
+	Key                string
+	PayloadFingerprint string
+	ConversationID     uuid.UUID
+	MessageID          uuid.UUID
+	CreatedAt          time.Time
+}
+
+type CommunicationsMessageAttachment struct {
+	ID          uuid.UUID
+	MessageID   uuid.UUID
+	FileName    string
+	ContentType string
+	SizeBytes   int64
+	ContentHash string
+	ContentID   *string
+	StorageKey  string
+	ScanStatus  string
+	NextScanAt  time.Time
+	IsInline    bool
+	CreatedAt   time.Time
+}
+
+type CommunicationsMessageDelivery struct {
+	ID                     uuid.UUID
+	MessageID              uuid.UUID
+	RecipientAddress       string
+	RecipientType          string
+	RecipientParticipantID *uuid.UUID
+	Status                 string
+	Attempts               int32
+	LastError              *string
+	AcceptedAt             *time.Time
+	CreatedAt              time.Time
+}
+
+type CommunicationsMessageEvent struct {
+	ID         uuid.UUID
+	MessageID  uuid.UUID
+	DeliveryID *uuid.UUID
+	EventType  string
+	OccurredAt time.Time
+	DataJson   *string
+}
+
+type CommunicationsOutboxJob struct {
+	ID                  uuid.UUID
+	MessageID           uuid.UUID
+	Status              string
+	Attempts            int32
+	NextAttemptAt       time.Time
+	LeaseID             *string
+	LeaseUntil          *time.Time
+	CompletedAt         *time.Time
+	LastError           *string
+	CreatedAt           time.Time
+	DeliveryAttemptedAt *time.Time
+}
+
+type CommunicationsParticipant struct {
+	ID          uuid.UUID
+	ChannelID   uuid.UUID
+	Address     string
+	DisplayName *string
+	ContactID   *int32
+	CreatedAt   time.Time
+}
+
+type CommunicationsSuppression struct {
+	ID                     uuid.UUID
+	NormalizedEmailAddress string
+	Reason                 *string
+	CreatedAt              time.Time
+}
+
+type CommunicationsTag struct {
+	ID    uuid.UUID
+	Name  string
+	Color *string
+}
+
 type CustomersContact struct {
 	ID         int32
 	FirstName  string

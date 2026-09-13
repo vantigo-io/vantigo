@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -828,6 +829,344 @@ func TestConsumptionIntervals_EnsurePartitionCreatesMonthlyPartition(t *testing.
 	}
 }
 
+// TestCommunicationsBaseline_AppliesAndIsIdempotent proves
+// 00006_communications_baseline.sql applies, rolls back, and re-applies
+// cleanly, and that the tenant drop landed exactly where the inventory says
+// it should: exactly the 19 tables the keep/drop verdict leaves (the
+// inventory's 21 entities minus inbound_receipts and inbound_email_jobs,
+// communications inventory §7, §9) and no tenant_id column anywhere in the
+// schema.
+func TestCommunicationsBaseline_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 6) // 00006_communications_baseline.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	wantTables := []string{
+		"ai_interactions",
+		"attachment_cleanup_records",
+		"attachment_uploads",
+		"channel_credentials",
+		"channels",
+		"conversation_customer_candidates",
+		"conversation_messages",
+		"conversation_participants",
+		"conversation_read_states",
+		"conversation_tags",
+		"conversations",
+		"idempotency_records",
+		"message_attachments",
+		"message_deliveries",
+		"message_events",
+		"outbox_jobs",
+		"participants",
+		"suppressions",
+		"tags",
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT c.relname
+		FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'communications' AND c.relkind = 'r'
+		ORDER BY c.relname`)
+	if err != nil {
+		t.Fatalf("query tables: %v", err)
+	}
+	var gotTables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan table name: %v", err)
+		}
+		gotTables = append(gotTables, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if !equalStrings(gotTables, wantTables) {
+		t.Fatalf("tables = %v, want %v", gotTables, wantTables)
+	}
+
+	var tenantIDColumns int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'communications' AND column_name = 'tenant_id'`).Scan(&tenantIDColumns); err != nil {
+		t.Fatalf("count tenant_id columns: %v", err)
+	}
+	if tenantIDColumns != 0 {
+		t.Errorf("found %d tenant_id column(s) in schema communications, want 0", tenantIDColumns)
+	}
+}
+
+// insertTestChannel inserts one minimal SMTP channel and returns its id.
+// The address is derived from the id so repeat calls within one test never
+// collide with ux_channels_type_address.
+func insertTestChannel(t *testing.T, ctx context.Context, pool *pgxpool.Pool) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.channels (id, type, address, created_at)
+		VALUES ($1, 'email', $2, now())`, id, id.String()+"@example.com"); err != nil {
+		t.Fatalf("insert channel: %v", err)
+	}
+	return id
+}
+
+// insertTestConversation inserts one minimal conversation on channelID and
+// returns its id.
+func insertTestConversation(t *testing.T, ctx context.Context, pool *pgxpool.Pool, channelID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.conversations (id, channel_id, last_activity_at, created_at)
+		VALUES ($1, $2, now(), now())`, id, channelID); err != nil {
+		t.Fatalf("insert conversation: %v", err)
+	}
+	return id
+}
+
+// insertTestConversationMessage inserts one minimal outbound message on
+// conversationID and returns its id.
+func insertTestConversationMessage(t *testing.T, ctx context.Context, pool *pgxpool.Pool, conversationID uuid.UUID) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
+		VALUES ($1, $2, 'outbound', now(), now())`, id, conversationID); err != nil {
+		t.Fatalf("insert conversation message: %v", err)
+	}
+	return id
+}
+
+// TestCommunicationsBaseline_ConversationsFeedIndexIsFullyDescending pins
+// spec D6 and dispatch correction 1: the .NET index is
+// (tenant_id ASC, status DESC, last_activity_at DESC) with a *positional*
+// descending-flag array keyed by column position, not name. Dropping the
+// leading tenant_id column means the remaining flags must shift left too —
+// the natural-looking mistranslation "(status, last_activity_at DESC)"
+// (status left ascending) is wrong. This reads the direction bits straight
+// from pg_index (not the migration's DDL text), so it fails if either
+// column's DESC flag is ever dropped or the two columns are reordered.
+func TestCommunicationsBaseline_ConversationsFeedIndexIsFullyDescending(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	cols := indexColumns(t, ctx, pool, "communications", "ix_conversations_status_last_activity_at")
+	if !equalStrings(cols, []string{"status", "last_activity_at"}) {
+		t.Fatalf("ix_conversations_status_last_activity_at columns = %v, want [status last_activity_at]", cols)
+	}
+	directions := indexColumnDirections(t, ctx, pool, "communications", "ix_conversations_status_last_activity_at")
+	if len(directions) != 2 || !directions[0] || !directions[1] {
+		t.Errorf("ix_conversations_status_last_activity_at descending flags = %v, want [true true] (both status and last_activity_at descending, per D6)", directions)
+	}
+}
+
+// TestCommunicationsBaseline_MessageEventsDeliveryIdIsRestrict pins
+// dispatch correction 2 and inventory §10 item 8, §12.1, §19.1 item 6:
+// message_events.delivery_id → message_deliveries is the only RESTRICT FK
+// between the two tables retention batch-deletes together, and it dictates
+// delete order — message_events before message_deliveries. A delivery
+// still referenced by an event cannot be deleted; porting this FK as
+// Cascade would silently corrupt the event log during retention, and NO
+// ACTION (the FK default) would raise a different SQLSTATE than a literal
+// RESTRICT does (see isRestrictViolation's comment) — either mistake trips
+// this test.
+func TestCommunicationsBaseline_MessageEventsDeliveryIdIsRestrict(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	channelID := insertTestChannel(t, ctx, pool)
+	conversationID := insertTestConversation(t, ctx, pool, channelID)
+	messageID := insertTestConversationMessage(t, ctx, pool, conversationID)
+
+	deliveryID := uuid.New()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.message_deliveries (id, message_id, recipient_address, recipient_type, attempts, created_at)
+		VALUES ($1, $2, 'customer@example.com', 'to', 0, now())`, deliveryID, messageID); err != nil {
+		t.Fatalf("insert message delivery: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.message_events (id, message_id, delivery_id, event_type, occurred_at)
+		VALUES ($1, $2, $3, 'accepted', now())`, uuid.New(), messageID, deliveryID); err != nil {
+		t.Fatalf("insert message event: %v", err)
+	}
+
+	_, err := pool.Exec(ctx, `DELETE FROM communications.message_deliveries WHERE id = $1`, deliveryID)
+	if !isRestrictViolation(err) {
+		t.Fatalf("delete a delivery referenced by an event: err = %v, want a restrict_violation", err)
+	}
+}
+
+// TestCommunicationsBaseline_ChannelRestrictsProtectHistory pins the
+// schema's other two RESTRICT FKs, which the brief undercounted (dispatch
+// correction 2): conversations.channel_id and participants.channel_id →
+// channels are also RESTRICT, so a channel with any conversation or
+// participant history cannot be deleted — channels are deactivated via
+// is_active = false instead (inventory §10 item 9).
+func TestCommunicationsBaseline_ChannelRestrictsProtectHistory(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	channelWithConversation := insertTestChannel(t, ctx, pool)
+	insertTestConversation(t, ctx, pool, channelWithConversation)
+	_, err := pool.Exec(ctx, `DELETE FROM communications.channels WHERE id = $1`, channelWithConversation)
+	if !isRestrictViolation(err) {
+		t.Fatalf("delete a channel with a conversation: err = %v, want a restrict_violation", err)
+	}
+
+	channelWithParticipant := insertTestChannel(t, ctx, pool)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.participants (id, channel_id, address, created_at)
+		VALUES ($1, $2, 'someone@example.com', now())`, uuid.New(), channelWithParticipant); err != nil {
+		t.Fatalf("insert participant: %v", err)
+	}
+	_, err = pool.Exec(ctx, `DELETE FROM communications.channels WHERE id = $1`, channelWithParticipant)
+	if !isRestrictViolation(err) {
+		t.Fatalf("delete a channel with a participant: err = %v, want a restrict_violation", err)
+	}
+}
+
+// TestCommunicationsBaseline_MessageDirectionRejectsInbound pins dispatch
+// correction 3: this port's only message producers write "outbound" (the
+// composer's reply) or "internal_note" (the composer's note), so the CHECK
+// on conversation_messages.direction — new in this port; .NET has no CHECK
+// here at all — must reject "inbound" even though .NET's own Direction
+// domain includes it (inventory §9 item 6). Losing this CHECK, or loosening
+// it to admit "inbound" again, both pass silently without this test.
+func TestCommunicationsBaseline_MessageDirectionRejectsInbound(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	channelID := insertTestChannel(t, ctx, pool)
+	conversationID := insertTestConversation(t, ctx, pool, channelID)
+
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
+		VALUES ($1, $2, 'outbound', now(), now())`, uuid.New(), conversationID); err != nil {
+		t.Errorf("insert an outbound message: %v, want no error", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
+		VALUES ($1, $2, 'internal_note', now(), now())`, uuid.New(), conversationID); err != nil {
+		t.Errorf("insert an internal_note message: %v, want no error", err)
+	}
+
+	_, err := pool.Exec(ctx, `
+		INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
+		VALUES ($1, $2, 'inbound', now(), now())`, uuid.New(), conversationID)
+	if !isCheckViolation(err) {
+		t.Fatalf("insert an inbound message: err = %v, want a check_violation", err)
+	}
+}
+
+// TestCommunicationsBaseline_DDLDefaultsMatchDotNetInitialisers pins spec
+// D4 (and D2's attachment_uploads.scan_status ruling): every column whose
+// only .NET default was a C# property initialiser with no DDL counterpart
+// gets a real DDL default here, so a Go insert that omits the column gets
+// the value every real write path produces instead of a NOT NULL violation
+// (inventory §10 item 10, §19.1 item 4).
+func TestCommunicationsBaseline_DDLDefaultsMatchDotNetInitialisers(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	channelID := insertTestChannel(t, ctx, pool)
+
+	var conversationStatus string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO communications.conversations (id, channel_id, last_activity_at, created_at)
+		VALUES ($1, $2, now(), now()) RETURNING status`, uuid.New(), channelID).Scan(&conversationStatus); err != nil {
+		t.Fatalf("insert conversation without status: %v", err)
+	}
+	if conversationStatus != "open" {
+		t.Errorf("conversations.status default = %q, want %q", conversationStatus, "open")
+	}
+
+	conversationID := insertTestConversation(t, ctx, pool, channelID)
+	messageID := insertTestConversationMessage(t, ctx, pool, conversationID)
+
+	var deliveryStatus string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO communications.message_deliveries (id, message_id, recipient_address, recipient_type, attempts, created_at)
+		VALUES ($1, $2, 'customer@example.com', 'to', 0, now()) RETURNING status`, uuid.New(), messageID).Scan(&deliveryStatus); err != nil {
+		t.Fatalf("insert message delivery without status: %v", err)
+	}
+	if deliveryStatus != "queued" {
+		t.Errorf("message_deliveries.status default = %q, want %q", deliveryStatus, "queued")
+	}
+
+	var outboxStatus string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO communications.outbox_jobs (id, message_id, attempts, next_attempt_at, created_at)
+		VALUES ($1, $2, 0, now(), now()) RETURNING status`, uuid.New(), messageID).Scan(&outboxStatus); err != nil {
+		t.Fatalf("insert outbox job without status: %v", err)
+	}
+	if outboxStatus != "pending" {
+		t.Errorf("outbox_jobs.status default = %q, want %q", outboxStatus, "pending")
+	}
+
+	var cleanupStatus string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO communications.attachment_cleanup_records (id, storage_key, attempts, next_attempt_at, created_at)
+		VALUES ($1, 'attachments/x', 0, now(), now()) RETURNING status`, uuid.New()).Scan(&cleanupStatus); err != nil {
+		t.Fatalf("insert attachment cleanup record without status: %v", err)
+	}
+	if cleanupStatus != "pending" {
+		t.Errorf("attachment_cleanup_records.status default = %q, want %q", cleanupStatus, "pending")
+	}
+
+	participantID := uuid.New()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO communications.participants (id, channel_id, address, created_at)
+		VALUES ($1, $2, 'someone@example.com', now())`, participantID, channelID); err != nil {
+		t.Fatalf("insert participant: %v", err)
+	}
+	var role string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO communications.conversation_participants (conversation_id, participant_id)
+		VALUES ($1, $2) RETURNING role`, conversationID, participantID).Scan(&role); err != nil {
+		t.Fatalf("insert conversation participant without role: %v", err)
+	}
+	if role != "participant" {
+		t.Errorf("conversation_participants.role default = %q, want %q", role, "participant")
+	}
+
+	var uploadScanStatus string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO communications.attachment_uploads (id, conversation_id, uploaded_by_user_id, file_name, content_type, size_bytes, content_hash, storage_key, is_inline, idempotency_key, expires_at, created_at)
+		VALUES ($1, $2, $3, 'invoice.pdf', 'application/pdf', 1024, 'deadbeef', 'attachments/y', false, 'idem-key-1', now() + interval '24 hours', now())
+		RETURNING scan_status`, uuid.New(), conversationID, uuid.New()).Scan(&uploadScanStatus); err != nil {
+		t.Fatalf("insert attachment upload without scan_status: %v", err)
+	}
+	if uploadScanStatus != "clean" {
+		t.Errorf("attachment_uploads.scan_status default = %q, want %q (D2: nothing to scan post-port, so uploads are born ready)", uploadScanStatus, "clean")
+	}
+
+	var attachmentScanStatus string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO communications.message_attachments (id, message_id, file_name, content_type, size_bytes, content_hash, storage_key, is_inline, created_at)
+		VALUES ($1, $2, 'invoice.pdf', 'application/pdf', 1024, 'deadbeef', 'attachments/z', false, now())
+		RETURNING scan_status`, uuid.New(), messageID).Scan(&attachmentScanStatus); err != nil {
+		t.Fatalf("insert message attachment without scan_status: %v", err)
+	}
+	if attachmentScanStatus != "clean" {
+		t.Errorf("message_attachments.scan_status default = %q, want %q (kept consistent with attachment_uploads: the composer's reply promotion is the only surviving writer, and it always writes \"clean\")", attachmentScanStatus, "clean")
+	}
+}
+
+// isCheckViolation reports whether err is Postgres SQL state 23514
+// (check_violation), what a CHECK constraint raises.
+func isCheckViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "23514"
+}
+
 // isExclusionViolation reports whether err is Postgres SQL state 23P01
 // (exclusion_violation), what a GiST EXCLUDE USING constraint raises.
 func isExclusionViolation(err error) bool {
@@ -904,6 +1243,46 @@ func indexColumns(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema,
 		t.Fatalf("rows: %v", err)
 	}
 	return cols
+}
+
+// indexColumnDirections returns a named index's columns' sort direction, in
+// index order — true for descending. Read from pg_index's indoption (bit
+// 0x1 is INDOPTION_DESC), not from the migration's DDL text, because a
+// positional descending-flag array (communications inventory §7, §8 — the
+// conversations feed index) can be transcribed with the right column names
+// but the wrong flags, which indexColumns alone would not catch. indkey and
+// indoption are joined by ordinal position rather than by subscripting
+// either directly: both are int2vector, a type whose array lower bound is 0
+// rather than Postgres's usual 1, and unnest ... WITH ORDINALITY sidesteps
+// that off-by-one entirely instead of relying on it.
+func indexColumnDirections(t *testing.T, ctx context.Context, pool *pgxpool.Pool, schema, indexName string) []bool {
+	t.Helper()
+	rows, err := pool.Query(ctx, `
+		SELECT (opt.direction_bit & 1) <> 0 AS is_desc
+		FROM pg_index i
+		JOIN pg_class ic ON ic.oid = i.indexrelid
+		JOIN pg_namespace n ON n.oid = ic.relnamespace
+		CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ord)
+		CROSS JOIN LATERAL unnest(i.indoption) WITH ORDINALITY AS opt(direction_bit, ord2)
+		WHERE n.nspname = $1 AND ic.relname = $2 AND k.ord = opt.ord2
+		ORDER BY k.ord`, schema, indexName)
+	if err != nil {
+		t.Fatalf("query index directions for %s: %v", indexName, err)
+	}
+	defer rows.Close()
+
+	var desc []bool
+	for rows.Next() {
+		var isDesc bool
+		if err := rows.Scan(&isDesc); err != nil {
+			t.Fatalf("scan index direction: %v", err)
+		}
+		desc = append(desc, isDesc)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	return desc
 }
 
 // primaryKeyColumns returns a table's primary key columns, in key order.
