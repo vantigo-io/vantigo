@@ -31,29 +31,19 @@ func loadContract() *openapi3.T {
 // implements, and RequireCoverage fails the run if an entry left here was
 // in fact exercised.
 var pendingOperations = []string{
-	"deleteCommunicationsConversationsByIdTagsByTagId",
 	"deleteCommunicationsSuppressionsById",
 	"getCommunicationsAttachmentsByIdDownload",
-	"getCommunicationsConversations",
 	"getCommunicationsConversationsByConversationIdAttachmentsByAttachmentId",
-	"getCommunicationsConversationsById",
 	"getCommunicationsStatsAttention",
 	"getCommunicationsStatsSummary",
 	"getCommunicationsStatsTimeseries",
 	"getCommunicationsSuppressions",
 	"getCommunicationsSuppressionsById",
-	"getCommunicationsTags",
-	"patchCommunicationsConversationsById",
-	"postCommunicationsConversations",
 	"postCommunicationsConversationsByIdAiCustomerSuggestion",
 	"postCommunicationsConversationsByIdAiDraft",
 	"postCommunicationsConversationsByIdAttachments",
-	"postCommunicationsConversationsByIdNotes",
-	"postCommunicationsConversationsByIdRead",
 	"postCommunicationsConversationsByIdReply",
 	"postCommunicationsSuppressions",
-	"postCommunicationsTags",
-	"putCommunicationsConversationsByIdTagsByTagId",
 }
 
 func TestMain(m *testing.M) {
