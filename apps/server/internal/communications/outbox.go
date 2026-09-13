@@ -605,10 +605,17 @@ func (w *OutboxWorker) envelope(ctx context.Context, message store.GetOutboundMe
 	}
 	if len(message.ChannelMetadataJson) > 0 {
 		var metadata outboxChannelMetadata
-		if err := json.Unmarshal(message.ChannelMetadataJson, &metadata); err == nil {
-			out.InReplyTo = metadata.InReplyTo
-			out.References = metadata.References
+		// Surfaced, not swallowed (fix round 1, minor 6): the column is jsonb
+		// so it is always syntactically valid, but a value of the wrong SHAPE
+		// (say "references" as a string) still fails to decode. Ignoring that
+		// would send the mail with its threading headers silently dropped,
+		// which breaks the recipient's thread with no trace anywhere. Failing
+		// the job instead retries it and leaves a log line naming the message.
+		if err := json.Unmarshal(message.ChannelMetadataJson, &metadata); err != nil {
+			return mail.Outbound{}, fmt.Errorf("communications: decode channel metadata for message %s: %w", message.ID, err)
 		}
+		out.InReplyTo = metadata.InReplyTo
+		out.References = metadata.References
 	}
 
 	for _, a := range attachments {

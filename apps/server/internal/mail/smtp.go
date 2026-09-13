@@ -125,18 +125,32 @@ func (s *smtpSender) Send(ctx context.Context, m Message) error {
 // reuses the exact guard NewSMTP's Sender dials through rather than
 // re-implementing SMTP connection handling for a verify-only path.
 func VerifyConnection(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error {
-	sender, err := NewSMTP(cfg, allowInsecure)
+	s, err := newSMTPClient(cfg, allowInsecure)
 	if err != nil {
 		return err
-	}
-	s, ok := sender.(*smtpSender)
-	if !ok {
-		return fmt.Errorf("mail: unexpected sender implementation %T", sender)
 	}
 	if err := s.client.DialWithContext(ctx); err != nil {
 		return err
 	}
 	return s.client.Close()
+}
+
+// newSMTPClient builds a client over cfg through NewSMTP — the same
+// fail-closed checks, TLS modes and guarded dial the Sender uses — and returns
+// it as the concrete type, so the two callers that need more than Sender's
+// Send (VerifyConnection, which dials without sending, and SendOutbound, which
+// renders a full envelope) share one construction and one type assertion
+// rather than repeating the downcast.
+func newSMTPClient(cfg config.MailConfig, allowInsecure bool) (*smtpSender, error) {
+	sender, err := NewSMTP(cfg, allowInsecure)
+	if err != nil {
+		return nil, err
+	}
+	s, ok := sender.(*smtpSender)
+	if !ok {
+		return nil, fmt.Errorf("mail: unexpected sender implementation %T", sender)
+	}
+	return s, nil
 }
 
 // guardedDialContext returns a DialContextFunc that resolves the SMTP

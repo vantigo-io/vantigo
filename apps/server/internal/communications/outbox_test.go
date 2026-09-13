@@ -3,6 +3,7 @@ package communications_test
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -856,6 +857,125 @@ func TestOutboxWorker_ChannelWithoutCredentialFallsBackToHostSmtpConfig(t *testi
 	}
 	if job := readOutboxJob(t, h, fx.messageID); job.status != "completed" {
 		t.Errorf("job status = %q, want completed", job.status)
+	}
+}
+
+// ---- claim mechanics (fix round 1, minor 5) ----
+
+// TestOutboxWorker_ClaimTakesA32HexLease pins the lease format .NET produces
+// with Guid.NewGuid().ToString("N") (inventory §13.2 step 1): 32 LOWERCASE hex
+// characters and no dashes. It is observed mid-send, which is the only moment
+// the lease is both written and still held.
+func TestOutboxWorker_ClaimTakesA32HexLease(t *testing.T) {
+	t.Parallel()
+	f := &fakeSMTP{}
+	h := newOutboxHarness(t, f)
+	fx := seedOutboxJob(t, h)
+	w := communications.NewOutboxWorker(h.Deps())
+
+	var lease string
+	f.onSend(func() {
+		if id := readOutboxJob(t, h, fx.messageID).leaseID; id != nil {
+			lease = *id
+		}
+	})
+	if _, err := w.ProcessOne(context.Background()); err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(lease) {
+		t.Errorf("lease_id = %q, want 32 lowercase hex characters with no dashes", lease)
+	}
+}
+
+// TestOutboxWorker_ClaimGivesUpAfterTenAttempts pins the claim loop's bound
+// (inventory §13.2 step 3: max(3, Outbox:ClaimAttempts), default 10). A BEFORE
+// UPDATE trigger that returns NULL makes every claim affect 0 rows while the
+// candidate stays permanently claimable — exactly the shape of an endless
+// claim race — so the loop must give up after a bounded number of tries rather
+// than spin forever. Without the bound this test hangs instead of failing,
+// which is itself the point.
+func TestOutboxWorker_ClaimGivesUpAfterTenAttempts(t *testing.T) {
+	t.Parallel()
+	f := &fakeSMTP{}
+	h := newOutboxHarness(t, f)
+	seedOutboxJob(t, h)
+
+	h.Exec(t, `CREATE TABLE claim_attempts (id bigserial PRIMARY KEY)`)
+	h.Exec(t, `CREATE FUNCTION block_outbox_claim() RETURNS trigger LANGUAGE plpgsql AS $$
+	           BEGIN INSERT INTO claim_attempts DEFAULT VALUES; RETURN NULL; END $$`)
+	h.Exec(t, `CREATE TRIGGER block_outbox_claim BEFORE UPDATE ON communications.outbox_jobs
+	           FOR EACH ROW EXECUTE FUNCTION block_outbox_claim()`)
+
+	w := communications.NewOutboxWorker(h.Deps())
+	processed, err := w.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	if processed {
+		t.Error("ProcessOne = true, want false: every claim lost, so no job was touched")
+	}
+	if got := h.Count(t, `SELECT count(*) FROM claim_attempts`); got != 10 {
+		t.Errorf("claim attempts = %d, want exactly 10 (the default Outbox:ClaimAttempts bound)", got)
+	}
+	if len(f.sends()) != 0 {
+		t.Errorf("sends = %d, want 0: nothing was ever claimed", len(f.sends()))
+	}
+}
+
+// ---- threading metadata (fix round 1, minor 6) ----
+
+// TestOutboxWorker_ThreadingMetadataReachesTheEnvelope drives the dormant
+// channel_metadata_json path (inventory §15.1, §4.4) that no production writer
+// fills today, proving the parse works for the inbound provider that will.
+func TestOutboxWorker_ThreadingMetadataReachesTheEnvelope(t *testing.T) {
+	t.Parallel()
+	f := &fakeSMTP{}
+	h := newOutboxHarness(t, f)
+	fx := seedOutboxJob(t, h)
+	h.Exec(t, `UPDATE communications.conversation_messages SET channel_metadata_json = $2::jsonb WHERE id = $1`,
+		fx.messageID, `{"inReplyTo":"<parent@example.test>","references":["<a@example.test>","<b@example.test>"]}`)
+
+	w := communications.NewOutboxWorker(h.Deps())
+	if _, err := w.ProcessOne(context.Background()); err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	sent := f.sends()
+	if len(sent) != 1 {
+		t.Fatalf("sends = %d, want 1", len(sent))
+	}
+	if sent[0].InReplyTo != "<parent@example.test>" {
+		t.Errorf("InReplyTo = %q, want the stored value", sent[0].InReplyTo)
+	}
+	if len(sent[0].References) != 2 {
+		t.Errorf("References = %v, want both stored values", sent[0].References)
+	}
+}
+
+// TestOutboxWorker_MalformedThreadingMetadataFailsTheJob is minor 6's fix: a
+// metadata value of the wrong shape must not send the mail with its threading
+// headers silently dropped. The column is jsonb, so this is the only decode
+// failure reachable at all — valid JSON, wrong type.
+func TestOutboxWorker_MalformedThreadingMetadataFailsTheJob(t *testing.T) {
+	t.Parallel()
+	f := &fakeSMTP{}
+	h := newOutboxHarness(t, f)
+	fx := seedOutboxJob(t, h)
+	h.Exec(t, `UPDATE communications.conversation_messages SET channel_metadata_json = $2::jsonb WHERE id = $1`,
+		fx.messageID, `{"references":"not-an-array"}`)
+
+	w := communications.NewOutboxWorker(h.Deps())
+	processed, err := w.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatalf("ProcessOne: %v", err)
+	}
+	if !processed {
+		t.Fatal("ProcessOne = false, want true: failing a job still counts as touching it")
+	}
+	if len(f.sends()) != 0 {
+		t.Errorf("sends = %d, want 0: the mail must not go out with its threading headers dropped", len(f.sends()))
+	}
+	if job := readOutboxJob(t, h, fx.messageID); job.status != "retry" {
+		t.Errorf("job status = %q, want retry", job.status)
 	}
 }
 

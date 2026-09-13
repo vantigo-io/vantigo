@@ -67,10 +67,16 @@ WHERE id = @id;
 -- .NET's `InvalidOperationException("The message channel no longer exists.")`
 -- (step 2) — here the inner joins simply return no row, which outbox.go turns
 -- into that same failure.
-SELECT m.id, m.subject, m.text_body, m.html_body, m.channel_metadata_json, m.rfc_message_id,
-       c.id AS conversation_id, c.subject AS conversation_subject,
-       ch.id AS channel_id, ch.type AS channel_type, ch.address AS channel_address,
-       ch.display_name AS channel_display_name, ch.provider AS channel_provider,
+-- Only the columns the send actually reads. rfc_message_id is deliberately NOT
+-- selected even though the row exists: the envelope's Message-Id is recomputed
+-- from the message id (EmailMessageId.For, inventory §15.4), and selecting the
+-- stored column here would invite a future reader to "fix" the envelope to the
+-- wrong source. conversation_id, channel_id and channel_provider are likewise
+-- omitted rather than carried unread.
+SELECT m.id, m.subject, m.text_body, m.html_body, m.channel_metadata_json,
+       c.subject AS conversation_subject,
+       ch.type AS channel_type, ch.address AS channel_address,
+       ch.display_name AS channel_display_name,
        cred.settings_json AS credential_settings_json,
        cred.secret_ciphertext AS credential_secret_ciphertext
 FROM communications.conversation_messages m
@@ -103,7 +109,7 @@ WHERE id = @id;
 -- §15.1, §15.5). scan_status comes back so the worker can refuse a message
 -- carrying any non-clean attachment; storage_key is what the object store is
 -- read by.
-SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status, size_bytes
+SELECT id, file_name, content_type, content_id, is_inline, storage_key, scan_status
 FROM communications.message_attachments
 WHERE message_id = @message_id
 ORDER BY created_at ASC, id ASC;
