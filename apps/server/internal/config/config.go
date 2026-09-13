@@ -175,6 +175,20 @@ type Config struct {
 	// Development; set outside development it is a configuration error, the
 	// same shape as MAIL_DRIVER=log and OWNERS_ALLOW_INSECURE_NO_MFA.
 	StorageFSAllowInsecureRoot bool
+
+	// CommunicationsAttachmentMaxBytes bounds one staged attachment
+	// (COMMUNICATIONS_ATTACHMENT_MAX_BYTES), moved here from .NET's removed
+	// scanner options (communications design doc D3: "the size limit moves
+	// to communications config"). Clamped to [1, 50 MiB], the same bound
+	// .NET's own `Math.Clamp(options.MaxBytes, 1, 50 * 1024 * 1024)`
+	// (EP/ConversationEndpoints.cs:117) applies to its configured value.
+	CommunicationsAttachmentMaxBytes int64
+	// CommunicationsUploadExpiry is how long a staged attachment stays valid
+	// before a future retention worker sweeps it (COMMUNICATIONS_UPLOAD_EXPIRY,
+	// communications design doc D3: "expiry moves to the retention worker").
+	// Staging itself only ever sets attachment_uploads.expires_at to
+	// now+this value; nothing in this task sweeps it.
+	CommunicationsUploadExpiry time.Duration
 }
 
 // IsDevelopment reports whether APP_ENV=development.
@@ -265,6 +279,7 @@ func Load(env map[string]string) (*Config, error) {
 	c.BrregTimeout = duration(&p, env, "BRREG_TIMEOUT", 15*time.Second)
 
 	objectStorage(&p, env, c)
+	communicationsAttachments(&p, env, c)
 
 	if c.EnforcesTransportSecurity() {
 		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
@@ -434,6 +449,14 @@ func objectStorage(p *problems, env map[string]string, c *Config) {
 	if c.StorageFSAllowInsecureRoot && !c.IsDevelopment() {
 		p.add("STORAGE_FS_ALLOW_INSECURE_ROOT", "must not be 1 outside development")
 	}
+}
+
+// communicationsAttachments loads the two settings communications' attachment
+// staging needs that .NET carried on its now-removed scanner options
+// (design doc D3): the per-file size limit and the staged-upload expiry.
+func communicationsAttachments(p *problems, env map[string]string, c *Config) {
+	c.CommunicationsAttachmentMaxBytes = int64(integer(p, env, "COMMUNICATIONS_ATTACHMENT_MAX_BYTES", 10*1024*1024, 1, 50*1024*1024))
+	c.CommunicationsUploadExpiry = duration(p, env, "COMMUNICATIONS_UPLOAD_EXPIRY", 24*time.Hour)
 }
 
 func invalidPathRune(r rune) bool {

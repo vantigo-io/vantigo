@@ -64,6 +64,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/server"
+	"github.com/vantigo-io/vantigo/server/internal/storage"
 	"github.com/vantigo-io/vantigo/server/internal/testdb"
 	"github.com/vantigo-io/vantigo/server/internal/web"
 )
@@ -113,13 +114,14 @@ type Harness struct {
 // configuration from, the modules it composes beside identity, and the
 // Recorder its clients validate through.
 type setup struct {
-	env        map[string]string
-	modules    []module.Module
-	recorder   *contracttest.Recorder
-	transport  http.RoundTripper
-	backoff    func(int) time.Duration
-	directory  contracts.CustomerDirectory
-	smtpVerify func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
+	env         map[string]string
+	modules     []module.Module
+	recorder    *contracttest.Recorder
+	transport   http.RoundTripper
+	backoff     func(int) time.Duration
+	directory   contracts.CustomerDirectory
+	smtpVerify  func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
+	objectStore storage.ObjectStore
 }
 
 // Option adjusts a harness before it is built.
@@ -178,6 +180,27 @@ func WithDirectory(d contracts.CustomerDirectory) Option {
 // path production uses.
 func WithSMTPVerify(fn func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error) Option {
 	return func(s *setup) { s.smtpVerify = fn }
+}
+
+// WithObjectStore sets Deps.ObjectStore directly to store, for a module
+// under test whose attachment paths (communications' staging and download)
+// must exercise a storage failure deterministically — a fake whose Put or
+// Get always errors — without depending on filesystem permission behaviour,
+// which is unreliable when a test happens to run as root. Unset, a module
+// falls back to building its own store from Config.StorageProvider, the
+// same production path a harness configured with WithEnv("STORAGE_PROVIDER",
+// "fs") and friends exercises for real.
+func WithObjectStore(store storage.ObjectStore) Option {
+	return func(s *setup) { s.objectStore = store }
+}
+
+// WithEnv sets one additional environment variable a harness loads its
+// configuration from, merged over the harness's own defaults (APP_ENV,
+// DATABASE_URL, ...). For a setting modtest itself has no dedicated Option
+// for — communications' STORAGE_PROVIDER/STORAGE_FS_ROOT, so far the only
+// user.
+func WithEnv(key, value string) Option {
+	return func(s *setup) { s.env[key] = value }
 }
 
 // modulesEnv returns the MODULES value a harness composing mods should set,
@@ -269,6 +292,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		HTTPBackoff:   s.backoff,
 		Directory:     s.directory,
 		SMTPVerify:    s.smtpVerify,
+		ObjectStore:   s.objectStore,
 	}
 	access := identity.NewAccess(h.deps)
 	h.deps.Access = access
