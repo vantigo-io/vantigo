@@ -23,8 +23,7 @@ import (
 // 16; design doc §1.1, §3): postCommunicationsConversationsByIdReply, the
 // densest ordering in the module. The inventory's own transcription
 // (`:264-338`) is ten steps, of which task 7's brief named only one; all
-// ten are pinned here and in conversations_reply_test.go /
-// conversations_reply_internal_test.go:
+// ten are pinned in conversations_reply_test.go:
 //
 //  1. handler antiforgery -> 400 csrf_validation_failed. Not ported here —
 //     inventory §19.2 item 9 says to implement CSRF once, at the platform
@@ -43,28 +42,25 @@ import (
 //     attachments_not_ready again (the race fence a preflight-only
 //     implementation would leave open between check and claim).
 //
-// Steps 8-10 are unreachable through this handler in practice: step 7 fires
-// unconditionally first, because this port can never produce a row with
-// conversation_messages.direction = 'inbound' (the CHECK constraint added
-// in migration 00006_communications_baseline.sql, "dispatch correction 3" —
-// see GetLatestInboundParticipantAddress's own comment).
+// Steps 8-10 are unreached in production: step 7 fires unconditionally
+// first, because no production path in this port ever writes a row with
+// conversation_messages.direction = 'inbound' (design doc §1.1: the inbound
+// worker was the only writer and it is out of scope). They are, however,
+// reachable from a test fixture: conversation_messages.direction's CHECK
+// matches .NET's full Direction domain (inbound included) as of fix round
+// 2, so conversations_reply_test.go inserts a genuine inbound participant
+// and message directly and drives every one of the ten steps — including
+// 8, 9 and 10 — through this handler for real, no override needed.
 //
-// Fix round 1 corrected where the test seam for this lives. The original
-// shape exposed queueReply as its own method and had tests call it
-// directly with hand-supplied params (caller, channelType, messageSubject,
-// fingerprint, now) — which meant the *production call site* wiring those
-// five values (below, in PostCommunicationsConversationsByIdReply's own
-// return statement) was never exercised: deleting that call left the whole
-// package green. The seam now lives one step earlier, at recipient
-// resolution: server.go's resolveReplyRecipientsFunc field, overridable in
-// a white-box test (conversations_reply_internal_test.go), defaults to
-// resolveReplyRecipients (wired in newServer) in every production server.
-// A test overrides only that field, then drives
-// PostCommunicationsConversationsByIdReply itself — the real handler, not a
-// bypassed continuation — so every wiring value queueReply receives is
-// genuinely computed by production code. Deleting the production call to
-// queueReply (this file, PostCommunicationsConversationsByIdReply's own
-// return statement) now turns conversations_reply_internal_test.go red.
+// History: fix round 1 first tried to fix this with an overridable
+// recipient-resolution seam on *server, because at the time no fixture
+// could construct a qualifying row at all — the CHECK narrowed
+// conversation_messages.direction to ('outbound', 'internal_note') on the
+// (wrong) principle that the schema should encode only what this port's own
+// writers produce. That narrowing is what fix round 2 reverted (design doc
+// §1.1's correction); once a fixture could drive the real query to its
+// success branch, the override seam was redundant and was deleted
+// (server.go's own comment on the removed field has the fuller history).
 
 // errAttachmentsNotReadyRace is queueReply's own signal that the step-10
 // claim (inside the transaction) affected fewer rows than the step-8
@@ -87,10 +83,13 @@ func rfcMessageIDFor(id uuid.UUID) string {
 
 // resolveReplyRecipients is QueueOutboundAsync's inline recipient
 // derivation (`:277`, `:283`): the latest inbound message's participant
-// address, or ok=false when none exists. See
-// GetLatestInboundParticipantAddress's own comment for why this query can
-// never return a row in this port — no working around it, per task 7's
-// dispatch: "Pin that rather than working around it."
+// address, or ok=false when none exists. No production path in this port
+// ever writes a direction='inbound' row (design doc §1.1), so ok is false
+// for every conversation created through the real API, unconditionally —
+// per task 7's dispatch: "Pin that rather than working around it." A test
+// fixture can insert one (GetLatestInboundParticipantAddress's own comment
+// has the schema history), and conversations_reply_test.go's own fixtures
+// drive this to its ok=true branch directly.
 func (s *server) resolveReplyRecipients(ctx context.Context, q *store.Queries, conversationID uuid.UUID) (address string, ok bool, err error) {
 	address, err = q.GetLatestInboundParticipantAddress(ctx, conversationID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -184,7 +183,8 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 	// Step 5: channel inactive -> 422, *ahead of* the idempotency replay
 	// below (task 7 dispatch's explicit hazard: a replay of an
 	// already-accepted request against a since-deactivated channel answers
-	// 422, not the cached 200 — see conversations_reply_internal_test.go).
+	// 422, not the cached 200 — see conversations_reply_test.go's
+	// TestReply_ChannelInactivePrecedesIdempotencyReplay).
 	if !conv.ChannelIsActive {
 		return gen.PostCommunicationsConversationsByIdReply422JSONResponse(flatErrorBody(
 			"channel_inactive", "The conversation channel is inactive.")), nil
@@ -213,15 +213,16 @@ func (s *server) PostCommunicationsConversationsByIdReply(ctx context.Context, r
 
 	// Step 7: no inbound participant -> 422 recipients_missing. This is the
 	// outbound-only consequence design doc §1.1 and task 7's dispatch both
-	// name: this port has no inbound path, so this branch is taken for
-	// every conversation created through the API, unconditionally. Called
-	// through s.resolveReplyRecipientsFunc, not the method directly — the
-	// seam fix round 1 asked for (server.go's own comment on the field has
-	// the full reasoning): a white-box test overrides this field alone and
-	// drives this handler for real, so every wiring value below (caller,
-	// channelType, messageSubject, fingerprint, now) is genuinely computed
-	// by production code, not supplied by the test.
-	primaryAddress, ok, err := s.resolveReplyRecipientsFunc(ctx, q, req.Id)
+	// name: no production path in this port ever writes an inbound message,
+	// so this branch is taken for every conversation created through the
+	// real API, unconditionally. Called directly (fix round 1's override
+	// seam was removed in fix round 2 — server.go's own comment has the
+	// history): a test fixture now inserts a genuine inbound row and this
+	// method finds it for real, exercising steps 8-10 below through this
+	// same handler with every wiring value (caller, channelType,
+	// messageSubject, fingerprint, now) genuinely computed by production
+	// code.
+	primaryAddress, ok, err := s.resolveReplyRecipients(ctx, q, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -451,6 +452,33 @@ func (s *server) queueReply(ctx context.Context, p replyQueueParams) (gen.PostCo
 			"attachments_not_ready", "One or more attachments are still being scanned or are unavailable.")), nil
 	}
 	if txErr != nil {
+		// Fix round 2's item 2: the same ux_idempotency_records_key race
+		// conversations_create.go's own comment on this fix explains in
+		// full — two concurrent replies carrying the identical
+		// Idempotency-Key can both pass the step-6 replay check above
+		// (neither's INSERT has committed yet) and both run this entire
+		// transaction; only one INSERT into idempotency_records can win the
+		// unique index, and the loser's failing INSERT aborts its whole
+		// transaction, so none of that reply's other writes persist either.
+		// Catch that specific violation and answer exactly what step 6
+		// would answer had it run after the winner committed: 200 with the
+		// winner's own conversationId/messageId on a matching fingerprint,
+		// 409 idempotency_key_reused otherwise.
+		// TestReply_ConcurrentIdenticalReplyAnswersTheSameReplayTwice pins
+		// it.
+		if db.IsUniqueViolation(txErr, "ux_idempotency_records_key") {
+			existing, err2 := q.GetIdempotencyRecordByKey(ctx, p.key)
+			if err2 != nil {
+				return nil, fmt.Errorf("communications: re-read idempotency record after reply race: %w", err2)
+			}
+			if existing.PayloadFingerprint == p.fingerprint {
+				return gen.PostCommunicationsConversationsByIdReply200JSONResponse(gen.ConversationMutationResponse{
+					ConversationId: existing.ConversationID, MessageId: &existing.MessageID, Status: "queued", IdempotencyKey: &p.key,
+				}), nil
+			}
+			return gen.PostCommunicationsConversationsByIdReply409JSONResponse(flatErrorBody(
+				"idempotency_key_reused", "The Idempotency-Key was already used with a different payload.")), nil
+		}
 		return nil, fmt.Errorf("communications: queue reply: %w", txErr)
 	}
 	return resp, nil

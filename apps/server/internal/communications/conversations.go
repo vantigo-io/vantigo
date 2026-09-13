@@ -289,14 +289,28 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 // It always answers the all-negative constant
 // (canReply:false, canReplyAll:false, replyTo:nil, replyAllCc:[]) — never
 // computed from a query — because its non-constant branch requires a
-// direction='inbound' message, and communications.conversation_messages'
-// own CHECK constraint (00006_communications_baseline.sql) admits only
-// 'outbound' and 'internal_note': this port has no inbound path (design doc
-// §1.1), so no row satisfying ReplyRecipients' own precondition can ever
-// exist, not even through a raw test fixture. Task 5 dispatch: "canReply is
-// false and replyAllCc empty for conversations created through the API...
-// pin it rather than working around it" — this is that pin, encoded as the
-// only value this function can ever produce rather than as a workaround.
+// direction='inbound' message, and no production path in this port ever
+// writes one (design doc §1.1: the inbound worker was the only writer and
+// it is out of scope), so this port has no inbound path. Task 5 dispatch:
+// "canReply is false and replyAllCc empty for conversations created through
+// the API... pin it rather than working around it" — this is that pin,
+// encoded as the only value this function can ever produce in production
+// rather than as a workaround.
+//
+// Task 7 fix round 2 correction: an earlier version of this comment also
+// claimed no row satisfying ReplyRecipients' own precondition could exist
+// "not even through a raw test fixture", reasoning from
+// communications.conversation_messages' CHECK constraint
+// (00006_communications_baseline.sql), which then admitted only 'outbound'
+// and 'internal_note'. That CHECK narrowing was itself the mistake design
+// doc §1.1's correction describes — it made the real recipient-resolution
+// query used by Reply (GetLatestInboundParticipantAddress) permanently
+// unexercisable by any fixture, which cost a test seam that only relocated
+// the blindness. The CHECK now matches .NET's full Direction domain
+// (inbound included), so a fixture *can* insert a direction='inbound'
+// message with a participant; this function still never sees one in
+// production, but the "not even through a fixture" half of the old claim no
+// longer holds and is not repeated here.
 func replyRecipientsOf() struct {
 	CanReply    bool `json:"canReply"`
 	CanReplyAll bool `json:"canReplyAll"`

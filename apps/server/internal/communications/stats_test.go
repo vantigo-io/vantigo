@@ -29,8 +29,8 @@ import (
 // the API wherever a test needs exact control over created_at/occurred_at/
 // last_activity_at or over a status (failed/submission_failed deliveries)
 // no production code path in this port ever writes yet — the same
-// technique conversations_test.go and conversations_reply_internal_test.go
-// already use for their own out-of-band fixtures.
+// technique conversations_test.go and conversations_reply_test.go already
+// use for their own out-of-band fixtures.
 
 // ---- Fixture helpers ----
 
@@ -52,6 +52,22 @@ func insertCommunicationsMessage(t *testing.T, h *modtest.Harness, convID uuid.U
 	id := uuid.New()
 	h.Exec(t, `INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
 	           VALUES ($1, $2, 'outbound', $3, $3)`, id, convID, occurredAt)
+	return id
+}
+
+// insertCommunicationsInboundMessage inserts one direction='inbound'
+// conversation_messages row directly, occurring at occurredAt. No
+// production code path in this port ever writes 'inbound' (design doc
+// §1.1: the inbound worker was the only writer and it is out of scope), but
+// a fixture can since task 7 fix round 2 widened
+// conversation_messages.direction's CHECK to match .NET's full Direction
+// domain — this is what lets TestGetCommunicationsStatsAttention_IncludesOpenConversationsWithAnInboundNewestMessage
+// drive the attention query's "conversationNoReply" arm to its live branch.
+func insertCommunicationsInboundMessage(t *testing.T, h *modtest.Harness, convID uuid.UUID, occurredAt time.Time) uuid.UUID {
+	t.Helper()
+	id := uuid.New()
+	h.Exec(t, `INSERT INTO communications.conversation_messages (id, conversation_id, direction, occurred_at, created_at)
+	           VALUES ($1, $2, 'inbound', $3, $3)`, id, convID, occurredAt)
 	return id
 }
 
@@ -568,17 +584,23 @@ func TestGetCommunicationsStatsAttention_FailedDeliveriesAreUnboundedInTime(t *t
 	}
 }
 
-// TestGetCommunicationsStatsAttention_NeverIncludesOpenConversationsWithoutInboundMessages
-// pins the dispatch's central correction: the "unanswered open
-// conversation" half of the union (:131-144) requires the conversation's
-// NEWEST message to be inbound, and this port's schema CHECK
-// (conversation_messages: direction IN ('outbound','internal_note')) makes
-// that impossible to satisfy — so an old, open, message-less conversation
-// past the 24h cutoff must never appear. This is what "in practice the
-// endpoint returns failed deliveries only" (dispatch) actually means at the
-// query level, not an assumption this port bakes in by skipping the
-// second half.
-func TestGetCommunicationsStatsAttention_NeverIncludesOpenConversationsWithoutInboundMessages(t *testing.T) {
+// TestGetCommunicationsStatsAttention_NeverIncludesOpenConversationsWhoseNewestMessageIsNotInbound
+// pins the "unanswered open conversation" half of the union (:131-144): it
+// requires the conversation's NEWEST message to be inbound. An old, open
+// conversation whose only message is outbound must never qualify.
+//
+// Task 7 fix round 2 correction: an earlier version of this test (then
+// named ...NeverIncludesOpenConversationsWithoutInboundMessages) claimed
+// this arm was structurally *impossible* to reach at all — that no fixture
+// could ever produce a qualifying row, because
+// conversation_messages.direction's CHECK constraint then admitted only
+// 'outbound' and 'internal_note'. That CHECK narrowing was itself a mistake
+// (design doc §1.1's correction) and has been widened to match .NET's full
+// Direction domain (inbound included), so the arm *is* reachable from a
+// fixture now — see the companion test below, which proves it. This test
+// keeps its narrower, still-true claim: an outbound-only conversation does
+// not qualify, regardless of what the schema permits elsewhere.
+func TestGetCommunicationsStatsAttention_NeverIncludesOpenConversationsWhoseNewestMessageIsNotInbound(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	chID := setupChannel(t, h)
@@ -597,8 +619,43 @@ func TestGetCommunicationsStatsAttention_NeverIncludesOpenConversationsWithoutIn
 	r.JSON(&items)
 	for _, item := range items {
 		if item.Id == staleID.String() || item.Type == "conversationNoReply" {
-			t.Errorf("items = %+v, want no conversationNoReply items (no inbound message can exist in this port)", items)
+			t.Errorf("items = %+v, want no conversationNoReply items (this conversation's newest message is outbound, not inbound)", items)
 		}
+	}
+}
+
+// TestGetCommunicationsStatsAttention_IncludesOpenConversationsWithAnInboundNewestMessage
+// is the companion the test above's comment promises: an old, open
+// conversation whose newest message is genuinely inbound (a fixture, per
+// this port's outbound-only reality — design doc §1.1) DOES appear as a
+// conversationNoReply item. This is the arm's live branch, reachable only
+// because task 7 fix round 2 widened conversation_messages.direction's
+// CHECK to match .NET's full Direction domain; before that, no fixture
+// could construct this row at all and the arm was untestable on its
+// success path, not merely unreached in production.
+func TestGetCommunicationsStatsAttention_IncludesOpenConversationsWithAnInboundNewestMessage(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	chID := setupChannel(t, h)
+	old := h.Now().Add(-48 * time.Hour)
+	convID := insertCommunicationsConversation(t, h, chID, "open", old, old)
+	insertCommunicationsInboundMessage(t, h, convID, old)
+
+	c := h.SignIn(t, "communications:conversations-view")
+	r := c.Do(http.MethodGet, "/api/v1/communications/stats/attention", nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var items []communicationsStatsAttentionItemJSON
+	r.JSON(&items)
+	found := false
+	for _, item := range items {
+		if item.Id == convID.String() && item.Type == "conversationNoReply" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("items = %+v, want a conversationNoReply item for %s (open, stale, newest message inbound)", items, convID)
 	}
 }
 

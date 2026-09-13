@@ -88,8 +88,8 @@ ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_read_at = EXCLUDED.las
 -- GetConversation's/PATCH's/notes'/read's shared existence-and-detail
 -- lookup. No channel join: replyRecipientsOf (conversations.go) answers a
 -- constant rather than reading the channel mailbox — see its own comment
--- for why (design §1.1, and the CHECK on conversation_messages.direction
--- that makes the non-constant branch unreachable).
+-- for why (design §1.1: no production path in this port ever writes a
+-- direction='inbound' message).
 SELECT c.id, c.channel_id, c.subject, c.status, c.assigned_user_id, c.customer_id,
        c.customer_association_source, c.suggested_customer_id, c.suggested_customer_confidence,
        c.suggested_customer_reasoning, c.last_activity_at, c.preview_text, c.created_at
@@ -273,17 +273,20 @@ WHERE c.id = @id;
 -- name: GetLatestInboundParticipantAddress :one
 -- The non-constant half of ReplyRecipients (`:446-455`) that QueueOutboundAsync
 -- inlines directly (`:277`, `:283`): the latest, by occurred_at, inbound
--- message's participant address. Structurally this can never return a row
--- in this port — conversation_messages.direction's own CHECK constraint
--- (migration 00006_communications_baseline.sql, "dispatch correction 3")
--- admits only 'outbound' and 'internal_note', so no row with
--- direction = 'inbound' can ever exist, not even through a raw fixture
--- insert. Written as a real query rather than a hardcoded miss anyway
--- (replyRecipientsOf's sibling comment in conversations.go explains why:
--- faithful structure now, so a future inbound producer needs no change
--- here) — its permanent zero-rows result is what step 7's
--- 422 recipients_missing pins (design doc §1.1; task 7 dispatch's
--- "outbound-only consequence").
+-- message's participant address. No production path in this port ever
+-- writes a direction='inbound' row (design doc §1.1: the inbound worker was
+-- the only writer and it is out of scope), so this returns zero rows for
+-- every conversation the real API can produce — which is what step 7's 422
+-- recipients_missing pins (task 7 dispatch's "outbound-only consequence").
+-- A test fixture CAN insert a direction='inbound' row and drive this query
+-- to its success branch: conversation_messages.direction's CHECK constraint
+-- (migration 00006_communications_baseline.sql) matches .NET's full
+-- Direction domain (inbound included) since task 7 fix round 2 — an
+-- earlier, narrower CHECK made that impossible even from a fixture, which
+-- made this query permanently unexercisable on its success branch and cost
+-- a test seam that only relocated the blindness (design doc §1.1's
+-- correction). conversations_reply_test.go's fixtures now exercise this
+-- query directly, and the seam is gone.
 SELECT p.address
 FROM communications.conversation_messages m
 JOIN communications.participants p ON p.id = m.participant_id

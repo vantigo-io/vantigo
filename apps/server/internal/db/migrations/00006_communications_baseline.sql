@@ -143,16 +143,27 @@ CREATE INDEX ix_conversation_customer_candidates_customer_id ON communications.c
 CREATE TABLE communications.conversation_messages (
     id                       uuid PRIMARY KEY,
     conversation_id          uuid NOT NULL REFERENCES communications.conversations (id) ON DELETE CASCADE,
-    -- Dispatch correction 3: .NET's Direction domain is
-    -- {inbound, outbound, internal_note}; this port's only message
-    -- producers are the composer's reply and note paths, so "inbound" can
-    -- never be written. The CHECK below is *new* — .NET has no CHECK here
-    -- at all (inventory §10 item 7 names the two CHECKs on conversations as
-    -- "the only CHECKs in the schema") — added deliberately to encode what
-    -- this port can actually produce, and deliberately narrower than
-    -- .NET's: it must never be loosened to admit 'inbound' again without an
-    -- inbound producer to match it.
-    direction                varchar(20) NOT NULL CHECK (direction IN ('outbound', 'internal_note')),
+    -- Task 7 fix round 2 correction (design doc §1.1's correction,
+    -- 2026-09-13): .NET's Direction domain is {inbound, outbound,
+    -- internal_note}, and the CHECK below now matches it exactly. An
+    -- earlier version narrowed this to ('outbound', 'internal_note') on the
+    -- principle that the schema should encode only what this port's own
+    -- writers (the composer's reply and note paths) can produce, since no
+    -- inbound producer exists in scope. That was wrong: it made an inbound
+    -- row impossible to insert even from a test fixture, so the real
+    -- recipient-resolution query (GetLatestInboundParticipantAddress) could
+    -- never be driven past its permanently-empty branch, and a test seam
+    -- added to compensate only relocated the blindness rather than removing
+    -- it. .NET has no CHECK here at all (inventory §10 item 7 names the two
+    -- CHECKs on conversations as "the only CHECKs in the schema") — this one
+    -- stays, widened to the full domain .NET's own type declares, not
+    -- narrowed to this port's current writers. Nothing in this port writes
+    -- 'inbound' today (design doc §1.1: the inbound worker was the only
+    -- writer and it is out of scope), so recipients_missing still fires for
+    -- every conversation this port's own API can create; what changes is
+    -- that a fixture can insert one, and an inbound producer arrives later
+    -- without a migration.
+    direction                varchar(20) NOT NULL CHECK (direction IN ('inbound', 'outbound', 'internal_note')),
     participant_id           uuid REFERENCES communications.participants (id) ON DELETE SET NULL,
     -- No FK: identity lives in another schema.
     author_user_id           uuid,
