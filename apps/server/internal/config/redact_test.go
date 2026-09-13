@@ -24,6 +24,7 @@ const (
 	fmtSCIMPrevious     = "scim-previous-token-value"
 	fmtDBPassword       = "db-password-value"
 	fmtMigrationsPass   = "migrations password value"
+	fmtCommsAIKey       = "communications-ai-api-key-value"
 )
 
 // secretPatterns is every way fmt could render one of the secrets: the
@@ -31,7 +32,7 @@ const (
 // decimal bytes (%v, %d).
 func secretPatterns() []string {
 	var out []string
-	for _, s := range []string{fmtAppSecret, fmtBootstrapSecret, fmtAdminEmail, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass} {
+	for _, s := range []string{fmtAppSecret, fmtBootstrapSecret, fmtAdminEmail, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtCommsAIKey} {
 		out = append(out, s, hex.EncodeToString([]byte(s)), strings.ToUpper(hex.EncodeToString([]byte(s))))
 	}
 	decimal := make([]string, 0, len(fmtAppSecret))
@@ -53,6 +54,7 @@ func secretConfig(t *testing.T) *Config {
 		"SCIM_TOKEN", fmtSCIMToken,
 		"SCIM_PREVIOUS_TOKEN", fmtSCIMPrevious,
 		"SCIM_PREVIOUS_TOKEN_EXPIRES_AT", time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		"COMMUNICATIONS_AI_API_KEY", fmtCommsAIKey,
 		"DATABASE_URL", "postgres://vantigo:"+fmtDBPassword+"@db.internal:5432/vantigo?sslmode=verify-full",
 		"MIGRATIONS_DATABASE_URL", "host=db.internal user=owner password='"+fmtMigrationsPass+"' dbname=vantigo sslmode=verify-full",
 	))
