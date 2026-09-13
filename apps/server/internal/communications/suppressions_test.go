@@ -1,6 +1,7 @@
 package communications_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -333,5 +334,108 @@ func TestDeleteSuppression_RequiresManage(t *testing.T) {
 	}
 	if r := admin.Do(http.MethodDelete, path, nil); r.Status != http.StatusNoContent {
 		t.Errorf("suppressions-manage: status %d, want 204", r.Status)
+	}
+}
+
+// ---- Fix round 1: the dedupe race ----
+
+// TestCreateSuppression_ConcurrentDedupeAnswers200TwiceNever409 is fix
+// round 1's teeth check, on the exact gate technique
+// channels_concurrency_test.go's TestCreateChannel_ConcurrentDefaultRaceAnswersModuleShape
+// established and this file reuses (race, awaitLockWaiters — unexported in
+// this package, not redeclared here): two concurrent POSTs for the SAME
+// address, gated so both pass the existing-row lookup (a plain SELECT,
+// compatible with the gate's EXCLUSIVE mode) before either reaches the
+// INSERT (ROW EXCLUSIVE, which queues behind the gate). Once both are
+// confirmed waiting, the gate releases; Postgres's unique index on
+// normalized_email_address then serializes the inserts, so exactly one
+// request's INSERT succeeds and the other's fails with a 23505 on
+// ux_suppressions_normalized_email_address.
+//
+// Before the fix that loser's unique violation reached httpx.WriteError's
+// host-wide fallback: a bare RFC 7807 409 on application/problem+json,
+// wrong vocabulary for this module and a status postCommunicationsSuppressions
+// never declares (only 200/201/400/401/403) — the contract harness itself
+// rejects it ("response 409: status is not supported"). After the fix, the
+// loser's insert failure is caught on that specific constraint, re-read,
+// and answered with exactly the sequential dedupe path's 200 and the
+// winner's row: same id and reason for both responses, and no 409 ever
+// leaves the process. Run at -count=5 (per fix round instructions) since a
+// race this narrow does not always land the same way twice.
+func TestCreateSuppression_ConcurrentDedupeAnswers200TwiceNever409(t *testing.T) {
+	h := newHarness(t)
+	c := h.SignIn(t, "communications:suppressions-manage")
+	address := suppressionAddress(t)
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.suppressions IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock suppressions: %v", err)
+	}
+
+	const n = 2
+	fns := make([]func() *modtest.Response, n)
+	for i := 0; i < n; i++ {
+		fns[i] = func() *modtest.Response {
+			return c.Do(http.MethodPost, "/api/v1/communications/suppressions", map[string]any{"emailAddress": address})
+		}
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, n, finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	var created, deduped int
+	var ids, reasons []string
+	for _, r := range responses {
+		switch r.Status {
+		case http.StatusCreated:
+			created++
+		case http.StatusOK:
+			deduped++
+		default:
+			t.Fatalf("status %d body %s, want 200 or 201 (never 409)", r.Status, r.Body)
+		}
+		if ct := r.Header("Content-Type"); ct != "application/json" {
+			t.Errorf("status %d Content-Type = %q, want application/json (the module's own vocabulary)", r.Status, ct)
+		}
+		var s suppressionJSON
+		r.JSON(&s)
+		ids = append(ids, s.Id)
+		reason := "<nil>"
+		if s.Reason != nil {
+			reason = *s.Reason
+		}
+		reasons = append(reasons, reason)
+	}
+	if created != 1 {
+		t.Errorf("created (201) = %d, want exactly 1", created)
+	}
+	if deduped != n-1 {
+		t.Errorf("deduped (200) = %d, want exactly %d", deduped, n-1)
+	}
+	if ids[0] != ids[1] {
+		t.Errorf("ids = %v, want both responses to carry the same winning row's id", ids)
+	}
+	if reasons[0] != reasons[1] {
+		t.Errorf("reasons = %v, want both responses to carry the same winning row's reason", reasons)
+	}
+
+	// Exactly one row exists for the address, whichever request won.
+	count := h.Count(t, `SELECT count(*) FROM communications.suppressions WHERE normalized_email_address = $1`, strings.ToUpper(address))
+	if count != 1 {
+		t.Errorf("rows for address = %d, want exactly 1", count)
 	}
 }
