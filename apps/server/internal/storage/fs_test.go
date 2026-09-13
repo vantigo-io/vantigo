@@ -286,10 +286,37 @@ func TestFS_ExistsIsFalseForADirectoryKey(t *testing.T) {
 	}
 }
 
-// TestFS_RefusesSymlinkedIntermediateComponent proves the symlink check
-// walks every path segment between root and the resolved key, not only
-// root itself: a symlink planted one level inside root, pointing outside
-// it, must still be refused when a key resolves through it.
+// TestFS_GetIsErrNotExistForADirectoryKey proves Get agrees with Exists: a
+// directory a Put created to hold a nested key is not an object, so Get
+// must report ErrNotExist rather than handing back a live, readable stream
+// on a directory file descriptor.
+func TestFS_GetIsErrNotExistForADirectoryKey(t *testing.T) {
+	store, err := storage.NewFS(secureTempDir(t), false, false)
+	if err != nil {
+		t.Fatalf("NewFS() = %v", err)
+	}
+	ctx := context.Background()
+	if err := store.Put(ctx, "a/b/c.txt", strings.NewReader("v"), "text/plain"); err != nil {
+		t.Fatalf("Put() = %v", err)
+	}
+	rc, err := store.Get(ctx, "a/b")
+	if rc != nil {
+		_ = rc.Close()
+		t.Error("Get() returned a live stream for a directory key")
+	}
+	if !errors.Is(err, storage.ErrNotExist) {
+		t.Fatalf("Get(%q) = %v, want ErrNotExist for a directory, matching Exists", "a/b", err)
+	}
+}
+
+// TestFS_RefusesSymlinkedIntermediateComponent proves containment holds for
+// a symlink planted one level inside root, pointing outside it, whether the
+// key resolves through it in Put or Get. Every filesystem operation here
+// runs through the *os.Root opened on root at construction, which refuses
+// to resolve any name past a symlink leaving the root — enforced by the
+// kernel at the moment of the syscall, not by a separate check beforehand
+// — so this holds regardless of when the symlink was planted relative to
+// any validation this package performs.
 func TestFS_RefusesSymlinkedIntermediateComponent(t *testing.T) {
 	root := secureTempDir(t)
 	outside := t.TempDir()
@@ -312,6 +339,93 @@ func TestFS_RefusesSymlinkedIntermediateComponent(t *testing.T) {
 	}
 	if _, err := store.Get(ctx, "escape/payload.txt"); err == nil {
 		t.Fatal("Get() through a symlinked intermediate component = nil error, want a rejection")
+	}
+}
+
+// TestFS_RootRefusesSymlinkPlantedAfterConstruction is
+// TestFS_RefusesSymlinkedIntermediateComponent's TOCTOU-specific sibling:
+// the symlink is planted only *after* NewFS has already returned — i.e.
+// after this package's own key validation would, if it were the only
+// defence, have long since finished "checking" — to demonstrate that
+// containment is not a one-time check that a later filesystem change could
+// slip past, but a property os.Root enforces continuously, on every call.
+func TestFS_RootRefusesSymlinkPlantedAfterConstruction(t *testing.T) {
+	root := secureTempDir(t)
+	outside := t.TempDir()
+
+	store, err := storage.NewFS(root, false, false)
+	if err != nil {
+		t.Fatalf("NewFS() = %v", err)
+	}
+
+	// Nothing under root references "escape" yet at construction time:
+	// validateKey has no opinion about what exists on disk, so
+	// "escape/payload.txt" was already a syntactically valid key the
+	// moment the store was built. Plant the symlink only now.
+	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	if err := store.Put(ctx, "escape/payload.txt", strings.NewReader("x"), "text/plain"); err == nil {
+		t.Fatal("Put() through a post-construction symlink = nil error, want containment to refuse it")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "payload.txt")); !os.IsNotExist(err) {
+		t.Fatal("Put() escaped the root through a symlink planted after construction")
+	}
+}
+
+// TestFS_PutRefusesInsecureSubdirectoryOutsideDevelopment proves the
+// permission walk descends past the root: a subdirectory that is itself
+// group- or world-writable is refused even though the root above it is
+// secure, mirroring Vantigo.Storage's EnsureSecureDirectoryPath. os.Root's
+// containment guarantee says nothing about this — a subdirectory fully
+// "inside" root passes every containment check while still being tamperable
+// by another local user.
+func TestFS_PutRefusesInsecureSubdirectoryOutsideDevelopment(t *testing.T) {
+	skipUnlessUnix(t)
+	root := secureTempDir(t)
+	store, err := storage.NewFS(root, false, false)
+	if err != nil {
+		t.Fatalf("NewFS() = %v", err)
+	}
+	sub := filepath.Join(root, "attachments")
+	if err := os.Mkdir(sub, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	// os.Mkdir's mode is subject to the process umask (0002 here, 0022 in
+	// CI — see secureTempDir), so chmod explicitly to guarantee the
+	// directory really is group/world-writable regardless of umask.
+	if err := os.Chmod(sub, 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Put(context.Background(), "attachments/a.pdf", strings.NewReader("x"), "application/pdf"); err == nil {
+		t.Fatal("Put() through a group/world-writable subdirectory = nil error, want a rejection")
+	}
+}
+
+// TestFS_PutAllowsInsecureSubdirectoryWithDevelopmentEscapeHatch is
+// TestFS_PutRefusesInsecureSubdirectoryOutsideDevelopment's accepted case:
+// the same development escape hatch that relaxes the root's own permission
+// check also relaxes the subdirectory walk, not just the root.
+func TestFS_PutAllowsInsecureSubdirectoryWithDevelopmentEscapeHatch(t *testing.T) {
+	skipUnlessUnix(t)
+	root := secureTempDir(t)
+	store, err := storage.NewFS(root, true, true)
+	if err != nil {
+		t.Fatalf("NewFS() = %v", err)
+	}
+	sub := filepath.Join(root, "attachments")
+	if err := os.Mkdir(sub, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sub, 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Put(context.Background(), "attachments/a.pdf", strings.NewReader("x"), "application/pdf"); err != nil {
+		t.Fatalf("Put() = %v, want the development escape hatch to accept an insecure subdirectory too", err)
 	}
 }
 
@@ -344,6 +458,16 @@ func TestFS_RejectsUnsafeKeys(t *testing.T) {
 		{"question mark", "a?b"},
 		{"hash", "a#b"},
 		{"scheme-like", "file://a"},
+		// Five 250-byte segments (1254 bytes with separators) each sit
+		// comfortably under the 255-byte per-segment cap, so this isolates
+		// the 1024-byte overall cap: deleting that check alone, and nothing
+		// else, must make this case start passing.
+		{"too long overall", strings.Repeat("a", 250) + "/" + strings.Repeat("b", 250) + "/" + strings.Repeat("c", 250) + "/" + strings.Repeat("d", 250) + "/" + strings.Repeat("e", 250)},
+		// One 300-byte segment, well under the 1024-byte overall cap, so
+		// this isolates the per-segment cap specifically: without it, this
+		// key reaches the filesystem and a raw ENAMETOOLONG would surface
+		// as something other than ErrInvalidKey.
+		{"segment too long", "a/" + strings.Repeat("b", 300) + "/c"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
