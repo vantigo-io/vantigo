@@ -347,81 +347,42 @@ func (s *server) reserveStorageKey(ctx context.Context, key string, now time.Tim
 	}
 }
 
-// attachmentFingerprint is StageAttachment's payload identity for this
-// port's replay fork: the SHA-256 hex of the uploaded file's bytes — the
-// same value every upload already stores as content_hash, so no new column
-// exists purely for this comparison. See attachmentReplayResponse's own
-// comment for why this fork exists at all and how it diverges from .NET.
+// attachmentFingerprint is the SHA-256 hex of an uploaded file's bytes,
+// stored on every upload as content_hash (StageAttachment `:134`, `:147-151`,
+// `:167`). It is a content fingerprint, not a replay decision: fix round 1
+// removed the fork that once compared it against a replay's own bytes (see
+// this function's git history / task-6-report.md's fix-round-1 entry) —
+// StageAttachment's replay lookup has no fingerprint at all
+// (`:112-113`, inventory §5.1: "There is no payload fingerprint — a
+// different file under the same key silently returns the *first* upload"),
+// and this port now matches that exactly.
 func attachmentFingerprint(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
-}
-
-// attachmentReplayResponse is the dispatch's correction to the brief for
-// this task: "my brief says 'a replayed key returns 200'. It forks." A
-// replay of (uploaderUserId, idempotencyKey) whose file content matches
-// existing.ContentHash answers 200 with the prior upload, unchanged; a
-// replay whose file content differs answers 409 idempotency_key_reused —
-// "implementing only the 200 path would silently accept key reuse across
-// different files."
-//
-// This is a deliberate divergence from .NET, not a faithful port of
-// StageAttachment `:112-113`: .NET's own replay lookup has no fingerprint
-// at all and returns the first upload for *any* replay of the same key,
-// silently discarding a different file (inventory §5.1: "There is no
-// payload fingerprint"). The dispatch names this a hazard worth closing
-// rather than porting faithfully, and idempotency_key_reused's exact wire
-// text is one of the four messages the dispatch requires byte for byte —
-// this is the only mutating operation in this task's scope that message
-// could belong to.
-//
-// Reading body here, before any conversation lookup, is what lets this
-// still honour "checked before the conversation exists check" (dispatch
-// item 2): a replay — matching or not — is decided entirely from the
-// caller, the key and this request's own bytes, without ever touching
-// req.Id's conversation row.
-func (s *server) attachmentReplayResponse(body *multipart.Reader, maxBytes int64, existing store.CommunicationsAttachmentUpload) gen.PostCommunicationsConversationsByIdAttachmentsResponseObject {
-	form := readAttachmentForm(body, maxBytes)
-	if form.malformed {
-		return gen.PostCommunicationsConversationsByIdAttachments413JSONResponse(flatErrorBody(
-			"attachment_too_large", "The attachment exceeds the configured limit."))
-	}
-	if form.fileCount != 1 {
-		return gen.PostCommunicationsConversationsByIdAttachments400JSONResponse(flatErrorBody(
-			"file_required", "Exactly one file is required."))
-	}
-	size := int64(len(form.fileData))
-	if size <= 0 || size > maxBytes {
-		return gen.PostCommunicationsConversationsByIdAttachments413JSONResponse(flatErrorBody(
-			"attachment_too_large", "The attachment exceeds the configured limit."))
-	}
-	if attachmentFingerprint(form.fileData) != existing.ContentHash {
-		return gen.PostCommunicationsConversationsByIdAttachments409JSONResponse(flatErrorBody(
-			"idempotency_key_reused", "The Idempotency-Key was already used with a different payload."))
-	}
-	return gen.PostCommunicationsConversationsByIdAttachments200JSONResponse(
-		attachmentUploadResponseOf(attachmentUploadRowOf(existing)))
 }
 
 // PostCommunicationsConversationsByIdAttachments Stage an attachment
 // (POST /api/v1/communications/conversations/{id}/attachments)
 //
 // StageAttachment (inventory §2, §5.4 — the dispatch's corrected order,
-// which wins over the brief, and its fingerprint correction, which wins
-// over .NET itself — see attachmentReplayResponse): (1) Idempotency-Key
-// validity -> 400 idempotency_key_required; (2) replay lookup by
-// (uploaderUserId, idempotencyKey) -> 200 same fingerprint / 409
-// idempotency_key_reused different fingerprint, *before* the conversation
-// is known to exist; (3) conversation lookup -> 404 bare; (4) form read ->
-// 413 on a malformed/oversized form; (5) exactly one file required -> 400
+// which wins over the brief): (1) Idempotency-Key validity -> 400
+// idempotency_key_required; (2) replay lookup by (uploaderUserId,
+// idempotencyKey) -> 200 with the existing upload, unconditionally and
+// *before* the conversation is known to exist — a different file under the
+// same key silently returns the *first* upload, exactly as .NET does
+// (`:112-113`, inventory §5.1; fix round 1 reverted an earlier fingerprint
+// fork here that the task dispatch had mistakenly asked for, conflating
+// this endpoint's replay with CreateConversation's and Reply's, which do
+// carry a fingerprint); (3) conversation lookup -> 404 bare; (4) form read
+// -> 413 on a malformed/oversized form; (5) exactly one file required -> 400
 // file_required; (6) size in (0, maxBytes] -> 413; (7) twenty or more live
 // uploads for this (conversation, user) -> 409 attachment_limit; (8) the
 // reservation, durable before the object-store write; (9) the object-store
 // write itself -> 503 attachment_storage_unavailable on any failure,
 // leaving the reservation "staged" for a future sweep; (10) the
 // attachment_uploads insert and MarkOwnedAsync in one commit, a unique
-// violation on that insert (a concurrent identical replay) resolved by the
-// same fingerprint fork as step 2.
+// violation on that insert (a concurrent identical replay) answering 200
+// with the row the other request won — the same unconditional 200 as step 2.
 func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Context, req gen.PostCommunicationsConversationsByIdAttachmentsRequestObject) (gen.PostCommunicationsConversationsByIdAttachmentsResponseObject, error) {
 	caller, err := callerUserID(ctx)
 	if err != nil {
@@ -440,7 +401,8 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 		UploadedByUserID: caller, IdempotencyKey: key,
 	})
 	if err == nil {
-		return s.attachmentReplayResponse(req.Body, maxBytes, existing), nil
+		return gen.PostCommunicationsConversationsByIdAttachments200JSONResponse(
+			attachmentUploadResponseOf(attachmentUploadRowOf(existing))), nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("communications: get attachment upload: %w", err)
 	}
@@ -516,22 +478,32 @@ func (s *server) PostCommunicationsConversationsByIdAttachments(ctx context.Cont
 		return nil
 	})
 	if txErr != nil {
-		if db.IsUniqueViolation(txErr, "ux_attachment_uploads_uploaded_by_user_id_idempotency_key") {
+		// A concurrent request for the same (uploaderUserId, idempotencyKey)
+		// can win the insert race on either of two constraints, not just the
+		// natural key: uploadID is deterministicUploadID(caller, key) (this
+		// file's own comment on that function explains why), so two
+		// concurrent requests carrying the identical (uploaderUserId,
+		// idempotencyKey) pair also compute the identical row id and collide
+		// on attachment_uploads_pkey — which Postgres's index evaluation
+		// order can report *instead of*
+		// ux_attachment_uploads_uploaded_by_user_id_idempotency_key, not
+		// alongside it. Checking only the named unique index here left a
+		// genuine concurrent replay falling through to the unhandled 500
+		// below (surfaced as a generic 23505 fallback 409, the wrong
+		// vocabulary for this module — the same class of gap
+		// channels.go's own two-constraint check guards against for
+		// (type, address) vs (type, is_default)); fix round 1's gated
+		// concurrency test caught this live.
+		if db.IsUniqueViolation(txErr, "ux_attachment_uploads_uploaded_by_user_id_idempotency_key", "attachment_uploads_pkey") {
 			// A concurrent request for the same (uploaderUserId,
-			// idempotencyKey) won the insert first — the same fingerprint
-			// fork as the upfront replay lookup above, not an unconditional
-			// 200: the loser's own already-computed contentHash is this
-			// request's payload identity, compared against whatever the
-			// winner actually persisted.
+			// idempotencyKey) won the insert first (`:183-187`) — the same
+			// unconditional 200 the upfront replay lookup above answers,
+			// whatever either request's own file bytes were.
 			duplicate, derr := q.FindAttachmentUploadByUploaderAndKey(ctx, store.FindAttachmentUploadByUploaderAndKeyParams{
 				UploadedByUserID: caller, IdempotencyKey: key,
 			})
 			if derr != nil {
 				return nil, fmt.Errorf("communications: get attachment upload after race: %w", derr)
-			}
-			if contentHash != duplicate.ContentHash {
-				return gen.PostCommunicationsConversationsByIdAttachments409JSONResponse(flatErrorBody(
-					"idempotency_key_reused", "The Idempotency-Key was already used with a different payload.")), nil
 			}
 			return gen.PostCommunicationsConversationsByIdAttachments200JSONResponse(
 				attachmentUploadResponseOf(attachmentUploadRowOf(duplicate))), nil
