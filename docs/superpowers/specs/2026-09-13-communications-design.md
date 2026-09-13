@@ -40,6 +40,18 @@ faithfully, keep them contract-complete, and document the limitation here, in th
 inventory's hazards section and in `CONTRIBUTING.md`. We do not invent an inbound path,
 and we do not delete endpoints the contract declares.
 
+**Sharpened (2026-09-13, from Task 7).** "Reply is unusable" understates it. Because the
+`conversation_messages.direction` CHECK encodes only what this port can produce
+(`outbound`, `internal_note` — see §3), no inbound message can exist, so
+`recipients_missing` fires at step 7 of reply's ten-step order and **steps 8, 9 and 10 are
+unreachable through HTTP**: the doubly-enforced `attachments_not_ready` gate and the
+`recipient_suppressed` check are dead through the API. They are still ported, still
+correct, and tested directly rather than through the handler, because they become live the
+moment an inbound provider lands — which is a migration widening the CHECK plus the
+provider, nothing structural. Two consequences worth stating for whoever picks this up:
+attachments can be staged but never sent, and suppression is enforced only by the outbox
+worker's own checks, not by reply.
+
 ## 2. Platform additions
 
 **`internal/storage`.** An `ObjectStore` port with `Put`, `Get`, `Exists`, `Delete`,
