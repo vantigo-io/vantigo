@@ -67,7 +67,6 @@ jobs:
             echo "version=$version"
             echo "major=$major"
             echo "minor=$minor"
-            echo "sha=${HEAD_SHA:0:7}"
           } >> "$GITHUB_OUTPUT"
           # Preview coordinates exist only for a pull request; build_images is
           # the only consumer and runs only there.
@@ -84,7 +83,6 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       major: ${{ steps.version.outputs.major }}
       minor: ${{ steps.version.outputs.minor }}
-      sha: ${{ steps.version.outputs.sha }}
       preview_moving: ${{ steps.version.outputs.preview_moving }}
       preview_pinned: ${{ steps.version.outputs.preview_pinned }}
 
@@ -194,7 +192,10 @@ jobs:
 
       - name: 🔍 Lint workflows and scripts
         run: |
-          actionlint .github/workflows/*.yml
+          # Bare: actionlint finds every workflow itself. A glob here would
+          # stop covering a .yaml-suffixed workflow the day someone adds one,
+          # and would do it silently.
+          actionlint
           shellcheck scripts/*.sh
 
       - name: 🔍 golangci-lint
@@ -436,7 +437,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # write: this job reserves the version tag before it pushes anything
+      # immutable. See the 🔖 step below.
+      contents: write
       packages: write
       id-token: write
     steps:
@@ -490,23 +493,44 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # THE VERSION TAG IS RESERVED BEFORE ANYTHING IMMUTABLE IS PUSHED, and
+      # that ordering is the whole point of this step.
+      #
+      # svu derives the version from the newest git tag. If the immutable
+      # image tag went to GHCR first and the `release` job then failed, the
+      # git tag would never land — so the next push to main would re-derive
+      # the SAME version and overwrite an already-published immutable tag with
+      # different content. (`--always` in `metadata` closes the opposite case,
+      # where the tag exists and the commits are not releasable; it does
+      # nothing for this one.) Reserving first means a failure anywhere after
+      # this point costs one burnt version number, never a mutated release.
+      - name: 🔖 Reserve the version tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null || true)"
+          if [ -n "$existing" ]; then
+            if [ "$existing" = "$GITHUB_SHA" ]; then
+              echo "$TAG already points at $GITHUB_SHA — this is a re-run of the same commit; continuing."
+              exit 0
+            fi
+            echo "::error::$TAG already exists at $existing but this run is $GITHUB_SHA. Publishing would overwrite an immutable image tag with different content."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --silent
+          echo "Reserved $TAG at $GITHUB_SHA."
+
       - name: 📤 Push the release image (linux/amd64 + linux/arm64)
         id: push
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
-          MAJOR: ${{ needs.metadata.outputs.major }}
-          MINOR: ${{ needs.metadata.outputs.minor }}
         run: |
-          # The binaries are already in dist/server from the step above.
+          # The binaries are already in dist/server from the step above. Only
+          # the immutable tag is pushed here; the moving ones wait for the
+          # post-push scan below.
           SKIP_ARTIFACTS=1 TAG="$IMAGE:$VERSION" PUSH=1 bash scripts/build-image.sh
-          # The full version never moves; major.minor moves with patches, major
-          # with minors, latest with every release; sha-<commit> pins exactly.
-          docker buildx imagetools create \
-            -t "$IMAGE:$MAJOR.$MINOR" \
-            -t "$IMAGE:$MAJOR" \
-            -t "$IMAGE:latest" \
-            -t "$IMAGE:sha-$GITHUB_SHA" \
-            "$IMAGE:$VERSION"
           platforms="$(docker buildx imagetools inspect --raw "$IMAGE:$VERSION" \
             | jq -r '.manifests[].platform | select(.os != "unknown") | .os + "/" + .architecture' | sort -u)"
           for expected in linux/amd64 linux/arm64; do
@@ -515,15 +539,6 @@ jobs:
           digest="$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{.Manifest.Digest}}')"
           [ -n "$digest" ] || { echo "::error::Could not resolve the digest of $IMAGE:$VERSION."; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Released image"
-            echo
-            echo '```'
-            echo "docker pull $IMAGE:$VERSION"
-            echo '```'
-            echo
-            echo "Digest \`$digest\`; also tagged \`$MAJOR.$MINOR\`, \`$MAJOR\`, \`latest\`, \`sha-$GITHUB_SHA\`."
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 🛡️ Scan the pushed images
         env:
@@ -532,6 +547,33 @@ jobs:
           for platform in linux/amd64 linux/arm64; do
             trivy image --platform "$platform" --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --format table "$IMAGE:$VERSION"
           done
+
+      # Only now, with both pushed platforms scanned: nothing is advertised as
+      # `latest` before arm64 has passed. The full version never moves;
+      # major.minor moves with patches, major with minors, latest with every
+      # release; sha-<commit> pins exactly.
+      - name: 🏷️ Promote the moving tags
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          MAJOR: ${{ needs.metadata.outputs.major }}
+          MINOR: ${{ needs.metadata.outputs.minor }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          docker buildx imagetools create \
+            -t "$IMAGE:$MAJOR.$MINOR" \
+            -t "$IMAGE:$MAJOR" \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:sha-$GITHUB_SHA" \
+            "$IMAGE:$VERSION"
+          {
+            echo "### Released image"
+            echo
+            echo '```'
+            echo "docker pull $IMAGE:$VERSION"
+            echo '```'
+            echo
+            echo "Digest \`$DIGEST\`; also tagged \`$MAJOR.$MINOR\`, \`$MAJOR\`, \`latest\`, \`sha-$GITHUB_SHA\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 📋 Generate SBOM for the published image
         env:
@@ -564,17 +606,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
+      # The tag already exists: publish_images reserved it before it pushed
+      # anything. This job only attaches the GitHub Release to it — so a
+      # "tag exists, skip" guard here would now skip every single release.
       - name: 🚀 Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.metadata.outputs.tag }}
         run: |
           set -euo pipefail
-          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
-            echo "Tag ${TAG} already exists; skipping release."
-            exit 0
-          fi
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Release ${TAG} already exists; skipping release."
             exit 0
