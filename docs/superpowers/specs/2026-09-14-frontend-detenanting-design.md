@@ -66,8 +66,24 @@ wherever it still applies; only its tenant-module-enablement half is tenancy.
 `legacyTenantPath` and the `__root.tsx` legacy redirects go with them — they
 rewrite un-prefixed URLs *into* prefixed ones, which is now backwards.
 
-**D3 — `routes/admin/tenants/*` and `api/system-tenants.ts` are deleted**
-(5 admin route files). The control plane manages tenants; there are none.
+**D3 — the admin subtree is TRIMMED, not deleted.** An earlier draft of this
+decision said "delete `routes/admin/*` (5 admin route files)". That was wrong,
+and checking rather than asserting is what caught it: only two of the five are
+tenant work. `routes/admin/-maintenance-controls.tsx` has **zero** tenant
+references — it drives system status and maintenance mode via
+`api/system-status.ts` — and `routes/admin/index.test.tsx` tests *maintenance
+controls*, not tenants. So:
+
+- delete `routes/admin/tenants/$tenantId.tsx`, `routes/admin/tenants/new.tsx`
+  and `api/system-tenants.ts`;
+- **keep** `routes/admin/index.tsx` as the system-admin page, trimmed to its
+  `<MaintenanceControls />` half — the tenant query, the three tenant stat
+  cards, the "new tenant" button, the tenant table and the `systemTenantError`
+  alert go;
+- **keep** `routes/admin/index.test.tsx`, removing only its
+  `vi.mock("../../api/system-tenants")`;
+- trim `catalogs/system-admin.ts` to its non-tenant keys rather than deleting
+  it.
 
 **D4 — the contract's tenant leftovers are removed and all five schemas
 regenerated.** `openapi/identity.yaml:225-265,1751` still declares
