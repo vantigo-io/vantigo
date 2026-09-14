@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -52,6 +54,96 @@ func TestEveryModuleLoadsAndValidates(t *testing.T) {
 		}
 		if err := doc.Validate(context.Background(), openapi3.EnableExamplesValidation()); err != nil {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// TestLoadMatchesAnUncachedYAMLParse proves the JSON the parse cache holds
+// yields exactly the document the embedded YAML yields: Load caches how the
+// contract is parsed, never what it parses to. It is the guard on
+// convertSpecsToJSON — a conversion that resolved a date example to a
+// timestamp, say, would change the contract silently everywhere else.
+func TestLoadMatchesAnUncachedYAMLParse(t *testing.T) {
+	ctx := context.Background()
+	files := Files()
+	for _, name := range Modules {
+		loader := openapi3.NewLoader()
+		loader.Context = ctx
+		loader.IsExternalRefsAllowed = true
+		loader.ReadFromURIFunc = func(_ *openapi3.Loader, location *url.URL) ([]byte, error) {
+			return fs.ReadFile(files, pathpkg.Clean(strings.TrimPrefix(location.Path, "/")))
+		}
+		data, err := fs.ReadFile(files, name+".yaml")
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		want, err := loader.LoadFromDataWithPath(data, &url.URL{Path: name + ".yaml"})
+		if err != nil {
+			t.Fatalf("%s: parse the embedded YAML: %v", name, err)
+		}
+		got, err := Load(ctx, name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		wantJSON, err := json.Marshal(want)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		gotJSON, err := json.Marshal(got)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !bytes.Equal(wantJSON, gotJSON) {
+			t.Errorf("%s: Load's document differs from parsing the embedded YAML directly", name)
+		}
+	}
+}
+
+// TestLoadReturnsIndependentDocuments proves the parse cache hands out no
+// shared state: two Loads of one module are two documents, equal on the
+// wire, and mutating one — as internal/module's mergeContract does through
+// InternalizeRefs, which is why compose loads each contract twice — leaves
+// the other byte for byte as it was.
+func TestLoadReturnsIndependentDocuments(t *testing.T) {
+	ctx := context.Background()
+	for _, name := range Modules {
+		first, err := Load(ctx, name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		second, err := Load(ctx, name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if first == second {
+			t.Fatalf("%s: two Loads returned the same document", name)
+		}
+		firstJSON, err := json.Marshal(first)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		before, err := json.Marshal(second)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !bytes.Equal(firstJSON, before) {
+			t.Errorf("%s: two Loads of one module differ", name)
+		}
+
+		first.InternalizeRefs(ctx, nil)
+		mutated, err := json.Marshal(first)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if bytes.Contains(firstJSON, []byte("common.yaml#")) && bytes.Equal(firstJSON, mutated) {
+			t.Fatalf("%s: sanity check failed — InternalizeRefs changed nothing, so this proves nothing", name)
+		}
+		after, err := json.Marshal(second)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !bytes.Equal(before, after) {
+			t.Errorf("%s: mutating one loaded document changed another", name)
 		}
 	}
 }
