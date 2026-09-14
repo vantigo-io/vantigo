@@ -69,7 +69,8 @@ Delete `ShellTenant`, the `tenants`/`activeTenantId`/`onTenantSwitch` props and 
 ### Task 6: Trim the admin subtree
 
 **Files:**
-- Delete: `routes/admin/tenants/$tenantId.tsx`, `routes/admin/tenants/new.tsx`, `catalogs/tenant.ts`
+- Delete: `routes/admin/tenants/$tenantId.tsx`, `routes/admin/tenants/new.tsx`
+- **Rename, do NOT delete:** `catalogs/tenant.ts` → `catalogs/error.ts`. The file is misnamed. Only nine of its keys were tenant-selector strings; the rest are app-wide error/loading keys consumed by eight components under `components/errors/` and by `routes/dashboard.tsx`, with `error-pages.test.tsx` asserting their rendered English. Deleting it drops those keys, `t()` falls back to raw key names, and because i18next's `TFunction` is loosely typed here **`tsc` will not catch it** — it surfaces only as failing error-page tests and broken UI copy.
 - Modify: `routes/admin/index.tsx`, `routes/admin/index.test.tsx:8`, `catalogs/system-admin.ts`
 
 **`routes/admin/` survives.** `-maintenance-controls.tsx` has zero tenant references and `index.test.tsx` tests maintenance, not tenants (spec D3). Trim `index.tsx` to its `<MaintenanceControls />` half; drop only the `vi.mock("../../api/system-tenants")` from the test; trim `system-admin.ts` to its non-tenant keys.
