@@ -609,7 +609,6 @@ jobs:
   release:
     name: 🚀 Release
     needs: [metadata, publish_images]
-    if: needs.publish_images.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
