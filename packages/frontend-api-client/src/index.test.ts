@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createApiClient, setActiveTenantSlug, setTenantRoutingEnabled, tenantAwareUrl } from "./index";
+import { createApiClient } from "./index";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -9,8 +9,6 @@ const jsonResponse = (status: number, body: unknown) =>
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  setTenantRoutingEnabled(false);
-  setActiveTenantSlug(undefined);
 });
 
 describe("frontend API client", () => {
@@ -55,7 +53,7 @@ describe("frontend API client", () => {
     expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("X-XSRF-TOKEN")).toBe("csrf-token");
   });
 
-  it("supports tenant-aware URL transformation without routing identity calls", async () => {
+  it("applies a caller-supplied transformUrl without routing identity calls", async () => {
     const tenantSlug = "acme west";
     const transformUrl = (url: string) =>
       url.startsWith("/api/") && !url.startsWith("/api/v1/identity/")
@@ -76,39 +74,19 @@ describe("frontend API client", () => {
     ]);
   });
 
-  describe("shared tenant routing", () => {
-    it("prefixes business API calls for every client once enabled", async () => {
-      setTenantRoutingEnabled(true);
-      setActiveTenantSlug("default");
-      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
-      vi.stubGlobal("fetch", fetchMock);
-      // A module client created without any tenant transform of its own.
-      const moduleClient = createApiClient();
+  it("passes business API URLs through unchanged with no transformUrl configured", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { token: "csrf-token" }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient();
 
-      await expect(moduleClient.request("/api/v1/customers?page=1")).resolves.toEqual({ ok: true });
+    await expect(client.request("/api/v1/customers?page=1", { method: "POST" })).resolves.toEqual({ ok: true });
 
-      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/t/default/customers?page=1");
-    });
-
-    it("keeps identity endpoints global and is inert when disabled or unset", () => {
-      setTenantRoutingEnabled(true);
-      setActiveTenantSlug("default");
-      expect(tenantAwareUrl("/api/v1/identity/session")).toBe("/api/v1/identity/session");
-      expect(tenantAwareUrl("/api/v1/t/default/customers")).toBe("/api/v1/t/default/customers");
-      expect(tenantAwareUrl("/health")).toBe("/health");
-
-      setActiveTenantSlug(undefined);
-      expect(tenantAwareUrl("/api/v1/customers")).toBe("/api/v1/customers");
-
-      setActiveTenantSlug("default");
-      setTenantRoutingEnabled(false);
-      expect(tenantAwareUrl("/api/v1/customers")).toBe("/api/v1/customers");
-    });
-
-    it("encodes the tenant slug in the prefix", () => {
-      setTenantRoutingEnabled(true);
-      setActiveTenantSlug("acme west");
-      expect(tenantAwareUrl("/api/v1/customers")).toBe("/api/v1/t/acme%20west/customers");
-    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/identity/antiforgery",
+      "/api/v1/customers?page=1",
+    ]);
   });
 });

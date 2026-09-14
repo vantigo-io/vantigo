@@ -19,7 +19,6 @@ import { getProfile, profileQueryKey } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut, switchTenant } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
-import { setActiveTenantSlug } from "../api/request";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
 import { enabledModuleKeys, fetchTenantCapabilities, tenantCapabilitiesQueryKey } from "../api/tenant-capabilities";
 import { AppSpotlight } from "../components/app-spotlight";
@@ -146,13 +145,11 @@ const RootLayout = () => {
     tenants.length === 0 ||
     !activeTenant ||
     (activeTenant.status && !["active", "enabled"].includes(activeTenant.status.toLowerCase()));
-  setActiveTenantSlug(requestedTenantSlug);
   const handleTenantSwitch = async (tenant: { id: string; slug: string }) => {
     const updated = await switchTenant(tenant.id);
     queryClient.setQueryData(sessionQueryKey, updated);
     // Tenant-owned data must never flash from the previous workspace.
     await queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
-    setActiveTenantSlug(tenant.slug);
     const currentSubPath =
       activeTenant?.slug && pathname.startsWith(`/${activeTenant.slug}`)
         ? pathname.slice(activeTenant.slug.length + 1) || "/"
