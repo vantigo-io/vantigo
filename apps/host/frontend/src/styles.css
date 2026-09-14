@@ -1,14 +1,5 @@
 @import "@vantigo/frontend-shell/theme.css";
 
-.tenant-switcher-spinner {
-  animation: tenant-switcher-spin 0.8s linear infinite;
-}
-@keyframes tenant-switcher-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .empty-icon {
   display: grid;
   place-items: center;

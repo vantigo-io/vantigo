@@ -139,12 +139,6 @@ const RootLayout = () => {
         }
         onSignOut={() => logout.mutate()}
         signOutDisabled={logout.isPending}
-        // The shell still declares tenant-switcher props; task 5 of the
-        // frontend de-tenanting plan deletes them. Passed empty until then —
-        // the switcher hides itself for fewer than two tenants.
-        tenants={[]}
-        activeTenantId={null}
-        onTenantSwitch={() => {}}
         navbarTop={<SpotlightSearchBox />}
         nav={(close) => renderNavSections(primarySections, pathname, close, t)}
         navLower={(close) => renderNavSections(lowerSections, pathname, close, t)}
