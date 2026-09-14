@@ -37,9 +37,6 @@ interface ContactsSearch {
 export const ContactsPage = () => {
   const { t, formatters } = useI18n("customers");
   const { page, search } = useSearch({ strict: false }) as ContactsSearch;
-  // The $tenantSlug route param no longer exists (task 3 of the frontend
-  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
-  const tenantSlug: string | undefined = undefined;
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
 
@@ -145,7 +142,7 @@ export const ContactsPage = () => {
                         style={{ cursor: "pointer" }}
                         onClick={() =>
                           navigate({
-                            href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/contacts/${item.contact.id}`,
+                            href: `/contacts/${item.contact.id}`,
                           })
                         }
                       >
@@ -207,21 +204,10 @@ export const ContactsPage = () => {
  */
 const ContactCustomersCell = ({ item }: { item: ContactListItem }) => {
   const customer = item.customer;
-  // The $tenantSlug route param no longer exists (task 3 of the frontend
-  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
-  const tenantSlug: string | undefined = undefined;
 
   if (customer) {
     return (
-      <Anchor
-        size="sm"
-        renderRoot={(props) => (
-          <Link
-            to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${customer.id}` as never}
-            {...props}
-          />
-        )}
-      >
+      <Anchor size="sm" renderRoot={(props) => <Link to={`/customers/${customer.id}` as never} {...props} />}>
         {customer.name}
       </Anchor>
     );

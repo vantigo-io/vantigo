@@ -46,9 +46,6 @@ import "../i18n";
 export const CustomerContactsCard = ({ customerId }: { customerId: number }) => {
   const { t } = useI18n("customers");
   const navigate = useNavigate() as (options: unknown) => void;
-  // The $tenantSlug route param no longer exists (task 3 of the frontend
-  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
-  const tenantSlug: string | undefined = undefined;
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery(customerContactsQueryOptions(customerId));
 
@@ -139,7 +136,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                     style={{ cursor: "pointer" }}
                     onClick={() =>
                       navigate({
-                        href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/contacts/${association.contact.id}`,
+                        href: `/contacts/${association.contact.id}`,
                       })
                     }
                   >
