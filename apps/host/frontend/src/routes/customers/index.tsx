@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { customerStatsQueryOptions, customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { CustomersPage } from "@vantigo/customers-ui/pages/customers.index";
-export const Route = createFileRoute("/$tenantSlug/customers/")({
+export const Route = createFileRoute("/customers/")({
   validateSearch: (search: Record<string, unknown>) => ({
     page: Math.max(1, Number(search.page) || 1),
     search: typeof search.search === "string" ? search.search : "",

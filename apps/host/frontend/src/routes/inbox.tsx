@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { InboxPage } from "@vantigo/communications-ui/pages/inbox";
-export const Route = createFileRoute("/$tenantSlug/inbox")({
+export const Route = createFileRoute("/inbox")({
   validateSearch: (s: Record<string, unknown>) => ({
     conversationId: typeof s.conversationId === "string" ? s.conversationId : undefined,
     status: s.status === "open" || s.status === "closed" || s.status === "archived" ? s.status : undefined,

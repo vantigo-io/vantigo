@@ -21,10 +21,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
-import { type Invitation, invitationAction, listInvitations } from "../../../api/account-lifecycle";
-import { fetchSession, sessionQueryKey } from "../../../api/auth";
-import { translateHostRole } from "../../../i18n";
-import "../../../i18n";
+import { type Invitation, invitationAction, listInvitations } from "../../api/account-lifecycle";
+import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { translateHostRole } from "../../i18n";
+import "../../i18n";
 
 const status = (item: Invitation) =>
   item.revokedAt
@@ -98,7 +98,7 @@ const InvitationsPage = () => {
             {t("admin.invitationsDescriptionShort")}
           </Text>
         </div>
-        <Button component={Link} to="/$tenantSlug/settings/users" leftSection={<IconPlus size={16} />}>
+        <Button component={Link} to="/workspace/users" leftSection={<IconPlus size={16} />}>
           {t("admin.inviteSomeone")}
         </Button>
       </Group>
@@ -274,7 +274,7 @@ const InvitationsPage = () => {
     </Stack>
   );
 };
-export const Route = createFileRoute("/$tenantSlug/settings/invitations")({
+export const Route = createFileRoute("/workspace/invitations")({
   beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
     if (!session?.user.roles.includes("Owner")) throw redirect({ to: "/" });

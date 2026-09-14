@@ -131,7 +131,9 @@ export const ContactDetailsPage = () => {
 const ContactCustomersCard = ({ contact, contactName }: { contact: ContactResponse; contactName: string }) => {
   const { t } = useI18n("customers");
   const contactId = contact.id;
-  const { tenantSlug } = useParams({ strict: false });
+  // The $tenantSlug route param no longer exists (task 3 of the frontend
+  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
+  const tenantSlug: string | undefined = undefined;
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery(contactCustomersQueryOptions(contactId));

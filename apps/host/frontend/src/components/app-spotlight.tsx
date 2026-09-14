@@ -167,8 +167,8 @@ export const AppSpotlight = ({
                   handleNavigate(() => {
                     if (tenantSlug)
                       void navigate({
-                        to: "/$tenantSlug/customers/$customerId",
-                        params: { tenantSlug, customerId: customer.id },
+                        to: "/customers/$customerId",
+                        params: { customerId: customer.id },
                       });
                   })
                 }
@@ -192,8 +192,8 @@ export const AppSpotlight = ({
                   handleNavigate(() => {
                     if (tenantSlug)
                       void navigate({
-                        to: "/$tenantSlug/contacts/$contactId",
-                        params: { tenantSlug, contactId: item.contact.id },
+                        to: "/contacts/$contactId",
+                        params: { contactId: item.contact.id },
                       });
                   })
                 }
@@ -218,8 +218,8 @@ export const AppSpotlight = ({
                   handleNavigate(() => {
                     if (tenantSlug)
                       void navigate({
-                        to: "/$tenantSlug/energy/metering-points/$meteringPointId",
-                        params: { tenantSlug, meteringPointId: point.id },
+                        to: "/energy/metering-points/$meteringPointId",
+                        params: { meteringPointId: point.id },
                       });
                   })
                 }

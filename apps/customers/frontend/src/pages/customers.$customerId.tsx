@@ -1,7 +1,7 @@
 import { Anchor, Badge, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
@@ -21,7 +21,9 @@ import "../i18n";
 
 export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => {
   const { t, formatters } = useI18n("customers");
-  const { tenantSlug } = useParams({ strict: false });
+  // The $tenantSlug route param no longer exists (task 3 of the frontend
+  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
+  const tenantSlug: string | undefined = undefined;
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
 

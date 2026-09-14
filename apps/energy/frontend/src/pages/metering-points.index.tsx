@@ -15,7 +15,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconBolt, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ConnectionStatus, meteringPointsQueryOptions } from "../api/energy";
@@ -31,7 +31,9 @@ interface MeteringPointsSearch {
 const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "teal", Disconnected: "red" })[status];
 
 export const MeteringPointsPage = () => {
-  const { tenantSlug } = useParams({ strict: false });
+  // The $tenantSlug route param no longer exists (task 3 of the frontend
+  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
+  const tenantSlug: string | undefined = undefined;
   const { t } = useI18n("energy");
   const { page, search } = useSearch({ strict: false }) as MeteringPointsSearch;
   const navigate = useNavigate() as (options: unknown) => void;

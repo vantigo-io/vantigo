@@ -41,7 +41,7 @@ import {
   type RoleInput,
   revokeDelegation,
   updateAuthorizationRole,
-} from "../../../api/authorization";
+} from "../../api/authorization";
 import {
   translateHostPermissionCategory,
   translateHostPermissionDescription,
@@ -49,8 +49,8 @@ import {
   translateHostPermissionModule,
   translateHostRole,
   translateHostRoleDescription,
-} from "../../../i18n";
-import "../../../i18n";
+} from "../../i18n";
+import "../../i18n";
 
 const errorText = (error: unknown, requestFailed: string) => (error instanceof Error ? error.message : requestFailed);
 
@@ -620,7 +620,7 @@ const RolesPage = () => {
   );
 };
 
-export const Route = createFileRoute("/$tenantSlug/settings/roles")({
+export const Route = createFileRoute("/workspace/roles")({
   beforeLoad: async ({ context }) => {
     const access = await context.queryClient.fetchQuery({
       queryKey: ["authorization", "me"],
