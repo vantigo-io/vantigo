@@ -9,10 +9,16 @@
         "version": null,
         "confidence": "high",
         "markers": ["package.json"]
+      },
+      {
+        "name": "Go",
+        "version": null,
+        "confidence": "high",
+        "markers": ["apps/server/go.mod"]
       }
     ],
     "frameworks": [],
-    "packageManager": "npm",
+    "packageManager": "bun",
     "runtime": null
   },
   "build": {
@@ -24,11 +30,13 @@
       "frontend:lint": "bun run --cwd apps/customers/frontend lint && bun run --cwd apps/communications/frontend lint && bun run --cwd apps/products/frontend lint && bun run --cwd apps/energy/frontend lint && bun run --cwd apps/host/frontend lint",
       "frontend:test": "bun run --cwd packages/frontend-api-client test && bun run --cwd packages/frontend-shell test && bun run --cwd apps/customers/frontend test && bun run --cwd apps/communications/frontend test && bun run --cwd apps/products/frontend test && bun run --cwd apps/energy/frontend test && bun run --cwd apps/host/frontend test",
       "frontend:build": "bun run --cwd apps/host/frontend build",
+      "gen:client": "bun run tools/openapi/gen-client.ts",
+      "gen:client:test": "bun test tools/openapi",
       "translations:check": "bun run tools/i18n/check.ts",
       "i18n:test": "bun run --cwd apps/customers/frontend vitest run --root ../../../packages/frontend-shell src/i18n && bun test tools/i18n",
       "prepare": "husky",
-      "format:check": "biome check . && dotnet format \"Vantigo.slnx\" --verify-no-changes --no-restore",
-      "format:write": "biome check --write . && dotnet format"
+      "format:check": "biome check .",
+      "format:write": "biome check --write ."
     }
   },
   "conventions": {
@@ -73,18 +81,11 @@
       "lastAccessed": 1786959927227,
       "keyFiles": [
         "README.md",
-        "azure-identity.md",
         "communications.md",
         "customers-authentication.md",
-        "module-boundaries.md"
+        "module-boundaries.md",
+        "products.md"
       ]
-    },
-    "orchestration": {
-      "path": "orchestration",
-      "purpose": null,
-      "fileCount": 0,
-      "lastAccessed": 1786959927228,
-      "keyFiles": []
     },
     "packages": {
       "path": "packages",

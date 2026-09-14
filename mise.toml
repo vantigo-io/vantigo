@@ -1,8 +1,8 @@
 # Single source of truth for the toolchain, used identically by developers and CI.
 # package.json's `packageManager` field and the go directive in
 # apps/server/go.mod repeat these versions. Nothing cross-checks them any more:
-# tools/toolchain was removed with the .NET tree, along with the global.json and
-# .bun-version files it reconciled.
+# tools/toolchain was removed with the .NET tree, along with the .NET SDK pin
+# and .bun-version files it reconciled.
 [tools]
 bun = "1.3.14"
 go = "1.27.0"

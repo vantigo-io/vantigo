@@ -125,6 +125,6 @@ describe("appUrl", () => {
 
   it("supports nested base paths", () => {
     setBase("/apps/customers/");
-    expect(appUrl("/api/v1/identity/antiforgery")).toBe("/apps/customers/api/v1/identity/antiforgery");
+    expect(appUrl("/api/v1/identity/session")).toBe("/apps/customers/api/v1/identity/session");
   });
 });

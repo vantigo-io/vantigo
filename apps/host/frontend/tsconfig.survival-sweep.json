@@ -16,5 +16,5 @@
     "noFallthroughCasesInSwitch": true,
     "strict": true
   },
-  "include": ["src/survival-sweep.test.ts"]
+  "include": ["src/survival-sweep.test.ts", "src/cutover-sweep.test.ts"]
 }

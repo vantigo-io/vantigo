@@ -15,7 +15,7 @@ states what is enforced, what it costs, and how to get out of it deliberately.
 | Security headers, including CSP | sent | sent |
 | Host header filtering | `APP_URL`'s host + loopback | `APP_URL`'s host + loopback |
 | HTTPS redirection | none | none (HSTS header only) |
-| Merged OpenAPI document | `GET /api/openapi.json`, session required | `GET /api/openapi.json`, session required |
+| Merged OpenAPI document | `GET /api/openapi.json`, any authenticated session | `GET /api/openapi.json`, any authenticated session |
 
 ## Fail-closed transport
 
@@ -79,9 +79,14 @@ from session cookies. Anything reachable from a network you do not control must
 leave it unset.
 
 Unlike the .NET implementation, plaintext SMTP needs no second, narrower opt-in:
-`SMTP_TLS=none` plus either development or `ALLOW_INSECURE_TRANSPORT=1` is the whole
-rule, and the SMTP driver refuses the combination defensively even if it is
-constructed directly.
+`ALLOW_INSECURE_TRANSPORT=1` is the only thing that permits `SMTP_TLS=none`, and it is
+required in **every** environment, development included. Development does not stand in
+for it. What development changes is where the refusal comes from — configuration
+validation rejects `SMTP_TLS=none` only outside development, while the SMTP driver
+refuses it wherever it is constructed — so a development stack configured with
+`MAIL_DRIVER=smtp` and `SMTP_TLS=none` but no flag fails when the sender is built
+during startup rather than when configuration is loaded. `MAIL_DRIVER` defaults to
+`log` in development, so that combination is normally never reached.
 
 ## HSTS
 
@@ -162,6 +167,8 @@ GET /api/openapi.json
 
 It requires a session in every environment, development included — it is not
 environment-gated, and there is no Swagger, Scalar or other documentation UI in the
-image. There is no `/openapi/v1.json` route. The per-module source contracts live in
+image. The rule is `session`, which **any authenticated user** satisfies: no
+permission, policy or role is checked. The document is therefore protected from
+anonymous visitors, not restricted to administrators. There is no `/openapi/v1.json` route. The per-module source contracts live in
 `openapi/*.yaml` in the repository and are the right input for client generation;
 `bun run gen:client` regenerates the typed frontend client from them.

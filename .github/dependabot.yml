@@ -7,10 +7,6 @@ multi-ecosystem-groups:
       time: '03:00'
       timezone: Europe/Oslo
 updates:
-  - package-ecosystem: nuget
-    directory: /
-    multi-ecosystem-group: all-dependencies
-    patterns: ['*']
   - package-ecosystem: bun
     directory: /
     multi-ecosystem-group: all-dependencies
