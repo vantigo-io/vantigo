@@ -263,6 +263,18 @@ jobs:
           cp vantigo.env.example vantigo.env
           docker compose config -q
 
+      - name: 🚫 Assert no leftover .NET configuration keys
+        # `docker compose config -q` only checks YAML syntax and variable
+        # interpolation: it stays green even if this manifest still targeted
+        # a binary or config convention the Go server never reads. Grep is
+        # not a deployment test, but it turns that silent failure loud.
+        working-directory: deploy/compose
+        run: |
+          if grep -rn 'Vantigo\.Host\|ConnectionStrings__' compose.yaml .env.example vantigo.env.example; then
+            echo "::error::found a leftover .NET binary name or ConnectionStrings__ key in deploy/compose — see the lines above" >&2
+            exit 1
+          fi
+
   codeql:
     needs: metadata
     # Dormant until GitHub Advanced Security is enabled on this repository (it

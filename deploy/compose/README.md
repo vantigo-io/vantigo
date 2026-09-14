@@ -35,15 +35,16 @@ a one-shot job, and then starts Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API reference** — <http://localhost:8080/openapi/v1.json>
 
-The Customers, Communications and Products modules are enabled by default. They
-share one PostgreSQL database named `vantigo`, with independent `identity`,
-`customers`, `communications` and `products` schemas and migration histories.
+The Customers, Products, Energy and Communications modules are enabled by
+default (`MODULES` in `vantigo.env`). They share one PostgreSQL database named
+`vantigo`, with independent `identity`, `customers`, `products`, `energy` and
+`communications` schemas and migration histories.
 
 ## First sign-in
 
-This Compose stack runs Vantigo outside Development, so `vantigo.env` must set
-`Authentication__Bootstrap__Secret` before you first run `docker compose up -d`; the
-API refuses to start without it rather than generating and logging one for you.
+This Compose stack runs Vantigo outside development, so `vantigo.env` must set
+`BOOTSTRAP_SECRET` before you first run `docker compose up -d`; the API
+refuses to start without it rather than generating and logging one for you.
 Generate a high-entropy value yourself, for example:
 
 ```bash
@@ -61,21 +62,22 @@ bootstrap secret. Owners can invite further users from `/settings`.
 | `.env` | Image tag, PostgreSQL credentials and host port |
 | `vantigo.env` | Application, identity, email, module and proxy settings |
 
-The complete configuration reference is in
+Every key `vantigo.env` accepts is documented in
+`apps/server/internal/config/config.go`'s field comments — the authoritative
+reference — and summarized in
 [docs/customers-authentication.md](../../docs/customers-authentication.md).
-Tenancy modes and the database roles below are described in
-[docs/tenancy.md](../../docs/tenancy.md). Data Protection key wrapping — why
-`vantigo.env.example` ships with `DataProtection__AllowUnwrappedKeys=true`,
-and how to move to an Azure Key Vault key instead — is described in
-[docs/data-protection-key-wrapping.md](../../docs/data-protection-key-wrapping.md).
-For startup-configured workforce OIDC, static SCIM provisioning, and recovery procedures, see
-the [SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
-Pin a specific release with `VANTIGO_TAG=v1.2.3` in `.env`. For reproducible
-production deployments, pin by digest instead of tag — tags are mutable,
-digests are not:
+For startup-configured workforce OIDC, static SCIM provisioning, and recovery
+procedures, see the
+[SSO and SCIM operations guide](../../docs/sso-scim-operations.md).
+
+Pin a specific release with `VANTIGO_TAG=0.16.1` in `.env` — published image
+tags drop the `v` that git release tags keep (`v0.16.1` the git tag,
+`0.16.1` the image tag; `latest` is unaffected). For reproducible production
+deployments, pin by digest instead of tag — tags are mutable, digests are
+not:
 
 ```dotenv
-VANTIGO_TAG=v1.2.3@sha256:<digest from the release>
+VANTIGO_TAG=0.16.1@sha256:<digest from the release>
 ```
 
 Release images are cosign-signed; verify a digest before deploying it:
@@ -86,7 +88,7 @@ cosign verify ghcr.io/vantigo-io/vantigo@sha256:<digest> \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-## Database roles and tenant isolation
+## Database roles
 
 The stack creates two PostgreSQL roles on first initialization:
 
@@ -95,14 +97,25 @@ The stack creates two PostgreSQL roles on first initialization:
 | `POSTGRES_USER` | `vantigo` | Superuser. Owns every schema and table and runs the `vantigo-migrate` job. |
 | `POSTGRES_APP_USER` | `vantigo_app` | `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`, table DML only, owns nothing. |
 
-`VANTIGO_DB_USER` and `VANTIGO_DB_PASSWORD` choose the role the API connects as.
-They **default to the runtime role**, so the tenant row-level security policies
-apply to every application query: the application sets the session-scoped
-`app.tenant_id` setting on each pooled connection it opens, and the policies
-match rows against it. The `vantigo-migrate` job keeps running as the owner
-role. Point `VANTIGO_DB_USER` at the owner role only for debugging — doing so
-turns the database-level tenant isolation off. Details are in
-[docs/tenancy.md](../../docs/tenancy.md).
+`VANTIGO_DB_USER` and `VANTIGO_DB_PASSWORD` choose the role the API connects
+as (`compose.yaml` builds `DATABASE_URL` from them). They **default to the
+runtime role** — plain defense in depth, so that a compromised API process
+cannot alter the schema, create objects, or otherwise act as the database
+owner. This is a single-tenant application: there is no `tenant_id` column
+and no row-level security policy anywhere in the schema, so unlike the
+retired .NET host's compose file, this is not a tenant-isolation boundary,
+only a privilege-separation one. Point `VANTIGO_DB_USER` at the owner role
+only for debugging.
+
+`compose.yaml` separately sets `MIGRATIONS_DATABASE_URL` on the `vantigo`
+service to the owner role. That is not decorative: `api` mode applies
+migrations itself before it starts serving
+(`cmd/vantigo/main.go`, `case modeAPI:`), and it needs the owner role's DDL
+rights to do that safely even though the same process serves every request
+afterwards through the least-privilege `DATABASE_URL`. The `vantigo-migrate`
+job still runs first so migrations are applied — and any failure surfaces —
+before the API container starts at all; `api` re-running them is then a
+no-op.
 
 The role statements run from the PostgreSQL init script, which executes **only
 when the `postgres-data` volume is created**. An existing installation can add
@@ -123,61 +136,71 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
--- the modules enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, communications, products, energy TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, communications, products, energy TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, communications, products, energy TO "vantigo_app";
+-- the MODULES enabled in your installation).
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications TO "vantigo_app";
 ```
-
-Multi-tenant mode (`Tenancy__Mode=multi`) is not production-ready and refuses to
-start outside Development. See [docs/tenancy.md](../../docs/tenancy.md).
 
 ## Background workers
 
 The single-container default hosts the Communications background workers
-(outbox, inbound, retention, attachment cleanup and scanning) inside the API
-process. Deployments that scale the API horizontally should move them to one
-dedicated worker container so every extra HTTP replica does not multiply the
-pollers:
+(outbox, inbound, retention, attachment cleanup) inside the API process
+(`WORKERS_IN_PROCESS=1`, the default). Deployments that scale the API
+horizontally should move them to one dedicated worker container so every
+extra HTTP replica does not multiply the pollers:
 
-1. Set `Workers__InProcess=false` in `vantigo.env` (applies to the API).
+1. Set `WORKERS_IN_PROCESS=0` in `vantigo.env` (applies to the API replicas).
 2. Run one extra container from the same image with the `worker` command; it
-   ignores `Workers__InProcess` and serves only `/health/live` and
-   `/health/ready` for probes.
+   always runs the workers regardless of `WORKERS_IN_PROCESS` and serves only
+   `/health/live` and `/health/ready` for probes.
 
-Whichever topology is used, retention cleanup takes an installation-wide
-advisory lease, so it runs on exactly one instance per cycle.
+Whichever topology is used, retention cleanup takes a PostgreSQL advisory
+lock, so it runs on exactly one instance per cycle.
 
-On shutdown the host drains for up to 30 seconds
-(`Host__ShutdownTimeoutSeconds`), enough for the longest single worker
-operation (an SMTP send is capped at 20 s) to finish and commit. Give the
-container platform a termination grace period **above** that value —
-`stop_grace_period` in Compose, `terminationGracePeriodSeconds` on ACA —
-or an in-flight send can be killed mid-way and resent after restart.
+On shutdown the process drains for up to `SHUTDOWN_TIMEOUT` (30 seconds by
+default), enough for the longest single worker operation to finish and
+commit. `compose.yaml` sets `stop_grace_period: 35s` on the `vantigo`
+service so Compose's SIGKILL never arrives before that drain can complete —
+whatever you set `SHUTDOWN_TIMEOUT` to, keep `stop_grace_period` (Compose) or
+`terminationGracePeriodSeconds` (Kubernetes/ACA) comfortably above it, or an
+in-flight operation can be killed mid-way and retried after restart.
+
+## Health probes
+
+The image has no shell, so the container `HEALTHCHECK` execs the binary
+itself (`/app/vantigo healthcheck`) rather than running a `CMD-SHELL` curl or
+wget one-liner. Keep any probe you configure — Compose's `healthcheck.test`,
+a Kubernetes liveness/readiness probe, anything else — in that same exec
+form. An HTTP-style probe that connects directly (rather than execing inside
+the container) sends its own address as the `Host` header, and
+`internal/security/hostfilter.go` only accepts `APP_URL`'s host plus
+loopback (`localhost`, `127.0.0.1`, `::1`); every other `Host` is rejected
+with 400, so such a probe always fails.
 
 ## Database connection budget
 
-Each API replica caps its PostgreSQL pool at 25 connections unless the
-connection string sets `Maximum Pool Size` explicitly (Npgsql's own default of
-100 per replica exhausts a modest `max_connections` once you scale out). Size
-the budget so that
+Each API replica's PostgreSQL pool defaults to `max(4, NumCPU)` connections
+(`apps/server/internal/db/db.go`), which ties pool size to the host the
+replica happens to land on. Pin it explicitly with `pool_max_conns` on
+`DATABASE_URL` in `compose.yaml` instead of relying on that default,
+especially once you run more than one replica. Size the budget so that
 
 ```
-replicas × Maximum Pool Size  ≤  max_connections − headroom (reserve ~10 for
-                                 migrations, monitoring, and manual sessions)
+replicas × pool size  ≤  max_connections − headroom (reserve ~10 for
+                          migrations, monitoring, and manual sessions)
 ```
 
-Connect and command timeouts keep Npgsql's defaults (15 s / 30 s); override
-them in the connection string (`Timeout`, `Command Timeout`) if your
-environment needs different bounds. Migrations run without the pool cap, since
-schema changes may legitimately run longer.
+Migrations run without the pool cap, since schema changes may legitimately
+run longer.
 
 ## Base path and reverse proxy
 
 The whole application can be served below one configurable path prefix. Set
-`App__BasePath` in `vantigo.env` and set `App__PublicOrigin` to the public
-scheme and host. The API prefixes remain `/api/v1/identity`,
-`/api/v1/customers`, `/api/v1/communications` and `/api/v1/products`.
+`APP_BASE_PATH` in `vantigo.env` and set `APP_URL` to the public scheme and
+host (no path — the path prefix is `APP_BASE_PATH`, not part of `APP_URL`).
+The API prefixes remain `/api/v1/identity`, `/api/v1/customers`,
+`/api/v1/products`, `/api/v1/energy` and `/api/v1/communications`.
 
 For example, with nginx:
 
@@ -195,19 +218,22 @@ server {
 }
 ```
 
-With `App__BasePath=/vantigo`, generated invitation, password-reset and OIDC
+With `APP_BASE_PATH=/vantigo`, generated invitation, password-reset and OIDC
 callback URLs include that prefix. The base path is a runtime setting; the
-single image serves the matching SPA without a rebuild.
+single image serves the matching SPA without a rebuild. Trust exactly the
+proxy in front of you with `TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS`, or
+the forwarded scheme/host/client-address headers are ignored.
 
 ## Email and observability
 
-Identity invitations and password recovery use the `Email__*` settings. The
-Communications module uses `Smtp__*` for its default mailbox delivery. Mailgun
-mailboxes are configured through the Communications API, where the provider,
-domain, region and API key are stored as protected mailbox credentials; there is
-no service-to-service API-key environment variable.
+Identity invitations and password recovery use the `MAIL_DRIVER`/`SMTP_*`
+settings. Per-mailbox delivery credentials for the Communications module
+(SMTP or Mailgun) are configured through the Communications API, where the
+provider, domain, region and API key are stored as protected mailbox
+credentials — there is no environment variable for them.
 
-Telemetry is off by default. Standard OTLP variables can be set in `vantigo.env`:
+Telemetry is off by default. Standard OTLP variables can be set in
+`vantigo.env`:
 
 ```dotenv
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
@@ -217,57 +243,55 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 
 ## Production notes
 
-- **Remove `Security__AllowInsecureTransport=true` from `vantigo.env`.** The
-  quick-start stack ships with it because it serves `http://localhost:8080` and
-  reaches the bundled PostgreSQL container with no certificate authority
-  available. Left in place on a network you do not control, session cookies,
-  invitation and password-reset bearer links, and database credentials all travel
-  in the clear. See [transport security](../../docs/transport-security.md).
-- Put the application behind a TLS-terminating reverse proxy and configure the
-  `ForwardedHeaders__*` settings to trust exactly that proxy.
-- Set `App__PublicOrigin` to the public `https://` origin; mailed links, the
-  accepted `Host` header values and the static OIDC callback are all derived from
-  it. The callback is fixed at `/api/v1/identity/oidc/callback`.
-- Point `ConnectionStrings__vantigo` at a PostgreSQL server that presents a
-  certificate and add `SSL Mode=VerifyFull`. `compose.yaml` sets this variable
-  for both the `vantigo-migrate` and `vantigo` services, so it must be edited
-  there rather than only in `vantigo.env`.
-- The `vantigo.env.example` file documents the static OIDC and SCIM settings.
-  Configuration is deployment-bound and changes require a restart. Do not put
-  provider or SCIM secrets in source-controlled files.
+- **Remove `ALLOW_INSECURE_TRANSPORT=1` from `vantigo.env`.** The quick-start
+  stack ships with it because it serves `http://localhost:8080` and reaches
+  the bundled PostgreSQL container with no certificate authority available.
+  Left in place on a network you do not control, session cookies, invitation
+  and password-reset bearer links, and database credentials all travel in
+  the clear. See [transport security](../../docs/transport-security.md).
+- Put the application behind a TLS-terminating reverse proxy and configure
+  `TRUSTED_PROXY_HOPS`/`TRUSTED_PROXY_CIDRS` to trust exactly that proxy.
+- Set `APP_URL` to the public `https://` origin; mailed links, the accepted
+  `Host` header values and the static OIDC callback are all derived from it.
+  The callback is fixed at `/api/v1/identity/oidc/callback`.
+- Add `sslmode=verify-full` (or `verify-ca` when the server certificate does
+  not name the host) to both `DATABASE_URL` and `MIGRATIONS_DATABASE_URL` in
+  `compose.yaml` once PostgreSQL presents a certificate — both must be
+  edited there, not in `vantigo.env`, since `compose.yaml` is what builds
+  them.
+- The `vantigo.env.example` file documents the static OIDC and SCIM
+  settings. Configuration is deployment-bound and changes require a restart.
+  Do not put provider or SCIM secrets in source-controlled files — inject
+  `OIDC_CLIENT_SECRET`, `SCIM_TOKEN`, `SCIM_PREVIOUS_TOKEN` and
+  `COMMUNICATIONS_AI_API_KEY` from a secret store instead.
 - SCIM uses `/api/v1/identity/scim/v2`, bearer tokens, and
-  `application/scim+json`. Set `Authentication__Scim__Enabled=true` and either
-  `Authentication__Scim__BearerToken` or
-  `Authentication__Scim__BearerTokenFile`. During rotation, optionally set
-  `Authentication__Scim__PreviousBearerToken` or
-  `Authentication__Scim__PreviousBearerTokenFile` together with
-  `Authentication__Scim__PreviousBearerTokenExpiresAtUtc` (future and no more
-  than 24 hours after startup).
-- The Compose `postgres-data` volume contains the PostgreSQL-backed Data Protection
-  keys as well as application data. `vantigo.env.example` ships with
-  `DataProtection__AllowUnwrappedKeys=true` so the stack can start without an
-  Azure Key Vault (Vantigo does not yet provision one), but that means the keys
-  are stored **unwrapped**: anyone with the volume or a database dump has both
-  the encrypted secrets and the keys to decrypt them. Back up the database
-  before upgrades, keep one migration job only, and provision a Key Vault key
-  and set `DataProtection__KeyVaultKeyUri` instead as soon as one is available
-  — see [Data Protection key wrapping](../../docs/data-protection-key-wrapping.md).
-- **Remove `Authentication__Owners__AllowInsecureNoMfa=true` from `vantigo.env`.**
-  The quick-start stack ships with it because a fresh installation has no enrolled
-  authenticator, and requiring MFA before one exists would leave no way to sign in
-  at all. Left in place, a compromised Owner or SystemAdmin password alone is enough
-  for full control of identity and the tenant control plane. Enrol an authenticator
-  for every privileged account, then set `Authentication__Owners__RequireMfa=true`
-  and drop this flag — see
+  `application/scim+json`. Set `SCIM_TOKEN`; during rotation, optionally set
+  `SCIM_PREVIOUS_TOKEN` together with `SCIM_PREVIOUS_TOKEN_EXPIRES_AT`
+  (future, and no more than 24 hours after startup).
+- **Remove `OWNERS_ALLOW_INSECURE_NO_MFA=1` from `vantigo.env`.** The
+  quick-start stack ships with it because a fresh installation has no
+  enrolled authenticator, and requiring MFA before one exists would leave no
+  way to sign in at all. Left in place, a compromised Owner or SystemAdmin
+  password alone is enough for full control of identity and the tenant
+  control plane. Enroll an authenticator for every privileged account, then
+  set `OWNERS_REQUIRE_MFA=1` and drop this flag — see
   [customer authentication](../../docs/customers-authentication.md).
-- Never run `seed` in production; it is Development-only.
+- Never run `seed` in production; it is development-only (`APP_ENV=development`).
+- `APP_SECRET` derives every encryption key this process uses (CSRF tokens,
+  cookie signing, TOTP secret encryption) via HKDF-SHA256 — there is no
+  external key vault to provision and nothing to wrap. Generate it once with
+  `openssl rand -base64 32`, store it in a secret manager, and treat losing
+  it the same as losing a signing key: every open session and every stored
+  TOTP secret becomes unrecoverable.
 
-The static identity cleanup migration is intentionally destructive for old
-database-managed federation/SCIM configuration and non-static connection data.
-Before deploying a release that contains it, confirm that the database has no
-real use of that removed configuration/data, take and verify a PostgreSQL backup,
-then let the one-shot `vantigo-migrate` service complete before starting the API.
-The migration is forward-only; do not plan an application rollback across it.
+`api` mode applies pending migrations before it starts serving, in addition
+to the one-shot `vantigo-migrate` job this stack runs first. For a
+controlled release, still run exactly one migration job, wait for successful
+completion, and then start the API — the point is to see a migration failure
+before any API replica starts, not to skip `api`'s own startup check. Take
+and verify a PostgreSQL backup before deploying a release that contains a
+destructive migration. Migrations are forward-only; do not plan an
+application rollback across one.
 
 ## Upgrading
 
@@ -275,10 +299,6 @@ The migration is forward-only; do not plan an application rollback across it.
 docker compose pull
 docker compose up -d
 ```
-
-The migration job runs before the application starts. For a controlled release,
-run exactly one migration job, wait for successful completion, and then start the
-API. The API does not apply migrations at startup.
 
 For a complete backup, one-migrator, token rotation, and Owner break-glass runbook,
 see [SSO and SCIM operations](../../docs/sso-scim-operations.md).
