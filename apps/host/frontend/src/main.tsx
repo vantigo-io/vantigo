@@ -15,12 +15,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { appConfig, I18nProvider, initAppConfig, vantigoTheme } from "@vantigo/frontend-shell";
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
-import {
-  setActiveTenantSlug,
-  setAuthStateClearer,
-  setTenantRoutingEnabled,
-  setUnauthorizedHandler,
-} from "./api/request";
+import { setAuthStateClearer, setUnauthorizedHandler } from "./api/request";
 import { AccountLanguagePreference } from "./components/account-language-preference";
 import { NotFoundPage, RouterError } from "./components/errors";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
@@ -39,8 +34,6 @@ const router = createRouter({
   defaultErrorComponent: RouterError,
 });
 setAuthStateClearer(() => queryClient.removeQueries({ queryKey: ["auth", "session"], exact: true }));
-setActiveTenantSlug(undefined);
-setTenantRoutingEnabled(true);
 setUnauthorizedHandler(() => {
   const pathname = window.location.pathname;
   if (publicPaths.has(pathname)) return;

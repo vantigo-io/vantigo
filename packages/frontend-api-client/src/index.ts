@@ -98,36 +98,6 @@ const problemMessage = (problem: unknown, status: number) => {
 const apiError = (message: string, status: number, fields?: Record<string, string[]>, code?: string): ApiError =>
   Object.assign(new Error(message), { status, fields, code });
 
-let activeTenantSlug: string | undefined;
-let tenantRoutingEnabled = false;
-
-/**
- * Sets the tenant prefix applied to business API calls by every client created
- * from this package. Identity endpoints always stay global. The host shell owns
- * this state; module apps embedded in the host inherit it automatically.
- */
-export const setActiveTenantSlug = (slug: string | undefined) => {
-  activeTenantSlug = slug;
-};
-
-/** Enables tenant-prefixed API mode for all clients. Identity endpoints are always global. */
-export const setTenantRoutingEnabled = (enabled: boolean) => {
-  tenantRoutingEnabled = enabled;
-};
-
-/** Applies the /api/v1/t/{slug} prefix to business API URLs when tenant routing is active. */
-export const tenantAwareUrl = (url: string): string => {
-  if (
-    !tenantRoutingEnabled ||
-    !activeTenantSlug ||
-    !url.startsWith("/api/") ||
-    url.startsWith("/api/v1/identity/") ||
-    url.startsWith("/api/v1/t/")
-  )
-    return url;
-  return `/api/v1/t/${encodeURIComponent(activeTenantSlug)}${url.slice(7)}`;
-};
-
 export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient => {
   const options = { ...defaultOptions, ...clientOptions };
   let csrfToken: string | null = null;
@@ -137,7 +107,7 @@ export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient
   let clearAuthState: () => void | Promise<void> = () => undefined;
 
   const requestUrl = (url: string) => {
-    const transformedUrl = tenantAwareUrl(options.transformUrl(url));
+    const transformedUrl = options.transformUrl(url);
     return transformedUrl.startsWith("/") ? options.resolveUrl(transformedUrl) : transformedUrl;
   };
 
