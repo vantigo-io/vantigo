@@ -12,12 +12,12 @@
 
 ## Global Constraints
 
-- **Baseline to restore after every task:** `bun run frontend:test` → exit 0, 65 test files, 284 tests, across 7 packages. Measured on clean `main`.
+- **Baseline to restore after every task:** `bun run frontend:test` → exit 0. It was 65 files / 284 tests on clean `main` and has since moved six times for recorded reasons (284 → 282 → 279 → 279 → 280 → 297). **Read the ledger's arithmetic for the current figure rather than this line** — a baseline quoted from a plan goes stale, and a stale one makes a legitimately-changed count look like a regression.
 - **Typecheck is `bun run frontend:build`** (`tsc -b && vite build`, host only).
 - **`routeTree.gen.ts` is committed and has NO drift check anywhere.** The TanStack Vite plugin regenerates it during `vite`, but `tsc -b` runs *first* in `frontend:build`. After any route move: run `vite build` (or `vite dev`) to regenerate, then run `frontend:build` again so `tsc` sees the fresh tree. Commit the regenerated file.
 - **Five `api-schema.d.ts` copies** (`tools/openapi/gen-client.ts:10-15`). CI fails on drift (`ci.yml:73`). Regenerate all five together with `bun run gen:client`, never by hand.
 - **biome excludes `routeTree.gen.ts` and `api-schema.d.ts`** (`biome.json:31-32`) — lint cannot catch staleness in either.
-- **i18n:** `tools/i18n/validator.ts` raises only `invalid-catalog` (missing locale); there is **no unused-key check**, so deleting catalogs is safe and leaving unused keys is safe. `tools/i18n/source-check.ts` flags `jsx-text`/`jsx-prop` — **any JSX you touch must not introduce a raw string literal**.
+- **i18n:** `tools/i18n/validator.ts` raises `key-mismatch` when one locale has a key another lacks, so remove a key from **every** locale or none. There is **no unused-key check** — which cuts the dangerous way: **deleting a catalog is NOT safe**, because a key something still uses simply vanishes, `t()` falls back to the raw key name, and i18next's loosely-typed `TFunction` means **`tsc` will not catch it**. Verify every key's callers before removing it. `tools/i18n/source-check.ts` flags `jsx-text`/`jsx-prop` — **any JSX you touch must not introduce a raw string literal**.
 - **The pre-commit hook runs a full gate**: `toolchain:check`, `translations:check`, `i18n:test`, `biome check`, `dotnet format`, `gofmt`. Never `--no-verify`. Never force-push.
 - **No test in the frontend suite hits a real Go server.** String-level assertions are all that exist, so a prefix change can pass every check while being wrong. Task 9 exists for exactly this.
 
@@ -64,7 +64,7 @@ Follow the routeTree ordering rule in Global Constraints.
 
 **Files:** `packages/frontend-shell/src/app-shell-layout.tsx:30-34,45-48,123,136-258`, `packages/frontend-shell/src/index.ts`
 
-Delete `ShellTenant`, the `tenants`/`activeTenantId`/`onTenantSwitch` props and the switcher `<Menu>`. Leaving the tenant keys in `src/i18n/catalogs/shell.ts` is safe (no unused-key check) — remove them anyway for tidiness, but never at the cost of an `invalid-catalog` (every locale must keep the same key set).
+Delete `ShellTenant`, the `tenants`/`activeTenantId`/`onTenantSwitch` props and the switcher `<Menu>`. Remove the now-unused tenant keys from `src/i18n/catalogs/shell.ts`, but never at the cost of a `key-mismatch` — every locale must keep the same key set.
 
 ### Task 6: Trim the admin subtree
 
@@ -83,7 +83,12 @@ Two divergent idioms exist and **both** go (spec D5): `useParams({ strict: false
 
 ### Task 8: Strip the contract's tenant leftovers (spec D4)
 
-**Files:** `openapi/identity.yaml:225-265,1751`; `apps/server/internal/identity/sessions.go:24-26,46-47`; all five `api-schema.d.ts` via `bun run gen:client`; Go generated code via `go generate`.
+**Files — verified, and larger than an earlier draft of this plan claimed:**
+- `openapi/identity.yaml`: **TWO** schemas carry the leftovers, not one — `AuthSessionResponse` (with `activeTenantId` and `tenants` also listed in its `required` array) and `AuthSuccessResponse` (the sign-in response, a different endpoint family), plus the shared `TenantSessionResponse`.
+- **FOUR** Go files plus a helper: `identity/sessions.go`, `identity/signin.go` (three call sites **and** the `noTenants()` helper, which becomes dead), `identity/passkeys.go`, `identity/invitations.go`.
+- All five `api-schema.d.ts` via `bun run gen:client` — only the host copy actually changes, but CI diffs the glob, so regenerate and commit all five.
+
+No Go test asserts these fields, so nothing defends the removal: **the typechecker is the safety net**, failing on each stale call site after regeneration.
 
 Remove `activeTenantId`, `tenants`, `TenantSessionResponse`. Then, in order: `cd apps/server && go generate ./... && go test ./internal/openapi/... && cd ../.. && bun run gen:client` (CONTRIBUTING.md:336-343). Run the **Go** suite too — this is the only task that touches Go.
 
