@@ -33,7 +33,7 @@ Compose starts PostgreSQL, runs the single application's database migrations as
 a one-shot job, and then starts Vantigo:
 
 - **Vantigo** — <http://localhost:8080>
-- **API reference** — <http://localhost:8080/openapi/v1.json>
+- **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
 The Customers, Products, Energy and Communications modules are enabled by
 default (`MODULES` in `vantigo.env`). They share one PostgreSQL database named
@@ -147,7 +147,7 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, en
 ## Background workers
 
 The single-container default hosts the Communications background workers
-(outbox, inbound, retention, attachment cleanup) inside the API process
+(outbox delivery, retention, attachment cleanup) inside the API process
 (`WORKERS_IN_PROCESS=1`, the default). Deployments that scale the API
 horizontally should move them to one dedicated worker container so every
 extra HTTP replica does not multiply the pollers:

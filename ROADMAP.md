@@ -8,11 +8,11 @@ Other modules add their own sections as their roadmaps solidify.
 ### Cross-module domain events (deferred until Orders)
 
 Synchronous cross-module queries use in-process contracts from
-`Vantigo.Contracts` (e.g. `ICustomerDirectory`) and need nothing more. For
-asynchronous "something happened" notifications the decided pattern is
+`internal/contracts` (e.g. `contracts.CustomerDirectory`) and need nothing more.
+For asynchronous "something happened" notifications the decided pattern is
 **in-process domain events dispatched through a transactional outbox**: the
 publishing module writes the event in the same transaction as its state change,
-and a hosted worker dispatches to handlers with retries (the Communications
+and a background worker dispatches to handlers with retries (the Communications
 outbox worker already proves the pattern). **No message broker** — Postgres is
 the queue, and every infrastructure piece multiplies per dedicated customer
 deployment. Build the event bus together with its first real consumer, most
@@ -53,7 +53,7 @@ workflows, and leverandørbytte-style customer changes.
 Customer detail page gets an Energy tab (host-composed, reusing the energy
 module's meter listing) so day-to-day work happens in the customer's context:
 consumption stats over the last twelve months, the customer's metering points
-with attach/detach, all behind the tenant's enabled modules and the caller's
+with attach/detach, all behind the deployment's enabled modules and the caller's
 permissions (the tab row follows the same visibility rules as the sidebar).
 Metering points are also searchable from the global spotlight by GSRN, meter
 number, or address.
@@ -63,7 +63,7 @@ the customer page.
 
 ### Phase 4 — Invoicing groundwork (align with Invoices)
 
-A `Vantigo.Contracts` interface (e.g. `IConsumptionProvider`) returning
+An `internal/contracts` interface (e.g. `contracts.ConsumptionProvider`) returning
 billable consumption per customer/metering point/supply period, keeping the
 privacy boundary enforced in one place. Price dimension: spot prices per price
 area (NO1–NO5) and grid tariffs, decided together with the Invoices module.

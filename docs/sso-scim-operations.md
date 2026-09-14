@@ -2,116 +2,67 @@
 
 This is the production runbook for Vantigo's static identity integrations. Each
 deployment has **at most one** workforce OpenID Connect provider and one
-deployment-bound SCIM credential. OIDC and SCIM settings are read when the
-process starts; changing a mounted file, environment variable, or secret store
-entry has no effect until the application is restarted.
+deployment-bound SCIM credential. Both are read from the environment when the process
+starts; changing a variable, a mounted file or a secret-store entry has no effect
+until the application is restarted.
 
-There is no dynamic SSO or SCIM configuration API, and there is no Owner admin UI
-for adding providers, editing provider metadata, issuing SCIM tokens, or changing
-SCIM scope. Use deployment configuration and the release procedure below instead.
+There is no dynamic SSO or SCIM configuration API, and no Owner admin UI for adding
+providers, editing provider metadata, issuing SCIM tokens or changing SCIM scope. Use
+deployment configuration and the release procedure below instead.
 
-This also holds in multi-tenant deployments: the workforce OIDC provider is
-deployment-wide, not per tenant. There is no per-tenant SSO, allowed-email-domain,
-or just-in-time provisioning setting, and the tenant control plane
-(`/api/v1/identity/admin/tenants`) does not expose one. A per-tenant surface used
-to exist but persisted settings that login never consulted, so it was removed
-rather than left as a false assurance of a tenant identity boundary. There is
-likewise no tenant export or purge API; tenant offboarding is a manual
-operational procedure today.
+Vantigo is a single-tenant application. There is no tenant control plane, no
+per-tenant SSO or provisioning setting, and nothing to scope a provider to: the
+workforce OIDC provider and the SCIM credential are installation-wide.
 
-## Configuration sources
+## Configuration
 
-Vantigo accepts the normal ASP.NET Core configuration sources. Use either:
+Configuration comes from **environment variables only**. There is no
+`appsettings.json`, no configuration-file search path and no environment-name
+variable; `APP_ENV` (`production` by default, or `development`) is the only
+environment switch, and only development relaxes anything.
 
-1. environment variables, with `__` separating JSON sections; or
-2. a mounted `appsettings.Production.json` (or `appsettings.json`), placed in the
-   application's content root/working directory. Set `ASPNETCORE_ENVIRONMENT` or
-   `DOTNET_ENVIRONMENT` to `Production` when using the environment-specific file.
-
-For example, a published .NET container commonly uses `/app` as its content root:
+Every setting is validated in one pass at startup and **every** problem is reported
+at once, so a misconfigured container fails its first boot with the complete list.
+[`apps/server/internal/config/config.go`](../apps/server/internal/config/config.go)'s
+field comments are the authoritative reference.
 
 ```bash
 docker run --read-only \
-  -v /secure/vantigo/appsettings.Production.json:/app/appsettings.Production.json:ro \
-  -e ASPNETCORE_ENVIRONMENT=Production \
+  --env-file /secure/vantigo/vantigo.env \
   ghcr.io/vantigo-io/vantigo:<pinned-release> api
 ```
 
-Use the actual content root shown by the deployment rather than assuming `/app`
-when the image runner changes it. A mounted SCIM `BearerTokenFile` is a separate
-secret-file mount; the example Compose file does not create that file for you.
+Prefer a platform secret manager or an injected environment secret for every
+credential. Secrets do not belong in the image, in Compose YAML, in Git or in an
+environment dump that gets logged.
 
-Do not configure the same secret in both sources. In a container, mount the JSON
-file read-only and keep its permissions limited to the application user. Prefer a
-secret manager or a mounted secret file for credentials rather than putting the
-credential itself in JSON or an environment dump.
-
-### Mounted appsettings example
-
-This example contains placeholders, not usable credentials. The OIDC client
-secret is shown only to document the option name; use a secret manager or an
-environment-level secret injection for the actual value. `ClientSecretFile` is
-not a supported option. SCIM supports `BearerTokenFile` and
-`PreviousBearerTokenFile`.
-
-```json
-{
-  "App": {
-    "PublicOrigin": "https://vantigo.example.com",
-    "BasePath": ""
-  },
-  "Authentication": {
-    "Oidc": {
-      "Enabled": true,
-      "Provider": "Entra",
-      "Authority": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
-      "ClientId": "11111111-1111-1111-1111-111111111111",
-      "ClientAuthentication": "ClientSecret",
-      "ClientSecret": "<inject-from-a-secret-store>",
-      "DisplayName": "Workforce SSO"
-    },
-    "Scim": {
-      "Enabled": true,
-      "BearerTokenFile": "/run/secrets/vantigo_scim_token"
-    }
-  }
-}
-```
-
-For Google, replace the OIDC object with the Google example in the provider
-section below. For Entra WorkloadIdentity, remove `ClientSecret`, set
-`ClientAuthentication` to `WorkloadIdentity`, and either set
-`WorkloadIdentityTokenFile` to an absolute path or let the runtime supply
-`AZURE_FEDERATED_TOKEN_FILE`.
-
-### Environment-variable example
+### Environment example
 
 ```dotenv
-Authentication__Oidc__Enabled=true
-Authentication__Oidc__Provider=Entra
-Authentication__Oidc__Authority=https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0
-Authentication__Oidc__ClientId=11111111-1111-1111-1111-111111111111
-Authentication__Oidc__ClientAuthentication=ClientSecret
-Authentication__Oidc__ClientSecret=<inject-from-secret-store-without-leading-or-trailing-whitespace>
-Authentication__Oidc__DisplayName=Workforce SSO
+APP_URL=https://vantigo.example.com
 
-Authentication__Scim__Enabled=true
-Authentication__Scim__BearerTokenFile=/run/secrets/vantigo_scim_token
+OIDC_PROVIDER=entra
+OIDC_AUTHORITY=https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0
+OIDC_CLIENT_ID=11111111-1111-1111-1111-111111111111
+OIDC_CLIENT_SECRET=<inject-from-secret-store>
+OIDC_DISPLAY_NAME=Workforce SSO
+
+SCIM_TOKEN=<inject-from-secret-store>
 ```
 
-`Authentication__Oidc__CallbackPath` is not a deployment setting. The callback
-path is fixed. If OIDC is disabled, provider settings, client credentials,
-workload-token paths, and Google domains must also be absent; partial disabled
-configuration fails startup. If SCIM is disabled, all SCIM credential settings
-must be absent.
+`OIDC_PROVIDER` and `SCIM_TOKEN` are the on/off switches: unset disables that
+integration. **With `OIDC_PROVIDER` unset, leaving any other `OIDC_*` variable set
+fails startup**, naming the leftovers — a half-removed provider cannot look disabled
+while still carrying live credentials. The callback path is fixed and is not a
+setting.
 
 ## Workforce OIDC
 
-OIDC uses authorization code plus PKCE, a temporary external cookie, and the
-fixed local completion path. Provider access and ID tokens are not saved. The
-provider identity is only a login correlation: it does not grant local roles,
-prove local MFA, or bypass the local Owner/MFA policy. New identities are
-provisioned as ordinary local `User` accounts using the validated issuer and
+OIDC uses the authorization code flow with PKCE and a nonce, a sealed state cookie,
+and a fixed local completion path. Provider access and ID tokens are never saved. The
+provider identity is only a login correlation: it does not grant local roles, prove
+local MFA, or bypass the local Owner/MFA policy. New identities are provisioned just
+in time as ordinary local `User` accounts keyed by the validated issuer and
 case-sensitive `sub`; an email collision is rejected rather than auto-linked.
 
 The public callback is:
@@ -121,21 +72,29 @@ https://<public-host><base-path>/api/v1/identity/oidc/callback
 ```
 
 Register that exact HTTPS URL with the provider. With the default empty
-`App__BasePath`, it is `/api/v1/identity/oidc/callback`. The browser starts at
+`APP_BASE_PATH` it is `/api/v1/identity/oidc/callback`. The browser starts at
 `/api/v1/identity/oidc/challenge` and local completion is
-`/api/v1/identity/oidc/complete`; neither is a provider callback URI.
+`/api/v1/identity/oidc/complete`; neither is a provider callback URI. Every failure
+redirects to `/sign-in?error=<code>`, and no redirect target ever comes from the
+request.
 
-The built-in OIDC handler validates provider metadata, issuer, audience,
-signature, state, nonce, and correlation. Pushed Authorization Requests (PAR)
-are disabled. Static provider policy then applies the provider-specific claim
-checks below.
+### The client-authentication mode is inferred
+
+There is no `ClientAuthentication` setting. Vantigo decides from **which credential
+is present**:
+
+| Credential set | Mode |
+| --- | --- |
+| `OIDC_CLIENT_SECRET` | Client secret |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE`, or `AZURE_FEDERATED_TOKEN_FILE` | Workload identity (Entra only) |
+| Both | **Startup fails** — they are mutually exclusive |
+| Neither | **Startup fails** — one is required |
 
 ### Microsoft Entra ID: client secret
 
-1. Create or select one Entra app registration for this Vantigo deployment. Use
-   a confidential web application and create a client secret in the app
-   registration. Store the secret in the deployment secret manager; do not put
-   it in Git, an image, or a committed `.env` file.
+1. Create or select one Entra app registration for this deployment. Use a
+   confidential web application, create a client secret, and store it in the
+   deployment secret manager.
 2. Use the tenant-specific authority exactly in this form, including `/v2.0`:
 
    ```text
@@ -143,54 +102,45 @@ checks below.
    ```
 
    `<tenant-guid>` must be the tenant GUID. Authorities using `common`,
-   `organizations`, `consumers`, another host, a query, or a different path do
-   not satisfy startup validation.
-3. Set `Provider=Entra`, the application (client) ID as `ClientId`, and
-   `ClientAuthentication=ClientSecret`. Entra `ClientId` must be a GUID.
-4. Register the fixed callback, including the public base path if one is used:
+   `organizations`, `consumers`, another host, a query or a different path do not
+   satisfy startup validation.
+3. Set `OIDC_PROVIDER=entra`, the application (client) ID as `OIDC_CLIENT_ID` (it
+   must be a GUID), and `OIDC_CLIENT_SECRET`.
+4. Register the fixed callback, including the public base path if one is used.
+5. Grant only the delegated scopes the sign-in flow needs (`openid`, `profile`,
+   `email`). Do not treat provider group or role claims as Vantigo authorization
+   grants. Do not set `OIDC_ALLOWED_DOMAINS` for Entra — it is Google-only and is
+   rejected here.
 
-   ```text
-   https://vantigo.example.com/api/v1/identity/oidc/callback
-   ```
+After the built-in token checks, Vantigo requires a `tid` GUID matching the tenant in
+the configured authority and an `oid` GUID. If the validated token carries multiple
+`aud` claims, its `azp` must equal the configured client ID. Provider identities
+remain local `User` accounts and never become Owners through claims.
 
-5. Grant only the delegated scopes needed for the sign-in flow (`openid`,
-   `profile`, and `email` are requested by Vantigo). Do not treat provider
-   group/role claims as Vantigo authorization grants. Do not set
-   `AllowedDomains` for Entra; that option is Google-only.
+### Microsoft Entra ID: workload identity
 
-After the built-in token checks, Vantigo requires a `tid` GUID matching the
-configured tenant and an `oid` GUID. If the validated token has multiple `aud`
-claims, its `azp` must equal the configured client ID. Provider identities remain
-local `User` accounts and never become Owners through claims.
-
-### Microsoft Entra ID: WorkloadIdentity
-
-WorkloadIdentity replaces the OIDC **client secret used while redeeming the
-authorization code**. It does not replace end-user login, does not make OIDC
-claims trusted as local authorization, and does not replace the independent SCIM
-bearer token.
+Workload identity replaces the **client secret used while redeeming the authorization
+code**. It does not replace end-user login, does not make OIDC claims trusted as
+local authorization, and does not replace the independent SCIM bearer token.
 
 The deployment platform must provide all of the following before Vantigo starts:
 
-- A Kubernetes cluster with an OIDC issuer and Azure Workload Identity enabled,
-  or the equivalent Azure-hosted workload identity integration.
-- The workload identity mutating webhook/sidecar configuration that projects a
-  service-account token into the Vantigo pod and sets
-  `AZURE_FEDERATED_TOKEN_FILE` (or an explicitly configured absolute
-  `WorkloadIdentityTokenFile`). The path must be readable by the Vantigo process.
-- An Entra app registration whose client ID is used as Vantigo's `ClientId`.
-- A federated identity credential on that app registration with:
+- A Kubernetes cluster with an OIDC issuer and Azure Workload Identity enabled, or
+  the equivalent Azure-hosted integration.
+- The mutating webhook/sidecar configuration that projects a service-account token
+  into the pod and sets `AZURE_FEDERATED_TOKEN_FILE` (or an explicitly configured
+  absolute `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE`). The path must be readable by the
+  Vantigo process — **startup checks that it is an absolute path and a readable
+  file**, and fails otherwise.
+- An Entra app registration whose client ID is used as `OIDC_CLIENT_ID`.
+- A federated identity credential on that registration with:
   - **Issuer**: the exact cluster OIDC issuer URL;
   - **Subject**: the exact workload subject, normally
-    `system:serviceaccount:<namespace>:<service-account>` for Kubernetes; and
+    `system:serviceaccount:<namespace>:<service-account>`; and
   - **Audience**: `api://AzureADTokenExchange`.
 
-The issuer, subject, and audience are compared by Azure exactly. Do not copy a
-different namespace, service-account name, trailing path, or audience from
-another workload. Bind the pod to the intended service account and use the
-standard Azure Workload Identity labels/annotations for that platform.
-
-A minimal Kubernetes shape is:
+Azure compares issuer, subject and audience exactly. Do not copy a different
+namespace, service-account name, trailing path or audience from another workload.
 
 ```yaml
 apiVersion: v1
@@ -220,105 +170,93 @@ spec:
           image: ghcr.io/vantigo-io/vantigo:<pinned-release>
 ```
 
-The webhook supplies the projected token volume and environment variable; do not
-invent a path that is not present in the running pod. Verify the effective
-`AZURE_FEDERATED_TOKEN_FILE` path and file permissions before enabling sign-in.
-
 Configure:
 
 ```dotenv
-Authentication__Oidc__Enabled=true
-Authentication__Oidc__Provider=Entra
-Authentication__Oidc__Authority=https://login.microsoftonline.com/<tenant-guid>/v2.0
-Authentication__Oidc__ClientId=<entra-application-client-guid>
-Authentication__Oidc__ClientAuthentication=WorkloadIdentity
+OIDC_PROVIDER=entra
+OIDC_AUTHORITY=https://login.microsoftonline.com/<tenant-guid>/v2.0
+OIDC_CLIENT_ID=<entra-application-client-guid>
 # Optional when the platform does not set AZURE_FEDERATED_TOKEN_FILE:
-# Authentication__Oidc__WorkloadIdentityTokenFile=/var/run/secrets/azure/tokens/azure-identity-token
+# OIDC_WORKLOAD_IDENTITY_TOKEN_FILE=/var/run/secrets/azure/tokens/azure-identity-token
 ```
 
-Do not set `Authentication__Oidc__ClientSecret` in this mode. Vantigo checks the
-file at startup, reads it fresh for every authorization-code redemption, rejects
-empty/whitespace-containing assertions, clears `ClientSecret`, and sends the
-assertion with type
-`urn:ietf:params:oauth:client-assertion-type:jwt-bearer`. Rotate the projected
-token through the workload identity platform; Vantigo does not cache it.
+Do not set `OIDC_CLIENT_SECRET` in this mode; the combination fails startup. The
+assertion is read **fresh from the file for every authorization-code redemption** and
+sent with
+`client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`.
+Rotate the projected token through the platform; Vantigo does not cache it.
 
 ### Google Workspace
 
-1. Create a Google OAuth web client and keep its client secret in the deployment
-   secret manager. Google uses client-secret authentication only; set
-   `ClientAuthentication=ClientSecret`.
-2. Use the exact issuer:
+1. Create a Google OAuth web client and keep its secret in the deployment secret
+   manager. Google is client-secret only — workload identity is not accepted.
+2. Use the exact issuer `https://accounts.google.com`.
+3. Use a client ID ending in `.apps.googleusercontent.com` and register the fixed
+   callback.
+4. List every permitted Workspace domain in `OIDC_ALLOWED_DOMAINS` as a comma list of
+   bare DNS names. **At least one is required for Google.** Values are lower-cased
+   and de-duplicated; a URL, an address, a port, whitespace or a single label is
+   refused.
 
-   ```text
-   https://accounts.google.com
-   ```
+```dotenv
+OIDC_PROVIDER=google
+OIDC_AUTHORITY=https://accounts.google.com
+OIDC_CLIENT_ID=<client-id>.apps.googleusercontent.com
+OIDC_CLIENT_SECRET=<inject-from-secret-store>
+OIDC_ALLOWED_DOMAINS=example.com,example.org
+```
 
-3. Set a client ID ending in `.apps.googleusercontent.com` and register the
-   fixed callback, for example:
+Vantigo requires `email_verified`, a syntactically valid email, and a non-empty `hd`
+claim that matches the email domain and appears in `OIDC_ALLOWED_DOMAINS`. Personal
+Gmail accounts and unverified or mismatched-domain identities are rejected.
 
-   ```dotenv
-   Authentication__Oidc__Enabled=true
-   Authentication__Oidc__Provider=Google
-   Authentication__Oidc__Authority=https://accounts.google.com
-   Authentication__Oidc__ClientId=<client-id>.apps.googleusercontent.com
-   Authentication__Oidc__ClientAuthentication=ClientSecret
-   Authentication__Oidc__ClientSecret=<inject-from-secret-store>
-   Authentication__Oidc__AllowedDomains__0=example.com
-   ```
+## SCIM
 
-4. Add every permitted Workspace domain as a separate
-   `Authentication__Oidc__AllowedDomains__N` value, or as entries in the JSON
-   `AllowedDomains` array. Values are bare DNS names, normalized to lowercase;
-   do not use `https://`, `@`, paths, or wildcards.
-
-Vantigo requires `email_verified=true`, a syntactically valid email, a non-empty
-`hd` claim matching the email domain, and an `hd` value in `AllowedDomains`.
-Personal Gmail accounts and unverified or mismatched-domain identities are
-rejected. WorkloadIdentity is not accepted for Google.
-
-## Static SCIM
-
-Enable static SCIM with `Authentication__Scim__Enabled=true`. The fixed protocol
-endpoint is:
+Enable SCIM by setting `SCIM_TOKEN`. The fixed protocol endpoint is:
 
 ```text
 /api/v1/identity/scim/v2
 ```
 
-SCIM requests use `Authorization: Bearer <token>` and request bodies use
-`application/scim+json`. The supported protocol resources are `Users` and
-`Groups`, along with the standard service discovery resources. The current token
-may be supplied directly with `BearerToken` or through an absolute readable
-`BearerTokenFile`; configure one, not both. Tokens are held in startup
-configuration and are never stored in the identity database.
+Requests authenticate with `Authorization: Bearer <token>` and use
+`application/scim+json`. The supported resources are `Users` and `Groups`, plus the
+standard `ServiceProviderConfig`, `ResourceTypes` and `Schemas` discovery endpoints.
+The token must not contain whitespace, and it is compared by digest rather than
+directly.
 
-SCIM state is persistent even though the credential is static. Vantigo retains
-the deterministic static connection, user mappings, SCIM groups/memberships,
-lifecycle state, ETags, and audit records in PostgreSQL. SCIM-created users are
-unprivileged; Owner accounts are protected from SCIM mutation. Upstream inactive
-users are made unavailable according to the static lifecycle rules, while local
-access-group role mappings and local membership overrides remain local policy.
+**There is no file-based token variant.** `SCIM_TOKEN` and `SCIM_PREVIOUS_TOKEN` are
+the only inputs — there is no `BearerTokenFile` or `PreviousBearerTokenFile`. Inject
+the value from a secret manager.
+
+SCIM state is persistent even though the credential is static: user mappings, SCIM
+groups and memberships, lifecycle state, ETags and audit records live in PostgreSQL.
+SCIM-created users are unprivileged, and **Owner accounts are protected from SCIM
+mutation** — an update, patch or delete targeting an Owner is refused, which keeps the
+break-glass account outside the provisioning system's reach.
 
 ### Token rotation with overlap
 
-The previous-token overlap is optional and is limited to 24 hours from startup.
-Use this sequence:
+The previous-token overlap is optional and bounded to 24 hours from startup:
 
-1. Generate a new high-entropy current token and store it in the secret manager
-   or mounted token file.
-2. Keep the old token as `PreviousBearerToken` or
-   `PreviousBearerTokenFile`, set `PreviousBearerTokenExpiresAtUtc` to a future
-   UTC time no more than 24 hours after the new process starts, and restart
-   Vantigo. Both tokens are accepted until the deadline.
-3. Change the provisioning client's credential to the new current token. Verify
-   a discovery or harmless read request and inspect the status endpoint.
-4. After every client has switched, remove the previous-token setting **and its
-   expiry**, then restart again. An expiry without a previous token is invalid.
+1. Generate a new high-entropy token and store it in the secret manager.
+2. Set the new value as `SCIM_TOKEN`, keep the old one as `SCIM_PREVIOUS_TOKEN`, set
+   `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` to an RFC 3339 timestamp in the future and no
+   more than 24 hours ahead, and restart. Both tokens are accepted until the
+   deadline.
+3. Change the provisioning client's credential to the new token. Verify a discovery
+   or harmless read request and check the Owner status endpoint.
+4. After every client has switched, remove **both** `SCIM_PREVIOUS_TOKEN` and its
+   expiry, then restart again.
 
-The current and previous token values cannot be the same, and direct values
-cannot be combined with their corresponding `*File` options. A failed startup
-validation is safer than silently accepting an invalid rotation configuration.
+The rules are enforced at startup, and each is a boot failure rather than a silently
+accepted rotation:
+
+- `SCIM_PREVIOUS_TOKEN` must differ from `SCIM_TOKEN`.
+- `SCIM_PREVIOUS_TOKEN` requires `SCIM_PREVIOUS_TOKEN_EXPIRES_AT`, and the expiry
+  requires the token — neither is valid alone.
+- The expiry must be in the future **at every start** and at most 24 hours ahead. A
+  restart after the window has passed therefore fails configuration: remove both
+  variables once the overlap is over.
 
 ### Status and operational evidence
 
@@ -328,91 +266,76 @@ An authenticated Owner can read:
 GET /api/v1/identity/owner/system-status
 ```
 
-The response contains total, active, and disabled user counts; whether static
-OIDC and static SCIM are enabled; the configured static OIDC provider name; and
-best-effort timestamps for the last successful static OIDC sign-in and
-authenticated SCIM request:
+The response carries:
 
-- `totalUsers`
-- `activeUsers`
-- `disabledUsers`
-- `staticOidcEnabled`
-- `staticOidcProvider`
+- `total`, `active`, `disabled` — user counts
+- `pendingInvitations`
+- `staticOidcEnabled`, `staticOidcProvider`
 - `staticScimEnabled`
-- `lastStaticOidcSignInAtUtc`
-- `lastAuthenticatedScimRequestAtUtc`
+- `lastStaticOidcSignInAtUtc`, `lastAuthenticatedScimRequestAtUtc`
 
-The timestamp writes are operational projections, not authentication-critical
-state. A telemetry/database write failure must not turn a successful OIDC or
-SCIM operation into a failed operation. The endpoint never returns bearer tokens,
-client secrets, token-file contents, or secret-reference names. Treat null
-timestamps as “no successful use has been recorded yet.”
+The two timestamps are operational projections, not authentication-critical state: a
+telemetry or database write failure must not turn a successful OIDC or SCIM operation
+into a failed one. The endpoint never returns bearer tokens, client secrets or
+secret-reference names. Treat null timestamps as "no successful use has been recorded
+yet".
 
 ## Local break-glass Owner and MFA
 
 Keep at least one local Owner account as the break-glass path even when OIDC is
 enabled. Create the first Owner through `/setup` with the one-time
-`Authentication__Bootstrap__Secret`, then remove or rotate that bootstrap secret.
-Local password login and local MFA are independent of the external provider.
+`BOOTSTRAP_SECRET`, then remove or rotate that secret. Local password login, passkeys
+and local MFA are independent of the external provider.
 
-If `Authentication__Owners__RequireMfa=true`, Owner business and management
-operations require local authenticator MFA. Store recovery codes offline in the
-organization's break-glass process. OIDC claims never satisfy this local MFA
-requirement and never grant Owner or other local roles.
+With `OWNERS_REQUIRE_MFA=1` (the default outside development), Owner and SystemAdmin
+operations require a second factor — a TOTP code, a recovery code or a passkey. Store
+recovery codes offline in the organization's break-glass process. OIDC claims never
+satisfy this requirement and never grant local roles.
 
-## Release, backup, and migration constraint
+## Release and upgrade procedure
 
-The Phase 2/3 static-only release removes the former database-managed federation
-and SCIM control-plane schema. The forward cleanup migration intentionally
-destructively removes old provider configuration/state, old SCIM token rows, and
-non-static federation/SCIM connection data. It retains local identity data and
-the deterministic static SCIM state. This release is suitable only for a database
-that has **no real use of the removed dynamic federation/SCIM configuration or
-data**. Do not treat the migration as a conversion or recovery mechanism.
+Migrations are plain SQL files embedded in the binary and applied in order under a
+PostgreSQL advisory lock. They are **forward-only**: do not plan to roll the
+application binary back across a schema change.
 
-The cleanup is forward-only and must be treated as irreversible; do not plan to
-roll back the application binary across the schema cleanup. Before upgrading:
+1. Pin the exact image release, read its release notes, and take a tested PostgreSQL
+   backup — for example `pg_dump --format=custom`, verified with `pg_restore --list`.
+   Restore-test it somewhere safe, keep it outside the database volume, and keep the
+   password out of shell history.
+2. Run a terminating `migrate` job with the new image and the same database
+   configuration, using `MIGRATIONS_DATABASE_URL` (the owner role) where the
+   deployment separates it from the runtime role.
+3. Wait for that job to exit successfully before starting the application. Migrators
+   serialize on the advisory lock, so an accidentally concurrent migrator waits
+   rather than corrupting the schema — but still prefer exactly one job.
+4. Start `api` (or `server` replicas). **`api` applies pending migrations itself
+   before it serves**, so the migration job is about seeing a failure *before* any
+   serving replica starts, not about `api` leaving the schema behind. `server` mode
+   never migrates.
+5. Verify local Owner login, the fixed OIDC callback (if enabled), the SCIM endpoint
+   (if enabled) and the Owner system-status response. Keep the backup and migration
+   logs under the release retention policy.
 
-1. Confirm that no removed provider/control-plane configuration or non-static
-   SCIM connection is needed. If there is any uncertainty, stop and take an
-   application/database owner decision before proceeding.
-2. Pin the exact Vantigo image release, read its release notes, and take a tested
-   PostgreSQL backup. For example, use `pg_dump --format=custom` with database
-   credentials supplied by the secret manager, then verify it with
-   `pg_restore --list`. Restore-test the dump in a safe environment and keep the
-   backup outside the database volume; do not put the password in shell history.
-3. Run a terminating `migrate` job with the new image and the same database
-   configuration. The host `api` command does not apply migrations. Migrators
-   serialize on an installation-wide PostgreSQL advisory lock, so an
-   accidentally concurrent migrator waits for the first and then re-runs
-   idempotently rather than corrupting the schema; still prefer running exactly
-   one job, and for destructive cleanup releases (like this one) stop or drain
-   the API first so no old binary serves requests against the new schema.
-4. Wait for the migration job to exit successfully before starting the API. Do
-   not run the Development-only `seed` command in production.
-5. Start the new API, verify local Owner login, the fixed OIDC callback (if
-   enabled), the SCIM endpoint (if enabled), and the Owner system-status
-   response. Keep the backup and migration logs under the release retention
-   policy.
+Do not run the development-only `seed` command in production; it exits 2 outside
+development.
 
-For Compose, `vantigo-migrate` is the one-shot migration service and `vantigo` is
-the long-running `api` service. `docker compose up -d` honors that dependency;
-for a controlled release, run `docker compose up vantigo-migrate`, confirm the
-service exits successfully, then run `docker compose up -d vantigo` as described
-in the [Compose runbook](../deploy/compose/README.md). Do not run more than one
-migrator concurrently.
+For Compose, `vantigo-migrate` is the one-shot migration service and `vantigo` is the
+long-running `api` service. `docker compose up -d` honours that dependency; for a
+controlled release, run `docker compose up vantigo-migrate`, confirm it exits
+successfully, then `docker compose up -d vantigo` as described in the
+[Compose runbook](../deploy/compose/README.md).
 
 ## Secret hygiene checklist
 
-- Never commit client secrets, SCIM tokens, bootstrap secrets, token files, or
-  real tenant identifiers with credentials.
-- Do not put secrets in `vantigo.env.example`, Compose YAML, container images,
-  mounted appsettings checked into source control, logs, tickets, or shell
-  history. The committed examples use placeholders only.
-- Prefer the platform secret manager or a read-only mounted secret file. Restrict
-  file ownership and permissions and ensure the migration job receives only the
-  secrets it needs.
-- Rotate OIDC client secrets and SCIM tokens through the provider/secret manager,
-  then restart Vantigo. Use the bounded previous-token overlap only for SCIM.
-- If a secret is exposed, revoke it immediately, replace it, restart all
-  replicas, and inspect logs and the status endpoint for unexpected use.
+- Never commit client secrets, SCIM tokens, bootstrap secrets, `APP_SECRET`, token
+  files or real tenant identifiers.
+- Do not put secrets in `vantigo.env.example`, Compose YAML, container images, logs,
+  tickets or shell history. The committed examples use placeholders only.
+- Prefer the platform secret manager or an injected environment secret. Restrict file
+  ownership and permissions, and give the migration job only the secrets it needs.
+- Rotate OIDC client secrets and SCIM tokens through the provider or secret manager,
+  then restart. The bounded previous-token overlap exists for SCIM only.
+- `APP_SECRET` is not rotatable in place: it derives session, cookie, TOTP and
+  Communications channel-credential keys, so changing it invalidates all of them.
+- If a secret is exposed, revoke it immediately, replace it, restart all replicas, and
+  inspect logs and the status endpoint for unexpected use.

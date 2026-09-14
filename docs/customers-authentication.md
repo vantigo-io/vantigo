@@ -1,365 +1,442 @@
 # Vantigo identity, authentication and deployment
 
-Vantigo uses ASP.NET Core Identity with an application cookie for the browser SPA and
-same-origin API. The API returns JSON `401`/`403` responses rather than login
-redirects. Mutating browser requests use antiforgery protection: obtain a token from
-`GET /api/v1/identity/antiforgery` and send it in `X-XSRF-TOKEN`.
+Vantigo authenticates the browser SPA and the same-origin API with an application
+cookie issued by the identity module. The API answers JSON `401`/`403` problems
+rather than login redirects.
 
-For static workforce OIDC, SCIM 2.0, group mappings, provider setup, and the
-operator recovery runbook, see [SSO and SCIM operations](sso-scim-operations.md).
+**There is no antiforgery token endpoint and no `X-XSRF-TOKEN` header.** Cross-site
+request forgery is refused by origin, not by a token: the server wraps every `/api`
+request in Go's `http.CrossOriginProtection`, which rejects unsafe cross-site browser
+requests using `Sec-Fetch-Site` (falling back to `Origin` compared against `Host`).
+`APP_URL` is registered as a trusted origin so a proxy that rewrites `Host` does not
+turn same-origin requests into rejections, a rejection answers `403` as an RFC 7807
+problem, and a request carrying neither header — a non-browser client — passes.
+Session cookies are `SameSite=Strict` as the second layer.
 
-The application cookie and antiforgery cookie are `HttpOnly` and `SameSite=Strict`, and
-are Secure outside Development. Run the SPA and API under one public origin in
-deployment. A reverse proxy may serve both paths, but it must preserve the host and
-scheme and forward exactly one trusted `X-Forwarded-For`/`X-Forwarded-Proto` hop.
-Cross-origin SPA/API hosting is not the supported deployment shape.
+Run the SPA and API under one public origin. A reverse proxy may serve both paths,
+but it must preserve the `Host` header: `X-Forwarded-Host` is never honoured, and
+host filtering is derived from `APP_URL`. Cross-origin SPA/API hosting is not a
+supported deployment shape.
 
-## First owner and local accounts
+For static workforce OIDC, SCIM 2.0, provider setup and the operator recovery
+runbook, see [SSO and SCIM operations](sso-scim-operations.md).
+
+Every setting this document names is read by
+[`apps/server/internal/config/config.go`](../apps/server/internal/config/config.go),
+whose field comments are the authoritative reference. Configuration is parsed once
+at startup and **every** problem is reported at once, so a misconfigured container
+fails its first boot with the complete list instead of one restart per mistake.
+
+## Cookies
+
+| Cookie | Purpose | Attributes |
+| --- | --- | --- |
+| `vantigo.session` | The authenticated session token | `HttpOnly`, `SameSite=Strict`, scoped to the base path |
+| `vantigo.2fa` | A pending two-factor sign-in's ticket, 5 minutes | `HttpOnly`, `SameSite=Strict` |
+| `vantigo.oidc` | OIDC state, nonce and PKCE verifier, sealed | `HttpOnly`, `SameSite=Lax` |
+| `vantigo.identity.external` | The validated external identity between callback and completion, sealed | `HttpOnly`, `SameSite=Lax` |
+
+All four are `Secure` unless the installation runs in development or has knowingly
+set `ALLOW_INSECURE_TRANSPORT=1`. The two OIDC cookies are `SameSite=Lax` on
+purpose: the provider's redirect back is a cross-site top-level navigation, which
+`Lax` admits and `Strict` would not. Both are sealed with AES-256-GCM under
+distinct purposes, so a state cookie cannot be replayed as an external identity.
+
+A persistent session cookie (`rememberMe` on the 2FA step) carries the standard
+absolute lifetime as its `Max-Age`; the server still enforces the tighter
+privileged bounds per request, whatever the cookie says.
+
+## First Owner and local accounts
 
 There is one deliberate, one-time bootstrap path:
 
-1. Outside Development, the deployment operator **must** set
-   `Authentication__Bootstrap__Secret` (Key Vault-backed via an ACA secret reference,
-   or an equivalent secret store) before starting a blank install. The configured
-   secret is used exactly and is never logged. If it is unset, startup fails
-   immediately with a configuration error instead of starting the API: with multiple
-   replicas, a per-process generated secret would be unpredictable to reach behind a
-   load balancer, and every replica would additionally log its own value.
-   In Development only, an unset secret is generated in memory and printed once at
-   backend `Warning` log level for the operator to use at `/setup`; it is not
-   persisted, and restarting before setup generates a new secret. Never rely on this
-   fallback outside Development.
-2. Visit `/setup`, enter the bootstrap secret manually, and provide the first Owner's
-   email, display name, and password. The secret is never sent to the browser
-   automatically; it is submitted only when the operator completes setup.
-3. Remove or rotate the bootstrap secret after the Owner account is created.
+1. Outside development the operator **must** set `BOOTSTRAP_SECRET`. The configured
+   value is used exactly, surrounding whitespace included, and is never logged. If
+   it is unset, startup fails with a configuration error: with multiple replicas a
+   per-process generated secret would be unpredictable behind a load balancer, and
+   every replica would log its own.
+   In development only, an unset secret is generated in memory and logged once at
+   `WARN` for the operator to use at `/setup`. It is not persisted, and restarting
+   before setup generates a new one. Never rely on that fallback outside
+   development.
+2. Visit `/setup`, enter the bootstrap secret, and provide the first Owner's email,
+   display name and password.
+3. Remove or rotate the bootstrap secret once the Owner account exists.
 
-`GET /api/v1/identity/bootstrap-status` is anonymous and returns `{ "available": true|false }`.
-Signed-out visitors are directed to `/setup` only while bootstrap is available. The
-generated or configured secret is sensitive and must be treated like any other
-bootstrap credential. Setup and bootstrap become unavailable after the first local
-Owner is created. The direct `POST /api/v1/identity/bootstrap` endpoint remains available for an
-explicitly orchestrated flow; send the secret, Owner details, and password over the
-protected deployment path. The operation is transactionally guarded against concurrent
-bootstrap requests. It creates the local `Owner` and `User` roles; the bootstrap
-account is an ordinary local password account.
-Local Owner accounts are the break-glass path even when workforce OIDC is enabled.
+`GET /api/v1/identity/bootstrap-status` is anonymous and returns
+`{"available": true|false}`. `POST /api/v1/identity/bootstrap` remains available for
+an orchestrated flow:
 
-Owners can invite `User` or `Owner` accounts from `/settings`. Invitation tokens are
-opaque, stored only as hashes, expire after seven days by default, and can be
-configured for one to thirty days (`Authentication__Invitations__Lifetime` uses a
-standard .NET `TimeSpan`, for example `7.00:00:00`). Only one active invitation is
-retained for an email lifecycle; replacement and failed delivery revoke the
-previous/new token as appropriate.
+```bash
+curl -X POST https://vantigo.example.com/api/v1/identity/bootstrap \
+  -H 'Content-Type: application/json' \
+  -d '{"secret":"<the bootstrap secret>","email":"owner@example.com","displayName":"Owner","password":"a strong password"}'
+```
 
-Password recovery uses Identity's protected reset tokens (24-hour lifetime) and a
-generic request response so it does not disclose whether an email exists. The reset
-operation only reports password-policy details after the token has been validated.
+Every change to who holds Owner — bootstrap, Owner creation, Owner invitation
+acceptance and Owner demotion — serializes on a transaction advisory lock, so
+concurrent bootstrap requests cannot both win. Setup and bootstrap become
+unavailable once the first Owner exists. The bootstrap account is an ordinary local
+password account, and a local Owner remains the break-glass path even when workforce
+OIDC is enabled.
 
-Owner MFA uses Identity's authenticator provider (six-digit TOTP) and one-use recovery
-codes. Set `Authentication__Owners__RequireMfa=true` to require MFA for the `Owner`
-and `SystemAdmin` policies, including Owner business access and invitation management.
-Assisted Owner-MFA reset always requires a separately verified local MFA session.
-MFA enrollment/status remains available to let a new Owner enroll even before their
-own session has completed MFA - only enrollment stays reachable, nothing else - so
+`SYSTEM_ADMIN_EMAIL`, when it matches a bootstrapped Owner's address
+case-insensitively, also grants that account SystemAdmin.
+
+Owners invite `User` or `Owner` accounts from `/settings`. Invitation tokens are
+opaque and stored only as hashes. `INVITATION_LIFETIME` defaults to `168h` (seven
+days) and is accepted from `24h` to `720h`; a value outside that range fails
+startup.
+
+Password recovery answers generically so it never discloses whether an address
+exists, and password-policy detail is reported only after the token validates.
+
+## MFA
+
+MFA is a six-digit TOTP authenticator plus one-use recovery codes, and passkeys
+(WebAuthn) are a first-class second factor: a sign-in that verified a TOTP code, a
+recovery code **or** a passkey is recorded as MFA-verified for that session.
+
+`OWNERS_REQUIRE_MFA` requires MFA for the Owner and SystemAdmin policies. It
+defaults **on outside development and off in development**. Outside development the
+process refuses to start unless it is on or `OWNERS_ALLOW_INSECURE_NO_MFA=1`
+deliberately accepts running without it — configuration reports:
+
+```text
+OWNERS_REQUIRE_MFA: must not be 0 outside development unless OWNERS_ALLOW_INSECURE_NO_MFA=1
+(accepts that a compromised Owner or SystemAdmin password alone reaches every identity
+and tenant control-plane endpoint)
+```
+
+The opt-out exists for demo deployments; set it deliberately, not by default.
+`MFA_ISSUER` (default `Vantigo`) is the label authenticator apps show.
+
+MFA enrollment and status stay reachable to a session that has not enrolled yet, so
 turning the requirement on never locks out the account that must enable it.
-Recovery codes are shown once; an MFA-authenticated Owner can reset another Owner's
-local MFA, which invalidates that account's existing session and requires
-re-enrollment.
-
-Outside Development, the API refuses to start unless `Authentication__Owners__RequireMfa=true`
-or `Authentication__Owners__AllowInsecureNoMfa=true` is set: a password alone must
-never be enough to reach every identity and tenant control-plane endpoint. The
-opt-out flag exists for demo deployments only; set it deliberately, not by default.
+Recovery codes are shown once. An MFA-authenticated Owner can reset another Owner's
+MFA, which ends that account's sessions and requires re-enrollment.
 
 ## Session lifetime and revocation
 
-The application cookie slides while a session is in use, but the slide is bounded. On
-every cookie validation the backend checks, in this order, an absolute lifetime
-measured from sign-in, an idle window since the last request, and the account's
-current security stamp. Privileged sessions (Owner, SystemAdmin) get the tighter
-lifetime and idle window; presenting credentials again is the only thing that starts a
-new absolute lifetime, so re-issuing the cookie for a tenant switch, a profile update,
-or an MFA change keeps the original deadline.
+Four bounds are enforced on every request. A privileged bound may not exceed its
+standard counterpart, or startup fails.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `Authentication__Sessions__IdleTimeout` | `08:00:00` | Idle window for a standard session; also the cookie's expiry span. |
-| `Authentication__Sessions__PrivilegedIdleTimeout` | `02:00:00` | Idle window for an Owner or SystemAdmin session. |
-| `Authentication__Sessions__AbsoluteLifetime` | `24:00:00` | Hard cap on a standard session, measured from sign-in. |
-| `Authentication__Sessions__PrivilegedAbsoluteLifetime` | `08:00:00` | Hard cap on an Owner or SystemAdmin session. |
-| `Authentication__Sessions__RevocationCacheDuration` | `00:00:30` | How long the per-user revocation state may be served from memory. |
-| `Authentication__Sessions__PrincipalRefreshInterval` | `00:15:00` | How often Identity rebuilds the cookie principal from the database. |
+| `SESSION_IDLE_TIMEOUT` | `8h` | Idle window for a standard session |
+| `SESSION_PRIVILEGED_IDLE_TIMEOUT` | `2h` | Idle window for an Owner or SystemAdmin session |
+| `SESSION_ABSOLUTE_LIFETIME` | `24h` | Hard cap on a standard session, from sign-in |
+| `SESSION_PRIVILEGED_ABSOLUTE_LIFETIME` | `8h` | Hard cap on an Owner or SystemAdmin session |
 
-A non-positive lifetime or a negative interval fails startup rather than locking every
-user out at run time.
+The idle window slides, but the write is throttled: `last_seen_at` is rewritten only
+once it is older than `min(idle/4, 5 minutes)`, not on every request. Presenting
+credentials again is the only thing that starts a new absolute lifetime.
 
-Revocation is server-side and rotates the account's security stamp, which invalidates
-every cookie already issued to it:
+**Revocation takes effect on the very next request.** Every request resolves the
+session cookie to a row in `identity.sessions` and evaluates the operation's access
+rule against that row and the user's current roles — there is no cached revocation
+state and no security-stamp convergence window, so a revocation, a disable or a
+role change applies immediately across every replica.
 
 - `POST /api/v1/identity/account/sessions/revoke` signs the calling account out
   everywhere, including the browser that made the request.
-- `POST /api/v1/identity/system/users/{userId}/sessions/revoke` does the same for any
-  account and requires the SystemAdmin role.
+- `POST /api/v1/identity/system/users/{userId}/sessions/revoke` does the same for
+  any account and requires SystemAdmin.
 
-Password changes, MFA changes, disablement, and role changes already rotate the stamp,
-so they end the account's other sessions too. The revocation state each request checks
-is cached briefly, but the cache is only ever used to admit a request: any negative
-outcome is re-read from the database before a session is rejected, and every write to
-the account row drops the entry. In a multi-instance deployment, an instance that did
-not perform the write converges within `RevocationCacheDuration`.
+Each sign-in also purges that user's dead sessions (revoked, or past the standard
+absolute lifetime), so the table stays bounded by sessions that could still be valid.
+
+## Rate limits
+
+Authentication endpoints are rate limited by a fixed-window limiter whose counters
+live in PostgreSQL (`platform.rate_limit`), so a limit holds **across replicas and
+restarts** rather than per process. The limit is applied before the access check.
+
+| Policy | Limit | Applies to |
+| --- | --- | --- |
+| `Login` | 100 / minute | `POST /login` |
+| `login-attempts` | 10 / minute | Failed passwords for one email from one address, keyed `EMAIL\|ip`; answers without `Retry-After` |
+| `Bootstrap` | 20 / minute | `POST /bootstrap` |
+| `Mfa` | 20 / 5 minutes | The 2FA step, MFA management and passkey registration |
+| `PasskeyLogin` | 30 / 5 minutes | Passkey sign-in |
+| `PasswordRecovery` | 10 / 15 minutes | Recovery request, reset and account password change |
+| `Invitations` | 30 / minute | Owner invitation management |
+| `InvitationAcceptance` | 20 / minute | Invitation validate and accept |
+| `UserManagement` | 30 / minute | Owner user management |
+| `OwnerAvatarRead` | 300 / minute | Owner avatar reads |
+
+Every policy except `login-attempts` keys on the client address, which is why
+`TRUSTED_PROXY_HOPS` and `TRUSTED_PROXY_CIDRS` matter behind a proxy: get them
+wrong and every request shares one bucket, or a client picks its own.
 
 ## Invitation and recovery URLs
 
-The current frontend routes are:
+The frontend routes are `/invitations/accept?token=…`, `/forgot-password` and
+`/password-reset?email=…&token=…`.
 
-- Invitation acceptance: `/invitations/accept?token=...` (also supported:
-  `/accept-invitation?token=...`).
-- Password recovery request: `/forgot-password`.
-- Password reset: `/password-reset?email=...&token=...` (also supported:
-  `/reset-password?email=...&token=...`).
-
-The backend defaults already match the canonical mailed routes. For a deployed
-public origin, set `App__PublicOrigin` (scheme + host only); the mailed links
-are then derived automatically from origin + base path (the host defaults to the
-root; see `App__BasePath`):
+Mailed links are derived from `APP_URL` plus `APP_BASE_PATH` by default, so setting
+the public origin is usually all that is needed:
 
 ```text
-App__PublicOrigin=https://vantigo.example.com
+APP_URL=https://vantigo.example.com
 # yields https://vantigo.example.com/invitations/accept?token=...
 # and    https://vantigo.example.com/password-reset?email=...&token=...
 ```
 
-When the mailed links must differ from the derived defaults, set the explicit
-templates instead — they always take precedence and must retain the
-placeholders:
+When the mailed links must differ, set the templates explicitly. Each must contain
+its placeholders literally or startup fails:
 
 ```text
-Authentication__Invitations__AcceptUrl=https://vantigo.example.com/invitations/accept?token={token}
-Authentication__PasswordReset__ResetUrl=https://vantigo.example.com/password-reset?email={email}&token={token}
+INVITATION_ACCEPT_URL=https://vantigo.example.com/invitations/accept?token={token}
+PASSWORD_RESET_URL=https://vantigo.example.com/password-reset?email={email}&token={token}
 ```
 
-An invalid `App__PublicOrigin` (path, query, missing scheme) fails startup, and
-a startup warning is logged when explicit templates disagree with the
-configured origin and base path.
-
-Do not put tokens in source control or static configuration. The `{email}` and
-`{token}` values are URL-encoded by the backend.
+`APP_URL` must be an origin only — scheme, host and optional port, no path, query or
+credentials; a path prefix belongs in `APP_BASE_PATH`. `{email}` and `{token}` are
+URL-encoded by the server. Do not put tokens in source control.
 
 ## Email delivery
 
-The temporary Logging sender is a Development/pre-production fallback, not a
-production delivery mechanism. By explicit current design, recipient and generated
-invitation/reset link contents appear in application logs; anyone with log access can
-use those bearer links. Keep this provider confined to non-production environments.
+`MAIL_DRIVER=log` writes mail to the application log instead of sending it. It
+defaults to `log` in development and `smtp` everywhere else, and is **rejected
+outside development**: invitation and password-reset mails carry bearer links, so
+logging them anywhere else is a leak, not a feature.
 
-For production, use the direct SMTP sender:
-
-```text
-Email__Provider=Smtp
-Email__From=no-reply@vantigo.example.com
-Email__Smtp__Host=smtp.example.com
-Email__Smtp__Port=587
-Email__Smtp__UserName=<smtp-user-from-secret-store>
-Email__Smtp__Password=<smtp-password-from-secret-store>
-Email__Smtp__EnableSsl=true
-Email__Smtp__TimeoutSeconds=30
-```
-
-`Email__Smtp__Host` is required for SMTP. With TLS enabled, the sender uses STARTTLS;
-port 465 selects implicit TLS instead. The sender no longer negotiates
-opportunistically: a server that offers no TLS produces an error rather than a
-plaintext delivery, and outside Development that combination already fails startup.
-See [transport security](transport-security.md) for the rule and its escape hatch.
-The username is optional for servers that do not require authentication. Do not use
-real credentials in configuration examples.
-
-## Optional static workforce OIDC
-
-This is the startup-configured OIDC path. At most one workforce OpenID
-Connect provider can be configured, and its settings are not persisted in the
-accounts database. OIDC is disabled
-unless `Authentication__Oidc__Enabled=true`. The supported providers are Entra
-and Google. `Authority`, `ClientId`, and the selected client-authentication
-settings are required and invalid partial configuration fails startup. The
-optional display name defaults to `Workforce SSO`; the callback path is fixed at
-`/api/v1/identity/oidc/callback`.
-
-`Authentication__Oidc__ClientSecret` is the direct runtime secret injected into the
-process for client-secret authentication. Entra may instead use
-`ClientAuthentication=WorkloadIdentity`, which reads the projected assertion
-fresh for each authorization-code redemption. Use the [static identity operations
-guide](sso-scim-operations.md) for deployment-bound SCIM configuration.
-
-The flow is authorization code plus PKCE. ASP.NET Core's built-in handler validates
-provider metadata, issuer, audience, signature, state, nonce, and correlation. The
-validated principal is held in Identity's temporary external cookie and consumed by
-the fixed local completion route `/api/v1/identity/oidc/complete`; provider tokens are not saved.
-The browser starts the flow at `/api/v1/identity/oidc/challenge`.
-
-New OIDC identities are provisioned just in time as local `User` accounts, keyed by
-the validated issuer and case-sensitive `sub`. Provider email is informational: it
-is never used to link to an existing local account. An email collision fails rather
-than auto-linking. A provider identity without an email receives a reserved,
-non-deliverable local address. OIDC claims never grant local roles or prove local
-MFA; an existing local account's local MFA policy still applies. Keep the local Owner
-bootstrap account as the break-glass path.
-
-All OIDC settings use the same neutral environment-variable names regardless of
-provider. Use one of these supported provider-specific shapes; the examples are
-placeholders, not credentials:
-
-**Microsoft Entra ID**
+For production:
 
 ```text
-Authentication__Oidc__Enabled=true
-Authentication__Oidc__Provider=Entra
-Authentication__Oidc__Authority=https://login.microsoftonline.com/<tenant-id>/v2.0
-Authentication__Oidc__ClientId=<application-client-id>
-Authentication__Oidc__ClientAuthentication=ClientSecret
-Authentication__Oidc__ClientSecret=<client-secret-from-secret-store>
+MAIL_DRIVER=smtp
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_FROM=no-reply@vantigo.example.com
+SMTP_USERNAME=<from-secret-store>
+SMTP_PASSWORD=<from-secret-store>
+SMTP_TLS=starttls
 ```
 
-**Google Workspace**
+`SMTP_HOST` and a valid `SMTP_FROM` address are required for the SMTP driver.
+`SMTP_TLS` is `starttls` (the default), `implicit`, or `none`; `none` is refused
+unless `ALLOW_INSECURE_TRANSPORT=1`. STARTTLS is mandatory rather than
+opportunistic — a server that offers no TLS produces an error, not a plaintext
+delivery. `SMTP_USERNAME` is optional for servers that need no authentication.
 
-```text
-Authentication__Oidc__Enabled=true
-Authentication__Oidc__Provider=Google
-Authentication__Oidc__Authority=https://accounts.google.com
-Authentication__Oidc__ClientId=<client-id>.apps.googleusercontent.com
-Authentication__Oidc__ClientAuthentication=ClientSecret
-Authentication__Oidc__ClientSecret=<client-secret-from-secret-store>
-Authentication__Oidc__AllowedDomains__0=example.com
-```
+SMTP destinations are resolved and checked before the socket opens: private,
+loopback, link-local, carrier-grade-NAT and cloud-metadata addresses are refused,
+and the connection is made to the address that was checked rather than a fresh
+lookup. See [transport security](transport-security.md) for the rule and its escape
+hatch.
 
-For Entra WorkloadIdentity, replace `ClientAuthentication=ClientSecret` with
-`ClientAuthentication=WorkloadIdentity`, omit `ClientSecret`, and configure an
-absolute `Authentication__Oidc__WorkloadIdentityTokenFile` or provide
-`AZURE_FEDERATED_TOKEN_FILE`. See the [static identity operations guide](sso-scim-operations.md)
-for the required Azure Workload Identity federation setup. WorkloadIdentity is
-Entra-only; Google is client-secret-only.
+This is identity's application mail. Communications' per-channel mailbox credentials
+are a different thing entirely — configured through the Communications API and
+sealed at rest, never environment variables. See
+[Communications](communications.md).
 
-These examples describe the supported static provider shapes; use test tenants and
-secret stores appropriate to the deployment.
+## Key material
+
+`APP_SECRET` is the process-wide key material: at least 32 bytes, from which every
+key the process uses is derived with HKDF-SHA256 — one derived key per purpose —
+and used as AES-256-GCM (CSRF and cookie sealing, OIDC state, TOTP secret
+encryption, Communications channel passwords). The purpose string is bound in as
+additional authenticated data, so a value sealed for one purpose cannot be opened
+under another, and a key-id byte leaves room for a future rotation scheme.
+
+**There is no persisted key ring, no key-wrapping service and no external key
+vault.** Nothing needs provisioning beyond the variable itself. Two consequences
+matter operationally:
+
+- **All replicas must share the same `APP_SECRET`** (and the same database), or
+  sessions issued by one replica are unreadable by another.
+- **Losing or rotating it is equivalent to losing a signing key**: every open
+  session, every OIDC flow in progress, every stored TOTP secret and every sealed
+  channel credential becomes unrecoverable. Rotate only with a migration plan.
+
+## Configuration reference
+
+`config.go`'s field comments remain authoritative; this table is the operator-facing
+summary. Booleans are strict `0`/`1` switches — anything else fails startup.
+
+### Application
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `APP_ENV` | `production` or `development`; only development relaxes anything | `production` |
+| `APP_URL` | Public origin (scheme + host [+ port]); no path | **required** |
+| `APP_BASE_PATH` | Path prefix on a shared domain, e.g. `/vantigo` | empty (domain root) |
+| `PORT` | Listen port | `8080` |
+| `DATABASE_URL` | Runtime connection, the least-privilege role | **required** |
+| `MIGRATIONS_DATABASE_URL` | Connection `migrate` uses (the owner role) | `DATABASE_URL` |
+| `SHUTDOWN_TIMEOUT` | Drain budget for in-flight requests and workers | `30s` |
+| `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
+| `MODULES` | Comma list of business modules to serve | `customers,products,energy,communications` |
+| `WORKERS_IN_PROCESS` | Whether `api` also runs background workers in-process | `1` |
+
+### Secrets and identity
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `APP_SECRET` | Process-wide key material, ≥ 32 bytes | **required** |
+| `BOOTSTRAP_SECRET` | One-time first-Owner secret | **required outside development** |
+| `SYSTEM_ADMIN_EMAIL` | Also grants SystemAdmin to the matching bootstrapped Owner | unset |
+| `OWNERS_REQUIRE_MFA` | Require MFA for Owner and SystemAdmin | on outside development |
+| `OWNERS_ALLOW_INSECURE_NO_MFA` | Escape hatch for the above | `0` |
+| `MFA_ISSUER` | Authenticator app label | `Vantigo` |
+| `SESSION_IDLE_TIMEOUT` | Standard idle window | `8h` |
+| `SESSION_PRIVILEGED_IDLE_TIMEOUT` | Privileged idle window | `2h` |
+| `SESSION_ABSOLUTE_LIFETIME` | Standard absolute cap | `24h` |
+| `SESSION_PRIVILEGED_ABSOLUTE_LIFETIME` | Privileged absolute cap | `8h` |
+| `INVITATION_LIFETIME` | Invitation validity, `24h`–`720h` | `168h` |
+| `INVITATION_ACCEPT_URL` | Template containing `{token}` | derived from `APP_URL` + `APP_BASE_PATH` |
+| `PASSWORD_RESET_URL` | Template containing `{email}` and `{token}` | derived from `APP_URL` + `APP_BASE_PATH` |
+
+### Mail
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `MAIL_DRIVER` | `smtp`, or `log` (development only) | `log` in development, else `smtp` |
+| `SMTP_HOST` | SMTP server | required for `smtp` |
+| `SMTP_PORT` | SMTP port | `587` |
+| `SMTP_FROM` | Sender mailbox | required for `smtp` |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | Optional credentials | unset |
+| `SMTP_TLS` | `starttls`, `implicit` or `none` | `starttls` |
+
+### Workforce OIDC and SCIM
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `OIDC_PROVIDER` | `entra` or `google`; unset disables OIDC | unset |
+| `OIDC_AUTHORITY` | Exact issuer for the provider | unset |
+| `OIDC_CLIENT_ID` | Entra GUID, or a `.apps.googleusercontent.com` client ID | unset |
+| `OIDC_CLIENT_SECRET` | Client secret | unset |
+| `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` | Absolute, readable assertion file (Entra only) | unset |
+| `AZURE_FEDERATED_TOKEN_FILE` | Platform-supplied fallback for the above | unset |
+| `OIDC_ALLOWED_DOMAINS` | Comma list of bare DNS names (Google only, required there) | unset |
+| `OIDC_DISPLAY_NAME` | Sign-in button label | `Workforce SSO` |
+| `SCIM_TOKEN` | Static SCIM bearer token; unset disables SCIM | unset |
+| `SCIM_PREVIOUS_TOKEN` | Prior token during a rotation overlap | unset |
+| `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` | RFC 3339, in the future, ≤ 24h ahead | unset |
+
+### Transport, storage and modules
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `ALLOW_INSECURE_TRANSPORT` | Accept plaintext HTTP, database and SMTP transport | `0` |
+| `CSP_REPORT_ONLY` | Emit the CSP as report-only | `0` |
+| `TRUSTED_PROXY_HOPS` | Number of proxies in front (0–10) | `0` |
+| `TRUSTED_PROXY_CIDRS` | The proxies' own addresses, as CIDR prefixes | unset |
+| `STORAGE_PROVIDER` | `fs`, or unset for fail-closed storage | unset |
+| `STORAGE_FS_ROOT` | Absolute root for the `fs` driver | unset |
+| `STORAGE_FS_ALLOW_INSECURE_ROOT` | Relax the root permission check (development only) | `0` |
+| `BRREG_BASE_URL` | Brønnøysundregisteret origin | `https://data.brreg.no` |
+| `BRREG_TIMEOUT` | Budget for one lookup, retries included | `15s` |
+| `APP_TITLE`, `APP_LOGO_URL`, `APP_SUPPORT_EMAIL`, `APP_SUPPORT_PHONE`, `APP_SUPPORT_URL` | SPA branding | unset |
+
+Communications' own settings (`COMMUNICATIONS_*`) are documented in
+[Communications](communications.md). OpenTelemetry is configured with the standard
+`OTEL_EXPORTER_OTLP_*` variables, read by the OTel SDK rather than by `config.go`.
+
+## Workforce OIDC
+
+At most one workforce OpenID Connect provider is configured, at startup, from the
+environment; nothing about it is persisted or editable through an API. `OIDC_PROVIDER`
+is the on/off switch — with it unset, leaving any other `OIDC_*` variable set fails
+startup naming the leftovers, so a half-removed provider cannot look disabled while
+carrying live credentials.
+
+**The client-authentication mode is inferred, not configured.** There is no
+`ClientAuthentication` setting: set `OIDC_CLIENT_SECRET` for client-secret
+authentication, or `OIDC_WORKLOAD_IDENTITY_TOKEN_FILE` (or let the platform supply
+`AZURE_FEDERATED_TOKEN_FILE`) for workload identity. Setting both is a configuration
+error, and so is setting neither. Workload identity is Entra-only; Google is
+client-secret-only.
+
+The flow is authorization code plus PKCE with a nonce. Provider metadata, issuer,
+audience, signature, state, nonce and correlation are validated, the validated
+identity is held in a sealed cookie, and provider tokens are never saved. The
+browser starts at `/api/v1/identity/oidc/challenge`, the provider returns to the
+fixed `/api/v1/identity/oidc/callback`, and local completion is
+`/api/v1/identity/oidc/complete`. Every failure is a redirect to
+`/sign-in?error=<code>`; no redirect target ever comes from the request.
+
+Provider-specific checks then apply: Entra requires a `tid` matching the tenant GUID
+in the configured authority and an `oid` GUID, and requires `azp` to equal the
+client ID when the token carries multiple audiences; Google requires
+`email_verified`, a valid email, and a non-empty `hd` that matches the email domain
+and appears in `OIDC_ALLOWED_DOMAINS`.
+
+New identities are provisioned just in time as local `User` accounts, keyed by the
+validated issuer and case-sensitive `sub`. Provider email is informational: an email
+collision **fails rather than auto-linking**. OIDC claims never grant local roles and
+never satisfy the local MFA requirement.
+
+`GET /api/v1/identity/providers` is anonymous and reports the configured sign-in
+providers to the SPA.
 
 ### Required callback URI
 
-Register the exact public HTTPS callback URI with the provider. The application is
-served under its base path (the host defaults to the root; see `App__BasePath`), so the
-public callback URI includes that prefix:
+Register the exact public HTTPS callback with the provider, including the base path
+when one is configured:
 
 ```text
 https://vantigo.example.com/api/v1/identity/oidc/callback
 ```
 
-When `App__PublicOrigin` is configured, the API logs the exact callback URI to
-register at startup. When `App__BasePath` is set to an empty value (root
-serving), omit the prefix.
+The callback path is fixed and is not a deployment setting. The public origin, the
+forwarded scheme and the provider registration must agree.
 
-The callback path is fixed at `/api/v1/identity/oidc/callback`; it is not a
-deployment setting. The public origin, forwarded scheme, and provider registration
-must agree; the application does not accept a browser-supplied return URL.
+## SCIM
 
-Environment variables use ASP.NET Core's standard double-underscore mapping:
+SCIM 2.0 is served at `/api/v1/identity/scim/v2` and authenticated by the static
+bearer token in `SCIM_TOKEN`; unset disables it. The token must not contain
+whitespace. **There is no file-based token variant** — inject the value from a
+secret manager. Rotation with a bounded overlap is described in
+[SSO and SCIM operations](sso-scim-operations.md).
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `App__BasePath` | Path prefix the app is served under on a shared domain (empty value serves from the root) | empty |
-| `App__PublicOrigin` | Public scheme + host used to derive mailed links and the logged OIDC callback URI (no path; invalid values fail startup) | unset |
-| `Authentication__Bootstrap__Secret` | One-time Owner bootstrap secret | **required outside Development** (startup fails if unset); in Development only, generated once at startup and logged at Warning |
-| `Authentication__Owners__RequireMfa` | Require local MFA for the `Owner` and `SystemAdmin` policies | `false`; **required outside Development** unless `AllowInsecureNoMfa=true` (startup fails otherwise) |
-| `Authentication__Owners__AllowInsecureNoMfa` | Escape hatch: allow `RequireMfa=false` outside Development (demo deployments only) | `false` |
-| `Authentication__Owners__MfaIssuer` | Issuer label in authenticator apps | `Vantigo` |
-| `Authentication__Invitations__Lifetime` | Invitation lifetime as a .NET `TimeSpan` (`1`–`30` days) | `7.00:00:00` |
-| `Authentication__Invitations__AcceptUrl` | Invitation URL template with `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/invitations/accept?token={token}` |
-| `Authentication__PasswordReset__ResetUrl` | Reset URL template with `{email}` and `{token}` (override) | derived from `App__PublicOrigin` + `App__BasePath`; dev fallback `http://localhost:5173/password-reset?email={email}&token={token}` |
-| `Authentication__Oidc__Enabled` | Enable the one startup-configured OIDC provider | `false` |
-| `Authentication__Oidc__Provider` | Supported provider: `Entra` or `Google` | unset |
-| `Authentication__Oidc__Authority` | Static OIDC issuer/authority | unset |
-| `Authentication__Oidc__ClientId` | Static OIDC client ID | unset |
-| `Authentication__Oidc__ClientAuthentication` | `ClientSecret` or Entra-only `WorkloadIdentity` | unset |
-| `Authentication__Oidc__ClientSecret` | OIDC client secret when using `ClientSecret` | unset |
-| `Authentication__Oidc__WorkloadIdentityTokenFile` | Absolute projected Entra assertion file for `WorkloadIdentity` | unset |
-| `Authentication__Oidc__AllowedDomains__0` | Allowed Google Workspace hosted domain | unset |
-| `Authentication__Oidc__DisplayName` | Sign-in button/provider label | `Workforce SSO` |
-| `Authentication__Oidc__CallbackPath` | Retained only to reject non-fixed callback configuration; do not set it | `/api/v1/identity/oidc/callback` |
-| `Authentication__Scim__Enabled` | Enable the fixed static SCIM protocol | `false` |
-| `Authentication__Scim__BearerToken` | Static SCIM bearer token; configure this or `BearerTokenFile`, not both | unset |
-| `Authentication__Scim__BearerTokenFile` | Absolute readable file containing the current static SCIM token | unset |
-| `Authentication__Scim__PreviousBearerToken` | Optional prior token during rotation; requires a bounded expiry | unset |
-| `Authentication__Scim__PreviousBearerTokenFile` | Optional absolute file containing the prior token; mutually exclusive with the direct value | unset |
-| `Authentication__Scim__PreviousBearerTokenExpiresAtUtc` | Future UTC expiry for the prior token, no more than 24 hours after startup | unset |
-| `DataProtection__PostgreSql__ConnectionString` | Optional override for the PostgreSQL connection used for Data Protection keys | `ConnectionStrings__Vantigo` |
-| `DataProtection__PostgreSql__ConnectionStringName` | Named connection-string lookup used when the override is unset | `Vantigo` |
-| `DataProtection__PostgreSql__Schema` | PostgreSQL schema for the Data Protection key table | `dataprotection` |
-| `DataProtection__PostgreSql__TableName` | PostgreSQL Data Protection key table | `Keys` |
-| `DataProtection__PostgreSql__ApplicationName` | Shared Data Protection application discriminator | host application name |
-| `DataProtection__KeyVaultKeyUri` | Azure Key Vault key identifier that wraps the Data Protection key ring; **required outside Development** unless the escape hatch below is set (startup fails otherwise) | unset |
-| `DataProtection__AllowUnwrappedKeys` | Escape hatch: accepts an unwrapped key ring outside Development when no Key Vault key is available yet | `false` |
-| `ForwardedHeaders__KnownProxies` | Trusted proxy IP(s), comma-separated or indexed | ASP.NET Core safe defaults |
-| `ForwardedHeaders__KnownNetworks__0` | Trusted proxy network in IPv4/IPv6 CIDR form | ASP.NET Core safe defaults |
-| `Email__Provider` | `Smtp` selects SMTP; any other value selects logging | `Logging` |
-| `Email__From` | Sender mailbox | `no-reply@localhost` |
-| `Email__Smtp__Host` | SMTP server | unset |
-| `Email__Smtp__Port` | SMTP port | `587` |
-| `Email__Smtp__UserName` | Optional SMTP username | unset |
-| `Email__Smtp__Password` | SMTP password | unset |
-| `Email__Smtp__EnableSsl` | Use STARTTLS when true | `true` |
-| `Email__Smtp__TimeoutSeconds` | SMTP timeout, clamped to 1–300 seconds | `30` |
+## Forwarded headers and HTTPS
 
-### Data Protection keys
+`TRUSTED_PROXY_HOPS` **counts the proxies in front of the server** rather than
+listing them: with `N > 0`, each of the N trusted proxies appended one entry to
+`X-Forwarded-For`, so the client is the Nth entry from the right and everything to
+its left is client-written and untrusted. `X-Forwarded-Proto`'s last entry becomes
+the scheme. `X-Forwarded-Host` is never honoured — proxies must preserve `Host`.
 
-ASP.NET Core Data Protection keys are persisted in the shared PostgreSQL database
-in the `dataprotection."Keys"` table by default. All replicas must use the same
-database and `DataProtection__PostgreSql__ApplicationName` (or the same default
-application name) so cookies, antiforgery tokens, and protected Identity tokens
-remain compatible across restarts and replicas. The key ring is managed through the
-PostgreSQL-backed Data Protection context rather than an application file volume.
-
-By default that key material is stored **unwrapped**: a PostgreSQL dump then
-contains both encrypted payloads and the keys to decrypt them. Configure
-`DataProtection__KeyVaultKeyUri` to wrap the key ring with an Azure Key Vault
-key; this is **required outside Development**, unless
-`DataProtection__AllowUnwrappedKeys=true` deliberately accepts an unwrapped
-key ring for a deployment that has no Key Vault yet (startup otherwise fails
-— see [Data Protection key wrapping](data-protection-key-wrapping.md) for
-configuration, the Production requirement and its escape hatch, and
-rotation/recovery, including the consequence of losing the Key Vault key).
-
-### Forwarded headers and HTTPS
-
-The API consumes `X-Forwarded-For` and `X-Forwarded-Proto` with a one-hop limit. When
-an explicit proxy or network allowlist is supplied, it replaces the framework's
-default trusted lists; only configure the actual proxy address or ingress network.
-Invalid IP/CIDR values fail startup. Examples:
+Outside development, hops without `TRUSTED_PROXY_CIDRS` fails startup:
 
 ```text
-ForwardedHeaders__KnownProxies=10.0.0.10
-ForwardedHeaders__KnownNetworks__0=10.0.0.0/24
+TRUSTED_PROXY_HOPS: requires TRUSTED_PROXY_CIDRS outside development:
+forwarded headers are honoured only from a peer inside that list
 ```
 
-Do not trust arbitrary client-supplied forwarded headers. Outside Development,
-production cookies are always Secure and OIDC authorities must use HTTPS. Terminate
-TLS at the trusted proxy, forward the original HTTPS scheme, and expose the SPA/API
-and OIDC callback on that HTTPS origin.
+With the list set, forwarded headers are honoured only when the direct peer falls
+inside one of its prefixes; any other peer is treated as the client itself. Without
+it, every peer could choose the client address the rate limits key on.
 
-### Database migrations
+```text
+TRUSTED_PROXY_HOPS=1
+TRUSTED_PROXY_CIDRS=10.0.0.0/24
+```
 
-The host keeps the Identity, Customers, Communications and Products contexts in one
-PostgreSQL database. Their tables live in the `identity`, `customers`,
-`communications` and `products` schemas, each with its own
-`__EFMigrationsHistory`. The contexts share the NpgsqlDataSource's ADO.NET
-connection pool, not EF DbContext pooling; they do not share tracking or transactions.
-See the [contributor migration commands](../CONTRIBUTING.md#database-migrations) for
-context-specific add, list, script, update, and pending-model checks.
+Terminate TLS at the proxy, forward the original scheme, and expose the SPA, API and
+OIDC callback on that HTTPS origin. Outside development cookies are `Secure` and
+`APP_URL` must be `https`.
 
-Migrations run only through the host's `migrate` command, which applies all enabled
-module and Identity contexts and exits.
-In production, run it as a terminating job, wait for it to succeed, and then start the
-API with the explicit `api` command. The API does not apply migrations at startup. The
-platform must not start the API until the migration job has completed successfully.
+## Database migrations
 
-Development Aspire explicitly selects `migrate`, then the Development-only `seed`, and
-then `api`. Do not run `seed` in production. Verify the database is reachable and the
-PostgreSQL-backed Data Protection key context is available before accepting browser
-traffic.
+One PostgreSQL database holds one schema per module — `identity`, `customers`,
+`products`, `energy` and `communications` — migrated by plain SQL files embedded in
+the binary. Every schema is migrated regardless of which modules `MODULES` enables,
+so enabling a module later needs no migration. See the
+[contributor migration guide](../CONTRIBUTING.md#database-migrations) for how
+migrations are written and applied.
+
+**Both the `migrate` command and the `api` command apply migrations.** `api`
+applies pending migrations under a PostgreSQL advisory lock and only serves once
+they succeed; `server` mode never migrates. Migrators serialize on that lock, so an
+old and a new binary starting at once wait for each other instead of racing.
+
+Running a terminating `migrate` job first and waiting for it is still the right
+deployment shape: the point is to see a migration failure **before** any serving
+replica starts, not that `api` would otherwise leave the schema behind. Use
+`MIGRATIONS_DATABASE_URL` for the owner role where a deployment separates it from
+the runtime role.
+
+Do not run `seed` in production; it is development-only and exits 2 outside it.

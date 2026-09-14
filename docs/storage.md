@@ -1,107 +1,101 @@
 # Object storage
 
-Application modules reference only `Vantigo.Storage.Abstractions`, define a typed
-marker implementing `IStorageScope`, and inject `IObjectStore<TheirScope>`. The
-`Vantigo.Storage` implementation package is registered by the host with
-`AddVantigoObjectStorage`; it resolves the configured provider and prefixes every
-key with the current tenant and typed scope before reaching S3, Azure Blob, or
-local storage.
+Object storage is the application port Communications stages and serves attachments
+through. Modules never talk to a provider SDK: they receive an `ObjectStore` scoped
+to their own namespace and pass relative keys.
 
-Vantigo uses one centrally configured object-storage provider. Configure it with
-`Storage__Provider` as `s3`, `azure-blob`, or `local`, and set the matching
-`Storage__Authentication` value. If `Storage__Provider` is omitted, the host starts
-with storage fail-closed; an operation reports that storage is not configured.
+## The provider set is a regression from the .NET implementation
 
-## S3 and MinIO
-
-S3 uses explicit access-key authentication. The service URL is used for MinIO and
-other S3-compatible services; it can be omitted when normal AWS endpoint resolution
-is desired.
+**The local filesystem is the only supported provider.** The implementation
+(`apps/server/internal/storage`) contains one driver, `fs.go`, and configuration
+accepts only `fs`:
 
 ```text
-STORAGE__PROVIDER=s3
-STORAGE__AUTHENTICATION=access-key
-STORAGE__S3__BUCKET_NAME=vantigo-objects
-STORAGE__S3__SERVICE_URL=http://minio:9000
-STORAGE__S3__ACCESS_KEY=<secret>
-STORAGE__S3__SECRET_KEY=<secret>
-STORAGE__S3__REGION=us-east-1
-STORAGE__S3__FORCE_PATH_STYLE=true
+STORAGE_PROVIDER: must be "fs" if set
 ```
 
-## Azure Blob
+The S3/MinIO and Azure Blob providers the .NET implementation offered **do not
+exist in this port**. There is no `STORAGE_S3_*`, no `STORAGE_AZURE_BLOB_*`, no
+access-key, SAS, connection-string or managed-identity authentication, and no
+container provisioning. A deployment that needs remote object storage today must
+mount durable, exclusively-owned storage into the container and point the `fs`
+driver at it. Adding a driver is additive — the port is provider-neutral — but
+nothing in this repository implements one.
 
-Required settings are `STORAGE__AZURE_BLOB__ACCOUNT_NAME` and
-`STORAGE__AZURE_BLOB__CONTAINER_NAME`. `Azure_Blob` is the canonical environment
-hierarchy; the legacy compact `AzureBlob` hierarchy is accepted only as a fallback.
+## Configuration
 
-| Authentication | Required setting | Credential behavior |
+| Variable | Purpose | Default |
 | --- | --- | --- |
-| `azure-identity` | `AZURE__IDENTITY__ENABLED` is omitted or `true` | Uses the host's global `DefaultAzureCredential`; assign **Storage Blob Data Contributor** |
-| `connection-string` | `CONNECTION_STRING` | Uses the supplied connection string |
-| `sas` | `SAS_TOKEN` | Uses the account/container SAS; a leading `?` is accepted |
-
-Do not provide connection strings, SAS tokens, or account keys to azure-identity
-configuration. Container provisioning is disabled by default. Set
-`STORAGE__AZURE_BLOB__CREATE_CONTAINER_IF_MISSING=true` only when the application
-identity is intentionally allowed to create the container. Otherwise the configured
-container is verified and must already exist. Secrets must be supplied through a
-secret manager or environment injection, never committed to configuration files.
-
-## Local filesystem
+| `STORAGE_PROVIDER` | `fs`, or unset | unset |
+| `STORAGE_FS_ROOT` | Absolute root directory; required when the provider is `fs` | unset |
+| `STORAGE_FS_ALLOW_INSECURE_ROOT` | Relax the group/world-writable root check | `0` |
 
 ```text
-STORAGE__PROVIDER=local
-STORAGE__AUTHENTICATION=none
-STORAGE__LOCAL__ROOT_PATH=/var/lib/vantigo/objects
+STORAGE_PROVIDER=fs
+STORAGE_FS_ROOT=/var/lib/vantigo/objects
 ```
 
-The root must be an absolute, writable path that exists or can be created during
-initialization. It must not be a symlink/reparse point and, on Unix, must not be
-group/world writable by default. The app identity must exclusively own the root;
-do not use a shared writable volume. Set
-`STORAGE__LOCAL__ALLOW_INSECURE_ROOT_FOR_DEVELOPMENT=true` only for intentional
-local development. The setting is accepted only when the actual host environment
-is Development; if it is true in any other environment, startup/storage
-initialization fails with a configuration error. It never relaxes Unix root or
-directory permission checks outside Development, and defaults to false. Keys are
-checked for containment, traversal, symlink/reparse components, and unsafe
-characters before every operation. Writes use a temporary file under the root
-and an atomic replacement; physical paths are never returned by the API.
-This is defense-in-depth, not a claim of cross-platform TOCTOU-proof `openat`
-semantics: protect the root with deployment ownership and filesystem policy.
+`STORAGE_FS_ROOT` must be an absolute path, and setting it without
+`STORAGE_PROVIDER=fs` is a configuration error rather than a silent no-op.
 
-## Tenant isolation, module scopes, and downloads
+**Unset storage fails closed at each operation, not at startup.** With
+`STORAGE_PROVIDER` unset the process still starts and serves everything else; every
+storage operation then reports `storage: not configured`. That is deliberate: an
+installation that never uploads an attachment does not need storage provisioned to
+boot.
 
-All objects are tenant-prefixed automatically in both single-tenant and
-multi-tenant installations. The physical provider key is always:
+`STORAGE_FS_ALLOW_INSECURE_ROOT` is accepted **only when `APP_ENV=development`**;
+outside development it is a startup error regardless of what it would have done —
+the same shape as `MAIL_DRIVER=log` and `OWNERS_ALLOW_INSECURE_NO_MFA`.
+
+## The filesystem driver
+
+The root must exist or be creatable at initialisation, must not itself be a symbolic
+link, and — outside development — must not be group- or world-writable. Directories
+the driver creates are mode `0700`: the application identity alone. Give it a volume
+the application user exclusively owns; do not point it at a shared writable
+directory.
+
+Containment is enforced by the operating system, not by a check-then-open pair. The
+driver opens the root once as an `os.Root` and performs every operation through it,
+so each name is resolved with `openat`-style containment at the moment of use: a
+symlink planted inside the root afterwards — even one timed to land between a check
+and the syscall — still cannot make an operation land outside the root. Key
+validation runs in front of that anyway, rejecting traversal, URL-encoded, absolute,
+backslash, control-character and duplicate-prefix forms, so nonsense input gets a
+clear typed rejection before any syscall. The two are complementary, not redundant.
+
+Writes go to a temporary file under the root and are atomically renamed into place,
+so a crash mid-write never leaves a partially written object readable. Keys are
+bounded at 1024 UTF-8 bytes. **No API ever returns a physical filesystem path.**
+
+## Module scopes and the physical key
+
+Every module gets a scoped store, and the scope prefixes every key before it reaches
+the driver. The physical key is:
 
 ```text
-tenants/{tenant-id}/{scope-name}/{relative-key}
+{scope}/{relative-key}
 ```
 
-`{tenant-id}` is the tenant UUID and `{scope-name}` is the validated marker-type
-scope. Single-tenant installations use an automatically provisioned `Default`
-tenant; multi-tenant installations use the tenant resolved for the current
-request or background-job iteration. If no tenant is resolved, storage fails
-closed before calling the provider. This is a logical object key, not a provider
-URL, and the storage contract never exposes provider URLs.
+**There is no tenant segment.** The .NET implementation's physical key was
+`tenants/{tenant-id}/{scope}/{relative-key}`; this is a single-tenant application and
+the tenant segment is gone along with the rest of tenancy. Nothing resolves a tenant,
+and no storage operation fails for want of one.
 
-Multi-tenant mode itself is not production-ready and refuses to start outside
-Development; see [Tenancy and tenant isolation](tenancy.md).
+Scope names are canonical lowercase ASCII `[a-z0-9-]`, at most 64 characters, with no
+slashes or dots. Communications uses the scope `communications`, so one of its
+attachments lands at `communications/<relative-key>`. A scoped store refuses a
+relative key that equals its scope or already begins with `{scope}/`: callers pass
+relative keys only and must never construct the prefix themselves.
 
-Modules define a marker type implementing `IStorageScope` from
-`Vantigo.Storage.Abstractions`, for example `CommunicationsStorageScope : IStorageScope`
-with `Name => "communications"`,
-and inject `IObjectStore<CommunicationsStorageScope>`. They pass only relative
-keys. The provider key is constructed as
-`tenants/<tenant-id>/communications/<relative-key>`, with
-traversal, URL-encoding, absolute-path, backslash, control-character, and
-duplicate-prefix forms rejected. Scope names are canonical lowercase ASCII
-`[a-z0-9-]` names without slashes or dots. Never construct tenant or scope prefixes
-manually; the unscoped provider and string scope factory are not application
-contracts.
+## Downloads
 
-Downloads always stream through an application endpoint after authorization. The
-storage contract intentionally has no presigned URL operation, and providers never
-redirect callers to direct S3, Azure, or local filesystem URLs.
+Downloads always stream through an authorized application endpoint.
+
+**The storage contract has no presigned-URL operation**, and no provider ever
+redirects a caller to a direct storage URL. Communications' download endpoint
+authorizes the attachment, loads it through the scoped store, and returns the bytes
+with the stored content type and a sanitized filename; the `downloadPath` field in
+its DTOs is that same-origin application endpoint, never a storage location. See
+[Communications](communications.md) for the attachment lifecycle.
