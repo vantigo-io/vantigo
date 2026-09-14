@@ -1,7 +1,6 @@
-import { createFileRoute, notFound, Outlet, redirect, useParams } from "@tanstack/react-router";
-import { fetchSession, sessionQueryKey, switchTenant } from "../api/auth";
+import { createFileRoute, Outlet, redirect, useParams } from "@tanstack/react-router";
+import { fetchSession, sessionQueryKey } from "../api/auth";
 import { TenantModuleGuard } from "../components/tenant-module-guard";
-import { synchronizeTenant } from "./-tenant-routing";
 
 const TenantLayout = () => {
   const { tenantSlug } = useParams({ from: "/$tenantSlug" });
@@ -13,17 +12,18 @@ const TenantLayout = () => {
 };
 
 export const Route = createFileRoute("/$tenantSlug")({
-  beforeLoad: async ({ context, params }) => {
+  // Tenant-slug validation and session synchronization were deleted with
+  // -tenant-routing.ts's synchronizeTenant and api/auth.ts's switchTenant
+  // (task 2 of the frontend de-tenanting plan). Only the session check
+  // remains; the slug segment itself is unvalidated until task 3 collapses
+  // this route subtree up one level.
+  beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery({
       queryKey: sessionQueryKey,
       queryFn: fetchSession,
       staleTime: 300_000,
     });
     if (!session) throw redirect({ to: "/sign-in", search: { error: undefined } });
-
-    const { session: updatedSession, tenant } = await synchronizeTenant(session, params.tenantSlug, switchTenant);
-    if (!tenant) throw notFound();
-    context.queryClient.setQueryData(sessionQueryKey, updatedSession);
   },
   component: TenantLayout,
 });

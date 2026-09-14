@@ -1,14 +1,14 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { fetchSession, sessionQueryKey } from "../api/auth";
-import { activeTenantForSession } from "./-tenant-routing";
 
 export const Route = createFileRoute("/")({
+  // The active-tenant redirect was deleted with -tenant-routing.ts's
+  // activeTenantForSession (task 2 of the frontend de-tenanting plan);
+  // task 4 owns choosing this route's replacement destination for
+  // non-system-admin sessions. System admins still land on the control
+  // plane, unconditionally now that there is no tenant membership to check.
   beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
-    const activeTenant = activeTenantForSession(session);
-    if (activeTenant) throw redirect({ href: `/${encodeURIComponent(activeTenant.slug)}` });
-    // System admins without tenant access land on the control plane instead
-    // of the "tenant required" screen (first-onboarding flow).
-    if (session?.isSystemAdmin && (session.tenants ?? []).length === 0) throw redirect({ to: "/admin" });
+    if (session?.isSystemAdmin) throw redirect({ to: "/admin" });
   },
 });

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ModuleKey } from "./api/tenant-capabilities";
 import {
   activeNavPath,
   firstAuthorizedIntegratedAppDestination,
   hasPermissions,
+  type ModuleKey,
   navSearchFor,
   navSections,
   navSectionsForTenant,

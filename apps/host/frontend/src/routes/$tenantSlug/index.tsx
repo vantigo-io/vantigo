@@ -34,13 +34,7 @@ import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getAuthorizationMe } from "../../api/authorization";
 import { request } from "../../api/request";
-import {
-  enabledModuleKeys,
-  fetchTenantCapabilities,
-  type ModuleKey,
-  tenantCapabilitiesQueryKey,
-} from "../../api/tenant-capabilities";
-import { hasPermissions } from "../../navigation";
+import { hasPermissions, type ModuleKey } from "../../navigation";
 import "../../i18n";
 
 type DashboardPreset = "7d" | "30d" | "90d" | "12m" | "custom";
@@ -240,22 +234,19 @@ const DashboardPage = () => {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: "/$tenantSlug/" });
   const { data: session } = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
-  const capabilities = useQuery({
-    queryKey: tenantCapabilitiesQueryKey(session?.activeTenantId ?? undefined),
-    queryFn: fetchTenantCapabilities,
-    enabled: !!session?.activeTenantId,
-    retry: false,
-    staleTime: 300_000,
-  });
   const authorization = useQuery({
-    queryKey: ["authorization", "me", session?.activeTenantId ?? "none"],
+    queryKey: ["authorization", "me", "none"],
     queryFn: getAuthorizationMe,
     enabled: !!session,
     retry: false,
     staleTime: 300_000,
   });
 
-  const enabledModules = enabledModuleKeys(capabilities.data) ?? [];
+  // The tenant-capabilities endpoint was deleted (task 2 of the frontend
+  // de-tenanting plan); no source for enabled modules remains, so every
+  // module card below stays hidden. See navigation.ts's `enabledModules`
+  // doc comment for the established "unknown modules hide" fallback.
+  const enabledModules: ModuleKey[] = [];
   const permissions = authorization.data?.permissions;
   const modules = moduleCards.filter(
     (card) => enabledModules.includes(card.module) && hasPermissions(permissions, card.requiredPermissions),
@@ -416,7 +407,9 @@ const DashboardPage = () => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
 
-  const tenantName = session?.tenants?.find((tenant) => tenant.id === session.activeTenantId)?.name ?? tenantSlug;
+  // The tenants list was deleted from Session (task 2); there is no longer a
+  // display name to look up, so this falls back to the raw slug.
+  const tenantName = tenantSlug;
   const hrefFor = (path: string) => `/${encodeURIComponent(tenantSlug)}${path}`;
   const attentionHref = (item: (typeof attentionItems)[number]) => {
     if (item.module === "communications" && item.type === "conversationNoReply") {
@@ -459,7 +452,7 @@ const DashboardPage = () => {
   ].filter((item) => allowed(item.module));
   const incompleteSetupItems = setupItems.filter((item) => !item.complete);
   const freshness = `${formatters.formatDate(range.from, { dateStyle: "medium" })} – ${formatters.formatDate(range.to, { dateStyle: "medium" })}`;
-  const isSettled = !capabilities.isPending && !authorization.isPending;
+  const isSettled = !authorization.isPending;
 
   const updatePreset = (value: string) => {
     const preset = value as DashboardPreset;

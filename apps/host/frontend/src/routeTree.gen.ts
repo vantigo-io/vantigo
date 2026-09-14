@@ -41,8 +41,6 @@ import { Route as TenantSlugSettingsInvitationsRouteImport } from './routes/$ten
 import { Route as TenantSlugSettingsOverviewRouteImport } from './routes/$tenantSlug/settings/overview'
 import { Route as TenantSlugSettingsRolesRouteImport } from './routes/$tenantSlug/settings/roles'
 import { Route as TenantSlugSettingsUsersRouteImport } from './routes/$tenantSlug/settings/users'
-import { Route as AdminTenantsTenantIdRouteImport } from './routes/admin/tenants/$tenantId'
-import { Route as AdminTenantsNewRouteImport } from './routes/admin/tenants/new'
 import { Route as TenantSlugCustomersCustomerIdIndexRouteImport } from './routes/$tenantSlug/customers/$customerId.index'
 import { Route as TenantSlugCustomersCustomerIdEnergyRouteImport } from './routes/$tenantSlug/customers/$customerId.energy'
 import { Route as TenantSlugEnergyMeteringPointsIndexRouteImport } from './routes/$tenantSlug/energy/metering-points/index'
@@ -218,16 +216,6 @@ const TenantSlugSettingsUsersRoute = TenantSlugSettingsUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => TenantSlugSettingsRoute,
 } as any)
-const AdminTenantsTenantIdRoute = AdminTenantsTenantIdRouteImport.update({
-  id: '/tenants/$tenantId',
-  path: '/tenants/$tenantId',
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminTenantsNewRoute = AdminTenantsNewRouteImport.update({
-  id: '/tenants/new',
-  path: '/tenants/new',
-  getParentRoute: () => AdminRoute,
-} as any)
 const TenantSlugCustomersCustomerIdIndexRoute =
   TenantSlugCustomersCustomerIdIndexRouteImport.update({
     id: '/',
@@ -283,8 +271,6 @@ export interface FileRoutesByFullPath {
   '/$tenantSlug/settings/overview': typeof TenantSlugSettingsOverviewRoute
   '/$tenantSlug/settings/roles': typeof TenantSlugSettingsRolesRoute
   '/$tenantSlug/settings/users': typeof TenantSlugSettingsUsersRoute
-  '/admin/tenants/$tenantId': typeof AdminTenantsTenantIdRoute
-  '/admin/tenants/new': typeof AdminTenantsNewRoute
   '/$tenantSlug/contacts/': typeof TenantSlugContactsIndexRoute
   '/$tenantSlug/customers/': typeof TenantSlugCustomersIndexRoute
   '/$tenantSlug/products/': typeof TenantSlugProductsIndexRoute
@@ -320,8 +306,6 @@ export interface FileRoutesByTo {
   '/$tenantSlug/settings/overview': typeof TenantSlugSettingsOverviewRoute
   '/$tenantSlug/settings/roles': typeof TenantSlugSettingsRolesRoute
   '/$tenantSlug/settings/users': typeof TenantSlugSettingsUsersRoute
-  '/admin/tenants/$tenantId': typeof AdminTenantsTenantIdRoute
-  '/admin/tenants/new': typeof AdminTenantsNewRoute
   '/$tenantSlug/contacts': typeof TenantSlugContactsIndexRoute
   '/$tenantSlug/customers': typeof TenantSlugCustomersIndexRoute
   '/$tenantSlug/products': typeof TenantSlugProductsIndexRoute
@@ -361,8 +345,6 @@ export interface FileRoutesById {
   '/$tenantSlug/settings/overview': typeof TenantSlugSettingsOverviewRoute
   '/$tenantSlug/settings/roles': typeof TenantSlugSettingsRolesRoute
   '/$tenantSlug/settings/users': typeof TenantSlugSettingsUsersRoute
-  '/admin/tenants/$tenantId': typeof AdminTenantsTenantIdRoute
-  '/admin/tenants/new': typeof AdminTenantsNewRoute
   '/$tenantSlug/contacts/': typeof TenantSlugContactsIndexRoute
   '/$tenantSlug/customers/': typeof TenantSlugCustomersIndexRoute
   '/$tenantSlug/products/': typeof TenantSlugProductsIndexRoute
@@ -403,8 +385,6 @@ export interface FileRouteTypes {
     | '/$tenantSlug/settings/overview'
     | '/$tenantSlug/settings/roles'
     | '/$tenantSlug/settings/users'
-    | '/admin/tenants/$tenantId'
-    | '/admin/tenants/new'
     | '/$tenantSlug/contacts/'
     | '/$tenantSlug/customers/'
     | '/$tenantSlug/products/'
@@ -440,8 +420,6 @@ export interface FileRouteTypes {
     | '/$tenantSlug/settings/overview'
     | '/$tenantSlug/settings/roles'
     | '/$tenantSlug/settings/users'
-    | '/admin/tenants/$tenantId'
-    | '/admin/tenants/new'
     | '/$tenantSlug/contacts'
     | '/$tenantSlug/customers'
     | '/$tenantSlug/products'
@@ -480,8 +458,6 @@ export interface FileRouteTypes {
     | '/$tenantSlug/settings/overview'
     | '/$tenantSlug/settings/roles'
     | '/$tenantSlug/settings/users'
-    | '/admin/tenants/$tenantId'
-    | '/admin/tenants/new'
     | '/$tenantSlug/contacts/'
     | '/$tenantSlug/customers/'
     | '/$tenantSlug/products/'
@@ -732,20 +708,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TenantSlugSettingsUsersRouteImport
       parentRoute: typeof TenantSlugSettingsRoute
     }
-    '/admin/tenants/$tenantId': {
-      id: '/admin/tenants/$tenantId'
-      path: '/tenants/$tenantId'
-      fullPath: '/admin/tenants/$tenantId'
-      preLoaderRoute: typeof AdminTenantsTenantIdRouteImport
-      parentRoute: typeof AdminRoute
-    }
-    '/admin/tenants/new': {
-      id: '/admin/tenants/new'
-      path: '/tenants/new'
-      fullPath: '/admin/tenants/new'
-      preLoaderRoute: typeof AdminTenantsNewRouteImport
-      parentRoute: typeof AdminRoute
-    }
     '/$tenantSlug/customers/$customerId/': {
       id: '/$tenantSlug/customers/$customerId/'
       path: '/'
@@ -858,14 +820,10 @@ const TenantSlugRouteWithChildren = TenantSlugRoute._addFileChildren(
 
 interface AdminRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
-  AdminTenantsTenantIdRoute: typeof AdminTenantsTenantIdRoute
-  AdminTenantsNewRoute: typeof AdminTenantsNewRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
-  AdminTenantsTenantIdRoute: AdminTenantsTenantIdRoute,
-  AdminTenantsNewRoute: AdminTenantsNewRoute,
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)

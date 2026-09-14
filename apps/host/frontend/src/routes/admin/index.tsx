@@ -1,13 +1,29 @@
 import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, TextInput, Title } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { listSystemTenants, systemTenantError } from "../../api/system-tenants";
 import { translateSystemModule } from "../../i18n";
 import { MaintenanceControls } from "./-maintenance-controls";
 import "../../i18n";
+
+// The system-tenants API was deleted (task 2 of the frontend de-tenanting
+// plan — every /api/v1/identity/admin/tenants* endpoint is absent from both
+// the contract and the Go server). The tenant list below is kept structurally
+// in place for task 6, which trims this page to its maintenance-controls
+// half; until then it always reports the control plane as unavailable
+// instead of porting the deleted endpoint back.
+interface SystemTenant {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  enabledModules: string[];
+  membershipsCount: number;
+}
+const systemTenantError = (error: unknown) =>
+  error instanceof Error ? error.message : "The request could not be completed.";
 
 const Status = ({ status, t }: { status: string; t: (key: string) => string }) => (
   <Badge color={status === "Active" ? "teal" : "yellow"}>
@@ -21,7 +37,11 @@ export const Route = createFileRoute("/admin/")({
 
 export function AdminOverview() {
   const { t } = useI18n("host");
-  const tenants = useQuery({ queryKey: ["system-tenants"], queryFn: listSystemTenants });
+  const tenants = useQuery<SystemTenant[]>({
+    queryKey: ["system-tenants"],
+    queryFn: () => Promise.reject(new Error("Tenant administration is not available.")),
+    retry: false,
+  });
   const [search, setSearch] = useState("");
 
   if (tenants.isError)
@@ -44,7 +64,7 @@ export function AdminOverview() {
           <Title order={1}>{t("systemAdmin.title")}</Title>
           <Text c="dimmed">{t("systemAdmin.description")}</Text>
         </div>
-        <Button component={Link} to="/admin/tenants/new" leftSection={<IconPlus size={16} />}>
+        <Button leftSection={<IconPlus size={16} />} disabled>
           {t("systemAdmin.newTenant")}
         </Button>
       </Group>
@@ -86,11 +106,7 @@ export function AdminOverview() {
             <Table.Tbody>
               {rows.map((tenant) => (
                 <Table.Tr key={tenant.id}>
-                  <Table.Td>
-                    <Link to="/admin/tenants/$tenantId" params={{ tenantId: tenant.id }}>
-                      {tenant.name}
-                    </Link>
-                  </Table.Td>
+                  <Table.Td>{tenant.name}</Table.Td>
                   <Table.Td>
                     <Text ff="monospace" size="sm">
                       {tenant.slug}

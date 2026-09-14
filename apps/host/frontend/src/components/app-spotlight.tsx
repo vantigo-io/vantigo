@@ -11,8 +11,7 @@ import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
-import type { ModuleKey } from "../api/tenant-capabilities";
-import { hasPermissions, navSearchFor, visibleNavSections } from "../navigation";
+import { hasPermissions, type ModuleKey, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
