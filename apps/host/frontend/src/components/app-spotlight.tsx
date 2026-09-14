@@ -21,7 +21,6 @@ interface AppSpotlightProps {
   isOwner: boolean;
   canManageAuthorization: boolean;
   isSystemAdmin?: boolean;
-  tenantSlug?: string;
   enabledModules?: readonly ModuleKey[];
   onNavigate?: () => void;
 }
@@ -35,7 +34,6 @@ export const AppSpotlight = ({
   isOwner,
   canManageAuthorization,
   isSystemAdmin,
-  tenantSlug,
   enabledModules,
   onNavigate,
 }: AppSpotlightProps) => {
@@ -50,7 +48,6 @@ export const AppSpotlight = ({
     permissions,
     isOwner,
     canManageAuthorization,
-    tenantSlug,
     isSystemAdmin,
     enabledModules,
   }).flatMap((section) =>
@@ -70,15 +67,13 @@ export const AppSpotlight = ({
     action();
   };
   const quickActions = [
-    ...(tenantSlug && enabledModules?.includes("customers") && hasPermissions(permissions, ["customers:create"])
+    ...(enabledModules?.includes("customers") && hasPermissions(permissions, ["customers:create"])
       ? [{ label: t("dashboard.createCustomer"), icon: IconPlus, path: "/customers" }]
       : []),
-    ...(tenantSlug &&
-    enabledModules?.includes("communications") &&
-    hasPermissions(permissions, ["communications:conversations-view"])
+    ...(enabledModules?.includes("communications") && hasPermissions(permissions, ["communications:conversations-view"])
       ? [{ label: t("dashboard.composeMessage"), icon: IconMail, path: "/inbox" }]
       : []),
-    ...(tenantSlug && enabledModules?.includes("products") && hasPermissions(permissions, ["products:products-manage"])
+    ...(enabledModules?.includes("products") && hasPermissions(permissions, ["products:products-manage"])
       ? [{ label: t("dashboard.addProduct"), icon: IconPackage, path: "/products" }]
       : []),
   ];
@@ -125,11 +120,7 @@ export const AppSpotlight = ({
                 key={action.label}
                 label={action.label}
                 leftSection={<action.icon size={20} stroke={1.5} />}
-                onClick={() =>
-                  handleNavigate(
-                    () => void navigate({ to: `/${encodeURIComponent(tenantSlug ?? "")}${action.path}` as never }),
-                  )
-                }
+                onClick={() => handleNavigate(() => void navigate({ to: action.path as never }))}
               />
             ))}
           </Spotlight.ActionsGroup>
@@ -164,13 +155,12 @@ export const AppSpotlight = ({
                 description={t("navigation.customer")}
                 leftSection={<IconBuilding size={20} stroke={1.5} />}
                 onClick={() =>
-                  handleNavigate(() => {
-                    if (tenantSlug)
-                      void navigate({
-                        to: "/customers/$customerId",
-                        params: { customerId: customer.id },
-                      });
-                  })
+                  handleNavigate(() =>
+                    navigate({
+                      to: "/customers/$customerId",
+                      params: { customerId: customer.id },
+                    }),
+                  )
                 }
               />
             ))}
@@ -189,13 +179,12 @@ export const AppSpotlight = ({
                 }
                 leftSection={<IconUser size={20} stroke={1.5} />}
                 onClick={() =>
-                  handleNavigate(() => {
-                    if (tenantSlug)
-                      void navigate({
-                        to: "/contacts/$contactId",
-                        params: { contactId: item.contact.id },
-                      });
-                  })
+                  handleNavigate(() =>
+                    navigate({
+                      to: "/contacts/$contactId",
+                      params: { contactId: item.contact.id },
+                    }),
+                  )
                 }
               />
             ))}
@@ -215,13 +204,12 @@ export const AppSpotlight = ({
                 }
                 leftSection={<IconBolt size={20} stroke={1.5} />}
                 onClick={() =>
-                  handleNavigate(() => {
-                    if (tenantSlug)
-                      void navigate({
-                        to: "/energy/metering-points/$meteringPointId",
-                        params: { meteringPointId: point.id },
-                      });
-                  })
+                  handleNavigate(() =>
+                    navigate({
+                      to: "/energy/metering-points/$meteringPointId",
+                      params: { meteringPointId: point.id },
+                    }),
+                  )
                 }
               />
             ))}

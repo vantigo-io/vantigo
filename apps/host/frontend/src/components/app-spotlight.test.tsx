@@ -45,7 +45,6 @@ const renderSpotlight = (
   isOwner: boolean,
   canManageAuthorization: boolean,
   onNavigate?: () => void,
-  tenantSlug: string | undefined = "acme",
   enabledModules: readonly ModuleKey[] | undefined = allModules,
 ) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -57,7 +56,6 @@ const renderSpotlight = (
           permissions={permissions}
           isOwner={isOwner}
           canManageAuthorization={canManageAuthorization}
-          tenantSlug={tenantSlug}
           enabledModules={enabledModules}
           onNavigate={onNavigate}
         />
@@ -77,7 +75,6 @@ const expectNavigationParity = async (
     permissions,
     isOwner,
     canManageAuthorization,
-    tenantSlug: "acme",
     enabledModules: allModules,
   }).flatMap((section) => section.items.map((item) => i18n.t(item.label, { ns: "host", lng: "en" })));
   const restricted = navSections
@@ -104,12 +101,12 @@ describe("AppSpotlight navigation authorization", () => {
     vi.clearAllMocks();
   });
 
-  it("uses the current tenant slug for navigation actions", async () => {
-    renderSpotlight(["*"], true, true, undefined, "acme");
+  it("navigates to the bare destination path", async () => {
+    renderSpotlight(["*"], true, true);
 
     fireEvent.click(await waitFor(() => screen.getByText("Customers", { exact: true })));
 
-    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/acme/customers" }));
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/customers" }));
   });
 
   it("matches sidebar navigation for a permitted owner", async () => {
@@ -223,7 +220,7 @@ describe("AppSpotlight navigation authorization", () => {
       );
     });
     vi.stubGlobal("fetch", fetchMock);
-    renderSpotlight(["*"], true, true, undefined, "acme", ["customers", "communications", "products"]);
+    renderSpotlight(["*"], true, true, undefined, ["customers", "communications", "products"]);
 
     await enterSearch("7070");
 

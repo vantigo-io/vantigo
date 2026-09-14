@@ -1,4 +1,4 @@
-import { Alert, Center, Loader, Menu, NavLink, Stack, Text, Title } from "@mantine/core";
+import { Alert, Center, Loader, Menu, NavLink, Stack, Text } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,8 +15,9 @@ import { getAuthorizationMe } from "../api/authorization";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
+import { ModuleAccessGuard } from "../components/module-access-guard";
 import { publicPaths } from "../lib/public-paths";
-import { activeNavPath, type ModuleKey, type NavSection, visibleNavSections } from "../navigation";
+import { activeNavPath, moduleKeys, type NavSection, visibleNavSections } from "../navigation";
 
 const renderNavSections = (
   sections: readonly NavSection[],
@@ -104,55 +105,22 @@ const RootLayout = () => {
   const isOwner = session.user.roles.includes("Owner");
   const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
-  // The tenant-capabilities endpoint was deleted (task 2 of the frontend
-  // de-tenanting plan); there is no longer a source for either of these.
-  // Left as typed empty/unknown values rather than removed so the
-  // downstream shape (tenants array, AppShellLayout props) is undisturbed
-  // for later tasks to finish unwinding.
-  const tenants: { id: string; name: string; slug: string; status?: string }[] = [];
-  const activeTenant = tenants.length === 1 ? tenants[0] : undefined;
-  const enabledModules: readonly ModuleKey[] | undefined = undefined;
+  // Module enablement used to be a per-tenant capability, fetched from the
+  // deleted tenant-capabilities endpoint. Without tenants there is nothing to
+  // vary: every module in the navigation catalog ships in this build, and
+  // per-destination permissions still decide what a user actually sees.
+  const enabledModules = moduleKeys;
   const visibleSections = visibleNavSections({
     permissions,
     isOwner,
     canManageAuthorization,
-    tenantSlug: activeTenant?.slug,
     isSystemAdmin: session.isSystemAdmin,
     enabledModules,
   });
   const primarySections = visibleSections.filter((section) => section.placement !== "lower");
   const lowerSections = visibleSections.filter((section) => section.placement === "lower");
-  const tenantUnavailable =
-    tenants.length === 0 ||
-    !activeTenant ||
-    (activeTenant.status && !["active", "enabled"].includes(activeTenant.status.toLowerCase()));
-  const handleTenantSwitch = async (_tenant: { id: string; slug: string }) => {
-    // Tenant switching was deleted with api/auth.ts's switchTenant (task 2);
-    // unreachable now that `tenants` above is always empty.
-  };
-  // System admins may use the control plane (/admin) without any tenant
-  // membership, e.g. during first onboarding before tenants exist.
-  const isAdminArea = pathname === "/admin" || pathname.startsWith("/admin/");
   if (shouldShowMaintenance(systemStatus.data, session.isSystemAdmin)) {
     return <MaintenancePage message={systemStatus.data?.message} />;
-  }
-  if (tenantUnavailable && !(isAdminArea && session.isSystemAdmin)) {
-    return (
-      <Center mih="100vh" p="xl">
-        <Stack align="center" maw={440} ta="center">
-          <Title order={2}>{t("tenantRequiredTitle")}</Title>
-          <Text c="dimmed">{t("tenantRequiredBody")}</Text>
-          <Alert color="gray" variant="light">
-            {t("tenantContactAdmin")}
-          </Alert>
-          {session.isSystemAdmin && (
-            <Text>
-              <Link to="/admin">{t("tenantGoToSystemAdmin")}</Link>
-            </Text>
-          )}
-        </Stack>
-      </Center>
-    );
   }
   return (
     <>
@@ -171,9 +139,12 @@ const RootLayout = () => {
         }
         onSignOut={() => logout.mutate()}
         signOutDisabled={logout.isPending}
-        tenants={tenants}
+        // The shell still declares tenant-switcher props; task 5 of the
+        // frontend de-tenanting plan deletes them. Passed empty until then —
+        // the switcher hides itself for fewer than two tenants.
+        tenants={[]}
         activeTenantId={null}
-        onTenantSwitch={handleTenantSwitch}
+        onTenantSwitch={() => {}}
         navbarTop={<SpotlightSearchBox />}
         nav={(close) => renderNavSections(primarySections, pathname, close, t)}
         navLower={(close) => renderNavSections(lowerSections, pathname, close, t)}
@@ -189,7 +160,9 @@ const RootLayout = () => {
               {systemStatus.data.message || t("systemAdmin.maintenanceActiveBody")}
             </Alert>
           )}
-          <Outlet />
+          <ModuleAccessGuard>
+            <Outlet />
+          </ModuleAccessGuard>
         </Stack>
       </AppShellLayout>
       <AppSpotlight
@@ -197,7 +170,6 @@ const RootLayout = () => {
         isOwner={isOwner}
         canManageAuthorization={canManageAuthorization}
         isSystemAdmin={session.isSystemAdmin}
-        tenantSlug={activeTenant?.slug}
         enabledModules={enabledModules}
       />
       <TanStackRouterDevtools />
@@ -227,10 +199,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       const legacyAdmin = location.pathname.match(/^\/admin\/(dashboard|users|invitations|roles)$/);
       if (!legacyAdmin && !session.isSystemAdmin) throw redirect({ to: "/" });
     }
-    // The legacy-prefix and legacy-admin tenant redirects below were removed
-    // with -tenant-routing.ts (task 2 of the frontend de-tenanting plan,
-    // spec D2): they rewrote un-prefixed URLs into tenant-prefixed ones,
-    // which is now backwards.
   },
   component: RootLayout,
 });

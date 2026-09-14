@@ -6,7 +6,6 @@ import {
   type ModuleKey,
   navSearchFor,
   navSections,
-  navSectionsForTenant,
   visibleNavSections,
 } from "./navigation";
 
@@ -15,7 +14,6 @@ const context = (overrides: Partial<Parameters<typeof visibleNavSections>[0]> = 
   permissions: ["*"],
   isOwner: false,
   canManageAuthorization: false,
-  tenantSlug: "acme",
   enabledModules: allModules,
   ...overrides,
 });
@@ -72,12 +70,40 @@ describe("navigation permissions", () => {
     expect(labels).toEqual(["navigation.dashboard", "navigation.settings"]);
   });
 
-  it("hides tenant-scoped destinations when no tenant is selected", () => {
-    const labels = visibleNavSections(context({ tenantSlug: undefined })).flatMap((section) =>
-      section.items.map((item) => item.label),
-    );
+  it("addresses every destination by a bare path with no tenant segment or route parameter", () => {
+    const items = navSections.flatMap((section) => section.items);
 
-    expect(labels).toEqual(["navigation.settings"]);
+    for (const item of items) {
+      expect(item.to).toMatch(/^\/[a-z-]+(\/[a-z-]+)*$/);
+    }
+    expect(items.map((item) => item.to)).toEqual([
+      "/dashboard",
+      "/customers",
+      "/contacts",
+      "/inbox",
+      "/communications/channels",
+      "/communications/suppressions",
+      "/products",
+      "/products/categories",
+      "/energy/metering-points",
+      "/settings",
+      "/workspace/overview",
+      "/workspace/roles",
+      "/admin",
+    ]);
+  });
+
+  it("keeps workspace administration on its own segment, separate from personal settings", () => {
+    const lower = navSections.find((section) => section.placement === "lower")?.items ?? [];
+    const personal = lower.find((item) => item.label === "navigation.settings");
+    const workspaceItems = lower.filter((item) => item.label !== "navigation.settings" && item.to !== "/admin");
+
+    // The Owner gate lives on the /workspace route; pointing these at
+    // /settings/* would put four admin pages behind the ungated personal
+    // account tree instead.
+    expect(personal?.to).toBe("/settings");
+    expect(workspaceItems.map((item) => item.to)).toEqual(["/workspace/overview", "/workspace/roles"]);
+    for (const item of workspaceItems) expect(item.to.startsWith("/settings")).toBe(false);
   });
 
   it("hides the system admin area from owners who are not system admins", () => {
@@ -95,8 +121,8 @@ describe("navigation permissions", () => {
 
     expect(ownerItems.map((item) => item.label)).not.toContain("admin.users");
     expect(ownerItems.map((item) => item.label)).not.toContain("admin.invitations");
-    expect(ownerItems.map((item) => item.to)).not.toContain("/settings/users");
-    expect(ownerItems.map((item) => item.to)).not.toContain("/settings/invitations");
+    expect(ownerItems.map((item) => item.to)).not.toContain("/workspace/users");
+    expect(ownerItems.map((item) => item.to)).not.toContain("/workspace/invitations");
   });
 
   it("keeps lower administration separate from the first integrated destination", () => {
@@ -107,9 +133,9 @@ describe("navigation permissions", () => {
         .find((section) => section.placement === "lower")
         ?.items.map((item) => item.label),
     ).toEqual(["navigation.settings"]);
-    // The dashboard requires no permissions, so it is always the first destination for tenant users.
-    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: ["customers:view"] }))).toBe("/acme");
-    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: [] }))).toBe("/acme");
+    // The dashboard requires no permissions, so it is always the first destination.
+    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: ["customers:view"] }))).toBe("/dashboard");
+    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: [] }))).toBe("/dashboard");
   });
 
   it("shows the admin dashboard in lower navigation only to owners", () => {
@@ -126,7 +152,7 @@ describe("navigation permissions", () => {
       navSections
         .find((section) => section.placement === "lower")
         ?.items.find((item) => item.label === "navigation.adminDashboard"),
-    ).toMatchObject({ to: "/settings/overview", ownerOnly: true });
+    ).toMatchObject({ to: "/workspace/overview", ownerOnly: true });
   });
 
   it("keeps Roles & access reachable for authorization users", () => {
@@ -138,7 +164,7 @@ describe("navigation permissions", () => {
       expect.arrayContaining([
         expect.objectContaining({
           label: "navigation.rolesAccess",
-          to: "/acme/settings/roles",
+          to: "/workspace/roles",
           capability: "authorization",
         }),
       ]),
@@ -156,15 +182,6 @@ describe("navigation permissions", () => {
     });
     expect(navSearchFor("products-list")).toEqual({ page: 1, search: "", status: "", categoryId: "" });
     expect(navSearchFor(undefined)).toBeUndefined();
-  });
-
-  it("prefixes tenant-scoped destinations without changing global destinations", () => {
-    const items = navSectionsForTenant("acme").flatMap((section) => section.items);
-
-    expect(items.find((item) => item.label === "navigation.customers")?.to).toBe("/acme/customers");
-    expect(items.find((item) => item.label === "navigation.inbox")?.to).toBe("/acme/inbox");
-    expect(items.find((item) => item.label === "navigation.settings")?.to).toBe("/settings");
-    expect(items.find((item) => item.label === "navigation.adminDashboard")?.to).toBe("/acme/settings/overview");
   });
 });
 

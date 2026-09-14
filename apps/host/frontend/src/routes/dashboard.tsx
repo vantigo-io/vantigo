@@ -34,7 +34,7 @@ import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { request } from "../api/request";
-import { hasPermissions, type ModuleKey } from "../navigation";
+import { hasPermissions, type ModuleKey, moduleKeys } from "../navigation";
 import "../i18n";
 
 type DashboardPreset = "7d" | "30d" | "90d" | "12m" | "custom";
@@ -241,11 +241,11 @@ const DashboardPage = () => {
     staleTime: 300_000,
   });
 
-  // The tenant-capabilities endpoint was deleted (task 2 of the frontend
-  // de-tenanting plan); no source for enabled modules remains, so every
-  // module card below stays hidden. See navigation.ts's `enabledModules`
-  // doc comment for the established "unknown modules hide" fallback.
-  const enabledModules: ModuleKey[] = [];
+  // Module enablement was a per-tenant capability, fetched from the deleted
+  // tenant-capabilities endpoint. Without tenants there is nothing to vary:
+  // every module in the navigation catalog ships in this build, and the
+  // per-card permission check below still decides what is shown.
+  const enabledModules: readonly ModuleKey[] = moduleKeys;
   const permissions = authorization.data?.permissions;
   const modules = moduleCards.filter(
     (card) => enabledModules.includes(card.module) && hasPermissions(permissions, card.requiredPermissions),

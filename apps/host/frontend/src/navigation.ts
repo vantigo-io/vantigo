@@ -16,7 +16,7 @@ import type { ComponentType } from "react";
 
 // Relocated from the deleted api/tenant-capabilities.ts (task 2 of the
 // frontend de-tenanting plan): this catalog is the single source of truth
-// for which destinations belong to which module, tenancy or not.
+// for which destinations belong to which module.
 export const moduleKeys = ["communications", "customers", "energy", "products"] as const;
 export type ModuleKey = (typeof moduleKeys)[number];
 
@@ -28,10 +28,8 @@ export interface NavItem {
   systemAdminOnly?: boolean;
   capability?: "authorization";
   requiredPermissions?: readonly string[];
-  /** The tenant module that must be enabled for this destination. */
+  /** The module that must be enabled for this destination. */
   module?: ModuleKey;
-  /** Business destinations are prefixed with the active tenant slug. */
-  tenantScoped?: boolean;
   /** Search defaults used when Spotlight opens this destination. */
   searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list";
 }
@@ -47,9 +45,8 @@ export const navSections: readonly NavSection[] = [
     items: [
       {
         label: "navigation.dashboard",
-        to: "/",
+        to: "/dashboard",
         icon: IconLayoutDashboard,
-        tenantScoped: true,
       },
     ],
   },
@@ -63,7 +60,6 @@ export const navSections: readonly NavSection[] = [
         icon: IconUsers,
         requiredPermissions: ["customers:view"],
         searchStrategy: "customer-list",
-        tenantScoped: true,
       },
       {
         label: "navigation.contacts",
@@ -72,7 +68,6 @@ export const navSections: readonly NavSection[] = [
         icon: IconAddressBook,
         requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
         searchStrategy: "customer-list",
-        tenantScoped: true,
       },
     ],
   },
@@ -86,7 +81,6 @@ export const navSections: readonly NavSection[] = [
         icon: IconInbox,
         requiredPermissions: ["communications:conversations-view"],
         searchStrategy: "inbox-list",
-        tenantScoped: true,
       },
       {
         label: "navigation.channels",
@@ -94,7 +88,6 @@ export const navSections: readonly NavSection[] = [
         module: "communications",
         icon: IconMailbox,
         requiredPermissions: ["communications:channels-manage"],
-        tenantScoped: true,
       },
       {
         label: "navigation.suppressions",
@@ -102,7 +95,6 @@ export const navSections: readonly NavSection[] = [
         module: "communications",
         icon: IconMailOff,
         requiredPermissions: ["communications:suppressions-manage"],
-        tenantScoped: true,
       },
     ],
   },
@@ -122,7 +114,6 @@ export const navSections: readonly NavSection[] = [
           "products:tax-categories-view",
         ],
         searchStrategy: "products-list",
-        tenantScoped: true,
       },
       {
         label: "navigation.categories",
@@ -130,7 +121,6 @@ export const navSections: readonly NavSection[] = [
         module: "products",
         icon: IconCategory,
         requiredPermissions: ["products:categories-view"],
-        tenantScoped: true,
       },
     ],
   },
@@ -144,7 +134,6 @@ export const navSections: readonly NavSection[] = [
         icon: IconBolt,
         requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
         searchStrategy: "energy-list",
-        tenantScoped: true,
       },
     ],
   },
@@ -152,37 +141,26 @@ export const navSections: readonly NavSection[] = [
     label: "navigation.settingsAdministration",
     placement: "lower",
     items: [
+      // Personal account settings (/settings) stay distinct from workspace
+      // administration (/workspace): the latter is Owner-gated, the former is
+      // open to every signed-in user.
       { label: "navigation.settings", to: "/settings", icon: IconSettings },
       {
         label: "navigation.adminDashboard",
-        to: "/settings/overview",
+        to: "/workspace/overview",
         icon: IconLayoutDashboard,
         ownerOnly: true,
-        tenantScoped: true,
       },
       {
         label: "navigation.rolesAccess",
-        to: "/settings/roles",
+        to: "/workspace/roles",
         icon: IconShieldCheck,
         capability: "authorization",
-        tenantScoped: true,
       },
       { label: "navigation.systemAdmin", to: "/admin", icon: IconBuildingSkyscraper, systemAdminOnly: true },
     ],
   },
 ];
-
-export const tenantPath = (tenantSlug: string | undefined, path: string) =>
-  tenantSlug ? `/${encodeURIComponent(tenantSlug)}${path === "/" ? "" : path}` : path;
-
-export const navSectionsForTenant = (tenantSlug?: string): readonly NavSection[] =>
-  navSections.map((section) => ({
-    ...section,
-    items: section.items.map((item) => ({
-      ...item,
-      to: item.tenantScoped ? tenantPath(tenantSlug, item.to) : item.to,
-    })),
-  }));
 
 export const hasPermissions = (permissions: string[] | undefined, required?: readonly string[]) =>
   !required?.length ||
@@ -193,9 +171,8 @@ export interface NavVisibilityContext {
   permissions: string[] | undefined;
   isOwner: boolean;
   canManageAuthorization: boolean;
-  tenantSlug?: string;
   isSystemAdmin?: boolean;
-  /** Enabled module keys for the active tenant; undefined while unknown (hides module destinations). */
+  /** Enabled module keys; undefined while unknown (hides module destinations). */
   enabledModules?: readonly ModuleKey[];
 }
 
@@ -203,11 +180,10 @@ export const visibleNavSections = ({
   permissions,
   isOwner,
   canManageAuthorization,
-  tenantSlug,
   isSystemAdmin = false,
   enabledModules,
 }: NavVisibilityContext) =>
-  navSectionsForTenant(tenantSlug)
+  navSections
     .map((section) => ({
       ...section,
       items: section.items.filter(
@@ -215,8 +191,6 @@ export const visibleNavSections = ({
           (!item.ownerOnly || isOwner) &&
           (!item.systemAdminOnly || isSystemAdmin) &&
           (!item.capability || canManageAuthorization) &&
-          // Tenant destinations stay hidden until a tenant is selected.
-          (!item.tenantScoped || !!tenantSlug) &&
           (!item.module || enabledModules?.includes(item.module) === true) &&
           hasPermissions(permissions, item.requiredPermissions),
       ),

@@ -1,5 +1,5 @@
 import { NavLink, Paper, Select, Stack, Text, Title } from "@mantine/core";
-import { Link, useParams, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { ComponentType, ReactNode } from "react";
 import "../i18n";
@@ -19,9 +19,9 @@ export function SettingsLayout({
 }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const { t } = useI18n("host");
-  const params = useParams({ strict: false }) as { tenantSlug?: string };
-  const resolve = (to: string) => to.replace("$tenantSlug", encodeURIComponent(params.tenantSlug ?? ""));
-  const active = sections.find((item) => pathname === resolve(item.to) || pathname.startsWith(`${resolve(item.to)}/`));
+  // Sections are plain paths — /settings/* for the personal account tree and
+  // /workspace/* for the Owner-gated workspace tree.
+  const active = sections.find((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
   return (
     <Stack maw={1180} mx="auto" gap="xl">
       <div>
@@ -45,7 +45,7 @@ export function SettingsLayout({
               <NavLink
                 key={item.to}
                 component={Link}
-                to={resolve(item.to)}
+                to={item.to}
                 label={item.label}
                 leftSection={item.icon ? <item.icon size={18} /> : undefined}
                 active={active?.to === item.to}
@@ -58,8 +58,8 @@ export function SettingsLayout({
             hiddenFrom="sm"
             mb="md"
             label={t("systemAdmin.settingsSection")}
-            value={active ? resolve(active.to) : undefined}
-            data={sections.map((item) => ({ value: resolve(item.to), label: item.label }))}
+            value={active?.to}
+            data={sections.map((item) => ({ value: item.to, label: item.label }))}
             onChange={(value) => {
               if (value) window.location.assign(value);
             }}
