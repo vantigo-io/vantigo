@@ -5,268 +5,40 @@ to get productive in the codebase.
 
 ## Getting the stack running
 
-From the repository root:
+The toolchain is pinned in [`mise.toml`](mise.toml) — Go, Bun and the lint and release
+tools — and developers and CI install it the same way. From the repository root:
 
 ```bash
+mise install              # Go, Bun, lint and release tools
 bun install --frozen-lockfile
-dotnet tool restore
-dotnet run --project orchestration/AppHost
-```
 
-Aspire starts PostgreSQL and the shared `vantigo` database, then runs the host's
-`migrate`, Development-only `seed`, and long-running `api` profiles. The host serves
-the single Vite frontend and all enabled modules. In production, wait for the
-terminating `migrate` job before starting `api`; never run `seed` in production.
-
-The host executable accepts one command: `api`, `migrate`, or `seed`:
-
-```bash
-dotnet run --project apps/host/backend/Vantigo.Host --launch-profile migrate
-dotnet run --project apps/host/backend/Vantigo.Host --launch-profile seed
-dotnet run --project apps/host/backend/Vantigo.Host --launch-profile api
-```
-
-## Project layout
-
-```
-vantigo/
-├── apps/
-│   ├── host/
-│   │   ├── backend/Vantigo.Host/      # Modular monolith host and API
-│   │   └── frontend/                  # Single React SPA (Vite), owns all routes
-│   ├── identity/
-│   │   └── backend/
-│   │       ├── Identity.Module/       # Authentication and Identity module
-│   │       └── Identity.Module.Tests/
-│   ├── customers/
-│   │   ├── backend/
-│   │   │   ├── Customers.Module/      # Customers vertical slice
-│   │   │   └── Customers.Module.Tests/
-│   │   └── frontend/                  # @vantigo/customers-ui (pages, api clients)
-│   ├── communications/
-│   │   ├── backend/
-│   │   │   ├── Communications.Module/ # Communications vertical slice
-│   │   │   └── Communications.Module.Tests/
-│   │   └── frontend/                  # @vantigo/communications-ui
-│   ├── products/
-│   │   ├── backend/
-│   │   │   ├── Products.Module/       # Products vertical slice
-│   │   │   └── Products.Module.Tests/
-│   │   └── frontend/                  # @vantigo/products-ui
-│   └── frontend-shell/                # Shared app shell, theme and branding
-├── packages/
-│   ├── architecture/Vantigo.Architecture.Tests/ # Module boundary tests
-│   ├── configuration/Vantigo.Configuration/ # Shared configuration options
-│   ├── contracts/Vantigo.Contracts/   # In-process module contracts
-│   └── dataprotection-postgresql/Vantigo.DataProtection.PostgreSql/
-├── orchestration/AppHost/             # .NET Aspire composition root
-└── assets/                            # Shared branding assets
-```
-
-Vantigo is a modular monolith: Customers, Communications and Products are modules
-loaded by `Vantigo.Host`, and the host publishes as one container with the API and
-the built frontend. The next section describes the architecture in detail.
-
-## Architecture
-
-Vantigo is a **modular monolith**: one process, one container, one PostgreSQL
-database — with strict module boundaries so any module can later be extracted
-into its own deployable without a rewrite.
-
-### Module boundaries
-
-- A module is a class library (`*.Module`) exposing exactly three integration
-  points to the host: `Add<Name>Module(IServiceCollection, IConfiguration)`,
-  `Map<Name>Module(IEndpointRouteBuilder)`, and migrate/seed helpers.
-- Modules **never reference each other's projects**. The only shared code paths
-  are `Vantigo.Contracts` (cross-module interfaces, DTOs, authorization policy
-  names and email contracts) and `Vantigo.Configuration` (shared options). The
-  `Identity` app module owns the authentication implementation; hosting
-  infrastructure (telemetry, SPA serving, command-line parsing) lives in
-  `Vantigo.Host`.
-- Every module can be turned off per deployment with
-  `Modules:<Name>:Enabled`. The flag is one immutable startup decision: a
-  disabled module registers no services and no workers, maps no endpoints,
-  contributes no permissions, and is neither migrated nor seeded. Combinations
-  whose enabled modules would leave a required contract unimplemented are
-  rejected at startup, so code consuming another module's *optional* contract
-  must tolerate the implementation being absent, and code that cannot work
-  without one declares it in `ModuleCompositionValidator`.
-
-### Cross-module communication
-
-- **Synchronous queries** use contract interfaces from `Vantigo.Contracts`
-  (e.g. `ICustomerDirectory`): DTOs only, never EF entities, implemented by the
-  owning module and consumed through DI. If a module is extracted later, the
-  interface gets an HTTP client implementation and consumers stay unchanged.
-- **Asynchronous notifications** ("something happened, others may care") should
-  use in-process domain events dispatched through a transactional outbox — the
-  publishing module stores the event in the same transaction as its state
-  change, and a hosted worker dispatches it to handlers with retries.
-  This is not built yet; build it together with the first real consumer
-  (see ROADMAP). Do not introduce a message broker: Postgres is the queue, and
-  every infrastructure piece is multiplied per dedicated customer deployment.
-- Never call another module's HTTP endpoints from inside the process, and never
-  reach into another module's database schema.
-
-### Database
-
-One PostgreSQL database, one schema per module: `identity`, `customers`,
-`products` and `energy`. (`communications` is declared in the contract but has
-no schema or Go module yet — see the module list below.) Schemas are hard
-boundaries:
-
-- **No cross-schema foreign keys or joins.** Reference other modules' data by
-  opaque ID only. This is what keeps a future "move this schema to its own
-  server" a connection-string change instead of a data migration.
-- Each context has its own `__EFMigrationsHistory` inside its schema.
-
-### Frontend
-
-The host SPA (`@vantigo/app`) owns routing, auth, navigation and the shell;
-module packages (`@vantigo/customers-ui`, …) export pages, API clients and
-components. Route files in `apps/host/frontend/src/routes/` are thin wrappers
-that lazy-import module pages, so each module becomes its own code-split chunk.
-Module packages never import from each other; shared UI lives in
-`@vantigo/frontend-shell`.
-
-Frontend app packages never import each other. Composition happens only in host routes,
-and each package's exported surface (`src/index.ts` and subpath exports) is its contract —
-the frontend parallel of `packages/contracts`. Host-owned composition points, such as the
-customer detail tab list, are extended by adding entries in the host.
-
-SPA URL convention — *flat primary resources, module-qualified secondary ones*:
-primary business nouns users work with daily are top-level (`/customers`,
-`/contacts`, `/messages`, `/products`), while supporting or admin concepts stay
-qualified by their module (`/products/categories`, `/communications/mailboxes`,
-`/communications/suppressions`). Nesting in URLs means *belonging*
-(`/customers/:id`), not module bundling. Backend API routes always keep the
-module prefix (`/api/v1/customers/contacts`) — that symmetry is what matters
-for extraction, not the SPA paths.
-
-## Design principles
-
-- **Vertical-slice modules** — endpoints remain self-contained static classes under
-  each module's `Endpoints/<Feature>/` directory.
-- **A rich domain model** — value objects own validation and request handlers only
-  work with valid domain values.
-- **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
-  `/api/v1/customers`, `/api/v1/products` and `/api/v1/energy`.
-- **In-process contracts** — module collaboration uses contracts such as
-  `ICustomerDirectory` from `Vantigo.Contracts`, not service-to-service API keys.
-- **Form-friendly errors** — validation errors use camelCase JSON field paths.
-- **AOT-friendly by default** — registration and entity configuration are explicit.
-- **One container** — the host serves every enabled module and the Vite production
-  build from one process.
-
-## API conventions
-
-All endpoints are versioned by URL segment and documented per version at
-`/openapi/v1.json` (browsable through Scalar when running AppHost). Module prefixes
-are `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products` and
-`/api/v1/energy`.
-
-Validation errors use RFC 9457 problem details with keys matching the JSON field path:
-
-```json
-{
-  "title": "Invalid customer",
-  "status": 400,
-  "errors": {
-    "name": ["A friendly name cannot be null or empty"],
-    "identity.country": ["A country code cannot be null or empty"]
-  }
-}
-```
-
-## Running tests
-
-```bash
-dotnet build Vantigo.slnx
-dotnet test Vantigo.slnx
-```
-
-Unit tests run in-process. Integration tests boot the host against PostgreSQL using
-[Testcontainers](https://dotnet.testcontainers.org/) and `WebApplicationFactory`,
-so a container runtime must be running.
-
-## Database migrations
-
-Each module owns its schema and migration history in the shared database:
-
-```
-apps/customers/backend/Customers.Module/Database/Customers/
-apps/communications/backend/Communications.Module/Database/Communications/
-apps/products/backend/Products.Module/Database/Products/
-apps/identity/backend/Identity.Module/Database/Accounts/
-```
-
-The host registers one Npgsql data source. EF contexts use the `customers`,
-`communications`, `products` and `identity` schemas, each with its own
-`__EFMigrationsHistory`. Never mix histories or change a module's schema from
-another module.
-
-Use the pinned `dotnet-ef` tool from the repository root. For example, from a module
-project directory:
-
-```bash
-dotnet tool restore
-dotnet ef migrations add <MigrationName> --context CustomersDbContext --output-dir Database/Customers/Migrations
-dotnet ef migrations list --context CustomersDbContext
-dotnet ef migrations has-pending-model-changes --context CustomersDbContext
-```
-
-Use the host's `migrate` command to apply all enabled module and Identity migrations.
-The `api` command does not migrate automatically. AppHost runs `seed` after migration
-only in Development.
-
-## Development seed data
-
-Deterministic seed code lives under each module's `Database/DevelopmentSeed/`. Changes
-to seed data or behavior must include coverage for determinism and restart idempotency.
-The seeded `admin@vantigo.local` / `admin` account and relaxed password policy are
-Development-only.
-
-## Frontend development
-
-The single frontend is managed with Bun from the repository root:
-
-```bash
-bun install --frozen-lockfile
-bun run --cwd apps/host/frontend dev
-
-bun run --cwd apps/host/frontend lint
-bun run --cwd apps/host/frontend test
-bun run --cwd apps/host/frontend build
-```
-
-The SPA is embedded into the host's `wwwroot` on `dotnet publish` through the
-`BuildFrontend` target in `Vantigo.Host.csproj`. Plain `dotnet build` and `dotnet run`
-leave frontend development to Vite.
-
-Module UI packages have their own Vitest suites, run from their directories:
-
-```bash
-bun run --cwd apps/customers/frontend test
-bun run --cwd apps/communications/frontend test
-bun run --cwd apps/products/frontend test
-```
-
-## Go server (port in progress)
-
-The .NET backend is being replaced by a single Go binary in `apps/server`
-(design: `docs/superpowers/specs/2026-09-10-go-backend-port-design.md`). Until the
-cutover the .NET host is what ships; the Go server is built, smoke-tested and
-published as PR preview images by the `server-*.yml` workflows.
-
-```bash
-mise install              # Go, lint and release tools
 mise run server:db        # PostgreSQL for tests (55432) and development (55433)
 mise run server:test      # go test against a real PostgreSQL
 mise run server:check     # golangci-lint, govulncheck, shellcheck, actionlint, goreleaser check
 mise run server:dev       # the api command on http://localhost:8080
 mise run smoke            # build the image and smoke-test it end to end
 ```
+
+`mise run server:dev` runs the `api` command, which applies migrations under the
+advisory lock and then serves. It sets a development-only `APP_SECRET`; development
+needs no `BOOTSTRAP_SECRET` (the process generates one and logs it at WARN on startup)
+and no SMTP configuration.
+
+If `bun` or `go` is not on your `PATH`, prefix the command with `mise exec --`. The
+workspace pins Bun 1.3.14, and a bare `bun` may resolve to a different installation.
+
+The binary is one image with a dispatch table — the command is the first argument:
+
+| Command | What it does |
+| --- | --- |
+| `api` | Migrates under the advisory lock, then serves the SPA, the API and health — plus every enabled module's background workers when `WORKERS_IN_PROCESS=1` (the default). |
+| `server` | Serves only: never migrates, never runs workers, regardless of `WORKERS_IN_PROCESS`. What a fleet of stateless replicas runs. |
+| `worker` | Every enabled module's background workers, plus health for probes. |
+| `migrate` | Applies migrations and exits 0/1. |
+| `seed` | Development-only (`APP_ENV=development`; exits 2 outside it). Today it does nothing but log `nothing to seed: identity has no development seed`. |
+| `healthcheck` | Probes this container's own `/health/ready` on `127.0.0.1:$PORT` and exits 0/1. It constructs nothing, so a probe never fails on a bad `DATABASE_URL` — that is `/health/ready`'s job to report. |
+
+No command, or an unknown one, prints usage on stderr and exits 2.
 
 Rules the code relies on:
 
@@ -280,7 +52,166 @@ Rules the code relies on:
 - The image is COPY-only: `scripts/build-artifacts.sh` compiles natively and
   embeds the SPA; the Dockerfile never compiles anything.
 
-**Run the Go tests pinned to four CPUs on a many-core machine:**
+## Project layout
+
+```
+vantigo/
+├── apps/
+│   ├── server/                      # The Go server — the whole backend
+│   │   ├── cmd/vantigo/             # The only composition root and the command dispatch table
+│   │   ├── generate.go              # go:generate directives: contract copies, oapi-codegen, sqlc
+│   │   └── internal/
+│   │       ├── identity/            # Accounts, sessions, MFA, RBAC, OIDC, SCIM
+│   │       ├── customers/           # Customers vertical slice
+│   │       ├── communications/      # Communications vertical slice (outbound email)
+│   │       ├── products/            # Products vertical slice
+│   │       ├── energy/              # Energy vertical slice
+│   │       ├── module/              # The platform modules mount through
+│   │       ├── contracts/           # Cross-module interfaces, permissions, access rules
+│   │       ├── config/              # The environment reference: one struct, one validation pass
+│   │       ├── db/                  # Pool, transactions and the embedded goose migrations
+│   │       ├── httpx/               # RFC 7807 problem responses
+│   │       ├── openapi/             # Embedded contract copies, lint, validation, the corpus test
+│   │       ├── server/              # The outer HTTP server: security, telemetry, routing
+│   │       ├── testdb/              # A fresh migrated database per test
+│   │       ├── web/                 # The embedded SPA
+│   │       └── worker/              # The background-worker runner
+│   ├── host/frontend/               # @vantigo/app — the single React SPA (Vite), owns all routes
+│   ├── customers/frontend/          # @vantigo/customers-ui (pages, API clients)
+│   ├── communications/frontend/     # @vantigo/communications-ui
+│   ├── products/frontend/           # @vantigo/products-ui
+│   └── energy/frontend/             # @vantigo/energy-ui
+├── packages/
+│   ├── frontend-shell/              # @vantigo/frontend-shell — shared app shell, theme, branding
+│   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client
+├── openapi/                         # The API contract: one OpenAPI file per module
+├── deploy/compose/                  # Ready-made Docker Compose stack
+├── scripts/                         # Native artifact, image and smoke-test scripts
+├── tools/                           # The OpenAPI client generator and the i18n checks
+└── assets/                          # Shared branding assets
+```
+
+## Architecture
+
+Vantigo is a **modular monolith**: one process, one container, one PostgreSQL
+database — with strict module boundaries so any module can later be extracted into its
+own deployable without a rewrite.
+
+### Module boundaries
+
+- A module is a package under `internal/<name>` that exposes one `Module()`
+  returning a `module.Module`: its name, its `Mount`, the permissions it
+  contributes, the background workers it contributes, and — for the one module
+  that owns customer data — its `contracts.CustomerDirectory` implementation.
+  `module.Compose` mounts each at `/api/v1/<name>/`.
+- Modules **never import each other**. That is enforced by depguard
+  (`apps/server/.golangci.yml`): `internal/<module>/...` may import platform
+  packages and its own subpackages, never another module's, and `internal/module`
+  and `internal/contracts` — the platform they mount through — may import no
+  module at all. No module queries another's schema either, enforced by
+  `internal/db/schema_test.go`.
+- `MODULES` chooses which modules a deployment serves (see below). Identity is
+  always mounted and is never listed.
+
+### Cross-module communication
+
+- **Synchronous queries** use contract interfaces from `internal/contracts`
+  (`contracts.CustomerDirectory`): DTOs only, never store types, implemented by the
+  owning module and resolved by `module.Compose`. If a module is extracted later, the
+  interface gets an HTTP client implementation and consumers stay unchanged.
+- **Asynchronous notifications** ("something happened, others may care") use a
+  transactional outbox: the publishing module stores the event in the same
+  transaction as its state change, and a background worker dispatches it with
+  retries. Communications' outbox is the working example. Do not introduce a
+  message broker: Postgres is the queue, and every infrastructure piece is
+  multiplied per dedicated customer deployment.
+- Never call another module's HTTP endpoints from inside the process, and never
+  reach into another module's database schema.
+
+### Database
+
+One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
+`energy` and `communications`. Schemas are hard boundaries:
+
+- **No cross-schema foreign keys or joins.** Reference other modules' data by
+  opaque ID only. This is what keeps a future "move this schema to its own
+  server" a connection-string change instead of a data migration.
+- Every schema is migrated regardless of which modules `MODULES` enables, so
+  enabling a module later needs no migration.
+
+### Frontend
+
+The host SPA (`@vantigo/app`) owns routing, auth, navigation and the shell; module
+packages (`@vantigo/customers-ui`, …) export pages, API clients and components. Route
+files in `apps/host/frontend/src/routes/` are thin wrappers that lazy-import module
+pages, so each module becomes its own code-split chunk. Module packages never import
+from each other; shared UI lives in `@vantigo/frontend-shell` and the generated API
+types and client in `@vantigo/frontend-api-client`.
+
+Frontend app packages never import each other. Composition happens only in host routes,
+and each package's exported surface (`src/index.ts` and subpath exports) is its contract —
+the frontend parallel of the Go modules' contracts. Host-owned composition points, such
+as the customer detail tab list, are extended by adding entries in the host.
+
+SPA URL convention — *flat primary resources, module-qualified secondary ones*:
+primary business nouns users work with daily are top-level (`/customers`,
+`/contacts`, `/messages`, `/products`), while supporting or admin concepts stay
+qualified by their module (`/products/categories`, `/communications/mailboxes`,
+`/communications/suppressions`). Nesting in URLs means *belonging*
+(`/customers/:id`), not module bundling. Backend API routes always keep the
+module prefix (`/api/v1/customers/contacts`) — that symmetry is what matters
+for extraction, not the SPA paths.
+
+## Design principles
+
+- **Vertical-slice modules** — a module owns its endpoints, its store and its
+  schema, and nothing outside it reaches in.
+- **A rich domain model** — value objects own validation, and handlers only work
+  with valid domain values.
+- **Contract first** — `openapi/*.yaml` is the source of truth; the router enforces
+  each operation's access rule and rate limit from the contract at runtime.
+- **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
+  `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy` and
+  `/api/v1/communications`.
+- **In-process contracts** — module collaboration uses `internal/contracts`, not
+  service-to-service API keys.
+- **Form-friendly errors** — validation errors use camelCase JSON field paths.
+- **One configuration pass** — `internal/config` parses and validates everything at
+  startup and reports every problem at once.
+- **One container** — one binary serves every enabled module and the embedded SPA.
+
+## API conventions
+
+All endpoints are versioned by URL segment. Each module's own contract lives in
+`openapi/<module>.yaml`, and the running server serves the merged contract of the
+enabled modules at `GET /api/openapi.json` (session required). Module prefixes are
+`/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy` and
+`/api/v1/communications`. Every other `/api` path answers the catch-all 404 problem.
+
+Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
+carry keys matching the JSON field path:
+
+```json
+{
+  "title": "Invalid customer",
+  "status": 400,
+  "errors": {
+    "name": ["A friendly name cannot be null or empty"],
+    "identity.country": ["A country code cannot be null or empty"]
+  }
+}
+```
+
+## Go server
+
+### Running the tests
+
+```bash
+mise run server:db        # once, to have PostgreSQL on 55432
+mise run server:test      # go test -count=1 ./... (CI adds -race)
+```
+
+**On a many-core machine, run the Go tests pinned to four CPUs:**
 
 ```bash
 cd apps/server && taskset -c 0-3 go test ./... -count=1     # or: -p 4
@@ -311,15 +242,16 @@ test has its own database — which is exactly why production, migrating one
 database, never sees this.
 
 **The same table, in production: a cold month's first write takes an exclusive
-lock.** `EnsureConsumptionPartition` (`internal/energy/consumption.go`) runs
-`CREATE TABLE ... PARTITION OF` *inside the request transaction*, so the first
+lock.** `EnsureConsumptionPartition` (called at `internal/energy/consumption.go:195`)
+calls `energy.ensure_consumption_partition`, which executes
+`CREATE TABLE IF NOT EXISTS ... PARTITION OF`, *inside the request transaction* — so the first
 consumption write into a month that has no partition yet holds an `ACCESS
 EXCLUSIVE` lock on `energy.consumption_intervals` for the remainder of that
 transaction, and every concurrent read or write of the table waits behind it.
-This mirrors .NET and needs no code change — the lock is held for one short
-transaction, once per month — but it is why the first write after a month
-boundary can show a latency spike the next one does not. An operator chasing
-that spike should look here rather than at the query plan.
+The lock is held for one short transaction, once per month — but it is why the
+first write after a month boundary can show a latency spike the next one does
+not. An operator chasing that spike should look here rather than at the query
+plan.
 
 Because the failure strikes whichever tests happen to be creating a database at
 that moment, the set of failing tests differs on every run. CI uses four CPUs
@@ -328,6 +260,54 @@ and so never hits it.
 One caveat: with `max_connections ≤ 10` the shared table holds only ~640 slots
 and a **single** migrator would fail. `docker-compose.test.yml` leaves the
 default of 100.
+
+## Database migrations
+
+Migrations are plain SQL files under `apps/server/internal/db/migrations/`, numbered
+and applied in order by [goose](https://github.com/pressly/goose) — one baseline per
+module so far:
+
+```
+00001_platform_init.sql
+00002_identity_baseline.sql
+00003_customers_baseline.sql
+00004_products_baseline.sql
+00005_energy_baseline.sql
+00006_communications_baseline.sql
+```
+
+They are embedded into the binary (`//go:embed migrations/*.sql`), so the image needs
+no migration tooling and no SQL files on disk. Add a migration by adding the next
+numbered file; never edit one that has shipped.
+
+`db.ApplyMigrations` takes a PostgreSQL **advisory lock** on a fixed key before it
+applies anything, so two binaries starting at once — an old and a new one mid-rollout
+included — serialize instead of racing. The key must never change, and the runner
+refuses to continue if its session is lost rather than carrying on believing it still
+holds the lock.
+
+Every schema is migrated regardless of which modules `MODULES` enables.
+
+Two ways to apply them, and **both** of them migrate:
+
+- The `migrate` command applies them and exits. It connects as
+  `MIGRATIONS_DATABASE_URL` when that is set — the owner role, where a deployment
+  separates the two — and otherwise as `DATABASE_URL`.
+- The `api` command **applies pending migrations before it starts serving**
+  (`cmd/vantigo/main.go`, `case modeAPI:` calls `migrate` first) and only serves
+  once they succeed. `server` mode never migrates.
+
+Running a `migrate` job first and waiting for it is still the right deployment shape:
+the point is to see a migration failure before any serving replica starts, not that
+`api` would otherwise leave the schema behind.
+
+Typed queries are generated by [sqlc](https://sqlc.dev/) from each module's
+`internal/<module>/sqlc.yaml` and its SQL files. sqlc comes from mise, not a separate
+install, and runs as part of the usual generate step:
+
+```bash
+cd apps/server && mise exec -- go generate ./...
+```
 
 ### The API contract
 
@@ -342,16 +322,18 @@ bun run gen:client
 
 `go generate` refreshes the embedded copies and the oapi-codegen server interfaces; `gen:client` refreshes each frontend package's `api-schema.d.ts`. CI fails when either is stale.
 
-`internal/openapi` validates every exchange in `openapi/testdata/exchanges/`, recorded from the .NET integration suites, against the contract. While the .NET host still exists, re-record after changing a .NET endpoint:
+`internal/openapi` validates every exchange in `openapi/testdata/exchanges/` against
+the contract. **That corpus is frozen historical evidence and cannot be
+regenerated.** It was recorded from the .NET integration suites that this server
+replaced; those suites no longer exist, so there is nothing left to re-record from.
+It is kept because it is the only record of what the replaced implementation actually
+served, and it is what the contract was validated against. Treat a failure there as
+"the contract or the Go implementation has drifted from what the API used to do", and
+change the corpus only with a deliberate, documented reason.
 
-```bash
-VANTIGO_CONTRACT_RECORD=/tmp/vantigo-exchanges dotnet test Vantigo.slnx
-cd apps/server && go run ./internal/openapi/cmd/contract corpus -in /tmp/vantigo-exchanges -out ../../openapi/testdata/exchanges
-```
-
-`contract corpus` validates every raw exchange against the contract before it writes anything — the same rules as the test, over the full recording rather than the committed sample — so a re-record that exposes a contract gap fails there, listing each failing operation and reason, and leaves the committed corpus untouched. Only then does it write the sample: at most three exchanges per operation, status and response shape (content type and top-level JSON keys).
-
-`openapi/COVERAGE.md` lists the operations no recorded exchange exercises.
+`openapi/COVERAGE.md` lists the operations no recorded exchange exercises. Those
+operations' contracts come from the endpoint code alone; each module's own tests are
+what gate them (see below).
 
 ### Identity
 
@@ -363,8 +345,8 @@ Development needs nothing beyond `APP_SECRET` (32+ bytes; `mise run server:dev` 
 `BOOTSTRAP_SECRET` is optional there: leave it unset and the process generates one and logs
 it at WARN on startup — copy it from the log instead of choosing your own.
 
-To bootstrap the installation's first Owner, either open `/setup` in the SPA once it points
-at the Go server, or call the endpoint directly with the logged secret:
+To bootstrap the installation's first Owner, either open `/setup` in the SPA or call the
+endpoint directly with the logged secret:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/identity/bootstrap \
@@ -381,14 +363,7 @@ or configuration fails: forwarded headers are honoured only from a peer inside t
 
 When rotating the SCIM token, `SCIM_PREVIOUS_TOKEN_EXPIRES_AT` must still be in the future
 at every start, so a restart after the overlap window fails configuration: remove
-`SCIM_PREVIOUS_TOKEN` and its expiry once the window has passed, as .NET required.
-
-`sqlc` (the identity schema's query generator) comes from mise, not a separate install; it
-runs as part of the usual generate step:
-
-```bash
-cd apps/server && mise exec -- go generate ./...
-```
+`SCIM_PREVIOUS_TOKEN` and its expiry once the window has passed.
 
 Identity's tests run every HTTP exchange through a contract-validating client: a response
 that does not match `identity.yaml` fails the test that produced it. `go test
@@ -425,19 +400,10 @@ contributes no route, no permission and no contract path, and its paths answer
 the `/api` catch-all 404 — but every schema is migrated regardless, so enabling
 a module later needs no migration.
 
-`communications` is now a real module and is on by default. Until its own
-sub-project's final task it was contract-only: the name passed validation
-(`knownModules` is derived from `openapi.Modules`, the single place the
-contract names are written) while no `Module()` existed for `module.Compose`
-to mount, so `MODULES=communications` started cleanly and served nothing. That
-gap is closed — `communications.Module()` mounts
-`/api/v1/communications/*` from `openapi/communications.yaml` and contributes
-three background workers — and the name has joined `defaultModules`.
-
-**The one thing to know before enabling it: this port is outbound-only, and
-that is a deliberate consequence of the scope cut, not a gap to fix in
-passing.** The Mailgun inbound webhook and the inbound worker are removed, and
-IMAP/inbound synchronisation never existed, so **no path in this codebase
+**The one thing to know before enabling communications: this module is
+outbound-only, and that is a deliberate consequence of the port's scope cut, not
+a gap to fix in passing.** There is no Mailgun inbound webhook, no inbound
+worker, and no IMAP/inbound synchronisation, so **no path in this codebase
 writes a `direction='inbound'` message**. Three user-visible behaviours follow,
 all of them contract-complete and all of them permanently in their negative
 state: a conversation created through `POST /conversations` cannot be replied
@@ -446,10 +412,10 @@ latest inbound message), `canReplyAll` is always false with an empty
 `replyAllCc`, and the AI draft builds its context from inbound messages and so
 drafts against an empty one, recording `product_data=false`. Attachments can be
 staged but never sent, and suppression is enforced only by the outbox worker,
-reply's own check being unreachable. The endpoints are ported faithfully and
-kept, so the existing frontend works and an inbound provider is additive.
+reply's own check being unreachable. The endpoints are kept in full, so the
+existing frontend works and an inbound provider is additive.
 
-The module's deliberate divergences from the .NET original are listed in
+The module's deliberate divergences from the original implementation are listed in
 `docs/superpowers/specs/2026-09-13-communications-design.md` §6, and the
 behaviour they diverge from is pinned in
 `docs/superpowers/specs/2026-09-13-communications-inventory.md`. Two worth
@@ -510,6 +476,51 @@ successful exchange, with no allow-list, so a newly added operation without a
 passing test fails the whole package. No test touches the network; the Brreg
 client dials a fake transport.
 
+## Frontend development
+
+The frontends are one Bun workspace, managed from the repository root:
+
+```bash
+bun install --frozen-lockfile
+bun run --cwd apps/host/frontend dev     # http://localhost:10011, proxying /api to :8080
+
+bun run frontend:lint
+bun run frontend:test
+bun run frontend:build
+```
+
+The Vite dev server proxies `/api` to the Go server on `http://localhost:8080`, which
+is where `mise run server:dev` listens — run both.
+
+Module UI packages have their own Vitest suites, run from their directories:
+
+```bash
+bun run --cwd apps/customers/frontend test
+bun run --cwd apps/communications/frontend test
+bun run --cwd apps/products/frontend test
+bun run --cwd apps/energy/frontend test
+```
+
+The SPA is **not** served by the dev server in production: `scripts/build-artifacts.sh`
+builds it with Vite and overlays it into `apps/server/internal/web/dist`, where
+`go:embed` picks it up at compile time, and then restores the committed placeholder so
+the working tree stays clean. That is why plain `go build` and `go test` work without a
+frontend build.
+
+Translations are checked separately, and the pre-commit hook runs both:
+
+```bash
+bun run translations:check
+bun run i18n:test
+```
+
+## Ported-from comments
+
+Some Go files cite a `.cs` path in a comment (`.../SomeEndpoints.cs:117`). Those paths
+refer to the pre-cutover .NET tree, which was deleted at the cutover and is retrievable
+from git history. They are kept deliberately: the citation is often the only record of
+*why* a behaviour is shaped the way it is.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), scoped to
@@ -520,5 +531,9 @@ feat(customers): add customer create, get and list endpoints
 chore(init): add biome config and run on solution
 ```
 
-Pre-commit hooks (Husky + lint-staged) run Biome on frontend files and `dotnet format`
-on C# files.
+The Husky pre-commit hook (`.husky/pre-commit`) runs unconditionally on every commit —
+there is no staged-file filter, so it checks the whole tree: `bun run
+translations:check`, `bun run i18n:test`, `bunx biome check .`, and `gofmt -l
+apps/server`, failing the commit and naming the files if anything needs `gofmt -w`. It
+routes each command through `mise exec --` when mise is available, so it works in a
+shell that has not activated the toolchain.
