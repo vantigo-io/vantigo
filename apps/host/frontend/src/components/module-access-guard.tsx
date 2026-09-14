@@ -32,11 +32,11 @@ const moduleAccessRuleForPath = (pathname: string) =>
  * user lacks every relevant permission. The backend enforces this
  * independently.
  *
- * This is the surviving permission half of the former TenantModuleGuard; its
+ * This is the surviving permission half of the former tenant module guard; its
  * module-enablement half went with the deleted tenant-capabilities endpoint
- * (task 2 of the frontend de-tenanting plan) and the tenant-slug prefix went
+ * (task 2 of the frontend de-tenanting plan) and the tenant path prefix went
  * with the route collapse (task 3). It is mounted on the root layout, which is
- * where the deleted `routes/$tenantSlug.tsx` layout used to mount it.
+ * where the deleted tenant layout route used to mount it.
  */
 export const ModuleAccessGuard = ({ children }: { children: ReactNode }) => {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
