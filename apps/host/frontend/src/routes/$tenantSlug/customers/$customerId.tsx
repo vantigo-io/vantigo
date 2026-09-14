@@ -7,13 +7,7 @@ import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$cus
 import { useI18n } from "@vantigo/frontend-shell";
 import { fetchSession, sessionQueryKey } from "../../../api/auth";
 import { getAuthorizationMe } from "../../../api/authorization";
-import {
-  enabledModuleKeys,
-  fetchTenantCapabilities,
-  type ModuleKey,
-  tenantCapabilitiesQueryKey,
-} from "../../../api/tenant-capabilities";
-import { hasPermissions } from "../../../navigation";
+import { hasPermissions, type ModuleKey } from "../../../navigation";
 import "../../../i18n";
 
 type CustomerDetailTab = {
@@ -73,20 +67,16 @@ const CustomerDetailLayout = () => {
   // the sidebar navigation.
   const session = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
   const authorization = useQuery({
-    queryKey: ["authorization", "me", session.data?.activeTenantId ?? "none"],
+    queryKey: ["authorization", "me", "none"],
     queryFn: getAuthorizationMe,
     enabled: !!session.data,
     retry: false,
     staleTime: 300_000,
   });
-  const capabilities = useQuery({
-    queryKey: tenantCapabilitiesQueryKey(session.data?.activeTenantId ?? undefined),
-    queryFn: fetchTenantCapabilities,
-    enabled: !!session.data?.activeTenantId,
-    retry: false,
-    staleTime: 300_000,
-  });
-  const visibleTabs = visibleCustomerDetailTabs(enabledModuleKeys(capabilities.data), authorization.data?.permissions);
+  // The tenant-capabilities endpoint was deleted (task 2 of the frontend
+  // de-tenanting plan); enabled modules are permanently unknown, matching
+  // the "still loading" case this function already handles.
+  const visibleTabs = visibleCustomerDetailTabs(undefined, authorization.data?.permissions);
   const activeTab = matches.some((match) => match.routeId === "/$tenantSlug/customers/$customerId/energy")
     ? "energy"
     : "overview";

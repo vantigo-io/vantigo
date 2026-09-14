@@ -5,13 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MaintenanceControls } from "./-maintenance-controls";
 import "../../i18n";
 
-const { listSystemTenants, fetchSystemStatus, setMaintenance } = vi.hoisted(() => ({
-  listSystemTenants: vi.fn(),
+const { fetchSystemStatus, setMaintenance } = vi.hoisted(() => ({
   fetchSystemStatus: vi.fn(),
   setMaintenance: vi.fn(),
 }));
 
-vi.mock("../../api/system-tenants", () => ({ listSystemTenants }));
 vi.mock("../../api/system-status", () => ({
   fetchSystemStatus,
   setMaintenance,
@@ -20,7 +18,6 @@ vi.mock("../../api/system-status", () => ({
 
 describe("admin maintenance controls", () => {
   beforeEach(() => {
-    listSystemTenants.mockResolvedValue([]);
     fetchSystemStatus.mockResolvedValue({ maintenance: false, message: null });
     setMaintenance.mockResolvedValue({ maintenance: true, message: "Deploying" });
   });

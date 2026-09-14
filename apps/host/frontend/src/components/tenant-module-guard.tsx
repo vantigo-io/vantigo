@@ -4,7 +4,6 @@ import { useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
-import { enabledModuleKeys, fetchTenantCapabilities, tenantCapabilitiesQueryKey } from "../api/tenant-capabilities";
 import { hasPermissions, navSections } from "../navigation";
 import { ForbiddenPage } from "./errors";
 
@@ -31,38 +30,31 @@ const moduleAccessRuleForSubPath = (subPath: string) =>
 
 /**
  * Guards tenant-scoped destinations in place: renders an access-denied page when
- * the destination's module is disabled for the tenant or the user lacks every
- * relevant permission. The backend enforces both independently.
+ * the user lacks every relevant permission. The backend enforces this
+ * independently. (Module-enablement gating was removed with the deleted
+ * tenant-capabilities endpoint — see api/auth.ts task 2 of the frontend
+ * de-tenanting plan.)
  */
 export const TenantModuleGuard = ({ tenantSlug, children }: { tenantSlug: string; children: ReactNode }) => {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const subPath = pathname.startsWith(`/${tenantSlug}`) ? pathname.slice(tenantSlug.length + 1) || "/" : pathname;
   const rule = moduleAccessRuleForSubPath(subPath);
   const { data: session } = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
-  const capabilities = useQuery({
-    queryKey: tenantCapabilitiesQueryKey(session?.activeTenantId ?? undefined),
-    queryFn: fetchTenantCapabilities,
-    enabled: !!rule && !!session?.activeTenantId,
-    retry: false,
-    staleTime: 300_000,
-  });
   const authorization = useQuery({
-    queryKey: ["authorization", "me", session?.activeTenantId ?? "none"],
+    queryKey: ["authorization", "me", "none"],
     queryFn: getAuthorizationMe,
     enabled: !!rule && !!session,
     retry: false,
     staleTime: 300_000,
   });
   if (!rule) return children;
-  if (capabilities.isPending || authorization.isPending)
+  if (authorization.isPending)
     return (
       <Center mih="50vh">
         <Loader size="sm" />
       </Center>
     );
-  const enabledModules = enabledModuleKeys(capabilities.data) ?? [];
-  const allowed =
-    enabledModules.includes(rule.module) && hasPermissions(authorization.data?.permissions, rule.requiredPermissions);
+  const allowed = hasPermissions(authorization.data?.permissions, rule.requiredPermissions);
   return allowed ? (
     children
   ) : (

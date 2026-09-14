@@ -13,7 +13,12 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
-import type { ModuleKey } from "./api/tenant-capabilities";
+
+// Relocated from the deleted api/tenant-capabilities.ts (task 2 of the
+// frontend de-tenanting plan): this catalog is the single source of truth
+// for which destinations belong to which module, tenancy or not.
+export const moduleKeys = ["communications", "customers", "energy", "products"] as const;
+export type ModuleKey = (typeof moduleKeys)[number];
 
 export interface NavItem {
   label: string;
