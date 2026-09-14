@@ -34,22 +34,33 @@ const EXCLUDED_PREFIXES = ["docs/superpowers/"] as const;
 
 type BannedToken = { readonly what: string; readonly pattern: RegExp };
 
+// Every pattern matches case-insensitively. A leftover does not have to keep
+// the casing the .NET tree happened to use — a lowercased `dotnet_root`, a
+// shouted `GLOBAL.JSON` or an `apphost:` key is the same leftover, and a
+// case-sensitive pattern would wave all three through. The boundaries below do
+// the narrowing instead of letter case, which is why widening to /i costs none
+// of the deliberate allowances: the mustNotMatch samples in the first test pin
+// that in the other direction.
 const BANNED_TOKENS: readonly BannedToken[] = [
   // Word-bounded on both sides: the Go SCIM port's dotnetTrim/dotnetBlank
   // helpers name .NET *semantics* it reproduces, not a toolchain to install.
   { what: "a dotnet CLI invocation", pattern: /\bdotnet\b/i },
   // Separately from the word-bounded form above, because a trailing underscore
-  // is a word character and so \bDOTNET\b would never fire on DOTNET_ROOT.
-  { what: "a DOTNET_* environment variable", pattern: /\bDOTNET_[A-Z0-9]/ },
-  { what: "the deleted Vantigo.slnx solution", pattern: /Vantigo\.slnx/ },
-  { what: "a global.json .NET SDK pin", pattern: /global\.json/ },
-  // \bAppHost\b rather than /AppHost/: config.AppHostname is the Go server's.
-  { what: "the deleted Aspire AppHost project", pattern: /\bAppHost\b/ },
-  { what: "the deleted orchestration/ tree", pattern: /orchestration\// },
+  // is a word character and so \bdotnet\b would never fire on DOTNET_ROOT.
+  { what: "a DOTNET_* environment variable", pattern: /\bdotnet_[a-z0-9]/i },
+  { what: "the deleted Vantigo.slnx solution", pattern: /vantigo\.slnx/i },
+  { what: "a global.json .NET SDK pin", pattern: /global\.json/i },
+  // Letter boundaries rather than \b, in both directions and for different
+  // reasons. A trailing letter must still exclude: config.AppHostname is the
+  // Go server's own field. A leading underscore must NOT exclude, which \b
+  // gets wrong — "_" is a word character, so \bAppHost\b never fires inside
+  // Vantigo_AppHost.csproj and the project file walks straight through.
+  { what: "the deleted Aspire AppHost project", pattern: /(?<![a-z])apphost(?![a-z])/i },
+  { what: "the deleted orchestration/ tree", pattern: /orchestration\//i },
   // A configuration key has a name after the separator. A bare
   // `ConnectionStrings__` is prose, or the compose job's grep for this very
   // thing — neither is a key the Go server could be asked to read.
-  { what: "a ConnectionStrings__ configuration key", pattern: /ConnectionStrings__[A-Za-z0-9]/ },
+  { what: "a ConnectionStrings__ configuration key", pattern: /connectionstrings__[a-z0-9]/i },
 ];
 
 const trackedFiles = (root: string): string[] => {
@@ -111,6 +122,16 @@ describe("cutover sweep", () => {
       "COPY orchestration/ /src/orchestration/",
       "      AppHost: true",
       "ConnectionStrings__DefaultConnection=Host=db;Database=vantigo",
+      // Case variants, one per pattern that letter case could have hidden.
+      // Each is written so that only the pattern it is pinning can match it —
+      // no bare `dotnet` word to be caught by the first pattern instead — so a
+      // pattern that silently lost its /i reddens here rather than going quiet.
+      "      dotnet_nologo: 1",
+      "COPY GLOBAL.JSON ./",
+      "CONNECTIONSTRINGS__DEFAULTCONNECTION=Host=db;Database=vantigo",
+      "      apphost: true",
+      '  <ProjectReference Include="Vantigo_AppHost.csproj" />',
+      '  <Solution Include="vantigo.slnx" />',
     ];
     const mustNotMatch = [
       "s := dotnetTrim(*v)",
