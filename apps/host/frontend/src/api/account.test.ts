@@ -26,7 +26,6 @@ describe("passkey client errors", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValueOnce(new Response(JSON.stringify({ token: "csrf-token" }), { status: 200 }))
         .mockResolvedValueOnce(
           new Response(JSON.stringify({ ceremonyId: "ceremony-id", options: { challenge: "AQ" } }), { status: 200 }),
         ),

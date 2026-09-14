@@ -1,4 +1,4 @@
-import { clearCsrfToken, ensureCsrfToken, request } from "./request";
+import { request } from "./request";
 
 export interface User {
   id: string;
@@ -24,22 +24,11 @@ export const fetchSession = async (): Promise<Session | null> => {
     throw error;
   }
 };
-export const signIn = async (email: string, password: string) => {
-  await ensureCsrfToken();
-  const session = await request<Session>("/api/v1/identity/login", {
+export const signIn = (email: string, password: string) =>
+  request<Session>("/api/v1/identity/login", {
     method: "POST",
     handleUnauthorized: false,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  clearCsrfToken();
-  await ensureCsrfToken();
-  return session;
-};
-export const signOut = async () => {
-  try {
-    return await request<{ signedOut: true }>("/api/v1/identity/logout", { method: "POST" });
-  } finally {
-    clearCsrfToken();
-  }
-};
+export const signOut = () => request<{ signedOut: true }>("/api/v1/identity/logout", { method: "POST" });

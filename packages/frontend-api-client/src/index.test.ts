@@ -35,55 +35,25 @@ describe("frontend API client", () => {
     });
   });
 
-  it("acquires and reuses a CSRF token for unsafe requests", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { token: "csrf-token" }))
-      .mockResolvedValueOnce(jsonResponse(200, { saved: true }))
-      .mockResolvedValueOnce(jsonResponse(200, { saved: true }));
-    vi.stubGlobal("fetch", fetchMock);
-    const client = createApiClient();
-
-    await expect(client.request("/api/v1/products", { method: "POST" })).resolves.toEqual({ saved: true });
-    await expect(client.request("/api/v1/products", { method: "PUT" })).resolves.toEqual({ saved: true });
-
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/identity/antiforgery", { credentials: "include" });
-    expect(new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("X-XSRF-TOKEN")).toBe("csrf-token");
-    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("X-XSRF-TOKEN")).toBe("csrf-token");
-  });
-
-  it("applies a caller-supplied transformUrl without routing identity calls", async () => {
+  it("applies a caller-supplied transformUrl", async () => {
     const transformUrl = (url: string) =>
       url.startsWith("/api/") && !url.startsWith("/api/v1/identity/") ? `/custom/prefix${url}` : url;
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { token: "csrf-token" }))
-      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
     const client = createApiClient({ transformUrl });
 
     await expect(client.request("/api/v1/products", { method: "POST" })).resolves.toEqual({ ok: true });
 
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/v1/identity/antiforgery",
-      "/custom/prefix/api/v1/products",
-    ]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/custom/prefix/api/v1/products"]);
   });
 
   it("passes business API URLs through unchanged with no transformUrl configured", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { token: "csrf-token" }))
-      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(200, { ok: true }));
     vi.stubGlobal("fetch", fetchMock);
     const client = createApiClient();
 
     await expect(client.request("/api/v1/customers?page=1", { method: "POST" })).resolves.toEqual({ ok: true });
 
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      "/api/v1/identity/antiforgery",
-      "/api/v1/customers?page=1",
-    ]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/v1/customers?page=1"]);
   });
 });

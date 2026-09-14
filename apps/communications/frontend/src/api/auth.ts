@@ -1,4 +1,4 @@
-import { clearCsrfToken, request } from "./request";
+import { request } from "./request";
 export interface Session {
   user: { id: string; displayName: string; email: string; roles: string[] };
 }
@@ -22,7 +22,6 @@ export const signIn = async (email: string, password: string) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  clearCsrfToken();
   return session;
 };
 export const bootstrapAccount = async (values: {
@@ -37,13 +36,6 @@ export const bootstrapAccount = async (values: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(values),
   });
-  clearCsrfToken();
   return session;
 };
-export const signOut = async () => {
-  try {
-    return await request("/api/v1/identity/logout", { method: "POST" });
-  } finally {
-    clearCsrfToken();
-  }
-};
+export const signOut = () => request("/api/v1/identity/logout", { method: "POST" });

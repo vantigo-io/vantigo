@@ -26,9 +26,6 @@ const stubFetch = (onDelete?: () => Response) =>
     "fetch",
     vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/api/v1/identity/antiforgery")) {
-        return Promise.resolve(new Response(JSON.stringify({ token: "test-token" }), { status: 200 }));
-      }
       if (init?.method === "DELETE" && onDelete) {
         return Promise.resolve(onDelete());
       }

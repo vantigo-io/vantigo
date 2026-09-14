@@ -15,19 +15,18 @@ describe("suppression API mapping", () => {
       "fetch",
       vi
         .fn()
-        .mockResolvedValueOnce(new Response(JSON.stringify({ token: "csrf-suppression" }), { status: 200 }))
         .mockResolvedValueOnce(new Response(JSON.stringify({ id: "s-1" }), { status: 201 }))
         .mockResolvedValueOnce(new Response(null, { status: 204 })),
     );
     await createSuppression({ emailAddress: "blocked@example.com", reason: "bounce" });
     await deleteSuppression("s-1");
     expect(fetch).toHaveBeenNthCalledWith(
-      2,
+      1,
       "/api/v1/communications/suppressions",
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetch).toHaveBeenNthCalledWith(
-      3,
+      2,
       "/api/v1/communications/suppressions/s-1",
       expect.objectContaining({ method: "DELETE" }),
     );

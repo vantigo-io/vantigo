@@ -2,13 +2,12 @@ import "@testing-library/jest-dom/vitest";
 
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
-import { clearCsrfToken, setUnauthorizedHandler } from "../api/request";
+import { setUnauthorizedHandler } from "../api/request";
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  clearCsrfToken();
   setUnauthorizedHandler(undefined);
 });
 

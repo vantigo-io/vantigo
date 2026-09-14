@@ -1,4 +1,4 @@
-import { clearCsrfToken, ensureCsrfToken, request } from "./request";
+import { request } from "./request";
 import { creationOptions, credentialJson, requestOptions, webAuthnAvailable } from "./webauthn";
 
 export type Language = "auto" | "en" | "nb";
@@ -121,15 +121,11 @@ export const completePasskeyEnrollment = (body: {
 
 export const beginPasskeyLogin = (email: string) =>
   request<PasskeyCeremony>("/api/v1/identity/passkeys/login/begin", json("POST", { email }));
-export const completePasskeyLogin = async (ceremonyId: string, credential: string) => {
-  const session = await request<PasskeyLoginSession>(
+export const completePasskeyLogin = (ceremonyId: string, credential: string) =>
+  request<PasskeyLoginSession>(
     "/api/v1/identity/passkeys/login/complete",
     json("POST", { ceremonyId, credentialJson: credential }),
   );
-  clearCsrfToken();
-  await ensureCsrfToken();
-  return session;
-};
 
 const requireWebAuthn = (operation: PasskeyOperation) => {
   if (!webAuthnAvailable()) throw new PasskeyClientError("unsupported", operation);
