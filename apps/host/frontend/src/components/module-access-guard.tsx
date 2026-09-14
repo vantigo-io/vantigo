@@ -4,12 +4,12 @@ import { useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
-import { hasPermissions, navSections } from "../navigation";
+import { hasPermissions, type ModuleKey, navSections } from "../navigation";
 import { ForbiddenPage } from "./errors";
 
 interface ModuleAccessRule {
   prefix: string;
-  module: NonNullable<(typeof navSections)[number]["items"][number]["module"]>;
+  module: ModuleKey;
   requiredPermissions?: readonly string[];
 }
 
@@ -17,28 +17,30 @@ interface ModuleAccessRule {
 // belong to which module and which permissions they require.
 const rules: ModuleAccessRule[] = navSections
   .flatMap((section) => section.items)
-  .filter((item) => item.tenantScoped && item.module)
-  .map((item) => ({
-    prefix: item.to,
-    module: item.module as ModuleAccessRule["module"],
-    requiredPermissions: item.requiredPermissions,
-  }))
+  .flatMap((item) =>
+    item.module
+      ? [{ prefix: item.to, module: item.module, requiredPermissions: item.requiredPermissions }]
+      : ([] as ModuleAccessRule[]),
+  )
   .sort((a, b) => b.prefix.length - a.prefix.length);
 
-const moduleAccessRuleForSubPath = (subPath: string) =>
-  rules.find((rule) => subPath === rule.prefix || subPath.startsWith(`${rule.prefix}/`));
+const moduleAccessRuleForPath = (pathname: string) =>
+  rules.find((rule) => pathname === rule.prefix || pathname.startsWith(`${rule.prefix}/`));
 
 /**
- * Guards tenant-scoped destinations in place: renders an access-denied page when
- * the user lacks every relevant permission. The backend enforces this
- * independently. (Module-enablement gating was removed with the deleted
- * tenant-capabilities endpoint — see api/auth.ts task 2 of the frontend
- * de-tenanting plan.)
+ * Guards module destinations in place: renders an access-denied page when the
+ * user lacks every relevant permission. The backend enforces this
+ * independently.
+ *
+ * This is the surviving permission half of the former TenantModuleGuard; its
+ * module-enablement half went with the deleted tenant-capabilities endpoint
+ * (task 2 of the frontend de-tenanting plan) and the tenant-slug prefix went
+ * with the route collapse (task 3). It is mounted on the root layout, which is
+ * where the deleted `routes/$tenantSlug.tsx` layout used to mount it.
  */
-export const TenantModuleGuard = ({ tenantSlug, children }: { tenantSlug: string; children: ReactNode }) => {
+export const ModuleAccessGuard = ({ children }: { children: ReactNode }) => {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const subPath = pathname.startsWith(`/${tenantSlug}`) ? pathname.slice(tenantSlug.length + 1) || "/" : pathname;
-  const rule = moduleAccessRuleForSubPath(subPath);
+  const rule = moduleAccessRuleForPath(pathname);
   const { data: session } = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
   const authorization = useQuery({
     queryKey: ["authorization", "me", "none"],
