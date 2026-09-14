@@ -257,10 +257,12 @@ the forwarded scheme/host/client-address headers are ignored.
 ## Email and observability
 
 Identity invitations and password recovery use the `MAIL_DRIVER`/`SMTP_*`
-settings. Per-mailbox delivery credentials for the Communications module
-(SMTP or Mailgun) are configured through the Communications API, where the
-provider, domain, region and API key are stored as protected mailbox
-credentials — there is no environment variable for them.
+settings. Per-mailbox delivery credentials for the Communications module are
+configured through the Communications API, where the host, port and a protected
+password are stored as mailbox credentials — there is no environment variable
+for them. Those channels are **SMTP-only**: the API refuses to create or update
+a channel naming any other provider, and rejects a Mailgun credential outright.
+See [communications](../../docs/communications.md).
 
 Telemetry is off by default. Standard OTLP variables can be set in
 `vantigo.env`:
