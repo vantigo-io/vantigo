@@ -713,7 +713,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request — a validation problem (application/problem+json), or the host's cross-origin rejection (application/json, code csrf_validation_failed) of an unsafe cookie-authenticated request whose Origin or Sec-Fetch-Site marks it cross-site. The check is on the request's origin; no antiforgery token is involved.
+                    description: Bad Request — this server's validation problem (application/problem+json). The application/json branch, whose body carries code csrf_validation_failed, is pre-cutover .NET behaviour retained because the frozen exchange corpus (openapi/testdata/exchanges/customers.jsonl) still validates a recorded 400 of that shape against this contract; this server never emits it. An unsafe cookie-authenticated request whose Origin or Sec-Fetch-Site marks it cross-site is rejected with 403 application/problem+json instead. The check is on the request's origin; no antiforgery token is involved.
                 "401":
                     content:
                         application/json:
