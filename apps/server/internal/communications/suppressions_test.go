@@ -341,8 +341,8 @@ func TestDeleteSuppression_RequiresManage(t *testing.T) {
 
 // TestCreateSuppression_ConcurrentDedupeAnswers200TwiceNever409 is fix
 // round 1's teeth check, on the exact gate technique
-// channels_concurrency_test.go's TestCreateChannel_ConcurrentDefaultRaceAnswersModuleShape
-// established and this file reuses (race, awaitLockWaiters — unexported in
+// channels_concurrency_test.go's channel-default race tests established and
+// this file reuses (race, awaitLockWaiters — unexported in
 // this package, not redeclared here): two concurrent POSTs for the SAME
 // address, gated so both pass the existing-row lookup (a plain SELECT,
 // compatible with the gate's EXCLUSIVE mode) before either reaches the

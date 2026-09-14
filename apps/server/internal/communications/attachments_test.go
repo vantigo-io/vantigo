@@ -621,8 +621,7 @@ func TestStageAttachment_ReservationTransitionsToOwnedOnSuccess(t *testing.T) {
 // — all pass the upfront replay lookup (nothing exists yet) and race to
 // insert into attachment_uploads, which only one can win under
 // ux_attachment_uploads_uploaded_by_user_id_idempotency_key. Gated on the
-// same pattern channels_concurrency_test.go's
-// TestCreateChannel_ConcurrentDefaultRaceAnswersModuleShape and
+// same pattern channels_concurrency_test.go's channel-default race tests and
 // energy/customers' own concurrency tests use: a gate transaction holds
 // communications.attachment_uploads in EXCLUSIVE MODE, compatible with the
 // plain SELECTs every request's replay lookup, conversation lookup and

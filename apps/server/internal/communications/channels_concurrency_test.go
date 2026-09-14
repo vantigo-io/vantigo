@@ -7,35 +7,47 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
-// This file is fix round 1's item 2: concurrent creates that all read
-// AnyChannelExists()=false race to become the one forced-default channel,
-// colliding on the (type, is_default) partial unique index
-// (migration 00006_communications_baseline.sql:48) in addition to the
-// (type, address) index channel_exists already covers. Left unhandled that
-// collision reached httpx.WriteError's host-wide 23505 fallback — a bare
-// RFC 7807 409 — which is the wrong vocabulary for every non-stats endpoint
-// in this module (design doc §3; only the three stats endpoints use
-// ProblemDetails). A bare race() with no gate is not reliable here for the
-// same reason energy's own concurrent-create test gives for supply periods:
-// AnyChannelExists() is a fast, un-transacted-relative-to-the-others SELECT
-// that can finish well before a sibling request even starts. The gate
-// technique is duplicated from
+// This file holds every concurrency test for the (type, is_default) partial
+// unique index (migration 00006_communications_baseline.sql:48), which has
+// now produced FOUR defects across four passes. Each pass fixed the writer
+// pair it was written against and left another live; the table in "AUDITING
+// THIS SCHEMA" below is the history, and the reason that comment exists.
+//
+// The shared shape of all four: an unhandled 23505 on this index reaches
+// httpx.WriteError's host-wide fallback as a bare RFC 7807 409 — the wrong
+// vocabulary for every non-stats endpoint in this module (design doc §3;
+// only the three stats endpoints use ProblemDetails) and, for
+// putCommunicationsChannelsById, a status its contract does not declare at
+// all.
+//
+// **The outcome these tests assert changed in the task 14 fix wave, so read
+// the individual tests rather than assuming.** Before it, concurrent writers
+// collided and the losers answered 409 default_channel_conflict; the gate
+// released and "the partial unique index serialized the inserts, giving
+// exactly one 201 and the rest 409s". lockDefaultChannelSlot now serialises
+// the writers *before* they collide, so concurrent writers behave exactly as
+// sequential ones do: they all succeed and the last one holds the default
+// slot. That 409 is now a defensive path no test can drive (design §6 item
+// 15).
+//
+// The gate technique is duplicated from
 // internal/energy/supplyperiods_concurrency_test.go (itself duplicated from
 // internal/customers/contacts_concurrency_test.go and
 // internal/identity/twofactor_test.go): a gate transaction takes
-// `LOCK TABLE ... IN EXCLUSIVE MODE` before any request starts. That mode
-// is compatible with the plain SELECT every AnyChannelExists() check runs
-// (ACCESS SHARE), so every check still sees no existing channel and every
-// request decides isDefault=true — but EXCLUSIVE conflicts with the ROW
-// EXCLUSIVE lock ClearDefaultChannels's UPDATE and InsertChannel's INSERT
-// both need, so every request queues behind the gate at its first write,
-// after every AnyChannelExists() check has already run. Only once every
-// request is confirmed waiting does the gate release; Postgres's own
-// partial unique index then serializes the inserts, giving exactly one 201
-// and the rest 409s in the module's own error shape.
+// `LOCK TABLE ... IN EXCLUSIVE MODE` before any request starts. That mode is
+// compatible with the plain SELECTs each request runs first (ACCESS SHARE),
+// so every request reaches its first write with its decisions already made —
+// but EXCLUSIVE conflicts with the ROW EXCLUSIVE that every demote, insert
+// and update needs, so they all queue there. A bare race() with no gate is
+// not reliable for this, for the same reason energy's own concurrent-create
+// test gives: the reads are fast and un-transacted relative to each other, so
+// one request can finish before a sibling even starts. awaitLockWaiters polls
+// pg_stat_activity for genuinely blocked backends and never sleeps.
 
 // AUDITING THIS SCHEMA: ENUMERATE WRITERS, NOT CONSTRAINTS.
 //
@@ -337,5 +349,97 @@ func TestChannels_ConcurrentUpdateAndCreateDefaultRace(t *testing.T) {
 	}
 	if got := h.Count(t, `SELECT count(*) FROM communications.channels`); got != 3 {
 		t.Errorf("channels = %d, want 3: neither request may lose its whole transaction", got)
+	}
+}
+
+// TestUpdateChannel_PutNotClaimingTheDefaultRacingACreateThatDoes is the
+// FOURTH defect on ux_channels_type_is_default, and the one the advisory
+// lock does not close on its own.
+//
+// **The PUT here deliberately says nothing about the default.** Every other
+// test in this file has its PUT claim it, which is precisely why none of them
+// could see this: the value that collides is not one the request supplied,
+// it is `existing.IsDefault`, read through the pool BEFORE the transaction
+// and written back unconditionally. Serialising the transactions does not
+// refresh it. So a `{"isActive": true}` PUT against the row that was the
+// default re-asserts is_default = true from its stale snapshot after the
+// concurrent create has demoted it — two default rows, and a 23505 that
+// escapes as a bare application/problem+json 409 on an operation whose
+// contract declares no 409 at all.
+//
+// The lock is not even load-bearing for this pair: the same collision occurs
+// uncontended whenever a create commits inside the window between the PUT's
+// GetChannelByID and its BeginTx, and that window holds a credential lookup,
+// a secret open, a secret seal and a JSON marshal.
+//
+// The fix is the re-read under the lock in PutChannelById. Teeth: take
+// is_default from the pre-transaction `existing` again and this test reds
+// with that exact 23505.
+func TestUpdateChannel_PutNotClaimingTheDefaultRacingACreateThatDoes(t *testing.T) {
+	h := newHarness(t)
+	admin := h.SignIn(t, "communications:channels-manage")
+
+	// The first channel is forced default, and it is the one the PUT targets
+	// — so its stale snapshot says is_default = true.
+	incumbent := createChannel(t, admin, newChannelBody(channelAddress(t)))
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.channels IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock channels: %v", err)
+	}
+
+	updater := h.SignIn(t, "communications:channels-manage")
+	creator := h.SignIn(t, "communications:channels-manage")
+	createdBody := newChannelBody(channelAddress(t))
+	createdBody["isDefault"] = true
+
+	fns := []func() *modtest.Response{
+		func() *modtest.Response {
+			// No isDefault key at all: this request is about isActive.
+			return updater.Do(http.MethodPut, "/api/v1/communications/channels/"+incumbent.Id,
+				map[string]any{"isActive": true})
+		},
+		func() *modtest.Response {
+			return creator.Do(http.MethodPost, "/api/v1/communications/channels", createdBody)
+		},
+	}
+
+	done := make(chan []*modtest.Response, 1)
+	finished := make(chan struct{})
+	go func() {
+		done <- race(fns...)
+		close(finished)
+	}()
+	awaitLockWaiters(t, h, len(fns), finished)
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	responses := <-done
+
+	if got := responses[0].Status; got != http.StatusOK {
+		t.Errorf("PUT: status %d body %s (Content-Type %q), want 200: a PUT that never mentions the default must not conflict over it",
+			got, responses[0].Body, responses[0].Header("Content-Type"))
+	}
+	if got := responses[1].Status; got != http.StatusCreated {
+		t.Errorf("POST: status %d body %s (Content-Type %q), want 201",
+			got, responses[1].Body, responses[1].Header("Content-Type"))
+	}
+	if got := h.Count(t, `SELECT count(*) FROM communications.channels WHERE is_default`); got != 1 {
+		t.Errorf("default channels = %d, want exactly 1: the create's demotion must survive the concurrent update", got)
+	}
+	// The create claimed the default, so the incumbent must have lost it —
+	// a PUT that never mentioned the flag cannot have kept it.
+	var incumbentDefault bool
+	if err := h.Pool().QueryRow(ctx, `SELECT is_default FROM communications.channels WHERE id = $1`,
+		uuid.MustParse(incumbent.Id)).Scan(&incumbentDefault); err != nil {
+		t.Fatalf("read the incumbent: %v", err)
+	}
+	if incumbentDefault {
+		t.Error("the incumbent is still default: the update wrote back a stale is_default over the create's demotion")
 	}
 }
