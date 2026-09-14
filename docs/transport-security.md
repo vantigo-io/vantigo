@@ -1,111 +1,117 @@
 # Transport security and browser hardening
 
-Vantigo treats plaintext transport as a startup failure rather than an
-operational detail, and sends a set of browser security headers on every
-response. This document states what is enforced, what it costs, and how to get
-out of it deliberately.
+Vantigo treats plaintext transport as a startup failure rather than an operational
+detail, and sends a set of browser security headers on every response. This document
+states what is enforced, what it costs, and how to get out of it deliberately.
 
 ## Status summary
 
-| Control | Development | Outside Development |
+| Control | Development | Outside development |
 | --- | --- | --- |
-| `App__PublicOrigin` scheme | http allowed | **https required** |
-| PostgreSQL connection | any `SSL Mode` | **`SSL Mode=VerifyCA` or `VerifyFull`, no `Trust Server Certificate=true`** |
-| Application SMTP (`Email__Smtp__*`) | plaintext allowed with an opt-in | **STARTTLS or implicit TLS required** |
-| HSTS | not sent | sent (`UseHsts`, loopback excluded) |
+| `APP_URL` scheme | http allowed | **https required** |
+| PostgreSQL connection | any `sslmode` | **certificate-verified TLS (`verify-full`, or `verify-ca`)** |
+| Application SMTP (`SMTP_*`) | plaintext allowed with an opt-in | **STARTTLS or implicit TLS required** |
+| HSTS | not sent | sent on https requests, loopback excluded |
 | Security headers, including CSP | sent | sent |
-| Host header filtering | derived from `App__PublicOrigin` + loopback | derived from `App__PublicOrigin` + loopback |
+| Host header filtering | `APP_URL`'s host + loopback | `APP_URL`'s host + loopback |
 | HTTPS redirection | none | none (HSTS header only) |
-| OpenAPI document at `/openapi/v{n}.json` | served | **not mapped in Production** |
+| Merged OpenAPI document | `GET /api/openapi.json`, session required | `GET /api/openapi.json`, session required |
 
 ## Fail-closed transport
 
-Outside the Development environment the host refuses to start when:
+Outside development the process refuses to start when:
 
-- `App__PublicOrigin` is not `https://…`. Session cookies and the bearer links
-  mailed by the invitation and password-recovery workflows are derived from this
-  origin, so an http origin hands them to anyone on the network path.
-- A configured PostgreSQL connection string does not require certificate-verified
-  TLS. Npgsql defaults to `SSL Mode=Prefer`, which silently falls back to
-  plaintext when the server declines TLS and never authenticates the server even
-  when it accepts. Only `VerifyCA` and `VerifyFull` validate the chain, and
-  `Trust Server Certificate=true` turns that validation back off. Both
-  `ConnectionStrings__vantigo` and the optional
-  `DataProtection__PostgreSql__ConnectionString` override are checked.
-- `Email__Provider=Smtp` is configured without TLS. `Email__Smtp__EnableSsl=true`
-  selects STARTTLS and port 465 selects implicit TLS; the sender no longer
-  negotiates opportunistically, so a server that advertises no STARTTLS produces
-  an error instead of a plaintext delivery.
+- **`APP_URL` is not `https://…`.** Session cookies and the bearer links mailed by
+  the invitation and password-recovery workflows are derived from this origin, so an
+  http origin hands them to anyone on the network path.
+- **A configured PostgreSQL connection would not authenticate the server.** The
+  check is made on pgx's own parse of the connection string, so it judges exactly
+  what the driver will connect with, and **every fallback must pass too**: libpq's
+  default, `prefer` and `allow` add a plaintext fallback and never check a
+  certificate even over TLS. Only `verify-full` — or `verify-ca` when the server
+  certificate does not name the host you connect on — authenticates the server. Both
+  `DATABASE_URL` and `MIGRATIONS_DATABASE_URL` are checked. The error never quotes
+  the connection string: it can carry a password.
+- **`SMTP_TLS=none` is configured.** `starttls` (the default) and `implicit` are the
+  TLS modes; STARTTLS is mandatory rather than opportunistic, so a server that
+  advertises no STARTTLS produces an error instead of a plaintext delivery.
 
 A correct production configuration therefore looks like:
 
 ```text
-App__PublicOrigin=https://vantigo.example.com
-ConnectionStrings__vantigo=Host=db.example.com;Database=vantigo;Username=vantigo;Password=<from-secret-store>;SSL Mode=VerifyFull
-Email__Provider=Smtp
-Email__Smtp__Host=smtp.example.com
-Email__Smtp__Port=587
-Email__Smtp__EnableSsl=true
+APP_URL=https://vantigo.example.com
+DATABASE_URL=postgresql://vantigo:<from-secret-store>@db.example.com:5432/vantigo?sslmode=verify-full
+MAIL_DRIVER=smtp
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_TLS=starttls
 ```
 
-When the server certificate is issued by a private authority, point Npgsql at it
-with `Root Certificate=/etc/ssl/certs/internal-ca.pem` and keep
-`SSL Mode=VerifyFull`. Use `VerifyCA` only when the certificate does not carry
-the host name you connect on.
+When the server certificate is issued by a private authority, point the connection at
+it with `sslrootcert=/etc/ssl/certs/internal-ca.pem` and keep `sslmode=verify-full`.
+Use `verify-ca` only when the certificate does not carry the host name you connect on.
+
+SMTP has a second protection that is not about TLS: the destination is resolved and
+checked before the socket opens, and private, loopback, link-local,
+carrier-grade-NAT and cloud-metadata addresses (including `169.254.169.254`) are
+refused. The connection is then made to the address that was checked rather than to a
+fresh lookup, which is what defeats DNS rebinding.
 
 ## The escape hatch
 
-`Security__AllowInsecureTransport=true` disables all three checks at once. It
-exists for local stacks and evaluation deployments — including the bundled
+`ALLOW_INSECURE_TRANSPORT=1` disables all three checks at once. It exists for local
+stacks and evaluation deployments — including the bundled
 [Docker Compose stack](../deploy/compose/README.md), which serves
-`http://localhost:8080` and reaches the bundled PostgreSQL container over a
-private compose network with no certificate authority available — and ships
-enabled in `deploy/compose/vantigo.env.example` for exactly that reason.
+`http://localhost:8080` and reaches the bundled PostgreSQL container over a private
+compose network with no certificate authority available — and ships enabled in
+`deploy/compose/vantigo.env.example` for exactly that reason.
+
+The process says so on every start:
+
+```text
+WARN ALLOW_INSECURE_TRANSPORT=1: plaintext HTTP, database and SMTP transport are
+accepted; local and evaluation use only
+```
 
 With it set, session cookies, invitation and password-reset bearer links, and
-database credentials all travel in the clear. Anything reachable from a network
-you do not control must leave it unset.
+database credentials all travel in the clear. It also drops the `Secure` attribute
+from session cookies. Anything reachable from a network you do not control must
+leave it unset.
 
-Plaintext SMTP needs a second, narrower opt-in as well:
-`Email__Smtp__AllowInsecurePlaintext=true` on top of either the Development
-environment or `Security__AllowInsecureTransport=true`. The communications
-module's own mailbox delivery has an equivalent switch,
-`Smtp__AllowInsecurePlaintext`, which is only honored in Development.
+Unlike the .NET implementation, plaintext SMTP needs no second, narrower opt-in:
+`SMTP_TLS=none` plus either development or `ALLOW_INSECURE_TRANSPORT=1` is the whole
+rule, and the SMTP driver refuses the combination defensively even if it is
+constructed directly.
 
 ## HSTS
 
-Outside Development the host adds `UseHsts()` after forwarded-header processing,
-so a TLS-terminating reverse proxy's scheme is the one the middleware sees. The
-ASP.NET Core defaults apply (30 days, loopback hosts excluded, no preload);
-adjust them through `HstsOptions` if a longer max-age or preload submission is
-wanted. Terminating ingress should still be configured to reject plaintext on
-its own — the header only helps a browser that has already been there once.
+Outside development `Strict-Transport-Security: max-age=2592000` (30 days, no
+`includeSubDomains`, no preload) is sent on https requests to non-loopback hosts. The
+header is set after forwarded-header processing, so a TLS-terminating proxy's
+scheme is the one the decision sees. Terminating ingress should still reject
+plaintext on its own — the header only helps a browser that has already been there
+once.
 
 ## Host header filtering
 
-`AllowedHosts` is no longer `*`. When it is unset the host derives the allowlist
-from `App__PublicOrigin` and adds `localhost`, `127.0.0.1` and `[::1]`; a request
-carrying any other `Host` header is answered with 400 before it reaches the
-application. An explicit `AllowedHosts=vantigo.example.com;vantigo.internal`
-always wins, and is what to use when probes reach the app on a name that is not
-the public origin. With no public origin configured there is nothing to derive,
-and the permissive framework default remains.
+The allowlist is derived from `APP_URL`'s hostname plus `localhost`, `127.0.0.1` and
+`::1`; a request carrying any other `Host` is answered with a 400 problem before it
+reaches the application. The port is ignored in the comparison.
 
-Loopback is in that list on purpose. Container health probes reach the
-application on loopback with the literal address in the `Host` header — the
-published image is chiseled and has no shell, so the probe is an in-process
-plain-HTTP request to `http://127.0.0.1:8080/health/ready`. Host filtering is a
-startup-filter middleware that runs *before* routing, so unlike tenancy,
-antiforgery and rate limiting it cannot exempt endpoints by metadata; permitting
-loopback outright is what keeps the probe working without teaching the middleware
-any paths. A 400 there would mark the container permanently unhealthy, and on
-Azure Container Apps the revision would never become ready.
+Loopback is in that list on purpose. The container health check runs
+`vantigo healthcheck`, which probes `http://127.0.0.1:$PORT/health/ready` in-process
+with the literal address in the `Host` header, and host filtering runs before routing
+so it cannot exempt that path by name. A 400 there would mark the container
+permanently unhealthy.
 
-Nothing in the pipeline redirects plain HTTP, either. There is no HTTPS
-redirection middleware, and `UseHsts()` only ever adds a response header — and
-only when the request is already https — so a probe that treats any non-2xx as
-failure is never handed a 307. Terminate TLS and reject plaintext at the ingress
-instead.
+This is also why container and orchestrator probes must use the exec form
+(`["/app/vantigo", "healthcheck"]`): an HTTP probe that connects from outside sends
+its own address as `Host`, which the filter rejects.
+
+Nothing in the pipeline redirects plain HTTP. There is no HTTPS-redirection
+middleware, and HSTS only ever adds a response header — and only when the request is
+already https — so a probe that treats any non-2xx as failure is never handed a 307.
+Terminate TLS and reject plaintext at the ingress instead.
 
 ## Browser security headers
 
@@ -130,30 +136,32 @@ frame-src 'self'; worker-src 'self'; manifest-src 'self'
 
 Two directives deserve explanation.
 
-- **`script-src` carries a hash, not `'unsafe-inline'`.** The SPA entry document
-  is templated at startup and has one inline script injected into it, the
-  `window.__VANTIGO_APP__` runtime configuration. Both the document and the hash
-  are produced from the same string by `SpaIndexDocument`, so the policy cannot
-  drift away from the script it allows. Everything else in the published Vite
-  bundle is an external module; the bundle contains no `eval`, `new Function`,
-  worker or blob-URL usage.
-- **`style-src` keeps `'unsafe-inline'`.** Mantine renders its theme CSS
-  variables and component styles as inline `<style>` elements, and React style
-  props become style attributes. Removing this would require threading a nonce
-  through `MantineProvider`.
+- **`script-src` carries a hash, not `'unsafe-inline'`.** The SPA entry document is
+  templated at startup with one inline script, the `window.__VANTIGO_APP__` runtime
+  configuration. The document and the hash are produced from the same string, so the
+  policy cannot drift away from the script it allows. Everything else in the
+  published Vite bundle is an external module.
+- **`style-src` keeps `'unsafe-inline'`.** Mantine renders its theme CSS variables
+  and component styles as inline `<style>` elements, and React style props become
+  style attributes.
 
-`img-src` allows `https:` so a configured `App__LogoUrl` and remote images inside
-the sandboxed HTML email preview still load.
+`img-src` allows `https:` so a configured `APP_LOGO_URL` and remote images inside the
+sandboxed HTML email preview still load.
 
-If a customized frontend needs a wider policy, set
-`Security__ContentSecurityPolicyReportOnly=true` to emit
+If a customized frontend needs a wider policy, set `CSP_REPORT_ONLY=1` to emit
 `Content-Security-Policy-Report-Only` while the difference is worked out. That
 disables the protection, so it is a diagnostic setting, not a destination.
 
-## OpenAPI
+## The API contract document
 
-`/openapi/v{n}.json` enumerates every endpoint and payload shape in the
-installation. It is mapped in Development and Staging and is **not mapped in
-Production**; requests there fall through to the SPA. Run the host with
-`ASPNETCORE_ENVIRONMENT=Staging` against a production-shaped configuration when
-the document is needed for client generation.
+The running server serves the merged contract of its **enabled** modules at:
+
+```text
+GET /api/openapi.json
+```
+
+It requires a session in every environment, development included — it is not
+environment-gated, and there is no Swagger, Scalar or other documentation UI in the
+image. There is no `/openapi/v1.json` route. The per-module source contracts live in
+`openapi/*.yaml` in the repository and are the right input for client generation;
+`bun run gen:client` regenerates the typed frontend client from them.
