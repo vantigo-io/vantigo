@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { visibleCustomerDetailTabs } from "./$customerId";
+import { moduleKeys } from "../../navigation";
+import { visibleCustomerDetailTabs } from "./-customer-detail-layout";
 
 const values = (enabledModules: Parameters<typeof visibleCustomerDetailTabs>[0], permissions: string[] | undefined) =>
   visibleCustomerDetailTabs(enabledModules, permissions).map((tab) => tab.value);
@@ -29,7 +30,11 @@ describe("customer detail tab visibility", () => {
     ]);
   });
 
-  it("shows only the overview while capabilities and permissions are still loading", () => {
-    expect(values(undefined, undefined)).toEqual(["overview"]);
+  // Every module in the navigation catalog ships in this build (the
+  // tenant-capabilities endpoint is gone; see the production call site in
+  // $customerId.tsx), so enabledModules is never actually undefined here.
+  // Only the permissions query is genuinely transient.
+  it("shows only the overview while permissions are still loading", () => {
+    expect(values(moduleKeys, undefined)).toEqual(["overview"]);
   });
 });

@@ -409,44 +409,41 @@ const DashboardPage = () => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
 
-  // The tenant slug segment was collapsed away (task 3 of the frontend
-  // de-tenanting plan); destinations below are plain, unprefixed paths.
-  const hrefFor = (path: string) => path;
   const attentionHref = (item: (typeof attentionItems)[number]) => {
     if (item.module === "communications" && item.type === "conversationNoReply") {
-      return `${hrefFor("/inbox")}?conversationId=${encodeURIComponent(item.entityId)}`;
+      return `/inbox?conversationId=${encodeURIComponent(item.entityId)}`;
     }
-    if (item.module === "customers") return `${hrefFor("/customers")}/${encodeURIComponent(item.entityId)}`;
-    if (item.module === "products") return `${hrefFor("/products")}/${encodeURIComponent(item.entityId)}`;
-    if (item.module === "energy") return `${hrefFor("/energy/metering-points")}/${encodeURIComponent(item.entityId)}`;
-    return hrefFor("/inbox");
+    if (item.module === "customers") return `/customers/${encodeURIComponent(item.entityId)}`;
+    if (item.module === "products") return `/products/${encodeURIComponent(item.entityId)}`;
+    if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
+    return "/inbox";
   };
   const setupItems = [
     {
       module: "customers" as ModuleKey,
       label: t("dashboard.addFirstCustomer"),
-      href: hrefFor("/customers"),
+      href: "/customers",
       complete: (customersSummary.data?.totalActiveCustomers ?? 0) > 0,
       loading: customersSummary.isPending,
     },
     {
       module: "communications" as ModuleKey,
       label: t("dashboard.connectChannel"),
-      href: hrefFor("/inbox"),
+      href: "/inbox",
       complete: (communicationsSummary.data?.newConversations ?? 0) > 0,
       loading: communicationsSummary.isPending,
     },
     {
       module: "products" as ModuleKey,
       label: t("dashboard.createProduct"),
-      href: hrefFor("/products"),
+      href: "/products",
       complete: (productsSummary.data?.totalActiveProducts ?? 0) > 0,
       loading: productsSummary.isPending,
     },
     {
       module: "energy" as ModuleKey,
       label: t("dashboard.configureMetering"),
-      href: hrefFor("/energy/metering-points"),
+      href: "/energy/metering-points",
       complete: (energySummary.data?.meteringPointCount ?? 0) > 0,
       loading: energySummary.isPending,
     },
@@ -509,7 +506,7 @@ const DashboardPage = () => {
 
       <SimpleGrid cols={{ base: 1, xs: 2, md: modules.length || 1 }} spacing="md">
         {modules.map((module) => {
-          const href = hrefFor(module.path);
+          const href = module.path;
           if (module.module === "customers") {
             return (
               <KpiCard
@@ -674,7 +671,7 @@ const DashboardPage = () => {
               action: selectedMetric ? (
                 <Anchor
                   component={Link}
-                  to={hrefFor(moduleCards.find((item) => item.module === selectedMetric.module)?.path ?? "/")}
+                  to={moduleCards.find((item) => item.module === selectedMetric.module)?.path ?? "/"}
                 >
                   {t("dashboard.openModule")}
                 </Anchor>
@@ -762,7 +759,7 @@ const DashboardPage = () => {
               emptyState={{
                 message: t("dashboard.noWidgetData"),
                 action: (
-                  <Anchor component={Link} to={hrefFor("/inbox")}>
+                  <Anchor component={Link} to="/inbox">
                     {t("dashboard.openModule")}
                   </Anchor>
                 ),
@@ -809,7 +806,7 @@ const DashboardPage = () => {
               emptyState={{
                 message: t("dashboard.noWidgetData"),
                 action: (
-                  <Anchor component={Link} to={hrefFor("/products")}>
+                  <Anchor component={Link} to="/products">
                     {t("dashboard.openModule")}
                   </Anchor>
                 ),
@@ -840,7 +837,7 @@ const DashboardPage = () => {
             emptyState={{
               message: t("dashboard.noActivity"),
               action: modules[0] ? (
-                <Anchor component={Link} to={hrefFor(modules[0].path)}>
+                <Anchor component={Link} to={modules[0].path}>
                   {t("dashboard.openModule")}
                 </Anchor>
               ) : undefined,
@@ -884,7 +881,7 @@ const DashboardPage = () => {
                       {t(module.title)}
                     </Text>
                   </Group>
-                  <Anchor component={Link} to={hrefFor(module.path)} size="sm">
+                  <Anchor component={Link} to={module.path} size="sm">
                     {t("dashboard.open")}
                   </Anchor>
                 </Group>
