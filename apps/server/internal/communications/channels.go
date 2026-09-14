@@ -319,7 +319,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		// First statement of the transaction, before AnyChannelExists: the
 		// "first channel ever created is forced default" decision races too,
 		// so the read it is based on must be inside the lock, not before it.
-		if err := lockDefaultChannelSlot(ctx, q, in.channelType); err != nil {
+		if err := lockDefaultChannelSlot(ctx, q); err != nil {
 			return err
 		}
 		anyExists, err := q.AnyChannelExists(ctx)
@@ -505,10 +505,12 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		return gen.PutCommunicationsChannelsById400JSONResponse(validationErrorBody(credErrs)), nil
 	}
 
-	isActive := existing.IsActive
-	if body.IsActive != nil {
-		isActive = *body.IsActive
-	}
+	// isActive, isDefault, the display name and the credential settings are
+	// all resolved INSIDE the transaction now, against a row re-read under
+	// the lock — see the transaction body. They used to be computed here,
+	// from `existing`, which is read through the pool before the transaction
+	// begins; that made every one of them a stale-snapshot write.
+	//
 	// inventory §19.2 item 10: IsDefault is write-once-true — an explicit
 	// false is silently ignored, there is no way to clear the default flag
 	// through this API.
@@ -518,23 +520,59 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	var resp gen.ChannelResponse
 	txErr := db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		// Taken unconditionally, not only when wantDefault: UpdateChannel
-		// writes is_default = existing.IsDefault even when the caller asked
-		// for nothing, and that value was read BEFORE this transaction. A
-		// concurrent create that demoted this row in between would otherwise
-		// have its demotion undone by this write, reintroducing a second
-		// default and the 23505 with it.
-		if err := lockDefaultChannelSlot(ctx, txq, existing.Type); err != nil {
+		if err := lockDefaultChannelSlot(ctx, txq); err != nil {
 			return err
 		}
-		isDefault := existing.IsDefault
+
+		// RE-READ UNDER THE LOCK, and write only values derived from THIS
+		// read. `existing` above is fetched through the pool at step 2,
+		// before this transaction begins, and the window between the two is
+		// not small: it contains the credential lookup, a secret open, a
+		// secret seal and a JSON marshal.
+		//
+		// This is the fourth defect ux_channels_type_is_default has produced,
+		// and the one the advisory lock alone does NOT close. Serialising the
+		// transactions does not refresh a value captured before the
+		// transaction started, so a PUT that says nothing about the default —
+		// `{"isActive": true}` — against the row that *was* the default would
+		// write is_default = true back from its stale snapshot, after a
+		// concurrent create had already demoted it. Two default rows, and a
+		// 23505 that escapes as a bare RFC 7807 409 on an operation whose
+		// contract declares no 409. The lock is not even load-bearing for it:
+		// the same collision happens uncontended whenever a create commits
+		// inside that window.
+		//
+		// Every field below comes from `current` for the same reason — a
+		// stale display name would silently revert a concurrent rename, and a
+		// stale is_active a concurrent deactivation. `existing` is still what
+		// the 404, the validation order and the credential decisions above
+		// are based on, which keeps those observable orders exactly as
+		// inventory §19.2 pins them; only the values actually WRITTEN are
+		// re-read. .NET reads its entity once and saves it tracked, so the
+		// re-read is a deliberate divergence: it is what makes the write
+		// correct under concurrency, and it cannot change a single-writer
+		// outcome, since with no concurrent writer the two reads agree.
+		current, err := txq.GetChannelByID(ctx, req.Id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Deleted between step 2's lookup and this transaction. Answer
+			// the same bare 404 step 2 would have.
+			return errChannelVanished
+		} else if err != nil {
+			return fmt.Errorf("communications: re-read channel under the lock: %w", err)
+		}
+
+		isDefault := current.IsDefault
 		if wantDefault {
 			if err := txq.ClearOtherDefaultChannels(ctx, req.Id); err != nil {
 				return err
 			}
 			isDefault = true
 		}
-		finalDisplayName := existing.DisplayName
+		isActive := current.IsActive
+		if body.IsActive != nil {
+			isActive = *body.IsActive
+		}
+		finalDisplayName := current.DisplayName
 		switch {
 		case clearDisplayName:
 			finalDisplayName = nil
@@ -547,7 +585,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		if err != nil {
 			return err
 		}
-		settingsJSON := existing.CredentialSettingsJson
+		settingsJSON := current.CredentialSettingsJson
 		if rewriteCredential {
 			// Upsert, not a bare UPDATE: a channel can reach here with no
 			// credential row at all (TestUpdateChannel_MissingCredentialWhenNoneExists
@@ -569,6 +607,9 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		return err
 	})
 	if txErr != nil {
+		if errors.Is(txErr, errChannelVanished) {
+			return gen.PutCommunicationsChannelsById404Response{}, nil
+		}
 		return nil, fmt.Errorf("communications: update channel: %w", txErr)
 	}
 	return gen.PutCommunicationsChannelsById200JSONResponse(resp), nil
@@ -583,21 +624,31 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 // inside this overload would need another caller's class to equal this one.
 const channelDefaultLockClass = 0x43484E44 // "CHND", arbitrary but memorable
 
+// errChannelVanished reports that the channel disappeared between
+// PutChannelById's step-2 lookup and its transaction's re-read under the
+// lock. It is mapped to the same bare 404 step 2 answers, never to a 500: a
+// row deleted concurrently is "not found", whichever read noticed.
+var errChannelVanished = errors.New("communications: the channel no longer exists")
+
 // lockDefaultChannelSlot takes the transaction-scoped advisory lock that
-// serialises every writer able to change which channel of one type is the
-// default. See queries/channels.sql's LockDefaultChannelSlot for why a lock
-// rather than a smarter statement or a caught violation: the PUT-vs-POST
-// pair collides on a row that does not exist yet, which no predicate can
-// visit and no row lock can reach, and the only other remedy would add a 409
-// this operation's contract does not declare.
+// serialises every writer able to change which channel is the default. See
+// queries/channels.sql's LockDefaultChannelSlot for why a lock rather than a
+// smarter statement or a caught violation: the PUT-vs-POST pair collides on a
+// row that does not exist yet, which no predicate can visit and no row lock
+// can reach, and the only other remedy would add a 409 this operation's
+// contract does not declare.
 //
-// Keyed by channel TYPE, since ux_channels_type_is_default is per type — two
-// types never wait on each other. Released automatically at commit or
-// rollback, so no path can leak it.
-func lockDefaultChannelSlot(ctx context.Context, q *store.Queries, channelType string) error {
-	if err := q.LockDefaultChannelSlot(ctx, store.LockDefaultChannelSlotParams{
-		LockClass: channelDefaultLockClass, ChannelType: channelType,
-	}); err != nil {
+// ONE GLOBAL SLOT, not one per channel type: both demote statements are
+// type-unfiltered (faithfully — .NET's are too), so the write set this
+// serialises is every channel row, and a type-keyed lock would be
+// under-scoped. That query's comment carries the full reasoning. Released
+// automatically at commit or rollback, so no path can leak it.
+//
+// The lock is necessary and NOT sufficient on its own: it serialises
+// transactions but cannot refresh a value read before one began, which is
+// why PutChannelById re-reads the row inside the transaction.
+func lockDefaultChannelSlot(ctx context.Context, q *store.Queries) error {
+	if err := q.LockDefaultChannelSlot(ctx, channelDefaultLockClass); err != nil {
 		return fmt.Errorf("communications: lock the default-channel slot: %w", err)
 	}
 	return nil

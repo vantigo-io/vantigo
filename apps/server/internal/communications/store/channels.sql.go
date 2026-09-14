@@ -291,13 +291,8 @@ func (q *Queries) ListChannels(ctx context.Context) ([]ListChannelsRow, error) {
 }
 
 const lockDefaultChannelSlot = `-- name: LockDefaultChannelSlot :exec
-SELECT pg_advisory_xact_lock($1::int, hashtext($2::text))
+SELECT pg_advisory_xact_lock($1::int, 0)
 `
-
-type LockDefaultChannelSlotParams struct {
-	LockClass   int32
-	ChannelType string
-}
 
 // LockDefaultChannelSlot serialises every writer that can change which
 // channel of one type is the default. BOTH write paths take it as the first
@@ -325,10 +320,32 @@ type LockDefaultChannelSlotParams struct {
 // The key is the two-int32 overload, namespaced by a class constant the way
 // energy's lockSupplyPeriods namespaces its own, so it shares no key space
 // with retention's single-bigint COMMRET1 lease or internal/db's migration
-// lock. The second component is the channel TYPE, so channels of different
-// types (the unique index is per type) never serialise against each other.
-func (q *Queries) LockDefaultChannelSlot(ctx context.Context, arg LockDefaultChannelSlotParams) error {
-	_, err := q.db.Exec(ctx, lockDefaultChannelSlot, arg.LockClass, arg.ChannelType)
+// lock.
+//
+// **ONE GLOBAL SLOT, not one per channel type, and that is deliberate.** The
+// obvious key is the channel type, since ux_channels_type_is_default is per
+// type — but the lock has to serialise the WRITE SET of the demote, and both
+// demote statements are type-UNFILTERED: ClearDefaultChannels clears every
+// default row and ClearOtherDefaultChannels clears every other row. That is
+// faithful, not an oversight — .NET's own demotes are unfiltered too
+// (`ChannelEndpoints.cs:29` `Where(item => item.IsDefault)` on create, `:46`
+// `Where(item => item.Id != id && item.IsDefault)` on update) — so a port
+// that filtered by type here would be the divergence.
+//
+// A type-keyed lock in front of a type-unfiltered demote is under-scoped:
+// two writers of DIFFERENT types would not serialise, yet each demotes the
+// other's row, so one demotion can be lost. No 23505 (the index is per type,
+// so two defaults of different types satisfy it) but two default rows where
+// sequential execution leaves one. Unreachable today — validateCreateChannel
+// pins type to "email" — and cheap to close now rather than leave as a trap
+// for whoever adds the second type. Channel writes are administrative and
+// rare, so one global slot costs nothing.
+//
+// If the demotes ever gain a type filter, this key should become
+// hashtext(type) in the same change, so the lock and the write set keep
+// matching.
+func (q *Queries) LockDefaultChannelSlot(ctx context.Context, lockClass int32) error {
+	_, err := q.db.Exec(ctx, lockDefaultChannelSlot, lockClass)
 	return err
 }
 
