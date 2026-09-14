@@ -3,8 +3,8 @@ name: CI
 # The whole pipeline: the frontend gate, the Go server gate, the compose and
 # CodeQL checks, the container image, and the release. The Go server's three
 # own workflows (server-ci.yml, server-release.yml, server-test.yml) folded in
-# here at the cutover, when the .NET tree — and with it `dotnet publish` and
-# GitVersion — was deleted.
+# here at the cutover, when the .NET tree — and with it its publish pipeline
+# and GitVersion — was deleted.
 #
 # A pull request builds, smoke-tests, scans and pushes a preview image; a push
 # to main publishes the release image, signs it and cuts the GitHub Release; a
@@ -97,6 +97,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: 💾 Set up toolchain
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
@@ -256,6 +257,8 @@ jobs:
     steps:
       - name: 🛎️ Checkout codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: 🔍 Validate compose configuration
         working-directory: deploy/compose
@@ -299,6 +302,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: 🔍 Initialize CodeQL
         uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
@@ -509,7 +513,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.metadata.outputs.tag }}
         run: |
-          existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2>/dev/null || true)"
+          # An annotated tag's ref points at the tag object, not at a commit, so
+          # .object.sha alone would compare a tag sha against $GITHUB_SHA and
+          # abort reporting a sha that matches nothing visible. Dereference it.
+          ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha' 2>/dev/null || true)"
+          existing=""
+          case "$ref" in
+            'tag '*) existing="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/${ref#tag }" --jq .object.sha)" ;;
+            'commit '*) existing="${ref#commit }" ;;
+          esac
           if [ -n "$existing" ]; then
             if [ "$existing" = "$GITHUB_SHA" ]; then
               echo "$TAG already points at $GITHUB_SHA — this is a re-run of the same commit; continuing."

@@ -56,4 +56,34 @@ describe("frontend API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/v1/customers?page=1"]);
   });
+
+  // The cutover removed this package's CSRF apparatus: ensureCsrfToken's
+  // preflight against GET /api/v1/identity/antiforgery and the X-XSRF-TOKEN
+  // header it set. The Go server has neither — it relies on
+  // http.CrossOriginProtection — so the preflight would 404 and reject every
+  // mutating request before its business fetch was ever issued. Nothing here
+  // pinned that removal: when it was made, only the customers app's suite went
+  // red and the four other apps caught nothing. These two tests are the pin,
+  // in the package that owns the behaviour.
+  it("issues exactly one fetch for a mutating request, with no antiforgery preflight", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient();
+
+    await expect(client.request("/api/v1/customers", { method: "POST" })).resolves.toEqual({ ok: true });
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(["/api/v1/customers"]);
+  });
+
+  it("sends no antiforgery token header on a mutating request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createApiClient();
+
+    await client.request("/api/v1/customers", { method: "POST", body: "{}" });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headerNames = [...new Headers(init.headers).keys()];
+    expect(headerNames.filter((name) => /xsrf|csrf/i.test(name))).toEqual([]);
+  });
 });
