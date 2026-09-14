@@ -645,14 +645,13 @@ func (s *server) verifyPasskeyLogin(ctx context.Context, tx pgx.Tx, r *http.Requ
 	authed := authUser(u.ID, u.DisplayName, u.Email, roles)
 	return loginOK{
 		cookies: cookies{s.access.newSessionCookie(token, false)},
-		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
+		body: gen.AuthSuccessResponse{
 			User:              &authed,
 			RequiresTwoFactor: false,
 			TwoFactorEnabled:  u.TotpEnabled,
 			// .NET's literal (:607-609): the passkey was the second factor.
 			MfaEnrollmentRequired: false,
-			Tenants:               noTenants(),
-		}},
+		},
 	}, nil
 }
 

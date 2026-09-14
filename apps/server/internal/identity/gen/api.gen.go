@@ -106,23 +106,19 @@ type AssignRolesResponse struct {
 
 // AuthSessionResponse defines model for AuthSessionResponse.
 type AuthSessionResponse struct {
-	ActiveTenantId        *openapi_types.UUID     `json:"activeTenantId"`
-	IsSystemAdmin         bool                    `json:"isSystemAdmin"`
-	MfaAuthenticated      bool                    `json:"mfaAuthenticated"`
-	MfaEnrollmentRequired bool                    `json:"mfaEnrollmentRequired"`
-	Tenants               []TenantSessionResponse `json:"tenants"`
-	TwoFactorEnabled      bool                    `json:"twoFactorEnabled"`
-	User                  AuthUserResponse        `json:"user"`
+	IsSystemAdmin         bool             `json:"isSystemAdmin"`
+	MfaAuthenticated      bool             `json:"mfaAuthenticated"`
+	MfaEnrollmentRequired bool             `json:"mfaEnrollmentRequired"`
+	TwoFactorEnabled      bool             `json:"twoFactorEnabled"`
+	User                  AuthUserResponse `json:"user"`
 }
 
 // AuthSuccessResponse defines model for AuthSuccessResponse.
 type AuthSuccessResponse struct {
-	ActiveTenantId        *openapi_types.UUID      `json:"activeTenantId,omitempty"`
-	MfaEnrollmentRequired bool                     `json:"mfaEnrollmentRequired"`
-	RequiresTwoFactor     bool                     `json:"requiresTwoFactor"`
-	Tenants               *[]TenantSessionResponse `json:"tenants,omitempty"`
-	TwoFactorEnabled      bool                     `json:"twoFactorEnabled"`
-	User                  *AuthUserResponse        `json:"user"`
+	MfaEnrollmentRequired bool              `json:"mfaEnrollmentRequired"`
+	RequiresTwoFactor     bool              `json:"requiresTwoFactor"`
+	TwoFactorEnabled      bool              `json:"twoFactorEnabled"`
+	User                  *AuthUserResponse `json:"user"`
 }
 
 // AuthUserResponse defines model for AuthUserResponse.
@@ -746,13 +742,6 @@ type SystemMaintenanceRequest struct {
 type SystemMaintenanceStatus struct {
 	Maintenance bool    `json:"maintenance"`
 	Message     *string `json:"message"`
-}
-
-// TenantSessionResponse defines model for TenantSessionResponse.
-type TenantSessionResponse struct {
-	Id   openapi_types.UUID `json:"id"`
-	Name string             `json:"name"`
-	Slug string             `json:"slug"`
 }
 
 // TwoFactorRequest defines model for TwoFactorRequest.

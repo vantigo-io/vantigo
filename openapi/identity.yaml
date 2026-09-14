@@ -222,20 +222,12 @@ components:
             x-vantigo-source: Vantigo.Identity
         AuthSessionResponse:
             properties:
-                activeTenantId:
-                    format: uuid
-                    nullable: true
-                    type: string
                 isSystemAdmin:
                     type: boolean
                 mfaAuthenticated:
                     type: boolean
                 mfaEnrollmentRequired:
                     type: boolean
-                tenants:
-                    items:
-                        $ref: '#/components/schemas/TenantSessionResponse'
-                    type: array
                 twoFactorEnabled:
                     type: boolean
                 user:
@@ -246,25 +238,14 @@ components:
                 - mfaEnrollmentRequired
                 - mfaAuthenticated
                 - isSystemAdmin
-                - tenants
-                - activeTenantId
             type: object
             x-vantigo-source: Vantigo.Identity
         AuthSuccessResponse:
             properties:
-                activeTenantId:
-                    format: uuid
-                    nullable: true
-                    type: string
                 mfaEnrollmentRequired:
                     type: boolean
                 requiresTwoFactor:
                     type: boolean
-                tenants:
-                    items:
-                        $ref: '#/components/schemas/TenantSessionResponse'
-                    nullable: true
-                    type: array
                 twoFactorEnabled:
                     type: boolean
                 user:
@@ -1746,21 +1727,6 @@ components:
             required:
                 - maintenance
                 - message
-            type: object
-            x-vantigo-source: Vantigo.Identity
-        TenantSessionResponse:
-            properties:
-                id:
-                    format: uuid
-                    type: string
-                name:
-                    type: string
-                slug:
-                    type: string
-            required:
-                - id
-                - name
-                - slug
             type: object
             x-vantigo-source: Vantigo.Identity
         TwoFactorRequest:

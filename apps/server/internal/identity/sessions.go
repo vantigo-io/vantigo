@@ -22,8 +22,7 @@ import (
 // check read them for this request, whether TOTP is enrolled, whether an
 // Owner still has to enrol while owners are required to use MFA, whether
 // this session's sign-in verified a second factor, and whether the user is
-// a SystemAdmin. Tenancy is the contract's leftover: an empty list and a
-// null active tenant (spec *Contract leftovers*).
+// a SystemAdmin.
 func (s *server) GetIdentitySession(ctx context.Context, _ gen.GetIdentitySessionRequestObject) (gen.GetIdentitySessionResponseObject, error) {
 	p, err := callerFrom(ctx)
 	if err != nil {
@@ -43,8 +42,6 @@ func (s *server) GetIdentitySession(ctx context.Context, _ gen.GetIdentitySessio
 		MfaEnrollmentRequired: slices.Contains(p.Roles, RoleOwner) && s.deps.Config.OwnersRequireMFA && !u.TotpEnabled,
 		MfaAuthenticated:      p.MFAVerified,
 		IsSystemAdmin:         slices.Contains(p.Roles, RoleSystemAdmin),
-		Tenants:               []gen.TenantSessionResponse{},
-		ActiveTenantId:        nil,
 	}, nil
 }
 

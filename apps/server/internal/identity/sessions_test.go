@@ -41,9 +41,8 @@ func getSession(t *testing.T, c *client) (authSession, *resp) {
 
 // TestSession_DescribesTheCallerAndTheirSession proves /session's body:
 // the user with every role in orderRoles order, TOTP state, the Owner
-// enrolment hint, whether this session verified a second factor, the
-// SystemAdmin flag, and the contract's leftover tenancy as an empty list
-// and a null.
+// enrolment hint, whether this session verified a second factor, and the
+// SystemAdmin flag.
 func TestSession_DescribesTheCallerAndTheirSession(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, withEnv("OWNERS_REQUIRE_MFA", "1"))
@@ -51,16 +50,13 @@ func TestSession_DescribesTheCallerAndTheirSession(t *testing.T) {
 	const email = "admin@example.test"
 	id := h.seedUser(t, email, userPassword, billing, identity.RoleUserID, identity.RoleOwnerID, identity.RoleSystemAdminID)
 
-	s, r := getSession(t, h.login(t, email, userPassword))
+	s, _ := getSession(t, h.login(t, email, userPassword))
 	if s.User.ID != id || s.User.DisplayName != email || s.User.Email == nil || *s.User.Email != email ||
 		!slices.Equal(s.User.Roles, []string{"SystemAdmin", "Owner", "User", "Billing"}) {
 		t.Errorf("user = %+v", s.User)
 	}
 	if s.TwoFactorEnabled || !s.MfaEnrollmentRequired || s.MfaAuthenticated || !s.IsSystemAdmin {
 		t.Errorf("session = %+v, want no TOTP, enrolment required, no MFA, SystemAdmin", s)
-	}
-	if !strings.Contains(string(r.body), `"tenants":[]`) || !strings.Contains(string(r.body), `"activeTenantId":null`) {
-		t.Errorf("body %s: want tenants [] and activeTenantId null", r.body)
 	}
 
 	// With TOTP enrolled and a session that verified it: the hint goes and
