@@ -674,7 +674,7 @@ export interface operations {
                     "application/json": components["schemas"]["CreateCustomerResponse"];
                 };
             };
-            /** @description Bad Request — a validation problem (application/problem+json), or the host's antiforgery rejection (application/json, code csrf_validation_failed) of a cookie-authenticated request without a valid X-XSRF-TOKEN header. */
+            /** @description Bad Request — a validation problem (application/problem+json), or the host's cross-origin rejection (application/json, code csrf_validation_failed) of an unsafe cookie-authenticated request whose Origin or Sec-Fetch-Site marks it cross-site. The check is on the request's origin; no antiforgery token is involved. */
             400: {
                 headers: {
                     [name: string]: unknown;
