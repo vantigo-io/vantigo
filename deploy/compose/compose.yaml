@@ -11,9 +11,11 @@ name: vantigo
 #
 # Database roles: POSTGRES_USER owns the schemas and runs the migration job.
 # POSTGRES_APP_USER is a least-privilege runtime role (NOSUPERUSER NOBYPASSRLS,
-# table DML only, owns nothing). VANTIGO_DB_USER selects which of the two the
-# API connects as and defaults to the runtime role, so the tenant row-level
-# security policies apply to the application. See README.md and docs/tenancy.md.
+# table DML only, owns nothing) so a compromised API process cannot alter the
+# schema or escalate. VANTIGO_DB_USER selects which of the two the API
+# connects as and defaults to the runtime role. This is single-tenant: there
+# is no per-row tenant isolation to preserve, only the usual defense-in-depth
+# of not running the API as the schema owner. See README.md.
 
 services:
   postgres:
@@ -39,7 +41,9 @@ services:
     command: ["migrate"]
     env_file: vantigo.env
     environment:
-      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${POSTGRES_USER:-vantigo};Password=${POSTGRES_PASSWORD}
+      # Owner role: applying migrations needs the DDL rights the runtime role
+      # below does not have.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vantigo}:${POSTGRES_PASSWORD}@postgres:5432/vantigo
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,7 +54,14 @@ services:
     command: ["api"]
     env_file: vantigo.env
     environment:
-      ConnectionStrings__vantigo: Host=postgres;Database=vantigo;Username=${VANTIGO_DB_USER:-${POSTGRES_APP_USER:-vantigo_app}};Password=${VANTIGO_DB_PASSWORD:-${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD}}}
+      # Least-privilege runtime role: what the API queries and writes as, so
+      # a compromised API process cannot touch the schema or act as its owner.
+      DATABASE_URL: postgresql://${VANTIGO_DB_USER:-${POSTGRES_APP_USER:-vantigo_app}}:${VANTIGO_DB_PASSWORD:-${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD}}}@postgres:5432/vantigo
+      # `api` mode applies migrations itself before it starts serving. Point
+      # that at the owner role so it runs with the DDL rights DATABASE_URL
+      # above deliberately lacks; it is a no-op once vantigo-migrate has
+      # already applied everything, which is why that job still runs first.
+      MIGRATIONS_DATABASE_URL: postgresql://${POSTGRES_USER:-vantigo}:${POSTGRES_PASSWORD}@postgres:5432/vantigo
     ports:
       - "${VANTIGO_PORT:-8080}:8080"
     depends_on:
@@ -61,11 +72,17 @@ services:
       # app execs itself with its own "healthcheck" command instead of a
       # CMD-SHELL script. It probes /health/ready: startup complete,
       # PostgreSQL reachable, and object storage reachable if configured.
-      test: ["CMD", "/app/Vantigo.Host", "healthcheck"]
+      # This must stay exec form: an httpGet-style probe would send this
+      # container's own address as the Host header, and internal/security/
+      # hostfilter.go only allows APP_URL's host plus loopback.
+      test: ["CMD", "/app/vantigo", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 6
       start_period: 30s
+    # Must exceed SHUTDOWN_TIMEOUT (30s default; see vantigo.env.example) so
+    # the graceful drain always finishes before Compose sends SIGKILL.
+    stop_grace_period: 35s
     restart: unless-stopped
 
 configs:
@@ -79,8 +96,9 @@ configs:
       \connect vantigo
 
       -- Least-privilege runtime role. It is not a superuser, cannot bypass
-      -- row-level security, and owns no schema or table, so the tenant RLS
-      -- policies actually apply to it. Default privileges are attached to the
+      -- row-level security (there is none defined here — NOBYPASSRLS is
+      -- forward defense, not something this schema currently relies on), and
+      -- owns no schema or table. Default privileges are attached to the
       -- owner role so the tables the migration job creates later are covered.
       CREATE ROLE "${POSTGRES_APP_USER:-vantigo_app}"
           LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOINHERIT
