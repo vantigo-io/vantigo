@@ -1,5 +1,0 @@
-<Project>
-  <Target Name="InstallFrontendDependencies" BeforeTargets="Publish">
-    <Exec Command="bun install --frozen-lockfile" WorkingDirectory="$(SolutionDir)" />
-  </Target>
-</Project>

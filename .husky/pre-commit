@@ -4,17 +4,14 @@ set -e
 REPOSITORY_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPOSITORY_ROOT"
 
-# The toolchain is pinned with mise, so bun and dotnet are not on PATH in a
-# shell that has not activated it. Route through mise when it is available and
-# fall back to PATH otherwise.
+# The toolchain is pinned with mise, so bun is not on PATH in a shell that has
+# not activated it. Route through mise when it is available and fall back to
+# PATH otherwise.
 if command -v mise >/dev/null 2>&1; then
   run() { mise exec -- "$@"; }
 else
   run() { "$@"; }
 fi
-
-printf '%s\n' 'Running: bun run toolchain:check'
-run bun run toolchain:check
 
 printf '%s\n' 'Running: bun run translations:check'
 run bun run translations:check
@@ -24,9 +21,6 @@ run bun run i18n:test
 
 printf '%s\n' 'Running: bunx biome check .'
 run bunx biome check .
-
-printf '%s\n' 'Running: dotnet format "Vantigo.slnx" --verify-no-changes --no-restore'
-run dotnet format "Vantigo.slnx" --verify-no-changes --no-restore
 
 printf '%s\n' 'Running: gofmt -l apps/server'
 unformatted=$(run gofmt -l apps/server)
