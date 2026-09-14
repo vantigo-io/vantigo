@@ -40,7 +40,7 @@ run = [
   "cd apps/server && golangci-lint run",
   "cd apps/server && go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...",
   "shellcheck scripts/*.sh",
-  "actionlint .github/workflows/*.yml",
+  "actionlint",
   "goreleaser check",
 ]
 
