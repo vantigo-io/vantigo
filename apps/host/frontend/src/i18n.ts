@@ -8,11 +8,11 @@ import { authCatalog } from "./catalogs/auth";
 import { commonCatalog } from "./catalogs/common";
 import { customerCatalog } from "./catalogs/customer";
 import { dashboardCatalog } from "./catalogs/dashboard";
+import { errorCatalog } from "./catalogs/error";
 import { legalCatalog } from "./catalogs/legal";
 import { navigationCatalog } from "./catalogs/navigation";
 import { settingsCatalog } from "./catalogs/settings";
 import { systemAdminCatalog } from "./catalogs/system-admin";
-import { tenantCatalog } from "./catalogs/tenant";
 
 export {
   getHostBuiltInRoleTranslation,
@@ -26,11 +26,10 @@ export {
   translateHostRole,
   translateHostRoleDescription,
 } from "./catalogs/admin";
-export { translateSystemModule } from "./catalogs/system-admin";
 
 export const hostCatalog = {
   en: {
-    ...tenantCatalog.en,
+    ...errorCatalog.en,
     ...navigationCatalog.en,
     ...commonCatalog.en,
     ...authCatalog.en,
@@ -42,7 +41,7 @@ export const hostCatalog = {
     ...legalCatalog.en,
   },
   nb: {
-    ...tenantCatalog.nb,
+    ...errorCatalog.nb,
     ...navigationCatalog.nb,
     ...commonCatalog.nb,
     ...authCatalog.nb,
