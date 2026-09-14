@@ -17,7 +17,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
@@ -37,7 +37,9 @@ interface ContactsSearch {
 export const ContactsPage = () => {
   const { t, formatters } = useI18n("customers");
   const { page, search } = useSearch({ strict: false }) as ContactsSearch;
-  const { tenantSlug } = useParams({ strict: false });
+  // The $tenantSlug route param no longer exists (task 3 of the frontend
+  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
+  const tenantSlug: string | undefined = undefined;
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
 
@@ -205,7 +207,9 @@ export const ContactsPage = () => {
  */
 const ContactCustomersCell = ({ item }: { item: ContactListItem }) => {
   const customer = item.customer;
-  const { tenantSlug } = useParams({ strict: false });
+  // The $tenantSlug route param no longer exists (task 3 of the frontend
+  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
+  const tenantSlug: string | undefined = undefined;
 
   if (customer) {
     return (

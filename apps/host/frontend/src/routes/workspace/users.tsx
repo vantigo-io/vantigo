@@ -39,9 +39,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { appUrl, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
-import { createInvitation, listInvitations } from "../../../api/account-lifecycle";
-import { fetchSession, sessionQueryKey } from "../../../api/auth";
-import { ApiValidationError } from "../../../api/request";
+import { createInvitation, listInvitations } from "../../api/account-lifecycle";
+import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { ApiValidationError } from "../../api/request";
 import {
   createUser,
   deleteUser,
@@ -53,9 +53,9 @@ import {
   setUserPassword,
   type UserRole,
   updateUser,
-} from "../../../api/users";
-import { translateHostRole } from "../../../i18n";
-import "../../../i18n";
+} from "../../api/users";
+import { translateHostRole } from "../../i18n";
+import "../../i18n";
 
 const roles = ["User", "Owner"] as const;
 
@@ -380,11 +380,7 @@ const UsersPage = () => {
             </Text>
           </Card>
         ))}
-        <Anchor
-          component={Link}
-          to="/$tenantSlug/settings/invitations"
-          style={{ textDecoration: "none", color: "inherit" }}
-        >
+        <Anchor component={Link} to="/workspace/invitations" style={{ textDecoration: "none", color: "inherit" }}>
           <Card withBorder radius="md" padding="md">
             <Text size="sm" c="dimmed">
               {t("admin.pendingInvitations")}
@@ -598,7 +594,7 @@ const UsersPage = () => {
 function passwordValid(value: string) {
   return value.length >= 12 && /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value);
 }
-export const Route = createFileRoute("/$tenantSlug/settings/users")({
+export const Route = createFileRoute("/workspace/users")({
   beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
     if (!session?.user.roles.includes("Owner")) throw redirect({ to: "/" });

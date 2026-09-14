@@ -5,16 +5,16 @@ import { createFileRoute, notFound, Outlet, useMatches, useNavigate, useParams }
 import { customerQueryOptions, NotFoundError } from "@vantigo/customers-ui/api/customers";
 import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$customerId";
 import { useI18n } from "@vantigo/frontend-shell";
-import { fetchSession, sessionQueryKey } from "../../../api/auth";
-import { getAuthorizationMe } from "../../../api/authorization";
-import { hasPermissions, type ModuleKey } from "../../../navigation";
-import "../../../i18n";
+import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { getAuthorizationMe } from "../../api/authorization";
+import { hasPermissions, type ModuleKey } from "../../navigation";
+import "../../i18n";
 
 type CustomerDetailTab = {
   value: "overview" | "energy" | "correspondence";
   labelKey: "customer.overviewTab" | "customer.energyTab" | "customer.correspondenceTab";
   icon: typeof IconLayoutDashboard;
-  to: "/$tenantSlug/customers/$customerId" | "/$tenantSlug/customers/$customerId/energy";
+  to: "/customers/$customerId" | "/customers/$customerId/energy";
   /** The module that must be enabled for the tenant; omitted = always shown. */
   module?: ModuleKey;
   /** Any one of these grants the tab; omitted = no permission needed. */
@@ -26,13 +26,13 @@ export const customerDetailTabs: CustomerDetailTab[] = [
     value: "overview",
     labelKey: "customer.overviewTab",
     icon: IconLayoutDashboard,
-    to: "/$tenantSlug/customers/$customerId",
+    to: "/customers/$customerId",
   },
   {
     value: "energy",
     labelKey: "customer.energyTab",
     icon: IconBolt,
-    to: "/$tenantSlug/customers/$customerId/energy",
+    to: "/customers/$customerId/energy",
     module: "energy",
     requiredPermissions: ["energy:metering-points-view"],
   },
@@ -40,7 +40,7 @@ export const customerDetailTabs: CustomerDetailTab[] = [
     value: "correspondence",
     labelKey: "customer.correspondenceTab",
     icon: IconMessages,
-    to: "/$tenantSlug/customers/$customerId",
+    to: "/customers/$customerId",
     module: "communications",
     requiredPermissions: ["communications:conversations-view"],
   },
@@ -59,7 +59,7 @@ export const visibleCustomerDetailTabs = (
 
 const CustomerDetailLayout = () => {
   const { t } = useI18n("host");
-  const { customerId, tenantSlug } = useParams({ from: "/$tenantSlug/customers/$customerId" });
+  const { customerId } = useParams({ from: "/customers/$customerId" });
   const matches = useMatches();
   const navigate = useNavigate();
   // These queries share the root layout's keys, so they read its cache rather
@@ -77,9 +77,7 @@ const CustomerDetailLayout = () => {
   // de-tenanting plan); enabled modules are permanently unknown, matching
   // the "still loading" case this function already handles.
   const visibleTabs = visibleCustomerDetailTabs(undefined, authorization.data?.permissions);
-  const activeTab = matches.some((match) => match.routeId === "/$tenantSlug/customers/$customerId/energy")
-    ? "energy"
-    : "overview";
+  const activeTab = matches.some((match) => match.routeId === "/customers/$customerId/energy") ? "energy" : "overview";
 
   return (
     <>
@@ -92,8 +90,8 @@ const CustomerDetailLayout = () => {
             if (tab)
               void (navigate as (options: unknown) => void)(
                 tab.value === "correspondence"
-                  ? { to: "/$tenantSlug/inbox", params: { tenantSlug }, search: { customerId: String(customerId) } }
-                  : { to: tab.to, params: { tenantSlug, customerId } },
+                  ? { to: "/inbox", search: { customerId: String(customerId) } }
+                  : { to: tab.to, params: { customerId } },
               );
           }}
         >
@@ -110,7 +108,7 @@ const CustomerDetailLayout = () => {
     </>
   );
 };
-export const Route = createFileRoute("/$tenantSlug/customers/$customerId")({
+export const Route = createFileRoute("/customers/$customerId")({
   params: {
     parse: ({ customerId }) => ({ customerId: Number(customerId) }),
     stringify: ({ customerId }) => ({ customerId: String(customerId) }),

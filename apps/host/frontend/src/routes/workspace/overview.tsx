@@ -17,9 +17,9 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
-import { fetchSession, sessionQueryKey } from "../../../api/auth";
-import { getIdentitySystemStatus } from "../../../api/system-status";
-import "../../../i18n";
+import { fetchSession, sessionQueryKey } from "../../api/auth";
+import { getIdentitySystemStatus } from "../../api/system-status";
+import "../../i18n";
 
 const providerName = (value: string | null, t: (key: string) => string) => {
   if (!value) return t("common.disabled");
@@ -136,7 +136,7 @@ const AdminDashboardPage = () => {
                 <Metric label={t("common.disabled")} value={status.data?.disabled ?? "—"} />
                 <Metric label={t("admin.pendingInvitations")} value={status.data?.pendingInvitations ?? "—"} />
               </SimpleGrid>
-              <Anchor component={Link} to="/$tenantSlug/settings/users" size="sm" mt="lg" display="block">
+              <Anchor component={Link} to="/workspace/users" size="sm" mt="lg" display="block">
                 {t("admin.viewUsers")}
               </Anchor>
             </ManagementCard>
@@ -147,7 +147,7 @@ const AdminDashboardPage = () => {
             >
               <Group justify="space-between">
                 <Metric label={t("admin.pendingInvitations")} value={status.data?.pendingInvitations ?? "—"} />
-                <Anchor component={Link} to="/$tenantSlug/settings/invitations" size="sm">
+                <Anchor component={Link} to="/workspace/invitations" size="sm">
                   {t("admin.manageInvitations")}
                 </Anchor>
               </Group>
@@ -157,7 +157,7 @@ const AdminDashboardPage = () => {
               icon={IconUsers}
               description={t("admin.accessControlDescription")}
             >
-              <Anchor component={Link} to="/$tenantSlug/settings/roles" size="sm">
+              <Anchor component={Link} to="/workspace/roles" size="sm">
                 {t("admin.manageRoles")}
               </Anchor>
             </ManagementCard>
@@ -209,7 +209,7 @@ const AdminDashboardPage = () => {
   );
 };
 
-export const Route = createFileRoute("/$tenantSlug/settings/overview")({
+export const Route = createFileRoute("/workspace/overview")({
   beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
     if (!session?.user.roles.includes("Owner")) throw redirect({ to: "/" });

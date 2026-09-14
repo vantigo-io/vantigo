@@ -206,8 +206,8 @@ describe("AppSpotlight navigation authorization", () => {
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "/$tenantSlug/energy/metering-points/$meteringPointId",
-        params: { tenantSlug: "acme", meteringPointId: meteringPoint.id },
+        to: "/energy/metering-points/$meteringPointId",
+        params: { meteringPointId: meteringPoint.id },
       }),
     );
   });

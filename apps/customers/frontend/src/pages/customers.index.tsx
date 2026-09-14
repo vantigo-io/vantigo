@@ -16,7 +16,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { KpiCard, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
@@ -33,7 +33,9 @@ interface CustomersSearch {
 
 export const CustomersPage = () => {
   const { t, formatters } = useI18n("customers");
-  const { tenantSlug } = useParams({ strict: false });
+  // The $tenantSlug route param no longer exists (task 3 of the frontend
+  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
+  const tenantSlug: string | undefined = undefined;
   const { page, search } = useSearch({ strict: false }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 

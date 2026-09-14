@@ -28,14 +28,14 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
-import { fetchSession, sessionQueryKey } from "../../api/auth";
-import { getAuthorizationMe } from "../../api/authorization";
-import { request } from "../../api/request";
-import { hasPermissions, type ModuleKey } from "../../navigation";
-import "../../i18n";
+import { fetchSession, sessionQueryKey } from "../api/auth";
+import { getAuthorizationMe } from "../api/authorization";
+import { request } from "../api/request";
+import { hasPermissions, type ModuleKey } from "../navigation";
+import "../i18n";
 
 type DashboardPreset = "7d" | "30d" | "90d" | "12m" | "custom";
 type DateRange = { from: Date; to: Date };
@@ -230,9 +230,8 @@ const relativeTime = (value: string, locale: string) => {
 
 const DashboardPage = () => {
   const { t, formatters, locale } = useI18n("host");
-  const { tenantSlug } = useParams({ from: "/$tenantSlug" });
   const search = Route.useSearch();
-  const navigate = useNavigate({ from: "/$tenantSlug/" });
+  const navigate = useNavigate({ from: "/dashboard" });
   const { data: session } = useQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 300_000 });
   const authorization = useQuery({
     queryKey: ["authorization", "me", "none"],
@@ -407,10 +406,9 @@ const DashboardPage = () => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
 
-  // The tenants list was deleted from Session (task 2); there is no longer a
-  // display name to look up, so this falls back to the raw slug.
-  const tenantName = tenantSlug;
-  const hrefFor = (path: string) => `/${encodeURIComponent(tenantSlug)}${path}`;
+  // The tenant slug segment was collapsed away (task 3 of the frontend
+  // de-tenanting plan); destinations below are plain, unprefixed paths.
+  const hrefFor = (path: string) => path;
   const attentionHref = (item: (typeof attentionItems)[number]) => {
     if (item.module === "communications" && item.type === "conversationNoReply") {
       return `${hrefFor("/inbox")}?conversationId=${encodeURIComponent(item.entityId)}`;
@@ -475,7 +473,7 @@ const DashboardPage = () => {
       <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
         <Stack gap={2}>
           <Text c="dimmed">{t("dashboard.greeting", { name: session?.user.displayName ?? "" })}</Text>
-          <Title order={2}>{tenantName}</Title>
+          <Title order={2}>{t("dashboard.title")}</Title>
         </Stack>
         <Group align="flex-end" gap="sm">
           <SegmentedControl
@@ -896,7 +894,7 @@ const DashboardPage = () => {
   );
 };
 
-export const Route = createFileRoute("/$tenantSlug/")({
+export const Route = createFileRoute("/dashboard")({
   validateSearch: (search: Record<string, unknown>) => {
     const rawPreset = search.preset;
     const hasCustomDates = typeof search.from === "string" && typeof search.to === "string";

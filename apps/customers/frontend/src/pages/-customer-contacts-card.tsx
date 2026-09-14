@@ -20,7 +20,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconUserOff, IconUsersGroup } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
@@ -46,7 +46,9 @@ import "../i18n";
 export const CustomerContactsCard = ({ customerId }: { customerId: number }) => {
   const { t } = useI18n("customers");
   const navigate = useNavigate() as (options: unknown) => void;
-  const { tenantSlug } = useParams({ strict: false });
+  // The $tenantSlug route param no longer exists (task 3 of the frontend
+  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
+  const tenantSlug: string | undefined = undefined;
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery(customerContactsQueryOptions(customerId));
 
