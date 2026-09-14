@@ -19,9 +19,6 @@ export type ApiClientOptions = {
 };
 
 export type ApiClient = {
-  clearCsrfToken: () => void;
-  ensureCsrfToken: () => Promise<string>;
-  getCsrfToken: () => string | null;
   request: <T>(url: string, init?: RequestOptions) => Promise<T>;
   setAuthStateClearer: (clearer: (() => void | Promise<void>) | undefined) => void;
   setUnauthorizedHandler: (handler: (() => void | Promise<void>) | undefined) => void;
@@ -100,9 +97,6 @@ const apiError = (message: string, status: number, fields?: Record<string, strin
 
 export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient => {
   const options = { ...defaultOptions, ...clientOptions };
-  let csrfToken: string | null = null;
-  let csrfTokenRequest: Promise<string> | undefined;
-  let csrfGeneration = 0;
   let onUnauthorized: (() => void | Promise<void>) | undefined;
   let clearAuthState: () => void | Promise<void> = () => undefined;
 
@@ -111,51 +105,15 @@ export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient
     return transformedUrl.startsWith("/") ? options.resolveUrl(transformedUrl) : transformedUrl;
   };
 
-  const clearCsrfToken = () => {
-    csrfGeneration += 1;
-    csrfToken = null;
-    csrfTokenRequest = undefined;
-  };
-
-  const ensureCsrfToken = async (): Promise<string> => {
-    if (csrfToken) return csrfToken;
-    if (csrfTokenRequest) return csrfTokenRequest;
-
-    const generation = csrfGeneration;
-    const requestPromise = (async () => {
-      const response = await fetch(requestUrl("/api/v1/identity/antiforgery"), { credentials: "include" });
-      const body = await readJson<{ token?: unknown; error?: { message?: unknown } }>(response).catch(() => null);
-      if (!response.ok || typeof body?.token !== "string" || body.token.length === 0) {
-        const message =
-          typeof body?.error?.message === "string" ? body.error.message : "Could not establish a secure session";
-        throw new Error(message);
-      }
-      if (generation !== csrfGeneration) throw new Error("The secure session changed while establishing a CSRF token");
-      csrfToken = body.token;
-      return body.token;
-    })();
-
-    const trackedRequest = requestPromise.finally(() => {
-      if (csrfTokenRequest === trackedRequest) csrfTokenRequest = undefined;
-    });
-    csrfTokenRequest = trackedRequest;
-    return trackedRequest;
-  };
-
   const request = async <T>(url: string, init: RequestOptions = {}): Promise<T> => {
     const { handleUnauthorized = true, ...fetchInit } = init;
-    const method = (fetchInit.method ?? "GET").toUpperCase();
     const headers = new Headers(fetchInit.headers);
-    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-      headers.set("X-XSRF-TOKEN", await ensureCsrfToken());
-    }
     const response = await fetch(requestUrl(url), {
       ...fetchInit,
       headers,
       credentials: "include",
     });
     if (response.status === 401 && handleUnauthorized) {
-      clearCsrfToken();
       try {
         await clearAuthState();
       } finally {
@@ -183,9 +141,6 @@ export const createApiClient = (clientOptions: ApiClientOptions = {}): ApiClient
   };
 
   return {
-    clearCsrfToken,
-    ensureCsrfToken,
-    getCsrfToken: () => csrfToken,
     request,
     setAuthStateClearer: (clearer) => {
       clearAuthState = clearer ?? (() => undefined);

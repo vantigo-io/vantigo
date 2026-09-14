@@ -1,4 +1,4 @@
-import { clearCsrfToken, ensureCsrfToken, request } from "./request";
+import { request } from "./request";
 
 export interface User {
   id: string;
@@ -25,18 +25,13 @@ export const fetchSession = async (): Promise<Session | null> => {
     throw error;
   }
 };
-export const signIn = async (email: string, password: string) => {
-  await ensureCsrfToken();
-  const session = await request<Session>("/api/v1/identity/login", {
+export const signIn = (email: string, password: string) =>
+  request<Session>("/api/v1/identity/login", {
     method: "POST",
     handleUnauthorized: false,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  clearCsrfToken();
-  await ensureCsrfToken();
-  return session;
-};
 export const beginPasskeyLogin = (email: string) =>
   request<{ ceremonyId: string; options: unknown }>("/api/v1/identity/passkeys/login/begin", {
     method: "POST",
@@ -44,21 +39,11 @@ export const beginPasskeyLogin = (email: string) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   });
-export const completePasskeyLogin = async (ceremonyId: string, credentialJson: string) => {
-  const session = await request<Session>("/api/v1/identity/passkeys/login/complete", {
+export const completePasskeyLogin = (ceremonyId: string, credentialJson: string) =>
+  request<Session>("/api/v1/identity/passkeys/login/complete", {
     method: "POST",
     handleUnauthorized: false,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ceremonyId, credentialJson }),
   });
-  clearCsrfToken();
-  await ensureCsrfToken();
-  return session;
-};
-export const signOut = async () => {
-  try {
-    return await request<{ signedOut: true }>("/api/v1/identity/logout", { method: "POST" });
-  } finally {
-    clearCsrfToken();
-  }
-};
+export const signOut = () => request<{ signedOut: true }>("/api/v1/identity/logout", { method: "POST" });

@@ -3,7 +3,6 @@ import { appUrl } from "@vantigo/frontend-shell";
 
 const client = createApiClient({ resolveUrl: appUrl });
 
-export const { clearCsrfToken, ensureCsrfToken, getCsrfToken, request, setAuthStateClearer, setUnauthorizedHandler } =
-  client;
+export const { request, setAuthStateClearer, setUnauthorizedHandler } = client;
 export type { ApiError, RequestOptions } from "@vantigo/frontend-api-client";
 export { ApiValidationError, NotFoundError, readJson } from "@vantigo/frontend-api-client";

@@ -2,7 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stubFetch } from "../test/fetch";
 import { sessionQueryKey } from "./auth";
-import { getCsrfToken, request, setAuthStateClearer, setUnauthorizedHandler } from "./request";
+import { request, setAuthStateClearer, setUnauthorizedHandler } from "./request";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -16,7 +16,7 @@ describe("request", () => {
     setAuthStateClearer(undefined);
   });
 
-  it("fetches a CSRF token before an unsafe request and sends it on the business request", async () => {
+  it("sends the session cookie on an unsafe request", async () => {
     const fetchMock = stubFetch(() => Promise.resolve(jsonResponse(200, { saved: true })));
 
     await expect(
@@ -30,7 +30,6 @@ describe("request", () => {
     const [url, init] = fetchMock.actualCalls[0];
     expect(url).toBe("/api/v1/products");
     expect(init?.credentials).toBe("include");
-    expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("test-xsrf-token");
   });
 
   it("invokes the centralized unauthorized handler for a 401", async () => {
@@ -43,7 +42,6 @@ describe("request", () => {
     await expect(request("/api/v1/products")).rejects.toMatchObject({ status: 401 });
     expect(clearState).toHaveBeenCalledOnce();
     expect(unauthorized).toHaveBeenCalledOnce();
-    expect(getCsrfToken()).toBeNull();
   });
 
   it("allows the auth-state clearer to remove the session cache before redirect", async () => {

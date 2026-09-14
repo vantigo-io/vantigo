@@ -17,10 +17,6 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const antiforgeryResponse = (token: string) => jsonResponse({ token });
-
-const TEST_CSRF_TOKEN = "test-xsrf-token";
-
 type SessionOption = object | null | "delegate" | Response;
 
 export type StubbedFetch = {
@@ -32,18 +28,14 @@ export type StubbedFetch = {
 export type StubFetchOptions = {
   /** The root session bootstrap is authenticated by default for route tests. */
   session?: SessionOption;
-  csrfTokens?: string[];
 };
 
 /**
- * Stubs fetch while keeping the antiforgery handshake out of business mocks.
+ * Stubs fetch while keeping the session bootstrap check out of business mocks.
  * The returned mock still receives the real request options, so tests can
- * assert credentials and the X-XSRF-TOKEN header on unsafe requests.
+ * assert credentials on unsafe requests.
  */
-export const stubFetch = (
-  businessFetch?: unknown,
-  { session = TEST_SESSION, csrfTokens = [TEST_CSRF_TOKEN] }: StubFetchOptions = {},
-) => {
+export const stubFetch = (businessFetch?: unknown, { session = TEST_SESSION }: StubFetchOptions = {}) => {
   const calls: FetchCall[] = [];
   const actualCalls: FetchCall[] = [];
   const legacyInit = (init?: RequestInit): RequestInit | undefined => {
@@ -52,7 +44,6 @@ export const stubFetch = (
     delete normalizedInit.credentials;
     if (normalizedInit.headers) {
       const headers = Object.fromEntries(new Headers(normalizedInit.headers).entries());
-      delete headers["x-xsrf-token"];
       const contentType = headers["content-type"];
       if (contentType) {
         delete headers["content-type"];
@@ -74,9 +65,6 @@ export const stubFetch = (
     "fetch",
     vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       calls.push([input, init]);
-      if (String(input) === "/api/v1/identity/antiforgery") {
-        return Promise.resolve(antiforgeryResponse(csrfTokens.shift() ?? TEST_CSRF_TOKEN));
-      }
       if (String(input) === "/api/v1/identity/session" && session !== "delegate") {
         if (session instanceof Response) return Promise.resolve(session.clone());
         if (session === null) return Promise.resolve(new Response(null, { status: 401 }));

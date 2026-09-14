@@ -1,4 +1,4 @@
-import { clearCsrfToken, ensureCsrfToken, request } from "./request";
+import { request } from "./request";
 
 export interface LifecycleSession {
   user: { id: string; displayName: string; email: string; roles: string[] };
@@ -47,37 +47,20 @@ export const validateInvitation = (token: string) =>
   request<{ valid: boolean; email?: string; role?: string; expiresAt?: string }>(
     `/api/v1/identity/invitations/validate?token=${encodeURIComponent(token)}`,
   );
-export const acceptInvitation = async (body: { token: string; displayName?: string; password: string }) => {
-  const result = await request<LifecycleSession>("/api/v1/identity/invitations/accept", json("POST", body));
-  clearCsrfToken();
-  await ensureCsrfToken();
-  return result;
-};
+export const acceptInvitation = (body: { token: string; displayName?: string; password: string }) =>
+  request<LifecycleSession>("/api/v1/identity/invitations/accept", json("POST", body));
 export const requestPasswordRecovery = async (email: string) =>
   request<{ accepted: boolean }>("/api/v1/identity/password-recovery/request", json("POST", { email }));
 export const resetPassword = (body: { email: string; token: string; newPassword: string }) =>
   request<{ success: boolean }>("/api/v1/identity/password-recovery/reset", json("POST", body));
 export const fetchOidcProvider = () => request<{ oidc: { displayName: string } | null }>("/api/v1/identity/providers");
-export const completeTwoFactor = async (code: string, rememberMe = false) => {
-  const result = await request<{
+export const completeTwoFactor = (code: string, rememberMe = false) =>
+  request<{
     user: LifecycleSession["user"] | null;
     requiresTwoFactor: boolean;
     mfaEnrollmentRequired: boolean;
   }>("/api/v1/identity/login/2fa", json("POST", { code, rememberMe }));
-  clearCsrfToken();
-  await ensureCsrfToken();
-  return result;
-};
 export const fetchBootstrapStatus = () =>
   request<{ available: boolean }>("/api/v1/identity/bootstrap-status", { handleUnauthorized: false });
-export const bootstrapAccount = async (body: {
-  secret: string;
-  email: string;
-  displayName: string;
-  password: string;
-}) => {
-  const result = await request<LifecycleSession>("/api/v1/identity/bootstrap", json("POST", body));
-  clearCsrfToken();
-  await ensureCsrfToken();
-  return result;
-};
+export const bootstrapAccount = (body: { secret: string; email: string; displayName: string; password: string }) =>
+  request<LifecycleSession>("/api/v1/identity/bootstrap", json("POST", body));
