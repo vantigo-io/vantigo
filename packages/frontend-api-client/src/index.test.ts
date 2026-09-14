@@ -54,11 +54,8 @@ describe("frontend API client", () => {
   });
 
   it("applies a caller-supplied transformUrl without routing identity calls", async () => {
-    const tenantSlug = "acme west";
     const transformUrl = (url: string) =>
-      url.startsWith("/api/") && !url.startsWith("/api/v1/identity/")
-        ? `/api/v1/t/${encodeURIComponent(tenantSlug)}${url.slice(7)}`
-        : url;
+      url.startsWith("/api/") && !url.startsWith("/api/v1/identity/") ? `/custom/prefix${url}` : url;
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { token: "csrf-token" }))
@@ -70,7 +67,7 @@ describe("frontend API client", () => {
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/v1/identity/antiforgery",
-      "/api/v1/t/acme%20west/products",
+      "/custom/prefix/api/v1/products",
     ]);
   });
 
