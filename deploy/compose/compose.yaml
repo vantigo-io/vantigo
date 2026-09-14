@@ -56,12 +56,17 @@ services:
     environment:
       # Least-privilege runtime role: what the API queries and writes as, so
       # a compromised API process cannot touch the schema or act as its owner.
+      # `api` mode also re-checks migrations itself before it starts serving
+      # (cmd/vantigo/main.go, case modeAPI); MIGRATIONS_DATABASE_URL is
+      # deliberately left unset so that check runs as this same role too.
+      # It only needs read access to conclude there is nothing to do: goose's
+      # tryEnsureVersionTable probes for goose_db_version with a plain SELECT
+      # and returns immediately when it already exists, never issuing CREATE
+      # TABLE. The owner role never needs to reach this container at all —
+      # vantigo-migrate (below) already applies migrations first, and
+      # depends_on: condition: service_completed_successfully means `vantigo`
+      # never even starts while any are still pending, upgrades included.
       DATABASE_URL: postgresql://${VANTIGO_DB_USER:-${POSTGRES_APP_USER:-vantigo_app}}:${VANTIGO_DB_PASSWORD:-${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD}}}@postgres:5432/vantigo
-      # `api` mode applies migrations itself before it starts serving. Point
-      # that at the owner role so it runs with the DDL rights DATABASE_URL
-      # above deliberately lacks; it is a no-op once vantigo-migrate has
-      # already applied everything, which is why that job still runs first.
-      MIGRATIONS_DATABASE_URL: postgresql://${POSTGRES_USER:-vantigo}:${POSTGRES_PASSWORD}@postgres:5432/vantigo
     ports:
       - "${VANTIGO_PORT:-8080}:8080"
     depends_on:

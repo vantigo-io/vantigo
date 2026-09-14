@@ -271,7 +271,7 @@ jobs:
         # not a deployment test, but it turns that silent failure loud.
         working-directory: deploy/compose
         run: |
-          if grep -rn 'Vantigo\.Host\|ConnectionStrings__' compose.yaml .env.example vantigo.env.example; then
+          if grep -n 'Vantigo\.Host\|ConnectionStrings__' compose.yaml .env.example vantigo.env.example README.md; then
             echo "::error::found a leftover .NET binary name or ConnectionStrings__ key in deploy/compose — see the lines above" >&2
             exit 1
           fi
