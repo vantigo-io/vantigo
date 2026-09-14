@@ -365,7 +365,7 @@ func (s *server) PostCommunicationsChannels(ctx context.Context, req gen.PostCom
 		//
 		// **This is now a DEFENSIVE path, not a reachable one.**
 		// lockDefaultChannelSlot at the top of this transaction serialises
-		// every writer for this channel type, so the AnyChannelExists()
+		// every channel writer installation-wide, so the AnyChannelExists()
 		// read and the demote above both run after any concurrent create or
 		// update has committed — concurrent creates behave exactly as
 		// sequential ones do and no longer collide (design §6 item 15;
@@ -458,7 +458,12 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 	}
 
 	var rewriteCredential bool
-	var newSettingsJSON, newCiphertext string
+	var newSettingsJSON string
+	// suppliedPassword is the password the REQUEST carried, or nil when it
+	// omitted one and the existing password is to be reused. It is a
+	// decision, not a byte: the merge that turns it into a ciphertext runs
+	// inside the transaction (see the transaction body).
+	var suppliedPassword *string
 	switch {
 	case !strings.EqualFold(provider, "smtp"):
 		credErrs["smtp"] = []string{"SMTP credentials require the smtp provider."}
@@ -468,34 +473,28 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 			credErrs["smtp"] = []string{"SMTP credentials require a host and valid port."}
 			break
 		}
-		plain := ""
-		switch {
-		case password != nil:
-			plain = *password
-		case existing.CredentialSettingsJson != nil:
-			cred, cerr := q.GetChannelCredentialByChannelID(ctx, req.Id)
-			if cerr != nil {
-				return nil, fmt.Errorf("communications: get channel credential: %w", cerr)
-			}
-			// A ciphertext that fails to open (wrong purpose, tampered, a
-			// rotated APP_SECRET) silently becomes an empty password rather
-			// than an error — the same swallow-the-failure behaviour
-			// inventory §15.6 documents for .NET's TryUpdateCredential.
-			if sealed, derr := decodeCiphertext(cred.SecretCiphertext); derr == nil {
-				if opened, oerr := s.deps.Secrets.Open(channelCredentialPurpose, sealed); oerr == nil {
-					plain = string(opened)
-				}
-			}
-		}
-		sealed, serr := s.deps.Secrets.Seal(channelCredentialPurpose, []byte(plain))
-		if serr != nil {
-			return nil, fmt.Errorf("communications: seal channel credential: %w", serr)
-		}
 		b, merr := json.Marshal(settings)
 		if merr != nil {
 			return nil, fmt.Errorf("communications: encode channel settings: %w", merr)
 		}
-		newSettingsJSON, newCiphertext, rewriteCredential = string(b), encodeCiphertext(sealed), true
+		// DECISIONS HERE, BYTES IN THE TRANSACTION. Everything this block
+		// still does is derived from the REQUEST alone — whether a
+		// credential is being rewritten, what its settings are, and whether
+		// the caller supplied a password or wants the stored one reused — so
+		// the validation order, and with it the position of the credential
+		// 400 that inventory §19.2 pins, is exactly where it was.
+		//
+		// What used to happen here and no longer does is the *merge*: this
+		// code read the stored credential through the pool and sealed the
+		// result into newCiphertext, all before BeginTx. Two concurrent PUTs
+		// each carrying an smtp block — one reusing the password, one
+		// rotating it — would then have the reusing one write its
+		// pre-transaction snapshot of the old password back over the rotated
+		// one. Silently: no constraint covers this, so there is no 23505, no
+		// error and no log, and the credential simply reverts. The merge now
+		// runs under the lock against a row re-read inside the transaction.
+		suppliedPassword = password
+		newSettingsJSON, rewriteCredential = string(b), true
 	default:
 		if existing.CredentialSettingsJson == nil {
 			credErrs["smtp"] = []string{"Credentials for the selected provider are required."}
@@ -587,6 +586,38 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 		}
 		settingsJSON := current.CredentialSettingsJson
 		if rewriteCredential {
+			// THE PASSWORD MERGE, here rather than before the transaction,
+			// and against `current` rather than `existing`. A reuse merge
+			// built on a pre-transaction read is a silent lost update: the
+			// stored password a concurrent PUT had just rotated gets sealed
+			// again from the stale snapshot and written back over the new
+			// one. Nothing detects it — no constraint covers a credential
+			// blob, so there is no violation to catch, no error and no log —
+			// which is why the only detector is
+			// TestUpdateChannel_ConcurrentCredentialWritesDoNotRevertARotatedPassword.
+			plain := ""
+			switch {
+			case suppliedPassword != nil:
+				plain = *suppliedPassword
+			case current.CredentialSettingsJson != nil:
+				cred, cerr := txq.GetChannelCredentialByChannelID(ctx, req.Id)
+				if cerr != nil {
+					return fmt.Errorf("communications: get channel credential: %w", cerr)
+				}
+				// A ciphertext that fails to open (wrong purpose, tampered, a
+				// rotated APP_SECRET) silently becomes an empty password rather
+				// than an error — the same swallow-the-failure behaviour
+				// inventory §15.6 documents for .NET's TryUpdateCredential.
+				if sealed, derr := decodeCiphertext(cred.SecretCiphertext); derr == nil {
+					if opened, oerr := s.deps.Secrets.Open(channelCredentialPurpose, sealed); oerr == nil {
+						plain = string(opened)
+					}
+				}
+			}
+			sealed, serr := s.deps.Secrets.Seal(channelCredentialPurpose, []byte(plain))
+			if serr != nil {
+				return fmt.Errorf("communications: seal channel credential: %w", serr)
+			}
 			// Upsert, not a bare UPDATE: a channel can reach here with no
 			// credential row at all (TestUpdateChannel_MissingCredentialWhenNoneExists
 			// deletes one directly to exercise the hazard, and the credErrs
@@ -597,7 +628,7 @@ func (s *server) PutCommunicationsChannelsById(ctx context.Context, req gen.PutC
 			// with hasCredentials:true, then a GET showing hasCredentials:false.
 			if err := txq.UpsertChannelCredential(ctx, store.UpsertChannelCredentialParams{
 				ID: uuid.New(), ChannelID: req.Id, SettingsJson: newSettingsJSON,
-				SecretCiphertext: newCiphertext, CreatedAt: now,
+				SecretCiphertext: encodeCiphertext(sealed), CreatedAt: now,
 			}); err != nil {
 				return err
 			}
@@ -646,7 +677,11 @@ var errChannelVanished = errors.New("communications: the channel no longer exist
 //
 // The lock is necessary and NOT sufficient on its own: it serialises
 // transactions but cannot refresh a value read before one began, which is
-// why PutChannelById re-reads the row inside the transaction.
+// why PutChannelById re-reads both the channel row and its credential
+// inside the transaction and derives every written value from those reads.
+// That "serialise, then read fresh" protocol depends on READ COMMITTED —
+// see the query's comment for why a higher isolation level would silently
+// reopen the pairs this closes.
 func lockDefaultChannelSlot(ctx context.Context, q *store.Queries) error {
 	if err := q.LockDefaultChannelSlot(ctx, channelDefaultLockClass); err != nil {
 		return fmt.Errorf("communications: lock the default-channel slot: %w", err)

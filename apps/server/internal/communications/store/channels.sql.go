@@ -344,6 +344,19 @@ SELECT pg_advisory_xact_lock($1::int, 0)
 // If the demotes ever gain a type filter, this key should become
 // hashtext(type) in the same change, so the lock and the write set keep
 // matching.
+//
+// **THIS LOCK REQUIRES READ COMMITTED, and both handlers rely on it.** Every
+// transaction taking it uses pgx.TxOptions{} (the pool default, READ
+// COMMITTED) and nothing overrides that anywhere in this module. The whole
+// protocol is "serialise, then read fresh": under READ COMMITTED each
+// statement takes its own snapshot, so the re-read that follows this lock
+// sees whatever the previous holder committed. Under REPEATABLE READ or
+// SERIALIZABLE the transaction's snapshot is fixed by its first statement —
+// which is THIS ONE, taken before the lock is granted — so the re-read would
+// return the same stale row the caller already had, and the pairs this lock
+// closes would reopen while still looking serialised. Raising the isolation
+// level here would be a silent regression; a writer that needs a higher
+// level must re-establish its snapshot after acquiring the lock.
 func (q *Queries) LockDefaultChannelSlot(ctx context.Context, lockClass int32) error {
 	_, err := q.db.Exec(ctx, lockDefaultChannelSlot, lockClass)
 	return err

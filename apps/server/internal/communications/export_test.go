@@ -1,5 +1,7 @@
 package communications
 
+import "github.com/vantigo-io/vantigo/server/internal/secrets"
+
 // ReplyFingerprintForTest is replyFingerprint (conversations_reply.go),
 // exported only for tests via the standard Go export_test.go convention —
 // this file compiles into test binaries only, never production ones, so it
@@ -26,6 +28,28 @@ var ReplyFingerprintForTest = replyFingerprint
 // without a process-wide otel.SetMeterProvider that no parallel test could
 // rely on.
 var NewOutboxWorkerWithMeterForTest = newOutboxWorker
+
+// OpenChannelPasswordForTest decrypts a stored channel credential's
+// secret_ciphertext with this module's own purpose, so a black-box test can
+// assert WHICH password survived a concurrent write.
+//
+// It exists because the credential lost update has no other detector: the
+// password is sealed at rest and never echoed in any response, sealing is
+// randomised (so two ciphertexts of the same plaintext differ, and comparing
+// ciphertexts proves nothing), and no constraint covers the column, so there
+// is no violation to observe either. Without decrypting, a test cannot tell a
+// reverted password from a rotated one.
+func OpenChannelPasswordForTest(box *secrets.Box, stored string) (string, error) {
+	sealed, err := decodeCiphertext(stored)
+	if err != nil {
+		return "", err
+	}
+	opened, err := box.Open(channelCredentialPurpose, sealed)
+	if err != nil {
+		return "", err
+	}
+	return string(opened), nil
+}
 
 // RetentionLeaseKeyForTest is retentionLeaseKey (retention.go), exported by
 // the same convention so retention_test.go can take the real lease from its
