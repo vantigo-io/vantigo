@@ -8,7 +8,7 @@ require (
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/go-webauthn/webauthn v0.18.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/oasdiff/yaml v0.1.1
 	github.com/pquerna/otp v1.5.0
