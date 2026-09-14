@@ -189,9 +189,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       }
       throw redirect({ to: available ? "/setup" : "/sign-in" });
     }
-    if (location.pathname === "/admin" || location.pathname.startsWith("/admin/")) {
-      const legacyAdmin = location.pathname.match(/^\/admin\/(dashboard|users|invitations|roles)$/);
-      if (!legacyAdmin && !session.isSystemAdmin) throw redirect({ to: "/" });
+    if ((location.pathname === "/admin" || location.pathname.startsWith("/admin/")) && !session.isSystemAdmin) {
+      throw redirect({ to: "/" });
     }
   },
   component: RootLayout,
