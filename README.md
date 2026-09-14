@@ -236,6 +236,11 @@ long-running `api` command:
 ```bash
 docker run --rm \
   -e DATABASE_URL="postgresql://vantigo:...@your-postgres:5432/vantigo?sslmode=verify-full" \
+  -e APP_URL="https://vantigo.example.com" \
+  -e APP_SECRET="..." \
+  -e BOOTSTRAP_SECRET="..." \
+  -e SMTP_HOST="smtp.example.com" \
+  -e SMTP_FROM="no-reply@example.com" \
   ghcr.io/vantigo-io/vantigo migrate
 
 docker run -d \
@@ -245,14 +250,44 @@ docker run -d \
   -e APP_URL="https://vantigo.example.com" \
   -e APP_SECRET="..." \
   -e BOOTSTRAP_SECRET="..." \
+  -e SMTP_HOST="smtp.example.com" \
+  -e SMTP_FROM="no-reply@example.com" \
   ghcr.io/vantigo-io/vantigo api
 ```
 
-Outside development the configuration is fail-closed: `APP_URL` must be `https`, the
-database connection must require certificate-verified TLS, and `APP_SECRET` and
-`BOOTSTRAP_SECRET` must be set. `ALLOW_INSECURE_TRANSPORT=1` knowingly relaxes the
-transport rules for local and evaluation use only — see
-[transport security](docs/transport-security.md).
+Outside development the configuration is fail-closed: `APP_URL` must use `https`, the
+database connection must require certificate-verified TLS, `APP_SECRET` (at least 32
+bytes) and `BOOTSTRAP_SECRET` must be set, and `SMTP_HOST` and `SMTP_FROM` must be set.
+`APP_SECRET` must be the *same* value everywhere it is passed — both commands above and
+every replica.
+
+`migrate` needs that whole set too, which is why the terminating job above carries the
+same variables as `api` rather than `DATABASE_URL` alone. Configuration is loaded and
+validated in full before the command runs, so any one of them being unset fails the
+migration job exactly as it fails the server — and because `migrate` is what a
+controlled release runs first, that failure is the one you hit before anything serves.
+
+`SMTP_HOST` and `SMTP_FROM` are the least obvious of them, and are required **for the
+process to start at all**, not merely in order to send mail. Nothing above sets
+`APP_ENV`, so the process runs as production, where `MAIL_DRIVER` defaults to `smtp`,
+and the smtp driver makes both mandatory:
+
+```
+invalid configuration:
+  SMTP_HOST: is required
+  SMTP_FROM: is required
+```
+
+`SMTP_FROM` must be a plain address — `no-reply@example.com`, not a display-name form
+like `Vantigo <no-reply@example.com>`. Neither placeholder is dialled at startup, so
+the commands above come up against a relay that does not exist; replace both with a
+real one before the deployment has to deliver invitations or password resets.
+`MAIL_DRIVER=log` is not an escape hatch — it is rejected outside development, because
+those mails carry bearer links — and `APP_ENV=development` would silently relax the
+transport and cookie policy along with it.
+
+`ALLOW_INSECURE_TRANSPORT=1` knowingly relaxes the transport rules for local and
+evaluation use only — see [transport security](docs/transport-security.md).
 
 `APP_SECRET` derives every key the process uses (CSRF tokens, cookie signing, TOTP
 secret encryption) through HKDF-SHA256. There is no external key vault to provision,
