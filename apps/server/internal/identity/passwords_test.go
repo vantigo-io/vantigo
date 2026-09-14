@@ -10,10 +10,13 @@ import (
 
 // TestPasswordHashRoundTrip proves the PHC string's exact shape and
 // parameters, that the password verifies, that a wrong one does not, and
-// that every hash gets its own salt.
+// that every hash gets its own salt. It hashes at productionArgonParams by
+// name — what every installation hashes with — because this binary is a
+// test binary and so hashPassword itself runs at the cheaper test cost
+// (see activeArgonParams); TestArgonCostSeam covers that choice.
 func TestPasswordHashRoundTrip(t *testing.T) {
 	const pw = "LongEnough1234"
-	hash, err := hashPassword(pw)
+	hash, err := hashPasswordWith(pw, productionArgonParams)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,12 +42,41 @@ func TestPasswordHashRoundTrip(t *testing.T) {
 		t.Errorf("verifyPassword(wrong) = %v, %v; want false, nil", ok, err)
 	}
 
-	again, err := hashPassword(pw)
+	again, err := hashPasswordWith(pw, productionArgonParams)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if again == hash {
 		t.Error("two hashes of one password are equal; the salt is not random")
+	}
+}
+
+// TestArgonCostSeam pins the cost a server hashes with, proves a test binary
+// is the only thing that lowers it, and proves hashes written at either cost
+// verify — verifyPassword reads the parameters back from the PHC string, so
+// the two costs coexist in one database.
+func TestArgonCostSeam(t *testing.T) {
+	const pw = "LongEnough1234"
+	if want := (argonParams{memoryKiB: 19456, time: 2, threads: 1}); productionArgonParams != want {
+		t.Errorf("productionArgonParams = %+v, want %+v (OWASP's minimum)", productionArgonParams, want)
+	}
+	if !testing.Testing() {
+		t.Fatal("testing.Testing() is false inside a test binary")
+	}
+	if activeArgonParams != testArgonParams {
+		t.Errorf("a test binary hashes at %+v, want the test cost %+v", activeArgonParams, testArgonParams)
+	}
+	for name, params := range map[string]argonParams{"test": testArgonParams, "production": productionArgonParams} {
+		hash, err := hashPasswordWith(pw, params)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if ok, err := verifyPassword(hash, pw); err != nil || !ok {
+			t.Errorf("%s cost: verifyPassword(%q) = %v, %v; want true", name, hash, ok, err)
+		}
+		if ok, err := verifyPassword(hash, "WrongPassword1"); err != nil || ok {
+			t.Errorf("%s cost: verifyPassword(wrong) = %v, %v; want false, nil", name, ok, err)
+		}
 	}
 }
 

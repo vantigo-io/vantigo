@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"testing"
 	"unicode/utf16"
 
 	"golang.org/x/crypto/argon2"
@@ -38,16 +39,56 @@ const (
 
 var errMalformedHash = errors.New("identity: malformed password hash")
 
+// argonParams is one Argon2id cost. hashPassword writes the parameters it
+// used into the PHC string it returns and verifyPassword reads them back, so
+// a hash written at one cost still verifies when another is in force.
+type argonParams struct {
+	memoryKiB uint32
+	time      uint32
+	threads   uint8
+}
+
+// productionArgonParams is the cost every installation hashes with: OWASP's
+// minimum, the constants above.
+var productionArgonParams = argonParams{memoryKiB: argonMemoryKiB, time: argonTime, threads: argonThreads}
+
+// testArgonParams is the cheapest cost verifyPassword accepts (the bounds
+// above: 8 KiB, one pass, one lane). Argon2id is deliberately slow, and the
+// test suite hashes thousands of passwords — one per harness for the dummy
+// hash alone — for a property no test asserts: ~26% of internal/identity's
+// CPU, profiled. Hashes written at this cost are ordinary PHC strings the
+// same verifyPassword accepts.
+var testArgonParams = argonParams{memoryKiB: minArgonMemoryKiB, time: minArgonTime, threads: minArgonThreads}
+
+// activeArgonParams is the cost hashPassword uses. testing.Testing() is true
+// only in a binary `go test` built, so nothing a deployment can set — no
+// environment variable, flag or configuration file — selects the test cost
+// in a server. It is resolved once here and never written again: identity's
+// tests hash concurrently, and a settable cost would be a data race.
+var activeArgonParams = func() argonParams {
+	if testing.Testing() {
+		return testArgonParams
+	}
+	return productionArgonParams
+}()
+
 // hashPassword returns pw's Argon2id hash as a PHC string:
-// $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>, both in unpadded base64.
+// $argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>, both in unpadded base64, at
+// the parameters above.
 func hashPassword(pw string) (string, error) {
+	return hashPasswordWith(pw, activeArgonParams)
+}
+
+// hashPasswordWith is hashPassword at an explicit cost, so a test can pin
+// what production hashes with whatever cost its own binary runs at.
+func hashPasswordWith(pw string, params argonParams) (string, error) {
 	salt := make([]byte, argonSaltBytes)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("identity: password salt: %w", err)
 	}
-	key := argon2.IDKey([]byte(pw), salt, argonTime, argonMemoryKiB, argonThreads, argonKeyBytes)
+	key := argon2.IDKey([]byte(pw), salt, params.time, params.memoryKiB, params.threads, argonKeyBytes)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, argonMemoryKiB, argonTime, argonThreads,
+		argon2.Version, params.memoryKiB, params.time, params.threads,
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
