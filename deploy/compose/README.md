@@ -16,12 +16,40 @@ curl -fsSLO "$base/.env.example"
 curl -fsSLO "$base/vantigo.env.example"
 ```
 
-Create local configuration and set a database password:
+Create the two local configuration files:
 
 ```bash
 cp .env.example .env
 cp vantigo.env.example vantigo.env
 ```
+
+Then edit them. The application runs outside development and its configuration
+is fail-closed — it reports every missing value at once and refuses to start,
+and because the `vantigo-migrate` job loads the same configuration, a missing
+value stops the whole stack rather than just the API. Before the first
+`docker compose up -d`:
+
+In `.env`, set the database passwords:
+
+- `POSTGRES_PASSWORD` — the owner role that runs migrations.
+- `POSTGRES_APP_PASSWORD` and `VANTIGO_DB_PASSWORD` — the least-privilege
+  runtime role the API connects as. Both default to `change-me-too`; they must
+  agree, because the first creates the role and the second authenticates as it.
+
+In `vantigo.env`, set the two secrets. Neither is ever generated or logged for
+you; generate each with `openssl rand -base64 32`:
+
+- `APP_SECRET` — at least 32 bytes. Every key this process uses (CSRF tokens,
+  cookie signing, TOTP secret encryption) is derived from it.
+- `BOOTSTRAP_SECRET` — authenticates the one-time first-Owner bootstrap at
+  `/setup`.
+
+`vantigo.env` also ships `SMTP_HOST` and `SMTP_FROM` already set to
+placeholders. Leave them in place to start the stack — outside development the
+mail driver defaults to `smtp`, which makes both mandatory *for startup*, not
+merely for sending — but replace them with a real relay before anyone else
+uses the deployment. Until you do, the stack runs normally and delivers no
+mail, so no user can be invited and no password can be recovered.
 
 Start the stack:
 
