@@ -107,15 +107,17 @@ retired .NET host's compose file, this is not a tenant-isolation boundary,
 only a privilege-separation one. Point `VANTIGO_DB_USER` at the owner role
 only for debugging.
 
-`compose.yaml` separately sets `MIGRATIONS_DATABASE_URL` on the `vantigo`
-service to the owner role. That is not decorative: `api` mode applies
-migrations itself before it starts serving
-(`cmd/vantigo/main.go`, `case modeAPI:`), and it needs the owner role's DDL
-rights to do that safely even though the same process serves every request
-afterwards through the least-privilege `DATABASE_URL`. The `vantigo-migrate`
-job still runs first so migrations are applied — and any failure surfaces —
-before the API container starts at all; `api` re-running them is then a
-no-op.
+`api` mode also re-checks migrations itself before it starts serving
+(`cmd/vantigo/main.go`, `case modeAPI:`), but that check runs as the same
+least-privilege `DATABASE_URL` — the `vantigo` service never gets the owner
+credential. It only needs read access to conclude there is nothing to do:
+goose's `tryEnsureVersionTable` (the library `internal/db` uses) probes for
+`goose_db_version` with a plain `SELECT ... FROM pg_tables`, returns
+immediately when it already exists, and never issues `CREATE TABLE`. The
+one case that would need DDL — starting with migrations genuinely pending —
+never reaches `api` at all: `vantigo-migrate` runs first, under the owner
+role, and `vantigo`'s `depends_on: condition: service_completed_successfully`
+keeps the API container from starting until it succeeds, upgrades included.
 
 The role statements run from the PostgreSQL init script, which executes **only
 when the `postgres-data` volume is created**. An existing installation can add
@@ -255,10 +257,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `Host` header values and the static OIDC callback are all derived from it.
   The callback is fixed at `/api/v1/identity/oidc/callback`.
 - Add `sslmode=verify-full` (or `verify-ca` when the server certificate does
-  not name the host) to both `DATABASE_URL` and `MIGRATIONS_DATABASE_URL` in
-  `compose.yaml` once PostgreSQL presents a certificate — both must be
-  edited there, not in `vantigo.env`, since `compose.yaml` is what builds
-  them.
+  not name the host) to `DATABASE_URL` on both the `vantigo-migrate` and
+  `vantigo` services once PostgreSQL presents a certificate — edit
+  `compose.yaml`, not `vantigo.env`, since `compose.yaml` is what builds
+  the connection URL.
 - The `vantigo.env.example` file documents the static OIDC and SCIM
   settings. Configuration is deployment-bound and changes require a restart.
   Do not put provider or SCIM secrets in source-controlled files — inject
