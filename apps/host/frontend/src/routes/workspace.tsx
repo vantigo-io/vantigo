@@ -10,10 +10,10 @@ export const Route = createFileRoute("/workspace")({
     const session = await context.queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
     if (!session?.user.roles.includes("Owner")) throw redirect({ to: "/" });
   },
-  component: TenantSettings,
+  component: WorkspaceSettings,
 });
 
-function TenantSettings() {
+function WorkspaceSettings() {
   const { t } = useI18n("host");
   return (
     <SettingsLayout

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   activeNavPath,
-  firstAuthorizedIntegratedAppDestination,
   hasPermissions,
   type ModuleKey,
   navSearchFor,
@@ -133,9 +132,6 @@ describe("navigation permissions", () => {
         .find((section) => section.placement === "lower")
         ?.items.map((item) => item.label),
     ).toEqual(["navigation.settings"]);
-    // The dashboard requires no permissions, so it is always the first destination.
-    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: ["customers:view"] }))).toBe("/dashboard");
-    expect(firstAuthorizedIntegratedAppDestination(context({ permissions: [] }))).toBe("/dashboard");
   });
 
   it("shows the admin dashboard in lower navigation only to owners", () => {

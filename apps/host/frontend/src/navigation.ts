@@ -197,12 +197,6 @@ export const visibleNavSections = ({
     }))
     .filter((section) => section.items.length > 0);
 
-/** Select the first accessible business destination for the authenticated landing route. */
-export const firstAuthorizedIntegratedAppDestination = (context: NavVisibilityContext) =>
-  visibleNavSections(context)
-    .filter((section) => section.placement !== "lower")
-    .flatMap((section) => section.items)[0]?.to;
-
 export const navSearchFor = (strategy: NavItem["searchStrategy"]) => {
   switch (strategy) {
     case "customer-list":
@@ -224,10 +218,12 @@ export const navSearchFor = (strategy: NavItem["searchStrategy"]) => {
   }
 };
 
+// No nav destination is "/" (the root route is a pure redirect, never a nav
+// target), so matching only needs the prefix form.
 export const activeNavPath = (pathname: string, items: readonly NavItem[]) => {
   let best: string | undefined;
   for (const item of items) {
-    const matches = item.to === "/" ? pathname === "/" : pathname === item.to || pathname.startsWith(`${item.to}/`);
+    const matches = pathname === item.to || pathname.startsWith(`${item.to}/`);
     if (matches && (best === undefined || item.to.length > best.length)) best = item.to;
   }
   return best;
