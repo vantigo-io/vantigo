@@ -40,6 +40,9 @@ import "../i18n";
 type DashboardPreset = "7d" | "30d" | "90d" | "12m" | "custom";
 type DateRange = { from: Date; to: Date };
 
+/** The preset validateSearch below falls back to when no search params are given. */
+export const DEFAULT_DASHBOARD_PRESET: DashboardPreset = "30d";
+
 interface DailyPoint {
   date: string;
   value: number;
@@ -902,7 +905,7 @@ export const Route = createFileRoute("/dashboard")({
       ? (String(rawPreset) as DashboardPreset)
       : hasCustomDates
         ? "custom"
-        : "30d";
+        : DEFAULT_DASHBOARD_PRESET;
     return {
       preset,
       from: typeof search.from === "string" ? search.from : undefined,

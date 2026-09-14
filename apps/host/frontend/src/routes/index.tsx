@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { fetchSession, sessionQueryKey } from "../api/auth";
+import { DEFAULT_DASHBOARD_PRESET } from "./dashboard";
 
 export const Route = createFileRoute("/")({
   // `/` is a pure redirect: system admins land on the control plane, everyone
@@ -11,7 +12,11 @@ export const Route = createFileRoute("/")({
     if (session?.isSystemAdmin) throw redirect({ to: "/admin" });
     // /dashboard validates its search params, so TanStack requires them on
     // every navigation to it. These are the same values its validator derives
-    // from an empty query string.
-    throw redirect({ to: "/dashboard", search: { preset: "30d", from: undefined, to: undefined, metric: undefined } });
+    // from an empty query string, sourced from dashboard.tsx rather than
+    // duplicated here.
+    throw redirect({
+      to: "/dashboard",
+      search: { preset: DEFAULT_DASHBOARD_PRESET, from: undefined, to: undefined, metric: undefined },
+    });
   },
 });
