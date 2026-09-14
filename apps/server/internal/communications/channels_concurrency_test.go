@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/communications"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -51,27 +52,50 @@ import (
 
 // AUDITING THIS SCHEMA: ENUMERATE WRITERS, NOT CONSTRAINTS.
 //
-// ux_channels_type_is_default has now produced three separate defects across
-// three tasks, and the reason is a method error worth writing down where the
-// next person will hit it. Each pass examined the CONSTRAINT, found one pair
-// of racing callers, guarded that pair, and recorded the constraint as
-// "fixed". But **a guard is a property of a code path, not of a constraint.**
-// A constraint with N writers has N×(N+1)/2 ordered pairs, and each pair
-// needs its own verdict:
+// ux_channels_type_is_default produced FOUR separate defects across four
+// passes, and the reason is a method error worth writing down where the next
+// person will hit it. Each pass examined the CONSTRAINT, found one pair of
+// racing callers, guarded that pair, and recorded the constraint as "fixed".
+// But **a guard is a property of a code path, not of a constraint.** A
+// constraint with N writers has N×(N+1)/2 ordered pairs, and each pair needs
+// its own verdict:
 //
-//	task 3   POST vs POST   guarded (409 default_channel_conflict)
-//	task 14  PUT  vs PUT    fixed by ClearOtherDefaultChannels' predicate
-//	         PUT  vs POST   MISSED — and unfixable by any statement rewrite,
-//	                        because the conflicting row does not exist yet
+//	task 3     POST vs POST   guarded (409 default_channel_conflict)
+//	task 14    PUT  vs PUT    fixed by ClearOtherDefaultChannels' predicate
+//	fix wave   PUT  vs POST   fixed by lockDefaultChannelSlot — and unfixable
+//	                          by any statement rewrite, because the
+//	                          conflicting row does not exist yet to be
+//	                          visited, blocked on, or locked
+//	fix round 2 PUT vs POST,  fixed by re-reading inside the transaction: the
+//	            stale-value   lock serialises transactions but cannot refresh
+//	            variant       a value read BEFORE one began, and is_default
+//	                          was written back from a pre-transaction snapshot
 //
-// So the method for auditing this schema is: for each unique index and each
-// composite primary key, enumerate every code path that INSERTs or UPDATEs
-// the covered columns, then take each pair of those writers in turn — the
-// self-pair included — and rule on it. Two writers that can produce the same
-// key value are a pair to test even when one of them is an UPDATE and the
-// other an INSERT, which is exactly the pair three passes walked past. Where
-// a pair cannot be made safe by a statement or a caught violation, serialise
-// it (lockDefaultChannelSlot) rather than leaving it to timing.
+// **The refinement the fourth defect bought, and the one this table exists
+// for: a single writer can supply the same column from more than one VALUE
+// SOURCE, and each source is its own pair.** PUT writes is_default either
+// from the request (when it claims the default) or from a row it read earlier
+// (when it says nothing about it). Those are two different pairings against
+// the same POST, they fail for different reasons, and fixing one leaves the
+// other live — which is exactly what happened. So enumerate writers, then for
+// each writer enumerate where each written column's value COMES FROM, and
+// pair those.
+//
+// The method, then: for each unique index and each composite primary key,
+// enumerate every code path that INSERTs or UPDATEs the covered columns; for
+// each such path enumerate each value source for those columns; then take
+// each pair in turn — the self-pair included — and rule on it. Two writers
+// that can produce the same key value are a pair to test even when one is an
+// UPDATE and the other an INSERT. Where a pair cannot be made safe by a
+// statement or a caught violation, serialise it (lockDefaultChannelSlot)
+// rather than leaving it to timing — and remember that serialising alone does
+// not fix a stale value, only a concurrent one.
+//
+// The same value-source reasoning applies beyond this constraint, to columns
+// no constraint covers at all: the credential ciphertext was merged from a
+// pre-transaction read and silently reverted a concurrent password rotation,
+// with no violation to detect it (see
+// TestUpdateChannel_ConcurrentCredentialWritesDoNotRevertARotatedPassword).
 //
 // race runs fns at once, each released only when every one is ready, and
 // returns their responses in the same order — duplicated from
@@ -284,7 +308,7 @@ func TestUpdateChannel_ConcurrentDefaultRaceLeavesExactlyOneDefault(t *testing.T
 // an operation whose contract declares no 409 at all.
 //
 // lockDefaultChannelSlot is what makes this pair safe: both paths take the
-// type-keyed transaction advisory lock before demoting, so the second writer
+// one global transaction advisory lock before demoting, so the second writer
 // starts its demote AFTER the first has committed and therefore sees its row.
 //
 // Teeth: remove either lockDefaultChannelSlot call and this test reds with
@@ -441,5 +465,106 @@ func TestUpdateChannel_PutNotClaimingTheDefaultRacingACreateThatDoes(t *testing.
 	}
 	if incumbentDefault {
 		t.Error("the incumbent is still default: the update wrote back a stale is_default over the create's demotion")
+	}
+}
+
+// TestUpdateChannel_ConcurrentCredentialWritesDoNotRevertARotatedPassword is
+// the credential lost update, and it is the only detector there is.
+//
+// No constraint covers a credential blob, so this failure produces no 23505,
+// no error and no log line — the password simply reverts. The password is
+// also sealed at rest and never echoed in any response, and sealing is
+// randomised, so comparing ciphertexts proves nothing either. The test
+// therefore decrypts (export_test.go's OpenChannelPasswordForTest) and
+// asserts WHICH password survived.
+//
+// The two requests are staggered rather than started together, and that is
+// load-bearing for the teeth check rather than incidental. Both PUTs carry an
+// smtp block: one rotates the password, one omits it and so reuses the stored
+// one. The defect only manifests when the REUSING request commits LAST — it
+// is the one carrying a stale snapshot — so a symmetric race would reproduce
+// it only half the time and the teeth check would be a coin flip. Starting
+// the rotator first and waiting until it is genuinely blocked (it therefore
+// already holds the advisory lock) forces the reusing request to queue behind
+// it and commit second, deterministically.
+//
+// Expected either way round, and this is the invariant: the rotated password
+// wins. If the reusing request runs first, the rotation lands after it; if it
+// runs second, its re-read under the lock sees the rotation and re-seals
+// that. Only a merge built before the transaction can produce "original".
+//
+// Teeth: move the password merge back before BeginTx (build the ciphertext
+// from the pool read) and this test reds with the original password restored.
+func TestUpdateChannel_ConcurrentCredentialWritesDoNotRevertARotatedPassword(t *testing.T) {
+	h := newHarness(t)
+	admin := h.SignIn(t, "communications:channels-manage")
+
+	const original = "original-password"
+	const rotated = "rotated-password"
+
+	body := newChannelBody(channelAddress(t))
+	body["smtp"] = map[string]any{"host": "smtp.example.test", "port": 587, "password": original}
+	ch := createChannel(t, admin, body)
+	path := "/api/v1/communications/channels/" + ch.Id
+
+	ctx := context.Background()
+	gate, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("gate: begin: %v", err)
+	}
+	t.Cleanup(func() { _ = gate.Rollback(ctx) })
+	if _, err := gate.Exec(ctx, `LOCK TABLE communications.channels IN EXCLUSIVE MODE`); err != nil {
+		t.Fatalf("gate: lock channels: %v", err)
+	}
+
+	// never is awaitLockWaiters' "the requests have finished" channel; these
+	// requests are deliberately still in flight, so it never closes.
+	never := make(chan struct{})
+
+	rotator := h.SignIn(t, "communications:channels-manage")
+	rotateDone := make(chan *modtest.Response, 1)
+	go func() {
+		rotateDone <- rotator.Do(http.MethodPut, path, map[string]any{
+			"smtp": map[string]any{"host": "smtp.example.test", "port": 587, "password": rotated},
+		})
+	}()
+	// One blocked backend means the rotator is parked on the gate's table
+	// lock, which it can only have reached after taking the advisory lock.
+	awaitLockWaiters(t, h, 1, never)
+
+	reuser := h.SignIn(t, "communications:channels-manage")
+	reuseDone := make(chan *modtest.Response, 1)
+	go func() {
+		// No password key: reuse whatever is stored.
+		reuseDone <- reuser.Do(http.MethodPut, path, map[string]any{
+			"smtp": map[string]any{"host": "smtp.example.test", "port": 587},
+		})
+	}()
+	awaitLockWaiters(t, h, 2, never)
+
+	if err := gate.Commit(ctx); err != nil {
+		t.Fatalf("gate: release: %v", err)
+	}
+	rotateResp, reuseResp := <-rotateDone, <-reuseDone
+
+	if rotateResp.Status != http.StatusOK {
+		t.Errorf("rotating PUT: status %d body %s, want 200", rotateResp.Status, rotateResp.Body)
+	}
+	if reuseResp.Status != http.StatusOK {
+		t.Errorf("reusing PUT: status %d body %s, want 200", reuseResp.Status, reuseResp.Body)
+	}
+
+	var stored string
+	if err := h.Pool().QueryRow(ctx,
+		`SELECT secret_ciphertext FROM communications.channel_credentials WHERE channel_id = $1`,
+		uuid.MustParse(ch.Id)).Scan(&stored); err != nil {
+		t.Fatalf("read the stored credential: %v", err)
+	}
+	got, err := communications.OpenChannelPasswordForTest(h.Deps().Secrets, stored)
+	if err != nil {
+		t.Fatalf("open the stored password: %v", err)
+	}
+	if got != rotated {
+		t.Errorf("stored password = %q, want %q: a reuse merge built before the transaction reverted the rotation", got, rotated)
 	}
 }

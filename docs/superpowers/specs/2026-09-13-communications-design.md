@@ -274,10 +274,22 @@ that make a concurrent path safe without changing any sequential behaviour:
     409 to an operation whose contract declares none (a wire-contract change, and a divergence from
     .NET), and row locking cannot reach a nonexistent row — so the writers are serialised instead,
     which preserves the contract exactly: callers still observe last-writer-wins, never a conflict.
-    The lock uses the two-int32 overload under its own class constant, keyed by channel **type**
-    (the index is per type), so it shares no key space with retention's single-bigint lease and two
-    types never wait on each other. .NET has no such lock, which is what makes this a divergence
-    rather than a fidelity fix; .NET simply has the defect.
+    The lock uses the two-int32 overload under its own class constant, so it shares no key space with
+    retention's single-bigint lease or the migration lock. It is **one global slot, not one key per
+    channel type**: both demote statements are type-unfiltered — faithfully, since .NET's are too
+    (`ChannelEndpoints.cs:29` and `:46`) — so the write set being serialised is every channel row, and
+    a type-keyed lock would be under-scoped (two writers of different types would not serialise, yet
+    each demotes the other's row, so a demotion can be lost: no 23505, because the index is per type,
+    but two defaults where sequential execution leaves one). .NET has no such lock, which is what makes
+    this a divergence rather than a fidelity fix; .NET simply has the defect.
+
+    **The lock is necessary but not sufficient, and it depends on READ COMMITTED.** It serialises
+    transactions; it cannot refresh a value read before one began. `PutChannelById` therefore re-reads
+    the channel row *and* its credential inside the transaction and derives every written value from
+    those reads — `is_default`, `is_active`, `display_name` and the credential ciphertext. The
+    "serialise, then read fresh" protocol works because each statement takes its own snapshot under
+    READ COMMITTED; under a higher isolation level the snapshot would be fixed by the lock statement
+    itself, before the lock is granted, and the re-read would return the same stale row.
 
     **Consequence worth recording: it makes task 3's `default_channel_conflict` 409 unreachable.**
     Serialising the writers means concurrent creates now behave exactly as sequential ones do — each
