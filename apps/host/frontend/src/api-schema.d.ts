@@ -1263,21 +1263,15 @@ export interface components {
             version: string | null;
         };
         AuthSessionResponse: {
-            /** Format: uuid */
-            activeTenantId: string | null;
             isSystemAdmin: boolean;
             mfaAuthenticated: boolean;
             mfaEnrollmentRequired: boolean;
-            tenants: components["schemas"]["TenantSessionResponse"][];
             twoFactorEnabled: boolean;
             user: components["schemas"]["AuthUserResponse"];
         };
         AuthSuccessResponse: {
-            /** Format: uuid */
-            activeTenantId?: string | null;
             mfaEnrollmentRequired: boolean;
             requiresTwoFactor: boolean;
-            tenants?: components["schemas"]["TenantSessionResponse"][] | null;
             twoFactorEnabled: boolean;
             user: components["schemas"]["AuthUserResponse"] | null;
         };
@@ -1806,12 +1800,6 @@ export interface components {
         SystemMaintenanceStatus: {
             maintenance: boolean;
             message: string | null;
-        };
-        TenantSessionResponse: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            slug: string;
         };
         TwoFactorRequest: {
             code: string | null;

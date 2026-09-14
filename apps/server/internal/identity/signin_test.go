@@ -56,9 +56,6 @@ func TestLogin_LocalPasswordLoginEstablishesSessionAndLogoutClearsIt(t *testing.
 		!slices.Equal(body.User.Roles, []string{"User"}) || body.RequiresTwoFactor || body.TwoFactorEnabled || body.MfaEnrollmentRequired {
 		t.Errorf("login body = %s", r.body)
 	}
-	if !strings.Contains(string(r.body), `"tenants":[]`) || !strings.Contains(string(r.body), `"activeTenantId":null`) {
-		t.Errorf("login body %s: want the contract's leftover tenancy as an empty list and a null", r.body)
-	}
 	cookie := r.setCookie(identity.SessionCookieName)
 	if cookie == nil || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.MaxAge != 0 || !cookie.Expires.IsZero() {
 		t.Errorf("session cookie = %+v, want a non-persistent HttpOnly SameSite=Strict cookie", cookie)
@@ -432,7 +429,7 @@ func TestLogin_WithTotpEnrolledAnswersRequiresTwoFactorWithATicket(t *testing.T)
 	var body authSuccess
 	r.json(&body)
 	if body.User != nil || !body.RequiresTwoFactor || !body.TwoFactorEnabled || body.MfaEnrollmentRequired ||
-		!strings.Contains(string(r.body), `"user":null`) || !strings.Contains(string(r.body), `"activeTenantId":null`) {
+		!strings.Contains(string(r.body), `"user":null`) {
 		t.Errorf("body = %s, want the requiresTwoFactor answer", r.body)
 	}
 	ticket := r.setCookie(identity.LoginTicketCookieName)

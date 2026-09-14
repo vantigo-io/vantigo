@@ -185,9 +185,6 @@ func TestInvitations_CreateValidateAndAcceptRoundTrip(t *testing.T) {
 		!slices.Equal(body.User.Roles, []string{identity.RoleUser}) || body.RequiresTwoFactor || body.MfaEnrollmentRequired {
 		t.Errorf("accept body = %s", a.body)
 	}
-	if !strings.Contains(string(a.body), `"tenants":[]`) || !strings.Contains(string(a.body), `"activeTenantId":null`) {
-		t.Errorf("accept body %s, want tenants [] and activeTenantId null", a.body)
-	}
 	admitted(t, invitee)
 
 	if n := h.count(t, `SELECT count(*) FROM identity.users WHERE id = $1 AND email_confirmed AND normalized_email = 'INVITEE@EXAMPLE.TEST'`, userID); n != 1 {

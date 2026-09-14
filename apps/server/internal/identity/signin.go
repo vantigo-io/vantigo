@@ -170,13 +170,12 @@ func (s *server) completePasswordLogin(ctx context.Context, r *http.Request, u s
 	user := authUser(u.ID, u.DisplayName, u.Email, roles)
 	return loginOK{
 		cookies: cookies{s.access.newSessionCookie(token, false)},
-		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
+		body: gen.AuthSuccessResponse{
 			User:                  &user,
 			RequiresTwoFactor:     false,
 			TwoFactorEnabled:      false,
 			MfaEnrollmentRequired: slices.Contains(roles, RoleOwner) && s.deps.Config.OwnersRequireMFA,
-			Tenants:               noTenants(),
-		}},
+		},
 	}, nil
 }
 
@@ -213,13 +212,12 @@ func (s *server) beginTwoFactor(ctx context.Context, r *http.Request, userID uui
 	}
 	return loginOK{
 		cookies: cs,
-		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
+		body: gen.AuthSuccessResponse{
 			User:                  nil,
 			RequiresTwoFactor:     true,
 			TwoFactorEnabled:      true,
 			MfaEnrollmentRequired: false,
-			Tenants:               noTenants(),
-		}},
+		},
 	}, nil
 }
 
@@ -240,20 +238,10 @@ func loginRefused(code, message string) gen.PostIdentityLogin429JSONResponse {
 	return gen.PostIdentityLogin429JSONResponse{Body: authErrorBody(code, message, nil)}
 }
 
-// authSuccessBody is AuthSuccessResponse as identity writes it. The
-// generated type drops a nil activeTenantId (omitempty); the contract's
-// tenancy leftover is written as an explicit null instead (spec *Contract
-// leftovers*). The outer field shadows the embedded one of the same JSON
-// name.
-type authSuccessBody struct {
-	gen.AuthSuccessResponse
-	ActiveTenantID *uuid.UUID `json:"activeTenantId"`
-}
-
 // loginOK is sign-in's 200: its cookies, then the body.
 type loginOK struct {
 	cookies
-	body authSuccessBody
+	body gen.AuthSuccessResponse
 }
 
 func (r loginOK) VisitPostIdentityLoginResponse(w http.ResponseWriter) error {
@@ -451,13 +439,12 @@ func (s *server) redeemLoginTicket(ctx context.Context, tx pgx.Tx, r *http.Reque
 	user := authUser(u.ID, u.DisplayName, u.Email, roles)
 	return loginOK{
 		cookies: cookies{s.access.newSessionCookie(token, rememberMe), s.access.expiredLoginTicketCookie()},
-		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
+		body: gen.AuthSuccessResponse{
 			User:                  &user,
 			RequiresTwoFactor:     false,
 			TwoFactorEnabled:      true,
 			MfaEnrollmentRequired: s.mfaEnrollmentRequired(roles, u.TotpEnabled),
-			Tenants:               noTenants(),
-		}},
+		},
 	}, nil
 }
 
@@ -607,13 +594,6 @@ func authUser(id uuid.UUID, displayName, email string, roles []string) gen.AuthU
 		roles = []string{}
 	}
 	return gen.AuthUserResponse{Id: id, DisplayName: displayName, Email: publicEmail(email), Roles: roles}
-}
-
-// noTenants is AuthSuccessResponse's tenants: the contract still carries
-// tenancy, and a single-tenant installation answers an empty list (spec
-// *Contract leftovers*). authSuccessBody writes activeTenantId as null.
-func noTenants() *[]gen.TenantSessionResponse {
-	return &[]gen.TenantSessionResponse{}
 }
 
 func deref(s *string) string {

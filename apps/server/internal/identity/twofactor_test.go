@@ -72,9 +72,6 @@ func TestLogin2fa_TotpCodeCompletesTheSignInWithAnMfaSession(t *testing.T) {
 		!slices.Equal(body.User.Roles, []string{"User"}) || body.RequiresTwoFactor || !body.TwoFactorEnabled || body.MfaEnrollmentRequired {
 		t.Errorf("body = %s", r.body)
 	}
-	if !strings.Contains(string(r.body), `"tenants":[]`) || !strings.Contains(string(r.body), `"activeTenantId":null`) {
-		t.Errorf("body %s: want the contract's leftover tenancy as an empty list and a null", r.body)
-	}
 	cookie := r.setCookie(identity.SessionCookieName)
 	if cookie == nil || cookie.Value == "" || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.MaxAge != 0 || !cookie.Expires.IsZero() {
 		t.Errorf("session cookie = %+v, want a non-persistent HttpOnly SameSite=Strict cookie", cookie)

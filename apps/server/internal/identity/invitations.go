@@ -329,13 +329,12 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 	return invitationAccepted{
 		cookies:  cookies{s.access.newSessionCookie(session, false)},
 		location: s.deps.Config.BasePath + sessionLocation,
-		body: authSuccessBody{AuthSuccessResponse: gen.AuthSuccessResponse{
+		body: gen.AuthSuccessResponse{
 			User:                  &user,
 			RequiresTwoFactor:     false,
 			TwoFactorEnabled:      false,
 			MfaEnrollmentRequired: slices.Contains(user.Roles, RoleOwner) && s.deps.Config.OwnersRequireMFA,
-			Tenants:               noTenants(),
-		}},
+		},
 	}, nil
 }
 
@@ -410,11 +409,11 @@ func (r invitationCreated) VisitPostIdentityOwnerInvitationsResponse(w http.Resp
 }
 
 // invitationAccepted is acceptance's 201: the new session's cookie and the
-// Location of GET /session, then the body with activeTenantId null.
+// Location of GET /session, then the body.
 type invitationAccepted struct {
 	cookies
 	location string
-	body     authSuccessBody
+	body     gen.AuthSuccessResponse
 }
 
 func (r invitationAccepted) VisitPostIdentityInvitationsAcceptResponse(w http.ResponseWriter) error {

@@ -185,15 +185,13 @@ func TestPasskeys_EnrolThenSignIn(t *testing.T) {
 				Email       string    `json:"email"`
 				Roles       []string  `json:"roles"`
 			} `json:"user"`
-			RequiresTwoFactor     bool  `json:"requiresTwoFactor"`
-			TwoFactorEnabled      bool  `json:"twoFactorEnabled"`
-			MfaEnrollmentRequired bool  `json:"mfaEnrollmentRequired"`
-			Tenants               []any `json:"tenants"`
+			RequiresTwoFactor     bool `json:"requiresTwoFactor"`
+			TwoFactorEnabled      bool `json:"twoFactorEnabled"`
+			MfaEnrollmentRequired bool `json:"mfaEnrollmentRequired"`
 		}
 		r.json(&body)
 		if body.User.ID != id || body.User.Email != email || body.User.Roles == nil || len(body.User.Roles) != 0 ||
-			body.RequiresTwoFactor || body.TwoFactorEnabled || body.MfaEnrollmentRequired || body.Tenants == nil ||
-			!bytes.Contains(r.body, []byte(`"activeTenantId":null`)) {
+			body.RequiresTwoFactor || body.TwoFactorEnabled || body.MfaEnrollmentRequired {
 			t.Errorf("sign-in %d body %s", i, r.body)
 		}
 		ck := r.setCookie(identity.SessionCookieName)
