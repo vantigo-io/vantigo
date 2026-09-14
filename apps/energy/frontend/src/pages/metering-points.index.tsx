@@ -31,9 +31,6 @@ interface MeteringPointsSearch {
 const statusColor = (status: ConnectionStatus) => ({ New: "blue", Connected: "teal", Disconnected: "red" })[status];
 
 export const MeteringPointsPage = () => {
-  // The $tenantSlug route param no longer exists (task 3 of the frontend
-  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
-  const tenantSlug: string | undefined = undefined;
   const { t } = useI18n("energy");
   const { page, search } = useSearch({ strict: false }) as MeteringPointsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -108,7 +105,7 @@ export const MeteringPointsPage = () => {
                         style={{ cursor: "pointer" }}
                         onClick={() =>
                           void navigate({
-                            href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/energy/metering-points/${point.id}`,
+                            href: `/energy/metering-points/${point.id}`,
                           })
                         }
                       >

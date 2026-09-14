@@ -42,7 +42,7 @@ import "../i18n";
 
 export const ContactDetailsPage = () => {
   const { t } = useI18n("customers");
-  const { contactId, tenantSlug } = useParams({ strict: false }) as { contactId: number; tenantSlug?: string };
+  const { contactId } = useParams({ strict: false }) as { contactId: number };
   const { data: contact } = useSuspenseQuery(contactQueryOptions(contactId));
   const [modalState, setModalState] = useState<ContactModalState | null>(null);
 
@@ -51,11 +51,7 @@ export const ContactDetailsPage = () => {
   return (
     <Stack gap="lg">
       <Breadcrumbs>
-        <Anchor
-          component={Link}
-          to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/contacts` as never}
-          size="sm"
-        >
+        <Anchor component={Link} to={"/contacts" as never} size="sm">
           {t("contacts")}
         </Anchor>
         <Text size="sm">{name}</Text>
@@ -131,9 +127,6 @@ export const ContactDetailsPage = () => {
 const ContactCustomersCard = ({ contact, contactName }: { contact: ContactResponse; contactName: string }) => {
   const { t } = useI18n("customers");
   const contactId = contact.id;
-  // The $tenantSlug route param no longer exists (task 3 of the frontend
-  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
-  const tenantSlug: string | undefined = undefined;
   const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery(contactCustomersQueryOptions(contactId));
@@ -220,7 +213,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                     style={{ cursor: "pointer" }}
                     onClick={() =>
                       navigate({
-                        href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${association.customer.id}`,
+                        href: `/customers/${association.customer.id}`,
                       })
                     }
                   >
@@ -228,12 +221,7 @@ const ContactCustomersCard = ({ contact, contactName }: { contact: ContactRespon
                       <Anchor
                         size="sm"
                         renderRoot={(props) => (
-                          <Link
-                            to={
-                              `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${association.customer.id}` as never
-                            }
-                            {...props}
-                          />
+                          <Link to={`/customers/${association.customer.id}` as never} {...props} />
                         )}
                       >
                         {association.customer.name}

@@ -37,7 +37,6 @@ interface ProductsSearch {
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
 const nokPrice = (product: ProductResponse) => product.effectivePrices.find((price) => price.currency === "NOK");
 export const ProductsPage = () => {
-  const tenantSlug = window.location.pathname.split("/")[1] || undefined;
   const { t, formatters } = useI18n("products");
   const { page, search, status, categoryId } = useSearch({ strict: false }) as ProductsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -166,7 +165,7 @@ export const ProductsPage = () => {
                           style={{ cursor: "pointer" }}
                           onClick={() =>
                             void navigate({
-                              href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/products/${product.id}`,
+                              href: `/products/${product.id}`,
                             })
                           }
                         >

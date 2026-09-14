@@ -46,10 +46,7 @@ const defaultTo = () => new Date().toISOString().slice(0, 10);
 
 export const MeteringPointDetailsPage = () => {
   const { t, formatters } = useI18n("energy");
-  const { meteringPointId, tenantSlug } = useParams({ strict: false }) as {
-    meteringPointId: number;
-    tenantSlug?: string;
-  };
+  const { meteringPointId } = useParams({ strict: false }) as { meteringPointId: number };
   const client = useQueryClient();
   const { data: point } = useSuspenseQuery(meteringPointQueryOptions(meteringPointId));
   const { data: periods } = useQuery(supplyPeriodsQueryOptions(meteringPointId));
@@ -95,11 +92,7 @@ export const MeteringPointDetailsPage = () => {
   return (
     <Stack gap="lg">
       <Breadcrumbs>
-        <Anchor
-          component={Link}
-          to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/energy/metering-points` as never}
-          size="sm"
-        >
+        <Anchor component={Link} to={"/energy/metering-points" as never} size="sm">
           {t("meteringPoints")}
         </Anchor>
         <Text size="sm">{point.gsrn}</Text>

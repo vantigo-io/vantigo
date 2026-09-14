@@ -21,9 +21,6 @@ import "../i18n";
 
 export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => {
   const { t, formatters } = useI18n("customers");
-  // The $tenantSlug route param no longer exists (task 3 of the frontend
-  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
-  const tenantSlug: string | undefined = undefined;
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
 
@@ -32,11 +29,7 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
   return (
     <Stack gap="lg">
       <Breadcrumbs>
-        <Anchor
-          component={Link}
-          to={`${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers` as never}
-          size="sm"
-        >
+        <Anchor component={Link} to={"/customers" as never} size="sm">
           {t("customers")}
         </Anchor>
         <Text size="sm">{customer.name}</Text>

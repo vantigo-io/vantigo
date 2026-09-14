@@ -33,9 +33,6 @@ interface CustomersSearch {
 
 export const CustomersPage = () => {
   const { t, formatters } = useI18n("customers");
-  // The $tenantSlug route param no longer exists (task 3 of the frontend
-  // de-tenanting plan collapsed it); task 7 owns removing this idiom.
-  const tenantSlug: string | undefined = undefined;
   const { page, search } = useSearch({ strict: false }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 
@@ -145,7 +142,7 @@ export const CustomersPage = () => {
                         style={{ cursor: "pointer" }}
                         onClick={() =>
                           navigate({
-                            href: `${tenantSlug ? `/${encodeURIComponent(tenantSlug)}` : ""}/customers/${customer.id}`,
+                            href: `/customers/${customer.id}`,
                           })
                         }
                       >
