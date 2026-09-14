@@ -400,9 +400,9 @@ func TestSwitchSupplyPeriod_Ordering(t *testing.T) {
 // The end-to-end pin for the fix round's critical finding — pgx decodes a
 // timestamptz column (the supply period's own Start) in the process's local
 // time zone, so an End handler that offset-checked the decoded Start would
-// 400 under any non-UTC TZ — lives in CI, not here. server-test.yml runs the
-// energy package a second time with TZ=Europe/Oslo, which sets the same knob
-// a real deployment sets.
+// 400 under any non-UTC TZ — lives in CI, not here. ci.yml's Go server job
+// runs the energy package a second time with TZ=Europe/Oslo, which sets the
+// same knob a real deployment sets.
 //
 // An earlier version of this pin mutated time.Local inside the test process
 // instead. It was correct about the bug and passed without -race, but it is

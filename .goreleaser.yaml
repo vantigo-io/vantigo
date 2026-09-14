@@ -4,8 +4,10 @@
 # version decision stays outside (svu) — GoReleaser releases from the tag it
 # finds.
 #
-# Until the cutover this runs only as a dry run (server-release.yml,
-# `mise run snapshot`); releases are still the .NET pipeline's.
+# This runs as a dry run only (ci.yml's `goreleaser_snapshot` job, reachable
+# through a manual dispatch, and `mise run snapshot`). The images and the
+# GitHub Release that ship come from ci.yml's publish_images and release jobs,
+# which build through scripts/build-artifacts.sh + scripts/build-image.sh.
 version: 2
 
 project_name: vantigo
