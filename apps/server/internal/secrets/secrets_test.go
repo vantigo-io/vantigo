@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -57,7 +58,7 @@ func TestOpen_WrongPurposeFails(t *testing.T) {
 	}
 
 	_, err = box.Open("identity/oidc-state", sealed)
-	if err != ErrInvalid {
+	if !errors.Is(err, ErrInvalid) {
 		t.Errorf("Open(wrong purpose) error = %v, want ErrInvalid", err)
 	}
 }
@@ -77,7 +78,7 @@ func TestOpen_TamperedByteFails(t *testing.T) {
 	tampered[len(tampered)-1] ^= 0xFF
 
 	_, err = box.Open("identity/totp", tampered)
-	if err != ErrInvalid {
+	if !errors.Is(err, ErrInvalid) {
 		t.Errorf("Open(tampered) error = %v, want ErrInvalid", err)
 	}
 }
@@ -139,7 +140,7 @@ func TestOpen_UnknownKeyIDFails(t *testing.T) {
 	sealed[0] = 0x02
 
 	_, err = box.Open("identity/totp", sealed)
-	if err != ErrInvalid {
+	if !errors.Is(err, ErrInvalid) {
 		t.Errorf("Open(unknown key id) error = %v, want ErrInvalid", err)
 	}
 }
@@ -150,10 +151,10 @@ func TestOpen_ShortInputFails(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if _, err := box.Open("identity/totp", []byte{0x01}); err != ErrInvalid {
+	if _, err := box.Open("identity/totp", []byte{0x01}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("Open(short input) error = %v, want ErrInvalid", err)
 	}
-	if _, err := box.Open("identity/totp", nil); err != ErrInvalid {
+	if _, err := box.Open("identity/totp", nil); !errors.Is(err, ErrInvalid) {
 		t.Errorf("Open(nil) error = %v, want ErrInvalid", err)
 	}
 }
@@ -187,7 +188,7 @@ func TestOpenString_InvalidBase64Fails(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if _, err := box.OpenString("identity/oidc-state", "not base64url!!"); err != ErrInvalid {
+	if _, err := box.OpenString("identity/oidc-state", "not base64url!!"); !errors.Is(err, ErrInvalid) {
 		t.Errorf("OpenString(invalid base64) error = %v, want ErrInvalid", err)
 	}
 }

@@ -10,7 +10,12 @@ version: "2"
 linters:
   default: standard
   enable:
+    # bodyclose: an unclosed response body leaks a connection; errorlint:
+    # comparing wrapped errors with == or a type assertion silently stops
+    # matching once anything in the chain wraps them.
+    - bodyclose
     - depguard
+    - errorlint
   settings:
     depguard:
       # Each business module is an island: internal/<module>/... (every
@@ -130,34 +135,60 @@ linters:
             - pkg: github.com/vantigo-io/vantigo/server/internal/energy/
               desc: "internal/communications may not import another business module"
         platform:
+          # Every platform package, not only the two the modules mount
+          # through: nothing below cmd/vantigo may know a business module
+          # exists. internal/modtest is the deliberate exception — it composes
+          # identity beside the module under test — and so is not listed.
           files:
             - "**/internal/module/**"
             - "**/internal/contracts/**"
+            - "**/internal/apicommon/**"
+            - "**/internal/buildinfo/**"
+            - "**/internal/config/**"
+            - "**/internal/db/**"
+            - "**/internal/health/**"
+            - "**/internal/httpx/**"
+            - "**/internal/mail/**"
+            - "**/internal/openapi/**"
+            - "**/internal/ratelimit/**"
+            - "**/internal/secrets/**"
+            - "**/internal/security/**"
+            - "**/internal/server/**"
+            - "**/internal/storage/**"
+            - "**/internal/telemetry/**"
+            - "**/internal/testdb/**"
+            - "**/internal/web/**"
+            - "**/internal/worker/**"
           deny:
             - pkg: github.com/vantigo-io/vantigo/server/internal/identity$
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/identity/
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/customers$
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/customers/
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/products$
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/products/
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/energy$
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/energy/
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/communications$
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
             - pkg: github.com/vantigo-io/vantigo/server/internal/communications/
-              desc: "internal/module and internal/contracts may not import any business module"
+              desc: "platform packages may not import any business module"
   exclusions:
     paths:
       # Generated files only; hand-written tests in gen/ packages stay linted.
       - '\.gen\.go$'
+    rules:
+      # Test fakes build responses whose bodies the code under test closes.
+      - path: _test\.go$
+        linters:
+          - bodyclose
 
 formatters:
   enable:
