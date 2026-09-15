@@ -218,48 +218,26 @@ cd apps/server && taskset -c 0-3 go test ./... -count=1     # or: -p 4
 ```
 
 `-p` is the knob, not `-parallel`. `-p` bounds how many **packages** run at
-once, which is what bounds how many migrators apply migration 5 at the same
-time. `-parallel` bounds parallel tests **within** one package and caps nothing
-across packages, so it does not limit concurrent migrators and is not a
-substitute.
+once, which is what bounds how many test binaries migrate at the same time.
+`-parallel` bounds parallel tests **within** one package and caps nothing
+across packages, so it is not a substitute.
 
-A full-parallelism run on a many-core host is **not** a valid gate: it fails
-with `ERROR: out of shared memory (SQLSTATE 53200)` while applying migration 5,
-and it fails in a way that looks like a flaky test rather than a resource limit.
+`internal/testdb` migrates **one template database per test binary** and gives
+each test a `CREATE DATABASE … TEMPLATE` copy of it, so a test costs a copy
+(tens of milliseconds), not a migration run. The doc comment in
+`internal/testdb/testdb.go` is the authority on the mechanism, on why the
+template is sealed against connections before it is copied, and on the lock
+arithmetic that made the old one-migration-per-test design fail with
+`out of shared memory (SQLSTATE 53200)` on many-core hosts. Pinning to four
+CPUs matches CI and keeps the run's PostgreSQL footprint predictable.
 
-`internal/testdb` gives every test its own database, and each one applies all
-migrations. `00005_energy_baseline.sql` creates the range-partitioned
-`consumption_intervals` and takes about **648 locks in one transaction** (145 of
-them `AccessExclusive`; 25 monthly partitions times roughly 5 relations each).
-`max_locks_per_transaction` is not a per-transaction cap but an *aggregate
-sizing* parameter: the shared lock table holds roughly
-`max_locks_per_transaction × (max_connections + max_prepared_transactions)`
-slots, so the default 64 × 100 ≈ 6400. One migrator uses about a tenth of that
-and cannot exhaust it; the ceiling is around **9 concurrent migrators**. Eight
-pass (8 × 648 = 5184) and forty-four do not (44 × 648 = 28512). The migration
-advisory lock does not help, because advisory locks are per-database and every
-test has its own database — which is exactly why production, migrating one
-database, never sees this.
-
-**The same table, in production: a cold month's first write takes an exclusive
-lock.** `EnsureConsumptionPartition` (called at `internal/energy/consumption.go:195`)
-calls `energy.ensure_consumption_partition`, which executes
-`CREATE TABLE IF NOT EXISTS ... PARTITION OF`, *inside the request transaction* — so the first
-consumption write into a month that has no partition yet holds an `ACCESS
-EXCLUSIVE` lock on `energy.consumption_intervals` for the remainder of that
-transaction, and every concurrent read or write of the table waits behind it.
-The lock is held for one short transaction, once per month — but it is why the
-first write after a month boundary can show a latency spike the next one does
-not. An operator chasing that spike should look here rather than at the query
-plan.
-
-Because the failure strikes whichever tests happen to be creating a database at
-that moment, the set of failing tests differs on every run. CI uses four CPUs
-and so never hits it.
-
-One caveat: with `max_connections ≤ 10` the shared table holds only ~640 slots
-and a **single** migrator would fail. `docker-compose.test.yml` leaves the
-default of 100.
+**One production note on the same table:** `EnsureConsumptionPartition`
+(`internal/energy/consumption.go`) runs `CREATE TABLE IF NOT EXISTS … PARTITION
+OF` *inside the request transaction*, so the first consumption write into a
+month that has no partition yet holds an `ACCESS EXCLUSIVE` lock on
+`energy.consumption_intervals` for the rest of that transaction. It is one short
+transaction once per month, but it is why the first write after a month boundary
+can show a latency spike the next one does not.
 
 ## Database migrations
 
