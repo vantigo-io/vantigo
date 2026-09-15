@@ -110,6 +110,53 @@ func TestNoModuleReferencesAnotherModulesSchema(t *testing.T) {
 	}
 }
 
+// sqlcSchemaFiles returns the migration file names a module's sqlc.yaml
+// declares under its `schema:` list, in order.
+func sqlcSchemaFiles(t *testing.T, module string) []string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join("..", module, "sqlc.yaml"))
+	if err != nil {
+		t.Fatalf("read %s/sqlc.yaml: %v", module, err)
+	}
+	var files []string
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(line, "- ../db/migrations/"); ok {
+			files = append(files, rest)
+		}
+	}
+	return files
+}
+
+// TestSqlcSchemaListsOnlyTheModulesOwnMigrations proves each module's sqlc
+// config compiles against its own migrations and nothing else. Pointing sqlc
+// at the whole migrations directory makes every module's generated store carry
+// every other module's table types — a boundary hole neither depguard (an
+// import check) nor the cross-schema text scan above (SQL files only) would
+// catch, because the foreign type lives in the module's own package.
+func TestSqlcSchemaListsOnlyTheModulesOwnMigrations(t *testing.T) {
+	entries, err := fs.ReadDir(db.MigrationsFS, "migrations")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	owned := map[string][]string{}
+	for _, e := range entries {
+		owner := migrationOwner(e.Name())
+		owned[owner] = append(owned[owner], e.Name())
+	}
+	for _, module := range moduleSchemas {
+		want := owned[module]
+		if len(want) == 0 {
+			t.Errorf("%s: no migration named NNNNN_%s_*.sql", module, module)
+			continue
+		}
+		got := sqlcSchemaFiles(t, module)
+		if !equalStrings(got, want) {
+			t.Errorf("%s/sqlc.yaml schema list = %v, want exactly its own migrations %v", module, got, want)
+		}
+	}
+}
+
 // TestIdentityBaseline_AppliesAndSeedsBuiltInRoles proves
 // 00002_identity_baseline.sql applies cleanly and that the three built-in
 // roles it seeds exist with their fixed ids.

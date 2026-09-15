@@ -1,12 +1,10 @@
 # sqlc: communications' typed queries. Schema = every goose migration (sqlc
 # reads the -- +goose Up sections); queries = internal/communications/queries.
-# Empty today — this task is schema, skeleton and catalog only, no query yet
-# needs a generated method — but wired up now so the first implementation
-# task only has to add a .sql file.
 version: "2"
 sql:
   - engine: postgresql
-    schema: ../db/migrations
+    schema:
+      - ../db/migrations/00006_communications_baseline.sql
     queries: queries
     gen:
       go:

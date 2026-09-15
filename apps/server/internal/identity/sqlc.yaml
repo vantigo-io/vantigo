@@ -1,9 +1,12 @@
-# sqlc: identity's typed queries. Schema = every goose migration (sqlc reads
-# the -- +goose Up sections); queries = internal/identity/queries.
+# sqlc: identity's typed queries. Schema = this module's own migrations only
+# (sqlc reads the -- +goose Up sections); internal/db's schema_test keeps that
+# list in step with the migrations directory; queries =
+# internal/identity/queries.
 version: "2"
 sql:
   - engine: postgresql
-    schema: ../db/migrations
+    schema:
+      - ../db/migrations/00002_identity_baseline.sql
     queries: queries
     gen:
       go:
