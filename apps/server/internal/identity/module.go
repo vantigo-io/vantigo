@@ -152,7 +152,7 @@ func mount(a *Access, d module.Deps) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{withRequest, accessConflictFilter}, gen.StrictHTTPServerOptions{
+	strict := gen.NewStrictHandlerWithOptions(srv, []gen.StrictMiddlewareFunc{accessConflictFilter}, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

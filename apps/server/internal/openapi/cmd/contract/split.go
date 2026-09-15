@@ -7,9 +7,13 @@ import (
 	"strings"
 
 	"github.com/oasdiff/yaml"
+
+	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
 
-var modules = []string{"identity", "customers", "products", "energy", "communications"}
+// modules are the contract files that carry paths, the one list
+// internal/openapi owns.
+var modules = openapi.Modules
 
 // dropped are removed while splitting: the Go port has no tenancy, no
 // antiforgery token endpoint and no inbound Mailgun webhook.

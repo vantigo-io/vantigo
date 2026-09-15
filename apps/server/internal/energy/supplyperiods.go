@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
@@ -185,11 +186,11 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 	}
 
 	if body.CustomerId <= 0 {
-		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {"Customer ID must be greater than zero."}})), nil
 	}
 	if msg := validateSupplyPeriodStart(body.Start); msg != "" {
-		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"start": {msg}})), nil
 	}
 
@@ -207,7 +208,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 		return nil, fmt.Errorf("energy: look up customer: %w", err)
 	}
 	if customer == nil {
-		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriods400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {fmt.Sprintf("Customer %d does not exist.", body.CustomerId)}})), nil
 	}
 
@@ -217,7 +218,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriods(ctx context.Context, 
 	}
 	if overlaps {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriods409ApplicationProblemPlusJSONResponse(
-			problemStatus(overlapTitle, overlapDetail, http.StatusConflict)), nil
+			apicommon.ProblemStatus(overlapTitle, overlapDetail, http.StatusConflict)), nil
 	}
 
 	var created store.EnergySupplyPeriod
@@ -272,11 +273,11 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 		body = *req.Body
 	}
 	if body.CustomerId <= 0 {
-		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {"Customer ID must be greater than zero."}})), nil
 	}
 	if msg := validateSupplyPeriodStart(body.SwitchAt); msg != "" {
-		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"switchAt": {msg}})), nil
 	}
 	customer, err := s.deps.Directory.Customer(ctx, body.CustomerId)
@@ -284,7 +285,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 		return nil, fmt.Errorf("energy: look up customer: %w", err)
 	}
 	if customer == nil {
-		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid supply period", map[string][]string{"customerId": {fmt.Sprintf("Customer %d does not exist.", body.CustomerId)}})), nil
 	}
 
@@ -351,11 +352,11 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsSwitch(ctx context.Con
 	}
 	if validationErrs != nil {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch400ApplicationProblemPlusJSONResponse(
-			validationProblem("Invalid supply period", validationErrs)), nil
+			apicommon.ValidationProblem("Invalid supply period", validationErrs)), nil
 	}
 	if conflict {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsSwitch409ApplicationProblemPlusJSONResponse(
-			problemStatus(overlapTitle, overlapDetail, http.StatusConflict)), nil
+			apicommon.ProblemStatus(overlapTitle, overlapDetail, http.StatusConflict)), nil
 	}
 
 	var endedResp *gen.SupplyPeriodResponse
@@ -404,7 +405,7 @@ func (s *server) PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd(ctx cont
 	}
 	if msg := validateSupplyPeriodEnd(period.Start, body.End); msg != "" {
 		return gen.PostEnergyMeteringPointsByIdSupplyPeriodsByPeriodIdEnd400ApplicationProblemPlusJSONResponse(
-			validationProblem("Invalid supply period", map[string][]string{"end": {msg}})), nil
+			apicommon.ValidationProblem("Invalid supply period", map[string][]string{"end": {msg}})), nil
 	}
 
 	var updated store.EnergySupplyPeriod

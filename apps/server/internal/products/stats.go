@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
 )
@@ -21,36 +21,6 @@ import (
 // doc comment notes for its own module), so nothing here carries a
 // "Ported from" marker; stats_test.go's tests are this task's own, written
 // to the .NET handler's behavior since no test exists to port.
-
-// productStatsDefaultPeriodDays is ProductStatsEndpoints.DefaultPeriodDays
-// (ProductStatsEndpoints.cs:13).
-const productStatsDefaultPeriodDays = 30
-
-// normalizeProductStatsPeriod is ProductStatsEndpoints.TryNormalizePeriod
-// (:118-139), shared by Summary and Timeseries: to defaults to now, from
-// defaults to 30 days before to; ok is false when from is after to, the
-// only way either handler answers 400.
-func normalizeProductStatsPeriod(from, to *time.Time, now time.Time) (periodFrom, periodTo, previousFrom time.Time, ok bool) {
-	periodTo = now
-	if to != nil {
-		periodTo = *to
-	}
-	periodFrom = periodTo.AddDate(0, 0, -productStatsDefaultPeriodDays)
-	if from != nil {
-		periodFrom = *from
-	}
-	if periodFrom.After(periodTo) {
-		return time.Time{}, time.Time{}, time.Time{}, false
-	}
-	// The immediately preceding window of the same length as
-	// [periodFrom, periodTo) (Period.Previous, ProductStatsEndpoints.cs:143).
-	previousFrom = periodFrom.Add(-periodTo.Sub(periodFrom))
-	return periodFrom, periodTo, previousFrom, true
-}
-
-// invalidProductPeriodDetail is TryNormalizePeriod's problem detail
-// (:134-137), shared verbatim by Summary and Timeseries.
-const invalidProductPeriodDetail = "The 'from' value must be earlier than or equal to the 'to' value."
 
 // allProductStatuses is Enum.GetValues<ProductStatus>() (Domain/Products/ProductStatus.cs)
 // in declaration order: CreateStatusDictionary (:106-116) always emits one
@@ -94,9 +64,9 @@ func (s *server) GetProductsStatsAttention(context.Context, gen.GetProductsStats
 // omitted.
 func (s *server) GetProductsStatsSummary(ctx context.Context, req gen.GetProductsStatsSummaryRequestObject) (gen.GetProductsStatsSummaryResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, previousFrom, ok := normalizeProductStatsPeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, previousFrom, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
-		return gen.GetProductsStatsSummary400ApplicationProblemPlusJSONResponse(problem("Invalid period", invalidProductPeriodDetail)), nil
+		return gen.GetProductsStatsSummary400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -154,9 +124,9 @@ func (s *server) GetProductsStatsSummary(ctx context.Context, req gen.GetProduct
 // 400 "Invalid metric" (products inventory §1.2).
 func (s *server) GetProductsStatsTimeseries(ctx context.Context, req gen.GetProductsStatsTimeseriesRequestObject) (gen.GetProductsStatsTimeseriesResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, _, ok := normalizeProductStatsPeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, _, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
-		return gen.GetProductsStatsTimeseries400ApplicationProblemPlusJSONResponse(problem("Invalid period", invalidProductPeriodDetail)), nil
+		return gen.GetProductsStatsTimeseries400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
 
 	metric := ""
@@ -165,7 +135,7 @@ func (s *server) GetProductsStatsTimeseries(ctx context.Context, req gen.GetProd
 	}
 	if !strings.EqualFold(metric, "newProducts") {
 		return gen.GetProductsStatsTimeseries400ApplicationProblemPlusJSONResponse(
-			problem("Invalid metric", "Metric must be: newProducts.")), nil
+			apicommon.Problem("Invalid metric", "Metric must be: newProducts.")), nil
 	}
 
 	q := store.New(s.deps.Pool)

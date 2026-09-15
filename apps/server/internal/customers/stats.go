@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 )
@@ -40,10 +40,10 @@ func (s *server) GetCustomersStats(ctx context.Context, _ gen.GetCustomersStatsR
 		if err != nil {
 			return nil, fmt.Errorf("customers: identity figures: %w", err)
 		}
-		resp.BusinessCount = ptr(int32(idFigures.BusinessCount))
-		resp.PersonCount = ptr(int32(idFigures.PersonCount))
-		resp.MissingIdentityCount = ptr(int32(idFigures.MissingIdentityCount))
-		resp.DistinctCountryCount = ptr(int32(idFigures.DistinctCountryCount))
+		resp.BusinessCount = apicommon.Ptr(int32(idFigures.BusinessCount))
+		resp.PersonCount = apicommon.Ptr(int32(idFigures.PersonCount))
+		resp.MissingIdentityCount = apicommon.Ptr(int32(idFigures.MissingIdentityCount))
+		resp.DistinctCountryCount = apicommon.Ptr(int32(idFigures.DistinctCountryCount))
 	}
 	return gen.GetCustomersStats200JSONResponse(resp), nil
 }
@@ -58,44 +58,13 @@ func (s *server) GetCustomersStatsAttention(context.Context, gen.GetCustomersSta
 	return gen.GetCustomersStatsAttention200JSONResponse([]gen.CustomerStatsAttentionItem{}), nil
 }
 
-// summaryDefaultPeriodDays is CustomerStatsEndpoints.DefaultPeriodDays
-// (CustomerStatsEndpoints.cs:13).
-const summaryDefaultPeriodDays = 30
-
-// normalizePeriod is CustomerStatsEndpoints.TryNormalizePeriod
-// (CustomerStatsEndpoints.cs:114-135), shared by Summary and Timeseries:
-// to defaults to now, from defaults to 30 days before to; ok is false when
-// from is after to, the only way either handler answers 400.
-func normalizePeriod(from, to *time.Time, now time.Time) (periodFrom, periodTo, previousFrom time.Time, ok bool) {
-	periodTo = now
-	if to != nil {
-		periodTo = *to
-	}
-	periodFrom = periodTo.AddDate(0, 0, -summaryDefaultPeriodDays)
-	if from != nil {
-		periodFrom = *from
-	}
-	if periodFrom.After(periodTo) {
-		return time.Time{}, time.Time{}, time.Time{}, false
-	}
-	// The immediately preceding window of the same length as
-	// [periodFrom, periodTo) (Period.Previous, CustomerStatsEndpoints.cs:139).
-	previousFrom = periodFrom.Add(-periodTo.Sub(periodFrom))
-	return periodFrom, periodTo, previousFrom, true
-}
-
-// invalidPeriodDetail is TryNormalizePeriod's problem detail
-// (CustomerStatsEndpoints.cs:131-133), shared verbatim by Summary and
-// Timeseries.
-const invalidPeriodDetail = "The 'from' value must be earlier than or equal to the 'to' value."
-
 // GetCustomersStatsSummary Get customer dashboard summary
 // (GET /api/v1/customers/stats/summary)
 func (s *server) GetCustomersStatsSummary(ctx context.Context, req gen.GetCustomersStatsSummaryRequestObject) (gen.GetCustomersStatsSummaryResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, previousFrom, ok := normalizePeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, previousFrom, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
-		return gen.GetCustomersStatsSummary400ApplicationProblemPlusJSONResponse(problem("Invalid period", invalidPeriodDetail)), nil
+		return gen.GetCustomersStatsSummary400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -132,16 +101,16 @@ func (s *server) GetCustomersStatsSummary(ctx context.Context, req gen.GetCustom
 // invalid period still answers "Invalid period" first.
 func (s *server) GetCustomersStatsTimeseries(ctx context.Context, req gen.GetCustomersStatsTimeseriesRequestObject) (gen.GetCustomersStatsTimeseriesResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, _, ok := normalizePeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, _, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
-		return gen.GetCustomersStatsTimeseries400ApplicationProblemPlusJSONResponse(problem("Invalid period", invalidPeriodDetail)), nil
+		return gen.GetCustomersStatsTimeseries400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
 
 	metric := deref(req.Params.Metric)
 	newCustomers := strings.EqualFold(metric, "newCustomers")
 	if !newCustomers && !strings.EqualFold(metric, "newContacts") {
 		return gen.GetCustomersStatsTimeseries400ApplicationProblemPlusJSONResponse(
-			problem("Invalid metric", "Metric must be one of: newCustomers, newContacts.")), nil
+			apicommon.Problem("Invalid metric", "Metric must be one of: newCustomers, newContacts.")), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -152,7 +121,7 @@ func (s *server) GetCustomersStatsTimeseries(ctx context.Context, req gen.GetCus
 			return nil, fmt.Errorf("customers: timeseries: %w", err)
 		}
 		for _, r := range rows {
-			buckets = append(buckets, gen.CustomerStatsDailyBucket{Date: dateFromPgtype(r.Day), Value: ptr(r.Value)})
+			buckets = append(buckets, gen.CustomerStatsDailyBucket{Date: dateFromPgtype(r.Day), Value: apicommon.Ptr(r.Value)})
 		}
 	} else {
 		rows, err := q.ContactCreationBuckets(ctx, store.ContactCreationBucketsParams{RangeFrom: periodFrom, RangeTo: periodTo})
@@ -160,7 +129,7 @@ func (s *server) GetCustomersStatsTimeseries(ctx context.Context, req gen.GetCus
 			return nil, fmt.Errorf("customers: timeseries: %w", err)
 		}
 		for _, r := range rows {
-			buckets = append(buckets, gen.CustomerStatsDailyBucket{Date: dateFromPgtype(r.Day), Value: ptr(r.Value)})
+			buckets = append(buckets, gen.CustomerStatsDailyBucket{Date: dateFromPgtype(r.Day), Value: apicommon.Ptr(r.Value)})
 		}
 	}
 	return gen.GetCustomersStatsTimeseries200JSONResponse(buckets), nil

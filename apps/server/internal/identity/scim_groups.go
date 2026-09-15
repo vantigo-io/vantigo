@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
@@ -167,7 +168,7 @@ func (s *server) PostIdentityScimV2Groups(ctx context.Context, _ gen.PostIdentit
 	err = s.scimTx(ctx, func(q *store.Queries, now time.Time) error {
 		externalID := input.externalID
 		if externalID == nil {
-			externalID = ptr(uuid.NewString())
+			externalID = apicommon.Ptr(uuid.NewString())
 		}
 		g := store.IdentityAccessGroup{
 			ID:          uuid.New(),

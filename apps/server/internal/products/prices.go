@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
 )
@@ -68,7 +69,7 @@ func (s *server) PostProductsByIdVariantsByVariantIdPrices(ctx context.Context, 
 	errs := map[string][]string{}
 	validatePriceRequest("", body, errs)
 	if len(errs) > 0 {
-		return gen.PostProductsByIdVariantsByVariantIdPrices400ApplicationProblemPlusJSONResponse(validationProblem("Invalid price", errs)), nil
+		return gen.PostProductsByIdVariantsByVariantIdPrices400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid price", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -88,7 +89,7 @@ func (s *server) PostProductsByIdVariantsByVariantIdPrices(ctx context.Context, 
 	candidate := toParsedPrice(body).domain(0)
 	for _, r := range existingRows {
 		if pricesConflict(candidate, domainPriceFromRow(r)) {
-			return gen.PostProductsByIdVariantsByVariantIdPrices409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.PostProductsByIdVariantsByVariantIdPrices409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Overlapping price", fmt.Sprintf("The price overlaps an existing %s price of the same kind.", candidate.Currency), http.StatusConflict)), nil
 		}
 	}
@@ -127,7 +128,7 @@ func (s *server) PutProductsByIdVariantsByVariantIdPricesByPriceId(ctx context.C
 	errs := map[string][]string{}
 	validatePriceRequest("", body, errs)
 	if len(errs) > 0 {
-		return gen.PutProductsByIdVariantsByVariantIdPricesByPriceId400ApplicationProblemPlusJSONResponse(validationProblem("Invalid price", errs)), nil
+		return gen.PutProductsByIdVariantsByVariantIdPricesByPriceId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid price", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -148,7 +149,7 @@ func (s *server) PutProductsByIdVariantsByVariantIdPricesByPriceId(ctx context.C
 			continue
 		}
 		if pricesConflict(candidate, domainPriceFromRow(r)) {
-			return gen.PutProductsByIdVariantsByVariantIdPricesByPriceId409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.PutProductsByIdVariantsByVariantIdPricesByPriceId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Overlapping price", fmt.Sprintf("The price overlaps an existing %s price of the same kind.", candidate.Currency), http.StatusConflict)), nil
 		}
 	}

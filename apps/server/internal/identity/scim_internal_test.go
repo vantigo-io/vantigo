@@ -15,6 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
@@ -539,7 +540,7 @@ func TestScimPrecondition(t *testing.T) {
 	for _, c := range cases {
 		var ifMatch *string
 		if c.ifMatch != "<none>" {
-			ifMatch = ptr(c.ifMatch)
+			ifMatch = apicommon.Ptr(c.ifMatch)
 		}
 		if got := scimPrecondition(ifMatch, "e1") != nil; got != c.stale {
 			t.Errorf("If-Match %q: stale %t, want %t", c.ifMatch, got, c.stale)

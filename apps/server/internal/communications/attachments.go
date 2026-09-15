@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -364,7 +365,7 @@ func (s *server) reserveStorageKey(ctx context.Context, uploadID uuid.UUID, key 
 		// index decide is the same rule without the window.
 		params := store.InsertCleanupRecordParams{
 			ID: cleanupRecordID(key), StorageKey: key, NextAttemptAt: now,
-			ReservationExpiresAt: ptr(now.Add(reservationLifetime)), CreatedAt: now,
+			ReservationExpiresAt: apicommon.Ptr(now.Add(reservationLifetime)), CreatedAt: now,
 		}
 		insertErr := q.InsertCleanupRecord(ctx, params)
 		// Named, not a bare any-23505 check: the only collision this fallback
@@ -384,7 +385,7 @@ func (s *server) reserveStorageKey(ctx context.Context, uploadID uuid.UUID, key 
 		return errStorageKeyAlreadyOwned
 	default:
 		return q.ResetCleanupRecordToStaged(ctx, store.ResetCleanupRecordToStagedParams{
-			ID: existing.ID, NextAttemptAt: now, ReservationExpiresAt: ptr(now.Add(reservationLifetime)),
+			ID: existing.ID, NextAttemptAt: now, ReservationExpiresAt: apicommon.Ptr(now.Add(reservationLifetime)),
 		})
 	}
 }

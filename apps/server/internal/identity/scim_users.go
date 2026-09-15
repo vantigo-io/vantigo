@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
@@ -379,7 +380,7 @@ func (s *server) PostIdentityScimV2Users(ctx context.Context, _ gen.PostIdentity
 		return scimOr[gen.PostIdentityScimV2UsersResponseObject](err)
 	}
 	if input.externalID == nil {
-		input.externalID = ptr(uuid.NewString())
+		input.externalID = apicommon.Ptr(uuid.NewString())
 	}
 	if err := validateScimUser(ctx, s.q, input, uuid.Nil); err != nil {
 		return scimOr[gen.PostIdentityScimV2UsersResponseObject](err)

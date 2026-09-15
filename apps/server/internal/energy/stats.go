@@ -6,10 +6,10 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
 )
@@ -19,17 +19,9 @@ import (
 // and getEnergyStatsTimeseries — mounted directly under /stats, no
 // metering-point or customer sub-group.
 
-// energyStatsDefaultPeriodDays is EnergyStatsEndpoints.DefaultPeriodDays
-// (EnergyStatsEndpoints.cs:12).
-const energyStatsDefaultPeriodDays = 30
-
 // energyStatsAttentionWindowDays is Attention's hard-coded look-ahead
 // (:113: now.AddDays(30)).
 const energyStatsAttentionWindowDays = 30
-
-// invalidEnergyPeriodDetail is TryNormalizePeriod's problem detail
-// (:145-147), shared verbatim by Summary and Timeseries.
-const invalidEnergyPeriodDetail = "The 'from' value must be earlier than or equal to the 'to' value."
 
 // clampInt32 narrows a bigint count to int32, saturating at the int32
 // bounds rather than silently wrapping — EnergyStatsSummaryCounts' four
@@ -51,23 +43,6 @@ func clampInt32(n int64) int32 {
 	default:
 		return int32(n)
 	}
-}
-
-// normalizeEnergyStatsPeriod is EnergyStatsEndpoints.TryNormalizePeriod
-// (:132-149): to defaults to now, from defaults to 30 days before to; ok is
-// false only when the normalized from is after the normalized to (from ==
-// to is allowed, matching the source's `normalizedFrom <= normalizedTo`
-// check).
-func normalizeEnergyStatsPeriod(from, to *time.Time, now time.Time) (periodFrom, periodTo time.Time, ok bool) {
-	periodTo = now
-	if to != nil {
-		periodTo = *to
-	}
-	periodFrom = periodTo.AddDate(0, 0, -energyStatsDefaultPeriodDays)
-	if from != nil {
-		periodFrom = *from
-	}
-	return periodFrom, periodTo, !periodFrom.After(periodTo)
 }
 
 // GetEnergyStatsAttention Get energy dashboard attention items
@@ -107,9 +82,9 @@ func (s *server) GetEnergyStatsAttention(ctx context.Context, _ gen.GetEnergySta
 // immediately preceding period of equal length.
 func (s *server) GetEnergyStatsSummary(ctx context.Context, req gen.GetEnergyStatsSummaryRequestObject) (gen.GetEnergyStatsSummaryResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, ok := normalizeEnergyStatsPeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, _, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
-		return gen.GetEnergyStatsSummary400ApplicationProblemPlusJSONResponse(problem("Invalid period", invalidEnergyPeriodDetail)), nil
+		return gen.GetEnergyStatsSummary400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
 	previousFrom := periodFrom.Add(-periodTo.Sub(periodFrom))
 
@@ -149,9 +124,9 @@ func (s *server) GetEnergyStatsSummary(ctx context.Context, req gen.GetEnergySta
 // the metering point's own market zone (energy inventory §1.3 line 64).
 func (s *server) GetEnergyStatsTimeseries(ctx context.Context, req gen.GetEnergyStatsTimeseriesRequestObject) (gen.GetEnergyStatsTimeseriesResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, ok := normalizeEnergyStatsPeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, _, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
-		return gen.GetEnergyStatsTimeseries400ApplicationProblemPlusJSONResponse(problem("Invalid period", invalidEnergyPeriodDetail)), nil
+		return gen.GetEnergyStatsTimeseries400ApplicationProblemPlusJSONResponse(apicommon.InvalidPeriod()), nil
 	}
 
 	metric := ""
@@ -160,7 +135,7 @@ func (s *server) GetEnergyStatsTimeseries(ctx context.Context, req gen.GetEnergy
 	}
 	if !strings.EqualFold(metric, "consumptionKwh") {
 		return gen.GetEnergyStatsTimeseries400ApplicationProblemPlusJSONResponse(
-			problem("Invalid metric", "Metric must be: consumptionKwh.")), nil
+			apicommon.Problem("Invalid metric", "Metric must be: consumptionKwh.")), nil
 	}
 
 	q := store.New(s.deps.Pool)

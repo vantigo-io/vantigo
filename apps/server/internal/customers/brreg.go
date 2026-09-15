@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 )
 
@@ -310,7 +311,7 @@ func (c *brregClient) attempt(ctx context.Context, path string) (int, []byte, er
 // a caller cannot distinguish "never got an answer" from "got a nonsense
 // one" and should not need to.
 func brregUnavailableResponse() gen.GetCustomersLookupBrreg502ApplicationProblemPlusJSONResponse {
-	return gen.GetCustomersLookupBrreg502ApplicationProblemPlusJSONResponse(problemStatus(
+	return gen.GetCustomersLookupBrreg502ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 		"Lookup service unavailable",
 		"The Brønnøysundregisteret lookup service could not be reached. Please try again later.",
 		http.StatusBadGateway,
@@ -322,7 +323,7 @@ func brregUnavailableResponse() gen.GetCustomersLookupBrreg502ApplicationProblem
 func (s *server) GetCustomersLookupBrreg(ctx context.Context, req gen.GetCustomersLookupBrregRequestObject) (gen.GetCustomersLookupBrregResponseObject, error) {
 	query, ok := validateBrregLookupQuery(req.Params)
 	if !ok {
-		return gen.GetCustomersLookupBrreg400ApplicationProblemPlusJSONResponse(problem(
+		return gen.GetCustomersLookupBrreg400ApplicationProblemPlusJSONResponse(apicommon.Problem(
 			"Invalid lookup query",
 			fmt.Sprintf("Either 'legalId' or a 'search' of at least %d characters must be provided.", brregMinSearchLength),
 		)), nil

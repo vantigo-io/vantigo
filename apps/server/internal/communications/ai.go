@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 )
@@ -367,7 +368,7 @@ func sanitizeSubject(subject *string) *string {
 	if subject == nil {
 		return nil
 	}
-	return ptr(sanitizeModelText(*subject, aiMaxSubjectChars))
+	return apicommon.Ptr(sanitizeModelText(*subject, aiMaxSubjectChars))
 }
 
 // PostCommunicationsConversationsByIdAiDraft Generate an AI reply draft
@@ -437,7 +438,7 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 	// provider took, which a harness-frozen clock would always report as 0.
 	started := time.Now()
 	completion, callErr := s.ai.complete(ctx, draftPrompt(tone, instruction, contextBlock))
-	row.DurationMs = ptr(time.Since(started).Milliseconds())
+	row.DurationMs = apicommon.Ptr(time.Since(started).Milliseconds())
 
 	if callErr != nil {
 		if callerGaveUp(ctx, callErr) {
@@ -451,7 +452,7 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 		// result_summary.
 		s.deps.Logger.WarnContext(ctx, "communications: AI draft failed",
 			"conversationId", req.Id, "error", errorTypeName(callErr))
-		row.ErrorSummary = ptr(errorTypeName(callErr))
+		row.ErrorSummary = apicommon.Ptr(errorTypeName(callErr))
 		if err := s.recordInteraction(ctx, q, row); err != nil {
 			return nil, err
 		}
@@ -462,8 +463,8 @@ func (s *server) PostCommunicationsConversationsByIdAiDraft(ctx context.Context,
 	draftSubject, text := parseDraft(completion.text, conv.Subject)
 	row.InputTokenCount = completion.inputTokens
 	row.OutputTokenCount = completion.outputTokens
-	row.ResultSummary = ptr(summaryDraftGenerated)
-	row.ValidationSummary = ptr(fmt.Sprintf("text_chars=%d;product_data=%t", utf16Length(text), aiProductDataUsed))
+	row.ResultSummary = apicommon.Ptr(summaryDraftGenerated)
+	row.ValidationSummary = apicommon.Ptr(fmt.Sprintf("text_chars=%d;product_data=%t", utf16Length(text), aiProductDataUsed))
 	if err := s.recordInteraction(ctx, q, row); err != nil {
 		return nil, err
 	}
@@ -613,8 +614,8 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	associated := conv.CustomerAssociationSource != nil &&
 		(*conv.CustomerAssociationSource == "manual" || *conv.CustomerAssociationSource == "automatic")
 	if conv.CustomerID != nil || associated {
-		row.ResultSummary = ptr(summaryProtected)
-		row.ValidationSummary = ptr(validationProtected)
+		row.ResultSummary = apicommon.Ptr(summaryProtected)
+		row.ValidationSummary = apicommon.Ptr(validationProtected)
 		if err := s.recordInteraction(ctx, q, row); err != nil {
 			return nil, err
 		}
@@ -625,8 +626,8 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	// Guard 2 (:109-116): fewer than two candidates is not something to ask
 	// a model about. Audited the same way.
 	if len(candidates) < 2 {
-		row.ResultSummary = ptr(summaryInsufficient)
-		row.ValidationSummary = ptr(validationInsufficient)
+		row.ResultSummary = apicommon.Ptr(summaryInsufficient)
+		row.ValidationSummary = apicommon.Ptr(validationInsufficient)
 		if err := s.recordInteraction(ctx, q, row); err != nil {
 			return nil, err
 		}
@@ -636,7 +637,7 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 
 	started := time.Now()
 	completion, callErr := s.ai.complete(ctx, suggestionPrompt(csv, digestContext))
-	row.DurationMs = ptr(time.Since(started).Milliseconds())
+	row.DurationMs = apicommon.Ptr(time.Since(started).Milliseconds())
 
 	if callErr != nil {
 		if callerGaveUp(ctx, callErr) {
@@ -671,7 +672,7 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 		// name, and — per §17.5 — no result_summary and no validation_summary.
 		s.deps.Logger.WarnContext(ctx, "communications: AI customer suggestion failed",
 			"conversationId", req.Id, "error", errorTypeName(callErr))
-		row.ErrorSummary = ptr(errorTypeName(callErr))
+		row.ErrorSummary = apicommon.Ptr(errorTypeName(callErr))
 		if err := s.recordInteraction(ctx, q, row); err != nil {
 			return nil, err
 		}
@@ -688,9 +689,9 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 	row.OutputTokenCount = completion.outputTokens
 
 	customerID, confidence, rationale, validation, ok := parseSuggestion(completion.text, candidates)
-	row.ValidationSummary = ptr(validation)
+	row.ValidationSummary = apicommon.Ptr(validation)
 	if !ok {
-		row.ResultSummary = ptr(summaryMalformed)
+		row.ResultSummary = apicommon.Ptr(summaryMalformed)
 		if err := s.recordInteraction(ctx, q, row); err != nil {
 			return nil, err
 		}
@@ -721,7 +722,7 @@ func (s *server) PostCommunicationsConversationsByIdAiCustomerSuggestion(ctx con
 			return nil, fmt.Errorf("communications: save suggested customer: %w", err)
 		}
 	}
-	row.ResultSummary = ptr(outcome)
+	row.ResultSummary = apicommon.Ptr(outcome)
 	if err := s.recordInteraction(ctx, q, row); err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
 )
@@ -124,7 +125,7 @@ func (s *server) PostProductsTaxCategories(ctx context.Context, req gen.PostProd
 
 	name, kind, errs := validateTaxCategoryRequest(body)
 	if len(errs) > 0 {
-		return gen.PostProductsTaxCategories400ApplicationProblemPlusJSONResponse(validationProblem("Invalid tax category", errs)), nil
+		return gen.PostProductsTaxCategories400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid tax category", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -133,7 +134,7 @@ func (s *server) PostProductsTaxCategories(ctx context.Context, req gen.PostProd
 		return nil, fmt.Errorf("products: check tax category name: %w", err)
 	}
 	if conflict {
-		return gen.PostProductsTaxCategories409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PostProductsTaxCategories409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate tax category name", fmt.Sprintf("A tax category named '%s' already exists.", name), http.StatusConflict)), nil
 	}
 
@@ -182,7 +183,7 @@ func (s *server) PutProductsTaxCategoriesById(ctx context.Context, req gen.PutPr
 
 	name, kind, errs := validateTaxCategoryRequest(body)
 	if len(errs) > 0 {
-		return gen.PutProductsTaxCategoriesById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid tax category", errs)), nil
+		return gen.PutProductsTaxCategoriesById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid tax category", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -197,7 +198,7 @@ func (s *server) PutProductsTaxCategoriesById(ctx context.Context, req gen.PutPr
 		return nil, fmt.Errorf("products: check tax category name: %w", err)
 	}
 	if conflict {
-		return gen.PutProductsTaxCategoriesById409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PutProductsTaxCategoriesById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate tax category name", fmt.Sprintf("A tax category named '%s' already exists.", name), http.StatusConflict)), nil
 	}
 
@@ -240,7 +241,7 @@ func (s *server) DeleteProductsTaxCategoriesById(ctx context.Context, req gen.De
 		if !isRestrictConflict(err) {
 			return nil, fmt.Errorf("products: delete tax category: %w", err)
 		}
-		return gen.DeleteProductsTaxCategoriesById409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.DeleteProductsTaxCategoriesById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Tax category has products", "Reassign the products before deleting the tax category.", http.StatusConflict)), nil
 	}
 	return gen.DeleteProductsTaxCategoriesById204Response{}, nil

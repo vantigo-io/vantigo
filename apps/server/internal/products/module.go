@@ -6,6 +6,7 @@ package products
 import (
 	"net/http"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
@@ -61,13 +62,13 @@ func mount(d module.Deps) (http.Handler, error) {
 		Limits:  limits,
 		Catalog: d.Catalog,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), []gen.StrictMiddlewareFunc{withRequest}, gen.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
+	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseRouter:       router,
-		ErrorHandlerFunc: module.DecodeError(writeDecodeError),
+		ErrorHandlerFunc: module.DecodeError(apicommon.WriteDecodeError),
 	})
 	if err := router.Err(); err != nil {
 		return nil, err

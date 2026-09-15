@@ -1,6 +1,8 @@
 package identity
 
 import (
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+
 	"bytes"
 	"encoding/json"
 	"math"
@@ -535,7 +537,7 @@ func scimUserActions(ops []scimPatchOp) ([]scimUserAction, error) {
 						if part.name != "givenName" && part.name != "familyName" {
 							return nil, scimInvalidPath(nameComponentsDetail)
 						}
-						expanded = append(expanded, scimPatchOp{op: operation.op, path: ptr("name." + part.name), value: part.value})
+						expanded = append(expanded, scimPatchOp{op: operation.op, path: apicommon.Ptr("name." + part.name), value: part.value})
 					}
 				case equalOrdinalIgnoreCase(p.name, "emails"):
 					email, err := readWorkEmail(p.value)
@@ -546,9 +548,9 @@ func scimUserActions(ops []scimPatchOp) ([]scimUserAction, error) {
 					if email != nil {
 						value, _ = json.Marshal(*email) // a string: Marshal cannot fail
 					}
-					expanded = append(expanded, scimPatchOp{op: operation.op, path: ptr("emails.value"), value: value})
+					expanded = append(expanded, scimPatchOp{op: operation.op, path: apicommon.Ptr("emails.value"), value: value})
 				default:
-					expanded = append(expanded, scimPatchOp{op: operation.op, path: ptr(p.name), value: p.value})
+					expanded = append(expanded, scimPatchOp{op: operation.op, path: apicommon.Ptr(p.name), value: p.value})
 				}
 				more, err := scimUserActions(expanded)
 				if err != nil {
@@ -681,7 +683,7 @@ func scimGroupActions(ops []scimPatchOp) ([]scimGroupAction, error) {
 		}
 		var path *string
 		if operation.path != nil {
-			path = ptr(dotnetTrim(*operation.path))
+			path = apicommon.Ptr(dotnetTrim(*operation.path))
 		}
 		if path == nil && jsonKindOf(operation.value) == jsonObject {
 			for _, p := range jsonMembers(operation.value) {
@@ -1009,5 +1011,3 @@ func scimMembersExcluded(rawQuery string) bool {
 	}
 	return false
 }
-
-func ptr[T any](v T) *T { return &v }

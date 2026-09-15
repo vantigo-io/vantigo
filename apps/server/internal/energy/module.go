@@ -6,6 +6,7 @@ package energy
 import (
 	"net/http"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -68,12 +69,12 @@ func mount(d module.Deps) (http.Handler, error) {
 		Catalog: d.Catalog,
 	})
 	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
+		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseRouter:       router,
-		ErrorHandlerFunc: module.DecodeError(writeDecodeError),
+		ErrorHandlerFunc: module.DecodeError(apicommon.WriteDecodeError),
 	})
 	if err := router.Err(); err != nil {
 		return nil, err

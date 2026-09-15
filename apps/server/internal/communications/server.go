@@ -95,9 +95,3 @@ func moduleObjectStore(d module.Deps) (storage.ObjectStore, error) {
 	}
 	return scoped, nil
 }
-
-// ptr returns a pointer to a copy of v, for the optional fields of a
-// generated response type (the same helper customers/server.go and
-// identity/scim_input.go each carry — depguard forbids sharing it across
-// modules for one line of code).
-func ptr[T any](v T) *T { return &v }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -201,7 +202,7 @@ func searchPatterns(search *string) []string {
 // (GET /api/v1/customers/contacts)
 func (s *server) GetCustomersContacts(ctx context.Context, req gen.GetCustomersContactsRequestObject) (gen.GetCustomersContactsResponseObject, error) {
 	if msgs := validateGetContactsParams(req.Params); len(msgs) > 0 {
-		return gen.GetCustomersContacts400ApplicationProblemPlusJSONResponse(problem("Invalid query parameters", strings.Join(msgs, " "))), nil
+		return gen.GetCustomersContacts400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters", strings.Join(msgs, " "))), nil
 	}
 
 	page := int32(1)
@@ -259,7 +260,7 @@ func (s *server) GetCustomersContacts(ctx context.Context, req gen.GetCustomersC
 
 	return gen.GetCustomersContacts200JSONResponse{
 		Data:       data,
-		Pagination: paginationMetadata(page, pageSize, int32(total)),
+		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
 }
 
@@ -289,7 +290,7 @@ func (s *server) PostCustomersContacts(ctx context.Context, req gen.PostCustomer
 
 	parsed, errs := validateContactRequest(body)
 	if errs != nil {
-		return gen.PostCustomersContacts400ApplicationProblemPlusJSONResponse(validationProblem("Invalid contact", errs)), nil
+		return gen.PostCustomersContacts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid contact", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -337,7 +338,7 @@ func (s *server) PutCustomersContactsById(ctx context.Context, req gen.PutCustom
 
 	parsed, errs := validateContactRequest(body)
 	if errs != nil {
-		return gen.PutCustomersContactsById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid contact", errs)), nil
+		return gen.PutCustomersContactsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid contact", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -467,7 +468,7 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 
 	assoc, errs := validateCustomerContactRequest(body.Role, body.Phone, body.Email)
 	if errs != nil {
-		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(validationProblem("Invalid contact association", errs)), nil
+		return gen.PostCustomersByIdContacts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid contact association", errs)), nil
 	}
 
 	now := s.deps.Clock()
@@ -515,7 +516,7 @@ func (s *server) PostCustomersByIdContacts(ctx context.Context, req gen.PostCust
 		return gen.PostCustomersByIdContacts404Response{}, nil
 	case errors.Is(err, errAlreadyAttached):
 		detail := fmt.Sprintf("Contact %d is already associated with customer %d.", body.ContactId, req.Id)
-		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(problemStatus("Contact already associated", detail, http.StatusConflict)), nil
+		return gen.PostCustomersByIdContacts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus("Contact already associated", detail, http.StatusConflict)), nil
 	case err != nil:
 		return nil, fmt.Errorf("customers: attach contact: %w", err)
 	}
@@ -558,7 +559,7 @@ func (s *server) PutCustomersByIdContactsByContactId(ctx context.Context, req ge
 	}
 	assoc, errs := validateCustomerContactRequest(body.Role, body.Phone, body.Email)
 	if errs != nil {
-		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(validationProblem("Invalid contact association", errs)), nil
+		return gen.PutCustomersByIdContactsByContactId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid contact association", errs)), nil
 	}
 
 	changed := existing.Role != assoc.Role || deref(existing.AssociationPhone) != deref(assoc.Phone) || deref(existing.AssociationEmail) != deref(assoc.Email)

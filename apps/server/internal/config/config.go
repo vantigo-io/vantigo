@@ -580,18 +580,25 @@ func duration(p *problems, env map[string]string, field string, def time.Duratio
 	return d
 }
 
-// flag reads a strict "0"/"1" switch. Anything else is rejected rather than
-// guessed at: the fail-safe default stays off.
-func flag(p *problems, env map[string]string, field string) bool {
+// boolean reads a strict "0"/"1" switch; unset means def. Anything else is
+// rejected rather than guessed at, and the default stands.
+func boolean(p *problems, env map[string]string, field string, def bool) bool {
 	switch env[field] {
-	case "", "0":
+	case "":
+		return def
+	case "0":
 		return false
 	case "1":
 		return true
 	default:
 		p.add(field, `must be "0" or "1"`)
-		return false
+		return def
 	}
+}
+
+// flag is boolean with the fail-safe default: off.
+func flag(p *problems, env map[string]string, field string) bool {
+	return boolean(p, env, field, false)
 }
 
 func logLevel(p *problems, env map[string]string) slog.Level {
@@ -694,18 +701,7 @@ func sessions(p *problems, env map[string]string) SessionConfig {
 // plane unless the operator has knowingly accepted that with
 // OWNERS_ALLOW_INSECURE_NO_MFA (checked once both flags are parsed).
 func ownersRequireMFA(p *problems, env map[string]string, c *Config) bool {
-	def := !c.IsDevelopment()
-	switch env["OWNERS_REQUIRE_MFA"] {
-	case "":
-		return def
-	case "0":
-		return false
-	case "1":
-		return true
-	default:
-		p.add("OWNERS_REQUIRE_MFA", `must be "0" or "1"`)
-		return def
-	}
+	return boolean(p, env, "OWNERS_REQUIRE_MFA", !c.IsDevelopment())
 }
 
 // boundedDuration is duration plus a [min,max] range. A syntactically valid
@@ -1066,12 +1062,9 @@ var knownModules = func() []string {
 }()
 
 // defaultModules are enabled when MODULES is unset: every business module
-// this binary can mount. communications joined the list in its own
-// sub-project's final task, when Module() first existed for module.Compose
-// to mount — before that the name parsed but mounted nothing, which is why
-// it was deliberately left off this list. A deployment that does not want
-// it names the others in MODULES explicitly.
-var defaultModules = []string{"customers", "products", "energy", "communications"}
+// this binary can mount, which is exactly knownModules. A deployment that
+// does not want one of them names the others in MODULES explicitly.
+var defaultModules = knownModules
 
 // modules parses MODULES, a comma list of business module names this
 // deployment enables. Entries are trimmed and lower-cased; empty entries
@@ -1115,17 +1108,7 @@ func modules(p *problems, env map[string]string) []string {
 // replicas (design §3.2), the opposite default from flag's off-by-default
 // switches.
 func workersInProcess(p *problems, env map[string]string) bool {
-	switch env["WORKERS_IN_PROCESS"] {
-	case "":
-		return true
-	case "0":
-		return false
-	case "1":
-		return true
-	default:
-		p.add("WORKERS_IN_PROCESS", `must be "0" or "1"`)
-		return true
-	}
+	return boolean(p, env, "WORKERS_IN_PROCESS", true)
 }
 
 // prefixes parses a comma list of CIDR prefixes. Empty means none.

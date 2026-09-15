@@ -939,7 +939,7 @@ func TestPatchConversation_NullBodyIs400BeforeLookup(t *testing.T) {
 // to the handler with an empty body, indistinguishable from a genuine null
 // body and answering the same "Status must be open, closed, or archived."
 // 400. The fix routes a read failure through the platform's own
-// decode-error response instead (module.go's writeDecodeError,
+// decode-error response instead (module.go's apicommon.WriteDecodeError,
 // application/problem+json) — a different shape entirely from this
 // module's flat CommunicationErrorResponse 400s.
 func TestPatchConversation_OversizedBodyIsDecodeErrorNotNullBody(t *testing.T) {

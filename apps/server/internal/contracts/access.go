@@ -32,6 +32,51 @@ func PrincipalFrom(ctx context.Context) (Principal, bool) {
 	return p, ok
 }
 
+// requestContextKey and responseWriterContextKey are unexported so only
+// this package can set or read the context values.
+type (
+	requestContextKey        struct{}
+	responseWriterContextKey struct{}
+)
+
+// WithRequest attaches r and its response writer to ctx. The router does
+// this for every operation it dispatches, so a generated strict handler —
+// which is handed only a context — can still reach the request it is
+// answering: the client address, the cookies, the trace id, or a second
+// Access.Check on a permission the router could not evaluate statically.
+func WithRequest(ctx context.Context, w http.ResponseWriter, r *http.Request) context.Context {
+	ctx = context.WithValue(ctx, requestContextKey{}, r)
+	return context.WithValue(ctx, responseWriterContextKey{}, w)
+}
+
+// RequestFrom retrieves the request WithRequest attached to ctx.
+func RequestFrom(ctx context.Context) (*http.Request, bool) {
+	r, ok := ctx.Value(requestContextKey{}).(*http.Request)
+	return r, ok
+}
+
+// ResponseWriterFrom retrieves the response writer WithRequest attached to
+// ctx.
+func ResponseWriterFrom(ctx context.Context) (http.ResponseWriter, bool) {
+	w, ok := ctx.Value(responseWriterContextKey{}).(http.ResponseWriter)
+	return w, ok
+}
+
+// HasPermission reports whether the caller of the request in ctx holds key,
+// evaluated by a the way the router evaluates an operation's
+// x-vantigo-access permission rule. Any failure — no request in ctx,
+// infrastructure errors included — reads as false, so a gate built on it
+// fails closed. It is for the handler-side checks the router cannot make:
+// a permission conditional on request-body content.
+func HasPermission(ctx context.Context, a Access, key string) bool {
+	r, ok := RequestFrom(ctx)
+	if !ok {
+		return false
+	}
+	_, err := a.Check(r, Rule{Kind: RulePermission, Names: []string{key}})
+	return err == nil
+}
+
 var (
 	ErrUnauthenticated = errors.New("unauthenticated")
 	ErrForbidden       = errors.New("forbidden")

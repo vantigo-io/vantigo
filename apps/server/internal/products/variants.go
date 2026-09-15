@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
@@ -72,13 +73,13 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 	}
 
 	if variantContainsPricingData(body) && (!s.hasPermission(ctx, pricingView) || !s.hasPermission(ctx, pricingManage)) {
-		return gen.PostProductsByIdVariants403JSONResponse(forbiddenBody()), nil
+		return gen.PostProductsByIdVariants403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
 
 	errs := map[string][]string{}
 	parsed := validateVariantRequest("", body, errs)
 	if len(errs) > 0 {
-		return gen.PostProductsByIdVariants400ApplicationProblemPlusJSONResponse(validationProblem("Invalid variant", errs)), nil
+		return gen.PostProductsByIdVariants400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -95,7 +96,7 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 		return nil, fmt.Errorf("products: check sku: %w", err)
 	}
 	if skuExists {
-		return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate SKU", fmt.Sprintf("A variant with SKU '%s' already exists.", parsed.Sku), http.StatusConflict)), nil
 	}
 
@@ -105,7 +106,7 @@ func (s *server) PostProductsByIdVariants(ctx context.Context, req gen.PostProdu
 			return nil, fmt.Errorf("products: check barcode: %w", err)
 		}
 		if barcodeExists {
-			return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.PostProductsByIdVariants409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Duplicate barcode", fmt.Sprintf("A variant with barcode '%s' already exists.", *parsed.Barcode), http.StatusConflict)), nil
 		}
 	}
@@ -176,7 +177,7 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 	errs := map[string][]string{}
 	parsed := validateVariantRequest("", body, errs)
 	if len(errs) > 0 {
-		return gen.PutProductsByIdVariantsByVariantId400ApplicationProblemPlusJSONResponse(validationProblem("Invalid variant", errs)), nil
+		return gen.PutProductsByIdVariantsByVariantId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid variant", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -194,7 +195,7 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 			return nil, fmt.Errorf("products: get product status: %w", err)
 		}
 		if status != "Draft" {
-			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"SKU is immutable", "The SKU cannot be changed after the product has been activated.", http.StatusConflict)), nil
 		}
 		skuExists, err := q.VariantSkuExistsExcluding(ctx, store.VariantSkuExistsExcludingParams{Sku: parsed.Sku, ID: req.VariantId})
@@ -202,7 +203,7 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 			return nil, fmt.Errorf("products: check sku: %w", err)
 		}
 		if skuExists {
-			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Duplicate SKU", fmt.Sprintf("A variant with SKU '%s' already exists.", parsed.Sku), http.StatusConflict)), nil
 		}
 	}
@@ -213,7 +214,7 @@ func (s *server) PutProductsByIdVariantsByVariantId(ctx context.Context, req gen
 			return nil, fmt.Errorf("products: check barcode: %w", err)
 		}
 		if barcodeExists {
-			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.PutProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Duplicate barcode", fmt.Sprintf("A variant with barcode '%s' already exists.", *parsed.Barcode), http.StatusConflict)), nil
 		}
 	}
@@ -265,7 +266,7 @@ func (s *server) DeleteProductsByIdVariantsByVariantId(ctx context.Context, req 
 		return nil, fmt.Errorf("products: count variants: %w", err)
 	}
 	if remaining == 0 {
-		return gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.DeleteProductsByIdVariantsByVariantId409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Last variant", "A product must have at least one variant.", http.StatusConflict)), nil
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
@@ -127,7 +128,7 @@ func (s *server) GetEnergyMeteringPointsByIdConsumption(ctx context.Context, req
 	p := req.Params
 	if consumptionIntervalRangeInvalid(p.From, p.To) {
 		return gen.GetEnergyMeteringPointsByIdConsumption400ApplicationProblemPlusJSONResponse(
-			problem("Invalid interval", "to must be later than from.")), nil
+			apicommon.Problem("Invalid interval", "to must be later than from.")), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -175,7 +176,7 @@ func (s *server) PostEnergyMeteringPointsByIdConsumption(ctx context.Context, re
 		body = *req.Body
 	}
 	if msg := validateConsumptionInterval(body.Start, body.End, body.QuantityKwh); msg != "" {
-		return gen.PostEnergyMeteringPointsByIdConsumption400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdConsumption400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid consumption interval", map[string][]string{"interval": {msg}})), nil
 	}
 
@@ -251,7 +252,7 @@ func (s *server) GetEnergyMeteringPointsByIdConsumptionAggregate(ctx context.Con
 	resolution, errs := validateConsumptionAggregate(p.From, p.To, p.Resolution)
 	if len(errs) > 0 {
 		return gen.GetEnergyMeteringPointsByIdConsumptionAggregate400ApplicationProblemPlusJSONResponse(
-			validationProblem(validationErrorsOneOrMore, errs)), nil
+			apicommon.ValidationProblem(validationErrorsOneOrMore, errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
@@ -96,7 +97,7 @@ func (s *server) PostEnergyMeteringPointsByIdMeters(ctx context.Context, req gen
 		errs["installedAt"] = []string{"Installed at is required."}
 	}
 	if len(errs) > 0 {
-		return gen.PostEnergyMeteringPointsByIdMeters400ApplicationProblemPlusJSONResponse(validationProblem("Invalid meter", errs)), nil
+		return gen.PostEnergyMeteringPointsByIdMeters400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid meter", errs)), nil
 	}
 
 	installedAt := *body.InstalledAt
@@ -132,7 +133,7 @@ func (s *server) PostEnergyMeteringPointsByIdMeters(ctx context.Context, req gen
 		return nil, fmt.Errorf("energy: replace meter: %w", err)
 	}
 	if conflictMessage != "" {
-		return gen.PostEnergyMeteringPointsByIdMeters400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostEnergyMeteringPointsByIdMeters400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid meter", map[string][]string{"installedAt": {conflictMessage}})), nil
 	}
 	return gen.PostEnergyMeteringPointsByIdMeters201JSONResponse(meterResponseOf(created)), nil
