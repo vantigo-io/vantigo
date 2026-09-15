@@ -15,6 +15,7 @@ bun install --frozen-lockfile
 mise run server:db        # PostgreSQL for tests (55432) and development (55433)
 mise run server:test      # go test against a real PostgreSQL
 mise run server:check     # golangci-lint, govulncheck, shellcheck, actionlint, goreleaser check
+mise run frontend:check   # format, lint, typecheck and tests for every frontend workspace
 mise run server:dev       # the api command on http://localhost:8080
 mise run smoke            # build the image and smoke-test it end to end
 ```

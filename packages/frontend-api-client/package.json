@@ -8,7 +8,8 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc -b --noEmit"
   },
   "devDependencies": {
     "typescript": "catalog:",
