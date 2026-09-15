@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
@@ -89,11 +89,16 @@ func (c *singleSessionConnector) Driver() driver.Driver {
 // pinning the pool to a single connection, is what makes that guarantee
 // hold even if database/sql would otherwise have silently reconnected.
 func ApplyMigrations(ctx context.Context, databaseURL string) error {
-	cfg, err := pgx.ParseConfig(databaseURL)
+	// Parsed as a pool config even though the migrator holds one plain
+	// connection: the same DATABASE_URL feeds Open's pool, and operators size
+	// that pool with pool_max_conns and friends on the URL. pgxpool consumes
+	// those keys; pgx.ParseConfig would forward them to PostgreSQL as runtime
+	// parameters, which rejects the connection outright.
+	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return fmt.Errorf("db: parse connection string: %w", err)
 	}
-	connector := newSingleSessionConnector(stdlib.GetConnector(*cfg))
+	connector := newSingleSessionConnector(stdlib.GetConnector(*cfg.ConnConfig))
 	sqlDB := sql.OpenDB(connector)
 	defer func() { _ = sqlDB.Close() }()
 	sqlDB.SetMaxOpenConns(1)
