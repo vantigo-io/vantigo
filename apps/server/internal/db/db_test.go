@@ -53,6 +53,24 @@ func TestApplyMigrations_IsIdempotent(t *testing.T) {
 	}
 }
 
+// One DATABASE_URL serves both the request pool and the migrator, and the
+// deployment docs tell operators to size the pool with pool_max_conns on it.
+// pgxpool consumes that key; a plain pgx parse forwards it to PostgreSQL as a
+// runtime parameter, which rejects the connection with "unrecognized
+// configuration parameter" — so a URL that is right for the pool would fail
+// startup at the migration step.
+func TestApplyMigrations_AcceptsPoolParametersOnTheURL(t *testing.T) {
+	url := testdb.URL(t)
+	sep := "?"
+	if strings.Contains(url, "?") {
+		sep = "&"
+	}
+	url += sep + "pool_max_conns=3&pool_min_conns=1"
+	if err := db.ApplyMigrations(context.Background(), url); err != nil {
+		t.Fatalf("ApplyMigrations with pool parameters on the URL: %v", err)
+	}
+}
+
 // Open must apply its options. A signature that accepts them and drops them
 // compiles and passes every caller's tests, while the pool silently keeps
 // pgxpool's default of max(4, NumCPU): enough on a large workstation, too
