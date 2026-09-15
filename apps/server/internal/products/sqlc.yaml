@@ -1,12 +1,12 @@
-# sqlc: products' typed queries. Schema = every goose migration (sqlc reads
-# the -- +goose Up sections); queries = internal/products/queries. Empty
-# today — Task 10 is schema, skeleton and catalog only, no query yet needs a
-# generated method — but wired up now so the first implementation task only
-# has to add a .sql file.
+# sqlc: products' typed queries. Schema = this module's own migrations only
+# (sqlc reads the -- +goose Up sections); internal/db's schema_test keeps that
+# list in step with the migrations directory; queries =
+# internal/products/queries.
 version: "2"
 sql:
   - engine: postgresql
-    schema: ../db/migrations
+    schema:
+      - ../db/migrations/00004_products_baseline.sql
     queries: queries
     gen:
       go:
