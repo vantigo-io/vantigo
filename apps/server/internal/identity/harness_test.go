@@ -315,6 +315,9 @@ func (h *harness) mailTo(to string) []mail.Message {
 	return out
 }
 
+// clientTimeout bounds every exchange a client makes, matching modtest.
+const clientTimeout = 30 * time.Second
+
 // fixtureTimeout bounds every fixture query. Without it a pool with no free
 // connection blocks in Acquire for as long as the test binary runs, which
 // turns an exhausted pool into a hung package instead of a failed test.
@@ -618,6 +621,10 @@ func (h *harness) client(t testing.TB) *client {
 			Jar:           jar,
 			Transport:     recorder.Transport(t, h.srv.Client().Transport),
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			// Without a timeout a hung server blocks do forever and the
+			// whole package waits out CI's timeout instead of one test
+			// failing. modtest's client bounds itself the same way.
+			Timeout: clientTimeout,
 		},
 	}
 }

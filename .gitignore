@@ -414,6 +414,9 @@ FodyWeavers.xsd
 # Claude Code local agent worktrees
 .claude/worktrees/
 
+# oh-my-claudecode session state
+.omc/
+
 ##
 ## Visual studio for Mac
 ##
