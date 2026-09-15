@@ -11,7 +11,7 @@
 //	go run ./internal/openapi/cmd/contract coverage -corpus ../../openapi/testdata/exchanges -out ../../openapi/COVERAGE.md
 //	go run ./internal/openapi/cmd/contract normalize -dir ../../openapi
 //
-// See docs/superpowers/plans/2026-09-10-api-contract.md.
+// See docs/superpowers/specs/2026-09-10-api-contract-design.md.
 package main
 
 import (

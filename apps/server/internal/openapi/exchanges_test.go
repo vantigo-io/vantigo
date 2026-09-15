@@ -33,7 +33,7 @@ func TestRecordedExchangesMatchTheContract(t *testing.T) {
 		}
 		corpus := readCorpus(t, filepath.Join(corpusDir, name+".jsonl"))
 		if len(corpus) == 0 {
-			t.Errorf("%s: the recorded corpus is empty — re-cut it with contract corpus", name)
+			t.Errorf("%s: the recorded corpus is empty — it is frozen evidence from the retired .NET suites and cannot be re-cut; restore it from git history", name)
 		}
 		for _, ex := range corpus {
 			if id, err := Validate(ctx, doc, ex); err != nil {

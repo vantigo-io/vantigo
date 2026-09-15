@@ -4,8 +4,8 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// Task 8 of the .NET -> Go cutover plan (docs/superpowers/plans/
-// 2026-09-14-cutover.md): the repository-wide check that the deleted .NET
+// The .NET -> Go cutover's last step (docs/superpowers/specs/
+// 2026-09-14-cutover-design.md): the repository-wide check that the deleted .NET
 // build system left behind nothing a tool or a person could still act on.
 //
 // WHAT THIS SWEEP CANNOT DO — read this before trusting a green run. It
