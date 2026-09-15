@@ -573,11 +573,24 @@ func (s *server) GetIdentityOidcComplete(ctx context.Context, _ gen.GetIdentityO
 		}
 	}
 
-	userID, err := s.provisionOIDCAccount(ctx, account)
+	// A serialization failure is retried before the link is consulted: SSI
+	// dooms the losing transaction during the winner's pre-commit, so the
+	// loser can fail and go looking for the link a moment before the
+	// winner's commit is visible — and would then, wrongly, answer
+	// oidc_sign_in_unavailable for an identity that was provisioned fine.
+	// The retry re-runs the email check under a fresh snapshot: once the
+	// winner has committed it reports the email taken
+	// (errOIDCProvisioningLost), and the committed link decides below.
+	var userID uuid.UUID
+	err = db.RetrySerializable(ctx, serializableAttempts, func() error {
+		var err error
+		userID, err = s.provisionOIDCAccount(ctx, account)
+		return err
+	})
 	if errors.Is(err, errOIDCProvisioningLost) || db.IsSerializationConflict(err) || db.IsUniqueViolation(err, "") {
-		// A concurrent completion may have committed this identity while
-		// this one provisioned (EA/WorkforceOidcEndpoints.cs:140-163): the
-		// rollback leaves nothing behind, and the committed link decides.
+		// A concurrent completion committed this identity while this one
+		// provisioned (EA/WorkforceOidcEndpoints.cs:140-163): the rollback
+		// leaves nothing behind, and the committed link decides.
 		linked, err := s.q.GetOidcLinkedUser(ctx, store.GetOidcLinkedUserParams{Issuer: account.issuer, Subject: account.subject})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fail(oidcSignInUnavailable, "provisioning conflicted with another account change")
