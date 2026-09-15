@@ -47,9 +47,8 @@ type FS struct {
 // when isDevelopment is true. NewFS refuses allowInsecureRoot when
 // isDevelopment is false even if the root's permissions are already secure
 // — config.Load already rejects STORAGE_FS_ALLOW_INSECURE_ROOT outside
-// development, but NewFS refuses the combination defensively too, the same
-// duplication NewSMTP makes for its own TLS="none" check, since a caller
-// could construct FS directly.
+// development, but NewFS refuses the combination defensively too, since a
+// caller could construct FS directly.
 //
 // The checks below, up to os.OpenRoot, run on the plain filesystem: os.Root
 // can only be opened on a directory that already exists securely, so

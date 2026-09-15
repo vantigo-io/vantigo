@@ -36,7 +36,7 @@ func sendOutboundThroughTestServer(t *testing.T, out mail.Outbound) (data, rcptT
 	err := mail.SendOutbound(context.Background(), config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test",
 		Username: "smtp-user", Password: "smtp-pass", TLS: "starttls",
-	}, false, out)
+	}, out)
 	if err != nil {
 		t.Fatalf("SendOutbound() = %v, want nil", err)
 	}
@@ -188,7 +188,7 @@ func TestSendOutbound_OmitsCallerMessageIDWhenUnset(t *testing.T) {
 func TestSendOutbound_RequiresARecipient(t *testing.T) {
 	err := mail.SendOutbound(context.Background(), config.MailConfig{
 		Driver: "smtp", Host: "127.0.0.1", Port: 1, From: "noreply@example.test", TLS: "starttls",
-	}, false, mail.Outbound{Subject: "nobody", TextBody: "body"})
+	}, mail.Outbound{Subject: "nobody", TextBody: "body"})
 	if err == nil {
 		t.Fatal("SendOutbound() = nil error, want a refusal for a message with no recipient")
 	}
@@ -205,19 +205,8 @@ func TestSendOutbound_GuardRejectsLoopbackByDefault(t *testing.T) {
 
 	err := mail.SendOutbound(context.Background(), config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test", TLS: "starttls",
-	}, false, mail.Outbound{To: []string{"to@example.test"}, Subject: "hi", TextBody: "hi"})
+	}, mail.Outbound{To: []string{"to@example.test"}, Subject: "hi", TextBody: "hi"})
 	if err == nil {
 		t.Fatal("SendOutbound() = nil error, want the guard to reject a loopback destination")
-	}
-}
-
-// TestSendOutbound_RejectsPlaintextWithoutInsecureTransport proves SendOutbound
-// inherits the driver's fail-closed construction rather than bypassing it.
-func TestSendOutbound_RejectsPlaintextWithoutInsecureTransport(t *testing.T) {
-	err := mail.SendOutbound(context.Background(), config.MailConfig{
-		Driver: "smtp", Host: "127.0.0.1", Port: 25, From: "noreply@example.test", TLS: "none",
-	}, false, mail.Outbound{To: []string{"to@example.test"}, Subject: "hi", TextBody: "hi"})
-	if err == nil {
-		t.Fatal("SendOutbound() = nil error, want TLS=none refused without insecure transport")
 	}
 }

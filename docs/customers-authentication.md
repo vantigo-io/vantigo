@@ -36,8 +36,8 @@ fails its first boot with the complete list instead of one restart per mistake.
 | `vantigo.oidc` | OIDC state, nonce and PKCE verifier, sealed | `HttpOnly`, `SameSite=Lax` |
 | `vantigo.identity.external` | The validated external identity between callback and completion, sealed | `HttpOnly`, `SameSite=Lax` |
 
-All four are `Secure` unless the installation runs in development or has knowingly
-set `ALLOW_INSECURE_TRANSPORT=1`. The two OIDC cookies are `SameSite=Lax` on
+All four are `Secure` exactly when `APP_URL` is an https origin (a `Secure` cookie
+never reaches an http one). The two OIDC cookies are `SameSite=Lax` on
 purpose: the provider's redirect back is a cross-site top-level navigation, which
 `Lax` admits and `Strict` would not. Both are sealed with AES-256-GCM under
 distinct purposes, so a state cookie cannot be replayed as an external identity.
@@ -215,10 +215,11 @@ SMTP_TLS=starttls
 ```
 
 `SMTP_HOST` and a valid `SMTP_FROM` address are required for the SMTP driver.
-`SMTP_TLS` is `starttls` (the default), `implicit`, or `none`; `none` is refused
-unless `ALLOW_INSECURE_TRANSPORT=1`. STARTTLS is mandatory rather than
-opportunistic — a server that offers no TLS produces an error, not a plaintext
-delivery. `SMTP_USERNAME` is optional for servers that need no authentication.
+`SMTP_TLS` is `starttls` (the default), `implicit`, or `none` — the operator's
+choice; see [transport security](transport-security.md) for what `none` costs.
+STARTTLS is mandatory rather than opportunistic — a server that offers no TLS
+produces an error, not a plaintext delivery. `SMTP_USERNAME` is optional for servers
+that need no authentication.
 
 SMTP destinations are resolved and checked before the socket opens: private,
 loopback, link-local, carrier-grade-NAT and cloud-metadata addresses are refused,
@@ -319,7 +320,6 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `ALLOW_INSECURE_TRANSPORT` | Accept plaintext HTTP, database and SMTP transport | `0` |
 | `CSP_REPORT_ONLY` | Emit the CSP as report-only | `0` |
 | `TRUSTED_PROXY_HOPS` | Number of proxies in front (0–10) | `0` |
 | `TRUSTED_PROXY_CIDRS` | The proxies' own addresses, as CIDR prefixes | unset |

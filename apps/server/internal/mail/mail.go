@@ -33,13 +33,11 @@ type Sender interface {
 
 // New picks the mail driver named by cfg.Mail.Driver: "smtp" dials out with
 // NewSMTP, "log" writes to logger with NewLog. Config validation already
-// guarantees "log" appears only in development and that TLS="none" appears
-// only with insecure transport allowed or in development; NewSMTP still
-// refuses that combination defensively.
+// guarantees "log" appears only in development.
 func New(cfg *config.Config, logger *slog.Logger) (Sender, error) {
 	switch cfg.Mail.Driver {
 	case "smtp":
-		return NewSMTP(cfg.Mail, cfg.AllowInsecureTransport)
+		return NewSMTP(cfg.Mail)
 	case "log":
 		return NewLog(logger), nil
 	default:

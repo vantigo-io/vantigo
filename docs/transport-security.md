@@ -1,42 +1,54 @@
 # Transport security and browser hardening
 
-Vantigo treats plaintext transport as a startup failure rather than an operational
-detail, and sends a set of browser security headers on every response. This document
-states what is enforced, what it costs, and how to get out of it deliberately.
+Transport — http or https at the edge, TLS or plaintext to PostgreSQL and to the
+SMTP relay — is the operator's choice, made per deployment in the environment. The
+process does not second-guess it: nothing about transport fails configuration
+validation, in any environment. What it does do is send a set of browser security
+headers on every response and derive the few things that follow from the choice
+(the cookie `Secure` attribute, HSTS). This document states what each setting
+means, what the plaintext options cost, and how to configure the common shapes.
 
 ## Status summary
 
 | Control | Development | Outside development |
 | --- | --- | --- |
-| `APP_URL` scheme | http allowed | **https required** |
-| PostgreSQL connection | any `sslmode` | **certificate-verified TLS (`verify-full`, or `verify-ca`)** |
-| Application SMTP (`SMTP_*`) | plaintext allowed with an opt-in | **STARTTLS or implicit TLS required** |
+| `APP_URL` scheme | http or https | http or https |
+| PostgreSQL connection | any `sslmode`, TCP or Unix socket | any `sslmode`, TCP or Unix socket |
+| Application SMTP (`SMTP_*`) | `starttls`, `implicit` or `none` | `starttls`, `implicit` or `none` |
+| Cookie `Secure` attribute | set when `APP_URL` is https | set when `APP_URL` is https |
 | HSTS | not sent | sent on https requests, loopback excluded |
 | Security headers, including CSP | sent | sent |
 | Host header filtering | `APP_URL`'s host + loopback | `APP_URL`'s host + loopback |
 | HTTPS redirection | none | none (HSTS header only) |
 | Merged OpenAPI document | `GET /api/openapi.json`, any authenticated session | `GET /api/openapi.json`, any authenticated session |
 
-## Fail-closed transport
+## What each choice costs
 
-Outside development the process refuses to start when:
+- **`APP_URL` on `http://`.** Session cookies and the bearer links mailed by the
+  invitation and password-recovery workflows are derived from this origin, so an http
+  origin hands them to anyone on the network path. Cookies are set without the
+  `Secure` attribute (a `Secure` cookie never reaches an http origin, so the
+  attribute follows the scheme), and HSTS is never sent. Sound only when the path
+  between browser and process is one you control end to end.
+- **A PostgreSQL connection without certificate verification.** libpq's default
+  `sslmode` is `prefer`, which falls back to plaintext and never checks a
+  certificate even over TLS; `require` encrypts but does not authenticate the server.
+  Only `verify-full` — or `verify-ca` when the server certificate does not name the
+  host you connect on — authenticates it. Over a network you do not control, the
+  database credential and every row of every tenant travel on this connection.
+- **`SMTP_TLS=none`.** Mail credentials and message content, including the bearer
+  links above, travel in the clear to the relay. `starttls` (the default) is
+  mandatory rather than opportunistic, so a server that advertises no STARTTLS
+  produces an error instead of a plaintext delivery; `implicit` is TLS from the
+  first byte.
 
-- **`APP_URL` is not `https://…`.** Session cookies and the bearer links mailed by
-  the invitation and password-recovery workflows are derived from this origin, so an
-  http origin hands them to anyone on the network path.
-- **A configured PostgreSQL connection would not authenticate the server.** The
-  check is made on pgx's own parse of the connection string, so it judges exactly
-  what the driver will connect with, and **every fallback must pass too**: libpq's
-  default, `prefer` and `allow` add a plaintext fallback and never check a
-  certificate even over TLS. Only `verify-full` — or `verify-ca` when the server
-  certificate does not name the host you connect on — authenticates the server. Both
-  `DATABASE_URL` and `MIGRATIONS_DATABASE_URL` are checked. The error never quotes
-  the connection string: it can carry a password.
-- **`SMTP_TLS=none` is configured.** `starttls` (the default) and `implicit` are the
-  TLS modes; STARTTLS is mandatory rather than opportunistic, so a server that
-  advertises no STARTTLS produces an error instead of a plaintext delivery.
+Both `DATABASE_URL` and `MIGRATIONS_DATABASE_URL` are still parsed the way pgx will
+parse them, so a malformed connection string fails configuration rather than the
+first connection. The error never quotes the string: it can carry a password.
 
-A correct production configuration therefore looks like:
+## Common shapes
+
+A deployment across a network looks like:
 
 ```text
 APP_URL=https://vantigo.example.com
@@ -51,42 +63,50 @@ When the server certificate is issued by a private authority, point the connecti
 it with `sslrootcert=/etc/ssl/certs/internal-ca.pem` and keep `sslmode=verify-full`.
 Use `verify-ca` only when the certificate does not carry the host name you connect on.
 
-SMTP has a second protection that is not about TLS: the destination is resolved and
-checked before the socket opens, and private, loopback, link-local,
-carrier-grade-NAT and cloud-metadata addresses (including `169.254.169.254`) are
-refused. The connection is then made to the address that was checked rather than to a
-fresh lookup, which is what defeats DNS rebinding.
-
-## The escape hatch
-
-`ALLOW_INSECURE_TRANSPORT=1` disables all three checks at once. It exists for local
-stacks and evaluation deployments — including the bundled
-[Docker Compose stack](../deploy/compose/README.md), which serves
-`http://localhost:8080` and reaches the bundled PostgreSQL container over a private
-compose network with no certificate authority available — and ships enabled in
-`deploy/compose/vantigo.env.example` for exactly that reason.
-
-The process says so on every start:
+A deployment where PostgreSQL runs on the same host has no certificate authority to
+verify against and no network to protect. Either say so on a TCP connection:
 
 ```text
-WARN ALLOW_INSECURE_TRANSPORT=1: plaintext HTTP, database and SMTP transport are
-accepted; local and evaluation use only
+DATABASE_URL=postgresql://vantigo:<password>@127.0.0.1:5432/vantigo?sslmode=disable
 ```
 
-With it set, session cookies, invitation and password-reset bearer links, and
-database credentials all travel in the clear. It also drops the `Secure` attribute
-from session cookies. Anything reachable from a network you do not control must
-leave it unset.
+or connect over PostgreSQL's Unix domain socket, which never involves TLS at all
+(pgx, like libpq, ignores every `ssl*` setting on a socket host). The host is the
+directory that holds the socket, not the socket file:
 
-Unlike the .NET implementation, plaintext SMTP needs no second, narrower opt-in:
-`ALLOW_INSECURE_TRANSPORT=1` is the only thing that permits `SMTP_TLS=none`, and it is
-required in **every** environment, development included. Development does not stand in
-for it. What development changes is where the refusal comes from — configuration
-validation rejects `SMTP_TLS=none` only outside development, while the SMTP driver
-refuses it wherever it is constructed — so a development stack configured with
-`MAIL_DRIVER=smtp` and `SMTP_TLS=none` but no flag fails when the sender is built
-during startup rather than when configuration is loaded. `MAIL_DRIVER` defaults to
-`log` in development, so that combination is normally never reached.
+```text
+DATABASE_URL=postgresql://vantigo:<password>@/vantigo?host=/var/run/postgresql
+```
+
+or, in keyword form, `host=/var/run/postgresql user=vantigo password=… dbname=vantigo`.
+The same forms work for `MIGRATIONS_DATABASE_URL`. Two things to know about sockets:
+
+- **From the container, mount the socket directory** — for example
+  `-v /var/run/postgresql:/var/run/postgresql` — and keep the mounted path under
+  108 bytes, the kernel's limit on a Unix socket path. The image runs as an
+  unprivileged user, so PostgreSQL's `peer` authentication (which maps the OS user
+  to a role) will not match; give the role a password and let `pg_hba.conf` use
+  `scram-sha-256` for `local` connections instead.
+- **Bundled Compose stack.** The PostgreSQL container's socket is not shared with the
+  application containers; they connect over the private compose network, where
+  `sslmode=disable` is the honest setting.
+
+SMTP has a protection that is not about TLS: the destination is resolved and checked
+before the socket opens, and private, loopback, link-local, carrier-grade-NAT and
+cloud-metadata addresses (including `169.254.169.254`) are refused. The connection is
+then made to the address that was checked rather than to a fresh lookup, which is
+what defeats DNS rebinding. This applies whatever `SMTP_TLS` says.
+
+## Upgrading from the fail-closed rules
+
+Earlier releases refused to start outside development unless `APP_URL` was https,
+the database connection verified the server certificate, and `SMTP_TLS` was not
+`none`, with `ALLOW_INSECURE_TRANSPORT=1` as a single escape hatch that relaxed all
+three at once. Those rules and that variable are gone; the process reads
+`ALLOW_INSECURE_TRANSPORT` no longer and ignores it if it is still set. A deployment
+that carried the flag keeps working unchanged. A deployment that met the old rules
+also keeps working unchanged — `sslmode=verify-full` and `SMTP_TLS=starttls` mean
+exactly what they meant.
 
 ## HSTS
 

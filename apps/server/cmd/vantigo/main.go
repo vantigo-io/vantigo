@@ -426,9 +426,6 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	logger.Info("vantigo is listening",
 		"version", buildinfo.Version, "command", command, "addr", ln.Addr().String(),
 		"app_url", cfg.AppOrigin, "base_path", cfg.BasePath, "env", cfg.Env)
-	if cfg.AllowInsecureTransport {
-		logger.Warn("ALLOW_INSECURE_TRANSPORT=1: plaintext HTTP, database and SMTP transport are accepted; local and evaluation use only")
-	}
 	return serveUntilDone(ctx, logger, srv, ln, cfg.ShutdownTimeout, runner, cancelWorkers)
 }
 

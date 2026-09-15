@@ -759,7 +759,7 @@ func (s *server) verifyChannel(ctx context.Context, q *store.Queries, channel st
 	return verify(verifyCtx, config.MailConfig{
 		Driver: "smtp", Host: settings.Host, Port: int(settings.Port),
 		Username: username, Password: password, From: channel.Address, TLS: tlsMode,
-	}, false)
+	})
 }
 
 // PostCommunicationsChannelsByIdVerify Verify a channel

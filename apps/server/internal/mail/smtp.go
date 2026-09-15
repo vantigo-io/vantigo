@@ -29,20 +29,15 @@ type smtpSender struct {
 	from   string
 }
 
-// NewSMTP builds a Sender that delivers through cfg's SMTP server. It fails
-// closed: TLS="none" is refused unless allowInsecure is true. Config
-// validation already guarantees that combination outside development, but
-// the driver refuses it defensively too, since Communications (which reuses
-// this port) may construct one directly.
-func NewSMTP(cfg config.MailConfig, allowInsecure bool) (Sender, error) {
+// NewSMTP builds a Sender that delivers through cfg's SMTP server, in
+// whichever TLS mode cfg names: "implicit", "starttls" (mandatory, never
+// opportunistic) or "none" — the operator's choice per deployment.
+func NewSMTP(cfg config.MailConfig) (Sender, error) {
 	if cfg.Host == "" {
 		return nil, fmt.Errorf("mail: smtp host is required")
 	}
 	if cfg.From == "" {
 		return nil, fmt.Errorf("mail: smtp from address is required")
-	}
-	if cfg.TLS == "none" && !allowInsecure {
-		return nil, fmt.Errorf("mail: smtp TLS is required unless insecure transport is allowed")
 	}
 
 	guard := newDestinationGuard(&net.Resolver{})
@@ -116,7 +111,7 @@ func (s *smtpSender) Send(ctx context.Context, m Message) error {
 
 // VerifyConnection builds a client over cfg exactly as NewSMTP does — the
 // same guarded, DNS-rebinding-safe dial path, the same TLS mode and auth
-// handling, the same fail-closed checks — but only connects, authenticates
+// handling — but only connects, authenticates
 // if a username is configured, and disconnects: no message is ever built or
 // sent. Communications channel verification
 // (POST .../channels/{id}/verify, communications inventory §15.2's
@@ -124,8 +119,8 @@ func (s *smtpSender) Send(ctx context.Context, m Message) error {
 // disconnects") is this function's one caller; it exists so that endpoint
 // reuses the exact guard NewSMTP's Sender dials through rather than
 // re-implementing SMTP connection handling for a verify-only path.
-func VerifyConnection(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error {
-	s, err := newSMTPClient(cfg, allowInsecure)
+func VerifyConnection(ctx context.Context, cfg config.MailConfig) error {
+	s, err := newSMTPClient(cfg)
 	if err != nil {
 		return err
 	}
@@ -135,14 +130,14 @@ func VerifyConnection(ctx context.Context, cfg config.MailConfig, allowInsecure 
 	return s.client.Close()
 }
 
-// newSMTPClient builds a client over cfg through NewSMTP — the same
-// fail-closed checks, TLS modes and guarded dial the Sender uses — and returns
-// it as the concrete type, so the two callers that need more than Sender's
-// Send (VerifyConnection, which dials without sending, and SendOutbound, which
+// newSMTPClient builds a client over cfg through NewSMTP — the same TLS
+// modes and guarded dial the Sender uses — and returns it as the concrete
+// type, so the two callers that need more than Sender's Send
+// (VerifyConnection, which dials without sending, and SendOutbound, which
 // renders a full envelope) share one construction and one type assertion
 // rather than repeating the downcast.
-func newSMTPClient(cfg config.MailConfig, allowInsecure bool) (*smtpSender, error) {
-	sender, err := NewSMTP(cfg, allowInsecure)
+func newSMTPClient(cfg config.MailConfig) (*smtpSender, error) {
+	sender, err := NewSMTP(cfg)
 	if err != nil {
 		return nil, err
 	}

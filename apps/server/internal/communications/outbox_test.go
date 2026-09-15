@@ -42,7 +42,7 @@ type fakeSMTP struct {
 	during func()
 }
 
-func (f *fakeSMTP) send(_ context.Context, cfg config.MailConfig, _ bool, msg mail.Outbound) error {
+func (f *fakeSMTP) send(_ context.Context, cfg config.MailConfig, msg mail.Outbound) error {
 	f.mu.Lock()
 	during, err := f.during, f.err
 	f.mu.Unlock()
