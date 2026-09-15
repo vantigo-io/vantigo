@@ -1,0 +1,57 @@
+# The one PostgreSQL server every tenant on this host shares, at
+# /srv/postgres. Each tenant gets its own database and role (created by
+# `vantigo add`); nothing here is per tenant.
+#
+# TLS is on, with the self-signed certificate ./make-certs.sh writes to
+# ./certs, so tenants can connect with sslmode=verify-full and run without
+# ALLOW_INSECURE_TRANSPORT. Certificates are read from a bind mount: the
+# key must be owned by the image's postgres user (uid 999) and mode 0600,
+# which make-certs.sh takes care of.
+#
+# Never auto-updated. Major-version upgrades are manual (pg_upgrade); the
+# data directory is mounted at /var/lib/postgresql, the parent of the
+# per-major-version directory the postgres:18+ images use.
+name: postgres
+
+services:
+  postgres:
+    image: postgres:18-trixie
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/server.crt
+      - -c
+      - ssl_key_file=/certs/server.key
+      # Budget: every tenant's pool is capped by pool_max_conns on its
+      # DATABASE_URL (5 by default, set by `vantigo add`). 20 tenants × 5 =
+      # 100, plus headroom for migrations, backups and admin sessions.
+      - -c
+      - max_connections=200
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    ports:
+      # Admin tooling only (psql, pg_dump from the vantigo CLI); tenants
+      # reach the server over the `postgres` network as postgres:5432.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./data:/var/lib/postgresql
+      - ./certs:/certs:ro
+    networks:
+      - postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 60s
+    restart: unless-stopped
+
+networks:
+  postgres:
+    # Created by this project with a fixed name so tenant projects can
+    # reference it as `external: true`.
+    name: postgres

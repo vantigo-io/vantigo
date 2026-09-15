@@ -12,6 +12,9 @@ Operator and contributor documentation for Vantigo:
   HSTS, host filtering, the content security policy, and the API contract document.
 - [Docker Compose deployment](../deploy/compose/README.md) — the pre-built image
   quick start, proxy example, upgrades, and production notes.
+- [Several tenants on one host](../deploy/host/README.md) — one instance per
+  tenant behind a cloudflared tunnel and a shared TLS PostgreSQL, with the
+  `vantigo` CLI that creates, hardens, upgrades, backs up and retires tenants.
 - [Products module](products.md) — product domain and API reference.
 - [Communications module](communications.md) — communications domain and API reference.
 - [Module boundaries](module-boundaries.md) — implementation ownership and module

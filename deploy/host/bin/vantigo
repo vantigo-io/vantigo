@@ -1,0 +1,493 @@
+#!/usr/bin/env bash
+# vantigo — manage per-tenant Vantigo deployments on this host.
+#
+# One Vantigo instance per tenant; the tenant boundary is the deployment.
+#
+# Layout:
+#   /srv/_template/compose.yaml   shared compose file (symlinked into each tenant)
+#   /srv/_template/.env.example   template for tenant .env
+#   /srv/_template/host.env       optional: overrides for the settings below
+#   /srv/tenants/<name>/          per tenant: compose.yaml -> template, .env, data/
+#   /srv/postgres/                shared PostgreSQL (compose.yaml, certs/, data/)
+#   /srv/backups/                 dumps, data tarballs, retired tenants
+#
+# Run as root: it chowns tenant data to the image's user and talks to docker.
+# PostgreSQL admin access goes through the port published on 127.0.0.1; put
+# the admin password in ~/.pgpass (127.0.0.1:5432:*:postgres:<pw>) or export
+# PGPASSWORD.
+set -euo pipefail
+
+SRV_DIR="${VANTIGO_SRV_DIR:-/srv}"
+TEMPLATE_DIR="${VANTIGO_TEMPLATE_DIR:-$SRV_DIR/_template}"
+TENANTS_DIR="${VANTIGO_TENANTS_DIR:-$SRV_DIR/tenants}"
+BACKUPS_DIR="${VANTIGO_BACKUPS_DIR:-$SRV_DIR/backups}"
+
+# Host-wide settings. Every one can be overridden from the environment or
+# from $TEMPLATE_DIR/host.env (sourced below), so the script itself never
+# needs editing on a host.
+# shellcheck disable=SC1091
+[[ -f "$TEMPLATE_DIR/host.env" ]] && source "$TEMPLATE_DIR/host.env"
+
+PGHOST="${PGHOST:-127.0.0.1}"
+PGPORT="${PGPORT:-5432}"
+PGADMIN="${PGADMIN:-postgres}"
+PG_SERVICE_HOST="${VANTIGO_PG_SERVICE_HOST:-postgres}"          # hostname the app uses inside docker
+PG_SSLMODE="${VANTIGO_PG_SSLMODE:-verify-full}"                  # what DATABASE_URL asks for
+PG_CA_CONTAINER_PATH="/certs/postgres-ca.crt"                    # where compose.yaml mounts the cert
+PG_CA_HOST_PATH="${VANTIGO_PG_CA_HOST_PATH:-$SRV_DIR/postgres/certs/server.crt}"
+POOL_MAX_CONNS="${VANTIGO_POOL_MAX_CONNS:-5}"                    # per tenant; see postgres max_connections
+DOMAIN="${VANTIGO_DOMAIN:-}"                                     # tenants default to https://<name>.$DOMAIN
+CLOUDFLARE_NETWORK="${VANTIGO_CLOUDFLARE_NETWORK:-cloudflare}"   # the tunnel container's network
+POSTGRES_NETWORK="${VANTIGO_POSTGRES_NETWORK:-postgres}"
+APP_UID="${VANTIGO_APP_UID:-65532}"                              # distroless nonroot user in the image
+UP_WAIT_TIMEOUT="${VANTIGO_UP_WAIT_TIMEOUT:-120}"                # seconds for `up --wait`
+
+# ---------------------------------------------------------------- helpers ---
+
+die()  { echo "vantigo: $*" >&2; exit 1; }
+info() { echo "==> $*"; }
+
+usage() {
+  cat <<EOF
+usage: vantigo <command> [args]
+
+  add <name> [--url URL] [--modules LIST] [--tag TAG] [--no-start]
+                                        create tenant dir, .env, database; start it
+  harden <name>                         require Owner MFA, rotate the bootstrap secret, restart
+  remove <name> [--yes] [--keep-data]   back up, stop, drop db, delete dir
+  list                                  tenants: tag, image, container state
+  up|down|restart|ps|logs <name> [...]  docker compose passthrough for one tenant
+  upgrade <name>|--all [--tag TAG] [--no-backup]
+                                        dump db, pull image, recreate, wait for healthy
+  backup <name>|--all                   pg_dump plus a tarball of data/ and .env
+  psql <name>                           open psql as the tenant's role
+  help
+
+Host settings come from the environment or $TEMPLATE_DIR/host.env:
+  VANTIGO_DOMAIN (default APP_URL is https://<name>.\$VANTIGO_DOMAIN),
+  VANTIGO_POOL_MAX_CONNS ($POOL_MAX_CONNS), VANTIGO_PG_SSLMODE ($PG_SSLMODE),
+  VANTIGO_PG_CA_HOST_PATH ($PG_CA_HOST_PATH), TRUSTED_PROXY_CIDRS (detected
+  from the $CLOUDFLARE_NETWORK network when unset).
+EOF
+}
+
+validate_name() {
+  [[ "$1" =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]] || die "tenant name must match [a-z0-9-] and start alphanumeric: $1"
+}
+
+tenant_dir()  { echo "$TENANTS_DIR/$1"; }
+db_name()     { local n="${1//-/_}"; echo "vantigo_${n}"; }   # role name == db name
+timestamp()   { date +%Y%m%d-%H%M%S; }
+gen_secret()  { openssl rand -base64 32; }
+gen_password(){ openssl rand -base64 30 | tr -d '/+=' | cut -c1-32; }   # URL-safe
+
+require_tenant() {
+  [[ -d "$(tenant_dir "$1")" ]] || die "no such tenant: $1"
+}
+
+all_tenants() {
+  local d
+  [[ -d "$TENANTS_DIR" ]] || return 0
+  for d in "$TENANTS_DIR"/*/; do [[ -d "$d" ]] && basename "$d"; done
+}
+
+compose() {  # compose <name> <args...>
+  local name="$1"; shift
+  ( cd "$(tenant_dir "$name")" && docker compose "$@" )
+}
+
+# up_wait <name> [up args...]: recreate what changed and wait for the health
+# check. On failure show the tail of the log so a bad config or a failed
+# migration is visible without a second command.
+up_wait() {
+  local name="$1"; shift
+  if ! compose "$name" up -d --wait --wait-timeout "$UP_WAIT_TIMEOUT" "$@"; then
+    echo "vantigo: $name did not become healthy; last log lines:" >&2
+    compose "$name" logs --no-color --tail 40 vantigo >&2 || true
+    return 1
+  fi
+}
+
+psql_admin() {
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGADMIN" -d postgres -v ON_ERROR_STOP=1 -qtA "$@"
+}
+
+# get_env_var <file> <KEY>: the value of the first uncommented KEY= line.
+get_env_var() {
+  grep -m1 "^$2=" "$1" 2>/dev/null | cut -d= -f2- || true
+}
+
+# set_env_var <file> <KEY> <value>: replace the first KEY= line in place, or
+# append. The value goes through awk's ENVIRON rather than sed, so a
+# connection string's `&`, a base64 secret's `/` and `+`, or a `|` in a
+# password are never interpreted.
+set_env_var() {
+  local file="$1" key="$2" value="$3" tmp
+  tmp="$(mktemp "$file.XXXXXX")"
+  KEY="$key" VALUE="$value" awk '
+    BEGIN { key = ENVIRON["KEY"]; value = ENVIRON["VALUE"]; done = 0 }
+    !done && index($0, key "=") == 1 { print key "=" value; done = 1; next }
+    { print }
+    END { if (!done) print key "=" value }
+  ' "$file" > "$tmp"
+  chmod --reference="$file" "$tmp"
+  mv "$tmp" "$file"
+}
+
+# unset_env_var <file> <KEY>: comment out every uncommented KEY= line.
+unset_env_var() {
+  local file="$1" key="$2" tmp
+  tmp="$(mktemp "$file.XXXXXX")"
+  KEY="$key" awk '
+    BEGIN { key = ENVIRON["KEY"] }
+    index($0, key "=") == 1 { print "# " $0; next }
+    { print }
+  ' "$file" > "$tmp"
+  chmod --reference="$file" "$tmp"
+  mv "$tmp" "$file"
+}
+
+# proxy_cidrs: the subnets forwarded headers are trusted from — the tunnel
+# container's network. TRUSTED_PROXY_CIDRS in host.env pins it explicitly;
+# otherwise it is read off the docker network, which is stable for as long
+# as the network exists.
+proxy_cidrs() {
+  if [[ -n "${TRUSTED_PROXY_CIDRS:-}" ]]; then
+    echo "$TRUSTED_PROXY_CIDRS"
+    return
+  fi
+  docker network inspect "$CLOUDFLARE_NETWORK" \
+    -f '{{range $i, $c := .IPAM.Config}}{{if $i}},{{end}}{{$c.Subnet}}{{end}}' 2>/dev/null
+}
+
+check_host() {
+  [[ -f "$TEMPLATE_DIR/compose.yaml" ]] || die "missing $TEMPLATE_DIR/compose.yaml"
+  [[ -f "$TEMPLATE_DIR/.env.example" ]] || die "missing $TEMPLATE_DIR/.env.example"
+  grep -q '^DATABASE_URL=' "$TEMPLATE_DIR/.env.example" || die ".env.example has no DATABASE_URL= line"
+  docker network inspect "$CLOUDFLARE_NETWORK" >/dev/null 2>&1 \
+    || die "docker network '$CLOUDFLARE_NETWORK' does not exist — see README.md, one-time host setup"
+  docker network inspect "$POSTGRES_NETWORK" >/dev/null 2>&1 \
+    || die "docker network '$POSTGRES_NETWORK' does not exist — is /srv/postgres up?"
+  if [[ "$PG_SSLMODE" == verify-full || "$PG_SSLMODE" == verify-ca ]]; then
+    [[ -r "$PG_CA_HOST_PATH" ]] \
+      || die "PostgreSQL certificate not found at $PG_CA_HOST_PATH — run /srv/postgres/make-certs.sh, or set VANTIGO_PG_SSLMODE"
+  fi
+}
+
+# ---------------------------------------------------------------- database ---
+
+db_role_exists() {
+  [[ -n "$(psql_admin -c "SELECT 1 FROM pg_roles WHERE rolname = '$(db_name "$1")'")" ]]
+}
+
+db_create() {  # db_create <name> -> prints DATABASE_URL
+  local db role pw url
+  db="$(db_name "$1")"; role="$db"
+
+  if db_role_exists "$1"; then
+    die "role $role already exists — remove it first if you want a fresh tenant"
+  fi
+
+  pw="$(gen_password)"
+
+  # format() with %I/%L quotes identifiers/literals; \gexec runs the result,
+  # which keeps CREATE DATABASE outside a transaction block. The role owns
+  # its database (the application applies its own migrations at startup, so
+  # it needs DDL there) and nothing else: no superuser, no role or database
+  # creation, and PUBLIC loses CONNECT so tenant credentials cannot reach
+  # other tenants' databases.
+  psql_admin -v role="$role" -v db="$db" -v pw="$pw" <<'SQL' >/dev/null
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', :'role', :'pw') \gexec
+SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'role') \gexec
+SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'db') \gexec
+SQL
+
+  url="postgresql://${role}:${pw}@${PG_SERVICE_HOST}:5432/${db}?sslmode=${PG_SSLMODE}"
+  if [[ "$PG_SSLMODE" == verify-full || "$PG_SSLMODE" == verify-ca ]]; then
+    url+="&sslrootcert=${PG_CA_CONTAINER_PATH}"
+  fi
+  # pgx reads pool_max_conns off the URL; without it the pool is
+  # max(4, NumCPU) per tenant, which on a shared host adds up fast.
+  url+="&pool_max_conns=${POOL_MAX_CONNS}"
+  echo "$url"
+}
+
+db_dump() {  # db_dump <name> -> prints dump path
+  local db out
+  db="$(db_name "$1")"
+  mkdir -p "$BACKUPS_DIR"; chmod 700 "$BACKUPS_DIR"
+  out="$BACKUPS_DIR/${db}-$(timestamp).dump"
+  pg_dump -h "$PGHOST" -p "$PGPORT" -U "$PGADMIN" -Fc -f "$out" "$db"
+  chmod 600 "$out"
+  echo "$out"
+}
+
+# data_backup <name> -> prints tarball path. Includes .env on purpose:
+# APP_SECRET is the key every stored TOTP secret is encrypted under, so a
+# restore without it has a database nobody with MFA can sign in to.
+data_backup() {
+  local dir out
+  dir="$(tenant_dir "$1")"
+  mkdir -p "$BACKUPS_DIR"; chmod 700 "$BACKUPS_DIR"
+  out="$BACKUPS_DIR/$1-data-$(timestamp).tar.gz"
+  tar -C "$dir" -czf "$out" data .env
+  chmod 600 "$out"
+  echo "$out"
+}
+
+db_drop() {
+  local db role
+  db="$(db_name "$1")"; role="$db"
+  psql_admin -v db="$db" -v role="$role" <<'SQL' >/dev/null
+SELECT format('DROP DATABASE IF EXISTS %I', :'db') \gexec
+SELECT format('DROP ROLE IF EXISTS %I', :'role') \gexec
+SQL
+}
+
+# ---------------------------------------------------------------- commands ---
+
+cmd_add() {
+  local name="" tag="" url="" modules="" start=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --tag)      tag="$2"; shift 2 ;;
+      --url)      url="$2"; shift 2 ;;
+      --modules)  modules="$2"; shift 2 ;;
+      --no-start) start=0; shift ;;
+      -*)         die "unknown option: $1" ;;
+      *)          [[ -z "$name" ]] || die "unexpected argument: $1"; name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: vantigo add <name> [--url URL] [--modules LIST] [--tag TAG] [--no-start]"
+  validate_name "$name"
+
+  if [[ -z "$url" ]]; then
+    [[ -n "$DOMAIN" ]] || die "pass --url https://<host>, or set VANTIGO_DOMAIN in $TEMPLATE_DIR/host.env"
+    url="https://$name.$DOMAIN"
+  fi
+  [[ "$url" =~ ^https://[^/]+$ ]] || die "APP_URL must be https://<host>[:port] with no path or trailing slash: $url"
+
+  local dir; dir="$(tenant_dir "$name")"
+  [[ ! -e "$dir" ]] || die "tenant directory already exists: $dir"
+  check_host
+
+  local cidrs; cidrs="$(proxy_cidrs)"
+  [[ -n "$cidrs" ]] || die "could not determine the $CLOUDFLARE_NETWORK subnet; set TRUSTED_PROXY_CIDRS in $TEMPLATE_DIR/host.env"
+
+  info "creating $dir"
+  mkdir -p "$dir/data"
+  # The image runs as this uid and creates STORAGE_FS_ROOT below the mount;
+  # the storage driver also refuses a group- or world-writable root.
+  if ! chown "$APP_UID:$APP_UID" "$dir/data" || ! chmod 700 "$dir/data"; then
+    rm -rf "$dir"
+    die "could not chown $dir/data to $APP_UID (run as root)"
+  fi
+  ln -s "$TEMPLATE_DIR/compose.yaml" "$dir/compose.yaml"
+  install -m 600 "$TEMPLATE_DIR/.env.example" "$dir/.env"
+
+  info "creating database $(db_name "$name")"
+  local dburl
+  if ! dburl="$(db_create "$name")"; then
+    rm -rf "$dir"   # roll back the filesystem so a retry starts clean
+    exit 1
+  fi
+
+  local bootstrap; bootstrap="$(gen_secret)"
+  set_env_var "$dir/.env" TENANT "$name"
+  set_env_var "$dir/.env" COMPOSE_PROJECT_NAME "vantigo-$name"
+  set_env_var "$dir/.env" DATABASE_URL "$dburl"
+  set_env_var "$dir/.env" APP_URL "$url"
+  set_env_var "$dir/.env" APP_SECRET "$(gen_secret)"
+  set_env_var "$dir/.env" BOOTSTRAP_SECRET "$bootstrap"
+  set_env_var "$dir/.env" TRUSTED_PROXY_HOPS "1"
+  set_env_var "$dir/.env" TRUSTED_PROXY_CIDRS "$cidrs"
+  [[ -z "$modules" ]] || set_env_var "$dir/.env" MODULES "$modules"
+  [[ -z "$tag" ]]     || set_env_var "$dir/.env" VANTIGO_TAG "$tag"
+
+  if (( start )); then
+    info "starting $name"
+    up_wait "$name" || die "$name is created but not healthy; fix $dir/.env and run: vantigo up $name"
+  fi
+
+  cat <<EOF
+
+Tenant '$name' is ready.
+
+  URL             $url
+  tunnel ingress  ${url#https://}  ->  http://vantigo-$name:8080   (add this to cloudflared)
+  database        $(db_name "$name")
+  config          $dir/.env
+
+First sign-in: open $url/setup and enter this bootstrap secret — it is
+shown only now and is also in the .env:
+
+  $bootstrap
+
+Then, once the Owner has enrolled MFA from /settings:  vantigo harden $name
+EOF
+  (( start )) || echo "Not started — review $dir/.env, then: vantigo up $name"
+}
+
+cmd_harden() {
+  local name="${1:-}"; [[ -n "$name" ]] || die "usage: vantigo harden <name>"
+  validate_name "$name"; require_tenant "$name"
+  local env; env="$(tenant_dir "$name")/.env"
+
+  info "requiring MFA for Owners and SystemAdmins"
+  unset_env_var "$env" OWNERS_ALLOW_INSECURE_NO_MFA
+  set_env_var "$env" OWNERS_REQUIRE_MFA "1"
+  info "rotating the bootstrap secret (required at startup, so it is replaced, not removed)"
+  set_env_var "$env" BOOTSTRAP_SECRET "$(gen_secret)"
+
+  info "restarting $name"
+  up_wait "$name" || die "$name did not come back healthy — an Owner without MFA cannot sign in; enrol one, or restore OWNERS_ALLOW_INSECURE_NO_MFA=1 in $env"
+  info "hardened $name"
+}
+
+cmd_remove() {
+  local name="" yes=0 keep=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --yes)       yes=1; shift ;;
+      --keep-data) keep=1; shift ;;
+      -*)          die "unknown option: $1" ;;
+      *)           [[ -z "$name" ]] || die "unexpected argument: $1"; name="$1"; shift ;;
+    esac
+  done
+  [[ -n "$name" ]] || die "usage: vantigo remove <name> [--yes] [--keep-data]"
+  validate_name "$name"; require_tenant "$name"
+  local dir; dir="$(tenant_dir "$name")"
+
+  if (( ! yes )); then
+    echo "This will stop tenant '$name', back it up to $BACKUPS_DIR, then $( (( keep )) && echo "move $dir there and keep the database" || echo "DROP the database and DELETE $dir" )."
+    read -r -p "Type the tenant name to confirm: " confirm
+    [[ "$confirm" == "$name" ]] || die "aborted"
+  fi
+
+  info "backing up"
+  echo "    $(db_dump "$name")"
+  echo "    $(data_backup "$name")"
+
+  info "stopping containers"
+  compose "$name" down --remove-orphans
+
+  if (( keep )); then
+    local dest
+    dest="$BACKUPS_DIR/${name}-$(timestamp)"
+    mv "$dir" "$dest"
+    info "kept: database $(db_name "$name") intact, directory moved to $dest"
+  else
+    info "dropping database and role"
+    db_drop "$name"
+    rm -rf "$dir"
+    info "removed $name"
+  fi
+}
+
+cmd_list() {
+  local name tag status
+  printf '%-24s %-12s %s\n' TENANT TAG STATUS
+  for name in $(all_tenants); do
+    tag="$(get_env_var "$(tenant_dir "$name")/.env" VANTIGO_TAG)"
+    status="$(compose "$name" ps -a --format '{{.Image}} {{.State}}{{if .Health}} ({{.Health}}){{end}}' 2>/dev/null | paste -sd' ' -)"
+    printf '%-24s %-12s %s\n' "$name" "${tag:-latest}" "${status:-down}"
+  done
+}
+
+cmd_compose_passthrough() {  # <subcommand> <name> [args...]
+  local sub="$1"; shift
+  local name="${1:-}"; [[ -n "$name" ]] || die "usage: vantigo $sub <name> [args]"
+  shift
+  validate_name "$name"; require_tenant "$name"
+  case "$sub" in
+    up)   up_wait "$name" "$@" ;;
+    logs) compose "$name" logs -f --tail 200 "$@" ;;
+    *)    compose "$name" "$sub" "$@" ;;
+  esac
+}
+
+cmd_backup() {
+  local target="${1:-}"; [[ -n "$target" ]] || die "usage: vantigo backup <name>|--all"
+  local names=() name
+  if [[ "$target" == --all ]]; then
+    mapfile -t names < <(all_tenants)
+  else
+    validate_name "$target"; require_tenant "$target"; names=("$target")
+  fi
+  for name in "${names[@]}"; do
+    info "backing up $name"
+    echo "    $(db_dump "$name")"
+    echo "    $(data_backup "$name")"
+  done
+}
+
+cmd_upgrade() {
+  local target="" tag="" all=0 backup=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --all)       all=1; shift ;;
+      --tag)       tag="$2"; shift 2 ;;
+      --no-backup) backup=0; shift ;;
+      -*)          die "unknown option: $1" ;;
+      *)           target="$1"; shift ;;
+    esac
+  done
+  local names=() name
+  if (( all )); then
+    mapfile -t names < <(all_tenants)
+  else
+    [[ -n "$target" ]] || die "usage: vantigo upgrade <name>|--all [--tag TAG] [--no-backup]"
+    validate_name "$target"; require_tenant "$target"; names=("$target")
+  fi
+
+  # One tenant at a time, stopping at the first failure so a bad release
+  # reaches one tenant, not all of them. Migrations are forward-only and run
+  # at startup, so the dump taken just before is the rollback.
+  for name in "${names[@]}"; do
+    info "upgrading $name"
+    if (( backup )); then
+      echo "    $(db_dump "$name")"
+    fi
+    [[ -z "$tag" ]] || set_env_var "$(tenant_dir "$name")/.env" VANTIGO_TAG "$tag"
+    compose "$name" pull -q
+    up_wait "$name" || die "upgrade of $name failed; remaining tenants were not touched"
+    echo "    running $(compose "$name" ps --format '{{.Image}}' vantigo)"
+  done
+}
+
+cmd_psql() {
+  local name="${1:-}"; [[ -n "$name" ]] || die "usage: vantigo psql <name>"
+  validate_name "$name"; require_tenant "$name"
+  local url
+  url="$(get_env_var "$(tenant_dir "$name")/.env" DATABASE_URL)"
+  [[ -n "$url" ]] || die "no DATABASE_URL in tenant .env"
+  # Inside docker the app uses the service name and the mounted certificate;
+  # from the host use the published port and the certificate's host path.
+  # The certificate names 127.0.0.1 too, so verify-full still passes.
+  url="${url/@${PG_SERVICE_HOST}:5432/@${PGHOST}:${PGPORT}}"
+  url="${url/sslrootcert=${PG_CA_CONTAINER_PATH}/sslrootcert=${PG_CA_HOST_PATH}}"
+  exec psql "$url"
+}
+
+# ---------------------------------------------------------------- dispatch ---
+
+main() {
+  local cmd="${1:-help}"; shift || true
+  case "$cmd" in
+    add)                          cmd_add "$@" ;;
+    harden)                       cmd_harden "$@" ;;
+    remove|rm)                    cmd_remove "$@" ;;
+    list|ls)                      cmd_list ;;
+    up|down|restart|ps|logs)      cmd_compose_passthrough "$cmd" "$@" ;;
+    upgrade)                      cmd_upgrade "$@" ;;
+    backup)                       cmd_backup "$@" ;;
+    psql)                         cmd_psql "$@" ;;
+    help|-h|--help)               usage ;;
+    *)                            usage >&2; die "unknown command: $cmd" ;;
+  esac
+}
+
+# Sourcing the file (the tests do) defines the functions without running.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -7,6 +7,10 @@
 deploy/compose/vantigo.env
 deploy/compose/customers.env
 deploy/compose/communications.env
+# Multi-tenant host: private keys, certificates and the CI-only stand-in
+deploy/host/postgres/certs/
+deploy/host/template/server.crt
+deploy/host/template/host.env
 .slim/deepwork/
 
 # User-specific files
@@ -34,6 +38,8 @@ x86/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
+# The multi-tenant host CLI lives in a bin/ that is source, not build output.
+!deploy/host/bin/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/

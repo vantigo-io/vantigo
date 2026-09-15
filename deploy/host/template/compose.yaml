@@ -1,0 +1,80 @@
+# Vantigo — one tenant on a shared multi-tenant host.
+#
+# This file is shared by every tenant on the host: /srv/tenants/<name>/
+# holds a symlink to it, next to the tenant's own `.env` and `data/`. Compose
+# reads `.env` twice — once for the ${...} interpolation below, and once as
+# the container's environment through `env_file` — so a tenant is fully
+# described by that one file. Nothing here is per tenant except what `.env`
+# supplies: the project name, the network alias, the image tag.
+#
+# `bin/vantigo add` writes the `.env` this file needs; see README.md.
+#
+# Deliberately absent: a host port (the cloudflared tunnel reaches the
+# container over the shared `cloudflare` network by its alias), a container
+# name (Compose derives one from COMPOSE_PROJECT_NAME), a named volume
+# (persistent data is the bind-mounted ./data), a migrate job (api mode
+# applies pending migrations itself before it serves, under an advisory
+# lock; the tenant's role owns its database, so it has the DDL rights) and a
+# worker container (WORKERS_IN_PROCESS defaults to 1: with one replica per
+# tenant, in-process workers are the right shape and halve the container
+# count on the host).
+
+services:
+  vantigo:
+    image: ghcr.io/vantigo-io/vantigo:${VANTIGO_TAG:-latest}
+    command: ["api"]
+    env_file: .env
+    environment:
+      PORT: "8080"
+    expose:
+      - "8080"
+    volumes:
+      # Everything the tenant persists outside PostgreSQL lives under one
+      # mount: STORAGE_FS_ROOT (attachments) is /app/data/storage. The image
+      # runs as uid 65532, so `vantigo add` chowns ./data to that user.
+      - ./data:/app/data
+      # The shared PostgreSQL server's certificate, so DATABASE_URL can carry
+      # sslmode=verify-full and the tenant runs without
+      # ALLOW_INSECURE_TRANSPORT (which would also strip the Secure attribute
+      # from session cookies). Path on the host is set in .env.
+      - ${POSTGRES_CA_CERT:-/srv/postgres/certs/server.crt}:/certs/postgres-ca.crt:ro
+    networks:
+      cloudflare:
+        # Every tenant's service is called `vantigo`, so the tunnel routes to
+        # this alias instead: <name>.example -> http://vantigo-<name>:8080.
+        aliases:
+          - vantigo-${TENANT:?set TENANT in .env}
+      postgres: {}
+    healthcheck:
+      # Distroless image: no shell or curl, the binary probes itself. Keep
+      # this exec form — an HTTP probe connecting from outside would send
+      # the container's own address as Host, which the host filter rejects.
+      test: ["CMD", "/app/vantigo", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    # Must exceed SHUTDOWN_TIMEOUT (30s default) so the graceful drain —
+    # in-flight requests and the longest worker operation — always finishes
+    # before Compose sends SIGKILL.
+    stop_grace_period: 35s
+    security_opt:
+      - no-new-privileges:true
+    # Per-tenant ceiling so one tenant cannot starve the others; raise in
+    # .env for a large tenant.
+    mem_limit: ${VANTIGO_MEM_LIMIT:-1g}
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    restart: unless-stopped
+
+networks:
+  # Both created once per host, outside any tenant project (README.md,
+  # "One-time host setup"). `cloudflare` carries the cloudflared tunnel
+  # container; `postgres` carries the shared PostgreSQL server.
+  cloudflare:
+    external: true
+  postgres:
+    external: true

@@ -200,7 +200,10 @@ jobs:
           # stop covering a .yaml-suffixed workflow the day someone adds one,
           # and would do it silently.
           actionlint
-          shellcheck scripts/*.sh
+          shellcheck scripts/*.sh deploy/host/bin/vantigo deploy/host/bin/*.sh deploy/host/postgres/*.sh
+
+      - name: 🧪 Multi-tenant host CLI helpers
+        run: bash deploy/host/bin/vantigo_test.sh
 
       - name: 🔍 golangci-lint
         working-directory: apps/server
@@ -269,6 +272,18 @@ jobs:
           cp .env.example .env
           cp vantigo.env.example vantigo.env
           docker compose config -q
+
+      - name: 🔍 Validate multi-tenant host compose files
+        # The tenant template needs what `vantigo add` would have written
+        # (TENANT, the project name) and the mounted certificate to exist;
+        # the shared PostgreSQL file needs its password.
+        working-directory: deploy/host
+        run: |
+          cp template/.env.example template/.env
+          printf 'TENANT=ci\nCOMPOSE_PROJECT_NAME=vantigo-ci\n' >> template/.env
+          touch template/server.crt
+          POSTGRES_CA_CERT="$PWD/template/server.crt" docker compose -f template/compose.yaml config -q
+          POSTGRES_PASSWORD=ci docker compose -f postgres/compose.yaml config -q
 
       - name: 🚫 Assert no leftover .NET configuration keys
         # `docker compose config -q` only checks YAML syntax and variable
