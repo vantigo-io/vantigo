@@ -1,8 +1,11 @@
 import { type CatalogResources, registerCatalog } from "@vantigo/frontend-shell";
-import { communicationsCatalog } from "../../../communications/frontend/src/catalog";
-import { customersCatalog } from "../../../customers/frontend/src/i18n";
-import { energyCatalog } from "../../../energy/frontend/src/i18n";
-import { productsCatalog } from "../../../products/frontend/src/i18n/catalog";
+// Each module package registers its own catalog when its i18n entry loads;
+// the host only has to load them, through the package's public subpath,
+// never through its source tree.
+import "@vantigo/communications-ui/i18n";
+import "@vantigo/customers-ui/i18n";
+import "@vantigo/energy-ui/i18n";
+import "@vantigo/products-ui/i18n";
 import { adminCatalog } from "./catalogs/admin";
 import { authCatalog } from "./catalogs/auth";
 import { commonCatalog } from "./catalogs/common";
@@ -55,7 +58,3 @@ export const hostCatalog = {
 } as const satisfies CatalogResources;
 
 registerCatalog("host", hostCatalog);
-registerCatalog("customers", customersCatalog);
-registerCatalog("communications", communicationsCatalog);
-registerCatalog("products", productsCatalog);
-registerCatalog("energy", energyCatalog);
