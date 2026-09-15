@@ -28,8 +28,8 @@ func (cs cookies) set(w http.ResponseWriter) {
 }
 
 // newSessionCookie hands token to the browser: HttpOnly, SameSite=Strict,
-// scoped to the base path, and Secure unless the installation runs in
-// development or has knowingly allowed plaintext transport. A persistent
+// scoped to the base path, and Secure exactly when APP_URL is an https
+// origin (a Secure cookie never reaches an http one). A persistent
 // cookie (rememberMe on /login/2fa) lives for the standard absolute
 // lifetime; the server enforces the tighter privileged bound per request
 // whatever the cookie says. Any other cookie ends with the browser session.
@@ -79,7 +79,7 @@ func (a *Access) cookie(name, value string) *http.Cookie {
 		Path:     path,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   !a.cfg.IsDevelopment() && !a.cfg.AllowInsecureTransport,
+		Secure:   a.cfg.UsesHTTPS(),
 	}
 }
 

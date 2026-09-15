@@ -57,8 +57,8 @@ type Outbound struct {
 }
 
 // SendOutbound delivers out through the SMTP server cfg names, building the
-// client exactly as NewSMTP does — the same fail-closed TLS rules, the same
-// guarded, DNS-rebinding-safe dial, the same auth handling — and connecting
+// client exactly as NewSMTP does — the same TLS modes, the same guarded,
+// DNS-rebinding-safe dial, the same auth handling — and connecting
 // only for this one message.
 //
 // It takes a config.MailConfig per call rather than being a method on a
@@ -70,11 +70,11 @@ type Outbound struct {
 // The caller bounds the send with ctx. Communications derives that deadline
 // from its lease so a send can never outlive the lease that protects it
 // (inventory §15.2's `0 < timeout < lease` invariant).
-func SendOutbound(ctx context.Context, cfg config.MailConfig, allowInsecure bool, out Outbound) error {
+func SendOutbound(ctx context.Context, cfg config.MailConfig, out Outbound) error {
 	if len(out.To)+len(out.Cc)+len(out.Bcc) == 0 {
 		return fmt.Errorf("mail: an outbound message needs at least one recipient")
 	}
-	s, err := newSMTPClient(cfg, allowInsecure)
+	s, err := newSMTPClient(cfg)
 	if err != nil {
 		return err
 	}

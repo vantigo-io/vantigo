@@ -275,22 +275,23 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 
 ## Production notes
 
-- **Remove `ALLOW_INSECURE_TRANSPORT=1` from `vantigo.env`.** The quick-start
-  stack ships with it because it serves `http://localhost:8080` and reaches
-  the bundled PostgreSQL container with no certificate authority available.
-  Left in place on a network you do not control, session cookies, invitation
-  and password-reset bearer links, and database credentials all travel in
-  the clear. See [transport security](../../docs/transport-security.md).
 - Put the application behind a TLS-terminating reverse proxy and configure
   `TRUSTED_PROXY_HOPS`/`TRUSTED_PROXY_CIDRS` to trust exactly that proxy.
+  The quick-start stack serves `http://localhost:8080`; on a network you do
+  not control, an http origin sends session cookies and the invitation and
+  password-reset bearer links in the clear. See
+  [transport security](../../docs/transport-security.md).
 - Set `APP_URL` to the public `https://` origin; mailed links, the accepted
-  `Host` header values and the static OIDC callback are all derived from it.
-  The callback is fixed at `/api/v1/identity/oidc/callback`.
-- Add `sslmode=verify-full` (or `verify-ca` when the server certificate does
-  not name the host) to `DATABASE_URL` on both the `vantigo-migrate` and
-  `vantigo` services once PostgreSQL presents a certificate — edit
-  `compose.yaml`, not `vantigo.env`, since `compose.yaml` is what builds
-  the connection URL.
+  `Host` header values, the cookie `Secure` attribute and the static OIDC
+  callback are all derived from it. The callback is fixed at
+  `/api/v1/identity/oidc/callback`.
+- The bundled PostgreSQL is reached over the private compose network with no
+  certificate authority, so `DATABASE_URL` carries no `sslmode` and pgx
+  connects the way libpq's `prefer` does. If you point the stack at a
+  PostgreSQL across a network instead, add `sslmode=verify-full` (or
+  `verify-ca` when the server certificate does not name the host) on both
+  the `vantigo-migrate` and `vantigo` services — edit `compose.yaml`, not
+  `vantigo.env`, since `compose.yaml` is what builds the connection URL.
 - The `vantigo.env.example` file documents the static OIDC and SCIM
   settings. Configuration is deployment-bound and changes require a restart.
   Do not put provider or SCIM secrets in source-controlled files — inject

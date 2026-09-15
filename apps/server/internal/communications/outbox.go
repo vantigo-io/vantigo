@@ -388,7 +388,7 @@ func (w *OutboxWorker) deliver(ctx context.Context, job store.CommunicationsOutb
 	}
 	sendCtx, cancel := context.WithTimeout(ctx, outboxSendTimeout)
 	defer cancel()
-	if err := w.sender()(sendCtx, smtp, false, envelope); err != nil {
+	if err := w.sender()(sendCtx, smtp, envelope); err != nil {
 		return fmt.Errorf("communications: send outbound message: %w", err)
 	}
 
@@ -759,7 +759,7 @@ func (w *OutboxWorker) smtpConfig(message store.GetOutboundMessageForSendRow) (c
 
 // sender is Deps.SMTPSend, or mail.SendOutbound when no harness substituted
 // one — the same seam, and the same default, channel verification uses.
-func (w *OutboxWorker) sender() func(context.Context, config.MailConfig, bool, mail.Outbound) error {
+func (w *OutboxWorker) sender() func(context.Context, config.MailConfig, mail.Outbound) error {
 	if w.deps.SMTPSend != nil {
 		return w.deps.SMTPSend
 	}

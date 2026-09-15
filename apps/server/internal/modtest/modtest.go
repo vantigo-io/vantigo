@@ -120,8 +120,8 @@ type setup struct {
 	transport   http.RoundTripper
 	backoff     func(int) time.Duration
 	directory   contracts.CustomerDirectory
-	smtpVerify  func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error
-	smtpSend    func(ctx context.Context, cfg config.MailConfig, allowInsecure bool, msg mail.Outbound) error
+	smtpVerify  func(ctx context.Context, cfg config.MailConfig) error
+	smtpSend    func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore storage.ObjectStore
 }
 
@@ -179,7 +179,7 @@ func WithDirectory(d contracts.CustomerDirectory) Option {
 // itself, typically a function that records its arguments and returns nil.
 // Unset, a module falls back to mail.VerifyConnection, the same guarded
 // path production uses.
-func WithSMTPVerify(fn func(ctx context.Context, cfg config.MailConfig, allowInsecure bool) error) Option {
+func WithSMTPVerify(fn func(ctx context.Context, cfg config.MailConfig) error) Option {
 	return func(s *setup) { s.smtpVerify = fn }
 }
 
@@ -190,7 +190,7 @@ func WithSMTPVerify(fn func(ctx context.Context, cfg config.MailConfig, allowIns
 // returns nil — or returns an error, to drive the retry and terminal-failure
 // paths deterministically. Unset, a module falls back to mail.SendOutbound,
 // the same guarded path production uses.
-func WithSMTPSend(fn func(ctx context.Context, cfg config.MailConfig, allowInsecure bool, msg mail.Outbound) error) Option {
+func WithSMTPSend(fn func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error) Option {
 	return func(s *setup) { s.smtpSend = fn }
 }
 

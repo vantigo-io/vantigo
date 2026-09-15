@@ -76,7 +76,6 @@ done
 env_args=(
   -e "DATABASE_URL=postgres://vantigo:vantigo@$PG:5432/vantigo"
   -e "APP_URL=http://localhost:$APP_PORT"
-  -e ALLOW_INSECURE_TRANSPORT=1
   # Presence only: this run is production mode and never sends mail or
   # exercises bootstrap, but config.Load requires all of these to start.
   -e APP_SECRET=smoke-test-app-secret-at-least-32-bytes-long

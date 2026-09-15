@@ -255,11 +255,14 @@ docker run -d \
   ghcr.io/vantigo-io/vantigo api
 ```
 
-Outside development the configuration is fail-closed: `APP_URL` must use `https`, the
-database connection must require certificate-verified TLS, `APP_SECRET` (at least 32
-bytes) and `BOOTSTRAP_SECRET` must be set, and `SMTP_HOST` and `SMTP_FROM` must be set.
-`APP_SECRET` must be the *same* value everywhere it is passed — both commands above and
-every replica.
+Outside development the configuration is fail-closed on secrets and mail: `APP_SECRET`
+(at least 32 bytes) and `BOOTSTRAP_SECRET` must be set, and `SMTP_HOST` and `SMTP_FROM`
+must be set. `APP_SECRET` must be the *same* value everywhere it is passed — both
+commands above and every replica. Transport is yours to choose: `APP_URL` may be http
+or https, `DATABASE_URL` may use any `sslmode` or a Unix socket, and `SMTP_TLS` may be
+`starttls`, `implicit` or `none` — see
+[transport security](docs/transport-security.md) for what each costs and for the
+same-host and socket forms.
 
 `migrate` needs that whole set too, which is why the terminating job above carries the
 same variables as `api` rather than `DATABASE_URL` alone. Configuration is loaded and
@@ -284,10 +287,7 @@ the commands above come up against a relay that does not exist; replace both wit
 real one before the deployment has to deliver invitations or password resets.
 `MAIL_DRIVER=log` is not an escape hatch — it is rejected outside development, because
 those mails carry bearer links — and `APP_ENV=development` would silently relax the
-transport and cookie policy along with it.
-
-`ALLOW_INSECURE_TRANSPORT=1` knowingly relaxes the transport rules for local and
-evaluation use only — see [transport security](docs/transport-security.md).
+owner MFA and storage-permission rules along with it.
 
 `APP_SECRET` derives every key the process uses (CSRF tokens, cookie signing, TOTP
 secret encryption) through HKDF-SHA256. There is no external key vault to provision,

@@ -793,7 +793,7 @@ func TestUpdateChannel_NewSettingsWithoutAPasswordReuseTheExistingOne(t *testing
 	t.Parallel()
 
 	var gotPassword, gotHost string
-	h := newHarness(t, modtest.WithSMTPVerify(func(_ context.Context, cfg config.MailConfig, _ bool) error {
+	h := newHarness(t, modtest.WithSMTPVerify(func(_ context.Context, cfg config.MailConfig) error {
 		gotPassword, gotHost = cfg.Password, cfg.Host
 		return nil
 	}))
@@ -915,11 +915,10 @@ func TestVerifyChannel_Succeeds(t *testing.T) {
 	type call struct {
 		host, tls, username, password string
 		port                          int
-		allowInsecure                 bool
 	}
 	var got call
-	h := newHarness(t, modtest.WithSMTPVerify(func(_ context.Context, cfg config.MailConfig, allowInsecure bool) error {
-		got = call{host: cfg.Host, tls: cfg.TLS, username: cfg.Username, password: cfg.Password, port: cfg.Port, allowInsecure: allowInsecure}
+	h := newHarness(t, modtest.WithSMTPVerify(func(_ context.Context, cfg config.MailConfig) error {
+		got = call{host: cfg.Host, tls: cfg.TLS, username: cfg.Username, password: cfg.Password, port: cfg.Port}
 		return nil
 	}))
 	c := h.SignIn(t, "communications:channels-manage")
@@ -948,9 +947,6 @@ func TestVerifyChannel_Succeeds(t *testing.T) {
 	}
 	if got.username != "svc" || got.password != "s3cret" {
 		t.Errorf("verify call credentials = %q/%q, want svc/s3cret", got.username, got.password)
-	}
-	if got.allowInsecure {
-		t.Error("allowInsecure = true, want false")
 	}
 }
 

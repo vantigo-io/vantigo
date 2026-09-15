@@ -37,7 +37,7 @@ const testAppSecret = "main-test-app-secret-32-bytes!!!"
 func setEnv(t *testing.T, pairs ...string) {
 	t.Helper()
 	for _, k := range []string{"APP_ENV", "DATABASE_URL", "MIGRATIONS_DATABASE_URL", "APP_URL", "APP_BASE_PATH", "PORT",
-		"TRUSTED_PROXY_HOPS", "TRUSTED_PROXY_CIDRS", "ALLOW_INSECURE_TRANSPORT", "CSP_REPORT_ONLY", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "PGSSLMODE",
+		"TRUSTED_PROXY_HOPS", "TRUSTED_PROXY_CIDRS", "CSP_REPORT_ONLY", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "PGSSLMODE",
 		"APP_SECRET", "BOOTSTRAP_SECRET", "MAIL_DRIVER", "SMTP_HOST", "SMTP_FROM"} {
 		t.Setenv(k, "")
 	}
@@ -126,7 +126,7 @@ func TestRun_InvalidConfigurationExits1WithEveryProblem(t *testing.T) {
 }
 
 func TestRun_SeedRefusesOutsideDevelopment(t *testing.T) {
-	setEnv(t, "DATABASE_URL", "postgres://v:v@127.0.0.1:1/v", "APP_URL", "http://localhost:8080", "ALLOW_INSECURE_TRANSPORT", "1")
+	setEnv(t, "DATABASE_URL", "postgres://v:v@127.0.0.1:1/v", "APP_URL", "http://localhost:8080")
 	if code, _, stderr := runCapture("seed"); code != 2 || !strings.Contains(stderr, "APP_ENV=development") {
 		t.Errorf("exit %d stderr %q", code, stderr)
 	}
@@ -151,7 +151,7 @@ func TestRun_Healthcheck(t *testing.T) {
 
 func TestRun_MigrateAppliesTheSchema(t *testing.T) {
 	databaseURL := testdb.URL(t)
-	setEnv(t, "DATABASE_URL", databaseURL, "APP_URL", "http://localhost:8080", "ALLOW_INSECURE_TRANSPORT", "1")
+	setEnv(t, "DATABASE_URL", databaseURL, "APP_URL", "http://localhost:8080")
 
 	if code, stdout, stderr := runCapture("migrate"); code != 0 {
 		t.Fatalf("exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
@@ -185,7 +185,7 @@ func TestRun_SIGTERMDuringMigrationWaitsForItToFinish(t *testing.T) {
 	}
 
 	setEnv(t, "DATABASE_URL", databaseURL, "APP_URL", "http://localhost:8080",
-		"ALLOW_INSECURE_TRANSPORT", "1", "PORT", strconv.Itoa(port))
+		"PORT", strconv.Itoa(port))
 
 	ctx := context.Background()
 	holder, err := pgx.Connect(ctx, databaseURL)
@@ -277,14 +277,13 @@ func startServeEnv(t *testing.T, m mode, env map[string]string, extraModules ...
 	t.Helper()
 	_, databaseURL := testdb.Migrated(t)
 	envMap := map[string]string{
-		"DATABASE_URL":             databaseURL,
-		"APP_URL":                  "http://localhost:8080",
-		"ALLOW_INSECURE_TRANSPORT": "1",
-		"SHUTDOWN_TIMEOUT":         "10s",
-		"APP_SECRET":               testAppSecret,
-		"BOOTSTRAP_SECRET":         "main-test-bootstrap-secret",
-		"SMTP_HOST":                "smtp.example.invalid",
-		"SMTP_FROM":                "noreply@example.invalid",
+		"DATABASE_URL":     databaseURL,
+		"APP_URL":          "http://localhost:8080",
+		"SHUTDOWN_TIMEOUT": "10s",
+		"APP_SECRET":       testAppSecret,
+		"BOOTSTRAP_SECRET": "main-test-bootstrap-secret",
+		"SMTP_HOST":        "smtp.example.invalid",
+		"SMTP_FROM":        "noreply@example.invalid",
 	}
 	for k, v := range env {
 		envMap[k] = v

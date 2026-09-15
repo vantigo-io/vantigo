@@ -229,19 +229,6 @@ func hostPort(t *testing.T, addr string) (string, int) {
 	return host, port
 }
 
-// TestSMTP_RejectsPlaintextWithoutInsecureTransport proves the driver fails
-// closed on construction: TLS="none" is refused unless the caller says
-// insecure transport is allowed, defensively re-checking what config
-// validation already guarantees.
-func TestSMTP_RejectsPlaintextWithoutInsecureTransport(t *testing.T) {
-	_, err := mail.NewSMTP(config.MailConfig{
-		Driver: "smtp", Host: "127.0.0.1", Port: 25, From: "noreply@example.test", TLS: "none",
-	}, false)
-	if err == nil {
-		t.Fatal("NewSMTP() = nil error, want an error for TLS=none without insecure transport")
-	}
-}
-
 // TestSMTP_GuardRejectsLoopbackByDefault proves the DNS-rebinding guard is
 // wired into the real driver, not only unit-tested in isolation: without the
 // test-only loopback hook, sending to a loopback host is rejected before
@@ -253,7 +240,7 @@ func TestSMTP_GuardRejectsLoopbackByDefault(t *testing.T) {
 
 	sender, err := mail.NewSMTP(config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test", TLS: "starttls",
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("NewSMTP() = %v, want nil", err)
 	}
@@ -276,7 +263,7 @@ func TestSMTP_STARTTLSIsRequired(t *testing.T) {
 
 	sender, err := mail.NewSMTP(config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test", TLS: "starttls",
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("NewSMTP() = %v, want nil", err)
 	}
@@ -304,7 +291,7 @@ func TestSMTP_SendsOverSTARTTLS(t *testing.T) {
 	sender, err := mail.NewSMTP(config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test",
 		Username: "smtp-user", Password: "smtp-pass", TLS: "starttls",
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("NewSMTP() = %v, want nil", err)
 	}
@@ -360,7 +347,7 @@ func TestSMTP_SendsOverImplicitTLS(t *testing.T) {
 
 	sender, err := mail.NewSMTP(config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test", TLS: "implicit",
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("NewSMTP() = %v, want nil", err)
 	}
@@ -399,7 +386,7 @@ func TestSMTP_VerifyConnectionSucceedsWithoutSending(t *testing.T) {
 	err := mail.VerifyConnection(context.Background(), config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test",
 		Username: "smtp-user", Password: "smtp-pass", TLS: "starttls",
-	}, false)
+	})
 	if err != nil {
 		t.Fatalf("VerifyConnection() = %v, want nil", err)
 	}
@@ -430,7 +417,7 @@ func TestSMTP_VerifyConnectionGuardRejectsLoopbackByDefault(t *testing.T) {
 
 	err := mail.VerifyConnection(context.Background(), config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test", TLS: "starttls",
-	}, false)
+	})
 	if err == nil {
 		t.Fatal("VerifyConnection() = nil error, want the guard to reject a loopback destination")
 	}
@@ -451,7 +438,7 @@ func TestSMTP_SendsPlaintextWhenInsecureIsAllowed(t *testing.T) {
 
 	sender, err := mail.NewSMTP(config.MailConfig{
 		Driver: "smtp", Host: host, Port: port, From: "noreply@example.test", TLS: "none",
-	}, true)
+	})
 	if err != nil {
 		t.Fatalf("NewSMTP() = %v, want nil", err)
 	}

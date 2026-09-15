@@ -21,21 +21,23 @@ func setCookie(t *testing.T, a *Access, write func(http.ResponseWriter)) (*http.
 }
 
 // TestSessionCookieAttributes pins the session cookie: HttpOnly,
-// SameSite=Strict, the base path or /, Secure unless development or
-// insecure transport, a Max-Age of the absolute lifetime only when
-// persistent, and a clearing that expires it. The login-ticket cookie has
-// the same attributes and lives the ticket's five minutes.
+// SameSite=Strict, the base path or /, Secure exactly when APP_URL is an
+// https origin, a Max-Age of the absolute lifetime only when persistent,
+// and a clearing that expires it. The login-ticket cookie has the same
+// attributes and lives the ticket's five minutes.
 func TestSessionCookieAttributes(t *testing.T) {
+	const secureOrigin, plainOrigin = "https://vantigo.example.com", "http://localhost:8080"
 	cases := []struct {
 		name       string
 		cfg        config.Config
 		wantSecure bool
 		wantPath   string
 	}{
-		{"production", config.Config{Env: config.Production}, true, "/"},
-		{"production with a base path", config.Config{Env: config.Production, BasePath: "/vantigo"}, true, "/vantigo"},
-		{"development", config.Config{Env: config.Development}, false, "/"},
-		{"insecure transport", config.Config{Env: config.Production, AllowInsecureTransport: true}, false, "/"},
+		{"https origin", config.Config{Env: config.Production, AppOrigin: secureOrigin}, true, "/"},
+		{"https origin with a base path", config.Config{Env: config.Production, AppOrigin: secureOrigin, BasePath: "/vantigo"}, true, "/vantigo"},
+		{"http origin", config.Config{Env: config.Production, AppOrigin: plainOrigin}, false, "/"},
+		{"https origin in development", config.Config{Env: config.Development, AppOrigin: secureOrigin}, true, "/"},
+		{"http origin in development", config.Config{Env: config.Development, AppOrigin: plainOrigin}, false, "/"},
 	}
 	for _, c := range cases {
 		c.cfg.Sessions.Absolute = 24 * time.Hour

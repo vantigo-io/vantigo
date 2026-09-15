@@ -7,7 +7,6 @@
 package config
 
 import (
-	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/mail"
@@ -104,14 +103,13 @@ type Config struct {
 	// AppHostname is AppOrigin's host without port or IPv6 brackets.
 	AppHostname string
 	// BasePath is "" at the domain root, otherwise "/prefix" with no trailing slash.
-	BasePath               string
-	Port                   int
-	TrustedProxyHops       int
-	AllowInsecureTransport bool
-	CSPReportOnly          bool
-	ShutdownTimeout        time.Duration
-	LogLevel               slog.Level
-	Branding               Branding
+	BasePath         string
+	Port             int
+	TrustedProxyHops int
+	CSPReportOnly    bool
+	ShutdownTimeout  time.Duration
+	LogLevel         slog.Level
+	Branding         Branding
 
 	// AppSecret is the process-wide key material (CSRF tokens, cookie
 	// signing, encryption of TOTP secrets). At least 32 bytes.
@@ -247,12 +245,12 @@ type Config struct {
 // IsDevelopment reports whether APP_ENV=development.
 func (c *Config) IsDevelopment() bool { return c.Env == Development }
 
-// EnforcesTransportSecurity reports whether the fail-closed transport rules
-// apply: always outside development, unless the operator knowingly set
-// ALLOW_INSECURE_TRANSPORT=1.
-func (c *Config) EnforcesTransportSecurity() bool {
-	return c.Env == Production && !c.AllowInsecureTransport
-}
+// UsesHTTPS reports whether APP_URL is an https origin. Transport is the
+// operator's choice per deployment — http or https, a TLS or plaintext
+// database connection, TLS or plaintext SMTP — and nothing in Load judges
+// it; what does follow from the choice is the Secure attribute on every
+// cookie, which a browser never sends to an http origin.
+func (c *Config) UsesHTTPS() bool { return strings.HasPrefix(c.AppOrigin, "https://") }
 
 // FromOS loads configuration from the process environment.
 func FromOS() (*Config, error) {
@@ -282,12 +280,10 @@ func Load(env map[string]string) (*Config, error) {
 		c.Env = Production
 	}
 
-	c.AllowInsecureTransport = flag(&p, env, "ALLOW_INSECURE_TRANSPORT")
 	c.CSPReportOnly = flag(&p, env, "CSP_REPORT_ONLY")
 
-	var dbConn, migrationsConn *pgconn.Config
-	c.DatabaseURL, dbConn = databaseURL(&p, env, "DATABASE_URL", true)
-	c.MigrationsDatabaseURL, migrationsConn = databaseURL(&p, env, "MIGRATIONS_DATABASE_URL", false)
+	c.DatabaseURL = databaseURL(&p, env, "DATABASE_URL", true)
+	c.MigrationsDatabaseURL = databaseURL(&p, env, "MIGRATIONS_DATABASE_URL", false)
 	if c.MigrationsDatabaseURL == "" {
 		c.MigrationsDatabaseURL = c.DatabaseURL
 	}
@@ -336,18 +332,6 @@ func Load(env map[string]string) (*Config, error) {
 	communicationsRetention(&p, env, c)
 	communicationsAI(&p, env, c)
 
-	if c.EnforcesTransportSecurity() {
-		if c.AppOrigin != "" && !strings.HasPrefix(c.AppOrigin, "https://") {
-			p.add("APP_URL", "must use https outside development; set ALLOW_INSECURE_TRANSPORT=1 to knowingly accept plaintext (local and evaluation use only)")
-		}
-		if dbConn != nil {
-			requireVerifiedTLS(&p, "DATABASE_URL", dbConn)
-		}
-		if migrationsConn != nil {
-			requireVerifiedTLS(&p, "MIGRATIONS_DATABASE_URL", migrationsConn)
-		}
-	}
-
 	if len(p) > 0 {
 		return nil, fmt.Errorf("invalid configuration:\n  %s", strings.Join(p, "\n  "))
 	}
@@ -372,48 +356,26 @@ func (p *problems) add(field, format string, args ...any) {
 	*p = append(*p, field+": "+fmt.Sprintf(format, args...))
 }
 
-// databaseURL returns the connection string together with pgx's own parse of
-// it, so the transport check judges exactly what pgx will connect with. Like
-// pgx, the parse reads PG* variables (PGSSLMODE, a service file) from the
-// process environment, which in production is the env Load was given.
-func databaseURL(p *problems, env map[string]string, field string, required bool) (string, *pgconn.Config) {
+// databaseURL returns the connection string after pgx's own parse of it has
+// accepted it, so a malformed string fails configuration rather than the
+// first connection. What transport the string asks for — TLS and which
+// sslmode, a TCP host, a Unix domain socket — is the operator's choice per
+// deployment; nothing here judges it. Like pgx, the parse reads PG*
+// variables (PGSSLMODE, a service file) from the process environment.
+func databaseURL(p *problems, env map[string]string, field string, required bool) string {
 	v := env[field]
 	if v == "" {
 		if required {
 			p.add(field, "is required")
 		}
-		return "", nil
+		return ""
 	}
 	// The parser's own error is not echoed: it can quote the connection string.
-	cfg, err := pgconn.ParseConfig(v)
-	if err != nil {
+	if _, err := pgconn.ParseConfig(v); err != nil {
 		p.add(field, "is not a valid PostgreSQL connection string")
-		return "", nil
+		return ""
 	}
-	return v, cfg
-}
-
-// requireVerifiedTLS rejects a connection that would not authenticate the
-// server, judged on pgx's parsed configuration rather than a re-parse of the
-// string (pgx takes the last of duplicate settings and honours quoting).
-// Every fallback must pass too: libpq's default, "prefer", and "allow" add a
-// plaintext fallback, and neither checks a certificate even over TLS. The
-// message never quotes the connection string: it can carry a password.
-func requireVerifiedTLS(p *problems, field string, cfg *pgconn.Config) {
-	verified := verifiesServer(cfg.TLSConfig)
-	for _, fb := range cfg.Fallbacks {
-		verified = verified && verifiesServer(fb.TLSConfig)
-	}
-	if !verified {
-		p.add(field, "must require certificate-verified TLS outside development (sslmode=verify-full, or verify-ca when the server certificate does not name the host); this connection string would not authenticate the server. Set ALLOW_INSECURE_TRANSPORT=1 to knowingly accept an unauthenticated database connection (local and evaluation use only)")
-	}
-}
-
-// verifiesServer reports whether a pgx TLS configuration authenticates the
-// server: verify-full keeps Go's own verification, verify-ca skips it but
-// installs a chain verifier, and require (or no TLS at all) does neither.
-func verifiesServer(c *tls.Config) bool {
-	return c != nil && (!c.InsecureSkipVerify || c.VerifyPeerCertificate != nil)
+	return v
 }
 
 func appOrigin(p *problems, env map[string]string) (origin, hostname string) {
@@ -778,13 +740,8 @@ func mailConfig(p *problems, env map[string]string, c *Config) MailConfig {
 	switch env["SMTP_TLS"] {
 	case "":
 		m.TLS = "starttls"
-	case "implicit", "starttls":
+	case "implicit", "starttls", "none":
 		m.TLS = env["SMTP_TLS"]
-	case "none":
-		m.TLS = "none"
-		if c.EnforcesTransportSecurity() {
-			p.add("SMTP_TLS", `"none" requires ALLOW_INSECURE_TRANSPORT=1 outside development`)
-		}
 	default:
 		p.add("SMTP_TLS", `must be "implicit", "starttls" or "none"`)
 		m.TLS = "starttls"

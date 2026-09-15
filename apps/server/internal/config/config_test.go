@@ -102,8 +102,8 @@ func TestLoad_MinimalProductionConfigGetsDefaults(t *testing.T) {
 	if cfg.Env != Production || cfg.IsDevelopment() {
 		t.Errorf("Env = %q, want production", cfg.Env)
 	}
-	if !cfg.EnforcesTransportSecurity() {
-		t.Error("EnforcesTransportSecurity = false, want true in production")
+	if !cfg.UsesHTTPS() {
+		t.Error("UsesHTTPS = false, want true for an https APP_URL")
 	}
 	if cfg.MigrationsDatabaseURL != cfg.DatabaseURL {
 		t.Errorf("MigrationsDatabaseURL = %q, want DATABASE_URL", cfg.MigrationsDatabaseURL)
@@ -117,8 +117,8 @@ func TestLoad_MinimalProductionConfigGetsDefaults(t *testing.T) {
 	if cfg.ShutdownTimeout != 30*time.Second || cfg.LogLevel != slog.LevelInfo {
 		t.Errorf("ShutdownTimeout/LogLevel = %v/%v", cfg.ShutdownTimeout, cfg.LogLevel)
 	}
-	if cfg.AllowInsecureTransport || cfg.CSPReportOnly {
-		t.Error("flags default to on, want off")
+	if cfg.CSPReportOnly {
+		t.Error("CSP_REPORT_ONLY defaults to on, want off")
 	}
 	if !cfg.WorkersInProcess {
 		t.Error("WorkersInProcess defaults to off, want on")
@@ -180,11 +180,10 @@ func TestLoad_AppURL(t *testing.T) {
 	}
 }
 
-// unverified is the rejection every connection string that would not
-// authenticate the database server gets.
-const unverified = "DATABASE_URL: must require certificate-verified TLS outside development (sslmode=verify-full, or verify-ca when the server certificate does not name the host); this connection string would not authenticate the server"
-
-func TestLoad_TransportRules(t *testing.T) {
+// Transport — http or https, TLS or plaintext to PostgreSQL and SMTP — is
+// the operator's choice per deployment. Load accepts every combination in
+// every environment; only the cookie Secure attribute follows from it.
+func TestLoad_TransportIsTheOperatorsChoice(t *testing.T) {
 	// pgconn reads PGSSLMODE from the process environment; a developer's
 	// shell must not change what these cases mean.
 	t.Setenv("PGSSLMODE", "")
@@ -194,25 +193,22 @@ func TestLoad_TransportRules(t *testing.T) {
 		env     map[string]string
 		wantErr string // empty: must load
 	}{
-		{"production requires https", with(validEnv(), "APP_URL", "http://vantigo.example.com"), "APP_URL: must use https"},
-		{"sslmode=require does not authenticate the server", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=require"), unverified},
-		{"keyword sslmode=require does not authenticate the server", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=require"), unverified},
-		{"no sslmode means libpq's prefer", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v"), unverified},
-		{"sslmode=prefer falls back to plaintext", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=prefer"), unverified},
-		{"sslmode=allow tries plaintext first", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=allow"), unverified},
-		{"keyword form with verify-ca is accepted", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=verify-ca"), ""},
-		{"keyword form with verify-full is accepted", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=verify-full"), ""},
-		{"URL form with verify-ca is accepted", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=verify-ca"), ""},
-		{"URL form with verify-full is accepted", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=verify-full"), ""},
-		// pgx takes the last sslmode; judging the first would fail open.
-		{"a later duplicate sslmode wins", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v sslmode=verify-full sslmode=disable"), unverified},
-		// A quoted value is one token to pgx, not to a whitespace split.
-		{"an sslmode inside a quoted value is not a setting", with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v password='x sslmode=verify-full' sslmode=disable"), unverified},
-		// Every host pgx may fall back to must be verified too.
-		{"an unverified fallback host is rejected", with(validEnv(), "DATABASE_URL", "host=db,/var/run/postgresql user=v dbname=v sslmode=verify-full"), unverified},
-		{"an insecure migrations URL is reported by name", with(validEnv(), "MIGRATIONS_DATABASE_URL", "postgres://o:s@db/v?sslmode=disable"), "MIGRATIONS_DATABASE_URL: must require certificate-verified TLS"},
-		{"ALLOW_INSECURE_TRANSPORT accepts plaintext", with(validEnv(), "APP_URL", "http://localhost:8080", "DATABASE_URL", "postgres://v:s@db/v?sslmode=disable", "ALLOW_INSECURE_TRANSPORT", "1"), ""},
-		{"development accepts plaintext", with(validEnv(), "APP_ENV", "development", "APP_URL", "http://localhost:8080", "DATABASE_URL", "postgres://v:s@db/v?sslmode=disable"), ""},
+		{"production accepts a plaintext http APP_URL", with(validEnv(), "APP_URL", "http://vantigo.example.com"), ""},
+		{"production accepts SMTP_TLS=none", with(validEnv(), "SMTP_TLS", "none"), ""},
+		// A same-host or private-network PostgreSQL has no certificate
+		// authority to verify against; the choice is made on the connection
+		// string alone.
+		{"production accepts sslmode=disable", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=disable"), ""},
+		{"production accepts sslmode=require", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=require"), ""},
+		{"production accepts no sslmode at all", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v"), ""},
+		{"production accepts sslmode=verify-full", with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v?sslmode=verify-full"), ""},
+		{"production accepts a plaintext migrations URL", with(validEnv(), "MIGRATIONS_DATABASE_URL", "postgres://o:s@db/v?sslmode=disable"), ""},
+		// A Unix domain socket is the same-host transport; pgx (like libpq)
+		// ignores every ssl setting on it, so it must load in production.
+		{"production accepts a Unix socket in keyword form", with(validEnv(), "DATABASE_URL", "host=/var/run/postgresql user=v dbname=v"), ""},
+		{"production accepts a Unix socket in URL form", with(validEnv(), "DATABASE_URL", "postgres://v:s@/v?host=/var/run/postgresql"), ""},
+		{"production accepts a Unix socket with sslmode=disable", with(validEnv(), "DATABASE_URL", "postgres://v:s@/v?host=/var/run/postgresql&sslmode=disable"), ""},
+		{"production accepts a TCP host with a Unix socket fallback", with(validEnv(), "DATABASE_URL", "host=db,/var/run/postgresql user=v dbname=v sslmode=verify-full"), ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -227,27 +223,14 @@ func TestLoad_TransportRules(t *testing.T) {
 	}
 }
 
-// pgconn reads PGSSLMODE from the process environment, not from the map
-// Load is given; in production the two are the same environment.
-func TestLoad_PGSSLMODEFromTheProcessEnvironment(t *testing.T) {
-	t.Setenv("PGSSLMODE", "verify-full")
-	mustLoad(t, with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v"))
-
-	t.Setenv("PGSSLMODE", "disable")
-	if msg := loadError(t, with(validEnv(), "DATABASE_URL", "postgres://v:s@db/v")); !strings.Contains(msg, unverified) {
-		t.Errorf("error = %q, want %q", msg, unverified)
-	}
-}
-
-func TestLoad_UnverifiedDatabaseURLNeverEchoesTheSecret(t *testing.T) {
-	t.Setenv("PGSSLMODE", "")
-	msg := loadError(t, with(validEnv(), "DATABASE_URL", "host=db user=v dbname=v password='hunter2 sslmode=verify-full' sslmode=disable"))
-
-	if !strings.Contains(msg, unverified) {
-		t.Errorf("error = %q, want %q", msg, unverified)
-	}
-	if strings.Contains(msg, "hunter2") {
-		t.Errorf("error leaks the password: %q", msg)
+// The connection string is still parsed the way pgx will parse it, so a
+// malformed one fails configuration rather than the first connection.
+func TestLoad_MalformedDatabaseURLIsRejectedByName(t *testing.T) {
+	for _, field := range []string{"DATABASE_URL", "MIGRATIONS_DATABASE_URL"} {
+		msg := loadError(t, with(validEnv(), field, "host=db user=v dbname=v sslmode=bogus"))
+		if want := field + ": is not a valid PostgreSQL connection string"; !strings.Contains(msg, want) {
+			t.Errorf("error = %q, want it to contain %q", msg, want)
+		}
 	}
 }
 
@@ -289,7 +272,7 @@ func TestLoad_BasePath(t *testing.T) {
 }
 
 func TestLoad_FlagsAreStrict(t *testing.T) {
-	if msg := loadError(t, with(validEnv(), "ALLOW_INSECURE_TRANSPORT", "true")); !strings.Contains(msg, `ALLOW_INSECURE_TRANSPORT: must be "0" or "1"`) {
+	if msg := loadError(t, with(validEnv(), "CSP_REPORT_ONLY", "true")); !strings.Contains(msg, `CSP_REPORT_ONLY: must be "0" or "1"`) {
 		t.Errorf("error = %q", msg)
 	}
 	if !mustLoad(t, with(validEnv(), "CSP_REPORT_ONLY", "1")).CSPReportOnly {
@@ -573,14 +556,10 @@ func TestLoad_SMTP(t *testing.T) {
 	if cfg := mustLoad(t, validEnv()); cfg.Mail.TLS != "starttls" {
 		t.Errorf("Mail.TLS = %q, want starttls", cfg.Mail.TLS)
 	}
-	if msg := loadError(t, with(validEnv(), "SMTP_TLS", "none")); !strings.Contains(msg, `SMTP_TLS: "none" requires ALLOW_INSECURE_TRANSPORT=1 outside development`) {
-		t.Errorf("error = %q", msg)
-	}
-	if cfg := mustLoad(t, with(validEnv(), "SMTP_TLS", "none", "ALLOW_INSECURE_TRANSPORT", "1")); cfg.Mail.TLS != "none" {
-		t.Errorf("Mail.TLS = %q", cfg.Mail.TLS)
-	}
-	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "SMTP_TLS", "none")); cfg.Mail.TLS != "none" {
-		t.Errorf("Mail.TLS = %q", cfg.Mail.TLS)
+	for _, mode := range []string{"implicit", "starttls", "none"} {
+		if cfg := mustLoad(t, with(validEnv(), "SMTP_TLS", mode)); cfg.Mail.TLS != mode {
+			t.Errorf("Mail.TLS = %q, want %q", cfg.Mail.TLS, mode)
+		}
 	}
 	if msg := loadError(t, with(validEnv(), "SMTP_TLS", "ssl")); !strings.Contains(msg, `SMTP_TLS: must be "implicit", "starttls" or "none"`) {
 		t.Errorf("error = %q", msg)
