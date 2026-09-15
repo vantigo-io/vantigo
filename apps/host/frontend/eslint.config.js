@@ -18,6 +18,22 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // The host composes module packages through their public exports
+      // (@vantigo/<module>-ui and its subpaths). Reaching into a sibling
+      // workspace's source tree bypasses that contract.
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["../../../**"],
+              message: "Import module frontends through their package name, not their source tree.",
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     // TanStack Router route files export a `Route` object rather than the component
