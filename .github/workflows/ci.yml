@@ -139,6 +139,9 @@ jobs:
       - name: 🔍 Lint frontends
         run: bun run frontend:lint
 
+      - name: 🔍 Typecheck frontends
+        run: bun run frontend:typecheck
+
       - name: 🧪 Test frontends
         run: bun run frontend:test
 

@@ -44,6 +44,16 @@ run = [
   "goreleaser check",
 ]
 
+[tasks."frontend:check"]
+description = "Formatting, lint, typecheck and tests for every frontend workspace (what CI runs)"
+run = [
+  "bun run format:check",
+  "bun run translations:check",
+  "bun run frontend:lint",
+  "bun run frontend:typecheck",
+  "bun run frontend:test",
+]
+
 [tasks."server:dev"]
 description = "Run the api command against docker-compose.dev.yml on http://localhost:8080"
 dir = "apps/server"
