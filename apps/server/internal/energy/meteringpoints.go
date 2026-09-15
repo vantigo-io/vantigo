@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
@@ -178,15 +178,6 @@ func meteringPointResponse(ctx context.Context, q *store.Queries, row store.Ener
 	return meteringPointResponseOf(row, meterNumber), nil
 }
 
-// totalPagesOf is PaginationMetadata.Create's ceiling division
-// (Endpoints/Dtos/PaginationMetadata.cs:5-6).
-func totalPagesOf(totalCount, pageSize int32) int32 {
-	if pageSize <= 0 {
-		return 0
-	}
-	return int32(math.Ceil(float64(totalCount) / float64(pageSize)))
-}
-
 // GetEnergyMeteringPoints List metering points
 // (GET /api/v1/energy/metering-points)
 //
@@ -197,7 +188,7 @@ func totalPagesOf(totalCount, pageSize int32) int32 {
 func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyMeteringPointsRequestObject) (gen.GetEnergyMeteringPointsResponseObject, error) {
 	p := req.Params
 	if (p.Page != nil && *p.Page < 1) || (p.PageSize != nil && (*p.PageSize < 1 || *p.PageSize > maxPageSize)) {
-		return gen.GetEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(problem(
+		return gen.GetEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(apicommon.Problem(
 			"Invalid query parameters", "Page must be at least 1 and pageSize must be between 1 and 100.")), nil
 	}
 	page, pageSize := defaultPage, defaultPageSize
@@ -246,7 +237,7 @@ func (s *server) GetEnergyMeteringPoints(ctx context.Context, req gen.GetEnergyM
 	return gen.GetEnergyMeteringPoints200JSONResponse(gen.PaginatedResponseOfMeteringPointResponse{
 		Data: data,
 		Pagination: gen.EnergyPaginationMetadata{
-			Page: page, PageSize: pageSize, TotalCount: int32(total), TotalPages: totalPagesOf(int32(total), pageSize),
+			Page: page, PageSize: pageSize, TotalCount: int32(total), TotalPages: apicommon.TotalPages(int32(total), pageSize),
 		},
 	}), nil
 }
@@ -268,7 +259,7 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 		errs["meterNumber"] = []string{msg}
 	}
 	if len(errs) > 0 {
-		return gen.PostEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(validationProblem("Invalid metering point", errs)), nil
+		return gen.PostEnergyMeteringPoints400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -277,7 +268,7 @@ func (s *server) PostEnergyMeteringPoints(ctx context.Context, req gen.PostEnerg
 		return nil, fmt.Errorf("energy: check gsrn: %w", err)
 	}
 	if exists {
-		return gen.PostEnergyMeteringPoints409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PostEnergyMeteringPoints409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate GSRN", "A metering point with that GSRN already exists.", http.StatusConflict)), nil
 	}
 
@@ -357,7 +348,7 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 	errs := validateMeteringPointFields(body.Gsrn, body.Address, body.PriceArea,
 		body.ExpectedAnnualConsumptionKwh, body.Latitude, body.Longitude, body.ConnectionStatus)
 	if len(errs) > 0 {
-		return gen.PutEnergyMeteringPointsById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid metering point", errs)), nil
+		return gen.PutEnergyMeteringPointsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid metering point", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -372,7 +363,7 @@ func (s *server) PutEnergyMeteringPointsById(ctx context.Context, req gen.PutEne
 		return nil, fmt.Errorf("energy: check gsrn: %w", err)
 	}
 	if dupExists {
-		return gen.PutEnergyMeteringPointsById409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PutEnergyMeteringPointsById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate GSRN", "A metering point with that GSRN already exists.", http.StatusConflict)), nil
 	}
 

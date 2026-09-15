@@ -27,7 +27,6 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -38,7 +37,6 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/identity"
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
-	"github.com/vantigo-io/vantigo/server/internal/openapi"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
@@ -51,15 +49,7 @@ import (
 // identity.yaml and records which operations answered successfully. It is
 // shared by all tests, parallel ones included; TestMain turns it into the
 // coverage gate.
-var recorder = contracttest.New(loadContract())
-
-func loadContract() *openapi3.T {
-	doc, err := openapi.Load(context.Background(), "identity")
-	if err != nil {
-		panic(err)
-	}
-	return doc
-}
+var recorder = contracttest.NewForModule("identity")
 
 // start is where every harness clock begins. Identity reads time only
 // through Deps.Clock, so each session bound a test crosses is crossed on

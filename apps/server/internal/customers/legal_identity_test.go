@@ -107,7 +107,7 @@ func TestUpdateCustomer_WithoutIdentity_RemovesExistingIdentity(t *testing.T) {
 // different from any other "everything blank" case already covered below.
 // The genuine Go analogue of "a payload the framework cannot bind" is a
 // body encoding/json itself cannot parse, which module.DecodeError's
-// generic writeDecodeError (errors.go) already exists to sanitize — a path
+// generic apicommon.WriteDecodeError already exists to sanitize — a path
 // this operation shares with every other one in the module, but had no
 // test of its own before this. It answers through httpx.WriteProblem,
 // which (unlike this module's own problem()/validationProblem()) does

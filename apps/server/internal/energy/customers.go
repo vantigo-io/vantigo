@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/energy/gen"
 	"github.com/vantigo-io/vantigo/server/internal/energy/store"
 )
@@ -76,7 +77,7 @@ func (s *server) GetEnergyCustomersByCustomerIdConsumption(ctx context.Context, 
 	p := req.Params
 	if consumptionIntervalRangeInvalid(p.From, p.To) {
 		return gen.GetEnergyCustomersByCustomerIdConsumption400ApplicationProblemPlusJSONResponse(
-			problem("Invalid interval", "to must be later than from.")), nil
+			apicommon.Problem("Invalid interval", "to must be later than from.")), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -110,7 +111,7 @@ func (s *server) GetEnergyCustomersByCustomerIdConsumptionAggregate(ctx context.
 	resolution, errs := validateConsumptionAggregate(p.From, p.To, p.Resolution)
 	if len(errs) > 0 {
 		return gen.GetEnergyCustomersByCustomerIdConsumptionAggregate400ApplicationProblemPlusJSONResponse(
-			validationProblem(validationErrorsOneOrMore, errs)), nil
+			apicommon.ValidationProblem(validationErrorsOneOrMore, errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)

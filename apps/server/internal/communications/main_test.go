@@ -1,13 +1,9 @@
 package communications_test
 
 import (
-	"context"
 	"os"
 	"testing"
 
-	"github.com/getkin/kin-openapi/openapi3"
-
-	"github.com/vantigo-io/vantigo/server/internal/openapi"
 	"github.com/vantigo-io/vantigo/server/internal/openapi/contracttest"
 )
 
@@ -15,15 +11,7 @@ import (
 // communications.yaml and records which operations answered successfully.
 // It is shared by all tests, parallel ones included; TestMain turns it into
 // the coverage gate.
-var recorder = contracttest.New(loadContract())
-
-func loadContract() *openapi3.T {
-	doc, err := openapi.Load(context.Background(), "communications")
-	if err != nil {
-		panic(err)
-	}
-	return doc
-}
+var recorder = contracttest.NewForModule("communications")
 
 // pendingOperations are the contract's operations no test covers yet. Every
 // one of the module's 28 operations started as a stub answering 501; each

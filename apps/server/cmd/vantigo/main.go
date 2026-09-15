@@ -353,10 +353,16 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 	withAPI := m != modeWorker
 	wantWorkers := runWorkers(m, cfg)
 
-	var deps module.Deps
-	var access *identity.Access
-	var mods []module.Module
-	var haveDeps bool
+	// Every mode that reaches serve needs the modules: api and server to
+	// compose them, worker to resolve their background workers. Building
+	// deps is cheap (moduleDeps), so it is built once, unconditionally,
+	// rather than in whichever branch first turns out to need it.
+	deps, access, err := moduleDeps(cfg, pool, logger)
+	if err != nil {
+		logger.Error("startup failed", "error", err)
+		return 1
+	}
+	mods := businessModules(access)
 
 	if withAPI {
 		assets := web.Assets()
@@ -365,14 +371,6 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 			logger.Error("startup failed", "error", err)
 			return 1
 		}
-
-		deps, access, err = moduleDeps(cfg, pool, logger)
-		if err != nil {
-			logger.Error("startup failed", "error", err)
-			return 1
-		}
-		haveDeps = true
-		mods = businessModules(access)
 
 		// Every module this binary knows is passed to Compose, which keeps
 		// identity — always mounted, never listed in MODULES — plus whichever
@@ -414,14 +412,6 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 
 	var runner *worker.Runner
 	if wantWorkers {
-		if !haveDeps {
-			deps, access, err = moduleDeps(cfg, pool, logger)
-			if err != nil {
-				logger.Error("startup failed", "error", err)
-				return 1
-			}
-			mods = businessModules(access)
-		}
 		workers := module.Workers(deps, append(mods, extraModules...)...)
 		runner = worker.NewRunner(logger)
 		runner.Start(workerCtx, workers)

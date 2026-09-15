@@ -2,8 +2,6 @@ package products
 
 import (
 	"context"
-	"errors"
-	"net/http"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -23,37 +21,6 @@ var _ gen.StrictServerInterface = (*server)(nil)
 // newServer builds the module's operations over d.
 func newServer(d module.Deps) *server {
 	return &server{deps: d}
-}
-
-// requestKey is the context key withRequest stores the underlying
-// *http.Request under. The generated strict handlers only pass a context to
-// a business method, but PostProducts/PostProductsByIdVariants need a
-// permission check beyond what the router's own x-vantigo-access rule
-// covers — the conditional pricing-view+pricing-manage gate (products
-// inventory §1.1/§7 oddity 1, and this task's dispatch corrections) — which
-// means calling deps.Access.Check a second time, and Check needs the
-// request. Mirrors customers/server.go's withRequest/requestFrom (itself
-// mirroring internal/identity/server.go, which depguard forbids importing
-// directly).
-type requestKey struct{}
-
-var errNoRequest = errors.New("products: no request in the handler context")
-
-// withRequest is the strict middleware that hands every operation its
-// *http.Request via requestFrom.
-func withRequest(f gen.StrictHandlerFunc, _ string) gen.StrictHandlerFunc {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
-		return f(context.WithValue(ctx, requestKey{}, r), w, r, request)
-	}
-}
-
-// requestFrom returns the request withRequest stored in ctx.
-func requestFrom(ctx context.Context) (*http.Request, error) {
-	r, ok := ctx.Value(requestKey{}).(*http.Request)
-	if !ok {
-		return nil, errNoRequest
-	}
-	return r, nil
 }
 
 // pricingManage and pricingView are the two permissions the conditional
@@ -83,10 +50,5 @@ const (
 // contrast, is unconditional and is already declared in the contract's
 // x-vantigo-access, so it needs no handler-side check at all.
 func (s *server) hasPermission(ctx context.Context, key string) bool {
-	r, err := requestFrom(ctx)
-	if err != nil {
-		return false
-	}
-	_, err = s.deps.Access.Check(r, contracts.Rule{Kind: contracts.RulePermission, Names: []string{key}})
-	return err == nil
+	return contracts.HasPermission(ctx, s.deps.Access, key)
 }

@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
-	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
@@ -30,26 +29,6 @@ var likeReplacer = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 func likePattern(search string) string {
 	return "%" + likeReplacer.Replace(search) + "%"
-}
-
-// paginationMetadata is PaginationMetadata.Create
-// (Endpoints/Dtos/PaginationMetadata.cs:18-31), duplicated from customers'
-// errors.go under the same name: depguard forbids this module importing
-// customers, so the body is copied, but a reader comparing the two modules
-// should not have to notice that one calls it something else.
-func paginationMetadata(page, pageSize, totalCount int32) apicommon.PaginationMetadata {
-	var totalPages int32
-	if pageSize > 0 {
-		totalPages = int32(math.Ceil(float64(totalCount) / float64(pageSize)))
-	}
-	return apicommon.PaginationMetadata{
-		Page:            page,
-		PageSize:        pageSize,
-		TotalCount:      totalCount,
-		TotalPages:      totalPages,
-		HasNextPage:     page < totalPages,
-		HasPreviousPage: page > 1 && totalCount > 0,
-	}
 }
 
 // firstRepeatedInOrder is CreateProductEndpoint's
@@ -223,7 +202,7 @@ func (s *server) buildProductResponses(ctx context.Context, q *store.Queries, ro
 // (GET /api/v1/products)
 func (s *server) GetProducts(ctx context.Context, req gen.GetProductsRequestObject) (gen.GetProductsResponseObject, error) {
 	if msgs := validateGetProductsParams(req.Params); len(msgs) > 0 {
-		return gen.GetProducts400ApplicationProblemPlusJSONResponse(problem("Invalid query parameters", strings.Join(msgs, " "))), nil
+		return gen.GetProducts400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters", strings.Join(msgs, " "))), nil
 	}
 
 	page := int32(1)
@@ -300,7 +279,7 @@ func (s *server) GetProducts(ctx context.Context, req gen.GetProductsRequestObje
 
 	return gen.GetProducts200JSONResponse{
 		Data:       data,
-		Pagination: paginationMetadata(page, pageSize, int32(total)),
+		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
 }
 
@@ -337,12 +316,12 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 		variantBodies = *body.Variants
 	}
 	if containsPricingData(variantBodies) && (!s.hasPermission(ctx, pricingView) || !s.hasPermission(ctx, pricingManage)) {
-		return gen.PostProducts403JSONResponse(forbiddenBody()), nil
+		return gen.PostProducts403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
 
 	parsed, errs := validateProductRequest(body, true, true)
 	if len(errs) > 0 {
-		return gen.PostProducts400ApplicationProblemPlusJSONResponse(validationProblem("Invalid product", errs)), nil
+		return gen.PostProducts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -369,7 +348,7 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 		if quoted == "" {
 			quoted = skus[0]
 		}
-		return gen.PostProducts409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PostProducts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate SKU", fmt.Sprintf("A variant with SKU '%s' already exists.", quoted), http.StatusConflict)), nil
 	}
 
@@ -395,7 +374,7 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 		}
 	}
 	if duplicateBarcode || dbBarcodeConflict {
-		return gen.PostProducts409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PostProducts409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate barcode", "A variant with that barcode already exists.", http.StatusConflict)), nil
 	}
 
@@ -403,7 +382,7 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 	if parsed.CategoryID != nil {
 		cat, err := q.GetCategoryRef(ctx, *parsed.CategoryID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return gen.PostProducts400ApplicationProblemPlusJSONResponse(validationProblem("Invalid product",
+			return gen.PostProducts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product",
 				map[string][]string{"categoryId": {fmt.Sprintf("Category %d does not exist.", *parsed.CategoryID)}})), nil
 		}
 		if err != nil {
@@ -415,7 +394,7 @@ func (s *server) PostProducts(ctx context.Context, req gen.PostProductsRequestOb
 
 	taxCat, err := q.GetTaxCategoryRef(ctx, parsed.TaxCategoryID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.PostProducts400ApplicationProblemPlusJSONResponse(validationProblem("Invalid product",
+		return gen.PostProducts400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product",
 			map[string][]string{"taxCategoryId": {fmt.Sprintf("Tax category %d does not exist.", parsed.TaxCategoryID)}})), nil
 	}
 	if err != nil {
@@ -526,7 +505,7 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 
 	parsed, errs := validateProductRequest(body, false, false)
 	if len(errs) > 0 {
-		return gen.PutProductsById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid product", errs)), nil
+		return gen.PutProductsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -540,7 +519,7 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 
 	if parsed.CategoryID != nil {
 		if _, err := q.GetCategoryRef(ctx, *parsed.CategoryID); errors.Is(err, pgx.ErrNoRows) {
-			return gen.PutProductsById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid product",
+			return gen.PutProductsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product",
 				map[string][]string{"categoryId": {fmt.Sprintf("Category %d does not exist.", *parsed.CategoryID)}})), nil
 		} else if err != nil {
 			return nil, fmt.Errorf("products: get category: %w", err)
@@ -548,7 +527,7 @@ func (s *server) PutProductsById(ctx context.Context, req gen.PutProductsByIdReq
 	}
 
 	if _, err := q.GetTaxCategoryRef(ctx, parsed.TaxCategoryID); errors.Is(err, pgx.ErrNoRows) {
-		return gen.PutProductsById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid product",
+		return gen.PutProductsById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid product",
 			map[string][]string{"taxCategoryId": {fmt.Sprintf("Tax category %d does not exist.", parsed.TaxCategoryID)}})), nil
 	} else if err != nil {
 		return nil, fmt.Errorf("products: get tax category: %w", err)

@@ -2,8 +2,6 @@ package customers
 
 import (
 	"context"
-	"errors"
-	"net/http"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
@@ -26,37 +24,6 @@ var _ gen.StrictServerInterface = (*server)(nil)
 // inventory §5).
 func newServer(d module.Deps) *server {
 	return &server{deps: d, brreg: newBrregClient(d.Config.BrregBaseURL, d.Config.BrregTimeout, d.HTTPTransport, d.HTTPBackoff)}
-}
-
-// requestKey is the context key withRequest stores the underlying
-// *http.Request under. The generated strict handlers only pass a context to
-// a business method, but some of this module's handlers need a permission
-// check beyond what the router's own x-vantigo-access rule covers —
-// whether the caller may see legal-identity data (inventory §6, "Business
-// view exposed twice"), and whether it may write it
-// (legal-identity-manage, inventory §1.1/§1.4) — which means calling
-// deps.Access.Check a second time, and Check needs the request. Mirrors
-// internal/identity/server.go's withRequest/requestFrom, which depguard
-// forbids importing directly.
-type requestKey struct{}
-
-var errNoRequest = errors.New("customers: no request in the handler context")
-
-// withRequest is the strict middleware that hands every operation its
-// *http.Request via requestFrom.
-func withRequest(f gen.StrictHandlerFunc, _ string) gen.StrictHandlerFunc {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
-		return f(context.WithValue(ctx, requestKey{}, r), w, r, request)
-	}
-}
-
-// requestFrom returns the request withRequest stored in ctx.
-func requestFrom(ctx context.Context) (*http.Request, error) {
-	r, ok := ctx.Value(requestKey{}).(*http.Request)
-	if !ok {
-		return nil, errNoRequest
-	}
-	return r, nil
 }
 
 // legalIdentityView is the permission that decides whether a customer
@@ -91,17 +58,8 @@ const legalIdentityManage = "customers:legal-identity-manage"
 // failure; legalIdentityManage's gating callers (PostCustomers,
 // PutCustomersById) treat it as "deny", which does answer 403.
 func (s *server) hasPermission(ctx context.Context, key string) bool {
-	r, err := requestFrom(ctx)
-	if err != nil {
-		return false
-	}
-	_, err = s.deps.Access.Check(r, contracts.Rule{Kind: contracts.RulePermission, Names: []string{key}})
-	return err == nil
+	return contracts.HasPermission(ctx, s.deps.Access, key)
 }
-
-// ptr returns a pointer to a copy of v, for the optional fields of a
-// generated response type.
-func ptr[T any](v T) *T { return &v }
 
 // deref returns *s, or "" for a nil s.
 func deref(s *string) string {

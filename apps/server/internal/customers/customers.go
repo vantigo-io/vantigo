@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -160,7 +161,7 @@ func validateGetCustomersParams(p gen.GetCustomersParams) []string {
 // (GET /api/v1/customers)
 func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestObject) (gen.GetCustomersResponseObject, error) {
 	if msgs := validateGetCustomersParams(req.Params); len(msgs) > 0 {
-		return gen.GetCustomers400ApplicationProblemPlusJSONResponse(problem("Invalid query parameters", strings.Join(msgs, " "))), nil
+		return gen.GetCustomers400ApplicationProblemPlusJSONResponse(apicommon.Problem("Invalid query parameters", strings.Join(msgs, " "))), nil
 	}
 
 	page := int32(1)
@@ -220,7 +221,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 
 	return gen.GetCustomers200JSONResponse{
 		Data:       data,
-		Pagination: paginationMetadata(page, pageSize, int32(total)),
+		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
 }
 
@@ -238,7 +239,7 @@ func (s *server) GetCustomers(ctx context.Context, req gen.GetCustomersRequestOb
 // depends on the request body, which the router never inspects — so the
 // handler is the only place it can live, the same shape as Task 11's
 // conditional pricing permission (Global Constraints, "Contract-driven
-// access"). It reuses hasPermission/requestFrom, never a second mechanism.
+// access"). It reuses hasPermission, never a second mechanism.
 //
 // The 201's Location header is faithful, not invented: CreateCustomerEndpoint.cs:106-109
 // returns TypedResults.CreatedAtRoute, whose entire purpose (distinct from
@@ -253,7 +254,7 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 	}
 
 	if body.Identity != nil && !s.hasPermission(ctx, legalIdentityManage) {
-		return gen.PostCustomers403JSONResponse(forbiddenBody()), nil
+		return gen.PostCustomers403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
 
 	errs := map[string][]string{}
@@ -286,7 +287,7 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 	}
 
 	if len(errs) > 0 {
-		return gen.PostCustomers400ApplicationProblemPlusJSONResponse(validationProblem("Invalid customer", errs)), nil
+		return gen.PostCustomers400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer", errs)), nil
 	}
 
 	now := s.deps.Clock()
@@ -375,7 +376,7 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 	}
 
 	if body.Identity != nil && !s.hasPermission(ctx, legalIdentityManage) {
-		return gen.PutCustomersById403JSONResponse(forbiddenBody()), nil
+		return gen.PutCustomersById403JSONResponse(apicommon.ForbiddenBody()), nil
 	}
 	errs := map[string][]string{}
 
@@ -396,7 +397,7 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 	}
 
 	if len(errs) > 0 {
-		return gen.PutCustomersById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid customer", errs)), nil
+		return gen.PutCustomersById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -417,7 +418,7 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 			for field, msgs := range idErrs {
 				fieldErrs["identity."+field] = msgs
 			}
-			return gen.PutCustomersById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid customer", fieldErrs)), nil
+			return gen.PutCustomersById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer", fieldErrs)), nil
 		}
 		afterIdentity = &parsed
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -72,7 +73,7 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 
 	parsed, errs := validateLegalIdentity(body.Country, body.Type, body.Id, body.Name, body.Source)
 	if errs != nil {
-		return gen.PutCustomersByIdLegalIdentity400ApplicationProblemPlusJSONResponse(validationProblem("Invalid legal identity", errs)), nil
+		return gen.PutCustomersByIdLegalIdentity400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid legal identity", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)

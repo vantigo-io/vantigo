@@ -1,11 +1,7 @@
 package communications
 
 import (
-	"net/http"
-
-	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
-	"github.com/vantigo-io/vantigo/server/internal/httpx"
 )
 
 // Communications is the one module in this project with two coexisting
@@ -14,21 +10,9 @@ import (
 // {"error":{"code","message","fields"?}} on application/json
 // (CommunicationErrorResponse, EP/CommunicationEndpointHelpers.cs:31-32);
 // the three stats endpoints alone answer RFC 7807 ProblemDetails on
-// application/problem+json. There is no HttpValidationProblemDetails
-// anywhere, and every 404 is bare-bodied. Later tasks that implement each
-// area grow the CommunicationErrorResponse and ProblemDetails builders this
-// file does not yet need; nothing here may invent a third shape.
-
-// writeDecodeError is the generated server's answer to a parameter or body it
-// cannot decode, before any handler — and therefore before either of the
-// module's own error vocabularies — is reached. It is a bare RFC 7807
-// problem, the same wire-level convention identity, customers, products and
-// energy all use for this same failure mode, and it never echoes the
-// decoder's error, which would leak the shape of the request it failed to
-// parse.
-func writeDecodeError(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteProblem(w, r, http.StatusBadRequest, "")
-}
+// application/problem+json, built with apicommon.Problem — nothing outside
+// stats.go may call it. There is no HttpValidationProblemDetails anywhere,
+// and every 404 is bare-bodied. Nothing here may invent a third shape.
 
 // validationErrorBody is CommunicationEndpointHelpers.ValidationError
 // (EP/CommunicationEndpointHelpers.cs:29, inventory §3): code is always
@@ -66,15 +50,4 @@ func fieldsErrorBody(code, message string, fields map[string][]string) gen.Commu
 	resp.Error.Message = message
 	resp.Error.Fields = &fields
 	return resp
-}
-
-// problem builds a bare RFC 7807 ProblemDetails, .NET's TypedResults.Problem
-// (title/detail text, no machine-readable code) — the shape the three stats
-// endpoints alone use (CommunicationsStatsEndpoints.cs:85-88, :169-172,
-// inventory §3 item 2). Every other refusal in this module goes through
-// validationErrorBody / flatErrorBody / fieldsErrorBody above instead;
-// nothing outside stats.go may call this.
-func problem(title, detail string) apicommon.ProblemDetails {
-	status := int32(http.StatusBadRequest)
-	return apicommon.ProblemDetails{Title: &title, Detail: &detail, Status: &status}
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/products/gen"
 	"github.com/vantigo-io/vantigo/server/internal/products/store"
 )
@@ -115,7 +116,7 @@ func (s *server) PostProductsCategories(ctx context.Context, req gen.PostProduct
 
 	name, nameErr := validateCategoryName(body.Name)
 	if nameErr != "" {
-		return gen.PostProductsCategories400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PostProductsCategories400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid category", map[string][]string{"name": {nameErr}})), nil
 	}
 
@@ -126,7 +127,7 @@ func (s *server) PostProductsCategories(ctx context.Context, req gen.PostProduct
 			return nil, fmt.Errorf("products: check parent category: %w", err)
 		}
 		if !exists {
-			return gen.PostProductsCategories400ApplicationProblemPlusJSONResponse(validationProblem("Invalid category",
+			return gen.PostProductsCategories400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid category",
 				map[string][]string{"parentId": {fmt.Sprintf("Category %d does not exist.", *body.ParentId)}})), nil
 		}
 	}
@@ -136,7 +137,7 @@ func (s *server) PostProductsCategories(ctx context.Context, req gen.PostProduct
 		return nil, fmt.Errorf("products: check sibling name: %w", err)
 	}
 	if conflict {
-		return gen.PostProductsCategories409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PostProductsCategories409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate category name", fmt.Sprintf("A category named '%s' already exists under the same parent.", name),
 			http.StatusConflict)), nil
 	}
@@ -183,7 +184,7 @@ func (s *server) PutProductsCategoriesById(ctx context.Context, req gen.PutProdu
 
 	name, nameErr := validateCategoryName(body.Name)
 	if nameErr != "" {
-		return gen.PutProductsCategoriesById400ApplicationProblemPlusJSONResponse(validationProblem(
+		return gen.PutProductsCategoriesById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem(
 			"Invalid category", map[string][]string{"name": {nameErr}})), nil
 	}
 
@@ -195,7 +196,7 @@ func (s *server) PutProductsCategoriesById(ctx context.Context, req gen.PutProdu
 	}
 
 	if body.ParentId != nil && *body.ParentId == req.Id {
-		return gen.PutProductsCategoriesById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid category",
+		return gen.PutProductsCategoriesById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid category",
 			map[string][]string{"parentId": {"A category cannot be its own parent."}})), nil
 	}
 
@@ -209,11 +210,11 @@ func (s *server) PutProductsCategoriesById(ctx context.Context, req gen.PutProdu
 			parentByID[p.ID] = p.ParentID
 		}
 		if _, ok := parentByID[*body.ParentId]; !ok {
-			return gen.PutProductsCategoriesById400ApplicationProblemPlusJSONResponse(validationProblem("Invalid category",
+			return gen.PutProductsCategoriesById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid category",
 				map[string][]string{"parentId": {fmt.Sprintf("Category %d does not exist.", *body.ParentId)}})), nil
 		}
 		if wouldCreateCycle(req.Id, body.ParentId, parentByID) {
-			return gen.PutProductsCategoriesById409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.PutProductsCategoriesById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Category cycle", "The category cannot be moved under one of its own descendants.", http.StatusConflict)), nil
 		}
 	}
@@ -225,7 +226,7 @@ func (s *server) PutProductsCategoriesById(ctx context.Context, req gen.PutProdu
 		return nil, fmt.Errorf("products: check sibling name: %w", err)
 	}
 	if conflict {
-		return gen.PutProductsCategoriesById409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.PutProductsCategoriesById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Duplicate category name", fmt.Sprintf("A category named '%s' already exists under the same parent.", name),
 			http.StatusConflict)), nil
 	}
@@ -283,7 +284,7 @@ func (s *server) DeleteProductsCategoriesById(ctx context.Context, req gen.Delet
 			return nil, fmt.Errorf("products: check subcategories: %w", chErr)
 		}
 		if hasChildren {
-			return gen.DeleteProductsCategoriesById409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.DeleteProductsCategoriesById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Category has subcategories", "Delete or move the subcategories before deleting the category.",
 				http.StatusConflict)), nil
 		}
@@ -292,7 +293,7 @@ func (s *server) DeleteProductsCategoriesById(ctx context.Context, req gen.Delet
 			return nil, fmt.Errorf("products: check products: %w", pErr)
 		}
 		if hasProducts {
-			return gen.DeleteProductsCategoriesById409ApplicationProblemPlusJSONResponse(problemStatus(
+			return gen.DeleteProductsCategoriesById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 				"Category has products", "Reassign or uncategorise the products before deleting the category.",
 				http.StatusConflict)), nil
 		}
@@ -301,7 +302,7 @@ func (s *server) DeleteProductsCategoriesById(ctx context.Context, req gen.Delet
 		// real conflict from the caller's point of view — the delete did
 		// fail — so it still answers 409, just with neither of .NET's two
 		// specific titles, since neither reason is true any more.
-		return gen.DeleteProductsCategoriesById409ApplicationProblemPlusJSONResponse(problemStatus(
+		return gen.DeleteProductsCategoriesById409ApplicationProblemPlusJSONResponse(apicommon.ProblemStatus(
 			"Category is still referenced",
 			"The category could not be deleted because something still referenced it. Try again.",
 			http.StatusConflict)), nil

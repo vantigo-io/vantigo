@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/config"
@@ -145,9 +146,9 @@ func channelResponseOf(row channelRow, settingsJSON *string) (gen.ChannelRespons
 		UseSsl   *bool   `json:"useSsl"`
 		Username *string `json:"username"`
 	}{
-		Host:     ptr(settings.Host),
-		Port:     ptr(settings.Port),
-		UseSsl:   ptr(settings.UseSsl),
+		Host:     apicommon.Ptr(settings.Host),
+		Port:     apicommon.Ptr(settings.Port),
+		UseSsl:   apicommon.Ptr(settings.UseSsl),
 		Username: settings.Username,
 	}
 	return resp, nil

@@ -8,6 +8,7 @@ import (
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 )
@@ -36,41 +37,6 @@ import (
 // query and TestGetCommunicationsStatsAttention_OrdersOldestFirst for the
 // pin.
 
-// communicationsStatsDefaultPeriodDays is
-// CommunicationsStatsEndpoints.DefaultPeriodDays (:12).
-const communicationsStatsDefaultPeriodDays = 30
-
-// normalizeCommunicationsStatsPeriod is TryNormalizePeriod (:153-174),
-// shared by Summary and Timeseries: to defaults to now, from defaults to 30
-// days before to; ok is false when from is after to (strictly — from == to
-// is valid, :161's `normalizedFrom <= normalizedTo`), the only way either
-// handler answers 400.
-func normalizeCommunicationsStatsPeriod(from, to *time.Time, now time.Time) (periodFrom, periodTo, previousFrom time.Time, ok bool) {
-	periodTo = now
-	if to != nil {
-		periodTo = *to
-	}
-	periodFrom = periodTo.AddDate(0, 0, -communicationsStatsDefaultPeriodDays)
-	if from != nil {
-		periodFrom = *from
-	}
-	if periodFrom.After(periodTo) {
-		return time.Time{}, time.Time{}, time.Time{}, false
-	}
-	// The immediately preceding window of the same length as
-	// [periodFrom, periodTo) (Period.Previous, :178).
-	previousFrom = periodFrom.Add(-periodTo.Sub(periodFrom))
-	return periodFrom, periodTo, previousFrom, true
-}
-
-// invalidCommunicationsPeriodTitle/Detail are TryNormalizePeriod's problem
-// text (:169-172), shared verbatim by Summary and Timeseries — byte for
-// byte, inventory §3.3's first row.
-const (
-	invalidCommunicationsPeriodTitle  = "Invalid period"
-	invalidCommunicationsPeriodDetail = "The 'from' value must be earlier than or equal to the 'to' value."
-)
-
 // GetCommunicationsStatsSummary Get communications dashboard summary
 // (GET /api/v1/communications/stats/summary)
 //
@@ -84,10 +50,10 @@ const (
 // TestGetCommunicationsStatsSummary_OpenConversationsDeltaIsNotAPeriodDelta.
 func (s *server) GetCommunicationsStatsSummary(ctx context.Context, req gen.GetCommunicationsStatsSummaryRequestObject) (gen.GetCommunicationsStatsSummaryResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, previousFrom, ok := normalizeCommunicationsStatsPeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, previousFrom, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
 		return gen.GetCommunicationsStatsSummary400ApplicationProblemPlusJSONResponse(
-			problem(invalidCommunicationsPeriodTitle, invalidCommunicationsPeriodDetail)), nil
+			apicommon.InvalidPeriod()), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -133,10 +99,10 @@ func (s *server) GetCommunicationsStatsSummary(ctx context.Context, req gen.GetC
 // TestGetCommunicationsStatsTimeseries_MetricComparisonIsCaseInsensitive.
 func (s *server) GetCommunicationsStatsTimeseries(ctx context.Context, req gen.GetCommunicationsStatsTimeseriesRequestObject) (gen.GetCommunicationsStatsTimeseriesResponseObject, error) {
 	now := s.deps.Clock()
-	periodFrom, periodTo, _, ok := normalizeCommunicationsStatsPeriod(req.Params.From, req.Params.To, now)
+	periodFrom, periodTo, _, ok := apicommon.NormalizePeriod(req.Params.From, req.Params.To, now)
 	if !ok {
 		return gen.GetCommunicationsStatsTimeseries400ApplicationProblemPlusJSONResponse(
-			problem(invalidCommunicationsPeriodTitle, invalidCommunicationsPeriodDetail)), nil
+			apicommon.InvalidPeriod()), nil
 	}
 
 	metric := ""
@@ -146,7 +112,7 @@ func (s *server) GetCommunicationsStatsTimeseries(ctx context.Context, req gen.G
 	normalizedMetric := strings.ToLower(strings.TrimSpace(metric))
 	if normalizedMetric != "newconversations" && normalizedMetric != "messages" {
 		return gen.GetCommunicationsStatsTimeseries400ApplicationProblemPlusJSONResponse(
-			problem("Invalid metric", "Metric must be one of: newConversations, messages.")), nil
+			apicommon.Problem("Invalid metric", "Metric must be one of: newConversations, messages.")), nil
 	}
 
 	q := store.New(s.deps.Pool)

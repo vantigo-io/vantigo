@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/communications/store"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -106,21 +105,6 @@ func pageValues(page, pageSize *int32) (int32, int32) {
 		size = 100
 	}
 	return p, size
-}
-
-// paginationOf is PaginationMetadata.Create, the same formula
-// customers/errors.go's paginationMetadata already implements — duplicated
-// per-module because depguard forbids importing another business module's
-// package for one helper.
-func paginationOf(page, pageSize, totalCount int32) apicommon.PaginationMetadata {
-	var totalPages int32
-	if pageSize > 0 {
-		totalPages = int32(math.Ceil(float64(totalCount) / float64(pageSize)))
-	}
-	return apicommon.PaginationMetadata{
-		Page: page, PageSize: pageSize, TotalCount: totalCount, TotalPages: totalPages,
-		HasNextPage: page < totalPages, HasPreviousPage: page > 1 && totalCount > 0,
-	}
 }
 
 // conversationBatches is every per-conversation collection ListConversations
@@ -281,7 +265,7 @@ func (s *server) GetCommunicationsConversations(ctx context.Context, req gen.Get
 	}
 	return gen.GetCommunicationsConversations200JSONResponse{
 		Data:       data,
-		Pagination: paginationOf(page, pageSize, int32(total)),
+		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
 	}, nil
 }
 

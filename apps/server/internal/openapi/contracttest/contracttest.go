@@ -7,6 +7,7 @@ package contracttest
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -50,6 +51,19 @@ type Recorder struct {
 // New returns a Recorder for doc.
 func New(doc *openapi3.T) *Recorder {
 	return &Recorder{doc: doc, exercised: map[string]bool{}}
+}
+
+// NewForModule is New over the embedded contract of the named module
+// (openapi.Load), for the package-level recorder a module's test package
+// shares. It panics when the contract cannot load: that runs at package
+// initialisation, before any test, and a module whose own contract does not
+// load has nothing to test.
+func NewForModule(name string) *Recorder {
+	doc, err := openapi.Load(context.Background(), name)
+	if err != nil {
+		panic(fmt.Sprintf("contracttest: load the %s contract: %v", name, err))
+	}
+	return New(doc)
 }
 
 // Transport wraps base so every exchange that passes through it is validated

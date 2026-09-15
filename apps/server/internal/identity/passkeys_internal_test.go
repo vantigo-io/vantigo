@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
@@ -56,7 +57,7 @@ func TestPasskeySignIn_WithoutARelyingPartyIsPasskeyConfiguration(t *testing.T) 
 	if srv.relyingParty != nil {
 		t.Fatal("a relying party without APP_URL")
 	}
-	ctx := context.WithValue(context.Background(), requestKey{}, httptest.NewRequest(http.MethodPost, "/", nil))
+	ctx := contracts.WithRequest(context.Background(), httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", nil))
 	email, credential := "someone@example.test", "{}"
 	begin, err := srv.PostIdentityPasskeysLoginBegin(ctx, gen.PostIdentityPasskeysLoginBeginRequestObject{Body: &gen.PasskeyLoginBeginRequest{Email: &email}})
 	wantConfiguration(t, "begin", begin, err)

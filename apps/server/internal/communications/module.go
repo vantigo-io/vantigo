@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/communications/gen"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/module"
@@ -132,12 +133,12 @@ func mount(d module.Deps) (http.Handler, error) {
 		return nil, err
 	}
 	strict := gen.NewStrictHandlerWithOptions(srv, nil, gen.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  module.DecodeError(writeDecodeError),
+		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})
 	handler := gen.HandlerWithOptions(strict, gen.StdHTTPServerOptions{
 		BaseRouter:       rawBodyMux{router},
-		ErrorHandlerFunc: module.DecodeError(writeDecodeError),
+		ErrorHandlerFunc: module.DecodeError(apicommon.WriteDecodeError),
 	})
 	if err := router.Err(); err != nil {
 		return nil, err
@@ -231,7 +232,7 @@ func withRawJSONBody(next func(http.ResponseWriter, *http.Request)) func(http.Re
 			// truncated request masquerade as a null-body 400 instead of
 			// the decode-error response the router gives an unreadable
 			// body everywhere else in this module.
-			writeDecodeError(w, r)
+			apicommon.WriteDecodeError(w, r)
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(raw))

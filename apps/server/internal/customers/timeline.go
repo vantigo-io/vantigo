@@ -18,7 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/customers/gen"
 	"github.com/vantigo-io/vantigo/server/internal/customers/store"
 	"github.com/vantigo-io/vantigo/server/internal/db"
@@ -426,14 +426,14 @@ func timelineResponse(e store.CustomersCustomersTimelineEntry) gen.TimelineRespo
 		Producer:        e.Producer,
 		OccurredOn:      openapi_types.Date{Time: e.OccurredOn.Time},
 		OccurredAt:      e.OccurredAt,
-		Summary:         ptr(e.Summary),
+		Summary:         apicommon.Ptr(e.Summary),
 		Note:            e.Note,
 		SourceUrl:       e.SourceUrl,
 		Payload:         payloadElement(e.PayloadJson),
 		CurrentRevision: e.CurrentRevision,
 		State:           e.State,
 		ActorKind:       e.ActorKind,
-		ActorDisplay:    ptr(e.ActorDisplay),
+		ActorDisplay:    apicommon.Ptr(e.ActorDisplay),
 		CreatedAt:       e.CreatedAt,
 		UpdatedAt:       e.UpdatedAt,
 	}
@@ -464,7 +464,7 @@ func timelineRevisionResponse(r store.CustomersCustomersTimelineEntriesRevision)
 		Producer:         r.Producer,
 		OccurredOn:       openapi_types.Date{Time: r.OccurredOn.Time},
 		OccurredAt:       r.OccurredAt,
-		Summary:          ptr(r.Summary),
+		Summary:          apicommon.Ptr(r.Summary),
 		Note:             r.Note,
 		SourceUrl:        r.SourceUrl,
 		Payload:          payloadElement(r.PayloadJson),
@@ -480,7 +480,7 @@ func timelineRevisionResponse(r store.CustomersCustomersTimelineEntriesRevision)
 // same problem shape — title and detail text are the only way a caller (or
 // a test) can tell which guard caught it.
 func timelineProblem(title, detail string) apicommon.ProblemDetails {
-	return problemStatus(title, detail, http.StatusConflict)
+	return apicommon.ProblemStatus(title, detail, http.StatusConflict)
 }
 
 const timelineImmutableTitle = "Timeline entry is immutable"
@@ -534,14 +534,14 @@ func (s *server) GetCustomersByIdTimeline(ctx context.Context, req gen.GetCustom
 	const maxLimit = 100
 
 	if req.Params.Limit != nil && (*req.Params.Limit <= 0 || *req.Params.Limit > maxLimit) {
-		return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(validationProblem("Invalid timeline query", map[string][]string{
+		return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline query", map[string][]string{
 			"limit": {fmt.Sprintf("Limit must be between 1 and %d", maxLimit)},
 		})), nil
 	}
 
 	filters, errs := parseTimelineFilters(req.Params)
 	if errs != nil {
-		return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(validationProblem("Invalid timeline query", errs)), nil
+		return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline query", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -556,12 +556,12 @@ func (s *server) GetCustomersByIdTimeline(ctx context.Context, req gen.GetCustom
 	if req.Params.Cursor != nil {
 		decoded, ok := decodeTimelineCursor(*req.Params.Cursor)
 		if !ok {
-			return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(validationProblem("Invalid timeline query", map[string][]string{
+			return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline query", map[string][]string{
 				"cursor": {"The cursor is malformed"},
 			})), nil
 		}
 		if !cursorMatches(decoded, req.Id, filters) {
-			return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(validationProblem("Invalid timeline query", map[string][]string{
+			return gen.GetCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline query", map[string][]string{
 				"cursor": {"The cursor does not match the requested timeline filters"},
 			})), nil
 		}
@@ -649,7 +649,7 @@ func (s *server) PostCustomersByIdTimeline(ctx context.Context, req gen.PostCust
 	now := s.deps.Clock()
 	parsed, errs := validateManualTimelineRequest(body, now)
 	if errs != nil {
-		return gen.PostCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(validationProblem("Invalid timeline entry", errs)), nil
+		return gen.PostCustomersByIdTimeline400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline entry", errs)), nil
 	}
 
 	q := store.New(s.deps.Pool)
@@ -726,7 +726,7 @@ func (s *server) PutCustomersByIdTimelineByEntryId(ctx context.Context, req gen.
 	now := s.deps.Clock()
 	parsed, errs := validateManualTimelineRequest(body, now)
 	if errs != nil {
-		return gen.PutCustomersByIdTimelineByEntryId400ApplicationProblemPlusJSONResponse(validationProblem("Invalid timeline entry", errs)), nil
+		return gen.PutCustomersByIdTimelineByEntryId400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid timeline entry", errs)), nil
 	}
 	var expectedRevision int32
 	if body.ExpectedRevision != nil {

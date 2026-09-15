@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	apicommon "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 )
 
@@ -84,7 +84,7 @@ func refusalOr[T any](err error) (T, error) {
 // (SV/ScimProtocolService.cs:1202).
 const (
 	unauthenticatedMessage = "Authentication is required."
-	forbiddenMessage       = "You do not have permission to access this resource."
+	forbiddenMessage       = apicommon.ForbiddenMessage
 	invalidRequestMessage  = "The request is invalid."
 	scimUnauthorizedDetail = "A valid SCIM bearer token is required."
 	scimErrorSchema        = "urn:ietf:params:scim:api:messages:2.0:Error"

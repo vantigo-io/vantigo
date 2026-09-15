@@ -317,7 +317,12 @@ func (r *Router) wrap(op *openapi3.Operation, rule contracts.Rule, maxBody int64
 		if req.Body != nil && req.Body != http.NoBody {
 			req.Body = http.MaxBytesReader(w, req.Body, maxBody)
 		}
-		h(w, req.WithContext(contracts.WithPrincipal(req.Context(), p)))
+		// The principal goes on the request first, then the request itself
+		// goes on the context: a handler that pulls the request back out
+		// finds the principal on it, as it would on the request it was
+		// dispatched with.
+		req = req.WithContext(contracts.WithPrincipal(req.Context(), p))
+		h(w, req.WithContext(contracts.WithRequest(req.Context(), w, req)))
 	}
 }
 

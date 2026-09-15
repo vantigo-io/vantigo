@@ -1,11 +1,14 @@
 package identity_test
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
 
 // bodyWithoutA400 are the identity operations whose contract takes a
@@ -30,8 +33,12 @@ var bodyWithoutA400 = []string{
 // takes a request body documents a 400, except the four in bodyWithoutA400.
 func TestBodyCap_EveryOperationWithABodyDocumentsA400(t *testing.T) {
 	t.Parallel()
+	doc, err := openapi.Load(context.Background(), "identity")
+	if err != nil {
+		t.Fatal(err)
+	}
 	var undocumented []string
-	for _, item := range loadContract().Paths.Map() {
+	for _, item := range doc.Paths.Map() {
 		for _, op := range item.Operations() {
 			if op.RequestBody != nil && op.Responses.Status(http.StatusBadRequest) == nil {
 				undocumented = append(undocumented, op.OperationID)
