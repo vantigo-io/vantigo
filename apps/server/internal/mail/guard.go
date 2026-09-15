@@ -79,7 +79,7 @@ func (g *destinationGuard) resolve(ctx context.Context, host string) ([]netip.Ad
 	}
 	addrs, err := g.resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
-		return nil, fmt.Errorf("%w: smtp host %q could not be resolved: %v", ErrDestinationRejected, host, err)
+		return nil, fmt.Errorf("%w: smtp host %q could not be resolved: %w", ErrDestinationRejected, host, err)
 	}
 	return addrs, nil
 }

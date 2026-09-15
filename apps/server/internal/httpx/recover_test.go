@@ -2,12 +2,19 @@ package httpx
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// isAbortHandler reports whether a recovered value is http.ErrAbortHandler.
+func isAbortHandler(v any) bool {
+	err, ok := v.(error)
+	return ok && errors.Is(err, http.ErrAbortHandler)
+}
 
 func TestRecover_TurnsAPanicIntoASanitisedProblem(t *testing.T) {
 	var logs bytes.Buffer
@@ -47,7 +54,7 @@ func TestRecover_AbortsAResponseThatHasAlreadyStarted(t *testing.T) {
 	rec := httptest.NewRecorder()
 	func() {
 		defer func() {
-			if v := recover(); v != http.ErrAbortHandler {
+			if v := recover(); !isAbortHandler(v) {
 				t.Errorf("recovered %v, want http.ErrAbortHandler", v)
 			}
 		}()
@@ -68,7 +75,7 @@ func TestRecover_LetsErrAbortHandlerThrough(t *testing.T) {
 		panic(http.ErrAbortHandler)
 	}))
 	defer func() {
-		if v := recover(); v != http.ErrAbortHandler {
+		if v := recover(); !isAbortHandler(v) {
 			t.Fatalf("recovered %v, want http.ErrAbortHandler", v)
 		}
 	}()
