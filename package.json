@@ -60,7 +60,7 @@
   "scripts": {
     "frontend:lint": "bun run --filter '*' lint",
     "frontend:typecheck": "bun run --filter '*' typecheck",
-    "frontend:test": "bun run --filter '*' test",
+    "frontend:test": "for d in apps/*/frontend packages/*; do bun run --cwd \"$d\" test || exit 1; done",
     "frontend:build": "bun run --cwd apps/host/frontend build",
     "gen:client": "bun run tools/openapi/gen-client.ts",
     "gen:client:test": "bun test tools/openapi",
