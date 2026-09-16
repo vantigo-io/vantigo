@@ -14,18 +14,13 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { IconChevronRight, IconLogout } from "@tabler/icons-react";
 import type { ReactNode } from "react";
+import type { ShellUser } from "./account-menu";
 import { appConfig, hasSupportContact } from "./app-config";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
 import { vantigoLogo } from "./logo";
 
 registerCatalog("shell", shellCatalog);
-
-export interface ShellUser {
-  displayName: string;
-  email: string;
-  avatarUrl?: string | null;
-}
 
 export interface AppShellLayoutProps {
   /** The module name displayed next to the logo. Defaults to the runtime app title. */
