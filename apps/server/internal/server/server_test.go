@@ -114,7 +114,7 @@ func newFixture(t *testing.T, mutate func(*config.Config, *Options)) fixture {
 	if mutate != nil {
 		mutate(cfg, &o)
 	}
-	idx, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding)
+	idx, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
 	if err != nil {
 		t.Fatal(err)
 	}
