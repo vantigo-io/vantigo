@@ -366,7 +366,7 @@ func serve(ctx context.Context, logger *slog.Logger, cfg *config.Config, ln net.
 
 	if withAPI {
 		assets := web.Assets()
-		index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding)
+		index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
 		if err != nil {
 			logger.Error("startup failed", "error", err)
 			return 1

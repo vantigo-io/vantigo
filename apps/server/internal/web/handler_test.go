@@ -17,7 +17,7 @@ func testHandler(t *testing.T) (http.Handler, *Index) {
 		"favicon.png":            {Data: []byte("png")},
 		"assets/index-abc123.js": {Data: []byte("console.log(1)")},
 	}
-	idx, err := NewIndex(assets, "", config.Branding{})
+	idx, err := NewIndex(assets, "", config.Branding{}, nil)
 	if err != nil {
 		t.Fatalf("NewIndex: %v", err)
 	}

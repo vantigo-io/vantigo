@@ -27,14 +27,15 @@ type Index struct {
 }
 
 // NewIndex reads index.html from assets and templates it: asset URLs are
-// rewritten under basePath, window.__VANTIGO_APP__ is injected as the first
-// element of <head>, and <title> is replaced.
-func NewIndex(assets fs.FS, basePath string, b config.Branding) (*Index, error) {
+// rewritten under basePath, window.__VANTIGO_APP__ (branding plus the enabled
+// module names) is injected as the first element of <head>, and <title> is
+// replaced.
+func NewIndex(assets fs.FS, basePath string, b config.Branding, modules []string) (*Index, error) {
 	raw, err := fs.ReadFile(assets, "index.html")
 	if err != nil {
 		return nil, fmt.Errorf("web: read index.html: %w", err)
 	}
-	script := runtimeConfigScript(basePath, b)
+	script := runtimeConfigScript(basePath, b, modules)
 	sum := sha256.Sum256([]byte(script))
 	return &Index{
 		HTML:             []byte(render(string(raw), basePath, title(b), script)),
@@ -58,12 +59,15 @@ func render(doc, basePath, title, script string) string {
 }
 
 // runtimeConfig is the shape the frontends read from window.__VANTIGO_APP__
-// (see apps/*/frontend/src/lib/app-config.ts). Unset values are null.
+// (see packages/frontend-shell/src/app-config.ts). Unset values are null;
+// Modules is always an array so the SPA can tell "none enabled" ([]) from
+// "not injected" (absent, as under the Vite dev server).
 type runtimeConfig struct {
 	BasePath string         `json:"basePath"`
 	Title    string         `json:"title"`
 	LogoURL  *string        `json:"logoUrl"`
 	Support  runtimeSupport `json:"support"`
+	Modules  []string       `json:"modules"`
 }
 
 type runtimeSupport struct {
@@ -75,7 +79,7 @@ type runtimeSupport struct {
 // runtimeConfigScript is the exact text of the injected script. Both the
 // document and the CSP hash come from this one function. encoding/json escapes
 // <, > and &, so no value can close the <script> element.
-func runtimeConfigScript(basePath string, b config.Branding) string {
+func runtimeConfigScript(basePath string, b config.Branding, modules []string) string {
 	data, err := json.Marshal(runtimeConfig{
 		BasePath: basePath + "/",
 		Title:    title(b),
@@ -85,6 +89,7 @@ func runtimeConfigScript(basePath string, b config.Branding) string {
 			Phone: optional(b.SupportPhone),
 			URL:   optional(b.SupportURL),
 		},
+		Modules: append([]string{}, modules...),
 	})
 	if err != nil {
 		panic("web: marshal runtime config: " + err.Error()) // impossible for this type

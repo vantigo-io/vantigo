@@ -25,9 +25,9 @@ const builtIndexHTML = `<!doctype html>
   </body>
 </html>`
 
-func renderIndex(t *testing.T, basePath string, b config.Branding, html string) (*Index, string) {
+func renderIndex(t *testing.T, basePath string, b config.Branding, html string, modules []string) (*Index, string) {
 	t.Helper()
-	idx, err := NewIndex(fstest.MapFS{"index.html": {Data: []byte(html)}}, basePath, b)
+	idx, err := NewIndex(fstest.MapFS{"index.html": {Data: []byte(html)}}, basePath, b, modules)
 	if err != nil {
 		t.Fatalf("NewIndex: %v", err)
 	}
@@ -53,12 +53,12 @@ func assertNotContains(t *testing.T, html string, unwanted ...string) {
 }
 
 func TestNewIndex_AtTheRootKeepsAssetURLs(t *testing.T) {
-	_, html := renderIndex(t, "", config.Branding{}, builtIndexHTML)
+	_, html := renderIndex(t, "", config.Branding{}, builtIndexHTML, nil)
 	assertContains(t, html, `src="/assets/index-abc123.js"`, `href="/favicon.png"`, `"basePath":"/"`)
 }
 
 func TestNewIndex_UnderABasePathRewritesEveryAssetURL(t *testing.T) {
-	_, html := renderIndex(t, "/crm", config.Branding{}, builtIndexHTML)
+	_, html := renderIndex(t, "/crm", config.Branding{}, builtIndexHTML, nil)
 	assertContains(t, html,
 		`src="/crm/assets/index-abc123.js"`,
 		`href="/crm/assets/index-def456.css"`,
@@ -68,7 +68,7 @@ func TestNewIndex_UnderABasePathRewritesEveryAssetURL(t *testing.T) {
 }
 
 func TestNewIndex_InjectsTheConfigBeforeAnyModuleScript(t *testing.T) {
-	_, html := renderIndex(t, "", config.Branding{}, builtIndexHTML)
+	_, html := renderIndex(t, "", config.Branding{}, builtIndexHTML, nil)
 	head := strings.Index(html, "<head>")
 	script := strings.Index(html, "window.__VANTIGO_APP__")
 	module := strings.Index(html, `type="module"`)
@@ -78,9 +78,17 @@ func TestNewIndex_InjectsTheConfigBeforeAnyModuleScript(t *testing.T) {
 }
 
 func TestNewIndex_DefaultBrandingInjectsNulls(t *testing.T) {
-	_, html := renderIndex(t, "", config.Branding{}, builtIndexHTML)
+	_, html := renderIndex(t, "", config.Branding{}, builtIndexHTML, nil)
 	assertContains(t, html,
-		`window.__VANTIGO_APP__={"basePath":"/","title":"Vantigo","logoUrl":null,"support":{"email":null,"phone":null,"url":null}};`)
+		`window.__VANTIGO_APP__={"basePath":"/","title":"Vantigo","logoUrl":null,"support":{"email":null,"phone":null,"url":null},"modules":[]};`)
+}
+
+func TestNewIndex_InjectsTheEnabledModules(t *testing.T) {
+	idx, err := NewIndex(fstest.MapFS{"index.html": {Data: []byte(builtIndexHTML)}}, "", config.Branding{}, []string{"customers", "energy"})
+	if err != nil {
+		t.Fatalf("NewIndex: %v", err)
+	}
+	assertContains(t, string(idx.HTML), `"modules":["customers","energy"]`)
 }
 
 func TestNewIndex_FullBrandingInjectsEveryValue(t *testing.T) {
@@ -90,7 +98,7 @@ func TestNewIndex_FullBrandingInjectsEveryValue(t *testing.T) {
 		SupportEmail: "help@acme.test",
 		SupportPhone: "+47 123 45 678",
 		SupportURL:   "https://support.acme.test",
-	}, builtIndexHTML)
+	}, builtIndexHTML, nil)
 	assertContains(t, html,
 		`"title":"Acme ERP"`,
 		`"logoUrl":"https://cdn.acme.test/logo.svg"`,
@@ -100,19 +108,19 @@ func TestNewIndex_FullBrandingInjectsEveryValue(t *testing.T) {
 }
 
 func TestNewIndex_ReplacesTheDocumentTitle(t *testing.T) {
-	_, html := renderIndex(t, "", config.Branding{Title: "Acme ERP"}, builtIndexHTML)
+	_, html := renderIndex(t, "", config.Branding{Title: "Acme ERP"}, builtIndexHTML, nil)
 	assertContains(t, html, "<title>Acme ERP</title>")
 	assertNotContains(t, html, "<title>Vantigo</title>")
 }
 
 func TestNewIndex_WithoutATitleElementStillInjectsTheConfig(t *testing.T) {
-	_, html := renderIndex(t, "/crm", config.Branding{}, `<html><head><script src="/assets/a.js"></script></head></html>`)
+	_, html := renderIndex(t, "/crm", config.Branding{}, `<html><head><script src="/assets/a.js"></script></head></html>`, nil)
 	assertContains(t, html, "window.__VANTIGO_APP__", `src="/crm/assets/a.js"`)
 	assertNotContains(t, html, "<title>")
 }
 
 func TestNewIndex_HostileTitleCannotBreakOutOfTheScriptOrTitle(t *testing.T) {
-	_, html := renderIndex(t, "", config.Branding{Title: `</script><script>alert(1)</script>`}, builtIndexHTML)
+	_, html := renderIndex(t, "", config.Branding{Title: `</script><script>alert(1)</script>`}, builtIndexHTML, nil)
 	assertNotContains(t, html, "<script>alert(1)</script>")
 	assertContains(t, html,
 		`\u003c/script\u003e`,
@@ -120,7 +128,7 @@ func TestNewIndex_HostileTitleCannotBreakOutOfTheScriptOrTitle(t *testing.T) {
 }
 
 func TestNewIndex_QuotesAndUnicodeProduceValidJSONAndHTML(t *testing.T) {
-	_, html := renderIndex(t, "", config.Branding{Title: `Møller "Bil" & Co`}, builtIndexHTML)
+	_, html := renderIndex(t, "", config.Branding{Title: `Møller "Bil" & Co`}, builtIndexHTML, nil)
 	assertContains(t, html,
 		`"title":"Møller \"Bil\" \u0026 Co"`,
 		"<title>Møller &#34;Bil&#34; &amp; Co</title>")
@@ -128,12 +136,12 @@ func TestNewIndex_QuotesAndUnicodeProduceValidJSONAndHTML(t *testing.T) {
 
 func TestNewIndex_HostileLogoURLCannotBreakOutOfTheScript(t *testing.T) {
 	// config rejects this value; the renderer must be safe on its own anyway.
-	_, html := renderIndex(t, "", config.Branding{LogoURL: `x"};</script><script>alert(1)//`}, builtIndexHTML)
+	_, html := renderIndex(t, "", config.Branding{LogoURL: `x"};</script><script>alert(1)//`}, builtIndexHTML, nil)
 	assertNotContains(t, html, "</script><script>alert(1)")
 }
 
 func TestNewIndex_ScriptHashCoversExactlyTheInjectedScript(t *testing.T) {
-	idx, html := renderIndex(t, "/crm", config.Branding{Title: "Acme"}, builtIndexHTML)
+	idx, html := renderIndex(t, "/crm", config.Branding{Title: "Acme"}, builtIndexHTML, nil)
 
 	start := strings.Index(html, "<head><script>") + len("<head><script>")
 	end := start + strings.Index(html[start:], "</script>")
@@ -146,12 +154,12 @@ func TestNewIndex_ScriptHashCoversExactlyTheInjectedScript(t *testing.T) {
 }
 
 func TestNewIndex_LeavesUnrelatedContentUntouched(t *testing.T) {
-	_, html := renderIndex(t, "/crm", config.Branding{}, builtIndexHTML)
+	_, html := renderIndex(t, "/crm", config.Branding{}, builtIndexHTML, nil)
 	assertContains(t, html, `<div id="root"></div>`, `<meta charset="UTF-8" />`)
 }
 
 func TestNewIndex_MissingIndexIsAnError(t *testing.T) {
-	if _, err := NewIndex(fstest.MapFS{}, "", config.Branding{}); err == nil {
+	if _, err := NewIndex(fstest.MapFS{}, "", config.Branding{}, nil); err == nil {
 		t.Fatal("NewIndex succeeded without an index.html")
 	}
 }
