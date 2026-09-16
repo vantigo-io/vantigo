@@ -12,7 +12,7 @@ const open = async () => {
 describe("AppSwitcher", () => {
   it("renders nothing without apps", () => {
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <AppSwitcher apps={[]} />
       </MantineProvider>,
     );
@@ -22,7 +22,7 @@ describe("AppSwitcher", () => {
   it("lists tiles, marks the current one and navigates on select", async () => {
     const onSelect = vi.fn();
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <AppSwitcher
           apps={[
             { id: "home", label: "Home", icon: IconHome, onSelect: vi.fn(), current: true },
@@ -44,7 +44,7 @@ describe("AppSwitcher", () => {
   it("shows a disabled app muted with its reason and never selects it", async () => {
     const onSelect = vi.fn();
     render(
-      <MantineProvider>
+      <MantineProvider env="test">
         <AppSwitcher
           apps={[{ id: "energy", label: "Energy", icon: IconBolt, onSelect, disabledReason: "Not enabled" }]}
         />
