@@ -6,7 +6,8 @@ import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$cus
 import { useI18n } from "@vantigo/frontend-shell";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getAuthorizationMe } from "../../api/authorization";
-import { hasPermissions, type ModuleKey, moduleKeys } from "../../navigation";
+import { enabledModuleKeys } from "../../lib/enabled-modules";
+import { hasPermissions, type ModuleKey } from "../../navigation";
 import "../../i18n";
 
 type CustomerDetailTab = {
@@ -72,10 +73,7 @@ export const CustomerDetailLayout = () => {
     retry: false,
     staleTime: 300_000,
   });
-  // The tenant-capabilities endpoint was deleted (task 2 of the frontend
-  // de-tenanting plan); every module in the navigation catalog ships in this
-  // build, matching the other two call sites (__root.tsx, dashboard.tsx).
-  const visibleTabs = visibleCustomerDetailTabs(moduleKeys, authorization.data?.permissions);
+  const visibleTabs = visibleCustomerDetailTabs(enabledModuleKeys(), authorization.data?.permissions);
   const activeTab = matches.some((match) => match.routeId === "/customers/$customerId/energy") ? "energy" : "overview";
 
   return (
