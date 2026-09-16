@@ -9,8 +9,8 @@ registerCatalog("shell", shellCatalog);
 
 /**
  * A search-box-styled button opening the global spotlight, with the platform's
- * keyboard shortcut as a hint. Place it at the top of the sidebar via the
- * AppShellLayout `navbarTop` slot; the app provides its own Spotlight.Root.
+ * keyboard shortcut as a hint. Place it in the header via the AppShellLayout
+ * `headerCenter` slot; the app provides its own Spotlight.Root.
  */
 export const SpotlightSearchBox = () => {
   const os = useOs();

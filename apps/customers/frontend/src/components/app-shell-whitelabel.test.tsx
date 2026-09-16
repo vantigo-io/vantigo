@@ -11,11 +11,7 @@ afterEach(() => {
 const renderShell = () =>
   render(
     <MantineProvider>
-      <AppShellLayout
-        user={{ displayName: "Test User", email: "user@test.local" }}
-        onSignOut={() => {}}
-        nav={() => null}
-      >
+      <AppShellLayout nav={() => null}>
         <div>content</div>
       </AppShellLayout>
     </MantineProvider>,
