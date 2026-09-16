@@ -103,8 +103,10 @@ export interface AppDefinition {
   /** i18n key in the host navigation catalog. */
   label: string;
   icon: NavItem["icon"];
-  /** Where the switcher tile navigates. Search is needed for /dashboard. */
-  home: { to: string; search?: Record<string, unknown> };
+  /** Where the switcher tile navigates. Navigation is untyped (like the
+   *  sidebar links), and /dashboard's validator derives its defaults from
+   *  an empty query string, so no search object is carried. */
+  home: string;
   /** Sidebar sections; empty means the app renders without a sidebar. */
   navSections: readonly NavSection[];
   /** The tile is hidden unless the user holds one of these. */
@@ -122,7 +124,9 @@ to filter as an argument instead of reading a module-level constant.
 Consumers that need every destination (spotlight navigation actions, the
 permission guard's prefix rules) read `apps.flatMap((app) => app.navSections)`.
 
-Per-app sections, moved verbatim from today's catalog:
+Per-app sections, items moved verbatim from today's catalog. The section
+headings ("Customer workspace", "Catalog", …) are dropped: the header already
+names the app, so each app has one unlabeled section.
 
 - Home: none.
 - Customers: Customers (`/customers`), Contacts (`/customers/contacts`).
@@ -296,9 +300,10 @@ unchanged.
 ### 6.5 Strings
 
 Shell catalog (`i18n/catalogs/shell.ts`), en and nb: `switchApp`,
-`appsMenu`, `notEnabled`, `openSearch`, `openAccountMenu` (exists),
-`signOut` (exists). Host navigation catalog gains the app labels, the
-account menu section labels and the not-enabled page strings.
+`appsMenu`, `openSearch`, `openAccountMenu` (exists), `signOut` (exists).
+Host navigation catalog gains the Home label, the account menu section
+labels and the "Not enabled" caption (the host passes it to the switcher as
+`disabledReason`); the host error catalog gains the not-enabled page strings.
 
 ## 7. Module enablement
 
