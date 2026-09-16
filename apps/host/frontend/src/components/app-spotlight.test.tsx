@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { i18n } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type ModuleKey, navSections, visibleNavSections } from "../navigation";
-import { AppSpotlight } from "./app-spotlight";
+import { type ModuleKey, visibleNavSections } from "../navigation";
+import { AppSpotlight, spotlightNavSections } from "./app-spotlight";
 
 const allModules: ModuleKey[] = ["communications", "customers", "energy", "products"];
 
@@ -71,13 +71,13 @@ const expectNavigationParity = async (
   isOwner: boolean,
   canManageAuthorization: boolean,
 ) => {
-  const expected = visibleNavSections({
+  const expected = visibleNavSections(spotlightNavSections, {
     permissions,
     isOwner,
     canManageAuthorization,
     enabledModules: allModules,
   }).flatMap((section) => section.items.map((item) => i18n.t(item.label, { ns: "host", lng: "en" })));
-  const restricted = navSections
+  const restricted = spotlightNavSections
     .flatMap((section) => section.items)
     .map((item) => i18n.t(item.label, { ns: "host", lng: "en" }))
     .filter((label) => !expected.includes(label));
@@ -124,12 +124,12 @@ describe("AppSpotlight navigation authorization", () => {
 
   it("shows the admin dashboard in Spotlight only to owners", async () => {
     renderSpotlight(["*"], true, true);
-    await waitFor(() => expect(screen.getByText("Admin dashboard", { exact: true })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Workspace admin", { exact: true })).toBeInTheDocument());
 
     cleanup();
     spotlight.close();
     renderSpotlight(["*"], false, true);
-    await waitFor(() => expect(screen.queryByText("Admin dashboard", { exact: true })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Workspace admin", { exact: true })).not.toBeInTheDocument());
   });
 
   it("does not expose users or invitations in owner search and keeps Roles & access for authorization users", async () => {
@@ -146,7 +146,7 @@ describe("AppSpotlight navigation authorization", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Roles & access", { exact: true })).toBeInTheDocument();
-      expect(screen.queryByText("Admin dashboard", { exact: true })).not.toBeInTheDocument();
+      expect(screen.queryByText("Workspace admin", { exact: true })).not.toBeInTheDocument();
       expect(screen.queryByText("Users", { exact: true })).not.toBeInTheDocument();
       expect(screen.queryByText("Invitations", { exact: true })).not.toBeInTheDocument();
     });

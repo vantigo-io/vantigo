@@ -4,7 +4,8 @@ import { useRouterState } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
-import { hasPermissions, type ModuleKey, navSections } from "../navigation";
+import { allNavSections } from "../apps";
+import { hasPermissions, type ModuleKey } from "../navigation";
 import { ForbiddenPage } from "./errors";
 
 interface ModuleAccessRule {
@@ -13,9 +14,9 @@ interface ModuleAccessRule {
   requiredPermissions?: readonly string[];
 }
 
-// The navigation catalog is the single source of truth for which destinations
+// The app registry is the single source of truth for which destinations
 // belong to which module and which permissions they require.
-const rules: ModuleAccessRule[] = navSections
+const rules: ModuleAccessRule[] = allNavSections
   .flatMap((section) => section.items)
   .flatMap((item) =>
     item.module

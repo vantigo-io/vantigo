@@ -8,11 +8,13 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { AppShellLayout, appUrl, SpotlightSearchBox, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../i18n";
+import { accountMenuSections } from "../account-menu";
 import { getProfile, profileQueryKey } from "../api/account";
 import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
+import { allNavSections } from "../apps";
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
@@ -107,15 +109,15 @@ const RootLayout = () => {
   const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
   const enabledModules = enabledModuleKeys();
-  const visibleSections = visibleNavSections({
+  const visibility = {
     permissions,
     isOwner,
     canManageAuthorization,
     isSystemAdmin: session.isSystemAdmin,
     enabledModules,
-  });
-  const primarySections = visibleSections.filter((section) => section.placement !== "lower");
-  const lowerSections = visibleSections.filter((section) => section.placement === "lower");
+  };
+  const primarySections = visibleNavSections(allNavSections, visibility);
+  const lowerSections = visibleNavSections(accountMenuSections, visibility);
   if (shouldShowMaintenance(systemStatus.data, session.isSystemAdmin)) {
     return <MaintenancePage message={systemStatus.data?.message} />;
   }
