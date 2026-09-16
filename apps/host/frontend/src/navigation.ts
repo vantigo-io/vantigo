@@ -1,22 +1,8 @@
-import {
-  IconAddressBook,
-  IconBolt,
-  IconBuildingSkyscraper,
-  IconCategory,
-  IconInbox,
-  IconLayoutDashboard,
-  IconMailbox,
-  IconMailOff,
-  IconPackage,
-  IconSettings,
-  IconShieldCheck,
-  IconUsers,
-} from "@tabler/icons-react";
 import type { ComponentType } from "react";
 
-// Relocated from the deleted api/tenant-capabilities.ts (task 2 of the
-// frontend de-tenanting plan): this catalog is the single source of truth
-// for which destinations belong to which module.
+// The module keys this build knows. Which of them are enabled comes from the
+// injected runtime config (see lib/enabled-modules.ts); which destinations
+// belong to which module is declared by the app registry (apps.ts).
 export const moduleKeys = ["communications", "customers", "energy", "products"] as const;
 export type ModuleKey = (typeof moduleKeys)[number];
 
@@ -37,130 +23,7 @@ export interface NavSection {
   /** Optional section heading; unlabeled sections render items only. */
   label?: string;
   items: readonly NavItem[];
-  placement?: "lower";
 }
-
-export const navSections: readonly NavSection[] = [
-  {
-    items: [
-      {
-        label: "navigation.dashboard",
-        to: "/dashboard",
-        icon: IconLayoutDashboard,
-      },
-    ],
-  },
-  {
-    label: "navigation.customerWorkspace",
-    items: [
-      {
-        label: "navigation.customers",
-        to: "/customers",
-        module: "customers",
-        icon: IconUsers,
-        requiredPermissions: ["customers:view"],
-        searchStrategy: "customer-list",
-      },
-      {
-        label: "navigation.contacts",
-        to: "/customers/contacts",
-        module: "customers",
-        icon: IconAddressBook,
-        requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
-        searchStrategy: "customer-list",
-      },
-    ],
-  },
-  {
-    label: "navigation.communications",
-    items: [
-      {
-        label: "navigation.inbox",
-        to: "/communications/inbox",
-        module: "communications",
-        icon: IconInbox,
-        requiredPermissions: ["communications:conversations-view"],
-        searchStrategy: "inbox-list",
-      },
-      {
-        label: "navigation.channels",
-        to: "/communications/channels",
-        module: "communications",
-        icon: IconMailbox,
-        requiredPermissions: ["communications:channels-manage"],
-      },
-      {
-        label: "navigation.suppressions",
-        to: "/communications/suppressions",
-        module: "communications",
-        icon: IconMailOff,
-        requiredPermissions: ["communications:suppressions-manage"],
-      },
-    ],
-  },
-  {
-    label: "navigation.catalog",
-    items: [
-      {
-        label: "navigation.products",
-        to: "/products",
-        module: "products",
-        icon: IconPackage,
-        requiredPermissions: [
-          "products:products-view",
-          "products:variants-view",
-          "products:pricing-view",
-          "products:categories-view",
-          "products:tax-categories-view",
-        ],
-        searchStrategy: "products-list",
-      },
-      {
-        label: "navigation.categories",
-        to: "/products/categories",
-        module: "products",
-        icon: IconCategory,
-        requiredPermissions: ["products:categories-view"],
-      },
-    ],
-  },
-  {
-    label: "navigation.energy",
-    items: [
-      {
-        label: "navigation.meteringPoints",
-        to: "/energy/metering-points",
-        module: "energy",
-        icon: IconBolt,
-        requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
-        searchStrategy: "energy-list",
-      },
-    ],
-  },
-  {
-    label: "navigation.settingsAdministration",
-    placement: "lower",
-    items: [
-      // Personal account settings (/settings) stay distinct from workspace
-      // administration (/workspace): the latter is Owner-gated, the former is
-      // open to every signed-in user.
-      { label: "navigation.settings", to: "/settings", icon: IconSettings },
-      {
-        label: "navigation.adminDashboard",
-        to: "/workspace/overview",
-        icon: IconLayoutDashboard,
-        ownerOnly: true,
-      },
-      {
-        label: "navigation.rolesAccess",
-        to: "/workspace/roles",
-        icon: IconShieldCheck,
-        capability: "authorization",
-      },
-      { label: "navigation.systemAdmin", to: "/admin", icon: IconBuildingSkyscraper, systemAdminOnly: true },
-    ],
-  },
-];
 
 export const hasPermissions = (permissions: string[] | undefined, required?: readonly string[]) =>
   !required?.length ||
@@ -176,14 +39,16 @@ export interface NavVisibilityContext {
   enabledModules?: readonly ModuleKey[];
 }
 
-export const visibleNavSections = ({
-  permissions,
-  isOwner,
-  canManageAuthorization,
-  isSystemAdmin = false,
-  enabledModules,
-}: NavVisibilityContext) =>
-  navSections
+/**
+ * Filters sections to the items the caller may see and drops sections that
+ * end up empty. Generic over the section type so catalogs with extra fields
+ * (the account menu's required label) keep them.
+ */
+export const visibleNavSections = <S extends NavSection>(
+  sections: readonly S[],
+  { permissions, isOwner, canManageAuthorization, isSystemAdmin = false, enabledModules }: NavVisibilityContext,
+): S[] =>
+  sections
     .map((section) => ({
       ...section,
       items: section.items.filter(

@@ -1,7 +1,16 @@
 import { Center, Loader, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Spotlight } from "@mantine/spotlight";
-import { IconBolt, IconBuilding, IconMail, IconPackage, IconPlus, IconSearch, IconUser } from "@tabler/icons-react";
+import {
+  IconBolt,
+  IconBuilding,
+  IconLayoutDashboard,
+  IconMail,
+  IconPackage,
+  IconPlus,
+  IconSearch,
+  IconUser,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { contactsQueryOptions } from "@vantigo/customers-ui/api/contacts";
@@ -11,10 +20,24 @@ import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
-import { hasPermissions, type ModuleKey, navSearchFor, visibleNavSections } from "../navigation";
+import { accountMenuSections } from "../account-menu";
+import { allNavSections } from "../apps";
+import { hasPermissions, type ModuleKey, type NavSection, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
+
+/**
+ * Everything the spotlight can navigate to: the dashboard (Home has no
+ * sidebar, so it is not in any app's sections), every app's sidebar, and the
+ * avatar menu's destinations. Filtered per user at render time.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const spotlightNavSections: readonly NavSection[] = [
+  { items: [{ label: "navigation.dashboard", to: "/dashboard", icon: IconLayoutDashboard }] },
+  ...allNavSections,
+  ...accountMenuSections,
+];
 
 interface AppSpotlightProps {
   permissions: string[] | undefined;
@@ -44,7 +67,7 @@ export const AppSpotlight = ({
 
   const search = debouncedQuery.trim();
   const searchEnabled = search.length >= MIN_SEARCH_LENGTH;
-  const navigationActions = visibleNavSections({
+  const navigationActions = visibleNavSections(spotlightNavSections, {
     permissions,
     isOwner,
     canManageAuthorization,
