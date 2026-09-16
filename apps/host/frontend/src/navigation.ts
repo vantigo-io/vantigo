@@ -63,7 +63,7 @@ export const navSections: readonly NavSection[] = [
       },
       {
         label: "navigation.contacts",
-        to: "/contacts",
+        to: "/customers/contacts",
         module: "customers",
         icon: IconAddressBook,
         requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
@@ -76,7 +76,7 @@ export const navSections: readonly NavSection[] = [
     items: [
       {
         label: "navigation.inbox",
-        to: "/inbox",
+        to: "/communications/inbox",
         module: "communications",
         icon: IconInbox,
         requiredPermissions: ["communications:conversations-view"],

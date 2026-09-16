@@ -71,7 +71,7 @@ export const AppSpotlight = ({
       ? [{ label: t("dashboard.createCustomer"), icon: IconPlus, path: "/customers" }]
       : []),
     ...(enabledModules?.includes("communications") && hasPermissions(permissions, ["communications:conversations-view"])
-      ? [{ label: t("dashboard.composeMessage"), icon: IconMail, path: "/inbox" }]
+      ? [{ label: t("dashboard.composeMessage"), icon: IconMail, path: "/communications/inbox" }]
       : []),
     ...(enabledModules?.includes("products") && hasPermissions(permissions, ["products:products-manage"])
       ? [{ label: t("dashboard.addProduct"), icon: IconPackage, path: "/products" }]
@@ -181,7 +181,7 @@ export const AppSpotlight = ({
                 onClick={() =>
                   handleNavigate(() =>
                     navigate({
-                      to: "/contacts/$contactId",
+                      to: "/customers/contacts/$contactId",
                       params: { contactId: item.contact.id },
                     }),
                   )

@@ -87,7 +87,7 @@ export const CustomerDetailLayout = () => {
             if (tab)
               void (navigate as (options: unknown) => void)(
                 tab.value === "correspondence"
-                  ? { to: "/inbox", search: { customerId: String(customerId) } }
+                  ? { to: "/communications/inbox", search: { customerId: String(customerId) } }
                   : { to: tab.to, params: { customerId } },
               );
           }}

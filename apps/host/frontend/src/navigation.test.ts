@@ -78,8 +78,8 @@ describe("navigation permissions", () => {
     expect(items.map((item) => item.to)).toEqual([
       "/dashboard",
       "/customers",
-      "/contacts",
-      "/inbox",
+      "/customers/contacts",
+      "/communications/inbox",
       "/communications/channels",
       "/communications/suppressions",
       "/products",

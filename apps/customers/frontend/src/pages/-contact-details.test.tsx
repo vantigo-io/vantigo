@@ -85,7 +85,7 @@ describe("contact details page", () => {
       "GET /api/v1/customers/contacts/1001/customers": () => jsonResponse(200, { data: [] }),
     });
 
-    await renderRoute("/contacts/1001", "Dr. Anders Refsdal");
+    await renderRoute("/customers/contacts/1001", "Dr. Anders Refsdal");
 
     expect(await screen.findByRole("heading", { name: "Dr. Anders Refsdal" })).toBeInTheDocument();
     expect(screen.getByText("#1001")).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe("contact details page", () => {
         }),
     });
 
-    await renderRoute("/contacts/1001", "Dr. Anders Refsdal");
+    await renderRoute("/customers/contacts/1001", "Dr. Anders Refsdal");
 
     const link = await screen.findByRole("link", { name: "Refsdal Holding" });
     expect(link).toHaveAttribute("href", "/customers/2002");
@@ -138,7 +138,7 @@ describe("contact details page", () => {
       "POST /api/v1/customers/2002/contacts": attachSpy,
     });
 
-    await renderRoute("/contacts/1001", "Dr. Anders Refsdal");
+    await renderRoute("/customers/contacts/1001", "Dr. Anders Refsdal");
 
     await userEvent.click(await screen.findByRole("button", { name: /add customer/i }));
 
@@ -158,7 +158,7 @@ describe("contact details page", () => {
   it("shows a not-found state for unknown contacts", async () => {
     stubFetch({});
 
-    await renderRoute("/contacts/999999", "Contact not found");
+    await renderRoute("/customers/contacts/999999", "Contact not found");
 
     expect(await screen.findByText("Contact not found")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to contacts/i })).toBeInTheDocument();

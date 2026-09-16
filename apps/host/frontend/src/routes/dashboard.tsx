@@ -116,7 +116,7 @@ const moduleCards = [
   {
     title: "dashboard.communications",
     description: "dashboard.reviewMessages",
-    path: "/inbox",
+    path: "/communications/inbox",
     icon: IconMessage,
     module: "communications" as ModuleKey,
     requiredPermissions: ["communications:conversations-view"],
@@ -408,12 +408,12 @@ const DashboardPage = () => {
 
   const attentionHref = (item: (typeof attentionItems)[number]) => {
     if (item.module === "communications" && item.type === "conversationNoReply") {
-      return `/inbox?conversationId=${encodeURIComponent(item.entityId)}`;
+      return `/communications/inbox?conversationId=${encodeURIComponent(item.entityId)}`;
     }
     if (item.module === "customers") return `/customers/${encodeURIComponent(item.entityId)}`;
     if (item.module === "products") return `/products/${encodeURIComponent(item.entityId)}`;
     if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
-    return "/inbox";
+    return "/communications/inbox";
   };
   const setupItems = [
     {
@@ -426,7 +426,7 @@ const DashboardPage = () => {
     {
       module: "communications" as ModuleKey,
       label: t("dashboard.connectChannel"),
-      href: "/inbox",
+      href: "/communications/inbox",
       complete: (communicationsSummary.data?.newConversations ?? 0) > 0,
       loading: communicationsSummary.isPending,
     },
@@ -756,7 +756,7 @@ const DashboardPage = () => {
               emptyState={{
                 message: t("dashboard.noWidgetData"),
                 action: (
-                  <Anchor component={Link} to="/inbox">
+                  <Anchor component={Link} to="/communications/inbox">
                     {t("dashboard.openModule")}
                   </Anchor>
                 ),

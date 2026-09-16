@@ -1,6 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
 import { isRedirect } from "@tanstack/react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Route as CommunicationsIndexRoute } from "./communications/index";
+import { Route as EnergyIndexRoute } from "./energy/index";
 import { Route as IndexRoute } from "./index";
 import { Route as WorkspaceRoute } from "./workspace";
 import { Route as WorkspaceInvitationsRoute } from "./workspace/invitations";
@@ -122,5 +124,21 @@ describe("the / landing route", () => {
 
     expect(IndexRoute.options.component).toBeUndefined();
     await expectRedirectTo(IndexRoute, "/dashboard");
+  });
+});
+
+describe("app index routes", () => {
+  it("sends /communications to the inbox", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+
+    expect(CommunicationsIndexRoute.options.component).toBeUndefined();
+    await expectRedirectTo(CommunicationsIndexRoute, "/communications/inbox");
+  });
+
+  it("sends /energy to the metering points", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+
+    expect(EnergyIndexRoute.options.component).toBeUndefined();
+    await expectRedirectTo(EnergyIndexRoute, "/energy/metering-points");
   });
 });

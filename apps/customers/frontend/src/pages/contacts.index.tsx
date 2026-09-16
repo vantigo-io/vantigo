@@ -142,7 +142,7 @@ export const ContactsPage = () => {
                         style={{ cursor: "pointer" }}
                         onClick={() =>
                           navigate({
-                            href: `/contacts/${item.contact.id}`,
+                            href: `/customers/contacts/${item.contact.id}`,
                           })
                         }
                       >

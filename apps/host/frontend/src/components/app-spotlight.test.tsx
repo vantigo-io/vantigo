@@ -157,7 +157,9 @@ describe("AppSpotlight navigation authorization", () => {
       const url = String(input);
       return Promise.resolve(
         new Response(
-          url.includes("/contacts") ? JSON.stringify(paginated([])) : JSON.stringify(paginated([customer])),
+          url.includes("/api/v1/customers/contacts")
+            ? JSON.stringify(paginated([]))
+            : JSON.stringify(paginated([customer])),
           {
             status: 200,
             headers: { "Content-Type": "application/json" },
@@ -171,7 +173,9 @@ describe("AppSpotlight navigation authorization", () => {
     await enterSearch("acme");
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/contacts"))).toBe(false);
+    expect(
+      fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/api/v1/customers/contacts")),
+    ).toBe(false);
     expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/metering-points"))).toBe(
       false,
     );
@@ -258,7 +262,7 @@ describe("AppSpotlight navigation authorization", () => {
   it("invokes onNavigate for navigation, customer, and contact actions", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      const body = url.includes("/contacts")
+      const body = url.includes("/api/v1/customers/contacts")
         ? paginated([{ contact, customer: null, customerCount: 0 }])
         : url.includes("/metering-points")
           ? paginated([])

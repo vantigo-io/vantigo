@@ -17,7 +17,7 @@ const MAX_RESULTS = 5;
 
 const navigationActions = [
   { label: "Customers", description: "Browse all customers", to: "/customers", icon: IconUsers },
-  { label: "Contacts", description: "Browse all contacts", to: "/contacts", icon: IconAddressBook },
+  { label: "Contacts", description: "Browse all contacts", to: "/customers/contacts", icon: IconAddressBook },
 ] as const;
 
 /**
@@ -101,7 +101,9 @@ export const AppSpotlight = () => {
                   [item.contact.email, item.contact.phone].filter(Boolean).join(" · ") || t("noContactDetails")
                 }
                 leftSection={<IconUser size={20} stroke={1.5} />}
-                onClick={() => navigate({ to: "/contacts/$contactId", params: { contactId: item.contact.id } })}
+                onClick={() =>
+                  navigate({ to: "/customers/contacts/$contactId", params: { contactId: item.contact.id } })
+                }
               />
             ))}
           </Spotlight.ActionsGroup>

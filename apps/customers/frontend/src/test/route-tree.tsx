@@ -137,11 +137,11 @@ export const routeTree = rootRoute.addChildren([
       </Button>
     </Stack>
   )),
-  route("/contacts", ContactsPage),
-  route("/contacts/$contactId", ContactDetailsPage, () => (
+  route("/customers/contacts", ContactsPage),
+  route("/customers/contacts/$contactId", ContactDetailsPage, () => (
     <Stack align="center">
       <Title order={3}>Contact not found</Title>
-      <Button component={Link} to="/contacts">
+      <Button component={Link} to="/customers/contacts">
         Back to contacts
       </Button>
     </Stack>

@@ -136,7 +136,7 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
                     style={{ cursor: "pointer" }}
                     onClick={() =>
                       navigate({
-                        href: `/contacts/${association.contact.id}`,
+                        href: `/customers/contacts/${association.contact.id}`,
                       })
                     }
                   >

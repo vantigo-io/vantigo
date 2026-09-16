@@ -14,7 +14,6 @@ import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SessionExpiredRouteImport } from './routes/session-expired'
@@ -23,12 +22,13 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as CommunicationsIndexRouteImport } from './routes/communications/index'
 import { Route as CommunicationsChannelsRouteImport } from './routes/communications/channels'
+import { Route as CommunicationsInboxRouteImport } from './routes/communications/inbox'
 import { Route as CommunicationsSuppressionsRouteImport } from './routes/communications/suppressions'
-import { Route as ContactsIndexRouteImport } from './routes/contacts/index'
-import { Route as ContactsContactIdRouteImport } from './routes/contacts/$contactId'
 import { Route as CustomersIndexRouteImport } from './routes/customers/index'
 import { Route as CustomersCustomerIdRouteImport } from './routes/customers/$customerId'
+import { Route as EnergyIndexRouteImport } from './routes/energy/index'
 import { Route as InvitationsAcceptRouteImport } from './routes/invitations/accept'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
@@ -42,6 +42,8 @@ import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
 import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
 import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
+import { Route as CustomersContactsIndexRouteImport } from './routes/customers/contacts/index'
+import { Route as CustomersContactsContactIdRouteImport } from './routes/customers/contacts/$contactId'
 import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
 
@@ -68,11 +70,6 @@ const DashboardRoute = DashboardRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InboxRoute = InboxRouteImport.update({
-  id: '/inbox',
-  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PasswordResetRoute = PasswordResetRouteImport.update({
@@ -115,9 +112,19 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const CommunicationsIndexRoute = CommunicationsIndexRouteImport.update({
+  id: '/communications/',
+  path: '/communications/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CommunicationsChannelsRoute = CommunicationsChannelsRouteImport.update({
   id: '/communications/channels',
   path: '/communications/channels',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommunicationsInboxRoute = CommunicationsInboxRouteImport.update({
+  id: '/communications/inbox',
+  path: '/communications/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CommunicationsSuppressionsRoute =
@@ -126,16 +133,6 @@ const CommunicationsSuppressionsRoute =
     path: '/communications/suppressions',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ContactsIndexRoute = ContactsIndexRouteImport.update({
-  id: '/contacts/',
-  path: '/contacts/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ContactsContactIdRoute = ContactsContactIdRouteImport.update({
-  id: '/contacts/$contactId',
-  path: '/contacts/$contactId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const CustomersIndexRoute = CustomersIndexRouteImport.update({
   id: '/customers/',
   path: '/customers/',
@@ -144,6 +141,11 @@ const CustomersIndexRoute = CustomersIndexRouteImport.update({
 const CustomersCustomerIdRoute = CustomersCustomerIdRouteImport.update({
   id: '/customers/$customerId',
   path: '/customers/$customerId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnergyIndexRoute = EnergyIndexRouteImport.update({
+  id: '/energy/',
+  path: '/energy/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
@@ -213,6 +215,17 @@ const CustomersCustomerIdEnergyRoute =
     path: '/energy',
     getParentRoute: () => CustomersCustomerIdRoute,
   } as any)
+const CustomersContactsIndexRoute = CustomersContactsIndexRouteImport.update({
+  id: '/customers/contacts/',
+  path: '/customers/contacts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomersContactsContactIdRoute =
+  CustomersContactsContactIdRouteImport.update({
+    id: '/customers/contacts/$contactId',
+    path: '/customers/contacts/$contactId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const EnergyMeteringPointsIndexRoute =
   EnergyMeteringPointsIndexRouteImport.update({
     id: '/energy/metering-points/',
@@ -232,7 +245,6 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/forgot-password': typeof ForgotPasswordRoute
-  '/inbox': typeof InboxRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
@@ -241,8 +253,8 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
+  '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
-  '/contacts/$contactId': typeof ContactsContactIdRoute
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
@@ -255,12 +267,15 @@ export interface FileRoutesByFullPath {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
-  '/contacts/': typeof ContactsIndexRoute
+  '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
+  '/energy/': typeof EnergyIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
+  '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -268,7 +283,6 @@ export interface FileRoutesByTo {
   '/accept-invitation': typeof AcceptInvitationRoute
   '/dashboard': typeof DashboardRoute
   '/forgot-password': typeof ForgotPasswordRoute
-  '/inbox': typeof InboxRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
@@ -277,8 +291,8 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
+  '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
-  '/contacts/$contactId': typeof ContactsContactIdRoute
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
@@ -290,12 +304,15 @@ export interface FileRoutesByTo {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin': typeof AdminIndexRoute
-  '/contacts': typeof ContactsIndexRoute
+  '/communications': typeof CommunicationsIndexRoute
   '/customers': typeof CustomersIndexRoute
+  '/energy': typeof EnergyIndexRoute
   '/products': typeof ProductsIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
+  '/customers/contacts': typeof CustomersContactsIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
 }
 export interface FileRoutesById {
@@ -305,7 +322,6 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/dashboard': typeof DashboardRoute
   '/forgot-password': typeof ForgotPasswordRoute
-  '/inbox': typeof InboxRoute
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
@@ -314,8 +330,8 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
+  '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
-  '/contacts/$contactId': typeof ContactsContactIdRoute
   '/customers/$customerId': typeof CustomersCustomerIdRouteWithChildren
   '/invitations/accept': typeof InvitationsAcceptRoute
   '/products/$productId': typeof ProductsProductIdRoute
@@ -328,12 +344,15 @@ export interface FileRoutesById {
   '/workspace/roles': typeof WorkspaceRolesRoute
   '/workspace/users': typeof WorkspaceUsersRoute
   '/admin/': typeof AdminIndexRoute
-  '/contacts/': typeof ContactsIndexRoute
+  '/communications/': typeof CommunicationsIndexRoute
   '/customers/': typeof CustomersIndexRoute
+  '/energy/': typeof EnergyIndexRoute
   '/products/': typeof ProductsIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
+  '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
 }
 export interface FileRouteTypes {
@@ -344,7 +363,6 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/forgot-password'
-    | '/inbox'
     | '/password-reset'
     | '/reset-password'
     | '/session-expired'
@@ -353,8 +371,8 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/workspace'
     | '/communications/channels'
+    | '/communications/inbox'
     | '/communications/suppressions'
-    | '/contacts/$contactId'
     | '/customers/$customerId'
     | '/invitations/accept'
     | '/products/$productId'
@@ -367,12 +385,15 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin/'
-    | '/contacts/'
+    | '/communications/'
     | '/customers/'
+    | '/energy/'
     | '/products/'
     | '/customers/$customerId/energy'
+    | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/customers/$customerId/'
+    | '/customers/contacts/'
     | '/energy/metering-points/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -380,7 +401,6 @@ export interface FileRouteTypes {
     | '/accept-invitation'
     | '/dashboard'
     | '/forgot-password'
-    | '/inbox'
     | '/password-reset'
     | '/reset-password'
     | '/session-expired'
@@ -389,8 +409,8 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/workspace'
     | '/communications/channels'
+    | '/communications/inbox'
     | '/communications/suppressions'
-    | '/contacts/$contactId'
     | '/invitations/accept'
     | '/products/$productId'
     | '/products/categories'
@@ -402,12 +422,15 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin'
-    | '/contacts'
+    | '/communications'
     | '/customers'
+    | '/energy'
     | '/products'
     | '/customers/$customerId/energy'
+    | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/customers/$customerId'
+    | '/customers/contacts'
     | '/energy/metering-points'
   id:
     | '__root__'
@@ -416,7 +439,6 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/forgot-password'
-    | '/inbox'
     | '/password-reset'
     | '/reset-password'
     | '/session-expired'
@@ -425,8 +447,8 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/workspace'
     | '/communications/channels'
+    | '/communications/inbox'
     | '/communications/suppressions'
-    | '/contacts/$contactId'
     | '/customers/$customerId'
     | '/invitations/accept'
     | '/products/$productId'
@@ -439,12 +461,15 @@ export interface FileRouteTypes {
     | '/workspace/roles'
     | '/workspace/users'
     | '/admin/'
-    | '/contacts/'
+    | '/communications/'
     | '/customers/'
+    | '/energy/'
     | '/products/'
     | '/customers/$customerId/energy'
+    | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/customers/$customerId/'
+    | '/customers/contacts/'
     | '/energy/metering-points/'
   fileRoutesById: FileRoutesById
 }
@@ -454,7 +479,6 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   DashboardRoute: typeof DashboardRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
-  InboxRoute: typeof InboxRoute
   PasswordResetRoute: typeof PasswordResetRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SessionExpiredRoute: typeof SessionExpiredRoute
@@ -463,17 +487,20 @@ export interface RootRouteChildren {
   SignInRoute: typeof SignInRoute
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
   CommunicationsChannelsRoute: typeof CommunicationsChannelsRoute
+  CommunicationsInboxRoute: typeof CommunicationsInboxRoute
   CommunicationsSuppressionsRoute: typeof CommunicationsSuppressionsRoute
-  ContactsContactIdRoute: typeof ContactsContactIdRoute
   CustomersCustomerIdRoute: typeof CustomersCustomerIdRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
   ProductsProductIdRoute: typeof ProductsProductIdRoute
   ProductsCategoriesRoute: typeof ProductsCategoriesRoute
   ProductsTaxCategoriesRoute: typeof ProductsTaxCategoriesRoute
-  ContactsIndexRoute: typeof ContactsIndexRoute
+  CommunicationsIndexRoute: typeof CommunicationsIndexRoute
   CustomersIndexRoute: typeof CustomersIndexRoute
+  EnergyIndexRoute: typeof EnergyIndexRoute
   ProductsIndexRoute: typeof ProductsIndexRoute
+  CustomersContactsContactIdRoute: typeof CustomersContactsContactIdRoute
   EnergyMeteringPointsMeteringPointIdRoute: typeof EnergyMeteringPointsMeteringPointIdRoute
+  CustomersContactsIndexRoute: typeof CustomersContactsIndexRoute
   EnergyMeteringPointsIndexRoute: typeof EnergyMeteringPointsIndexRoute
 }
 
@@ -512,13 +539,6 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/inbox': {
-      id: '/inbox'
-      path: '/inbox'
-      fullPath: '/inbox'
-      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/password-reset': {
@@ -577,6 +597,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/communications/': {
+      id: '/communications/'
+      path: '/communications'
+      fullPath: '/communications/'
+      preLoaderRoute: typeof CommunicationsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/communications/channels': {
       id: '/communications/channels'
       path: '/communications/channels'
@@ -584,25 +611,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommunicationsChannelsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/communications/inbox': {
+      id: '/communications/inbox'
+      path: '/communications/inbox'
+      fullPath: '/communications/inbox'
+      preLoaderRoute: typeof CommunicationsInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/communications/suppressions': {
       id: '/communications/suppressions'
       path: '/communications/suppressions'
       fullPath: '/communications/suppressions'
       preLoaderRoute: typeof CommunicationsSuppressionsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contacts/': {
-      id: '/contacts/'
-      path: '/contacts'
-      fullPath: '/contacts/'
-      preLoaderRoute: typeof ContactsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/contacts/$contactId': {
-      id: '/contacts/$contactId'
-      path: '/contacts/$contactId'
-      fullPath: '/contacts/$contactId'
-      preLoaderRoute: typeof ContactsContactIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/customers/': {
@@ -617,6 +637,13 @@ declare module '@tanstack/react-router' {
       path: '/customers/$customerId'
       fullPath: '/customers/$customerId'
       preLoaderRoute: typeof CustomersCustomerIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/energy/': {
+      id: '/energy/'
+      path: '/energy'
+      fullPath: '/energy/'
+      preLoaderRoute: typeof EnergyIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/invitations/accept': {
@@ -710,6 +737,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersCustomerIdEnergyRouteImport
       parentRoute: typeof CustomersCustomerIdRoute
     }
+    '/customers/contacts/': {
+      id: '/customers/contacts/'
+      path: '/customers/contacts'
+      fullPath: '/customers/contacts/'
+      preLoaderRoute: typeof CustomersContactsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/customers/contacts/$contactId': {
+      id: '/customers/contacts/$contactId'
+      path: '/customers/contacts/$contactId'
+      fullPath: '/customers/contacts/$contactId'
+      preLoaderRoute: typeof CustomersContactsContactIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/energy/metering-points/': {
       id: '/energy/metering-points/'
       path: '/energy/metering-points'
@@ -788,7 +829,6 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   DashboardRoute: DashboardRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
-  InboxRoute: InboxRoute,
   PasswordResetRoute: PasswordResetRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SessionExpiredRoute: SessionExpiredRoute,
@@ -797,18 +837,21 @@ const rootRouteChildren: RootRouteChildren = {
   SignInRoute: SignInRoute,
   WorkspaceRoute: WorkspaceRouteWithChildren,
   CommunicationsChannelsRoute: CommunicationsChannelsRoute,
+  CommunicationsInboxRoute: CommunicationsInboxRoute,
   CommunicationsSuppressionsRoute: CommunicationsSuppressionsRoute,
-  ContactsContactIdRoute: ContactsContactIdRoute,
   CustomersCustomerIdRoute: CustomersCustomerIdRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
   ProductsProductIdRoute: ProductsProductIdRoute,
   ProductsCategoriesRoute: ProductsCategoriesRoute,
   ProductsTaxCategoriesRoute: ProductsTaxCategoriesRoute,
-  ContactsIndexRoute: ContactsIndexRoute,
+  CommunicationsIndexRoute: CommunicationsIndexRoute,
   CustomersIndexRoute: CustomersIndexRoute,
+  EnergyIndexRoute: EnergyIndexRoute,
   ProductsIndexRoute: ProductsIndexRoute,
+  CustomersContactsContactIdRoute: CustomersContactsContactIdRoute,
   EnergyMeteringPointsMeteringPointIdRoute:
     EnergyMeteringPointsMeteringPointIdRoute,
+  CustomersContactsIndexRoute: CustomersContactsIndexRoute,
   EnergyMeteringPointsIndexRoute: EnergyMeteringPointsIndexRoute,
 }
 export const routeTree = rootRouteImport
