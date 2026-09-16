@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { activeAppKey, allNavSections, appForKey, apps, isAppEnabled, switcherTiles } from "./apps";
+import {
+  activeAppKey,
+  allNavSections,
+  appForKey,
+  appNavSections,
+  apps,
+  appTitleLabel,
+  isAppEnabled,
+  switcherTiles,
+} from "./apps";
 
 const allModules = ["communications", "customers", "energy", "products"] as const;
 
@@ -91,5 +100,41 @@ describe("switcherTiles", () => {
 
   it("shows only Home while permissions are still loading", () => {
     expect(switcherTiles(undefined, allModules, "home").map((tile) => tile.app.key)).toEqual(["home"]);
+  });
+});
+
+describe("appTitleLabel", () => {
+  it("names the app in the header, except Home, which shows the product title", () => {
+    expect(appTitleLabel(appForKey("customers"))).toBe("navigation.customers");
+    expect(appTitleLabel(appForKey("home"))).toBeUndefined();
+    expect(appTitleLabel(undefined)).toBeUndefined();
+  });
+});
+
+describe("appNavSections", () => {
+  const visibility = { permissions: ["*"], isOwner: false, canManageAuthorization: false, enabledModules: allModules };
+
+  it("returns the app's visible sections when its module is enabled", () => {
+    const sections = appNavSections(appForKey("customers"), allModules, visibility);
+    expect(sections.flatMap((section) => section.items.map((item) => item.to))).toEqual([
+      "/customers",
+      "/customers/contacts",
+    ]);
+  });
+
+  it("returns nothing for a disabled app, for Home, and off any app", () => {
+    expect(
+      appNavSections(appForKey("energy"), ["customers"], { ...visibility, enabledModules: ["customers"] }),
+    ).toEqual([]);
+    expect(appNavSections(appForKey("home"), allModules, visibility)).toEqual([]);
+    expect(appNavSections(undefined, allModules, visibility)).toEqual([]);
+  });
+
+  it("still applies permission filtering inside an enabled app", () => {
+    const sections = appNavSections(appForKey("customers"), allModules, {
+      ...visibility,
+      permissions: ["customers:view"],
+    });
+    expect(sections.flatMap((section) => section.items.map((item) => item.to))).toEqual(["/customers"]);
   });
 });

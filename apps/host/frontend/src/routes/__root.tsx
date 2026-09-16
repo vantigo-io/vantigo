@@ -29,7 +29,7 @@ import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
-import { activeAppKey, appForKey, isAppEnabled, switcherTiles } from "../apps";
+import { activeAppKey, appForKey, appNavSections, appTitleLabel, switcherTiles } from "../apps";
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
@@ -137,8 +137,8 @@ const RootLayout = () => {
   // and public paths declare none and render sidebar-less.
   const activeKey = activeAppKey(matches);
   const activeApp = activeKey ? appForKey(activeKey) : undefined;
-  const navSections =
-    activeApp && isAppEnabled(activeApp, enabledModules) ? visibleNavSections(activeApp.navSections, visibility) : [];
+  const navSections = appNavSections(activeApp, enabledModules, visibility);
+  const titleLabel = appTitleLabel(activeApp);
   const menuSections = visibleNavSections(accountMenuSections, visibility);
   // Sidebar links and the registry use bare path strings, as the nav catalog
   // always has; the router validates search params at runtime.
@@ -149,7 +149,7 @@ const RootLayout = () => {
   return (
     <>
       <AppShellLayout
-        title={activeApp && activeApp.key !== "home" ? t(activeApp.label) : undefined}
+        title={titleLabel ? t(titleLabel) : undefined}
         headerCenter={<SpotlightSearchBox />}
         headerActions={
           <>
