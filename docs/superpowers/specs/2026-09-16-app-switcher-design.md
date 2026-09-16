@@ -362,8 +362,9 @@ The three hardcoded `moduleKeys` usages (`__root.tsx`, `dashboard.tsx`,
 4. `nav` is `renderNavSections(visibleNavSections(activeApp.navSections, …))`
    when the active app exists, is enabled and has sections; otherwise
    omitted.
-5. `title` is the active app's translated label, or undefined so the shell
-   falls back to the configured product title.
+5. `title` is the active app's translated label, or undefined on Home,
+   administration and public paths so the shell falls back to the configured
+   product title.
 
 `renderNavSections`, the maintenance alert, the spotlight and the sign-out
 mutation are unchanged. The root's `beforeLoad` is unchanged.

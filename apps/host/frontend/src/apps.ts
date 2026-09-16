@@ -10,7 +10,14 @@ import {
   IconUsers,
 } from "@tabler/icons-react";
 import { accountMenuSections } from "./account-menu";
-import { hasPermissions, type ModuleKey, type NavItem, type NavSection } from "./navigation";
+import {
+  hasPermissions,
+  type ModuleKey,
+  type NavItem,
+  type NavSection,
+  type NavVisibilityContext,
+  visibleNavSections,
+} from "./navigation";
 
 export type AppKey = "home" | ModuleKey;
 
@@ -154,6 +161,21 @@ export const appForKey = (key: AppKey): AppDefinition => {
 
 export const isAppEnabled = (app: AppDefinition, enabledModules: readonly ModuleKey[]) =>
   app.module === undefined || enabledModules.includes(app.module);
+
+/** The header title for an app: its label, except Home, which shows the product title (undefined). */
+export const appTitleLabel = (app: AppDefinition | undefined): string | undefined =>
+  app && app.key !== "home" ? app.label : undefined;
+
+/**
+ * The sidebar sections to render: the active app's visible sections when the
+ * app exists and its module is enabled; nothing otherwise (administration and
+ * public paths, or an app the installation turned off).
+ */
+export const appNavSections = (
+  app: AppDefinition | undefined,
+  enabledModules: readonly ModuleKey[],
+  visibility: NavVisibilityContext,
+): NavSection[] => (app && isAppEnabled(app, enabledModules) ? visibleNavSections(app.navSections, visibility) : []);
 
 /** The app of the deepest matched route that declares one; undefined on administration and public paths. */
 export const activeAppKey = (matches: ReadonlyArray<{ staticData?: { app?: AppKey } }>): AppKey | undefined => {
