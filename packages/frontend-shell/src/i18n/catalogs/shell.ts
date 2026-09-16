@@ -13,6 +13,8 @@ export const shellCatalog = {
     shortcutHint: "{{modKey}} + K",
     macCommandKey: "⌘",
     controlKey: "Ctrl",
+    switchApp: "Switch app",
+    appsMenu: "Apps",
   },
   nb: {
     closeNavigation: "Lukk navigasjon",
@@ -28,5 +30,7 @@ export const shellCatalog = {
     shortcutHint: "{{modKey}} + K",
     macCommandKey: "⌘",
     controlKey: "Ctrl",
+    switchApp: "Bytt app",
+    appsMenu: "Apper",
   },
 } as const;

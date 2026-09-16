@@ -8,6 +8,7 @@ export {
   runtimeBase,
 } from "./app-config";
 export { AppShellLayout, type AppShellLayoutProps, type ShellUser, SupportContactLine } from "./app-shell-layout";
+export { AppSwitcher, type SwitcherApp } from "./app-switcher";
 export {
   type CatalogLoader,
   type CatalogResources,
