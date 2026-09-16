@@ -32,15 +32,7 @@ export const AppSwitcher = ({ apps }: { apps: readonly SwitcherApp[] }) => {
   if (apps.length === 0) return null;
 
   return (
-    <Popover
-      opened={opened}
-      onChange={close}
-      position="bottom-end"
-      withArrow
-      shadow="md"
-      width={330}
-      hideDetached={false}
-    >
+    <Popover opened={opened} onChange={close} position="bottom-end" withArrow shadow="md" width={330}>
       <Popover.Target>
         <Tooltip label={t("appsMenu")} openDelay={500}>
           <ActionIcon variant="subtle" color="gray" size="lg" radius="xl" aria-label={t("switchApp")} onClick={toggle}>
