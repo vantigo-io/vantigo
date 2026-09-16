@@ -3,6 +3,7 @@ export * from "./error-page";
 export * from "./forbidden";
 export * from "./illustrations";
 export * from "./maintenance";
+export * from "./module-not-enabled";
 export * from "./not-found";
 export * from "./offline";
 export * from "./router-error";

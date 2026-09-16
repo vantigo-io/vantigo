@@ -892,6 +892,7 @@ const DashboardPage = () => {
 };
 
 export const Route = createFileRoute("/dashboard")({
+  staticData: { app: "home" },
   validateSearch: (search: Record<string, unknown>) => {
     const rawPreset = search.preset;
     const hasCustomDates = typeof search.from === "string" && typeof search.to === "string";
