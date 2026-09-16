@@ -12,9 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptInvitationRouteImport } from './routes/accept-invitation'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as CommunicationsRouteImport } from './routes/communications'
+import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as EnergyRouteImport } from './routes/energy'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
+import { Route as ProductsRouteImport } from './routes/products'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SessionExpiredRouteImport } from './routes/session-expired'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -62,9 +66,24 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CommunicationsRoute = CommunicationsRouteImport.update({
+  id: '/communications',
+  path: '/communications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomersRoute = CustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnergyRoute = EnergyRouteImport.update({
+  id: '/energy',
+  path: '/energy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
@@ -75,6 +94,11 @@ const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
 const PasswordResetRoute = PasswordResetRouteImport.update({
   id: '/password-reset',
   path: '/password-reset',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProductsRoute = ProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -113,40 +137,40 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   getParentRoute: () => AdminRoute,
 } as any)
 const CommunicationsIndexRoute = CommunicationsIndexRouteImport.update({
-  id: '/communications/',
-  path: '/communications/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => CommunicationsRoute,
 } as any)
 const CommunicationsChannelsRoute = CommunicationsChannelsRouteImport.update({
-  id: '/communications/channels',
-  path: '/communications/channels',
-  getParentRoute: () => rootRouteImport,
+  id: '/channels',
+  path: '/channels',
+  getParentRoute: () => CommunicationsRoute,
 } as any)
 const CommunicationsInboxRoute = CommunicationsInboxRouteImport.update({
-  id: '/communications/inbox',
-  path: '/communications/inbox',
-  getParentRoute: () => rootRouteImport,
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => CommunicationsRoute,
 } as any)
 const CommunicationsSuppressionsRoute =
   CommunicationsSuppressionsRouteImport.update({
-    id: '/communications/suppressions',
-    path: '/communications/suppressions',
-    getParentRoute: () => rootRouteImport,
+    id: '/suppressions',
+    path: '/suppressions',
+    getParentRoute: () => CommunicationsRoute,
   } as any)
 const CustomersIndexRoute = CustomersIndexRouteImport.update({
-  id: '/customers/',
-  path: '/customers/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => CustomersRoute,
 } as any)
 const CustomersCustomerIdRoute = CustomersCustomerIdRouteImport.update({
-  id: '/customers/$customerId',
-  path: '/customers/$customerId',
-  getParentRoute: () => rootRouteImport,
+  id: '/$customerId',
+  path: '/$customerId',
+  getParentRoute: () => CustomersRoute,
 } as any)
 const EnergyIndexRoute = EnergyIndexRouteImport.update({
-  id: '/energy/',
-  path: '/energy/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => EnergyRoute,
 } as any)
 const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
   id: '/invitations/accept',
@@ -154,24 +178,24 @@ const InvitationsAcceptRoute = InvitationsAcceptRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProductsIndexRoute = ProductsIndexRouteImport.update({
-  id: '/products/',
-  path: '/products/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProductsRoute,
 } as any)
 const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
-  id: '/products/$productId',
-  path: '/products/$productId',
-  getParentRoute: () => rootRouteImport,
+  id: '/$productId',
+  path: '/$productId',
+  getParentRoute: () => ProductsRoute,
 } as any)
 const ProductsCategoriesRoute = ProductsCategoriesRouteImport.update({
-  id: '/products/categories',
-  path: '/products/categories',
-  getParentRoute: () => rootRouteImport,
+  id: '/categories',
+  path: '/categories',
+  getParentRoute: () => ProductsRoute,
 } as any)
 const ProductsTaxCategoriesRoute = ProductsTaxCategoriesRouteImport.update({
-  id: '/products/tax-categories',
-  path: '/products/tax-categories',
-  getParentRoute: () => rootRouteImport,
+  id: '/tax-categories',
+  path: '/tax-categories',
+  getParentRoute: () => ProductsRoute,
 } as any)
 const SettingsProfileRoute = SettingsProfileRouteImport.update({
   id: '/profile',
@@ -216,36 +240,40 @@ const CustomersCustomerIdEnergyRoute =
     getParentRoute: () => CustomersCustomerIdRoute,
   } as any)
 const CustomersContactsIndexRoute = CustomersContactsIndexRouteImport.update({
-  id: '/customers/contacts/',
-  path: '/customers/contacts/',
-  getParentRoute: () => rootRouteImport,
+  id: '/contacts/',
+  path: '/contacts/',
+  getParentRoute: () => CustomersRoute,
 } as any)
 const CustomersContactsContactIdRoute =
   CustomersContactsContactIdRouteImport.update({
-    id: '/customers/contacts/$contactId',
-    path: '/customers/contacts/$contactId',
-    getParentRoute: () => rootRouteImport,
+    id: '/contacts/$contactId',
+    path: '/contacts/$contactId',
+    getParentRoute: () => CustomersRoute,
   } as any)
 const EnergyMeteringPointsIndexRoute =
   EnergyMeteringPointsIndexRouteImport.update({
-    id: '/energy/metering-points/',
-    path: '/energy/metering-points/',
-    getParentRoute: () => rootRouteImport,
+    id: '/metering-points/',
+    path: '/metering-points/',
+    getParentRoute: () => EnergyRoute,
   } as any)
 const EnergyMeteringPointsMeteringPointIdRoute =
   EnergyMeteringPointsMeteringPointIdRouteImport.update({
-    id: '/energy/metering-points/$meteringPointId',
-    path: '/energy/metering-points/$meteringPointId',
-    getParentRoute: () => rootRouteImport,
+    id: '/metering-points/$meteringPointId',
+    path: '/metering-points/$meteringPointId',
+    getParentRoute: () => EnergyRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/communications': typeof CommunicationsRouteWithChildren
+  '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
+  '/energy': typeof EnergyRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
+  '/products': typeof ProductsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -320,9 +348,13 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/accept-invitation': typeof AcceptInvitationRoute
   '/admin': typeof AdminRouteWithChildren
+  '/communications': typeof CommunicationsRouteWithChildren
+  '/customers': typeof CustomersRouteWithChildren
   '/dashboard': typeof DashboardRoute
+  '/energy': typeof EnergyRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
+  '/products': typeof ProductsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -361,9 +393,13 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/communications'
+    | '/customers'
     | '/dashboard'
+    | '/energy'
     | '/forgot-password'
     | '/password-reset'
+    | '/products'
     | '/reset-password'
     | '/session-expired'
     | '/settings'
@@ -437,9 +473,13 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-invitation'
     | '/admin'
+    | '/communications'
+    | '/customers'
     | '/dashboard'
+    | '/energy'
     | '/forgot-password'
     | '/password-reset'
+    | '/products'
     | '/reset-password'
     | '/session-expired'
     | '/settings'
@@ -477,31 +517,20 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcceptInvitationRoute: typeof AcceptInvitationRoute
   AdminRoute: typeof AdminRouteWithChildren
+  CommunicationsRoute: typeof CommunicationsRouteWithChildren
+  CustomersRoute: typeof CustomersRouteWithChildren
   DashboardRoute: typeof DashboardRoute
+  EnergyRoute: typeof EnergyRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   PasswordResetRoute: typeof PasswordResetRoute
+  ProductsRoute: typeof ProductsRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SessionExpiredRoute: typeof SessionExpiredRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
-  CommunicationsChannelsRoute: typeof CommunicationsChannelsRoute
-  CommunicationsInboxRoute: typeof CommunicationsInboxRoute
-  CommunicationsSuppressionsRoute: typeof CommunicationsSuppressionsRoute
-  CustomersCustomerIdRoute: typeof CustomersCustomerIdRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
-  ProductsProductIdRoute: typeof ProductsProductIdRoute
-  ProductsCategoriesRoute: typeof ProductsCategoriesRoute
-  ProductsTaxCategoriesRoute: typeof ProductsTaxCategoriesRoute
-  CommunicationsIndexRoute: typeof CommunicationsIndexRoute
-  CustomersIndexRoute: typeof CustomersIndexRoute
-  EnergyIndexRoute: typeof EnergyIndexRoute
-  ProductsIndexRoute: typeof ProductsIndexRoute
-  CustomersContactsContactIdRoute: typeof CustomersContactsContactIdRoute
-  EnergyMeteringPointsMeteringPointIdRoute: typeof EnergyMeteringPointsMeteringPointIdRoute
-  CustomersContactsIndexRoute: typeof CustomersContactsIndexRoute
-  EnergyMeteringPointsIndexRoute: typeof EnergyMeteringPointsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -527,11 +556,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/communications': {
+      id: '/communications'
+      path: '/communications'
+      fullPath: '/communications'
+      preLoaderRoute: typeof CommunicationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/customers': {
+      id: '/customers'
+      path: '/customers'
+      fullPath: '/customers'
+      preLoaderRoute: typeof CustomersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/energy': {
+      id: '/energy'
+      path: '/energy'
+      fullPath: '/energy'
+      preLoaderRoute: typeof EnergyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forgot-password': {
@@ -546,6 +596,13 @@ declare module '@tanstack/react-router' {
       path: '/password-reset'
       fullPath: '/password-reset'
       preLoaderRoute: typeof PasswordResetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/products': {
+      id: '/products'
+      path: '/products'
+      fullPath: '/products'
+      preLoaderRoute: typeof ProductsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -599,52 +656,52 @@ declare module '@tanstack/react-router' {
     }
     '/communications/': {
       id: '/communications/'
-      path: '/communications'
+      path: '/'
       fullPath: '/communications/'
       preLoaderRoute: typeof CommunicationsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CommunicationsRoute
     }
     '/communications/channels': {
       id: '/communications/channels'
-      path: '/communications/channels'
+      path: '/channels'
       fullPath: '/communications/channels'
       preLoaderRoute: typeof CommunicationsChannelsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CommunicationsRoute
     }
     '/communications/inbox': {
       id: '/communications/inbox'
-      path: '/communications/inbox'
+      path: '/inbox'
       fullPath: '/communications/inbox'
       preLoaderRoute: typeof CommunicationsInboxRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CommunicationsRoute
     }
     '/communications/suppressions': {
       id: '/communications/suppressions'
-      path: '/communications/suppressions'
+      path: '/suppressions'
       fullPath: '/communications/suppressions'
       preLoaderRoute: typeof CommunicationsSuppressionsRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CommunicationsRoute
     }
     '/customers/': {
       id: '/customers/'
-      path: '/customers'
+      path: '/'
       fullPath: '/customers/'
       preLoaderRoute: typeof CustomersIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CustomersRoute
     }
     '/customers/$customerId': {
       id: '/customers/$customerId'
-      path: '/customers/$customerId'
+      path: '/$customerId'
       fullPath: '/customers/$customerId'
       preLoaderRoute: typeof CustomersCustomerIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CustomersRoute
     }
     '/energy/': {
       id: '/energy/'
-      path: '/energy'
+      path: '/'
       fullPath: '/energy/'
       preLoaderRoute: typeof EnergyIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EnergyRoute
     }
     '/invitations/accept': {
       id: '/invitations/accept'
@@ -655,31 +712,31 @@ declare module '@tanstack/react-router' {
     }
     '/products/': {
       id: '/products/'
-      path: '/products'
+      path: '/'
       fullPath: '/products/'
       preLoaderRoute: typeof ProductsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ProductsRoute
     }
     '/products/$productId': {
       id: '/products/$productId'
-      path: '/products/$productId'
+      path: '/$productId'
       fullPath: '/products/$productId'
       preLoaderRoute: typeof ProductsProductIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ProductsRoute
     }
     '/products/categories': {
       id: '/products/categories'
-      path: '/products/categories'
+      path: '/categories'
       fullPath: '/products/categories'
       preLoaderRoute: typeof ProductsCategoriesRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ProductsRoute
     }
     '/products/tax-categories': {
       id: '/products/tax-categories'
-      path: '/products/tax-categories'
+      path: '/tax-categories'
       fullPath: '/products/tax-categories'
       preLoaderRoute: typeof ProductsTaxCategoriesRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof ProductsRoute
     }
     '/settings/profile': {
       id: '/settings/profile'
@@ -739,31 +796,31 @@ declare module '@tanstack/react-router' {
     }
     '/customers/contacts/': {
       id: '/customers/contacts/'
-      path: '/customers/contacts'
+      path: '/contacts'
       fullPath: '/customers/contacts/'
       preLoaderRoute: typeof CustomersContactsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CustomersRoute
     }
     '/customers/contacts/$contactId': {
       id: '/customers/contacts/$contactId'
-      path: '/customers/contacts/$contactId'
+      path: '/contacts/$contactId'
       fullPath: '/customers/contacts/$contactId'
       preLoaderRoute: typeof CustomersContactsContactIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof CustomersRoute
     }
     '/energy/metering-points/': {
       id: '/energy/metering-points/'
-      path: '/energy/metering-points'
+      path: '/metering-points'
       fullPath: '/energy/metering-points/'
       preLoaderRoute: typeof EnergyMeteringPointsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EnergyRoute
     }
     '/energy/metering-points/$meteringPointId': {
       id: '/energy/metering-points/$meteringPointId'
-      path: '/energy/metering-points/$meteringPointId'
+      path: '/metering-points/$meteringPointId'
       fullPath: '/energy/metering-points/$meteringPointId'
       preLoaderRoute: typeof EnergyMeteringPointsMeteringPointIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof EnergyRoute
     }
   }
 }
@@ -777,6 +834,89 @@ const AdminRouteChildren: AdminRouteChildren = {
 }
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
+interface CommunicationsRouteChildren {
+  CommunicationsChannelsRoute: typeof CommunicationsChannelsRoute
+  CommunicationsInboxRoute: typeof CommunicationsInboxRoute
+  CommunicationsSuppressionsRoute: typeof CommunicationsSuppressionsRoute
+  CommunicationsIndexRoute: typeof CommunicationsIndexRoute
+}
+
+const CommunicationsRouteChildren: CommunicationsRouteChildren = {
+  CommunicationsChannelsRoute: CommunicationsChannelsRoute,
+  CommunicationsInboxRoute: CommunicationsInboxRoute,
+  CommunicationsSuppressionsRoute: CommunicationsSuppressionsRoute,
+  CommunicationsIndexRoute: CommunicationsIndexRoute,
+}
+
+const CommunicationsRouteWithChildren = CommunicationsRoute._addFileChildren(
+  CommunicationsRouteChildren,
+)
+
+interface CustomersCustomerIdRouteChildren {
+  CustomersCustomerIdEnergyRoute: typeof CustomersCustomerIdEnergyRoute
+  CustomersCustomerIdIndexRoute: typeof CustomersCustomerIdIndexRoute
+}
+
+const CustomersCustomerIdRouteChildren: CustomersCustomerIdRouteChildren = {
+  CustomersCustomerIdEnergyRoute: CustomersCustomerIdEnergyRoute,
+  CustomersCustomerIdIndexRoute: CustomersCustomerIdIndexRoute,
+}
+
+const CustomersCustomerIdRouteWithChildren =
+  CustomersCustomerIdRoute._addFileChildren(CustomersCustomerIdRouteChildren)
+
+interface CustomersRouteChildren {
+  CustomersCustomerIdRoute: typeof CustomersCustomerIdRouteWithChildren
+  CustomersIndexRoute: typeof CustomersIndexRoute
+  CustomersContactsContactIdRoute: typeof CustomersContactsContactIdRoute
+  CustomersContactsIndexRoute: typeof CustomersContactsIndexRoute
+}
+
+const CustomersRouteChildren: CustomersRouteChildren = {
+  CustomersCustomerIdRoute: CustomersCustomerIdRouteWithChildren,
+  CustomersIndexRoute: CustomersIndexRoute,
+  CustomersContactsContactIdRoute: CustomersContactsContactIdRoute,
+  CustomersContactsIndexRoute: CustomersContactsIndexRoute,
+}
+
+const CustomersRouteWithChildren = CustomersRoute._addFileChildren(
+  CustomersRouteChildren,
+)
+
+interface EnergyRouteChildren {
+  EnergyIndexRoute: typeof EnergyIndexRoute
+  EnergyMeteringPointsMeteringPointIdRoute: typeof EnergyMeteringPointsMeteringPointIdRoute
+  EnergyMeteringPointsIndexRoute: typeof EnergyMeteringPointsIndexRoute
+}
+
+const EnergyRouteChildren: EnergyRouteChildren = {
+  EnergyIndexRoute: EnergyIndexRoute,
+  EnergyMeteringPointsMeteringPointIdRoute:
+    EnergyMeteringPointsMeteringPointIdRoute,
+  EnergyMeteringPointsIndexRoute: EnergyMeteringPointsIndexRoute,
+}
+
+const EnergyRouteWithChildren =
+  EnergyRoute._addFileChildren(EnergyRouteChildren)
+
+interface ProductsRouteChildren {
+  ProductsProductIdRoute: typeof ProductsProductIdRoute
+  ProductsCategoriesRoute: typeof ProductsCategoriesRoute
+  ProductsTaxCategoriesRoute: typeof ProductsTaxCategoriesRoute
+  ProductsIndexRoute: typeof ProductsIndexRoute
+}
+
+const ProductsRouteChildren: ProductsRouteChildren = {
+  ProductsProductIdRoute: ProductsProductIdRoute,
+  ProductsCategoriesRoute: ProductsCategoriesRoute,
+  ProductsTaxCategoriesRoute: ProductsTaxCategoriesRoute,
+  ProductsIndexRoute: ProductsIndexRoute,
+}
+
+const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
+  ProductsRouteChildren,
+)
 
 interface SettingsRouteChildren {
   SettingsProfileRoute: typeof SettingsProfileRoute
@@ -810,49 +950,24 @@ const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
   WorkspaceRouteChildren,
 )
 
-interface CustomersCustomerIdRouteChildren {
-  CustomersCustomerIdEnergyRoute: typeof CustomersCustomerIdEnergyRoute
-  CustomersCustomerIdIndexRoute: typeof CustomersCustomerIdIndexRoute
-}
-
-const CustomersCustomerIdRouteChildren: CustomersCustomerIdRouteChildren = {
-  CustomersCustomerIdEnergyRoute: CustomersCustomerIdEnergyRoute,
-  CustomersCustomerIdIndexRoute: CustomersCustomerIdIndexRoute,
-}
-
-const CustomersCustomerIdRouteWithChildren =
-  CustomersCustomerIdRoute._addFileChildren(CustomersCustomerIdRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcceptInvitationRoute: AcceptInvitationRoute,
   AdminRoute: AdminRouteWithChildren,
+  CommunicationsRoute: CommunicationsRouteWithChildren,
+  CustomersRoute: CustomersRouteWithChildren,
   DashboardRoute: DashboardRoute,
+  EnergyRoute: EnergyRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
   PasswordResetRoute: PasswordResetRoute,
+  ProductsRoute: ProductsRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SessionExpiredRoute: SessionExpiredRoute,
   SettingsRoute: SettingsRouteWithChildren,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
   WorkspaceRoute: WorkspaceRouteWithChildren,
-  CommunicationsChannelsRoute: CommunicationsChannelsRoute,
-  CommunicationsInboxRoute: CommunicationsInboxRoute,
-  CommunicationsSuppressionsRoute: CommunicationsSuppressionsRoute,
-  CustomersCustomerIdRoute: CustomersCustomerIdRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
-  ProductsProductIdRoute: ProductsProductIdRoute,
-  ProductsCategoriesRoute: ProductsCategoriesRoute,
-  ProductsTaxCategoriesRoute: ProductsTaxCategoriesRoute,
-  CommunicationsIndexRoute: CommunicationsIndexRoute,
-  CustomersIndexRoute: CustomersIndexRoute,
-  EnergyIndexRoute: EnergyIndexRoute,
-  ProductsIndexRoute: ProductsIndexRoute,
-  CustomersContactsContactIdRoute: CustomersContactsContactIdRoute,
-  EnergyMeteringPointsMeteringPointIdRoute:
-    EnergyMeteringPointsMeteringPointIdRoute,
-  CustomersContactsIndexRoute: CustomersContactsIndexRoute,
-  EnergyMeteringPointsIndexRoute: EnergyMeteringPointsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
