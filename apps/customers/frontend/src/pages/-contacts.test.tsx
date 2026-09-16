@@ -104,7 +104,7 @@ describe("contacts page", () => {
       return Promise.resolve(new Response(null, { status: 404 }));
     });
 
-    await renderRoute("/contacts", "Contacts");
+    await renderRoute("/customers/contacts", "Contacts");
 
     expect(await screen.findByText("Dr. Anders Refsdal")).toBeInTheDocument();
     expect(screen.getByText("+47 934 89 731")).toBeInTheDocument();

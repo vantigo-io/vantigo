@@ -2,7 +2,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { contactQueryOptions } from "@vantigo/customers-ui/api/contacts";
 import { NotFoundError } from "@vantigo/customers-ui/api/request";
 import { ContactDetailsPage } from "@vantigo/customers-ui/pages/contacts.$contactId";
-export const Route = createFileRoute("/contacts/$contactId")({
+export const Route = createFileRoute("/customers/contacts/$contactId")({
   params: {
     parse: ({ contactId }) => ({ contactId: Number(contactId) }),
     stringify: ({ contactId }) => ({ contactId: String(contactId) }),

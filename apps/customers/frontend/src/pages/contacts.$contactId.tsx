@@ -51,7 +51,7 @@ export const ContactDetailsPage = () => {
   return (
     <Stack gap="lg">
       <Breadcrumbs>
-        <Anchor component={Link} to={"/contacts" as never} size="sm">
+        <Anchor component={Link} to={"/customers/contacts" as never} size="sm">
           {t("contacts")}
         </Anchor>
         <Text size="sm">{name}</Text>

@@ -77,7 +77,7 @@ describe("app spotlight", () => {
     await userEvent.click(screen.getByRole("button", { name: /search/i }));
     await userEvent.click(await screen.findByText("Browse all contacts"));
 
-    await waitFor(() => expect(router.state.location.pathname).toBe("/contacts"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/customers/contacts"));
   });
 
   it("searches customers and contacts and navigates to a result", async () => {
