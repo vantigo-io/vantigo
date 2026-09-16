@@ -16,8 +16,9 @@ import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
+import { enabledModuleKeys } from "../lib/enabled-modules";
 import { publicPaths } from "../lib/public-paths";
-import { activeNavPath, moduleKeys, type NavSection, visibleNavSections } from "../navigation";
+import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
 
 const renderNavSections = (
   sections: readonly NavSection[],
@@ -105,11 +106,7 @@ const RootLayout = () => {
   const isOwner = session.user.roles.includes("Owner");
   const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
-  // Module enablement used to be a per-tenant capability, fetched from the
-  // deleted tenant-capabilities endpoint. Without tenants there is nothing to
-  // vary: every module in the navigation catalog ships in this build, and
-  // per-destination permissions still decide what a user actually sees.
-  const enabledModules = moduleKeys;
+  const enabledModules = enabledModuleKeys();
   const visibleSections = visibleNavSections({
     permissions,
     isOwner,

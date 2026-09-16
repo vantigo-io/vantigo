@@ -14,6 +14,13 @@ export interface AppConfig {
   /** Custom logo URL (App__LogoUrl); undefined means the bundled Vantigo logo. */
   logoUrl?: string;
   support: AppSupport;
+  /**
+   * The module names the backend enabled (its MODULES allowlist). Undefined
+   * when nothing was injected — the Vite dev server serves an untemplated
+   * index.html — which callers treat as "every module". An injected empty
+   * list means none.
+   */
+  modules?: readonly string[];
 }
 
 interface InjectedAppConfig {
@@ -21,6 +28,7 @@ interface InjectedAppConfig {
   title?: string;
   logoUrl?: string | null;
   support?: { email?: string | null; phone?: string | null; url?: string | null };
+  modules?: string[] | null;
 }
 
 declare global {
@@ -59,6 +67,7 @@ export function appConfig(): AppConfig {
       phone: injected?.support?.phone ?? undefined,
       url: injected?.support?.url ?? undefined,
     },
+    modules: injected?.modules ?? undefined,
   };
 }
 
