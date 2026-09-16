@@ -9,6 +9,7 @@ import {
   IconPackage,
   IconUsers,
 } from "@tabler/icons-react";
+import { accountMenuSections } from "./account-menu";
 import { hasPermissions, type ModuleKey, type NavItem, type NavSection } from "./navigation";
 
 export type AppKey = "home" | ModuleKey;
@@ -133,6 +134,17 @@ export const apps: readonly AppDefinition[] = [
 
 /** Every sidebar destination across apps, for consumers that span apps (spotlight, permission guard). */
 export const allNavSections: readonly NavSection[] = apps.flatMap((app) => app.navSections);
+
+/**
+ * Everything the spotlight can navigate to: the dashboard (Home has no
+ * sidebar, so it is in no app's sections), every app's sidebar, and the
+ * avatar menu's destinations. Filtered per user at render time.
+ */
+export const spotlightNavSections: readonly NavSection[] = [
+  { items: [{ label: "navigation.dashboard", to: "/dashboard", icon: IconLayoutDashboard }] },
+  ...allNavSections,
+  ...accountMenuSections,
+];
 
 export const appForKey = (key: AppKey): AppDefinition => {
   const app = apps.find((candidate) => candidate.key === key);

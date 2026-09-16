@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { i18n } from "@vantigo/frontend-shell";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { spotlightNavSections } from "../apps";
 import { type ModuleKey, visibleNavSections } from "../navigation";
-import { AppSpotlight, spotlightNavSections } from "./app-spotlight";
+import { AppSpotlight } from "./app-spotlight";
 
 const allModules: ModuleKey[] = ["communications", "customers", "energy", "products"];
 

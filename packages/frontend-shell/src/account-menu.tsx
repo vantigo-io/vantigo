@@ -51,16 +51,7 @@ export const AccountMenu = ({ user, sections, onSignOut, signOutDisabled }: Acco
   return (
     <Menu position="bottom-end" withArrow width={260}>
       <Menu.Target>
-        <UnstyledButton
-          aria-label={t("openAccountMenu")}
-          aria-haspopup="menu"
-          styles={{
-            root: {
-              borderRadius: "50%",
-              "&:focus-visible": { outline: "2px solid var(--mantine-primary-color-filled)", outlineOffset: 2 },
-            },
-          }}
-        >
+        <UnstyledButton aria-label={t("openAccountMenu")} aria-haspopup="menu" style={{ borderRadius: "50%" }}>
           <Avatar src={user?.avatarUrl} color="vantigo" radius="xl">
             {user ? initials(user.displayName) : t("loadingIndicator")}
           </Avatar>

@@ -79,7 +79,8 @@ describe("navigation permissions", () => {
   });
 
   it("preserves extra fields on the section type it is given", () => {
-    const typed = [{ label: "admin", extra: 1, items: fixture[1]!.items }];
+    const adminSection = fixture[1] ?? { items: [] };
+    const typed = [{ label: "admin", extra: 1, items: adminSection.items }];
     const [section] = visibleNavSections(typed, context({ isOwner: true }));
     expect(section?.extra).toBe(1);
   });

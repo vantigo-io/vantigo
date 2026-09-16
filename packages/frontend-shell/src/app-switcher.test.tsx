@@ -20,12 +20,13 @@ describe("AppSwitcher", () => {
   });
 
   it("lists tiles, marks the current one and navigates on select", async () => {
+    const onHome = vi.fn();
     const onSelect = vi.fn();
     render(
       <MantineProvider env="test">
         <AppSwitcher
           apps={[
-            { id: "home", label: "Home", icon: IconHome, onSelect: vi.fn(), current: true },
+            { id: "home", label: "Home", icon: IconHome, onSelect: onHome, current: true },
             { id: "customers", label: "Customers", icon: IconUsers, onSelect },
           ]}
         />
@@ -36,9 +37,11 @@ describe("AppSwitcher", () => {
     const home = screen.getByRole("button", { name: "Home" });
     expect(home).toHaveAttribute("aria-current", "true");
     fireEvent.click(home);
+    expect(onHome).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Customers" }));
     expect(onSelect).toHaveBeenCalledOnce();
+    await expect.poll(() => screen.queryByRole("dialog")).toBeNull();
   });
 
   it("shows a disabled app muted with its reason and never selects it", async () => {

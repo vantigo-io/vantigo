@@ -264,7 +264,7 @@ interface SwitcherApp {
 ```
 
 A round subtle `ActionIcon` with `IconGridDots` (aria-label "Switch app")
-opens a `Popover` (`bottom-end`, width 330) containing a 3-column
+opens a `Popover` (`bottom-end`, width 380) containing a 3-column
 `SimpleGrid` of tiles: `ThemeIcon` over a 2-line clamped label. The current
 tile is filled, `aria-current="true"` and inert. A disabled tile is
 `c="dimmed"`, `aria-disabled="true"`, not focusable as a button, and shows
