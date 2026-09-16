@@ -1,11 +1,26 @@
-import { Alert, Center, Loader, Menu, NavLink, Stack, Text } from "@mantine/core";
-import { IconSettings } from "@tabler/icons-react";
+import { Alert, Center, Loader, NavLink, Stack, Text } from "@mantine/core";
 import type { QueryClient } from "@tanstack/react-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { createRootRouteWithContext, Link, Outlet, redirect, useRouterState } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  Link,
+  Outlet,
+  redirect,
+  useMatches,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { AppShellLayout, appUrl, SpotlightSearchBox, useI18n } from "@vantigo/frontend-shell";
+import {
+  AccountMenu,
+  AppShellLayout,
+  AppSwitcher,
+  appUrl,
+  SpotlightSearchBox,
+  SpotlightSearchButton,
+  useI18n,
+} from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../i18n";
 import { accountMenuSections } from "../account-menu";
@@ -14,7 +29,7 @@ import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
-import { allNavSections } from "../apps";
+import { activeAppKey, appForKey, isAppEnabled, switcherTiles } from "../apps";
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
@@ -60,6 +75,8 @@ const RootLayout = () => {
   const { t } = useI18n("host");
   const location = useRouterState({ select: (state) => state.location });
   const pathname = location.pathname;
+  const matches = useMatches();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [maintenanceWarningDismissed, setMaintenanceWarningDismissed] = useState(false);
   const isPublic = publicPaths.has(pathname);
@@ -116,31 +133,58 @@ const RootLayout = () => {
     isSystemAdmin: session.isSystemAdmin,
     enabledModules,
   };
-  const primarySections = visibleNavSections(allNavSections, visibility);
-  const lowerSections = visibleNavSections(accountMenuSections, visibility);
+  // The app is whatever the deepest matched route declares; administration
+  // and public paths declare none and render sidebar-less.
+  const activeKey = activeAppKey(matches);
+  const activeApp = activeKey ? appForKey(activeKey) : undefined;
+  const navSections =
+    activeApp && isAppEnabled(activeApp, enabledModules) ? visibleNavSections(activeApp.navSections, visibility) : [];
+  const menuSections = visibleNavSections(accountMenuSections, visibility);
+  // Sidebar links and the registry use bare path strings, as the nav catalog
+  // always has; the router validates search params at runtime.
+  const go = (to: string) => void navigate({ to: to as never });
   if (shouldShowMaintenance(systemStatus.data, session.isSystemAdmin)) {
     return <MaintenancePage message={systemStatus.data?.message} />;
   }
   return (
     <>
       <AppShellLayout
-        moduleName="Vantigo"
-        user={{
-          ...session.user,
-          avatarUrl: profile.data?.avatarUrl
-            ? `${appUrl(profile.data.avatarUrl)}${profile.data.avatarUrl.includes("?") ? "&" : "?"}v=${profile.dataUpdatedAt}`
-            : null,
-        }}
-        userMenuItems={
-          <Menu.Item component={Link} to="/settings" leftSection={<IconSettings size={14} />}>
-            {t("navigation.settings")}
-          </Menu.Item>
+        title={activeApp && activeApp.key !== "home" ? t(activeApp.label) : undefined}
+        headerCenter={<SpotlightSearchBox />}
+        headerActions={
+          <>
+            <SpotlightSearchButton />
+            <AppSwitcher
+              apps={switcherTiles(permissions, enabledModules, activeKey).map((tile) => ({
+                id: tile.app.key,
+                label: t(tile.app.label),
+                icon: tile.app.icon,
+                current: tile.current,
+                disabledReason: tile.enabled ? undefined : t("navigation.notEnabled"),
+                onSelect: () => go(tile.app.home),
+              }))}
+            />
+            <AccountMenu
+              user={{
+                ...session.user,
+                avatarUrl: profile.data?.avatarUrl
+                  ? `${appUrl(profile.data.avatarUrl)}${profile.data.avatarUrl.includes("?") ? "&" : "?"}v=${profile.dataUpdatedAt}`
+                  : null,
+              }}
+              sections={menuSections.map((section) => ({
+                label: t(section.label),
+                items: section.items.map((item) => ({
+                  label: t(item.label),
+                  icon: item.icon,
+                  onSelect: () => go(item.to),
+                })),
+              }))}
+              onSignOut={() => logout.mutate()}
+              signOutDisabled={logout.isPending}
+            />
+          </>
         }
-        onSignOut={() => logout.mutate()}
-        signOutDisabled={logout.isPending}
-        navbarTop={<SpotlightSearchBox />}
-        nav={(close) => renderNavSections(primarySections, pathname, close, t)}
-        navLower={(close) => renderNavSections(lowerSections, pathname, close, t)}
+        nav={navSections.length > 0 ? (close) => renderNavSections(navSections, pathname, close, t) : undefined}
       >
         <Stack gap="md">
           {session.isSystemAdmin && systemStatus.data?.maintenance && !maintenanceWarningDismissed && (

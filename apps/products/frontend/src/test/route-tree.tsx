@@ -84,12 +84,7 @@ const Settings = () => {
 
 const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: () => (
-    <AppShellLayout
-      user={{ displayName: "Test User", email: "test@example.com" }}
-      onSignOut={() => {}}
-      navbarTop={<SpotlightSearchBox />}
-      nav={() => null}
-    >
+    <AppShellLayout headerCenter={<SpotlightSearchBox />} nav={() => null}>
       <Outlet />
       <AppSpotlight />
     </AppShellLayout>
