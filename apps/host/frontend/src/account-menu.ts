@@ -1,4 +1,4 @@
-import { IconBuildingSkyscraper, IconLayoutDashboard, IconSettings, IconShieldCheck } from "@tabler/icons-react";
+import { IconBuilding, IconBuildingSkyscraper, IconSettings, IconShieldCheck } from "@tabler/icons-react";
 import type { NavItem } from "./navigation";
 
 export interface AccountMenuSection {
@@ -21,7 +21,7 @@ export const accountMenuSections: readonly AccountMenuSection[] = [
   {
     label: "navigation.workspaceSection",
     items: [
-      { label: "navigation.workspaceAdmin", to: "/workspace/overview", icon: IconLayoutDashboard, ownerOnly: true },
+      { label: "navigation.workspaceAdmin", to: "/workspace/overview", icon: IconBuilding, ownerOnly: true },
       { label: "navigation.rolesAccess", to: "/workspace/roles", icon: IconShieldCheck, capability: "authorization" },
     ],
   },
