@@ -144,8 +144,8 @@ One PostgreSQL database, one schema per module: `identity`, `customers`, `produc
 
 The host SPA (`@vantigo/app`) owns routing, auth, navigation and the shell; module
 packages (`@vantigo/customers-ui`, …) export pages, API clients and components. Route
-files in `apps/host/frontend/src/routes/` are thin wrappers that lazy-import module
-pages, so each module becomes its own code-split chunk. Module packages never import
+files in `apps/host/frontend/src/routes/` are thin wrappers around module pages;
+the router plugin's `autoCodeSplitting` makes each route its own chunk. Module packages never import
 from each other; shared UI lives in `@vantigo/frontend-shell` and the generated API
 types and client in `@vantigo/frontend-api-client`.
 
@@ -154,14 +154,17 @@ and each package's exported surface (`src/index.ts` and subpath exports) is its 
 the frontend parallel of the Go modules' contracts. Host-owned composition points, such
 as the customer detail tab list, are extended by adding entries in the host.
 
-SPA URL convention — *flat primary resources, module-qualified secondary ones*:
-primary business nouns users work with daily are top-level (`/customers`,
-`/contacts`, `/messages`, `/products`), while supporting or admin concepts stay
-qualified by their module (`/products/categories`, `/communications/mailboxes`,
-`/communications/suppressions`). Nesting in URLs means *belonging*
-(`/customers/:id`), not module bundling. Backend API routes always keep the
-module prefix (`/api/v1/customers/contacts`) — that symmetry is what matters
-for extraction, not the SPA paths.
+SPA URL convention — *one prefix per app*: every route of a business module
+lives under its module's name, which is also its API prefix and its `MODULES`
+entry (`/customers`, `/customers/contacts`, `/communications/inbox`,
+`/products/categories`, `/energy/metering-points`). Nesting inside the prefix
+means *belonging* (`/customers/:id`). The dashboard (`/dashboard`) is the
+"Home" app; `/settings`, `/workspace` and `/admin` are administration pages
+reached from the avatar menu and belong to no app. Each app is declared in
+`apps/host/frontend/src/apps.ts` (label, icon, home, sidebar entries) and has a
+layout route at its prefix (`routes/<app>.tsx`) that tags the subtree with the
+app key and renders the not-enabled page when the module is off. Backend API
+routes keep the same module prefix (`/api/v1/customers/contacts`).
 
 ## Design principles
 
