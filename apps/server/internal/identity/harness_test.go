@@ -238,7 +238,7 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 		"index.html":      {Data: []byte(indexHTML)},
 		"assets/app-1.js": {Data: []byte("console.log(1)")},
 	}
-	index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding)
+	index, err := web.NewIndex(assets, cfg.BasePath, cfg.Branding, cfg.Modules)
 	if err != nil {
 		t.Fatalf("harness: %v", err)
 	}
