@@ -1,4 +1,11 @@
 export {
+  AccountMenu,
+  type AccountMenuItem,
+  type AccountMenuProps,
+  type AccountMenuSection,
+  type ShellUser,
+} from "./account-menu";
+export {
   type AppConfig,
   type AppSupport,
   appConfig,
@@ -7,7 +14,7 @@ export {
   initAppConfig,
   runtimeBase,
 } from "./app-config";
-export { AppShellLayout, type AppShellLayoutProps, type ShellUser, SupportContactLine } from "./app-shell-layout";
+export { AppShellLayout, type AppShellLayoutProps, SupportContactLine } from "./app-shell-layout";
 export { AppSwitcher, type SwitcherApp } from "./app-switcher";
 export {
   type CatalogLoader,
@@ -37,6 +44,7 @@ export {
 export { vantigoLogo } from "./logo";
 export { PageHeader, type PageHeaderProps } from "./page-header";
 export { SpotlightSearchBox } from "./spotlight-search-box";
+export { SpotlightSearchButton } from "./spotlight-search-button";
 export { vantigoTheme } from "./theme";
 export * from "./ui";
 export {

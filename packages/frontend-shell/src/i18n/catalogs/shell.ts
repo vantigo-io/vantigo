@@ -15,6 +15,7 @@ export const shellCatalog = {
     controlKey: "Ctrl",
     switchApp: "Switch app",
     appsMenu: "Apps",
+    openSearch: "Open search",
   },
   nb: {
     closeNavigation: "Lukk navigasjon",
@@ -32,5 +33,6 @@ export const shellCatalog = {
     controlKey: "Ctrl",
     switchApp: "Bytt app",
     appsMenu: "Apper",
+    openSearch: "Åpne søk",
   },
 } as const;
