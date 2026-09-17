@@ -158,12 +158,28 @@ lives under its module's name, which is also its API prefix and its `MODULES`
 entry (`/customers`, `/customers/contacts`, `/communications/inbox`,
 `/products/categories`, `/energy/metering-points`). Nesting inside the prefix
 means *belonging* (`/customers/:id`). The dashboard (`/dashboard`) is the
-"Home" app; `/settings`, `/workspace` and `/admin` are administration pages
-reached from the avatar menu and belong to no app. Each app is declared in
+"Home" app; `/settings`, `/workspace` and `/admin` are *areas*: declared in
+`apps.ts` like apps, with their own sidebar and header title, but reached from
+the avatar menu and without a switcher tile. Each app is declared in
 `apps/host/frontend/src/apps.ts` (label, icon, home, sidebar entries) and has a
 layout route at its prefix (`routes/<app>.tsx`) that tags the subtree with the
 app key and renders the not-enabled page when the module is off. Backend API
 routes keep the same module prefix (`/api/v1/customers/contacts`).
+
+Navigation — *one pattern per level*, so every page reads the same way:
+
+- **Sidebar** = the pages within the area you are in. Always the shell's
+  sidebar, declared in `apps.ts`; never an in-content side menu.
+- **Tabs** = views of one page (a customer's Overview and Energy, the roles
+  page's Roles, Assignments and Delegations). Always `PageTabs` from
+  `@vantigo/frontend-shell`, directly under the page header, and always in
+  the URL — a child route or a validated search param — so every view is a
+  link. A tab never leaves the page; something that does is a header action.
+- **Segmented controls** = filters and form modes (a date range, a
+  resolution), never navigation.
+- **`PageHeader`** on every page: `eyebrow` (the area name) on sidebar
+  destinations, `breadcrumbs` (the area's list page, then the entity) on
+  detail pages, never both; text titles, with badges where useful, no icons.
 
 ## Design principles
 
