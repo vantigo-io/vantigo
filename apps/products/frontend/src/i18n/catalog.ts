@@ -74,6 +74,16 @@ export const productsCatalog = {
     productForm: {
       editTitle: "Edit product",
       createTitle: "Create new product",
+      createTypedTitle: {
+        Goods: "New goods product",
+        Service: "New service",
+      },
+      pickTypeDescription: "What are you adding? The choice shapes which details the product asks for.",
+      typeDescription: {
+        Goods: "A physical item you stock, ship or hand over.",
+        Service: "Work or access you deliver, with nothing to ship.",
+      },
+      changeType: "Change",
       defaultVariant: "A default variant will be created. Add more variants from the product page.",
       saveProduct: "Save changes",
       createProduct: "Create product",
@@ -281,6 +291,16 @@ export const productsCatalog = {
     productForm: {
       editTitle: "Rediger produkt",
       createTitle: "Opprett nytt produkt",
+      createTypedTitle: {
+        Goods: "Ny vare",
+        Service: "Ny tjeneste",
+      },
+      pickTypeDescription: "Hva legger du til? Valget styrer hvilke detaljer produktet spør etter.",
+      typeDescription: {
+        Goods: "En fysisk vare du har på lager, sender eller leverer ut.",
+        Service: "Arbeid eller tilgang du leverer, uten noe å sende.",
+      },
+      changeType: "Endre",
       defaultVariant: "En standardvariant blir opprettet. Legg til flere varianter fra produktsiden.",
       saveProduct: "Lagre endringer",
       createProduct: "Opprett produkt",
