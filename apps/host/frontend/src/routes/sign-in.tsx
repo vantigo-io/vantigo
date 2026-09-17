@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { isPasskeyClientError, loginWithPasskey } from "../api/account";
 import { completeTwoFactor, fetchOidcProvider } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signIn } from "../api/auth";
+import { mfaEnrolmentDestination } from "../lib/mfa-enrolment-gate";
 import "../i18n";
 
 const SignInPage = () => {
@@ -44,7 +45,7 @@ const SignInPage = () => {
       if ((data as { requiresTwoFactor?: boolean }).requiresTwoFactor) setMfa(true);
       else {
         queryClient.setQueryData(sessionQueryKey, data);
-        if (data.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
+        if (data.mfaEnrollmentRequired) window.location.assign(appUrl(mfaEnrolmentDestination));
         else void navigate({ to: "/", search: {}, replace: true });
       }
     },
@@ -54,7 +55,7 @@ const SignInPage = () => {
     onSuccess: async (data) => {
       queryClient.setQueryData(sessionQueryKey, data);
       await queryClient.refetchQueries({ queryKey: sessionQueryKey });
-      if (data.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
+      if (data.mfaEnrollmentRequired) window.location.assign(appUrl(mfaEnrolmentDestination));
       else void navigate({ to: "/", search: {}, replace: true });
     },
   });
@@ -62,7 +63,7 @@ const SignInPage = () => {
     mutationFn: () => completeTwoFactor(code),
     onSuccess: (data) => {
       queryClient.setQueryData(sessionQueryKey, data);
-      if (data.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
+      if (data.mfaEnrollmentRequired) window.location.assign(appUrl(mfaEnrolmentDestination));
       else void navigate({ to: "/", search: {}, replace: true });
     },
   });

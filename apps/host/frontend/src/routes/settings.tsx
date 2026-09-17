@@ -40,6 +40,7 @@ import {
   uploadProfilePhoto,
 } from "../api/account";
 import { fetchSession, sessionQueryKey } from "../api/auth";
+import { MfaEnrolmentNotice } from "../components/mfa-enrolment-notice";
 import { SettingsLayout } from "../components/settings-layout";
 
 const mfaKey = ["account", "mfa"] as const;
@@ -216,6 +217,9 @@ export function SecurityTab() {
       setSetup(null);
       mfaForm.reset();
       void qc.invalidateQueries({ queryKey: mfaKey });
+      // Enabling marks this session MFA-verified, so the session's
+      // enrolment flag clears and the root layout's gate lifts on refetch.
+      void qc.invalidateQueries({ queryKey: sessionQueryKey });
     },
     onError: onMfaError(t("authenticatorCodeNotAcceptedTitle")),
   });
@@ -271,6 +275,7 @@ export function SecurityTab() {
   });
   return (
     <Stack gap="lg">
+      {mfa.data?.mfaEnrollmentRequired && <MfaEnrolmentNotice />}
       <Card withBorder>
         <Stack>
           <Group justify="space-between">

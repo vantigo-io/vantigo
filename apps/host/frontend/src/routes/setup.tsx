@@ -6,6 +6,7 @@ import { appConfig, appUrl, SupportContactLine, useI18n } from "@vantigo/fronten
 import { bootstrapAccount, fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { showLifecycleFormError } from "../lib/lifecycle-form-errors";
+import { mfaEnrolmentDestination } from "../lib/mfa-enrolment-gate";
 import "../i18n";
 
 const SetupPage = () => {
@@ -26,7 +27,7 @@ const SetupPage = () => {
     onSuccess: async () => {
       const session = await queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 0 });
       queryClient.setQueryData(sessionQueryKey, session);
-      if (session?.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
+      if (session?.mfaEnrollmentRequired) window.location.assign(appUrl(mfaEnrolmentDestination));
       else void navigate({ to: "/" });
     },
     onError: (error) => showLifecycleFormError(error, form, t("auth.setupFailed")),

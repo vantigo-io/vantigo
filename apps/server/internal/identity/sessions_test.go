@@ -67,6 +67,25 @@ func TestSession_DescribesTheCallerAndTheirSession(t *testing.T) {
 	}
 }
 
+// TestSession_EnrolmentHintBindsEveryAdministrator proves the hint is not
+// the Owner's alone: the SystemAdmin policy is held to MFA exactly as the
+// Owner policy is, so a SystemAdmin without Owner and without TOTP must
+// enrol too, while a plain User is never told to.
+func TestSession_EnrolmentHintBindsEveryAdministrator(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, withEnv("OWNERS_REQUIRE_MFA", "1"))
+	const admin, user = "sysadmin@example.test", "user@example.test"
+	h.seedUser(t, admin, userPassword, identity.RoleUserID, identity.RoleSystemAdminID)
+	h.seedUser(t, user, userPassword, identity.RoleUserID)
+
+	if s, _ := getSession(t, h.login(t, admin, userPassword)); !s.MfaEnrollmentRequired || !s.IsSystemAdmin {
+		t.Errorf("SystemAdmin session = %+v, want enrolment required", s)
+	}
+	if s, _ := getSession(t, h.login(t, user, userPassword)); s.MfaEnrollmentRequired {
+		t.Errorf("User session = %+v, want no enrolment hint", s)
+	}
+}
+
 // TestSession_SyntheticSSOEmailIsNull proves an OIDC account's synthetic
 // @sso.invalid address is never shown.
 func TestSession_SyntheticSSOEmailIsNull(t *testing.T) {

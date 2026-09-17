@@ -473,6 +473,17 @@ func TestLogin_ResponseCarriesOrderedRolesAndTheOwnerEnrolmentHint(t *testing.T)
 	if r.status != http.StatusOK || body.User == nil || !slices.Equal(body.User.Roles, []string{"SystemAdmin", "Owner", "User"}) || !body.MfaEnrollmentRequired {
 		t.Errorf("status %d body %s", r.status, r.body)
 	}
+
+	// A SystemAdmin who is not an Owner is held to MFA by the SystemAdmin
+	// policy, so the hint binds them too.
+	const sysadmin = "sysadmin@example.test"
+	h.seedUser(t, sysadmin, userPassword, identity.RoleUserID, identity.RoleSystemAdminID)
+	r = h.client(t).do(http.MethodPost, loginPath, credentials(sysadmin, userPassword))
+	body = authSuccess{}
+	r.json(&body)
+	if r.status != http.StatusOK || body.User == nil || !body.MfaEnrollmentRequired {
+		t.Errorf("SystemAdmin login: status %d body %s", r.status, r.body)
+	}
 }
 
 // TestProviders_OffersNoOIDCWhileItIsOff proves /providers answers the

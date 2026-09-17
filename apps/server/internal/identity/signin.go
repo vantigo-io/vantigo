@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -174,7 +173,7 @@ func (s *server) completePasswordLogin(ctx context.Context, r *http.Request, u s
 			User:                  &user,
 			RequiresTwoFactor:     false,
 			TwoFactorEnabled:      false,
-			MfaEnrollmentRequired: slices.Contains(roles, RoleOwner) && s.deps.Config.OwnersRequireMFA,
+			MfaEnrollmentRequired: s.mfaEnrollmentRequired(roles, false), // this branch is the account without TOTP
 		},
 	}, nil
 }

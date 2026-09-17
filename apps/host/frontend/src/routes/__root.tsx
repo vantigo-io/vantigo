@@ -34,6 +34,7 @@ import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
 import { enabledModuleKeys } from "../lib/enabled-modules";
+import { mfaEnrolmentRedirect } from "../lib/mfa-enrolment-gate";
 import { publicPaths } from "../lib/public-paths";
 import { activeNavPath, type NavSection, visibleNavSections } from "../navigation";
 
@@ -123,6 +124,10 @@ const RootLayout = () => {
       </Center>
     );
   const isOwner = session.user.roles.includes("Owner");
+  // While the enrolment gate holds (lib/mfa-enrolment-gate.ts), the shell
+  // offers nothing that leads out of /settings: no sidebar, no app switcher,
+  // no spotlight. The account menu stays, so sign-out still works.
+  const gated = session.mfaEnrollmentRequired === true;
   const permissions = authorization.data?.permissions;
   const canManageAuthorization = authorization.data?.canManageAuthorization === true;
   const enabledModules = enabledModuleKeys();
@@ -150,20 +155,24 @@ const RootLayout = () => {
     <>
       <AppShellLayout
         title={titleLabel ? t(titleLabel) : undefined}
-        headerCenter={<SpotlightSearchBox />}
+        headerCenter={gated ? undefined : <SpotlightSearchBox />}
         headerActions={
           <>
-            <SpotlightSearchButton />
-            <AppSwitcher
-              apps={switcherTiles(permissions, enabledModules, activeKey).map((tile) => ({
-                id: tile.app.key,
-                label: t(tile.app.label),
-                icon: tile.app.icon,
-                current: tile.current,
-                disabledReason: tile.enabled ? undefined : t("navigation.notEnabled"),
-                onSelect: () => go(tile.app.home),
-              }))}
-            />
+            {!gated && (
+              <>
+                <SpotlightSearchButton />
+                <AppSwitcher
+                  apps={switcherTiles(permissions, enabledModules, activeKey).map((tile) => ({
+                    id: tile.app.key,
+                    label: t(tile.app.label),
+                    icon: tile.app.icon,
+                    current: tile.current,
+                    disabledReason: tile.enabled ? undefined : t("navigation.notEnabled"),
+                    onSelect: () => go(tile.app.home),
+                  }))}
+                />
+              </>
+            )}
             <AccountMenu
               user={{
                 ...session.user,
@@ -184,7 +193,9 @@ const RootLayout = () => {
             />
           </>
         }
-        nav={navSections.length > 0 ? (close) => renderNavSections(navSections, pathname, close, t) : undefined}
+        nav={
+          !gated && navSections.length > 0 ? (close) => renderNavSections(navSections, pathname, close, t) : undefined
+        }
       >
         <Stack gap="md">
           {session.isSystemAdmin && systemStatus.data?.maintenance && !maintenanceWarningDismissed && (
@@ -202,13 +213,15 @@ const RootLayout = () => {
           </ModuleAccessGuard>
         </Stack>
       </AppShellLayout>
-      <AppSpotlight
-        permissions={permissions}
-        isOwner={isOwner}
-        canManageAuthorization={canManageAuthorization}
-        isSystemAdmin={session.isSystemAdmin}
-        enabledModules={enabledModules}
-      />
+      {!gated && (
+        <AppSpotlight
+          permissions={permissions}
+          isOwner={isOwner}
+          canManageAuthorization={canManageAuthorization}
+          isSystemAdmin={session.isSystemAdmin}
+          enabledModules={enabledModules}
+        />
+      )}
       <TanStackRouterDevtools />
       <ReactQueryDevtools />
     </>
@@ -232,6 +245,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       }
       throw redirect({ to: available ? "/setup" : "/sign-in" });
     }
+    // The enrolment gate comes before every other gate: an administrator
+    // who must enrol is held at the security settings whatever they asked for.
+    const enrol = mfaEnrolmentRedirect(session, location.pathname);
+    if (enrol) throw redirect({ to: enrol });
     if ((location.pathname === "/admin" || location.pathname.startsWith("/admin/")) && !session.isSystemAdmin) {
       throw redirect({ to: "/" });
     }
