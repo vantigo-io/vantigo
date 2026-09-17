@@ -44,6 +44,23 @@ type Deps struct {
 	// declares Module.Directory; it is nil when no enabled module provides
 	// one.
 	Directory contracts.CustomerDirectory
+	// Users is the user directory, the one sanctioned way a module reads
+	// identity's user data (see contracts.UserDirectory). Compose sets it,
+	// on every module's Deps copy, from whichever enabled module declares
+	// Module.Users; unlike Directory, it is always set once composed —
+	// identity, the one module always mounted, is the one that provides it.
+	Users contracts.UserDirectory
+	// Products is the product catalog, the one sanctioned way a module
+	// reads products' catalog data (see contracts.ProductCatalog). Compose
+	// sets it, on every module's Deps copy, from whichever enabled module
+	// declares Module.Products; it is nil when no enabled module provides
+	// one (products disabled).
+	Products contracts.ProductCatalog
+	// Projects is the project directory, the one sanctioned way a module
+	// reads projects' data (see contracts.ProjectDirectory). Compose sets
+	// it, on every module's Deps copy, from whichever enabled module
+	// declares Module.Projects; it is nil when projects is disabled.
+	Projects contracts.ProjectDirectory
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -99,6 +116,23 @@ type Module struct {
 	// set it; Compose calls it before any Mount runs and puts the result on
 	// every module's Deps, including the provider's own.
 	Directory func(Deps) contracts.CustomerDirectory
+	// Users builds this module's contracts.UserDirectory implementation, if
+	// it provides one. At most one enabled module may set it; Compose calls
+	// it before any Mount runs and puts the result on every module's Deps,
+	// including the provider's own, the same way it resolves Directory.
+	Users func(Deps) contracts.UserDirectory
+	// Products builds this module's contracts.ProductCatalog
+	// implementation, if it provides one. At most one enabled module may
+	// set it; Compose calls it before any Mount runs and puts the result on
+	// every module's Deps, including the provider's own, the same way it
+	// resolves Directory.
+	Products func(Deps) contracts.ProductCatalog
+	// Projects builds this module's contracts.ProjectDirectory
+	// implementation, if it provides one. At most one enabled module may
+	// set it; Compose calls it before any Mount runs and puts the result on
+	// every module's Deps, including the provider's own, the same way it
+	// resolves Directory.
+	Projects func(Deps) contracts.ProjectDirectory
 	// Workers builds this module's background workers (worker.Worker), if
 	// it has any. Unlike Directory, any number of enabled modules may set
 	// it; Workers (workers.go) resolves it from deps the same way — before

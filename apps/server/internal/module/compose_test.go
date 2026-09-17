@@ -9,8 +9,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/google/uuid"
 
 	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -119,6 +121,34 @@ paths:
   /api/v1/alpha/x:
     get:
       operationId: getGammaDuplicate
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
+// gammaContract and deltaContract are minimal fixtures for tests that need a
+// third and fourth distinct module name alongside alpha and beta, each with
+// its own path so composing all four never trips mergeContract's
+// duplicate-path check.
+const gammaContract = `
+openapi: 3.0.3
+info: { title: Gamma, version: "1" }
+paths:
+  /api/v1/gamma/g:
+    get:
+      operationId: getGammaG
+      x-vantigo-access: anonymous
+      responses:
+        "204": { description: ok }
+`
+
+const deltaContract = `
+openapi: 3.0.3
+info: { title: Delta, version: "1" }
+paths:
+  /api/v1/delta/d:
+    get:
+      operationId: getDeltaD
       x-vantigo-access: anonymous
       responses:
         "204": { description: ok }
@@ -769,6 +799,186 @@ func TestCompose_DisabledDirectoryProviderDoesNotCount(t *testing.T) {
 	}
 	if gotInAlpha != enabled {
 		t.Errorf("alpha's Deps.Directory = %v, want its own directory", gotInAlpha)
+	}
+}
+
+// fakeUserDirectory, fakeProductCatalog and fakeProjectDirectory are minimal
+// implementations of the three contracts this task adds: these tests only
+// need a distinct, comparable value to inject through Deps and assert on,
+// never their actual lookup behaviour.
+type fakeUserDirectory struct{}
+
+func (*fakeUserDirectory) User(context.Context, uuid.UUID) (*contracts.UserEntry, error) {
+	return nil, nil
+}
+
+func (*fakeUserDirectory) Users(context.Context, []uuid.UUID) ([]contracts.UserEntry, error) {
+	return nil, nil
+}
+
+func (*fakeUserDirectory) SearchUsers(context.Context, string, int) ([]contracts.UserEntry, error) {
+	return nil, nil
+}
+
+type fakeProductCatalog struct{}
+
+func (*fakeProductCatalog) Variant(context.Context, int32) (*contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProductCatalog) Variants(context.Context, []int32) ([]contracts.VariantEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProductCatalog) ListPrice(context.Context, int32, string, time.Time) (*contracts.Money, error) {
+	return nil, nil
+}
+
+type fakeProjectDirectory struct{}
+
+func (*fakeProjectDirectory) Project(context.Context, int32) (*contracts.ProjectEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) Role(context.Context, int32, uuid.UUID) (string, error) {
+	return "", nil
+}
+
+func (*fakeProjectDirectory) BillingLine(context.Context, int32, int32) (*contracts.BillingLineEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) ProjectsForUser(context.Context, uuid.UUID) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}
+
+// Decision (task 1): the three new provider slots (Users, Products,
+// Projects) resolve the same way Directory does — before any Mount runs —
+// and each reaches every module's Deps, including a module that provides
+// none of them.
+func TestCompose_InjectsUsersProductsProjectsProviders(t *testing.T) {
+	users := &fakeUserDirectory{}
+	products := &fakeProductCatalog{}
+	projects := &fakeProjectDirectory{}
+	var got Deps
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{
+		"alpha": alphaContract, "beta": betaContract, "gamma": gammaContract, "delta": deltaContract,
+	}),
+		Module{Name: "beta", Users: func(Deps) contracts.UserDirectory { return users }, Mount: staticHandler("beta")},
+		Module{Name: "gamma", Products: func(Deps) contracts.ProductCatalog { return products }, Mount: staticHandler("gamma")},
+		Module{Name: "delta", Projects: func(Deps) contracts.ProjectDirectory { return projects }, Mount: staticHandler("delta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Users != users {
+		t.Errorf("Deps.Users = %v, want the provider's directory", got.Users)
+	}
+	if got.Products != products {
+		t.Errorf("Deps.Products = %v, want the provider's catalog", got.Products)
+	}
+	if got.Projects != projects {
+		t.Errorf("Deps.Projects = %v, want the provider's directory", got.Projects)
+	}
+}
+
+// Two modules both declaring Users is a compose error naming both, in the
+// style of TestCompose_TwoDirectoryProvidersFails.
+func TestCompose_DuplicateUsersProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Users: func(Deps) contracts.UserDirectory { return &fakeUserDirectory{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Users: func(Deps) contracts.UserDirectory { return &fakeUserDirectory{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare a user directory")
+	}
+	if !strings.Contains(err.Error(), "a user directory") {
+		t.Errorf("error %q does not say \"a user directory\"", err)
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// Two modules both declaring Products is a compose error naming both.
+func TestCompose_DuplicateProductsProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Products: func(Deps) contracts.ProductCatalog { return &fakeProductCatalog{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Products: func(Deps) contracts.ProductCatalog { return &fakeProductCatalog{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare a product catalog")
+	}
+	if !strings.Contains(err.Error(), "a product catalog") {
+		t.Errorf("error %q does not say \"a product catalog\"", err)
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// Two modules both declaring Projects is a compose error naming both.
+func TestCompose_DuplicateProjectsProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Projects: func(Deps) contracts.ProjectDirectory { return &fakeProjectDirectory{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Projects: func(Deps) contracts.ProjectDirectory { return &fakeProjectDirectory{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare a project directory")
+	}
+	if !strings.Contains(err.Error(), "a project directory") {
+		t.Errorf("error %q does not say \"a project directory\"", err)
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// enabledModules filters before every provider slot is resolved, the same as
+// for Directory: with the products provider excluded from Config.Modules,
+// the consumer's Deps.Products is nil rather than the disabled module's
+// catalog.
+func TestCompose_DisabledProvider_LeavesNil(t *testing.T) {
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Products: func(Deps) contracts.ProductCatalog { return &fakeProductCatalog{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Products != nil {
+		t.Errorf("Deps.Products = %v, want nil: beta (the products provider) is disabled", got.Products)
+	}
+}
+
+// A value preset on Deps.Products before Compose runs survives when no
+// enabled module declares Module.Products: the seam modtest.WithProducts
+// relies on, mirroring WithDirectory's over Deps.Directory.
+func TestCompose_PresetDepsSurviveWhenNoProvider(t *testing.T) {
+	preset := &fakeProductCatalog{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}, Products: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Products != preset {
+		t.Errorf("Deps.Products = %v, want the preset value to survive with no provider", got.Products)
 	}
 }
 

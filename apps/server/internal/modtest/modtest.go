@@ -120,6 +120,8 @@ type setup struct {
 	transport   http.RoundTripper
 	backoff     func(int) time.Duration
 	directory   contracts.CustomerDirectory
+	users       contracts.UserDirectory
+	products    contracts.ProductCatalog
 	smtpVerify  func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend    func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore storage.ObjectStore
@@ -170,6 +172,30 @@ func WithBackoff(fn func(attempt int) time.Duration) Option {
 // survives Compose unchanged.
 func WithDirectory(d contracts.CustomerDirectory) Option {
 	return func(s *setup) { s.directory = d }
+}
+
+// WithUsers sets Deps.Users directly to u, for a module under test that
+// reads identity's user directory (contracts.UserDirectory): this task adds
+// the slot but no module implements Module.Users yet, so a test that needs
+// one builds its own fake directly against the contracts interface, the
+// same seam WithDirectory gives a module reading contracts.CustomerDirectory
+// before composing its provider. module.Compose only ever overwrites
+// Deps.Users when one of the composed modules declares Module.Users, so a
+// value set here survives Compose unchanged.
+func WithUsers(u contracts.UserDirectory) Option {
+	return func(s *setup) { s.users = u }
+}
+
+// WithProducts sets Deps.Products directly to p, for a module under test
+// that reads the product catalog (contracts.ProductCatalog) without
+// composing products beside it — depguard forbids the module's own test
+// package from importing products directly, the same reason WithDirectory
+// gives a module reading contracts.CustomerDirectory without composing
+// customers. module.Compose only ever overwrites Deps.Products when one of
+// the composed modules declares Module.Products, so a value set here
+// survives Compose unchanged.
+func WithProducts(p contracts.ProductCatalog) Option {
+	return func(s *setup) { s.products = p }
 }
 
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
@@ -303,6 +329,8 @@ func New(t *testing.T, opts ...Option) *Harness {
 		HTTPTransport: s.transport,
 		HTTPBackoff:   s.backoff,
 		Directory:     s.directory,
+		Users:         s.users,
+		Products:      s.products,
 		SMTPVerify:    s.smtpVerify,
 		SMTPSend:      s.smtpSend,
 		ObjectStore:   s.objectStore,
@@ -404,15 +432,29 @@ func One[T any](t testing.TB, h *Harness, sql string, args ...any) T {
 }
 
 // SignIn seeds a user who holds exactly the given permission keys and returns a
-// client carrying that user's session cookie. The keys are granted through a
-// role of the user's own, which is how a real installation grants them: the
-// access layer resolves them from identity's tables on every request.
+// client carrying that user's session cookie. It delegates to SignInUser,
+// discarding the seeded user's ID, for the common case where the caller only
+// needs the client.
+func (h *Harness) SignIn(t testing.TB, permissions ...string) *Client {
+	t.Helper()
+	c, _ := h.SignInUser(t, permissions...)
+	return c
+}
+
+// SignInUser is SignIn, but also returns the seeded user's ID — for a test
+// that needs to name that user itself, such as the subject of a
+// Deps.Users/Deps.Projects lookup or a role assignment recorded elsewhere by
+// user ID.
+//
+// The keys are granted through a role of the user's own, which is how a real
+// installation grants them: the access layer resolves them from identity's
+// tables on every request.
 //
 // The rows are written directly rather than through identity's endpoints. A
 // module's tests are about that module, and driving sign-in over HTTP would
 // cost a bootstrap, a user creation and a login round trip per test without
 // proving anything identity's own tests do not already prove.
-func (h *Harness) SignIn(t testing.TB, permissions ...string) *Client {
+func (h *Harness) SignInUser(t testing.TB, permissions ...string) (*Client, uuid.UUID) {
 	t.Helper()
 	userID := h.seedUser(t)
 	if len(permissions) > 0 {
@@ -421,7 +463,7 @@ func (h *Harness) SignIn(t testing.TB, permissions ...string) *Client {
 	}
 	c := h.Client(t)
 	c.SetCookie(sessionCookieName, h.session(t, userID))
-	return c
+	return c, userID
 }
 
 // SignInDisabled is SignIn for a caller whose account is disabled: it
