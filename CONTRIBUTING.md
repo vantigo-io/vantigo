@@ -153,6 +153,20 @@ and each package's exported surface (`src/index.ts` and subpath exports) is its 
 the frontend parallel of the Go modules' contracts. Host-owned composition points, such
 as the customer detail tab list, are extended by adding entries in the host.
 
+Error handling — *the router is the boundary*. `createRouter` in `main.tsx`
+sets `defaultErrorComponent`, and TanStack wraps every matched route in its
+own catch boundary: a crash in a page renders the error page in that page's
+slot with the shell intact, and a crash in an app layout renders it in the
+layout's slot. Do not add boundaries per module or per page; they would only
+duplicate this. Two boundaries live outside the router on purpose:
+`AppErrorBoundary` around everything in `main.tsx` (a static fallback for a
+crash in a provider above the router, reading i18n through the instance
+because no provider can be assumed) and the one inside `WidgetCard`, which
+isolates each dashboard widget because widgets from several modules share one
+route. Add a boundary only at a composition point like that — where one
+module's component is embedded in another module's page outside a route of
+its own.
+
 SPA URL convention — *one prefix per app*: every route of a business module
 lives under its module's name, which is also its API prefix and its `MODULES`
 entry (`/customers`, `/customers/contacts`, `/communications/inbox`,

@@ -17,7 +17,7 @@ import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { setAuthStateClearer, setUnauthorizedHandler } from "./api/request";
 import { AccountLanguagePreference } from "./components/account-language-preference";
-import { NotFoundPage, RouterError } from "./components/errors";
+import { AppErrorBoundary, NotFoundPage, RouterError } from "./components/errors";
 import { LocaleDatesProvider } from "./components/locale-dates-provider";
 import { wireNavigationProgress } from "./lib/navigation-progress";
 import { publicPaths } from "./lib/public-paths";
@@ -51,19 +51,21 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Vantigo app root element is missing");
 ReactDOM.createRoot(root).render(
   <StrictMode>
-    <MantineProvider theme={vantigoTheme}>
-      <NavigationProgress />
-      <Notifications />
-      <QueryClientProvider client={queryClient}>
-        <I18nProvider>
-          <LocaleDatesProvider>
-            <AccountLanguagePreference />
-            <ModalsProvider>
-              <RouterProvider router={router} />
-            </ModalsProvider>
-          </LocaleDatesProvider>
-        </I18nProvider>
-      </QueryClientProvider>
-    </MantineProvider>
+    <AppErrorBoundary>
+      <MantineProvider theme={vantigoTheme}>
+        <NavigationProgress />
+        <Notifications />
+        <QueryClientProvider client={queryClient}>
+          <I18nProvider>
+            <LocaleDatesProvider>
+              <AccountLanguagePreference />
+              <ModalsProvider>
+                <RouterProvider router={router} />
+              </ModalsProvider>
+            </LocaleDatesProvider>
+          </I18nProvider>
+        </QueryClientProvider>
+      </MantineProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 );

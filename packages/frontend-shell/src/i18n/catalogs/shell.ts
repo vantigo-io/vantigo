@@ -16,6 +16,8 @@ export const shellCatalog = {
     switchApp: "Switch app",
     appsMenu: "Apps",
     openSearch: "Open search",
+    widgetFailed: "This widget could not be shown.",
+    widgetRetry: "Try again",
   },
   nb: {
     closeNavigation: "Lukk navigasjon",
@@ -34,5 +36,7 @@ export const shellCatalog = {
     switchApp: "Bytt app",
     appsMenu: "Apper",
     openSearch: "Åpne søk",
+    widgetFailed: "Dette panelet kunne ikke vises.",
+    widgetRetry: "Prøv igjen",
   },
 } as const;
