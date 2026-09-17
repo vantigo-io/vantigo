@@ -25,12 +25,7 @@ import (
 // real one.
 func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
-	return modtest.New(t, append([]modtest.Option{
-		modtest.WithRecorder(recorder),
-		modtest.WithModule(projects.Module()),
-		modtest.WithDirectory(fakeDirectory{}),
-		modtest.WithProducts(newFakeCatalog()),
-	}, opts...)...)
+	return newProjectsHarness(t, true, opts...)
 }
 
 // newHarnessWithoutProducts is newHarness with the products module off:
@@ -38,11 +33,24 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 // (D10) and what billingLinesAvailable answers false for.
 func newHarnessWithoutProducts(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
-	return modtest.New(t, append([]modtest.Option{
+	return newProjectsHarness(t, false, opts...)
+}
+
+// newProjectsHarness is the one composition both harnesses are: products is
+// the only thing they differ in, so it is the only thing either of them
+// says. A second copy of the option list would drift the moment this module
+// grows another dependency.
+func newProjectsHarness(t *testing.T, products bool, opts ...modtest.Option) *modtest.Harness {
+	t.Helper()
+	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(projects.Module()),
 		modtest.WithDirectory(fakeDirectory{}),
-	}, opts...)...)
+	}
+	if products {
+		base = append(base, modtest.WithProducts(newFakeCatalog()))
+	}
+	return modtest.New(t, append(base, opts...)...)
 }
 
 // The customers the fake directory knows. 1003 is archived, which resolves

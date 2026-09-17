@@ -11,21 +11,25 @@ import (
 
 const nextCounterValue = `-- name: NextCounterValue :one
 INSERT INTO projects.counters (counter_name, next_value)
-VALUES ($1, 1000)
+VALUES ($1, 1001)
 ON CONFLICT (counter_name) DO UPDATE SET next_value = projects.counters.next_value + 1
-RETURNING next_value
+RETURNING (next_value - 1)::bigint AS allocated
 `
 
 // NextCounterValue allocates the next value of a named counter, the same
 // gapless-per-counter upsert customers uses: the first call for a counter
-// starts it at 1000 — project codes count from KVEM1000, not KVEM1 — and
-// every later call increments it by one under the same upsert, so two
-// concurrent creates can never allocate the same value, even if one of them
-// later rolls back. The code suggestion reads next_value without allocating;
-// only a create advances it, whatever code that create actually used.
+// allocates 1000 — project codes count from KVEM1000, not KVEM1 — and every
+// later call allocates one more, so two concurrent creates can never
+// allocate the same value, even if one of them later rolls back.
+//
+// next_value always holds the next number nobody has taken yet: the first
+// call returns 1000 and leaves 1001 behind, the second returns 1001 and
+// leaves 1002. That is what lets the code suggestion read next_value
+// directly, without allocating, and treat an absent row as 1000; only a
+// create advances it, whatever code that create actually used.
 func (q *Queries) NextCounterValue(ctx context.Context, counterName string) (int64, error) {
 	row := q.db.QueryRow(ctx, nextCounterValue, counterName)
-	var next_value int64
-	err := row.Scan(&next_value)
-	return next_value, err
+	var allocated int64
+	err := row.Scan(&allocated)
+	return allocated, err
 }

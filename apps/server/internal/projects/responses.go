@@ -19,7 +19,11 @@ import (
 // with nothing in it, so a client can tell "may see, nothing entered" from
 // "may not see" (D12). budgetHours is deliberately outside it: hours are
 // planning data everyone who sees the project may see.
-func projectResponse(row store.ProjectsProject, a access, customerName *string, managers []gen.ProjectPersonSummary, linesAvailable bool) gen.ProjectResponse {
+func projectResponse(row store.ProjectsProject, a access, customerName *string, managers []gen.ProjectPersonSummary, linesAvailable bool) (gen.ProjectResponse, error) {
+	budgetHours, err := floatPtrFromNumeric(row.BudgetHours)
+	if err != nil {
+		return gen.ProjectResponse{}, err
+	}
 	resp := gen.ProjectResponse{
 		Id:                    row.ID,
 		Code:                  row.Code,
@@ -32,7 +36,7 @@ func projectResponse(row store.ProjectsProject, a access, customerName *string, 
 		StartDate:             dateFromPgtype(row.StartDate),
 		EndDate:               dateFromPgtype(row.EndDate),
 		BillingType:           row.BillingType,
-		BudgetHours:           floatPtrFromNumeric(row.BudgetHours),
+		BudgetHours:           budgetHours,
 		Revision:              row.Revision,
 		CreatedAt:             row.CreatedAt,
 		UpdatedAt:             row.UpdatedAt,
@@ -41,13 +45,21 @@ func projectResponse(row store.ProjectsProject, a access, customerName *string, 
 		BillingLinesAvailable: linesAvailable,
 	}
 	if a.CanSeeFinancials {
+		fixedPrice, err := floatPtrFromNumeric(row.FixedPriceAmount)
+		if err != nil {
+			return gen.ProjectResponse{}, err
+		}
+		budgetAmount, err := floatPtrFromNumeric(row.BudgetAmount)
+		if err != nil {
+			return gen.ProjectResponse{}, err
+		}
 		resp.Financials = &gen.ProjectFinancials{
 			Currency:         row.Currency,
-			FixedPriceAmount: floatPtrFromNumeric(row.FixedPriceAmount),
-			BudgetAmount:     floatPtrFromNumeric(row.BudgetAmount),
+			FixedPriceAmount: fixedPrice,
+			BudgetAmount:     budgetAmount,
 		}
 	}
-	return resp
+	return resp, nil
 }
 
 // projectResponseFor is projectResponse with the two lookups it needs made
@@ -63,7 +75,7 @@ func (s *server) projectResponseFor(ctx context.Context, q *store.Queries, row s
 	if err != nil {
 		return gen.ProjectResponse{}, err
 	}
-	return projectResponse(row, a, customerName, managers, s.billingLinesAvailable()), nil
+	return projectResponse(row, a, customerName, managers, s.billingLinesAvailable())
 }
 
 // customerName resolves a project's customer for display. An internal

@@ -96,7 +96,11 @@ func (s *server) PostProjects(ctx context.Context, req gen.PostProjectsRequestOb
 
 	a := access{}.widenBy(roleManager)
 	managers := []gen.ProjectPersonSummary{{UserId: by.UserID, DisplayName: by.Display}}
-	return gen.PostProjects201JSONResponse(projectResponse(created, a, parsed.CustomerName, managers, s.billingLinesAvailable())), nil
+	resp, err := projectResponse(created, a, parsed.CustomerName, managers, s.billingLinesAvailable())
+	if err != nil {
+		return nil, err
+	}
+	return gen.PostProjects201JSONResponse(resp), nil
 }
 
 // GetProjectsById Get a project by id

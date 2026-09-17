@@ -240,9 +240,10 @@ func WithEnv(key, value string) Option {
 // actually are: enabledModules filtering the module out.
 //
 // "customers" is always included alongside whatever mods names: config.go's
-// modules() rejects "energy" or "communications" without it (both read
-// contracts.CustomerDirectory), so a harness testing either would otherwise
-// fail configuration validation before Compose ever runs. Including it
+// modules() rejects "energy", "communications" or "projects" without it (all
+// three read contracts.CustomerDirectory), so a harness testing any of them
+// would otherwise fail configuration validation before Compose ever runs.
+// Including it
 // unconditionally costs nothing for a harness that did not ask for it and
 // keeps this file from having to mirror config.go's dependency rule as new
 // modules grow their own. The result is sorted and comma-joined, with no

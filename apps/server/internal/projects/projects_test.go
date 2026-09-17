@@ -1,6 +1,7 @@
 package projects_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -227,19 +228,60 @@ func TestPostProjects_WritesTheProjectCreatedTimelineEntry(t *testing.T) {
 
 // §4.2: the counter advances by one on every create, whatever code that
 // create used, and starts at 1000 so the first suggestion is KVEM1000.
+// next_value is what the suggestion reads without allocating, so it always
+// holds the next number nobody has taken: 1001 once 1000 has been handed
+// out, 1002 once 1001 has.
 func TestPostProjects_AdvancesTheProjectCodeCounter(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c, _ := signIn(t, h, "projects:create")
 
 	createProject(t, c, map[string]any{"code": "CNT1000"})
-	if got := h.Count(t, `SELECT next_value FROM projects.counters WHERE counter_name = 'project_code'`); got != 1000 {
-		t.Errorf("counter after one create = %d, want 1000", got)
+	if got := h.Count(t, `SELECT next_value FROM projects.counters WHERE counter_name = 'project_code'`); got != 1001 {
+		t.Errorf("counter after one create = %d, want 1001 (1000 was allocated)", got)
 	}
 	createProject(t, c, map[string]any{"code": "CNT1001"})
-	if got := h.Count(t, `SELECT next_value FROM projects.counters WHERE counter_name = 'project_code'`); got != 1001 {
-		t.Errorf("counter after two creates = %d, want 1001", got)
+	if got := h.Count(t, `SELECT next_value FROM projects.counters WHERE counter_name = 'project_code'`); got != 1002 {
+		t.Errorf("counter after two creates = %d, want 1002", got)
 	}
+}
+
+// The optional descriptive fields are stored, not merely accepted: the 201
+// carries them back and so does the GET that follows it. Without this, a
+// create that dropped description or the dates on the floor would pass every
+// other test in this file.
+func TestPostProjects_OptionalFields_RoundTripOnCreateAndGet(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+
+	const description = "Oppgradering av styringssystemet på Kraft-Verket"
+	created := createProject(t, c, map[string]any{
+		"code": "RT1000", "description": description,
+		"startDate": "2026-03-01", "endDate": "2026-09-30",
+	})
+
+	assertRoundTrip := func(label string, project projectJSON) {
+		t.Helper()
+		if project.Description == nil || *project.Description != description {
+			t.Errorf("%s: Description = %v, want %q", label, project.Description, description)
+		}
+		if project.StartDate == nil || *project.StartDate != "2026-03-01" {
+			t.Errorf("%s: StartDate = %v, want %q", label, project.StartDate, "2026-03-01")
+		}
+		if project.EndDate == nil || *project.EndDate != "2026-09-30" {
+			t.Errorf("%s: EndDate = %v, want %q", label, project.EndDate, "2026-09-30")
+		}
+	}
+	assertRoundTrip("create", created)
+
+	r := c.Do(http.MethodGet, fmt.Sprintf("/api/v1/projects/%d", created.Id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var fetched projectJSON
+	r.JSON(&fetched)
+	assertRoundTrip("get", fetched)
 }
 
 // D10: products is an optional dependency. With it composed the project can
