@@ -120,7 +120,6 @@ type setup struct {
 	transport   http.RoundTripper
 	backoff     func(int) time.Duration
 	directory   contracts.CustomerDirectory
-	users       contracts.UserDirectory
 	products    contracts.ProductCatalog
 	smtpVerify  func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend    func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
@@ -172,18 +171,6 @@ func WithBackoff(fn func(attempt int) time.Duration) Option {
 // survives Compose unchanged.
 func WithDirectory(d contracts.CustomerDirectory) Option {
 	return func(s *setup) { s.directory = d }
-}
-
-// WithUsers sets Deps.Users directly to u. Unlike WithDirectory and
-// WithProducts, this has no effect against New's own harness: New always
-// composes identity beside the module under test, and identity always
-// declares Module.Users, so Compose always resolves Deps.Users from
-// identity's real directory over identity's real tables, discarding
-// whatever u was set to. It exists for a caller building Deps by hand
-// outside New (module.Compose is not the only way to assemble Deps), where
-// no such always-on provider is in the mix.
-func WithUsers(u contracts.UserDirectory) Option {
-	return func(s *setup) { s.users = u }
 }
 
 // WithProducts sets Deps.Products directly to p, for a module under test
@@ -329,7 +316,6 @@ func New(t *testing.T, opts ...Option) *Harness {
 		HTTPTransport: s.transport,
 		HTTPBackoff:   s.backoff,
 		Directory:     s.directory,
-		Users:         s.users,
 		Products:      s.products,
 		SMTPVerify:    s.smtpVerify,
 		SMTPSend:      s.smtpSend,
