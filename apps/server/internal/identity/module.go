@@ -1,7 +1,9 @@
 // Package identity is the identity module: sign-in, sessions, users,
 // invitations, account settings, authorization management, OIDC and SCIM,
 // serving openapi/identity.yaml under /api/v1/identity/. Its Access is the
-// contracts.Access every module's router evaluates x-vantigo-access with.
+// contracts.Access every module's router evaluates x-vantigo-access with. It
+// also owns the user data every other module reads, which it publishes as
+// the contracts.UserDirectory that Compose hands to them.
 package identity
 
 import (
@@ -116,6 +118,7 @@ func Module(a *Access) module.Module {
 			Delegable:   false,
 		}},
 		Mount: func(d module.Deps) (http.Handler, error) { return mount(a, d) },
+		Users: newUserDirectory,
 	}
 }
 
