@@ -22,9 +22,6 @@ type server struct {
 	access *Access
 	deps   module.Deps
 	q      *store.Queries
-	// bootstrapSecret is what POST /bootstrap accepts, resolved once when
-	// the module mounts (resolveBootstrapSecret); "" accepts nothing.
-	bootstrapSecret string
 	// dummyPasswordHash is what a password is verified against when the
 	// email names no account, or one without a password (checkPassword).
 	dummyPasswordHash string
@@ -46,9 +43,9 @@ var _ gen.StrictServerInterface = (*server)(nil)
 // match.
 const dummyPassword = "vantigo-no-such-account"
 
-// newServer builds identity's operations over a and d. It resolves the
-// bootstrap secret, and computes the dummy password hash up front so that
-// no request, the first unknown-email sign-in included, pays for it. It
+// newServer builds identity's operations over a and d. It computes the
+// dummy password hash up front so that no request, the first unknown-email
+// sign-in included, pays for it. It
 // builds the passkey relying party once; an APP_URL host that cannot be an
 // RP ID (an IP address) leaves passkeys unavailable, with a warning, rather
 // than the installation unable to start.
@@ -71,7 +68,6 @@ func newServer(a *Access, d module.Deps) (*server, error) {
 		access:            a,
 		deps:              d,
 		q:                 store.New(d.Pool),
-		bootstrapSecret:   resolveBootstrapSecret(d.Config, d.Logger),
 		dummyPasswordHash: dummy,
 		relyingParty:      rp,
 		oidc:              oidcRP,

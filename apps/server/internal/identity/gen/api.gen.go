@@ -155,7 +155,6 @@ type BootstrapRequest struct {
 	DisplayName *string `json:"displayName"`
 	Email       *string `json:"email"`
 	Password    *string `json:"password"`
-	Secret      *string `json:"secret"`
 }
 
 // BootstrapResponse defines model for BootstrapResponse.
@@ -7729,20 +7728,6 @@ func (response PostIdentityBootstrap400JSONResponse) VisitPostIdentityBootstrapR
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostIdentityBootstrap401JSONResponse externalRef0.AuthErrorResponse
-
-func (response PostIdentityBootstrap401JSONResponse) VisitPostIdentityBootstrapResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }

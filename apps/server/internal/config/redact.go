@@ -29,9 +29,9 @@ type (
 	redactedSCIMConfig SCIMConfig
 )
 
-// redacted is c with the application and bootstrap secrets, the
-// SYSTEM_ADMIN_EMAIL address and any password in the database URLs
-// replaced: the representation Format and MarshalJSON both print. A nested
+// redacted is c with the application secret and any password in the
+// database URLs replaced: the representation Format and MarshalJSON both
+// print. A nested
 // sub-configuration keeps its own field type, so printing or marshalling it
 // still goes through its own Format or MarshalJSON.
 func (c Config) redacted() redactedConfig {
@@ -41,15 +41,13 @@ func (c Config) redacted() redactedConfig {
 	if len(v.AppSecret) > 0 {
 		v.AppSecret = []byte(redactedText)
 	}
-	v.BootstrapSecret = redact(v.BootstrapSecret)
-	v.SystemAdminEmail = redact(v.SystemAdminEmail)
 	v.CommunicationsAIAPIKey = redact(v.CommunicationsAIAPIKey)
 	return v
 }
 
-// Format prints c for every verb with the application and bootstrap
-// secrets, the SYSTEM_ADMIN_EMAIL address and any password in the database
-// URLs replaced, and each sub-configuration redacted by its own Format. It
+// Format prints c for every verb with the application secret and any
+// password in the database URLs replaced, and each sub-configuration
+// redacted by its own Format. It
 // has a value receiver, so a Config and a *Config are both covered.
 func (c Config) Format(f fmt.State, verb rune) {
 	_, _ = fmt.Fprintf(f, fmt.FormatString(f, verb), c.redacted())

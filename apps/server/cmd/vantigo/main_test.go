@@ -38,11 +38,10 @@ func setEnv(t *testing.T, pairs ...string) {
 	t.Helper()
 	for _, k := range []string{"APP_ENV", "DATABASE_URL", "MIGRATIONS_DATABASE_URL", "APP_URL", "APP_BASE_PATH", "PORT",
 		"TRUSTED_PROXY_HOPS", "TRUSTED_PROXY_CIDRS", "CSP_REPORT_ONLY", "SHUTDOWN_TIMEOUT", "LOG_LEVEL", "PGSSLMODE",
-		"APP_SECRET", "BOOTSTRAP_SECRET", "MAIL_DRIVER", "SMTP_HOST", "SMTP_FROM"} {
+		"APP_SECRET", "MAIL_DRIVER", "SMTP_HOST", "SMTP_FROM"} {
 		t.Setenv(k, "")
 	}
 	t.Setenv("APP_SECRET", testAppSecret)
-	t.Setenv("BOOTSTRAP_SECRET", "main-test-bootstrap-secret")
 	t.Setenv("SMTP_HOST", "smtp.example.invalid")
 	t.Setenv("SMTP_FROM", "noreply@example.invalid")
 	for i := 0; i+1 < len(pairs); i += 2 {
@@ -281,7 +280,6 @@ func startServeEnv(t *testing.T, m mode, env map[string]string, extraModules ...
 		"APP_URL":          "http://localhost:8080",
 		"SHUTDOWN_TIMEOUT": "10s",
 		"APP_SECRET":       testAppSecret,
-		"BOOTSTRAP_SECRET": "main-test-bootstrap-secret",
 		"SMTP_HOST":        "smtp.example.invalid",
 		"SMTP_FROM":        "noreply@example.invalid",
 	}

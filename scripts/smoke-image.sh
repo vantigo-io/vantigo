@@ -76,10 +76,9 @@ done
 env_args=(
   -e "DATABASE_URL=postgres://vantigo:vantigo@$PG:5432/vantigo"
   -e "APP_URL=http://localhost:$APP_PORT"
-  # Presence only: this run is production mode and never sends mail or
-  # exercises bootstrap, but config.Load requires all of these to start.
+  # Presence only: this run is production mode and never sends mail, but
+  # config.Load requires all of these to start.
   -e APP_SECRET=smoke-test-app-secret-at-least-32-bytes-long
-  -e BOOTSTRAP_SECRET=smoke-test-bootstrap-secret
   -e SMTP_HOST=smtp.example.invalid
   -e SMTP_FROM=noreply@example.invalid
 )

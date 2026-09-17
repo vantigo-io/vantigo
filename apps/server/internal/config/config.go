@@ -114,14 +114,7 @@ type Config struct {
 	// AppSecret is the process-wide key material (CSRF tokens, cookie
 	// signing, encryption of TOTP secrets). At least 32 bytes.
 	AppSecret []byte
-	// BootstrapSecret authenticates the one-time bootstrap endpoint that
-	// creates the first Owner. Required outside development; never
-	// generated or logged there, unlike development's own fallback.
-	BootstrapSecret string
-	// SystemAdminEmail, when it matches a bootstrapped Owner's email
-	// case-insensitively, also grants that account SystemAdmin.
-	SystemAdminEmail string
-	Sessions         SessionConfig
+	Sessions  SessionConfig
 
 	OwnersRequireMFA         bool
 	OwnersAllowInsecureNoMFA bool
@@ -297,8 +290,6 @@ func Load(env map[string]string) (*Config, error) {
 	c.Branding = branding(&p, env)
 
 	c.AppSecret = appSecret(&p, env)
-	c.BootstrapSecret = bootstrapSecret(&p, env, c)
-	c.SystemAdminEmail = strings.TrimSpace(env["SYSTEM_ADMIN_EMAIL"])
 	c.Sessions = sessions(&p, env)
 
 	c.OwnersRequireMFA = ownersRequireMFA(&p, env, c)
@@ -624,19 +615,6 @@ func appSecret(p *problems, env map[string]string) []byte {
 		return nil
 	}
 	return []byte(v)
-}
-
-// bootstrapSecret is required outside development, where a blank value
-// counts as missing, as .NET's IsNullOrWhiteSpace check did
-// (SV/BootstrapSecretProvider.cs:21-33). A set value is kept verbatim,
-// surrounding spaces included. A development-only fallback (generated and
-// logged) is the caller's concern, not config's.
-func bootstrapSecret(p *problems, env map[string]string, c *Config) string {
-	v := env["BOOTSTRAP_SECRET"]
-	if strings.TrimSpace(v) == "" && !c.IsDevelopment() {
-		p.add("BOOTSTRAP_SECRET", "is required outside development")
-	}
-	return v
 }
 
 // sessions parses the four session bounds and rejects a privileged bound

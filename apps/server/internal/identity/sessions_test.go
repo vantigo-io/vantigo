@@ -125,11 +125,11 @@ func TestSessionRevocation_SelfRevocationRequiresAuthentication(t *testing.T) {
 }
 
 // Ported from IdentitySessionRevocationIntegrationTests.SystemAdminRevokesAnotherAccountsSessions.
-// The .NET factory's Owner is its configured SystemAdmin; here
-// SYSTEM_ADMIN_EMAIL makes the bootstrap Owner one.
+// The .NET factory's Owner is its configured SystemAdmin; here every
+// bootstrap Owner is one.
 func TestSessionRevocation_SystemAdminRevokesAnotherAccountsSessions(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	const email = "victim@example.test"
 	victimID := h.seedUser(t, email, userPassword, identity.RoleUserID)
 	victim := h.login(t, email, userPassword)
@@ -166,7 +166,7 @@ func TestSessionRevocation_SystemAdminRevokesAnotherAccountsSessions(t *testing.
 // Ported from IdentitySessionRevocationIntegrationTests.RevokedAccountCanSignInAgain.
 func TestSessionRevocation_RevokedAccountCanSignInAgain(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	const email = "user@example.test"
 	id := h.seedUser(t, email, userPassword, identity.RoleUserID)
 	administrator, _ := h.bootstrapOwner(t)
@@ -178,14 +178,16 @@ func TestSessionRevocation_RevokedAccountCanSignInAgain(t *testing.T) {
 }
 
 // Ported from IdentitySessionRevocationIntegrationTests.NonAdministratorCannotRevokeAnotherAccountsSessions.
-// An Owner who is not a SystemAdmin is refused too.
+// An Owner who is not a SystemAdmin (seeded directly, since every bootstrap
+// Owner is one) is refused too.
 func TestSessionRevocation_NonAdministratorCannotRevokeAnotherAccountsSessions(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	target := h.seedUser(t, "target@example.test", userPassword, identity.RoleUserID)
 	h.seedUser(t, "caller@example.test", userPassword, identity.RoleUserID)
 	targetClient := h.login(t, "target@example.test", userPassword)
-	owner, _ := h.bootstrapOwner(t)
+	h.seedUser(t, ownerEmail, ownerPassword, identity.RoleOwnerID)
+	owner := h.login(t, ownerEmail, ownerPassword)
 
 	for name, c := range map[string]*client{"User": h.login(t, "caller@example.test", userPassword), "Owner": owner} {
 		if r := c.do(http.MethodPost, revokePathFor(target), nil); r.status != http.StatusForbidden || r.code() != "forbidden" {
@@ -198,7 +200,7 @@ func TestSessionRevocation_NonAdministratorCannotRevokeAnotherAccountsSessions(t
 // Ported from IdentitySessionRevocationIntegrationTests.RevokingAnUnknownAccountReturnsNotFound.
 func TestSessionRevocation_RevokingAnUnknownAccountReturnsNotFound(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	administrator, _ := h.bootstrapOwner(t)
 
 	r := administrator.do(http.MethodPost, revokePathFor(uuid.New()), nil)
@@ -238,7 +240,7 @@ func TestSessionRevocation_RotatingTheStampEndsTheOtherSessionsButNotTheCallers(
 // them out (EA/SessionEndpoints.cs:91-94).
 func TestSessionRevocation_SystemAdminRevokingThemselvesIsSignedOut(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	administrator, adminID := h.bootstrapOwner(t)
 	token := administrator.cookie(identity.SessionCookieName)
 
@@ -262,7 +264,7 @@ func TestSessionRevocation_SystemAdminRevokingThemselvesIsSignedOut(t *testing.T
 // revocation of another account alike.
 func TestSessionRevocation_BothRevocationsSpendResetLinks(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	admin, _ := h.bootstrapOwner(t)
 
 	for _, via := range []string{"self", "system"} {

@@ -283,9 +283,9 @@ yet".
 ## Local break-glass Owner and MFA
 
 Keep at least one local Owner account as the break-glass path even when OIDC is
-enabled. Create the first Owner through `/setup` with the one-time
-`BOOTSTRAP_SECRET`, then remove or rotate that secret. Local password login, passkeys
-and local MFA are independent of the external provider.
+enabled. Create the first Owner through `/setup` on the fresh installation, before
+anyone else can reach it; that account is also the SystemAdmin. Local password login,
+passkeys and local MFA are independent of the external provider.
 
 With `OWNERS_REQUIRE_MFA=1` (the default outside development), Owner and SystemAdmin
 operations require a second factor — a TOTP code, a recovery code or a passkey. Store
@@ -327,7 +327,7 @@ successfully, then `docker compose up -d vantigo` as described in the
 
 ## Secret hygiene checklist
 
-- Never commit client secrets, SCIM tokens, bootstrap secrets, `APP_SECRET`, token
+- Never commit client secrets, SCIM tokens, `APP_SECRET`, token
   files or real tenant identifiers.
 - Do not put secrets in `vantigo.env.example`, Compose YAML, container images, logs,
   tickets or shell history. The committed examples use placeholders only.

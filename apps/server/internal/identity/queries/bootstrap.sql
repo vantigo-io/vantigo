@@ -10,13 +10,6 @@ SELECT (EXISTS (SELECT 1 FROM identity.bootstrap_state WHERE id = 1)
          WHERE r.name = 'Owner'
      ))::boolean AS consumed;
 
--- name: InstallationInUse :one
--- InstallationInUse reports whether the installation is past its first run:
--- any user exists, or the bootstrap marker does
--- (SV/SystemAdminBootstrapper.cs:57-58).
-SELECT (EXISTS (SELECT 1 FROM identity.users)
-     OR EXISTS (SELECT 1 FROM identity.bootstrap_state WHERE id = 1))::boolean AS in_use;
-
 -- name: InsertBootstrapState :exec
 INSERT INTO identity.bootstrap_state (id, completed_at)
 VALUES (1, @completed_at::timestamptz);

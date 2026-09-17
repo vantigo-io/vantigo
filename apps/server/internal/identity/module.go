@@ -134,10 +134,8 @@ func Module(a *Access) module.Module {
 // body. The SCIM operations are not in limits: their limit is keyed by the
 // connection, which the router's per-address limits cannot be.
 //
-// The server is built here, once per mount, which is once per process: the
-// bootstrap secret is resolved then, so /bootstrap and /bootstrap-status
-// share the one value, the generated development secret included, that was
-// logged; and sign-in's dummy password hash is computed then too.
+// The server is built here, once per mount, which is once per process:
+// sign-in's dummy password hash is computed then.
 func mount(a *Access, d module.Deps) (http.Handler, error) {
 	a.catalog = d.Catalog // before any request: AuthorizationManagement reads it
 	router := module.NewRouter(module.RouterOptions{
