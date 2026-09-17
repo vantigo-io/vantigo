@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { appConfig, hasSupportContact } from "./app-config";
 import { registerCatalog, useI18n } from "./i18n";
 import { shellCatalog } from "./i18n/catalogs/shell";
+import { type ShellLinkComponent, ShellLinkProvider } from "./link-context";
 import { vantigoLogo } from "./logo";
 
 registerCatalog("shell", shellCatalog);
@@ -19,6 +20,8 @@ export interface AppShellLayoutProps {
   nav?: (closeMobileNav: () => void) => ReactNode;
   /** Optional overlay rendered with access to the mobile-nav close callback. */
   overlay?: (closeMobileNav: () => void) => ReactNode;
+  /** The host's router link, so shell components (breadcrumbs) navigate client-side. Plain anchors without it. */
+  linkComponent?: ShellLinkComponent;
   children: ReactNode;
 }
 
@@ -71,13 +74,21 @@ export const SupportContactLine = () => {
  * the right; the active app's navigation in the sidebar (when it has one);
  * and — when support contact details are configured — a slim support footer.
  */
-export const AppShellLayout = ({ title, headerCenter, headerActions, nav, overlay, children }: AppShellLayoutProps) => {
+export const AppShellLayout = ({
+  title,
+  headerCenter,
+  headerActions,
+  nav,
+  overlay,
+  linkComponent,
+  children,
+}: AppShellLayoutProps) => {
   const [opened, { toggle, close }] = useDisclosure();
   const { t } = useI18n("shell");
   const config = appConfig();
   const showFooter = hasSupportContact(config);
 
-  return (
+  const shell = (
     <AppShell
       header={{ height: 60 }}
       navbar={nav ? { width: 260, breakpoint: "sm", collapsed: { mobile: !opened } } : undefined}
@@ -143,4 +154,5 @@ export const AppShellLayout = ({ title, headerCenter, headerActions, nav, overla
       )}
     </AppShell>
   );
+  return linkComponent ? <ShellLinkProvider link={linkComponent}>{shell}</ShellLinkProvider> : shell;
 };
