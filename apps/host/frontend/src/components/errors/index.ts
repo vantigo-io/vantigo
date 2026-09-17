@@ -1,3 +1,4 @@
+export { AppCrashFallback, AppErrorBoundary } from "./app-error-boundary";
 export * from "./dev-error-details";
 export * from "./error-page";
 export * from "./forbidden";
