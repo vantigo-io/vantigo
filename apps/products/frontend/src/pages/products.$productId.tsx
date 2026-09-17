@@ -60,7 +60,11 @@ export const ProductDetailsPage = () => {
   const { data: product } = useSuspenseQuery(productQueryOptions(productId));
   const variant = product.variants?.[0];
   const prices = variant?.effectivePrices ?? product.effectivePrices;
-  const { data: categories } = useQuery({ ...categoriesQueryOptions(), enabled: product.category !== null });
+  // The server omits empty logistics fields rather than sending null.
+  const hasLogistics = [product.weightKg, product.lengthCm, product.widthCm, product.heightCm].some(
+    (value) => value != null,
+  );
+  const { data: categories } = useQuery({ ...categoriesQueryOptions(), enabled: product.category != null });
   const [modalState, setModalState] = useState<ProductModalState | null>(null);
   const [priceModal, setPriceModal] = useState<PriceModalState | null>(null);
   const [variantModal, setVariantModal] = useState<VariantModalState | null>(null);
@@ -273,24 +277,27 @@ export const ProductDetailsPage = () => {
             </Text>
           </Group>
           {product.description && <Text style={{ whiteSpace: "pre-wrap" }}>{product.description}</Text>}
-          {(product.weightKg !== null ||
-            product.lengthCm !== null ||
-            product.widthCm !== null ||
-            product.heightCm !== null) && (
+          {product.type === "Goods" && (
             <Stack gap={4}>
               <Title order={4}>{t("prices.logistics")}</Title>
-              <Group>
-                <Text>
-                  <b>{t("prices.weight")}:</b>{" "}
-                  {product.weightKg !== null ? `${product.weightKg} kg` : t("common.noValue")}
+              {hasLogistics ? (
+                <Group>
+                  <Text>
+                    <b>{t("prices.weight")}:</b>{" "}
+                    {product.weightKg != null ? `${product.weightKg} kg` : t("common.noValue")}
+                  </Text>
+                  <Text>
+                    <b>{t("prices.dimensions")}:</b>{" "}
+                    {[product.lengthCm, product.widthCm, product.heightCm]
+                      .map((value) => (value != null ? `${value} cm` : t("common.noValue")))
+                      .join(" × ")}
+                  </Text>
+                </Group>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  {t("prices.noLogistics")}
                 </Text>
-                <Text>
-                  <b>{t("prices.dimensions")}:</b>{" "}
-                  {[product.lengthCm, product.widthCm, product.heightCm]
-                    .map((value) => (value !== null ? `${value} cm` : "—"))
-                    .join(" × ")}
-                </Text>
-              </Group>
+              )}
             </Stack>
           )}
         </Stack>
