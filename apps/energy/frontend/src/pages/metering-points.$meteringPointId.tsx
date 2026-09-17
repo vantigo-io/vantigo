@@ -1,22 +1,9 @@
-import {
-  Alert,
-  Anchor,
-  Badge,
-  Breadcrumbs,
-  Button,
-  Card,
-  Group,
-  SegmentedControl,
-  Stack,
-  Table,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
-import { IconBolt, IconCalendar, IconPencil, IconPlus } from "@tabler/icons-react";
+import { IconCalendar, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
 import { customersQueryOptions } from "../api/customers";
@@ -91,19 +78,9 @@ export const MeteringPointDetailsPage = () => {
   const hasActivePeriod = periods?.some((period) => period.status === "Active") ?? false;
   return (
     <Stack gap="lg">
-      <Breadcrumbs>
-        <Anchor component={Link} to={"/energy/metering-points" as never} size="sm">
-          {t("meteringPoints")}
-        </Anchor>
-        <Text size="sm">{point.gsrn}</Text>
-      </Breadcrumbs>
       <PageHeader
-        eyebrow={t("energy")}
-        title={
-          <>
-            <IconBolt size={28} /> {point.gsrn}
-          </>
-        }
+        breadcrumbs={[{ label: t("meteringPoints"), to: "/energy/metering-points" }, { label: point.gsrn }]}
+        title={point.gsrn}
         description={`${point.address.streetAddress}, ${point.address.postalCode} ${point.address.city}`}
         actions={
           <Button

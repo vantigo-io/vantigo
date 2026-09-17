@@ -18,7 +18,7 @@ import {
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertCircle, IconCategory, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconAlertCircle, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KpiCard, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
@@ -143,11 +143,7 @@ export const CategoriesPage = () => {
     <Stack gap="lg">
       <PageHeader
         eyebrow={t("navigation.products")}
-        title={
-          <>
-            <IconCategory size={28} /> {t("navigation.categories")}
-          </>
-        }
+        title={t("navigation.categories")}
         description={t("categories.description")}
         actions={
           <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>

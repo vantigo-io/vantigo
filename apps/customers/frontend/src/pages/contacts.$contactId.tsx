@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Anchor,
-  Breadcrumbs,
   Button,
   Card,
   Center,
@@ -50,16 +49,9 @@ export const ContactDetailsPage = () => {
 
   return (
     <Stack gap="lg">
-      <Breadcrumbs>
-        <Anchor component={Link} to={"/customers/contacts" as never} size="sm">
-          {t("contacts")}
-        </Anchor>
-        <Text size="sm">{name}</Text>
-      </Breadcrumbs>
-
       <Stack gap="xs">
         <PageHeader
-          eyebrow={t("customers")}
+          breadcrumbs={[{ label: t("contacts"), to: "/customers/contacts" }, { label: name }]}
           title={name}
           description={t("contactDetailsDescription")}
           actions={
