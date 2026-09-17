@@ -68,6 +68,29 @@ export const SupportContactLine = () => {
   );
 };
 
+/** Where the logo leads: the "Home" app. */
+const HOME_PATH = "/dashboard";
+
+/** The logo's link home, client-side through the host's link component when it has one. */
+const HomeLink = ({
+  linkComponent: Link,
+  label,
+  children,
+}: {
+  linkComponent?: ShellLinkComponent;
+  label: string;
+  children: ReactNode;
+}) =>
+  Link ? (
+    <Link to={HOME_PATH} aria-label={label}>
+      {children}
+    </Link>
+  ) : (
+    <a href={HOME_PATH} aria-label={label}>
+      {children}
+    </a>
+  );
+
 /**
  * The shared authenticated application shell: logo and app name on the left
  * of the header, search in the center, the app switcher and account menu on
@@ -106,7 +129,9 @@ export const AppShellLayout = ({
               aria-label={t(opened ? "closeNavigation" : "openNavigation")}
             />
           )}
-          <Image src={config.logoUrl ?? vantigoLogo} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" />
+          <HomeLink linkComponent={linkComponent} label={t("goToDashboard")}>
+            <Image src={config.logoUrl ?? vantigoLogo} alt={config.title} h={32} w="auto" maw="30vw" fit="contain" />
+          </HomeLink>
           <Divider orientation="vertical" my="md" />
           <Title
             order={4}

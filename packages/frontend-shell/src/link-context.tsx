@@ -6,7 +6,7 @@ import { type ComponentType, createContext, type ReactNode, useContext } from "r
  * component to `AppShellLayout`, and shell components that render links
  * (breadcrumbs) pick it up from here.
  */
-export type ShellLinkComponent = ComponentType<{ to: string; children?: ReactNode }>;
+export type ShellLinkComponent = ComponentType<{ to: string; children?: ReactNode; "aria-label"?: string }>;
 
 const ShellLinkContext = createContext<ShellLinkComponent | undefined>(undefined);
 
