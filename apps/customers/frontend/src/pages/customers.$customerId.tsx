@@ -1,9 +1,8 @@
-import { Anchor, Badge, Breadcrumbs, Button, Group, Stack, Text } from "@mantine/core";
+import { Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { IconPencil } from "@tabler/icons-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { customerQueryOptions, legalIdentityQueryOptions } from "../api/customers";
 import {
@@ -19,7 +18,12 @@ import { CustomerFormModal, type CustomerModalState } from "./-customer-form-mod
 import { CustomerTimeline } from "./-customer-timeline";
 import "../i18n";
 
-export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => {
+/**
+ * The customer page's header. `actions` lets the host append entries that
+ * lead out of the page (the Communications inbox, say) next to the
+ * customer's own actions, without this package knowing about other modules.
+ */
+export const CustomerDetailHeader = ({ customerId, actions }: { customerId: number; actions?: ReactNode }) => {
   const { t, formatters } = useI18n("customers");
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
@@ -28,16 +32,9 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
 
   return (
     <Stack gap="lg">
-      <Breadcrumbs>
-        <Anchor component={Link} to={"/customers" as never} size="sm">
-          {t("customers")}
-        </Anchor>
-        <Text size="sm">{customer.name}</Text>
-      </Breadcrumbs>
-
       <Stack gap="xs">
         <PageHeader
-          eyebrow={t("customers")}
+          breadcrumbs={[{ label: t("customers"), to: "/customers" }, { label: customer.name }]}
           title={customer.name}
           description={
             identity ? (
@@ -79,6 +76,7 @@ export const CustomerDetailHeader = ({ customerId }: { customerId: number }) => 
               >
                 {t("editCustomer")}
               </Button>
+              {actions}
             </Group>
           }
         />
