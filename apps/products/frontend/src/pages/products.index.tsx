@@ -29,13 +29,15 @@ interface ProductsSearch {
   search: string;
   status: ProductStatus | "";
   categoryId: number | typeof UNCATEGORIZED | "";
+  /** Arrive with the create form open (Spotlight's quick action). Only ever present when true. */
+  create?: boolean;
 }
 
 const statusColor = (status: ProductStatus) => ({ Draft: "gray", Active: "teal", Discontinued: "red" })[status];
 const nokPrice = (product: ProductResponse) => product.effectivePrices.find((price) => price.currency === "NOK");
 export const ProductsPage = () => {
   const { t, formatters } = useI18n("products");
-  const { page, search, status, categoryId } = useSearch({ strict: false }) as ProductsSearch;
+  const { page, search, status, categoryId, create } = useSearch({ strict: false }) as ProductsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
   const [searchInput, setSearchInput] = useState(search);
   const [debouncedSearch] = useDebouncedValue(searchInput, 300);
@@ -44,6 +46,20 @@ export const ProductsPage = () => {
     if (debouncedSearch !== search)
       void navigate({ search: { page: 1, search: debouncedSearch, status, categoryId }, replace: true });
   }, [debouncedSearch, search, status, categoryId, navigate]);
+  // Open the create form when `create` arrives in the URL, once per arrival:
+  // state adjusted during render from the previous render's value, the way
+  // React documents, rather than an effect that would flash the closed form.
+  const [createSeen, setCreateSeen] = useState(false);
+  if (create && !createSeen) {
+    setCreateSeen(true);
+    setModalState({ mode: "create" });
+  }
+  if (!create && createSeen) setCreateSeen(false);
+  const closeModal = () => {
+    setModalState(null);
+    // The intent is consumed: closing the form must not reopen it on refresh or back.
+    if (create) void navigate({ search: { page, search, status, categoryId }, replace: true });
+  };
   const { data, isPending, isError, error } = useQuery(
     productsQueryOptions({
       page,
@@ -83,7 +99,7 @@ export const ProductsPage = () => {
           </Button>
         }
       />
-      <ProductFormModal state={modalState} onClose={() => setModalState(null)} />
+      <ProductFormModal state={modalState} onClose={closeModal} />
       <Card withBorder padding="lg" radius="md">
         <Stack gap="md">
           <Group align="end">

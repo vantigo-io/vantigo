@@ -34,11 +34,13 @@ const PAGE_SIZE = 25;
 interface CustomersSearch {
   page: number;
   search: string;
+  /** Arrive with the create form open (Spotlight's quick action). Only ever present when true. */
+  create?: boolean;
 }
 
 export const CustomersPage = () => {
   const { t, formatters } = useI18n("customers");
-  const { page, search } = useSearch({ strict: false }) as CustomersSearch;
+  const { page, search, create } = useSearch({ strict: false }) as CustomersSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 
   const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
@@ -46,6 +48,20 @@ export const CustomersPage = () => {
     onNavigate: (next, options) => navigate({ search: next, ...options }),
   });
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
+  // Open the create form when `create` arrives in the URL, once per arrival:
+  // state adjusted during render from the previous render's value, the way
+  // React documents, rather than an effect that would flash the closed form.
+  const [createSeen, setCreateSeen] = useState(false);
+  if (create && !createSeen) {
+    setCreateSeen(true);
+    setModalState({ mode: "create" });
+  }
+  if (!create && createSeen) setCreateSeen(false);
+  const closeModal = () => {
+    setModalState(null);
+    // The intent is consumed: closing the form must not reopen it on refresh or back.
+    if (create) navigate({ search: { page, search }, replace: true });
+  };
 
   const { data, isPending, isError, error } = useQuery(
     customersQueryOptions({
@@ -80,7 +96,7 @@ export const CustomersPage = () => {
         }
       />
 
-      <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
+      <CustomerFormModal state={modalState} onClose={closeModal} />
 
       {stats && (
         <SimpleGrid cols={{ base: 2, sm: 3, lg: showIdentity ? 7 : 3 }} spacing="sm">
