@@ -29,12 +29,8 @@
 }
 .inbox-grid {
   display: grid;
-  grid-template-columns: 190px minmax(260px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
   min-height: 680px;
-}
-.inbox-filters {
-  padding: 16px 10px;
-  border-right: 1px solid var(--mantine-color-default-border);
 }
 .conversation-list {
   border-right: 1px solid var(--mantine-color-default-border);
@@ -117,20 +113,12 @@
 }
 @media (max-width: 900px) {
   .inbox-grid {
-    grid-template-columns: 170px minmax(240px, 320px) minmax(0, 1fr);
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
   }
 }
 @media (max-width: 700px) {
   .inbox-grid {
     display: block;
-  }
-  .inbox-filters {
-    display: none;
-  }
-  .inbox-grid.show-filters .inbox-filters {
-    display: block;
-    border-right: 0;
-    border-bottom: 1px solid var(--mantine-color-default-border);
   }
   .conversation-list {
     border-right: 0;

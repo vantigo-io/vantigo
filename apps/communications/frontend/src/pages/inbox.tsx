@@ -1,9 +1,8 @@
-import { Alert, Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { IconInbox } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
 import {
   addTag,
   type ConversationStatus,
@@ -38,7 +37,6 @@ export function InboxPage() {
   const detail = useQuery(conversationQueryOptions(selectedId));
   const tags = useQuery(tagsQueryOptions());
   const client = useQueryClient();
-  const [mobileFilters, setMobileFilters] = useState(false);
   const invalidate = () =>
     Promise.all([
       client.invalidateQueries({ queryKey: ["conversations"] }),
@@ -71,17 +69,14 @@ export function InboxPage() {
             <IconInbox size={19} />
             <Text fw={700}>{t("sharedInbox")}</Text>
           </Group>
-          <Button variant="subtle" hiddenFrom="sm" onClick={() => setMobileFilters((value) => !value)}>
-            {t("filters")}
-          </Button>
-          <TextInput placeholder={t("searchConversations")} size="sm" className="inbox-search" disabled />
-        </Group>
-        <div className={`inbox-grid ${mobileFilters ? "show-filters" : ""}`}>
           <InboxFilters
             search={search}
             tags={tags.data || []}
             onSearchChange={(nextSearch) => void navigate({ search: nextSearch })}
           />
+          <TextInput placeholder={t("searchConversations")} size="sm" className="inbox-search" disabled />
+        </Group>
+        <div className="inbox-grid">
           <ConversationList
             data={list.data}
             isPending={list.isPending}

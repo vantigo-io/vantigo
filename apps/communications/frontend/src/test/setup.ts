@@ -1,7 +1,5 @@
-import * as matchers from "@testing-library/jest-dom/matchers";
-import { expect } from "vitest";
-
-expect.extend(matchers);
+// Registers the matchers and their types on vitest's `expect`.
+import "@testing-library/jest-dom/vitest";
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
