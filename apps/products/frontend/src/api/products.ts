@@ -2,7 +2,8 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { NotFoundError, request } from "./request";
 
 export { ApiValidationError, NotFoundError } from "./request";
-export type ProductType = "Goods" | "Service";
+export const PRODUCT_TYPES = ["Goods", "Service"] as const;
+export type ProductType = (typeof PRODUCT_TYPES)[number];
 export type ProductStatus = "Draft" | "Active" | "Discontinued";
 
 export interface PriceRow {
@@ -28,16 +29,18 @@ export interface TaxCategoryRef {
   kind: string;
   rate: number;
 }
+// Optional fields mirror api-schema.d.ts: the server omits an empty value
+// rather than sending null, so readers must treat undefined and null alike.
 export interface VariantResponse {
   id: number;
   sku: string;
-  barcode: string | null;
+  barcode?: string | null;
   unit: string;
-  standardCost: number | null;
-  weightKg: number | null;
-  lengthCm: number | null;
-  widthCm: number | null;
-  heightCm: number | null;
+  standardCost?: number | null;
+  weightKg?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
   optionValues: Record<string, string>;
   effectivePrices: PriceRow[];
   createdAt: string;
@@ -58,19 +61,19 @@ export interface VariantInput {
 export interface ProductResponse {
   id: number;
   name: string;
-  sku: string | null;
+  sku?: string | null;
   type: ProductType;
   status: ProductStatus;
-  unit: string | null;
-  standardCost: number | null;
+  unit?: string | null;
+  standardCost?: number | null;
   taxCategory: TaxCategoryRef;
-  description: string | null;
-  category: ProductCategoryRef | null;
-  barcode: string | null;
-  weightKg: number | null;
-  lengthCm: number | null;
-  widthCm: number | null;
-  heightCm: number | null;
+  description?: string | null;
+  category?: ProductCategoryRef | null;
+  barcode?: string | null;
+  weightKg?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
   effectivePrices: PriceRow[];
   variants: VariantResponse[];
   createdAt: string;
