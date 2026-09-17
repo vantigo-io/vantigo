@@ -44,6 +44,91 @@ func (q *Queries) ArchiveProduct(ctx context.Context, arg ArchiveProductParams) 
 	return i, err
 }
 
+const catalogVariant = `-- name: CatalogVariant :one
+
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.id = $1
+`
+
+type CatalogVariantRow struct {
+	ID            int32
+	ProductID     int32
+	ProductName   string
+	Sku           string
+	Unit          string
+	ProductType   string
+	ProductStatus string
+}
+
+// Catalog (Task 3, contracts.ProductCatalog): the read-only cross-module
+// view of a variant, joined with its product for the fields another module
+// may reference — never the detailed attributes (barcode, weight,
+// dimensions) that stay behind products' own contract and permissions.
+// CatalogVariant is contracts.ProductCatalog.Variant's lookup.
+func (q *Queries) CatalogVariant(ctx context.Context, id int32) (CatalogVariantRow, error) {
+	row := q.db.QueryRow(ctx, catalogVariant, id)
+	var i CatalogVariantRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProductID,
+		&i.ProductName,
+		&i.Sku,
+		&i.Unit,
+		&i.ProductType,
+		&i.ProductStatus,
+	)
+	return i, err
+}
+
+const catalogVariants = `-- name: CatalogVariants :many
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.id = ANY($1::int[])
+`
+
+type CatalogVariantsRow struct {
+	ID            int32
+	ProductID     int32
+	ProductName   string
+	Sku           string
+	Unit          string
+	ProductType   string
+	ProductStatus string
+}
+
+// CatalogVariants batch-loads the same fields as CatalogVariant for a set of
+// ids; an id that does not exist is simply absent from the result.
+func (q *Queries) CatalogVariants(ctx context.Context, ids []int32) ([]CatalogVariantsRow, error) {
+	rows, err := q.db.Query(ctx, catalogVariants, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CatalogVariantsRow
+	for rows.Next() {
+		var i CatalogVariantsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.ProductName,
+			&i.Sku,
+			&i.Unit,
+			&i.ProductType,
+			&i.ProductStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const categoryExists = `-- name: CategoryExists :one
 SELECT EXISTS(SELECT 1 FROM products.product_categories WHERE id = $1)
 `

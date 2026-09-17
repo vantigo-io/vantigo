@@ -474,3 +474,23 @@ FROM products.products
 WHERE created_at >= @range_from::timestamptz AND created_at < @range_to::timestamptz
 GROUP BY day
 ORDER BY day;
+
+-- Catalog (Task 3, contracts.ProductCatalog): the read-only cross-module
+-- view of a variant, joined with its product for the fields another module
+-- may reference — never the detailed attributes (barcode, weight,
+-- dimensions) that stay behind products' own contract and permissions.
+
+-- name: CatalogVariant :one
+-- CatalogVariant is contracts.ProductCatalog.Variant's lookup.
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.id = @id;
+
+-- name: CatalogVariants :many
+-- CatalogVariants batch-loads the same fields as CatalogVariant for a set of
+-- ids; an id that does not exist is simply absent from the result.
+SELECT v.id, v.product_id, p.name AS product_name, v.sku, v.unit, p.type AS product_type, p.status AS product_status
+FROM products.product_variants v
+JOIN products.products p ON p.id = v.product_id
+WHERE v.id = ANY(@ids::int[]);
