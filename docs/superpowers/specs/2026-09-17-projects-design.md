@@ -316,7 +316,7 @@ type ProductCatalog interface {
     ListPrice(ctx, variantID int32, currency string, at time.Time) (*Money, error)
 }
 type VariantEntry struct { ID, ProductID int32; ProductName, SKU, Unit, ProductType, ProductStatus string }
-type Money struct { Amount string; Currency string } // decimal string, never float
+type Money struct { Amount float64; Currency string } // float64 like products' own price DTOs; stored numeric(12,2)
 
 // Provided by projects. No consumer yet; this is what Time tracking builds on.
 type ProjectDirectory interface {
@@ -326,7 +326,7 @@ type ProjectDirectory interface {
     ProjectsForUser(ctx, userID uuid.UUID) ([]ProjectEntry, error)
 }
 type ProjectEntry struct { ID int32; Code, Name string; CustomerID *int32; Status string; OpenForWork bool; BillingType string }
-type BillingLineEntry struct { ID, ProjectID int32; Code string; VariantID int32; PricingMode string; FixedAmount, DiscountPercent *string; Active bool }
+type BillingLineEntry struct { ID, ProjectID int32; Code string; VariantID int32; PricingMode string; FixedAmount, DiscountPercent *float64; Active bool }
 ```
 
 `ListPrice` reuses Products' existing active-price resolution (campaign price
@@ -467,8 +467,9 @@ Backend, `package projects_test` against real Postgres via `modtest`:
 - Financial shaping: fields absent for members and viewers, present for
   managers, `view-financials` and `manage-all`, on get, list and lines.
 - Roles: add / change / remove, disabled users, assignable-user search.
-- Billing lines with a real products provider, and with products **off**
-  (409, lines absent, `billingLinesAvailable: false`).
+- Billing lines against a fake `ProductCatalog` (depguard forbids importing
+  products, even in tests — the same seam energy uses for customers), and with
+  no catalog at all, i.e. products **off** (409, `billingLinesAvailable: false`).
 - Concurrency: stale revision → 409; two creates racing for one code → one
   wins, one gets the field error.
 - Timeline: one entry per state change, written in the same transaction;
