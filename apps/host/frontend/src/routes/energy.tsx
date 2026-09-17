@@ -1,7 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AppLayout } from "./-app-layout";
+import { appLayoutOptions } from "./-app-layout";
 
-export const Route = createFileRoute("/energy")({
-  staticData: { app: "energy" },
-  component: () => <AppLayout app="energy" />,
-});
+export const Route = createFileRoute("/energy")(appLayoutOptions("energy"));

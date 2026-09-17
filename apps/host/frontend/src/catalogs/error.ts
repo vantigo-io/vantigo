@@ -30,7 +30,6 @@ const en = {
   contactAdministrator: "Contact your administrator for access.",
   moduleNotEnabledTitle: "{{app}} is not enabled",
   moduleNotEnabledBody: "This module is not enabled in this installation. Contact your administrator.",
-  errorDashboard: "Go to dashboard",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -63,7 +62,6 @@ const nb: { [Key in keyof typeof en]: string } = {
   contactAdministrator: "Kontakt administratoren din for tilgang.",
   moduleNotEnabledTitle: "{{app}} er ikke aktivert",
   moduleNotEnabledBody: "Denne modulen er ikke aktivert i denne installasjonen. Kontakt administratoren din.",
-  errorDashboard: "Gå til kontrollpanelet",
 };
 
 export const errorCatalog = { en, nb } as const satisfies CatalogResources;
