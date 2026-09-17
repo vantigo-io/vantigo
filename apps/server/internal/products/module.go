@@ -40,12 +40,13 @@ var limits = map[string]ratelimit.Policy{}
 // Module is products as a platform module: its contract mounted under
 // /api/v1/products/ and its ten permissions in the composed catalog. Unlike
 // customers, products publishes no contracts.CustomerDirectory — Directory
-// is left nil.
+// is left nil. It does publish a contracts.ProductCatalog (see catalog.go).
 func Module() module.Module {
 	return module.Module{
 		Name:        "products",
 		Permissions: permissions,
 		Mount:       mount,
+		Products:    newCatalog,
 	}
 }
 
