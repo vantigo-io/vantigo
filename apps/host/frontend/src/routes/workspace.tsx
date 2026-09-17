@@ -1,32 +1,22 @@
-import { IconLayoutDashboard, IconShieldCheck, IconUserPlus, IconUsers } from "@tabler/icons-react";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
 import { fetchSession, sessionQueryKey } from "../api/auth";
-import { SettingsLayout } from "../components/settings-layout";
-import "../i18n";
+import { getAuthorizationMe } from "../api/authorization";
 
+/**
+ * The workspace administration area. Admits anyone who may see one of its
+ * pages: Owners (overview, users, invitations) and authorization managers
+ * (roles and access). Each child route keeps its own, stricter gate, and the
+ * sidebar (see `areas` in apps.ts) filters by the same flags.
+ */
 export const Route = createFileRoute("/workspace")({
+  staticData: { app: "workspace" },
   beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession });
-    if (!session?.user.roles.includes("Owner")) throw redirect({ to: "/" });
+    if (session?.user.roles.includes("Owner")) return;
+    const access = session
+      ? await context.queryClient.fetchQuery({ queryKey: ["authorization", "me"], queryFn: getAuthorizationMe })
+      : undefined;
+    if (!access?.canManageAuthorization) throw redirect({ to: "/" });
   },
-  component: WorkspaceSettings,
+  component: Outlet,
 });
-
-function WorkspaceSettings() {
-  const { t } = useI18n("host");
-  return (
-    <SettingsLayout
-      title={t("systemAdmin.settings")}
-      description={t("systemAdmin.manageWorkspace")}
-      sections={[
-        { label: t("systemAdmin.overview"), to: "/workspace/overview", icon: IconLayoutDashboard },
-        { label: t("systemAdmin.users"), to: "/workspace/users", icon: IconUsers },
-        { label: t("systemAdmin.invitations"), to: "/workspace/invitations", icon: IconUserPlus },
-        { label: t("systemAdmin.roles"), to: "/workspace/roles", icon: IconShieldCheck },
-      ]}
-    >
-      <Outlet />
-    </SettingsLayout>
-  );
-}

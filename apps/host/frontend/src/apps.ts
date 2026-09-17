@@ -7,6 +7,11 @@ import {
   IconMailbox,
   IconMailOff,
   IconPackage,
+  IconReceiptTax,
+  IconShieldCheck,
+  IconShieldLock,
+  IconUser,
+  IconUserPlus,
   IconUsers,
 } from "@tabler/icons-react";
 import { accountMenuSections } from "./account-menu";
@@ -21,11 +26,28 @@ import {
 
 export type AppKey = "home" | ModuleKey;
 
+/**
+ * The administration areas: like apps they own a URL prefix, a header title
+ * and a sidebar, but they have no switcher tile (the avatar menu leads to
+ * them) and no module to be enabled.
+ */
+export type AreaKey = "settings" | "workspace" | "admin";
+
 declare module "@tanstack/react-router" {
   interface StaticDataRouteOption {
-    /** The app a route subtree belongs to. Set only on app layout routes and the dashboard. */
-    app?: AppKey;
+    /** The app or area a route subtree belongs to. Set only on layout routes and the dashboard. */
+    app?: AppKey | AreaKey;
   }
+}
+
+export interface AreaDefinition {
+  key: AreaKey;
+  /** i18n key in the host navigation catalog. */
+  label: string;
+  /** Where the area's own index route redirects. */
+  home: string;
+  /** Sidebar sections; empty means the area renders without a sidebar. */
+  navSections: readonly NavSection[];
 }
 
 export interface AppDefinition {
@@ -127,6 +149,12 @@ export const apps: readonly AppDefinition[] = [
       icon: IconCategory,
       requiredPermissions: ["products:categories-view"],
     },
+    {
+      label: "navigation.taxCategories",
+      to: "/products/tax-categories",
+      icon: IconReceiptTax,
+      requiredPermissions: ["products:tax-categories-view"],
+    },
   ]),
   moduleApp("energy", "navigation.energy", IconBolt, "/energy", [
     {
@@ -153,32 +181,89 @@ export const spotlightNavSections: readonly NavSection[] = [
   ...accountMenuSections,
 ];
 
+/**
+ * The administration areas, reached from the avatar menu. Their sidebar
+ * entries carry the same visibility flags the account menu uses, so an
+ * Owner sees the whole workspace area while an authorization manager who is
+ * not an Owner sees only Roles & access. System admin is a single page and,
+ * like Home, renders without a sidebar.
+ */
+export const areas: readonly AreaDefinition[] = [
+  {
+    key: "settings",
+    label: "navigation.settings",
+    home: "/settings/profile",
+    navSections: [
+      {
+        items: [
+          { label: "navigation.profile", to: "/settings/profile", icon: IconUser },
+          { label: "navigation.security", to: "/settings/security", icon: IconShieldLock },
+        ],
+      },
+    ],
+  },
+  {
+    key: "workspace",
+    label: "navigation.workspaceAdmin",
+    home: "/workspace/overview",
+    navSections: [
+      {
+        items: [
+          { label: "navigation.overview", to: "/workspace/overview", icon: IconLayoutDashboard, ownerOnly: true },
+          { label: "navigation.users", to: "/workspace/users", icon: IconUsers, ownerOnly: true },
+          { label: "navigation.invitations", to: "/workspace/invitations", icon: IconUserPlus, ownerOnly: true },
+          {
+            label: "navigation.rolesAccess",
+            to: "/workspace/roles",
+            icon: IconShieldCheck,
+            capability: "authorization",
+          },
+        ],
+      },
+    ],
+  },
+  { key: "admin", label: "navigation.systemAdmin", home: "/admin", navSections: [] },
+];
+
 export const appForKey = (key: AppKey): AppDefinition => {
   const app = apps.find((candidate) => candidate.key === key);
   if (!app) throw new Error(`unknown app "${key}"`);
   return app;
 };
 
-export const isAppEnabled = (app: AppDefinition, enabledModules: readonly ModuleKey[]) =>
-  app.module === undefined || enabledModules.includes(app.module);
+/** The app or area behind a key: what the root needs for the header title and sidebar. */
+export const areaForKey = (key: AppKey | AreaKey): AppDefinition | AreaDefinition => {
+  const area = [...apps, ...areas].find((candidate) => candidate.key === key);
+  if (!area) throw new Error(`unknown app or area "${key}"`);
+  return area;
+};
 
-/** The header title for an app: its label, except Home, which shows the product title (undefined). */
-export const appTitleLabel = (app: AppDefinition | undefined): string | undefined =>
+export const isArea = (value: AppDefinition | AreaDefinition): value is AreaDefinition =>
+  !("module" in value) && value.key !== "home";
+
+/** Whether the app's module is enabled; Home and the areas have no module and are always enabled. */
+export const isAppEnabled = (app: AppDefinition | AreaDefinition, enabledModules: readonly ModuleKey[]) =>
+  isArea(app) || app.module === undefined || enabledModules.includes(app.module);
+
+/** The header title for an app or area: its label, except Home, which shows the product title (undefined). */
+export const appTitleLabel = (app: AppDefinition | AreaDefinition | undefined): string | undefined =>
   app && app.key !== "home" ? app.label : undefined;
 
 /**
- * The sidebar sections to render: the active app's visible sections when the
- * app exists and its module is enabled; nothing otherwise (administration and
- * public paths, or an app the installation turned off).
+ * The sidebar sections to render: the active app's or area's visible
+ * sections when it exists and is enabled; nothing otherwise (public paths,
+ * or an app the installation turned off).
  */
 export const appNavSections = (
-  app: AppDefinition | undefined,
+  app: AppDefinition | AreaDefinition | undefined,
   enabledModules: readonly ModuleKey[],
   visibility: NavVisibilityContext,
 ): NavSection[] => (app && isAppEnabled(app, enabledModules) ? visibleNavSections(app.navSections, visibility) : []);
 
-/** The app of the deepest matched route that declares one; undefined on administration and public paths. */
-export const activeAppKey = (matches: ReadonlyArray<{ staticData?: { app?: AppKey } }>): AppKey | undefined => {
+/** The app or area of the deepest matched route that declares one; undefined on public paths. */
+export const activeAppKey = (
+  matches: ReadonlyArray<{ staticData?: { app?: AppKey | AreaKey } }>,
+): AppKey | AreaKey | undefined => {
   for (let index = matches.length - 1; index >= 0; index -= 1) {
     const key = matches[index]?.staticData?.app;
     if (key) return key;
@@ -201,7 +286,7 @@ export interface SwitcherTile {
 export const switcherTiles = (
   permissions: string[] | undefined,
   enabledModules: readonly ModuleKey[],
-  activeKey: AppKey | undefined,
+  activeKey: AppKey | AreaKey | undefined,
 ): SwitcherTile[] =>
   apps
     .filter((app) => hasPermissions(permissions, app.requiredPermissions))

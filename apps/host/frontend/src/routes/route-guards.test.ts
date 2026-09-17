@@ -5,7 +5,9 @@ import { Route as RootRoute } from "./__root";
 import { Route as CommunicationsIndexRoute } from "./communications/index";
 import { Route as EnergyIndexRoute } from "./energy/index";
 import { Route as IndexRoute } from "./index";
+import { Route as SettingsIndexRoute } from "./settings/index";
 import { Route as WorkspaceRoute } from "./workspace";
+import { Route as WorkspaceIndexRoute } from "./workspace/index";
 import { Route as WorkspaceInvitationsRoute } from "./workspace/invitations";
 import { Route as WorkspaceOverviewRoute } from "./workspace/overview";
 import { Route as WorkspaceRolesRoute } from "./workspace/roles";
@@ -112,12 +114,12 @@ describe("the root route's MFA enrolment gate", () => {
   });
 });
 
-// The five routes behind the /workspace segment. The parent and three of the
-// children gate on the Owner role; /workspace/roles gates on the authorization
-// capability instead. This segment exists precisely so that the gate is not
+// The routes behind the /workspace segment. Three children gate on the Owner
+// role; /workspace/roles gates on the authorization capability instead; the
+// layout admits whoever passes either, so its sidebar can offer each user the
+// pages they may open. This segment exists precisely so that the gate is not
 // shared with the personal /settings tree — see the frontend de-tenanting plan.
 const ownerGatedRoutes: [string, GuardedRoute][] = [
-  ["/workspace", WorkspaceRoute],
   ["/workspace/overview", WorkspaceOverviewRoute],
   ["/workspace/users", WorkspaceUsersRoute],
   ["/workspace/invitations", WorkspaceInvitationsRoute],
@@ -148,7 +150,33 @@ describe("workspace administration route guards", () => {
 
   it("does not let a system admin bypass the Owner requirement", async () => {
     fetchSession.mockResolvedValue(sessionWithRoles(["Member"], true));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: false });
 
+    await expectRedirectTo(WorkspaceRoute, "/");
+    await expectRedirectTo(WorkspaceUsersRoute, "/");
+  });
+
+  it("admits an Owner to the /workspace layout without consulting the authorization capability", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"]));
+    getAuthorizationMe.mockRejectedValue(new Error("not called"));
+
+    await expectAdmitted(WorkspaceRoute);
+  });
+
+  it("admits a non-Owner authorization manager to the /workspace layout, so /workspace/roles is reachable", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: [], canManageAuthorization: true });
+
+    await expectAdmitted(WorkspaceRoute);
+  });
+
+  it("redirects a member without either from the /workspace layout", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
+    getAuthorizationMe.mockResolvedValue({ permissions: ["*"], canManageAuthorization: false });
+
+    await expectRedirectTo(WorkspaceRoute, "/");
+
+    fetchSession.mockResolvedValue(null);
     await expectRedirectTo(WorkspaceRoute, "/");
   });
 
@@ -180,6 +208,18 @@ describe("the / landing route", () => {
 
     expect(IndexRoute.options.component).toBeUndefined();
     await expectRedirectTo(IndexRoute, "/dashboard");
+  });
+});
+
+describe("area index routes", () => {
+  it("sends /settings to the profile page", async () => {
+    expect(SettingsIndexRoute.options.component).toBeUndefined();
+    await expectRedirectTo(SettingsIndexRoute, "/settings/profile");
+  });
+
+  it("sends /workspace to the overview", async () => {
+    expect(WorkspaceIndexRoute.options.component).toBeUndefined();
+    await expectRedirectTo(WorkspaceIndexRoute, "/workspace/overview");
   });
 });
 
