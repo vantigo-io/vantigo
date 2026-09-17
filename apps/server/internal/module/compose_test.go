@@ -585,12 +585,12 @@ func TestCompose_PassesTheComposedCatalogAndTheModulesOwnDocToMount(t *testing.T
 	}
 }
 
-// Decision 5: merge the six real contracts (identity plus the four business
-// modules, each loaded by openapi.Load, common.yaml pulled in by reference)
+// Decision 5: merge every real contract (identity plus every business
+// module, each loaded by openapi.Load, common.yaml pulled in by reference)
 // without error, and check that no common.yaml# reference survives, the
 // path count matches the sum of the modules' own, and the served bytes
 // reload and validate as a standalone OpenAPI document.
-func TestCompose_MergesTheSixRealContracts(t *testing.T) {
+func TestCompose_MergesEveryRealContract(t *testing.T) {
 	ctx := context.Background()
 
 	var wantPaths int
@@ -612,7 +612,7 @@ func TestCompose_MergesTheSixRealContracts(t *testing.T) {
 
 	// Every business module contract here must actually mount, so all of
 	// them are enabled; identity mounts regardless.
-	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications"}}}, mods...)
+	handler, err := Compose(Deps{Access: access, Config: &config.Config{Modules: []string{"customers", "products", "energy", "communications", "projects"}}}, mods...)
 	if err != nil {
 		t.Fatalf("Compose: %v", err)
 	}

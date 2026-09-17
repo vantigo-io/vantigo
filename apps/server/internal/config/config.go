@@ -1005,9 +1005,9 @@ var defaultModules = knownModules
 // deployment enables. Entries are trimmed and lower-cased; empty entries
 // (from "a,,b" or surrounding commas) are ignored. An entry outside
 // knownModules is a problem naming both the offending value and the known
-// set. energy depends on customers, and so does communications: enabling
-// either without customers is its own problem, naming both. Identity is
-// always mounted and is never listed here.
+// set. energy depends on customers, and so do communications and projects:
+// enabling any of them without customers is its own problem, naming both.
+// Identity is always mounted and is never listed here.
 func modules(p *problems, env map[string]string) []string {
 	v := env["MODULES"]
 	if v == "" {
@@ -1032,6 +1032,9 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "communications") && !slices.Contains(out, "customers") {
 		p.add("MODULES", "communications requires customers")
+	}
+	if slices.Contains(out, "projects") && !slices.Contains(out, "customers") {
+		p.add("MODULES", "projects requires customers")
 	}
 
 	return out

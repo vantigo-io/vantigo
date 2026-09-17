@@ -1,0 +1,245 @@
+components:
+    schemas:
+        ProjectCapabilities:
+            description: What the calling user may do with this project, so the frontend never re-derives authorization.
+            properties:
+                canManage:
+                    type: boolean
+                canSeeFinancials:
+                    type: boolean
+            required:
+                - canManage
+                - canSeeFinancials
+            type: object
+        ProjectCreateRequest:
+            properties:
+                billingType:
+                    description: "'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'."
+                    type: string
+                budgetAmount:
+                    format: double
+                    nullable: true
+                    type: number
+                budgetHours:
+                    format: double
+                    nullable: true
+                    type: number
+                code:
+                    description: Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{2,20}$ and be unique.
+                    type: string
+                currency:
+                    description: ISO-4217 alphabetic code, upper-cased. Required as soon as any amount is set.
+                    nullable: true
+                    type: string
+                customerId:
+                    description: The customer this project bills to. Absent means an internal project.
+                    format: int32
+                    nullable: true
+                    type: integer
+                description:
+                    nullable: true
+                    type: string
+                endDate:
+                    format: date
+                    nullable: true
+                    type: string
+                fixedPriceAmount:
+                    description: Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+                    format: double
+                    nullable: true
+                    type: number
+                name:
+                    type: string
+                startDate:
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - code
+                - name
+                - billingType
+            type: object
+        ProjectFinancials:
+            description: The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see".
+            properties:
+                budgetAmount:
+                    format: double
+                    nullable: true
+                    type: number
+                currency:
+                    nullable: true
+                    type: string
+                fixedPriceAmount:
+                    format: double
+                    nullable: true
+                    type: number
+            type: object
+        ProjectPersonSummary:
+            description: One user on a project, named for display.
+            properties:
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+            type: object
+        ProjectResponse:
+            properties:
+                billingLinesAvailable:
+                    description: Whether the products module is enabled, and so whether this project can carry priced billing lines.
+                    type: boolean
+                billingType:
+                    type: string
+                budgetHours:
+                    description: Planning data, visible to everyone who can see the project — unlike the amounts under financials.
+                    format: double
+                    nullable: true
+                    type: number
+                capabilities:
+                    $ref: '#/components/schemas/ProjectCapabilities'
+                code:
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                customerId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                customerName:
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                endDate:
+                    format: date
+                    nullable: true
+                    type: string
+                financials:
+                    allOf:
+                        - $ref: '#/components/schemas/ProjectFinancials'
+                    description: Absent — not null — when the caller may not see the project's financial fields.
+                id:
+                    format: int32
+                    type: integer
+                internal:
+                    description: Whether the project has no customer.
+                    type: boolean
+                managers:
+                    items:
+                        $ref: '#/components/schemas/ProjectPersonSummary'
+                    type: array
+                name:
+                    type: string
+                revision:
+                    description: The revision an update must carry to be applied.
+                    format: int32
+                    type: integer
+                startDate:
+                    format: date
+                    nullable: true
+                    type: string
+                status:
+                    description: "'planned', 'active', 'on-hold', 'completed' or 'cancelled'."
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - code
+                - name
+                - internal
+                - status
+                - billingType
+                - revision
+                - createdAt
+                - updatedAt
+                - managers
+                - capabilities
+                - billingLinesAvailable
+            type: object
+info:
+    title: Vantigo Projects API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/projects:
+        post:
+            operationId: postProjects
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectCreateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Create a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access+projects:create
+    /api/v1/projects/{id}:
+        get:
+            operationId: getProjectsById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+            summary: Get a project by id
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+servers:
+    - url: /
