@@ -59,6 +59,36 @@ func validateCustomerStatus(raw string) (string, string) {
 	}
 }
 
+// validateCustomerType is the customer type value object
+// (00007_customers_type.sql): one of business/person, case-insensitive,
+// trimmed and lowercased, shaped like validateCustomerStatus. Unlike
+// validateLegalType below — a legacy convention that lets any non-blank
+// value through — this is an enforced set, since the type drives the UI
+// and the stats figures. The "but was '{v}'" message quotes the raw value.
+func validateCustomerType(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "A customer type cannot be null or empty"
+	}
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	switch lower {
+	case "business", "person":
+		return lower, ""
+	default:
+		return "", fmt.Sprintf("A customer type must be one of 'business' or 'person', but was '%s'", raw)
+	}
+}
+
+// identityTypeMismatch is the error under "identity.type" when a legal
+// identity's type disagrees with the customer type it is attached to: a
+// Brreg business identity on a private person, or a person identity on a
+// business, is never a consistent record. Empty when they agree.
+func identityTypeMismatch(customerType string, identity *legalIdentity) string {
+	if identity == nil || identity.Type == customerType {
+		return ""
+	}
+	return fmt.Sprintf("A legal identity's type must match the customer type '%s', but was '%s'", customerType, identity.Type)
+}
+
 // validateCountryCode is CountryCode's Validate and constructor
 // (DM/Customers/Common/CountryCode.cs): only non-blank is required — no
 // ISO-3166 shape check exists in .NET, so none exists here either.

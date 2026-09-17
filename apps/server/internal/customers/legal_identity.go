@@ -85,6 +85,12 @@ func (s *server) PutCustomersByIdLegalIdentity(ctx context.Context, req gen.PutC
 		return nil, fmt.Errorf("customers: get customer: %w", err)
 	}
 
+	// The identity must agree with the customer's type (customer_type.go);
+	// keyed bare "type" here, like every other field of this body.
+	if mismatch := identityTypeMismatch(existing.Type, &parsed); mismatch != "" {
+		return gen.PutCustomersByIdLegalIdentity400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid legal identity", map[string][]string{"type": {mismatch}})), nil
+	}
+
 	before := identityFromRow(existing.LegalCountry, existing.LegalID, existing.LegalName, existing.LegalSource, existing.LegalType)
 	after := &parsed
 	changed := !identityEqual(before, after)

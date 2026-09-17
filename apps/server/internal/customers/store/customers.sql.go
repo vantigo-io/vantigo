@@ -122,8 +122,8 @@ func (q *Queries) CustomerCreationBuckets(ctx context.Context, arg CustomerCreat
 
 const customerIdentityFigures = `-- name: CustomerIdentityFigures :one
 SELECT
-    count(*) FILTER (WHERE legal_type = 'business') AS business_count,
-    count(*) FILTER (WHERE legal_type = 'person') AS person_count,
+    count(*) FILTER (WHERE type = 'business') AS business_count,
+    count(*) FILTER (WHERE type = 'person') AS person_count,
     count(*) FILTER (WHERE legal_country IS NULL) AS missing_identity_count,
     count(DISTINCT legal_country) AS distinct_country_count
 FROM customers.customers
@@ -140,10 +140,13 @@ type CustomerIdentityFiguresRow struct {
 // CustomerIdentityFigures is GetCustomerStatsEndpoint's identity-derived
 // counts (GetCustomerStatsEndpoint.cs:48-62), only ever queried when the
 // caller holds legal-identity-view; archived customers excluded, as for
-// CustomerKeyFigures. legal_country IS NULL stands in for "Identity is
-// null": the five legal_* columns are written all-or-nothing by this
-// module's own handlers (inventory §2.1's owned-type invariant, app-level
-// only — see the schema migration's comment).
+// CustomerKeyFigures. business_count and person_count count the customer
+// type column (00007_customers_type.sql), not legal_type, so a customer
+// without an identity is still counted as what it is. legal_country IS
+// NULL stands in for "Identity is null": the five legal_* columns are
+// written all-or-nothing by this module's own handlers (inventory §2.1's
+// owned-type invariant, app-level only — see the schema migration's
+// comment).
 func (q *Queries) CustomerIdentityFigures(ctx context.Context) (CustomerIdentityFiguresRow, error) {
 	row := q.db.QueryRow(ctx, customerIdentityFigures)
 	var i CustomerIdentityFiguresRow
@@ -389,7 +392,7 @@ func (q *Queries) DirectoryCustomer(ctx context.Context, id int32) (DirectoryCus
 
 const getCustomer = `-- name: GetCustomer :one
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at
+       created_at, updated_at, type
 FROM customers.customers
 WHERE id = $1
 `
@@ -410,6 +413,7 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (CustomersCustomer,
 		&i.LegalType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Type,
 	)
 	return i, err
 }
@@ -417,13 +421,13 @@ func (q *Queries) GetCustomer(ctx context.Context, id int32) (CustomersCustomer,
 const insertCustomer = `-- name: InsertCustomer :one
 INSERT INTO customers.customers (
     customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-    created_at, updated_at
+    created_at, updated_at, type
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
-    $9::timestamptz, $9::timestamptz
+    $9::timestamptz, $9::timestamptz, $10
 )
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at
+          created_at, updated_at, type
 `
 
 type InsertCustomerParams struct {
@@ -436,6 +440,7 @@ type InsertCustomerParams struct {
 	LegalSource    *string
 	LegalType      *string
 	Now            time.Time
+	Type           string
 }
 
 // InsertCustomer creates a customer row. created_at and updated_at are the
@@ -451,6 +456,7 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 		arg.LegalSource,
 		arg.LegalType,
 		arg.Now,
+		arg.Type,
 	)
 	var i CustomersCustomer
 	err := row.Scan(
@@ -465,6 +471,7 @@ func (q *Queries) InsertCustomer(ctx context.Context, arg InsertCustomerParams) 
 		&i.LegalType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Type,
 	)
 	return i, err
 }
@@ -525,7 +532,7 @@ func (q *Queries) InsertGeneratedTimelineEvent(ctx context.Context, arg InsertGe
 }
 
 const listCustomersByID = `-- name: ListCustomersByID :many
-SELECT c.id, c.customer_number, c.name, c.status, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
+SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
        c.legal_type, c.created_at, c.updated_at,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
@@ -553,6 +560,7 @@ type ListCustomersByIDRow struct {
 	CustomerNumber   int64
 	Name             string
 	Status           string
+	Type             string
 	LegalCountry     *string
 	LegalID          *string
 	LegalName        *string
@@ -587,6 +595,7 @@ func (q *Queries) ListCustomersByID(ctx context.Context, arg ListCustomersByIDPa
 			&i.CustomerNumber,
 			&i.Name,
 			&i.Status,
+			&i.Type,
 			&i.LegalCountry,
 			&i.LegalID,
 			&i.LegalName,
@@ -608,7 +617,7 @@ func (q *Queries) ListCustomersByID(ctx context.Context, arg ListCustomersByIDPa
 }
 
 const listCustomersByName = `-- name: ListCustomersByName :many
-SELECT c.id, c.customer_number, c.name, c.status, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
+SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
        c.legal_type, c.created_at, c.updated_at,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
@@ -638,6 +647,7 @@ type ListCustomersByNameRow struct {
 	CustomerNumber   int64
 	Name             string
 	Status           string
+	Type             string
 	LegalCountry     *string
 	LegalID          *string
 	LegalName        *string
@@ -675,6 +685,7 @@ func (q *Queries) ListCustomersByName(ctx context.Context, arg ListCustomersByNa
 			&i.CustomerNumber,
 			&i.Name,
 			&i.Status,
+			&i.Type,
 			&i.LegalCountry,
 			&i.LegalID,
 			&i.LegalName,
@@ -719,7 +730,7 @@ UPDATE customers.customers
 SET status = $1, updated_at = $2::timestamptz
 WHERE id = $3
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at
+          created_at, updated_at, type
 `
 
 type SetCustomerStatusParams struct {
@@ -746,6 +757,66 @@ func (q *Queries) SetCustomerStatus(ctx context.Context, arg SetCustomerStatusPa
 		&i.LegalType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Type,
+	)
+	return i, err
+}
+
+const setCustomerType = `-- name: SetCustomerType :one
+UPDATE customers.customers
+SET type = $1,
+    legal_country = $2,
+    legal_id = $3,
+    legal_name = $4,
+    legal_source = $5,
+    legal_type = $6,
+    updated_at = $7::timestamptz
+WHERE id = $8
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type
+`
+
+type SetCustomerTypeParams struct {
+	Type         string
+	LegalCountry *string
+	LegalID      *string
+	LegalName    *string
+	LegalSource  *string
+	LegalType    *string
+	UpdatedAt    time.Time
+	ID           int32
+}
+
+// SetCustomerType is PUT /customers/{id}/type's write: the customer type
+// and, because a legal identity of the old type makes no sense on the new
+// one, the five legal columns the handler passes (all NULL when it clears
+// the identity, the row's own values otherwise). updated_at is the
+// caller's, as for UpdateCustomer.
+func (q *Queries) SetCustomerType(ctx context.Context, arg SetCustomerTypeParams) (CustomersCustomer, error) {
+	row := q.db.QueryRow(ctx, setCustomerType,
+		arg.Type,
+		arg.LegalCountry,
+		arg.LegalID,
+		arg.LegalName,
+		arg.LegalSource,
+		arg.LegalType,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	var i CustomersCustomer
+	err := row.Scan(
+		&i.ID,
+		&i.CustomerNumber,
+		&i.Name,
+		&i.Status,
+		&i.LegalCountry,
+		&i.LegalID,
+		&i.LegalName,
+		&i.LegalSource,
+		&i.LegalType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Type,
 	)
 	return i, err
 }
@@ -762,7 +833,7 @@ SET name = $1,
     updated_at = $8::timestamptz
 WHERE id = $9
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at
+          created_at, updated_at, type
 `
 
 type UpdateCustomerParams struct {
@@ -807,6 +878,7 @@ func (q *Queries) UpdateCustomer(ctx context.Context, arg UpdateCustomerParams) 
 		&i.LegalType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Type,
 	)
 	return i, err
 }

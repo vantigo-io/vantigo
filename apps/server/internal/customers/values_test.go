@@ -535,3 +535,36 @@ func TestSearchPatterns_SplitsOnSpaceCharacterOnly(t *testing.T) {
 		t.Errorf("searchPatterns(%q) = %v, want %v (tab is not a term separator)", search, got, want)
 	}
 }
+
+// validateCustomerType is the customer type value object
+// (00007_customers_type.sql): business or person, case-insensitive, and —
+// unlike validateLegalType — an enforced set.
+func TestValidateCustomerType_NormalizesAndRejects(t *testing.T) {
+	for raw, want := range map[string]string{" Business ": "business", "PERSON": "person"} {
+		if got, err := validateCustomerType(raw); err != "" || got != want {
+			t.Errorf("validateCustomerType(%q) = %q, %q, want %q, no error", raw, got, err, want)
+		}
+	}
+	if _, err := validateCustomerType("  "); err != "A customer type cannot be null or empty" {
+		t.Errorf("validateCustomerType(blank) = error %q, want the blank message", err)
+	}
+	want := "A customer type must be one of 'business' or 'person', but was 'spaceship'"
+	if _, err := validateCustomerType("spaceship"); err != want {
+		t.Errorf("validateCustomerType(spaceship) = error %q, want %q", err, want)
+	}
+}
+
+// identityTypeMismatch reports a legal identity whose type disagrees with
+// the customer type it would be attached to, and nothing otherwise.
+func TestIdentityTypeMismatch(t *testing.T) {
+	if got := identityTypeMismatch("business", nil); got != "" {
+		t.Errorf("identityTypeMismatch(business, nil) = %q, want empty", got)
+	}
+	if got := identityTypeMismatch("business", &legalIdentity{Type: "business"}); got != "" {
+		t.Errorf("identityTypeMismatch(business, business) = %q, want empty", got)
+	}
+	want := "A legal identity's type must match the customer type 'person', but was 'business'"
+	if got := identityTypeMismatch("person", &legalIdentity{Type: "business"}); got != want {
+		t.Errorf("identityTypeMismatch(person, business) = %q, want %q", got, want)
+	}
+}

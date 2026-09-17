@@ -94,6 +94,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/type": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a customer's type
+         * @description Sets whether the customer is a business or a private person. Rarely the right action for a customer with history, which is why it is not part of PUT /customers/{id}. A legal identity of the previous type is removed in the same change, since a business identity from Brreg makes no sense on a person and vice versa; contacts, timeline and everything else stay. Resubmitting the current type changes nothing.
+         */
+        put: operations["putCustomersByIdType"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/timeline": {
         parameters: {
             query?: never;
@@ -332,6 +352,12 @@ export interface components {
             identity?: components["schemas"]["LegalIdentityRequest"] | null;
             name: string;
             status?: string | null;
+            /** @description 'business' or 'person'. Defaults to 'business'. When an identity is supplied, its type must agree. Changed afterwards only through PUT /customers/{id}/type. */
+            type?: string | null;
+        };
+        CustomerTypeRequest: {
+            /** @description 'business' or 'person', case-insensitive. */
+            type: string;
         };
         CreateCustomerResponse: {
             /** Format: int64 */
@@ -468,6 +494,8 @@ export interface components {
             name: string;
             status: string;
             timelineSummary: components["schemas"]["SafeTimelineSummary"];
+            /** @description 'business' or 'person'. Always present; optional here only because the recorded exchange corpus predates it. */
+            type?: string;
             /** Format: date-time */
             updatedAt: string;
         };
@@ -1210,6 +1238,66 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putCustomersByIdType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomerTypeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeCustomerResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
             };
             /** @description Unauthorized */
             401: {

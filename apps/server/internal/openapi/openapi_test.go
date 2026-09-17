@@ -190,6 +190,7 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/products/categories/{id} ⟷ GET /api/v1/products/{id}/variants",
 	"GET /api/v1/products/tax-categories/{id} ⟷ GET /api/v1/products/{id}/variants",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/legal-identity",
+	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/type",
 }
 
 // TestServeMuxConflictsArePinned checks every pair of operations across every

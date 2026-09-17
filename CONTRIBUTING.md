@@ -287,7 +287,8 @@ can show a latency spike the next one does not.
 
 Migrations are plain SQL files under `apps/server/internal/db/migrations/`, numbered
 and applied in order by [goose](https://github.com/pressly/goose) — one baseline per
-module so far:
+module, then one file per change. The second name segment (`NNNNN_<module>_…`)
+names the owning module, which is what ties the file to that module's `sqlc.yaml`:
 
 ```
 00001_platform_init.sql
@@ -296,6 +297,7 @@ module so far:
 00004_products_baseline.sql
 00005_energy_baseline.sql
 00006_communications_baseline.sql
+00007_customers_type.sql
 ```
 
 They are embedded into the binary (`//go:embed migrations/*.sql`), so the image needs

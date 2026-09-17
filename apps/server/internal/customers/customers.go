@@ -20,8 +20,8 @@ import (
 // This file is the Customers area's CRUD (EP/CustomersEndpoints.cs's bare
 // group): getCustomers, postCustomers, getCustomer, putCustomersById and
 // deleteCustomersById. stats.go holds the four dashboard operations mounted
-// alongside them; contacts, legal identity, lookup and timeline are later
-// tasks (unimplemented.go's remaining stubs).
+// alongside them; customer_type.go the dedicated type change; contacts,
+// legal identity, lookup and timeline live in their own files.
 
 // customerRow is the shape GetCustomer, ListCustomersByID and
 // ListCustomersByName all reduce to before building a SafeCustomerResponse:
@@ -32,6 +32,7 @@ type customerRow struct {
 	CustomerNumber   int64
 	Name             string
 	Status           string
+	Type             string
 	LegalCountry     *string
 	LegalID          *string
 	LegalName        *string
@@ -45,7 +46,7 @@ type customerRow struct {
 
 func fromCustomerRow(c store.CustomersCustomer, ts store.CustomerTimelineSummaryRow) customerRow {
 	return customerRow{
-		ID: c.ID, CustomerNumber: c.CustomerNumber, Name: c.Name, Status: c.Status,
+		ID: c.ID, CustomerNumber: c.CustomerNumber, Name: c.Name, Status: c.Status, Type: c.Type,
 		LegalCountry: c.LegalCountry, LegalID: c.LegalID, LegalName: c.LegalName, LegalSource: c.LegalSource, LegalType: c.LegalType,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
 		EntryCount: ts.EntryCount, LatestOccurredOn: ts.LatestOccurredOn,
@@ -54,7 +55,7 @@ func fromCustomerRow(c store.CustomersCustomer, ts store.CustomerTimelineSummary
 
 func fromListByIDRow(r store.ListCustomersByIDRow) customerRow {
 	return customerRow{
-		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status,
+		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status, Type: r.Type,
 		LegalCountry: r.LegalCountry, LegalID: r.LegalID, LegalName: r.LegalName, LegalSource: r.LegalSource, LegalType: r.LegalType,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		EntryCount: r.EntryCount, LatestOccurredOn: r.LatestOccurredOn,
@@ -63,7 +64,7 @@ func fromListByIDRow(r store.ListCustomersByIDRow) customerRow {
 
 func fromListByNameRow(r store.ListCustomersByNameRow) customerRow {
 	return customerRow{
-		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status,
+		ID: r.ID, CustomerNumber: r.CustomerNumber, Name: r.Name, Status: r.Status, Type: r.Type,
 		LegalCountry: r.LegalCountry, LegalID: r.LegalID, LegalName: r.LegalName, LegalSource: r.LegalSource, LegalType: r.LegalType,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		EntryCount: r.EntryCount, LatestOccurredOn: r.LatestOccurredOn,
@@ -112,6 +113,7 @@ func safeCustomerResponse(row customerRow, includeIdentity bool) gen.SafeCustome
 		CustomerNumber: row.CustomerNumber,
 		Name:           row.Name,
 		Status:         row.Status,
+		Type:           &row.Type,
 		CreatedAt:      row.CreatedAt,
 		UpdatedAt:      row.UpdatedAt,
 		TimelineSummary: gen.SafeTimelineSummary{
@@ -274,6 +276,20 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 		}
 	}
 
+	// The customer type (00007_customers_type.sql) defaults to business — a
+	// name alone has always meant a company in this module — and, once an
+	// identity is attached, the two must agree: identityTypeMismatch reports
+	// the disagreement under identity.type alongside the other errors.
+	customerType := "business"
+	if body.Type != nil {
+		ct, ctErr := validateCustomerType(*body.Type)
+		if ctErr != "" {
+			errs["type"] = []string{ctErr}
+		} else {
+			customerType = ct
+		}
+	}
+
 	var identity *legalIdentity
 	if body.Identity != nil {
 		id, idErrs := validateLegalIdentity(body.Identity.Country, body.Identity.Type, body.Identity.Id, body.Identity.Name, body.Identity.Source)
@@ -281,6 +297,8 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 			for field, msgs := range idErrs {
 				errs["identity."+field] = msgs
 			}
+		} else if mismatch := identityTypeMismatch(customerType, &id); mismatch != "" && errs["type"] == nil {
+			errs["identity.type"] = []string{mismatch}
 		} else {
 			identity = &id
 		}
@@ -303,6 +321,7 @@ func (s *server) PostCustomers(ctx context.Context, req gen.PostCustomersRequest
 			CustomerNumber: number,
 			Name:           name,
 			Status:         status,
+			Type:           customerType,
 			LegalCountry:   legalCountry,
 			LegalID:        legalID,
 			LegalName:      legalName,
@@ -419,6 +438,12 @@ func (s *server) PutCustomersById(ctx context.Context, req gen.PutCustomersByIdR
 				fieldErrs["identity."+field] = msgs
 			}
 			return gen.PutCustomersById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer", fieldErrs)), nil
+		}
+		// The body carries no customer type — PutCustomersByIdType is the
+		// only way to change it — so the identity must agree with the type
+		// the row already has.
+		if mismatch := identityTypeMismatch(existing.Type, &parsed); mismatch != "" {
+			return gen.PutCustomersById400ApplicationProblemPlusJSONResponse(apicommon.ValidationProblem("Invalid customer", map[string][]string{"identity.type": {mismatch}})), nil
 		}
 		afterIdentity = &parsed
 	}

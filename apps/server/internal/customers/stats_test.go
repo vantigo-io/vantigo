@@ -38,6 +38,7 @@ func TestStats_ReturnsGlobalCounts_WithIdentityFiguresForPermittedCaller(t *test
 	})
 	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{
 		"name":     "Stats Person",
+		"type":     "person",
 		"identity": map[string]any{"country": "se", "type": "person", "id": "19770101-1234", "name": "Stats Person", "source": "manual"},
 	})
 	c.Do(http.MethodPost, "/api/v1/customers", map[string]any{"name": "Stats Unknown"})
@@ -60,12 +61,18 @@ func TestStats_ReturnsGlobalCounts_WithIdentityFiguresForPermittedCaller(t *test
 	if stats.BusinessCount == nil || stats.PersonCount == nil || stats.MissingIdentityCount == nil || stats.DistinctCountryCount == nil {
 		t.Fatalf("stats = %+v, want every identity figure non-nil for a legal-identity-view holder", stats)
 	}
-	if *stats.BusinessCount != 1 || *stats.PersonCount != 1 || *stats.MissingIdentityCount != 1 || *stats.DistinctCountryCount != 2 {
-		t.Errorf("stats = %+v, want BusinessCount=PersonCount=MissingIdentityCount=1 and DistinctCountryCount=2 (no, se)", stats)
+	// Business and person are counted on the customer type
+	// (00007_customers_type.sql), so "Stats Unknown" — a business without a
+	// legal identity — is a business as well as a missing identity: the two
+	// type figures partition the total, and the identity figure overlaps
+	// them. (.NET counted legal_type, where an identity-less customer was
+	// neither.)
+	if *stats.BusinessCount != 2 || *stats.PersonCount != 1 || *stats.MissingIdentityCount != 1 || *stats.DistinctCountryCount != 2 {
+		t.Errorf("stats = %+v, want BusinessCount=2, PersonCount=MissingIdentityCount=1 and DistinctCountryCount=2 (no, se)", stats)
 	}
-	if stats.TotalCount != *stats.BusinessCount+*stats.PersonCount+*stats.MissingIdentityCount {
-		t.Errorf("TotalCount = %d, want BusinessCount+PersonCount+MissingIdentityCount = %d",
-			stats.TotalCount, *stats.BusinessCount+*stats.PersonCount+*stats.MissingIdentityCount)
+	if stats.TotalCount != *stats.BusinessCount+*stats.PersonCount {
+		t.Errorf("TotalCount = %d, want BusinessCount+PersonCount = %d",
+			stats.TotalCount, *stats.BusinessCount+*stats.PersonCount)
 	}
 }
 
