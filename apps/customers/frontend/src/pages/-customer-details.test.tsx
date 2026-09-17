@@ -51,6 +51,7 @@ describe("customer details page", () => {
             id: 1001,
             name: "Equinor",
             status: "active",
+            type: "business",
             createdAt: "2026-06-01T10:00:00Z",
             updatedAt: "2026-07-01T10:00:00Z",
             identity: null,
@@ -72,7 +73,8 @@ describe("customer details page", () => {
     expect(screen.getByText("EQUINOR ASA")).toBeInTheDocument();
     expect(screen.getByText("923609016")).toBeInTheDocument();
     expect(screen.getByText("NO")).toBeInTheDocument();
-    expect(screen.getByText("Business")).toBeInTheDocument();
+    // Once as the customer type badge, once as the legal identity's type.
+    expect(screen.getAllByText("Business")).toHaveLength(2);
     expect(screen.getByRole("link", { name: "Brønnøysundregistrene" })).toHaveAttribute(
       "href",
       "https://virksomhet.brreg.no/nb/oppslag/enheter/923609016",
@@ -91,6 +93,7 @@ describe("customer details page", () => {
               id: 1002,
               name: "Acme",
               status: "active",
+              type: "person",
               createdAt: "2026-06-01T10:00:00Z",
               updatedAt: "2026-07-01T10:00:00Z",
               identity: null,
@@ -109,6 +112,7 @@ describe("customer details page", () => {
     expect(await screen.findByRole("heading", { name: "Acme" })).toBeInTheDocument();
     expect(screen.getByText("#1002")).toBeInTheDocument();
     expect(screen.getByText(/legal identity is not available/i)).toBeInTheDocument();
+    expect(screen.getByText("Private")).toBeInTheDocument();
   });
 
   it("shows a not-found state for unknown customers", async () => {

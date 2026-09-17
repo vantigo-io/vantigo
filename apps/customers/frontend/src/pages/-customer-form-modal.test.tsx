@@ -13,7 +13,7 @@ const jsonResponse = (status: number, body: unknown) =>
 const renderModal = (state: Parameters<typeof CustomerFormModal>[0]["state"], onClose = vi.fn()) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <MantineProvider>
+    <MantineProvider env="test">
       <Notifications />
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </MantineProvider>
@@ -24,17 +24,58 @@ const renderModal = (state: Parameters<typeof CustomerFormModal>[0]["state"], on
 
 describe("CustomerFormModal", () => {
   afterEach(() => vi.unstubAllGlobals());
-  it("creates only the safe basic customer payload", async () => {
+  it("creates a business by default, with only the safe basic payload", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 1001 }));
     stubFetch(fetchMock);
     const { onClose } = renderModal({ mode: "create" });
+    expect(screen.getByRole("radio", { name: /business/i })).toBeChecked();
     await userEvent.type(screen.getByLabelText(/name/i), "  Acme  ");
     await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Acme", status: "active" }),
+      body: JSON.stringify({ name: "Acme", status: "active", type: "business" }),
+    });
+  });
+  it("creates a private customer without ever looking the name up", async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL) =>
+      String(url) === "/api/v1/customers"
+        ? Promise.resolve(jsonResponse(201, { id: 1002 }))
+        : Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "KARI NORDMANN" }] })),
+    );
+    stubFetch(fetchMock);
+    const { onClose } = renderModal({ mode: "create" });
+    await userEvent.click(screen.getByRole("radio", { name: /private/i }));
+    expect(screen.queryByText(/brønnøysundregistrene/i)).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/name/i), "Kari Nordmann");
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.map(([url]) => String(url)).some((url) => url.includes("/lookup/brreg"))).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Kari Nordmann", status: "active", type: "person" }),
+    });
+  });
+  it("drops a picked business identity when switching to private", async () => {
+    const fetchMock = vi.fn((url: RequestInfo | URL) =>
+      String(url) === "/api/v1/customers"
+        ? Promise.resolve(jsonResponse(201, { id: 1003 }))
+        : Promise.resolve(jsonResponse(200, { data: [{ legalId: "923609016", legalName: "EQUINOR ASA" }] })),
+    );
+    stubFetch(fetchMock);
+    const { onClose } = renderModal({ mode: "create" });
+    await userEvent.type(screen.getByLabelText(/name/i), "Equinor");
+    await userEvent.click(await screen.findByRole("option", { name: /equinor asa/i }));
+    expect(screen.getByLabelText(/name/i)).toHaveValue("EQUINOR ASA");
+    await userEvent.click(screen.getByRole("radio", { name: /private/i }));
+    await userEvent.click(screen.getByRole("button", { name: /create customer/i }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "EQUINOR ASA", status: "active", type: "person" }),
     });
   });
   it("does not render aggregate legal identity fields", () => {
@@ -43,7 +84,7 @@ describe("CustomerFormModal", () => {
     expect(screen.queryByLabelText(/legal name/i)).not.toBeInTheDocument();
     expect(screen.getByText(/legal identity is managed separately/i)).toBeInTheDocument();
   });
-  it("edits with only the safe basic customer payload", async () => {
+  it("edits without a type toggle and never sends the type", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(
@@ -58,10 +99,12 @@ describe("CustomerFormModal", () => {
         status: "active",
         createdAt: "2026-01-01T00:00:00Z",
         updatedAt: "2026-01-01T00:00:00Z",
+        type: "business",
         identity: null,
         timelineSummary: { entryCount: 0, latestOccurredOn: null },
       },
     });
+    expect(screen.queryByRole("radio", { name: /business/i })).not.toBeInTheDocument();
     const input = screen.getByLabelText(/name/i);
     await userEvent.clear(input);
     await userEvent.type(input, "Initrode");

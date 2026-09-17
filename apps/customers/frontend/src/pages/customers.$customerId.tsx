@@ -1,10 +1,18 @@
-import { Badge, Button, Group, Stack, Text } from "@mantine/core";
-import { IconPencil } from "@tabler/icons-react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { Badge, Button, Group, List, Stack, Text } from "@mantine/core";
+import { modals } from "@mantine/modals";
+import { notifications } from "@mantine/notifications";
+import { IconArrowsExchange, IconBuilding, IconPencil, IconUser } from "@tabler/icons-react";
+import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 
-import { customerQueryOptions, legalIdentityQueryOptions } from "../api/customers";
+import {
+  type CustomerResponse,
+  type CustomerType,
+  changeCustomerType,
+  customerQueryOptions,
+  legalIdentityQueryOptions,
+} from "../api/customers";
 import {
   CopyableBadge,
   LegalCountryBadge,
@@ -27,8 +35,10 @@ export const CustomerDetailHeader = ({ customerId, actions }: { customerId: numb
   const { t, formatters } = useI18n("customers");
   const { data: customer } = useSuspenseQuery(customerQueryOptions(customerId));
   const [modalState, setModalState] = useState<CustomerModalState | null>(null);
+  const confirmTypeChange = useCustomerTypeChange(customer);
 
   const { data: identity } = useSuspenseQuery(legalIdentityQueryOptions(customerId));
+  const TypeIcon = customer.type === "business" ? IconBuilding : IconUser;
 
   return (
     <Stack gap="lg">
@@ -66,6 +76,14 @@ export const CustomerDetailHeader = ({ customerId, actions }: { customerId: numb
                     ? t("statusArchived")
                     : t("statusDisabled")}
               </Badge>
+              <Badge
+                variant="light"
+                size="lg"
+                color={customer.type === "business" ? "indigo" : "grape"}
+                leftSection={<TypeIcon size={12} />}
+              >
+                {customerTypeLabel(t, customer.type)}
+              </Badge>
               <CopyableBadge variant="light" size="lg" tooltip={t("customerIdTooltip")} copyValue={String(customer.id)}>
                 #{customer.id}
               </CopyableBadge>
@@ -75,6 +93,14 @@ export const CustomerDetailHeader = ({ customerId, actions }: { customerId: numb
                 onClick={() => setModalState({ mode: "edit", customer })}
               >
                 {t("editCustomer")}
+              </Button>
+              <Button
+                variant="subtle"
+                color="gray"
+                leftSection={<IconArrowsExchange size={16} />}
+                onClick={confirmTypeChange}
+              >
+                {t("changeCustomerType")}
               </Button>
               {actions}
             </Group>
@@ -90,6 +116,58 @@ export const CustomerDetailHeader = ({ customerId, actions }: { customerId: numb
       <CustomerFormModal state={modalState} onClose={() => setModalState(null)} />
     </Stack>
   );
+};
+
+const customerTypeLabel = (t: (key: string) => string, type: CustomerType) =>
+  type === "business" ? t("customerTypeBusiness") : t("customerTypePerson");
+
+/**
+ * The explicit way to change a customer's type once it exists. The form modal
+ * never offers it: the change is rarely right for a customer with history, so
+ * it goes through the shared confirm modal, which spells out what it does to
+ * the legal identity, before calling the dedicated endpoint.
+ */
+const useCustomerTypeChange = (customer: CustomerResponse) => {
+  const { t } = useI18n("customers");
+  const queryClient = useQueryClient();
+  const target: CustomerType = customer.type === "business" ? "person" : "business";
+  const from = customerTypeLabel(t, customer.type).toLocaleLowerCase();
+  const to = customerTypeLabel(t, target).toLocaleLowerCase();
+  const mutation = useMutation({
+    mutationFn: () => changeCustomerType(customer.id, target),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      notifications.show({
+        color: "teal",
+        title: t("customerTypeChanged"),
+        message: t("customerTypeChangedMessage", { name: customer.name, to }),
+      });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("customerTypeCouldNotBeChanged"), message: error.message });
+    },
+  });
+
+  return () =>
+    modals.openConfirmModal({
+      title: t("changeCustomerTypeTitle"),
+      children: (
+        <Stack gap="sm">
+          <Text size="sm">{t("changeCustomerTypeIntro", { name: customer.name, from, to })}</Text>
+          <List size="sm" spacing="xs">
+            <List.Item>{t("changeCustomerTypeKeeps")}</List.Item>
+            <List.Item>{t("changeCustomerTypeRemovesIdentity")}</List.Item>
+            <List.Item>{t("changeCustomerTypeAffectsForms", { to })}</List.Item>
+          </List>
+          <Text size="sm" fw={600}>
+            {t("changeCustomerTypeRarely")}
+          </Text>
+        </Stack>
+      ),
+      labels: { confirm: t("changeCustomerTypeConfirm", { to }), cancel: t("cancel") },
+      confirmProps: { color: "red" },
+      onConfirm: () => mutation.mutate(),
+    });
 };
 
 export const CustomerOverview = ({ customerId }: { customerId: number }) => (
