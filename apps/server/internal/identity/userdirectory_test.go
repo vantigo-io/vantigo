@@ -28,7 +28,7 @@ func newUserDirectory(t *testing.T, h *harness) contracts.UserDirectory {
 func insertUserNamed(t testing.TB, h *harness, displayName string, disabled bool) uuid.UUID {
 	t.Helper()
 	id := uuid.New()
-	email := strings.ToLower(strings.NewReplacer(" ", ".", "%", "pct", "_", "underscore").Replace(displayName)) + "-" + id.String() + "@example.test"
+	email := strings.ToLower(strings.NewReplacer(" ", ".", "%", "pct", "_", "underscore", `\`, "backslash").Replace(displayName)) + "-" + id.String() + "@example.test"
 	h.exec(t, `INSERT INTO identity.users (id, email, normalized_email, display_name, is_disabled, version, created_at, updated_at)
 		VALUES ($1, $2, upper($2), $3, $4, $5, $6, $6)`, id, email, displayName, disabled, uuid.New(), h.now())
 	return id
@@ -180,20 +180,38 @@ func TestUserDirectory_SearchUsersOrdersByDisplayNameAndHonoursLimit(t *testing.
 	}
 }
 
-// TestUserDirectory_SearchUsersEscapesWildcards proves a literal % or _ in
-// the query matches only that literal character, not ILIKE's wildcard
-// meaning.
+// TestUserDirectory_SearchUsersEscapesWildcards proves a literal %, _ or \ in
+// the query matches only that literal character, never as ILIKE's wildcard
+// or escape-introducer meaning: each case seeds a display name holding the
+// literal character and a decoy that would also match were the character
+// treated as a wildcard (any-characters for %, any-single-character for _)
+// or as an escape introducer that swallows the character after it (\).
 func TestUserDirectory_SearchUsersEscapesWildcards(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t)
-	percent := insertUserNamed(t, h, "100% Match", false)
-	insertUserNamed(t, h, "100X Match", false)
-
-	got, err := newUserDirectory(t, h).SearchUsers(context.Background(), "100% match", 10)
-	if err != nil {
-		t.Fatalf("SearchUsers: %v", err)
+	cases := []struct {
+		name    string
+		literal string // display name holding the literal special character
+		decoy   string // matches only if the character were a wildcard/escape
+		query   string // search query holding the literal special character
+	}{
+		{name: "percent", literal: "100% Match", decoy: "100X Match", query: "100% match"},
+		{name: "underscore", literal: "a_b Match", decoy: "aXb Match", query: "a_b match"},
+		{name: "backslash", literal: `Path\File Match`, decoy: "PathFile Match", query: `path\file match`},
 	}
-	if len(got) != 1 || got[0].ID != percent {
-		t.Errorf("SearchUsers(100%% match) = %+v, want only the literal %% match", got)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t)
+			literal := insertUserNamed(t, h, tc.literal, false)
+			insertUserNamed(t, h, tc.decoy, false)
+
+			got, err := newUserDirectory(t, h).SearchUsers(context.Background(), tc.query, 10)
+			if err != nil {
+				t.Fatalf("SearchUsers(%q): %v", tc.query, err)
+			}
+			if len(got) != 1 || got[0].ID != literal {
+				t.Errorf("SearchUsers(%q) = %+v, want only the literal match %s", tc.query, got, literal)
+			}
+		})
 	}
 }
