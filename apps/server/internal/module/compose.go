@@ -22,10 +22,11 @@ import (
 // answers every other /api path with httpx.NotFound. It fails on a
 // duplicate name, an invalid or duplicate permission, a Mount error, a path
 // two modules both declare, a component two modules declare differently
-// under the same name, two modules both declaring a customer directory
-// (naming both), or a nil Deps.Config: enablement (which modules MODULES
-// turns on) is meaningless without one, and every real caller already loads
-// one before composing.
+// under the same name, two modules both declaring a customer directory, a
+// user directory, a product catalog or a project directory (naming both),
+// or a nil Deps.Config: enablement (which modules MODULES turns on) is
+// meaningless without one, and every real caller already loads one before
+// composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	if deps.Config == nil {
 		return nil, fmt.Errorf("module: Compose requires a non-nil Deps.Config to know which modules MODULES enables")
@@ -58,28 +59,51 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		}
 	}
 
-	// The customer directory is the one sanctioned cross-module read
-	// (contracts.CustomerDirectory): at most one enabled module may declare
-	// it. It is resolved here, before any Mount runs, so the result can be
-	// copied onto every module's Deps below — including the provider's own,
-	// which may need it too. Directory runs on deps as Compose itself
-	// received it, deliberately narrower than the per-module copy Mount
-	// gets (no Doc, no per-module Catalog reference beyond what is already
-	// built here): building a directory is a data-layer concern (Pool,
-	// Config, Clock, Secrets, ...), not a contract one, and no module's own
-	// Doc is loaded yet at this point regardless.
-	var directoryProvider *Module
-	for i := range mods {
-		if mods[i].Directory == nil {
-			continue
-		}
-		if directoryProvider != nil {
-			return nil, fmt.Errorf("module: multiple modules declare a customer directory: %q and %q", directoryProvider.Name, mods[i].Name)
-		}
-		directoryProvider = &mods[i]
+	// The customer directory, the user directory, the product catalog and
+	// the project directory are the sanctioned cross-module reads
+	// (contracts.CustomerDirectory, UserDirectory, ProductCatalog,
+	// ProjectDirectory): at most one enabled module may declare each. Each
+	// is resolved here, in this order, before any Mount runs, so its result
+	// can be copied onto every module's Deps below — including its own
+	// provider's, which may need it too — and so a later slot's provider
+	// func may use an earlier one already set on deps (Projects, say, may
+	// read deps.Directory). Each provider func runs on deps as Compose
+	// itself received it plus whatever earlier slot just set, deliberately
+	// narrower than the per-module copy Mount gets (no Doc, no per-module
+	// Catalog reference beyond what is already built here): building a
+	// directory is a data-layer concern (Pool, Config, Clock, Secrets,
+	// ...), not a contract one, and no module's own Doc is loaded yet at
+	// this point regardless.
+	directoryProvider, err := soleProvider(mods, "a customer directory", func(m Module) bool { return m.Directory != nil })
+	if err != nil {
+		return nil, err
 	}
 	if directoryProvider != nil {
 		deps.Directory = directoryProvider.Directory(deps)
+	}
+
+	usersProvider, err := soleProvider(mods, "a user directory", func(m Module) bool { return m.Users != nil })
+	if err != nil {
+		return nil, err
+	}
+	if usersProvider != nil {
+		deps.Users = usersProvider.Users(deps)
+	}
+
+	productsProvider, err := soleProvider(mods, "a product catalog", func(m Module) bool { return m.Products != nil })
+	if err != nil {
+		return nil, err
+	}
+	if productsProvider != nil {
+		deps.Products = productsProvider.Products(deps)
+	}
+
+	projectsProvider, err := soleProvider(mods, "a project directory", func(m Module) bool { return m.Projects != nil })
+	if err != nil {
+		return nil, err
+	}
+	if projectsProvider != nil {
+		deps.Projects = projectsProvider.Projects(deps)
 	}
 
 	outer := http.NewServeMux()
@@ -173,6 +197,24 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 	outer.HandleFunc("/api", httpx.NotFound)
 
 	return dispatchModules(mounts, outer), nil
+}
+
+// soleProvider returns the one module among mods for which declares reports
+// true, nil when none does, and an error naming both when two do. what
+// names the thing being provided ("a customer directory") for that error
+// message, in the style Compose's own doc comment lists.
+func soleProvider(mods []Module, what string, declares func(Module) bool) (*Module, error) {
+	var provider *Module
+	for i := range mods {
+		if !declares(mods[i]) {
+			continue
+		}
+		if provider != nil {
+			return nil, fmt.Errorf("module: multiple modules declare %s: %q and %q", what, provider.Name, mods[i].Name)
+		}
+		provider = &mods[i]
+	}
+	return provider, nil
 }
 
 // moduleMount is one module's mounted handler and the paths that reach it:
