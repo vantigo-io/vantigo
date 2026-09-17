@@ -62,5 +62,5 @@ export const completeTwoFactor = (code: string, rememberMe = false) =>
   }>("/api/v1/identity/login/2fa", json("POST", { code, rememberMe }));
 export const fetchBootstrapStatus = () =>
   request<{ available: boolean }>("/api/v1/identity/bootstrap-status", { handleUnauthorized: false });
-export const bootstrapAccount = (body: { secret: string; email: string; displayName: string; password: string }) =>
+export const bootstrapAccount = (body: { email: string; displayName: string; password: string }) =>
   request<LifecycleSession>("/api/v1/identity/bootstrap", json("POST", body));

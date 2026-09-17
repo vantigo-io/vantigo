@@ -36,13 +36,10 @@ In `.env`, set the database passwords:
   runtime role the API connects as. Both default to `change-me-too`; they must
   agree, because the first creates the role and the second authenticates as it.
 
-In `vantigo.env`, set the two secrets. Neither is ever generated or logged for
-you; generate each with `openssl rand -base64 32`:
-
-- `APP_SECRET` — at least 32 bytes. Every key this process uses (CSRF tokens,
-  cookie signing, TOTP secret encryption) is derived from it.
-- `BOOTSTRAP_SECRET` — authenticates the one-time first-Owner bootstrap at
-  `/setup`.
+In `vantigo.env`, set `APP_SECRET`: at least 32 bytes, generated with
+`openssl rand -base64 32`, never generated or logged for you. Every key this
+process uses (CSRF tokens, cookie signing, TOTP secret encryption) is derived
+from it.
 
 `vantigo.env` also ships `SMTP_HOST` and `SMTP_FROM` already set to
 placeholders. Leave them in place to start the stack — outside development the
@@ -70,18 +67,12 @@ default (`MODULES` in `vantigo.env`). They share one PostgreSQL database named
 
 ## First sign-in
 
-This Compose stack runs Vantigo outside development, so `vantigo.env` must set
-`BOOTSTRAP_SECRET` before you first run `docker compose up -d`; the API
-refuses to start without it rather than generating and logging one for you.
-Generate a high-entropy value yourself, for example:
-
-```bash
-openssl rand -base64 32
-```
-
-Visit <http://localhost:8080/setup> to create the first Owner account, and enter
-that same secret value. After the Owner account is created, remove or rotate the
-bootstrap secret. Owners can invite further users from `/settings`.
+Visit <http://localhost:8080/setup> to create the first Owner account. It is the
+installation's full administrator — Owner and SystemAdmin — and no secret guards
+the page: whoever completes setup first owns the installation, so do it before
+the address is reachable by anyone else. Setup closes once the Owner exists, and
+the API logs a warning at every start until then. Owners can invite further
+users from `/settings`.
 
 ## Configuration
 

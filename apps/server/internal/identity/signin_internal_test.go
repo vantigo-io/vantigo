@@ -126,11 +126,3 @@ func TestNewServerComputesTheDummyHashUpFront(t *testing.T) {
 		t.Errorf("checkPassword(no hash, the dummy's password) = %v, %v; want false, nil", ok, err)
 	}
 }
-
-// TestSystemAdminGrantIsTriedFourTimes pins RunStartup's attempts at .NET's
-// MaxEnsureAttempts (SV/SystemAdminBootstrapper.cs:22).
-func TestSystemAdminGrantIsTriedFourTimes(t *testing.T) {
-	if systemAdminAttempts != 4 {
-		t.Errorf("systemAdminAttempts = %d, want 4", systemAdminAttempts)
-	}
-}

@@ -15,12 +15,11 @@ var testAppSecret = strings.Repeat("s", 32)
 
 func validEnv() map[string]string {
 	return map[string]string{
-		"DATABASE_URL":     "postgres://vantigo:secret@db.internal:5432/vantigo?sslmode=verify-full",
-		"APP_URL":          "https://vantigo.example.com",
-		"APP_SECRET":       testAppSecret,
-		"BOOTSTRAP_SECRET": "test-bootstrap-secret",
-		"SMTP_HOST":        "smtp.example.com",
-		"SMTP_FROM":        "noreply@vantigo.example.com",
+		"DATABASE_URL": "postgres://vantigo:secret@db.internal:5432/vantigo?sslmode=verify-full",
+		"APP_URL":      "https://vantigo.example.com",
+		"APP_SECRET":   testAppSecret,
+		"SMTP_HOST":    "smtp.example.com",
+		"SMTP_FROM":    "noreply@vantigo.example.com",
 	}
 }
 
@@ -409,27 +408,6 @@ func TestLoad_AppSecret(t *testing.T) {
 	cfg := mustLoad(t, with(validEnv(), "APP_SECRET", testAppSecret+"x"))
 	if string(cfg.AppSecret) != testAppSecret+"x" {
 		t.Errorf("AppSecret = %q", cfg.AppSecret)
-	}
-}
-
-func TestLoad_BootstrapSecret(t *testing.T) {
-	if msg := loadError(t, with(validEnv(), "BOOTSTRAP_SECRET", "")); !strings.Contains(msg, "BOOTSTRAP_SECRET: is required outside development") {
-		t.Errorf("error = %q", msg)
-	}
-	if cfg := mustLoad(t, with(validEnv(), "APP_ENV", "development", "BOOTSTRAP_SECRET", "")); cfg.BootstrapSecret != "" {
-		t.Errorf("BootstrapSecret = %q, want empty in development", cfg.BootstrapSecret)
-	}
-	if cfg := mustLoad(t, with(validEnv(), "BOOTSTRAP_SECRET", "s3cr3t")); cfg.BootstrapSecret != "s3cr3t" {
-		t.Errorf("BootstrapSecret = %q", cfg.BootstrapSecret)
-	}
-	// A blank secret is a missing one, as .NET's IsNullOrWhiteSpace check
-	// had it; a set one is kept verbatim, its surrounding spaces included.
-	if msg := loadError(t, with(validEnv(), "BOOTSTRAP_SECRET", "   ")); !strings.Contains(msg, "BOOTSTRAP_SECRET: is required outside development") {
-		t.Errorf("blank secret: error = %q", msg)
-	}
-	const padded = " configured-secret-with-preserved-space "
-	if cfg := mustLoad(t, with(validEnv(), "BOOTSTRAP_SECRET", padded)); cfg.BootstrapSecret != padded {
-		t.Errorf("BootstrapSecret = %q, want %q verbatim", cfg.BootstrapSecret, padded)
 	}
 }
 
@@ -843,15 +821,6 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 	msg := loadError(t, with(validEnv(), "TRUSTED_PROXY_HOPS", "1", "TRUSTED_PROXY_CIDRS", "not-a-cidr"))
 	if !strings.Contains(msg, "TRUSTED_PROXY_CIDRS: must be a comma list") || strings.Contains(msg, want) {
 		t.Errorf("an unparsable list: error %q, want only the parse problem", msg)
-	}
-}
-
-func TestLoad_SystemAdminEmail(t *testing.T) {
-	if cfg := mustLoad(t, with(validEnv(), "SYSTEM_ADMIN_EMAIL", "  admin@vantigo.example.com  ")); cfg.SystemAdminEmail != "admin@vantigo.example.com" {
-		t.Errorf("SystemAdminEmail = %q", cfg.SystemAdminEmail)
-	}
-	if cfg := mustLoad(t, validEnv()); cfg.SystemAdminEmail != "" {
-		t.Errorf("SystemAdminEmail = %q, want empty by default", cfg.SystemAdminEmail)
 	}
 }
 

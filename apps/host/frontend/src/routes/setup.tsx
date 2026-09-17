@@ -14,9 +14,8 @@ const SetupPage = () => {
   const queryClient = useQueryClient();
   const status = useQuery({ queryKey: ["auth", "bootstrap-status"], queryFn: fetchBootstrapStatus, retry: false });
   const form = useForm({
-    initialValues: { secret: "", email: "", displayName: "", password: "" },
+    initialValues: { email: "", displayName: "", password: "" },
     validate: {
-      secret: (value) => (value ? null : t("auth.enterSetupSecret")),
       email: (value) => (/^\S+@\S+$/.test(value) ? null : t("auth.validEmail")),
       displayName: (value) => (value.trim() ? null : t("auth.enterName")),
       password: (value) => (value ? null : t("auth.enterPassword")),
@@ -62,12 +61,6 @@ const SetupPage = () => {
             {mutation.error && <Alert color="red">{mutation.error.message}</Alert>}
             <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
               <Stack>
-                <TextInput
-                  label={t("auth.setupSecret")}
-                  type="password"
-                  autoComplete="off"
-                  {...form.getInputProps("secret")}
-                />
                 <TextInput label={t("common.displayName")} autoComplete="name" {...form.getInputProps("displayName")} />
                 <TextInput label={t("common.email")} autoComplete="email" {...form.getInputProps("email")} />
                 <PasswordInput

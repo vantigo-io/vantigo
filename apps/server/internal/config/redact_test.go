@@ -16,8 +16,6 @@ import (
 // no other field can contain it by accident.
 const (
 	fmtAppSecret        = "app-secret-value-0123456789abcdefghij"
-	fmtBootstrapSecret  = "bootstrap-secret-value"
-	fmtAdminEmail       = "break-glass-admin@vantigo.example.com"
 	fmtSMTPPassword     = "smtp-password-value"
 	fmtOIDCClientSecret = "oidc-client-secret-value"
 	fmtSCIMToken        = "scim-token-value"
@@ -32,7 +30,7 @@ const (
 // decimal bytes (%v, %d).
 func secretPatterns() []string {
 	var out []string
-	for _, s := range []string{fmtAppSecret, fmtBootstrapSecret, fmtAdminEmail, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtCommsAIKey} {
+	for _, s := range []string{fmtAppSecret, fmtSMTPPassword, fmtOIDCClientSecret, fmtSCIMToken, fmtSCIMPrevious, fmtDBPassword, fmtMigrationsPass, fmtCommsAIKey} {
 		out = append(out, s, hex.EncodeToString([]byte(s)), strings.ToUpper(hex.EncodeToString([]byte(s))))
 	}
 	decimal := make([]string, 0, len(fmtAppSecret))
@@ -46,8 +44,6 @@ func secretConfig(t *testing.T) *Config {
 	t.Helper()
 	return mustLoad(t, with(withEntra(validEnv()),
 		"APP_SECRET", fmtAppSecret,
-		"BOOTSTRAP_SECRET", fmtBootstrapSecret,
-		"SYSTEM_ADMIN_EMAIL", fmtAdminEmail,
 		"SMTP_USERNAME", "smtp-user",
 		"SMTP_PASSWORD", fmtSMTPPassword,
 		"OIDC_CLIENT_SECRET", fmtOIDCClientSecret,
@@ -90,7 +86,7 @@ func TestFormat_NeverPrintsASecret(t *testing.T) {
 	}
 
 	full := fmt.Sprintf("%+v", cfg)
-	for _, want := range []string{"db.internal", "smtp.example.com", "smtp-user", validEntraClientID, "BootstrapSecret:" + redactedText, "Password:" + redactedText, "Token:" + redactedText} {
+	for _, want := range []string{"db.internal", "smtp.example.com", "smtp-user", validEntraClientID, "Password:" + redactedText, "Token:" + redactedText} {
 		if !strings.Contains(full, want) {
 			t.Errorf("%%+v lost %q:\n%s", want, full)
 		}

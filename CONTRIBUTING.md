@@ -22,8 +22,7 @@ mise run smoke            # build the image and smoke-test it end to end
 
 `mise run server:dev` runs the `api` command, which applies migrations under the
 advisory lock and then serves. It sets a development-only `APP_SECRET`; development
-needs no `BOOTSTRAP_SECRET` (the process generates one and logs it at WARN on startup)
-and no SMTP configuration.
+needs no SMTP configuration.
 
 If `bun` or `go` is not on your `PATH`, prefix the command with `mise exec --`. The
 workspace pins Bun 1.3.14, and a bare `bun` may resolve to a different installation.
@@ -324,16 +323,15 @@ sign-in and sessions, users and invitations, MFA and passkeys, RBAC, OIDC and SC
 single-tenant, on the platform every later module mounts on.
 
 Development needs nothing beyond `APP_SECRET` (32+ bytes; `mise run server:dev` sets one).
-`BOOTSTRAP_SECRET` is optional there: leave it unset and the process generates one and logs
-it at WARN on startup — copy it from the log instead of choosing your own.
 
-To bootstrap the installation's first Owner, either open `/setup` in the SPA or call the
-endpoint directly with the logged secret:
+To bootstrap the installation's first Owner, who is also its SystemAdmin, either open
+`/setup` in the SPA or call the endpoint directly; no secret is involved, and it works
+only until the first Owner exists:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/identity/bootstrap \
   -H 'Content-Type: application/json' \
-  -d '{"secret":"<the logged bootstrap secret>","email":"owner@example.test","displayName":"Owner","password":"a strong password"}'
+  -d '{"email":"owner@example.test","displayName":"Owner","password":"a strong password"}'
 ```
 
 `GET /api/v1/identity/bootstrap-status` reports whether bootstrap is still available

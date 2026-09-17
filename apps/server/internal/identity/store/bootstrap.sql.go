@@ -42,21 +42,6 @@ func (q *Queries) InsertBootstrapState(ctx context.Context, completedAt time.Tim
 	return err
 }
 
-const installationInUse = `-- name: InstallationInUse :one
-SELECT (EXISTS (SELECT 1 FROM identity.users)
-     OR EXISTS (SELECT 1 FROM identity.bootstrap_state WHERE id = 1))::boolean AS in_use
-`
-
-// InstallationInUse reports whether the installation is past its first run:
-// any user exists, or the bootstrap marker does
-// (SV/SystemAdminBootstrapper.cs:57-58).
-func (q *Queries) InstallationInUse(ctx context.Context) (bool, error) {
-	row := q.db.QueryRow(ctx, installationInUse)
-	var in_use bool
-	err := row.Scan(&in_use)
-	return in_use, err
-}
-
 const rolesByNormalizedName = `-- name: RolesByNormalizedName :many
 SELECT id, name, normalized_name, is_system, is_built_in
 FROM identity.roles

@@ -58,7 +58,7 @@ run = [
 description = "Run the api command against docker-compose.dev.yml on http://localhost:8080"
 dir = "apps/server"
 # APP_SECRET is a dev-only fixture value (32+ bytes), never used outside this
-# task. Development needs no BOOTSTRAP_SECRET or SMTP configuration.
+# task. Development needs no SMTP configuration.
 env = { APP_ENV = "development", APP_URL = "http://localhost:8080", LOG_LEVEL = "debug", DATABASE_URL = "postgres://vantigo:vantigo@127.0.0.1:55433/vantigo?sslmode=disable", APP_SECRET = "dev-only-app-secret-not-for-production-use" }
 run = "go run ./cmd/vantigo api"
 

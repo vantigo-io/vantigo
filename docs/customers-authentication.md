@@ -48,20 +48,16 @@ privileged bounds per request, whatever the cookie says.
 
 ## First Owner and local accounts
 
-There is one deliberate, one-time bootstrap path:
+There is one deliberate, one-time bootstrap path, and it needs no secret: on a fresh
+installation, visit `/setup` and provide the first Owner's email, display name and
+password. That account becomes the installation's full administrator, holding both
+`Owner` (every permission in every module) and `SystemAdmin` (`/admin` and
+maintenance mode). No configuration names it, and no other path grants `SystemAdmin`.
 
-1. Outside development the operator **must** set `BOOTSTRAP_SECRET`. The configured
-   value is used exactly, surrounding whitespace included, and is never logged. If
-   it is unset, startup fails with a configuration error: with multiple replicas a
-   per-process generated secret would be unpredictable behind a load balancer, and
-   every replica would log its own.
-   In development only, an unset secret is generated in memory and logged once at
-   `WARN` for the operator to use at `/setup`. It is not persisted, and restarting
-   before setup generates a new one. Never rely on that fallback outside
-   development.
-2. Visit `/setup`, enter the bootstrap secret, and provide the first Owner's email,
-   display name and password.
-3. Remove or rotate the bootstrap secret once the Owner account exists.
+**Complete setup before the installation is reachable by anyone else.** Whoever
+submits `/setup` first owns the installation. While no Owner exists the process logs
+a `WARN` at startup saying so; once the Owner exists, setup and bootstrap refuse every
+further request.
 
 `GET /api/v1/identity/bootstrap-status` is anonymous and returns
 `{"available": true|false}`. `POST /api/v1/identity/bootstrap` remains available for
@@ -70,7 +66,7 @@ an orchestrated flow:
 ```bash
 curl -X POST https://vantigo.example.com/api/v1/identity/bootstrap \
   -H 'Content-Type: application/json' \
-  -d '{"secret":"<the bootstrap secret>","email":"owner@example.com","displayName":"Owner","password":"a strong password"}'
+  -d '{"email":"owner@example.com","displayName":"Owner","password":"a strong password"}'
 ```
 
 Every change to who holds Owner — bootstrap, Owner creation, Owner invitation
@@ -79,9 +75,6 @@ concurrent bootstrap requests cannot both win. Setup and bootstrap become
 unavailable once the first Owner exists. The bootstrap account is an ordinary local
 password account, and a local Owner remains the break-glass path even when workforce
 OIDC is enabled.
-
-`SYSTEM_ADMIN_EMAIL`, when it matches a bootstrapped Owner's address
-case-insensitively, also grants that account SystemAdmin.
 
 Owners invite `User` or `Owner` accounts from `/settings`. Invitation tokens are
 opaque and stored only as hashes. `INVITATION_LIFETIME` defaults to `168h` (seven
@@ -276,8 +269,6 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `APP_SECRET` | Process-wide key material, ≥ 32 bytes | **required** |
-| `BOOTSTRAP_SECRET` | One-time first-Owner secret | **required outside development** |
-| `SYSTEM_ADMIN_EMAIL` | Also grants SystemAdmin to the matching bootstrapped Owner | unset |
 | `OWNERS_REQUIRE_MFA` | Require MFA for Owner and SystemAdmin | on outside development |
 | `OWNERS_ALLOW_INSECURE_NO_MFA` | Escape hatch for the above | `0` |
 | `MFA_ISSUER` | Authenticator app label | `Vantigo` |

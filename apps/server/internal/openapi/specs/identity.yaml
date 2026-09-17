@@ -348,11 +348,7 @@ components:
                 password:
                     nullable: true
                     type: string
-                secret:
-                    nullable: true
-                    type: string
             required:
-                - secret
                 - email
                 - displayName
                 - password
@@ -3754,12 +3750,6 @@ paths:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Bad Request
-                "401":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Unauthorized
                 "409":
                     content:
                         application/json:

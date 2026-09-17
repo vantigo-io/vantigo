@@ -56,14 +56,15 @@ func TestMaintenance_StatusIsAnonymousAndDefaultsToDisabled(t *testing.T) {
 
 // Ported from IdentityMaintenanceModeIntegrationTests.NonSystemAdminCannotUpdateMaintenanceMode.
 // Extended: anonymous gets 401, and an Owner who is not also a SystemAdmin
-// (SYSTEM_ADMIN_EMAIL unset, so bootstrapOwner grants only Owner) is refused
-// too, since the contract's rule is policy:SystemAdmin, not Owner. Nothing
-// any of the three requests sent changes the status.
+// (seeded directly, since every bootstrap Owner is one) is refused too,
+// since the contract's rule is policy:SystemAdmin, not Owner. Nothing any
+// of the three requests sent changes the status.
 func TestMaintenance_NonSystemAdminIsForbidden(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	h.seedUser(t, "user@example.test", userPassword, identity.RoleUserID)
-	owner, _ := h.bootstrapOwner(t)
+	h.seedUser(t, ownerEmail, ownerPassword, identity.RoleOwnerID)
+	owner := h.login(t, ownerEmail, ownerPassword)
 	body := map[string]any{"enabled": true, "message": "Denied"}
 
 	if r := h.client(t).do(http.MethodPut, maintenanceUpdatePath, body); r.status != http.StatusUnauthorized || r.code() != "unauthenticated" {
@@ -85,12 +86,11 @@ func TestMaintenance_NonSystemAdminIsForbidden(t *testing.T) {
 }
 
 // Ported from IdentityMaintenanceModeIntegrationTests.SystemAdminCanEnableAndDisableMaintenanceMode.
-// The .NET factory's Owner is also its configured SystemAdmin; here
-// SYSTEM_ADMIN_EMAIL makes the bootstrap Owner one, as sessions_test.go's
-// system-admin-revoke tests do.
+// The .NET factory's Owner is also its configured SystemAdmin; here every
+// bootstrap Owner is one.
 func TestMaintenance_SystemAdminCanEnableAndDisable(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	administrator, _ := h.bootstrapOwner(t)
 
 	r := administrator.do(http.MethodPut, maintenanceUpdatePath, map[string]any{"enabled": true, "message": "Scheduled maintenance"})
@@ -124,7 +124,7 @@ func TestMaintenance_SystemAdminCanEnableAndDisable(t *testing.T) {
 // this package, is accepted; the refusal changes nothing.
 func TestMaintenance_MessageLengthBoundary(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	administrator, _ := h.bootstrapOwner(t)
 
 	tooLong := strings.Repeat("x", 501)
@@ -153,7 +153,7 @@ func TestMaintenance_MessageLengthBoundary(t *testing.T) {
 // of waiting out the TTL.
 func TestMaintenance_CacheServesStaleReadsForTwentySecondsThenRefreshesAndPutEvicts(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h := newHarness(t)
 	administrator, _ := h.bootstrapOwner(t)
 	anonymous := h.client(t)
 
@@ -216,9 +216,6 @@ func TestSystemStatus_RequiresOwnerAndRedactsSecrets(t *testing.T) {
 	if status.Total < 2 || status.Active < 0 || status.Active > status.Total-status.Disabled ||
 		status.PendingInvitations < 0 || status.StaticOidcEnabled || status.StaticScimEnabled {
 		t.Errorf("status = %+v", status)
-	}
-	if strings.Contains(string(r.body), bootstrapSecret) {
-		t.Errorf("body leaked the bootstrap secret: %s", r.body)
 	}
 }
 

@@ -65,7 +65,7 @@ curl -fsSLO "$base/.env.example"
 curl -fsSLO "$base/vantigo.env.example"
 
 cp .env.example .env                              # set a database password here
-cp vantigo.env.example vantigo.env                # set APP_SECRET and BOOTSTRAP_SECRET here
+cp vantigo.env.example vantigo.env                # set APP_SECRET here
 
 docker compose up -d
 ```
@@ -74,15 +74,15 @@ Compose starts PostgreSQL, applies the database migrations as a one-shot `migrat
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
 Customers, Communications, Products and Energy are modules in that one application.
 
-The stack runs outside development, so `vantigo.env` must carry two values before
-the first start — the application refuses to boot without them, and neither is ever
-generated or logged for you:
+The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
+the first start — at least 32 bytes of key material, generated with
+`openssl rand -base64 32`. The application refuses to boot without it, and it is never
+generated or logged for you.
 
-- `APP_SECRET` — at least 32 bytes of key material; generate with `openssl rand -base64 32`.
-- `BOOTSTRAP_SECRET` — authenticates the one-time first-Owner bootstrap.
-
-Then visit <http://localhost:8080/setup>, enter that same bootstrap secret, and
-create your first Owner account. Remove or rotate the secret afterwards.
+Then visit <http://localhost:8080/setup> and create your first Owner account. That
+account is the installation's full administrator, so do this before anyone else can
+reach the address: whoever completes setup first owns the installation, and setup
+closes once they have.
 
 The [compose guide](deploy/compose/README.md) covers configuration, first sign-in,
 production notes and upgrades in more detail.
@@ -148,9 +148,8 @@ mise run server:dev                   # the api command on http://localhost:8080
 ```
 
 `mise run server:dev` runs the `api` command against the development database with a
-development-only `APP_SECRET`, so it migrates and then serves. In development
-`BOOTSTRAP_SECRET` may be left unset: the process generates one and logs it at WARN on
-startup — copy it from the log and use it at `/setup`.
+development-only `APP_SECRET`, so it migrates and then serves. Open `/setup` to create
+the first Owner.
 
 If `bun` or `go` is not on your `PATH`, prefix the command with `mise exec --`
 (`mise exec -- bun install --frozen-lockfile`).
@@ -238,7 +237,6 @@ docker run --rm \
   -e DATABASE_URL="postgresql://vantigo:...@your-postgres:5432/vantigo?sslmode=verify-full" \
   -e APP_URL="https://vantigo.example.com" \
   -e APP_SECRET="..." \
-  -e BOOTSTRAP_SECRET="..." \
   -e SMTP_HOST="smtp.example.com" \
   -e SMTP_FROM="no-reply@example.com" \
   ghcr.io/vantigo-io/vantigo migrate
@@ -249,15 +247,13 @@ docker run -d \
   -e DATABASE_URL="postgresql://vantigo_app:...@your-postgres:5432/vantigo?sslmode=verify-full" \
   -e APP_URL="https://vantigo.example.com" \
   -e APP_SECRET="..." \
-  -e BOOTSTRAP_SECRET="..." \
   -e SMTP_HOST="smtp.example.com" \
   -e SMTP_FROM="no-reply@example.com" \
   ghcr.io/vantigo-io/vantigo api
 ```
 
 Outside development the configuration is fail-closed on secrets and mail: `APP_SECRET`
-(at least 32 bytes) and `BOOTSTRAP_SECRET` must be set, and `SMTP_HOST` and `SMTP_FROM`
-must be set. `APP_SECRET` must be the *same* value everywhere it is passed — both
+(at least 32 bytes) must be set, and `SMTP_HOST` and `SMTP_FROM` must be set. `APP_SECRET` must be the *same* value everywhere it is passed — both
 commands above and every replica. Transport is yours to choose: `APP_URL` may be http
 or https, `DATABASE_URL` may use any `sslmode` or a Unix socket, and `SMTP_TLS` may be
 `starttls`, `implicit` or `none` — see

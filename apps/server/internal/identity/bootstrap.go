@@ -2,19 +2,14 @@ package identity
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/vantigo-io/vantigo/server/internal/config"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/identity/gen"
 	"github.com/vantigo-io/vantigo/server/internal/identity/store"
@@ -27,16 +22,9 @@ import (
 // :20-25). 0x56414e54 is "VANT".
 const ownerMutationLock = 0x56414e54
 
-// bootstrapSecretBytes is the entropy of a generated development secret.
-const bootstrapSecretBytes = 32
-
 // maxDisplayNameLength is identity.users.display_name's CHECK bound, .NET's
 // HasMaxLength(200).
 const maxDisplayNameLength = 200
-
-// systemAdminAttempts is how often RunStartup tries the SystemAdmin grant
-// when it loses a serialization race (SV/SystemAdminBootstrapper.cs:22).
-const systemAdminAttempts = 4
 
 // sessionLocation is GET /session's path, the Location of a 201 that
 // signs its caller in.
@@ -46,38 +34,18 @@ const sessionLocation = "/api/v1/identity/session"
 // refuses it with a client answer.
 var errBootstrapRefused = errors.New("identity: bootstrap refused")
 
-// resolveBootstrapSecret is the secret POST /bootstrap accepts, as .NET's
-// BootstrapSecretProvider resolved it (SV/BootstrapSecretProvider.cs:19-48).
-// A configured BOOTSTRAP_SECRET is used verbatim and never logged. In
-// development without one, it is 32 random bytes as base64url, logged once
-// at WARN for the operator and held only in memory; it stays valid until
-// bootstrap completes or the process restarts. Outside development
-// config.Load has already refused a missing secret; "", which nothing
-// matches, keeps that failing closed regardless.
-func resolveBootstrapSecret(cfg *config.Config, logger *slog.Logger) string {
-	if strings.TrimSpace(cfg.BootstrapSecret) != "" {
-		return cfg.BootstrapSecret
-	}
-	if !cfg.IsDevelopment() {
-		return ""
-	}
-	b := make([]byte, bootstrapSecretBytes)
-	_, _ = rand.Read(b) // crypto/rand.Read never returns an error
-	secret := base64.RawURLEncoding.EncodeToString(b)
-	// The one secret identity ever logs, and only in development, as .NET did.
-	logger.Warn("bootstrap secret generated",
-		"bootstrap_secret", secret,
-		"note", "valid only until setup completes or this process restarts; treat it as a secret")
-	return secret
-}
+// bootstrapRoles are the roles the first-run bootstrap grants its Owner:
+// Owner, the permission wildcard for every module, and SystemAdmin, the
+// control plane (/admin, maintenance mode). The first account to complete
+// setup is the installation's full administrator, there being no other way
+// to grant SystemAdmin (GET /access/roles hides it). The order is the 201's
+// literal order, not orderRoles (EA/AuthEndpoints.cs:257-258).
+var bootstrapRoles = []string{RoleOwner, RoleSystemAdmin}
 
 // GetIdentityBootstrapStatus reports whether bootstrap is still available:
-// a secret exists and bootstrap is not consumed (EA/AuthEndpoints.cs:91-104).
-// It is a hint for the UI only; POST /bootstrap decides.
+// no Owner exists and the marker is not written. It is a hint for the UI
+// only; POST /bootstrap decides.
 func (s *server) GetIdentityBootstrapStatus(ctx context.Context, _ gen.GetIdentityBootstrapStatusRequestObject) (gen.GetIdentityBootstrapStatusResponseObject, error) {
-	if s.bootstrapSecret == "" {
-		return gen.GetIdentityBootstrapStatus200JSONResponse{Available: false}, nil
-	}
 	consumed, err := s.q.BootstrapConsumed(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("identity: bootstrap status: %w", err)
@@ -86,16 +54,16 @@ func (s *server) GetIdentityBootstrapStatus(ctx context.Context, _ gen.GetIdenti
 }
 
 // PostIdentityBootstrap creates the installation's first Owner and signs
-// them in (EA/AuthEndpoints.cs:155-268). In order: the request is validated
-// (400 invalid_request with per-field errors); the secret is compared in
-// constant time (401 invalid_secret); then one serializable transaction,
-// under the owner lock, refuses a consumed bootstrap (409
-// bootstrap_unavailable), applies the password policy and the account
-// checks ASP.NET Identity's CreateAsync made (400
-// identity_validation_failed), creates the user with Owner (and
-// SystemAdmin when the email is SYSTEM_ADMIN_EMAIL, compared
-// case-insensitively), and records the marker and the audit event. Only
-// after commit does it start a session: 201 with Location /session.
+// them in (EA/AuthEndpoints.cs:155-268). It is anonymous and needs no
+// secret: whoever completes setup first on a fresh installation is its
+// administrator, and the consumed check below makes that a one-time event.
+// In order: the request is validated (400 invalid_request with per-field
+// errors); then one serializable transaction, under the owner lock, refuses
+// a consumed bootstrap (409 bootstrap_unavailable), applies the password
+// policy and the account checks ASP.NET Identity's CreateAsync made (400
+// identity_validation_failed), creates the user with bootstrapRoles, and
+// records the marker and the audit event. Only after commit does it start a
+// session: 201 with Location /session.
 //
 // A concurrent bootstrap that wins makes this one fail on a serialization
 // failure, a deadlock or a unique violation; each is the same 409. It is
@@ -108,21 +76,13 @@ func (s *server) PostIdentityBootstrap(ctx context.Context, req gen.PostIdentity
 	if fields := validateBootstrapRequest(body); fields != nil {
 		return gen.PostIdentityBootstrap400JSONResponse(authErrorBody("invalid_request", "The bootstrap request is invalid.", fields)), nil
 	}
-	if !secretMatches(s.bootstrapSecret, *body.Secret) {
-		return gen.PostIdentityBootstrap401JSONResponse(authErrorBody("invalid_secret", "The bootstrap secret is invalid.", nil)), nil
-	}
 	r, err := requestFrom(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	email, displayName := strings.TrimSpace(*body.Email), strings.TrimSpace(*body.DisplayName)
-	// .NET's literal order for this response, not orderRoles
-	// (EA/AuthEndpoints.cs:257-258).
-	roles := []string{RoleOwner}
-	if strings.EqualFold(strings.TrimSpace(s.deps.Config.SystemAdminEmail), email) {
-		roles = append(roles, RoleSystemAdmin)
-	}
+	roles := bootstrapRoles
 	userID := uuid.New()
 
 	var refused gen.PostIdentityBootstrapResponseObject
@@ -236,9 +196,6 @@ type bootstrapAuditState struct {
 // database error. It returns nil when the request is complete.
 func validateBootstrapRequest(b gen.BootstrapRequest) map[string][]string {
 	fields := map[string][]string{}
-	if blank(b.Secret) {
-		fields["secret"] = []string{"Secret is required."}
-	}
 	if blank(b.Email) || !strings.Contains(*b.Email, "@") {
 		fields["email"] = []string{"A valid email is required."}
 	}
@@ -259,14 +216,6 @@ func validateBootstrapRequest(b gen.BootstrapRequest) map[string][]string {
 
 func blank(s *string) bool {
 	return s == nil || strings.TrimSpace(*s) == ""
-}
-
-// secretMatches compares a supplied bootstrap secret with the configured
-// one as .NET did (EA/AuthEndpoints.cs:532-538): the exact bytes, in
-// constant time for a given length. An empty configured secret matches
-// nothing.
-func secretMatches(configured, supplied string) bool {
-	return configured != "" && subtle.ConstantTimeCompare([]byte(configured), []byte(supplied)) == 1
 }
 
 // emailAddressValid is .NET's EmailAddressAttribute, which ASP.NET
@@ -331,43 +280,32 @@ func builtInRoleID(name string) uuid.UUID {
 }
 
 // RunStartup is identity's work after migrations and before the server
-// listens; its error must stop startup. It reproduces .NET's startup
-// SystemAdminBootstrapper (SV/SystemAdminBootstrapper.cs:28-107):
+// listens; its error must stop startup. The built-in roles must be the
+// protected rows the baseline inserted: a role with a built-in name that is
+// not (it lost is_system or is_built_in, or another role took the name)
+// fails closed, as .NET's EnsureBuiltInRolesAsync did.
 //
-//   - The built-in roles must be the protected rows the baseline inserted.
-//     A role with a built-in name that is not (it lost is_system or
-//     is_built_in, or another role took the name) fails closed, whatever
-//     SYSTEM_ADMIN_EMAIL says, as .NET's EnsureBuiltInRolesAsync did.
-//   - SYSTEM_ADMIN_EMAIL unset: nothing more to do.
-//   - The account with that email (matched case-insensitively) is granted
-//     SystemAdmin if it lacks it; the grant rotates its version, revokes
-//     its sessions and spends its reset links, as .NET rotated the security
-//     stamp. Run again, it changes nothing.
-//   - No such account on an installation already in use (any user, or the
-//     bootstrap marker): an error, because the configured break-glass
-//     administrator is missing.
-//   - No such account on a fresh installation: nil, since bootstrap may
-//     create it.
-//
-// The grant is a serializable transaction, tried up to four times.
-//
-// The bootstrap secret is resolved when the module mounts, not here:
-// RunStartup has no way to hand a generated secret to the handlers, and an
-// installation composed without it must still serve /bootstrap.
+// Then, while bootstrap is still available, it logs a warning: with no
+// secret guarding /setup, the first visitor to complete it becomes the
+// installation's administrator, and the operator should be the one to do
+// so before anyone else can reach the address.
 func RunStartup(ctx context.Context, d module.Deps) error {
-	if err := verifyBuiltInRoles(ctx, store.New(d.Pool)); err != nil {
+	q := store.New(d.Pool)
+	if err := verifyBuiltInRoles(ctx, q); err != nil {
 		return err
 	}
-	email := strings.TrimSpace(d.Config.SystemAdminEmail)
-	if email == "" {
-		return nil
+	consumed, err := q.BootstrapConsumed(ctx)
+	if err != nil {
+		return fmt.Errorf("identity: bootstrap status: %w", err)
 	}
-	return db.RetrySerializable(ctx, systemAdminAttempts, func() error {
-		return db.WithTx(ctx, d.Pool, pgx.TxOptions{IsoLevel: pgx.Serializable}, func(tx pgx.Tx) error {
-			return grantSystemAdmin(ctx, d, store.New(tx), email)
-		})
-	})
+	if !consumed {
+		d.Logger.WarnContext(ctx, bootstrapOpenNotice)
+	}
+	return nil
 }
+
+// bootstrapOpenNotice is RunStartup's warning while no Owner exists.
+const bootstrapOpenNotice = "this installation has no Owner yet: the first visitor to complete /setup becomes its Owner and SystemAdmin; complete setup before exposing it"
 
 // verifyBuiltInRoles fails unless each built-in role's name belongs to its
 // fixed-id row and that row is marked system and built-in
@@ -395,63 +333,5 @@ func verifyBuiltInRoles(ctx context.Context, q *store.Queries) error {
 			return fmt.Errorf("identity: role %q already exists with conflicting metadata and cannot be adopted as a protected role", want.name)
 		}
 	}
-	return nil
-}
-
-// errSystemAdminUnverifiedAccount is RunStartup's refusal to make an
-// unverified, passwordless account SystemAdmin (see grantSystemAdmin).
-var errSystemAdminUnverifiedAccount = errors.New("identity: SYSTEM_ADMIN_EMAIL matches an account whose email is unconfirmed " +
-	"and which has no local password, such as one provisioned from an unverified OIDC email claim; SystemAdmin is not granted to it")
-
-// grantSystemAdmin is RunStartup's transaction on q for the configured
-// email.
-func grantSystemAdmin(ctx context.Context, d module.Deps, q *store.Queries, email string) error {
-	user, err := q.GetUserByNormalizedEmail(ctx, normalizeEmail(email))
-	if errors.Is(err, pgx.ErrNoRows) {
-		inUse, err := q.InstallationInUse(ctx)
-		if err != nil {
-			return fmt.Errorf("identity: SystemAdmin grant: %w", err)
-		}
-		if inUse {
-			return errors.New("identity: SYSTEM_ADMIN_EMAIL does not match an existing user: " +
-				"the configured break-glass administrator is missing from an already bootstrapped installation")
-		}
-		d.Logger.InfoContext(ctx, "SYSTEM_ADMIN_EMAIL matches no account yet; the first-run bootstrap may create it")
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("identity: SystemAdmin grant: %w", err)
-	}
-	// Deliberate hardening beyond .NET, whose bootstrapper matched the email
-	// alone (SV/SystemAdminBootstrapper.cs:50). An account with an
-	// unconfirmed email and no local password is, in practice, one workforce
-	// OIDC provisioned from an email claim nobody verified (Entra's email
-	// claim is unverified), so anyone in the tenant who asserted
-	// SYSTEM_ADMIN_EMAIL would become SystemAdmin at the next start. Startup
-	// fails closed instead, granting nothing, as for a conflicting built-in
-	// role; the error names the reason, never the address. The bootstrap
-	// Owner (unconfirmed, but with a local password) and any confirmed
-	// account are granted as before.
-	if !user.EmailConfirmed && user.PasswordHash == nil {
-		return errSystemAdminUnverifiedAccount
-	}
-
-	granted, err := q.AssignUserRole(ctx, store.AssignUserRoleParams{UserID: user.ID, RoleID: RoleSystemAdminID})
-	if err != nil {
-		return fmt.Errorf("identity: SystemAdmin grant: %w", err)
-	}
-	if granted == 0 {
-		return nil
-	}
-	now := d.Clock()
-	if err := q.RotateUserVersion(ctx, store.RotateUserVersionParams{ID: user.ID, Version: uuid.New(), Now: now}); err != nil {
-		return fmt.Errorf("identity: SystemAdmin grant: %w", err)
-	}
-	// The security stamp rotation (SV/SystemAdminBootstrapper.cs:69-82):
-	// every session ends and every reset link the account holds dies.
-	if err := NewAccess(d).rotateSecurityStamp(ctx, q, user.ID, uuid.Nil); err != nil {
-		return fmt.Errorf("identity: SystemAdmin grant: %w", err)
-	}
-	d.Logger.InfoContext(ctx, "granted SystemAdmin to the configured account and revoked its sessions and reset links", "user_id", user.ID)
 	return nil
 }

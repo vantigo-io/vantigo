@@ -177,12 +177,12 @@ func userClient(t testing.TB, h *harness, owner *client, email string) (*client,
 }
 
 // Ported from IdentityRbacIntegrationTests.FreshBootstrapCreatesNormalizedProtectedOwnerAndUserRoles.
-// The Owner bootstrap created also holds SystemAdmin, as SYSTEM_ADMIN_EMAIL
-// names them, as .NET's factory did. Extended: GET /access/roles shows the
+// The Owner bootstrap created also holds SystemAdmin, as .NET's factory's
+// did. Extended: GET /access/roles shows the
 // two built-in roles it does not hide as they are stored.
 func TestRbac_BuiltInRolesAreNormalizedAndProtected(t *testing.T) {
 	t.Parallel()
-	h, owner, ownerID := rbacHarness(t, withEnv("SYSTEM_ADMIN_EMAIL", ownerEmail))
+	h, owner, ownerID := rbacHarness(t)
 
 	rows, err := h.pool.Query(context.Background(), `SELECT id, name, normalized_name, is_system, is_built_in FROM identity.roles ORDER BY name`)
 	if err != nil {

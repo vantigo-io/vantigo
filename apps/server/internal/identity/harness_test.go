@@ -56,13 +56,11 @@ var recorder = contracttest.NewForModule("identity")
 // this clock, with advance, never by sleeping.
 var start = time.Date(2026, time.September, 11, 12, 0, 0, 0, time.UTC)
 
-// The installation's first Owner, as bootstrapOwner creates them, and the
-// secret the harness configures for it.
+// The installation's first Owner, as bootstrapOwner creates them.
 const (
-	harnessOrigin   = "http://identity.example.com"
-	ownerEmail      = "owner@example.test"
-	ownerPassword   = "OwnerPassword123"
-	bootstrapSecret = "identity-harness-bootstrap-secret"
+	harnessOrigin = "http://identity.example.com"
+	ownerEmail    = "owner@example.test"
+	ownerPassword = "OwnerPassword123"
 )
 
 const indexHTML = `<!doctype html><html><head><title>Vantigo</title>` +
@@ -178,14 +176,12 @@ func newHarness(t *testing.T, opts ...harnessOption) *harness {
 
 	// httptest's peer is always 127.0.0.1, the one trusted proxy, so each
 	// client's X-Forwarded-For address becomes its httpx.ClientIP and every
-	// IP-keyed limit is per client. BOOTSTRAP_SECRET is set so bootstrap is
-	// deterministic; a test that wants the development fallback clears it.
+	// IP-keyed limit is per client.
 	env := map[string]string{
 		"APP_ENV":             "development",
 		"DATABASE_URL":        databaseURL,
 		"APP_URL":             origin,
 		"APP_SECRET":          "identity-harness-app-secret-0123456789abcdef",
-		"BOOTSTRAP_SECRET":    bootstrapSecret,
 		"TRUSTED_PROXY_HOPS":  "1",
 		"TRUSTED_PROXY_CIDRS": "127.0.0.1/32",
 	}
@@ -377,13 +373,11 @@ func (h *harness) signIn(t testing.TB, userID uuid.UUID, mfa bool) *client {
 
 // bootstrapOwner creates the installation's first Owner through
 // POST /bootstrap and returns the client it signed in and the Owner's id.
-// The Owner also holds SystemAdmin when the harness sets SYSTEM_ADMIN_EMAIL
-// to ownerEmail.
+// The Owner also holds SystemAdmin, as every bootstrap Owner does.
 func (h *harness) bootstrapOwner(t testing.TB) (*client, uuid.UUID) {
 	t.Helper()
 	c := h.client(t)
 	r := c.do(http.MethodPost, "/api/v1/identity/bootstrap", map[string]string{
-		"secret":      bootstrapSecret,
 		"email":       ownerEmail,
 		"displayName": "Integration Owner",
 		"password":    ownerPassword,
@@ -477,14 +471,9 @@ func (h *harness) startTwoFactor(t testing.TB, email, password string) *client {
 	return c
 }
 
-// runStartup runs identity.RunStartup against this installation with
-// SYSTEM_ADMIN_EMAIL set to systemAdminEmail.
-func (h *harness) runStartup(systemAdminEmail string) error {
-	cfg := *h.cfg
-	cfg.SystemAdminEmail = systemAdminEmail
-	d := h.deps
-	d.Config = &cfg
-	return identity.RunStartup(context.Background(), d)
+// runStartup runs identity.RunStartup against this installation.
+func (h *harness) runStartup() error {
+	return identity.RunStartup(context.Background(), h.deps)
 }
 
 // sessionID is the id of the session whose cookie token is token.
