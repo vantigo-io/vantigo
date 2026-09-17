@@ -15,7 +15,7 @@ import {
 import { IconActivity, IconCloudLock, IconDatabase, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import type { ReactNode } from "react";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getIdentitySystemStatus } from "../../api/system-status";
@@ -99,12 +99,11 @@ const AdminDashboardPage = () => {
 
   return (
     <Stack maw={1100} mx="auto" gap="xl">
-      <div>
-        <Title order={2}>{t("admin.dashboard")}</Title>
-        <Text c="dimmed" mt={4}>
-          {t("admin.overview")}
-        </Text>
-      </div>
+      <PageHeader
+        eyebrow={t("navigation.workspaceAdmin")}
+        title={t("admin.dashboard")}
+        description={t("admin.overview")}
+      />
       {failed && (
         <Alert color="red" title={t("admin.statusLoadFailed")}>
           <Group justify="space-between" align="center">

@@ -12,14 +12,13 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconDots, IconMailForward, IconPlus, IconUserPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { type Invitation, invitationAction, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -88,20 +87,16 @@ const InvitationsPage = () => {
       : action.mutate({ id: i.id, kind });
   return (
     <Stack maw={1100} mx="auto" gap="xl">
-      <Group justify="space-between" align="flex-end">
-        <div>
-          <Group gap="sm">
-            <IconMailForward size={30} color="var(--mantine-color-vantigo-6)" />
-            <Title order={2}>{t("admin.invitations")}</Title>
-          </Group>
-          <Text c="dimmed" mt={5}>
-            {t("admin.invitationsDescriptionShort")}
-          </Text>
-        </div>
-        <Button component={Link} to="/workspace/users" leftSection={<IconPlus size={16} />}>
-          {t("admin.inviteSomeone")}
-        </Button>
-      </Group>
+      <PageHeader
+        eyebrow={t("navigation.workspaceAdmin")}
+        title={t("admin.invitations")}
+        description={t("admin.invitationsDescriptionShort")}
+        actions={
+          <Button component={Link} to="/workspace/users" leftSection={<IconPlus size={16} />}>
+            {t("admin.inviteSomeone")}
+          </Button>
+        }
+      />
       <Card withBorder radius="md" p={0} style={{ overflow: "hidden" }}>
         <Group p="md">
           <TextInput

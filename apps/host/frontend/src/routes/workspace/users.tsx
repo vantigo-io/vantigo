@@ -18,7 +18,6 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
@@ -37,7 +36,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { appUrl, useI18n } from "@vantigo/frontend-shell";
+import { appUrl, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { createInvitation, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -310,28 +309,24 @@ const UsersPage = () => {
   );
   return (
     <Stack maw={1100} mx="auto" gap="xl">
-      <Group justify="space-between" align="flex-end">
-        <div>
-          <Group gap="sm">
-            <IconUsers size={30} color="var(--mantine-color-vantigo-6)" />
-            <Title order={2}>{t("admin.users")}</Title>
-          </Group>
-          <Text c="dimmed" mt={5}>
-            {t("admin.usersDescription")}
-          </Text>
-        </div>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => {
-            setEditing(null);
-            setMode("invite");
-            form.reset();
-            open();
-          }}
-        >
-          {t("admin.addUser")}
-        </Button>
-      </Group>
+      <PageHeader
+        eyebrow={t("navigation.workspaceAdmin")}
+        title={t("admin.users")}
+        description={t("admin.usersDescription")}
+        actions={
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => {
+              setEditing(null);
+              setMode("invite");
+              form.reset();
+              open();
+            }}
+          >
+            {t("admin.addUser")}
+          </Button>
+        }
+      />
       <SimpleGrid className="admin-metrics" cols={{ base: 2, sm: 5 }} spacing="sm">
         {[
           { key: "active", label: t("admin.active"), value: (users.data ?? []).filter((u) => u.active), color: "teal" },

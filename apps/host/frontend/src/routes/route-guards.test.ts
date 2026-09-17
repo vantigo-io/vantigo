@@ -180,6 +180,14 @@ describe("workspace administration route guards", () => {
     await expectRedirectTo(WorkspaceRoute, "/");
   });
 
+  it("keeps the roles page's view in the URL and falls back to the roles view for anything else", () => {
+    const validate = WorkspaceRolesRoute.options.validateSearch as (search: Record<string, unknown>) => unknown;
+    expect(validate({ section: "delegations" })).toEqual({ section: "delegations" });
+    expect(validate({ section: "assignments" })).toEqual({ section: "assignments" });
+    expect(validate({ section: "bogus" })).toEqual({ section: undefined });
+    expect(validate({})).toEqual({ section: undefined });
+  });
+
   it("gates /workspace/roles on the authorization capability rather than ownership", async () => {
     fetchSession.mockResolvedValue(sessionWithRoles(["Member"]));
     getAuthorizationMe.mockResolvedValue({ permissions: [], canManageAuthorization: true });
