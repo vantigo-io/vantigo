@@ -53,4 +53,34 @@ describe("AppShellLayout", () => {
     expect(header).toHaveTextContent("search here");
     expect(header).toContainElement(screen.getByRole("button", { name: "act" }));
   });
+
+  it("links the logo to the dashboard through the host's link component", () => {
+    const HostLink = ({ to, children, ...rest }: { to: string; children?: React.ReactNode }) => (
+      <a href={to} data-host-link {...rest}>
+        {children}
+      </a>
+    );
+    render(
+      <MantineProvider env="test">
+        <AppShellLayout linkComponent={HostLink}>
+          <div>content</div>
+        </AppShellLayout>
+      </MantineProvider>,
+    );
+    const home = screen.getByRole("link", { name: "Go to the dashboard" });
+    expect(home).toHaveAttribute("href", "/dashboard");
+    expect(home).toHaveAttribute("data-host-link");
+    expect(screen.getByRole("banner")).toContainElement(home);
+  });
+
+  it("links the logo to the dashboard with a plain anchor when no link component is given", () => {
+    render(
+      <MantineProvider env="test">
+        <AppShellLayout>
+          <div>content</div>
+        </AppShellLayout>
+      </MantineProvider>,
+    );
+    expect(screen.getByRole("link", { name: "Go to the dashboard" })).toHaveAttribute("href", "/dashboard");
+  });
 });
