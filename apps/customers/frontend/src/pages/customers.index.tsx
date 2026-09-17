@@ -134,16 +134,16 @@ export const CustomersPage = () => {
 
           {data && (
             <>
-              <Table.ScrollContainer minWidth={showIdentity ? 920 : 640}>
+              <Table.ScrollContainer minWidth={showIdentity ? 920 : 720}>
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{t("id")}</Table.Th>
                       <Table.Th>{t("name")}</Table.Th>
                       <Table.Th>{t("status")}</Table.Th>
+                      <Table.Th>{t("customerType")}</Table.Th>
                       {showIdentity && (
                         <>
-                          <Table.Th>{t("customerType")}</Table.Th>
                           <Table.Th>{t("countryColumn")}</Table.Th>
                           <Table.Th>{t("legalId")}</Table.Th>
                         </>
@@ -173,24 +173,13 @@ export const CustomersPage = () => {
                                 : t("statusDisabled")}
                           </Badge>
                         </Table.Td>
+                        <Table.Td>
+                          <Badge variant="light" color={customer.type === "business" ? "indigo" : "grape"}>
+                            {customer.type === "business" ? t("customerTypeBusiness") : t("customerTypePerson")}
+                          </Badge>
+                        </Table.Td>
                         {showIdentity && (
                           <>
-                            <Table.Td>
-                              {customer.identity ? (
-                                <Badge
-                                  variant="light"
-                                  color={customer.identity.type === "business" ? "indigo" : "grape"}
-                                >
-                                  {customer.identity.type === "business"
-                                    ? t("legalTypeBusiness")
-                                    : t("legalTypePerson")}
-                                </Badge>
-                              ) : (
-                                <Badge variant="light" color="gray">
-                                  {t("identityUnknown")}
-                                </Badge>
-                              )}
-                            </Table.Td>
                             <Table.Td>
                               {customer.identity ? (
                                 customer.identity.country.toUpperCase()

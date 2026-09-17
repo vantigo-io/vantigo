@@ -17,10 +17,14 @@ export interface CustomerIdentitySummary {
   id: string;
 }
 
+/** Whether a customer is a company or a private person, independent of its legal identity. */
+export type CustomerType = "business" | "person";
+
 export interface CustomerResponse {
   id: number;
   name: string;
   status: string;
+  type: CustomerType;
   createdAt: string;
   updatedAt: string;
   /** Null when the customer has no legal identity or the caller lacks permission to view it. */
@@ -123,7 +127,12 @@ export interface CustomerInput {
   status?: string;
 }
 
-export async function createCustomer(input: CustomerInput): Promise<{ id: number }> {
+/** The type is chosen on create only; afterwards it changes through changeCustomerType. */
+export interface CreateCustomerInput extends CustomerInput {
+  type?: CustomerType;
+}
+
+export async function createCustomer(input: CreateCustomerInput): Promise<{ id: number }> {
   return request<{ id: number }>("/api/v1/customers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -136,6 +145,18 @@ export async function updateCustomer(id: number, input: CustomerInput): Promise<
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Sets whether the customer is a business or a private person. Deliberately not
+ * part of updateCustomer: a legal identity of the old type is removed with it.
+ */
+export async function changeCustomerType(id: number, type: CustomerType): Promise<CustomerResponse> {
+  return request<CustomerResponse>(`/api/v1/customers/${id}/type`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type }),
   });
 }
 

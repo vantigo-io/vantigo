@@ -1,29 +1,54 @@
-import { Button, Combobox, Group, Loader, Modal, Select, Stack, Text, TextInput, useCombobox } from "@mantine/core";
+import {
+  Button,
+  Combobox,
+  Group,
+  Loader,
+  Modal,
+  SegmentedControl,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  useCombobox,
+} from "@mantine/core";
 import { type UseFormReturnType, useForm } from "@mantine/form";
 import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useEffect } from "react";
-import { ApiValidationError, type CustomerResponse, createCustomer, updateCustomer } from "../api/customers";
+import {
+  ApiValidationError,
+  type CustomerResponse,
+  type CustomerType,
+  createCustomer,
+  updateCustomer,
+} from "../api/customers";
 import { brregLookupQueryOptions, type LookupResult } from "../api/lookup";
 import "../i18n";
 
 export type CustomerModalState = { mode: "create" } | { mode: "edit"; customer: CustomerResponse };
 
 type CustomerIdentity = { country: string; type: string; id: string; name: string; source: string };
-type CustomerFormValues = { name: string; identity: CustomerIdentity | undefined; status: string };
+type CustomerFormValues = {
+  name: string;
+  identity: CustomerIdentity | undefined;
+  status: string;
+  type: CustomerType;
+};
 
+/**
+ * Creates or edits a customer. The type — business or private person — is
+ * chosen on create, above the name, and decides whether the name is looked up
+ * in Brønnøysundregistrene at all. It is not editable here: changing it later
+ * is a separate, confirmed action on the customer page.
+ */
 export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalState | null; onClose: () => void }) => {
   const queryClient = useQueryClient();
   const { t } = useI18n("customers");
   const isEdit = state?.mode === "edit";
   const form = useForm<CustomerFormValues>({
-    initialValues: {
-      name: "",
-      identity: undefined as { country: string; type: string; id: string; name: string; source: string } | undefined,
-      status: "active",
-    },
+    initialValues: { name: "", identity: undefined, status: "active", type: "business" },
     validate: { name: (value: string) => (value.trim() ? null : t("customerNameRequired")) },
   });
   useEffect(() => {
@@ -32,6 +57,7 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
         name: state.mode === "edit" ? state.customer.name : "",
         identity: undefined,
         status: state.mode === "edit" ? state.customer.status : "active",
+        type: state.mode === "edit" ? state.customer.type : "business",
       });
       form.resetDirty();
       form.clearErrors();
@@ -39,8 +65,10 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
   const mutation = useMutation({
-    mutationFn: (values: { name: string; status: string; identity?: typeof form.values.identity }) =>
-      isEdit ? updateCustomer(state.customer.id, values) : createCustomer(values),
+    mutationFn: ({ name, status, identity, type }: CustomerFormValues) =>
+      isEdit
+        ? updateCustomer(state.customer.id, { name, status, ...(identity ? { identity } : {}) })
+        : createCustomer({ name, status, type, ...(identity ? { identity } : {}) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       onClose();
@@ -62,13 +90,36 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
       title={isEdit ? t("editCustomer") : t("createNewCustomer")}
       centered
     >
-      <form
-        onSubmit={form.onSubmit(({ name, identity, status }) =>
-          mutation.mutate({ name: name.trim(), status, ...(identity ? { identity } : {}) }),
-        )}
-      >
+      <form onSubmit={form.onSubmit((values) => mutation.mutate({ ...values, name: values.name.trim() }))}>
         <Stack>
-          <CompanyLookupInput form={form} t={t} />
+          {!isEdit && (
+            <SegmentedControl
+              aria-label={t("customerTypeLabel")}
+              fullWidth
+              data={[
+                { value: "business", label: t("customerTypeBusiness") },
+                { value: "person", label: t("customerTypePerson") },
+              ]}
+              value={form.values.type}
+              onChange={(value) => {
+                // A Brreg hit is a business identity; it cannot follow the
+                // customer into the private type.
+                form.setValues({ type: value as CustomerType, identity: undefined });
+              }}
+            />
+          )}
+          {form.values.type === "business" ? (
+            <CompanyLookupInput form={form} t={t} />
+          ) : (
+            <TextInput
+              label={t("name")}
+              description={t("customerPersonNameDescription")}
+              placeholder={t("customerPersonNamePlaceholder")}
+              withAsterisk
+              data-autofocus
+              {...form.getInputProps("name")}
+            />
+          )}
           <Select
             label={t("status")}
             data={[
@@ -79,9 +130,11 @@ export const CustomerFormModal = ({ state, onClose }: { state: CustomerModalStat
             allowDeselect={false}
             {...form.getInputProps("status")}
           />
-          <Text size="sm" c="dimmed">
-            {t("legalIdentityPermission")}
-          </Text>
+          {form.values.type === "business" && (
+            <Text size="sm" c="dimmed">
+              {t("legalIdentityPermission")}
+            </Text>
+          )}
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>
               {t("cancel")}
