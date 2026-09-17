@@ -17,6 +17,7 @@ import {
   AppShellLayout,
   AppSwitcher,
   appUrl,
+  type ShellLinkComponent,
   SpotlightSearchBox,
   SpotlightSearchButton,
   useI18n,
@@ -29,7 +30,7 @@ import { fetchBootstrapStatus } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey, signOut } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
 import { fetchSystemStatus, shouldShowMaintenance, systemStatusQueryKey } from "../api/system-status";
-import { activeAppKey, appForKey, appNavSections, appTitleLabel, switcherTiles } from "../apps";
+import { activeAppKey, appNavSections, appTitleLabel, areaForKey, switcherTiles } from "../apps";
 import { AppSpotlight } from "../components/app-spotlight";
 import { MaintenancePage } from "../components/errors";
 import { ModuleAccessGuard } from "../components/module-access-guard";
@@ -138,12 +139,12 @@ const RootLayout = () => {
     isSystemAdmin: session.isSystemAdmin,
     enabledModules,
   };
-  // The app is whatever the deepest matched route declares; administration
-  // and public paths declare none and render sidebar-less.
+  // The app or area is whatever the deepest matched route declares; public
+  // paths declare none and render sidebar-less.
   const activeKey = activeAppKey(matches);
-  const activeApp = activeKey ? appForKey(activeKey) : undefined;
-  const navSections = appNavSections(activeApp, enabledModules, visibility);
-  const titleLabel = appTitleLabel(activeApp);
+  const activeArea = activeKey ? areaForKey(activeKey) : undefined;
+  const navSections = appNavSections(activeArea, enabledModules, visibility);
+  const titleLabel = appTitleLabel(activeArea);
   const menuSections = visibleNavSections(accountMenuSections, visibility);
   // Sidebar links and the registry use bare path strings, as the nav catalog
   // always has; the router validates search params at runtime.
@@ -196,6 +197,7 @@ const RootLayout = () => {
         nav={
           !gated && navSections.length > 0 ? (close) => renderNavSections(navSections, pathname, close, t) : undefined
         }
+        linkComponent={Link as ShellLinkComponent}
       >
         <Stack gap="md">
           {session.isSystemAdmin && systemStatus.data?.maintenance && !maintenanceWarningDismissed && (

@@ -1,13 +1,6 @@
 import type { CatalogResources } from "@vantigo/frontend-shell";
 
 const en = {
-  "systemAdmin.settings": "Settings",
-  "systemAdmin.manageWorkspace": "Manage this workspace.",
-  "systemAdmin.overview": "Overview",
-  "systemAdmin.users": "Users",
-  "systemAdmin.invitations": "Invitations",
-  "systemAdmin.roles": "Roles",
-  "systemAdmin.settingsSection": "Settings section",
   "systemAdmin.controlPlane": "System status",
   "systemAdmin.title": "System admin",
   "systemAdmin.description": "Control maintenance mode for the whole system.",
@@ -25,13 +18,6 @@ const en = {
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
-  "systemAdmin.settings": "Innstillinger",
-  "systemAdmin.manageWorkspace": "Administrer dette arbeidsområdet.",
-  "systemAdmin.overview": "Oversikt",
-  "systemAdmin.users": "Brukere",
-  "systemAdmin.invitations": "Invitasjoner",
-  "systemAdmin.roles": "Roller",
-  "systemAdmin.settingsSection": "Innstillingsseksjon",
   "systemAdmin.controlPlane": "Systemstatus",
   "systemAdmin.title": "Systemadministrator",
   "systemAdmin.description": "Kontroller vedlikeholdsmodus for hele systemet.",

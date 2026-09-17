@@ -6,6 +6,8 @@ import {
   appNavSections,
   apps,
   appTitleLabel,
+  areaForKey,
+  areas,
   isAppEnabled,
   switcherTiles,
 } from "./apps";
@@ -41,6 +43,7 @@ describe("the app registry", () => {
       "/communications/suppressions",
       "/products",
       "/products/categories",
+      "/products/tax-categories",
       "/energy/metering-points",
     ]);
   });
@@ -65,6 +68,66 @@ describe("the app registry", () => {
   });
 });
 
+describe("the administration areas", () => {
+  const visibility = { permissions: [], isOwner: false, canManageAuthorization: false, enabledModules: allModules };
+
+  it("declares settings, workspace and admin, none of them a switcher tile", () => {
+    expect(areas.map((area) => area.key)).toEqual(["settings", "workspace", "admin"]);
+    const tiles = switcherTiles(["*"], allModules, "settings");
+    expect(tiles.map((tile) => tile.app.key)).toEqual(["home", "customers", "communications", "products", "energy"]);
+    expect(tiles.some((tile) => tile.current)).toBe(false);
+  });
+
+  it("keeps every area destination under the area's URL prefix", () => {
+    for (const area of areas) {
+      const prefix = `/${area.key}`;
+      for (const item of area.navSections.flatMap((section) => section.items)) {
+        expect(item.to === prefix || item.to.startsWith(`${prefix}/`)).toBe(true);
+        expect(item.module).toBeUndefined();
+      }
+    }
+  });
+
+  it("resolves an area or an app by key, and throws for anything else", () => {
+    expect(areaForKey("workspace")).toBe(areas[1]);
+    expect(areaForKey("customers")).toBe(appForKey("customers"));
+    expect(() => areaForKey("billing" as never)).toThrow(/billing/);
+  });
+
+  it("is always enabled: an area has no module to turn off", () => {
+    expect(isAppEnabled(areaForKey("settings"), [])).toBe(true);
+  });
+
+  it("shows the whole workspace area to an Owner and only roles to an authorization manager", () => {
+    const paths = (sections: ReturnType<typeof appNavSections>) =>
+      sections.flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(appNavSections(areaForKey("workspace"), allModules, { ...visibility, isOwner: true }))).toEqual([
+      "/workspace/overview",
+      "/workspace/users",
+      "/workspace/invitations",
+    ]);
+    expect(
+      paths(appNavSections(areaForKey("workspace"), allModules, { ...visibility, canManageAuthorization: true })),
+    ).toEqual(["/workspace/roles"]);
+    expect(paths(appNavSections(areaForKey("workspace"), allModules, visibility))).toEqual([]);
+  });
+
+  it("shows the settings pages to everyone and gives system admin no sidebar", () => {
+    expect(
+      appNavSections(areaForKey("settings"), allModules, visibility).flatMap((section) =>
+        section.items.map((item) => item.to),
+      ),
+    ).toEqual(["/settings/profile", "/settings/security"]);
+    expect(appNavSections(areaForKey("admin"), allModules, visibility)).toEqual([]);
+  });
+
+  it("names the area in the header", () => {
+    expect(appTitleLabel(areaForKey("settings"))).toBe("navigation.settings");
+    expect(appTitleLabel(areaForKey("workspace"))).toBe("navigation.workspaceAdmin");
+    expect(appTitleLabel(areaForKey("admin"))).toBe("navigation.systemAdmin");
+  });
+});
+
 describe("activeAppKey", () => {
   it("takes the deepest match that carries an app", () => {
     expect(activeAppKey([{ staticData: {} }, { staticData: { app: "customers" } }, { staticData: {} }])).toBe(
@@ -72,7 +135,11 @@ describe("activeAppKey", () => {
     );
   });
 
-  it("is undefined when no match carries an app (administration and public paths)", () => {
+  it("reads an area the same way", () => {
+    expect(activeAppKey([{ staticData: {} }, { staticData: { app: "workspace" } }])).toBe("workspace");
+  });
+
+  it("is undefined when no match carries an app (public paths)", () => {
     expect(activeAppKey([{ staticData: {} }, { staticData: {} }])).toBeUndefined();
     expect(activeAppKey([])).toBeUndefined();
   });

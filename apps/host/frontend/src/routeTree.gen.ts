@@ -38,8 +38,10 @@ import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
 import { Route as ProductsTaxCategoriesRouteImport } from './routes/products/tax-categories'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
+import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
 import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
@@ -197,6 +199,11 @@ const ProductsTaxCategoriesRoute = ProductsTaxCategoriesRouteImport.update({
   path: '/tax-categories',
   getParentRoute: () => ProductsRoute,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsProfileRoute = SettingsProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -206,6 +213,11 @@ const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   id: '/security',
   path: '/security',
   getParentRoute: () => SettingsRoute,
+} as any)
+const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkspaceRoute,
 } as any)
 const WorkspaceInvitationsRoute = WorkspaceInvitationsRouteImport.update({
   id: '/invitations',
@@ -299,6 +311,8 @@ export interface FileRoutesByFullPath {
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
   '/products/': typeof ProductsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
@@ -314,10 +328,8 @@ export interface FileRoutesByTo {
   '/password-reset': typeof PasswordResetRoute
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
-  '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
-  '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
   '/communications/suppressions': typeof CommunicationsSuppressionsRoute
@@ -336,6 +348,8 @@ export interface FileRoutesByTo {
   '/customers': typeof CustomersIndexRoute
   '/energy': typeof EnergyIndexRoute
   '/products': typeof ProductsIndexRoute
+  '/settings': typeof SettingsIndexRoute
+  '/workspace': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
@@ -380,6 +394,8 @@ export interface FileRoutesById {
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
   '/products/': typeof ProductsIndexRoute
+  '/settings/': typeof SettingsIndexRoute
+  '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
@@ -425,6 +441,8 @@ export interface FileRouteTypes {
     | '/customers/'
     | '/energy/'
     | '/products/'
+    | '/settings/'
+    | '/workspace/'
     | '/customers/$customerId/energy'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
@@ -440,10 +458,8 @@ export interface FileRouteTypes {
     | '/password-reset'
     | '/reset-password'
     | '/session-expired'
-    | '/settings'
     | '/setup'
     | '/sign-in'
-    | '/workspace'
     | '/communications/channels'
     | '/communications/inbox'
     | '/communications/suppressions'
@@ -462,6 +478,8 @@ export interface FileRouteTypes {
     | '/customers'
     | '/energy'
     | '/products'
+    | '/settings'
+    | '/workspace'
     | '/customers/$customerId/energy'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
@@ -505,6 +523,8 @@ export interface FileRouteTypes {
     | '/customers/'
     | '/energy/'
     | '/products/'
+    | '/settings/'
+    | '/workspace/'
     | '/customers/$customerId/energy'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
@@ -738,6 +758,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsTaxCategoriesRouteImport
       parentRoute: typeof ProductsRoute
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/profile': {
       id: '/settings/profile'
       path: '/profile'
@@ -751,6 +778,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/security'
       preLoaderRoute: typeof SettingsSecurityRouteImport
       parentRoute: typeof SettingsRoute
+    }
+    '/workspace/': {
+      id: '/workspace/'
+      path: '/'
+      fullPath: '/workspace/'
+      preLoaderRoute: typeof WorkspaceIndexRouteImport
+      parentRoute: typeof WorkspaceRoute
     }
     '/workspace/invitations': {
       id: '/workspace/invitations'
@@ -921,11 +955,13 @@ const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
 interface SettingsRouteChildren {
   SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsProfileRoute: SettingsProfileRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
@@ -937,6 +973,7 @@ interface WorkspaceRouteChildren {
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
   WorkspaceRolesRoute: typeof WorkspaceRolesRoute
   WorkspaceUsersRoute: typeof WorkspaceUsersRoute
+  WorkspaceIndexRoute: typeof WorkspaceIndexRoute
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
@@ -944,6 +981,7 @@ const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceOverviewRoute: WorkspaceOverviewRoute,
   WorkspaceRolesRoute: WorkspaceRolesRoute,
   WorkspaceUsersRoute: WorkspaceUsersRoute,
+  WorkspaceIndexRoute: WorkspaceIndexRoute,
 }
 
 const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(

@@ -3,6 +3,7 @@ export const settingsCatalog = {
     settings: "Settings",
     settingsDescription: "Manage your personal details and sign-in methods.",
     profile: "Profile",
+    profileDescription: "Your name, photo and language.",
     personalSettings: "Personal settings",
     profilePhoto: "Profile photo",
     photoRequirements: "JPEG or PNG, up to 5 MB.",
@@ -82,6 +83,7 @@ export const settingsCatalog = {
     recoveryCodesCouldNotRegenerate: "Recovery codes could not be regenerated",
     passwordToRemovePasskey: "Passkey could not be removed",
     security: "Security",
+    securityDescription: "Your password, authenticator app and passkeys.",
     localPasswordUnavailableMessage:
       "This account signs in with an organization identity provider. Manage your password and security there.",
     currentPasswordToBegin: "Current password to begin setup",
@@ -97,6 +99,7 @@ export const settingsCatalog = {
     settings: "Innstillinger",
     settingsDescription: "Administrer personopplysninger og innloggingsmetoder.",
     profile: "Profil",
+    profileDescription: "Navn, bilde og språk.",
     personalSettings: "Personlige innstillinger",
     profilePhoto: "Profilbilde",
     photoRequirements: "JPEG eller PNG, opptil 5 MB.",
@@ -176,6 +179,7 @@ export const settingsCatalog = {
     recoveryCodesCouldNotRegenerate: "Kunne ikke generere nye gjenopprettingskoder",
     passwordToRemovePasskey: "Kunne ikke fjerne passnøkkelen",
     security: "Sikkerhet",
+    securityDescription: "Passord, autentiseringsapp og passnøkler.",
     localPasswordUnavailableMessage:
       "Denne kontoen logger inn med organisasjonens identitetsleverandør. Administrer passord og sikkerhet der.",
     currentPasswordToBegin: "Nåværende passord for å starte oppsett",
