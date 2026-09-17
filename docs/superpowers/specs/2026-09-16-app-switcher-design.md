@@ -192,20 +192,24 @@ All four are the same small shape, built from one shared helper in
 `apps/host/frontend/src/routes/-app-layout.tsx`:
 
 ```ts
-export const Route = createFileRoute("/customers")({
-  staticData: { app: "customers" },
-  component: () => <AppLayout app="customers" />,
-});
+export const Route = createFileRoute("/customers")(appLayoutOptions("customers"));
 ```
 
-`AppLayout` renders `<Outlet />` when the app's module is enabled and
-`<ModuleNotEnabledPage app={...} />` otherwise. It is a component check, not
-a `beforeLoad` redirect, so the URL stays put and the page can name the app.
+`appLayoutOptions(app)` supplies `staticData: { app }`, an `Outlet`
+component, a `beforeLoad` that throws TanStack's `notFound` carrying a
+"module disabled" marker when the module is off, and a `notFoundComponent`
+that renders `ModuleNotEnabledPage` for that marker and the ordinary
+`NotFoundPage` otherwise. Throwing from `beforeLoad` rather than checking in
+the component keeps the URL in place *and* stops loading at the layout
+boundary, so a deep link into a detail route of a disabled module never runs
+the child's loader and never calls the module's API. A genuine 404 thrown by
+a child loader reaches the same boundary without the marker.
 
-`ModuleNotEnabledPage` (new, `apps/host/frontend/src/components/errors.tsx`
-alongside `ForbiddenPage`) shows the app label, "This module is not enabled
-in this installation. Contact your administrator." and a button back to the
-dashboard. Strings go in the host error catalog, en and nb.
+`ModuleNotEnabledPage` (new, `apps/host/frontend/src/components/errors/`
+alongside `ForbiddenPage`) shows the app label and "This module is not
+enabled in this installation. Contact your administrator." with the shared
+error page's default "Go back" / "Go home" actions, like every other error
+page. Strings go in the host error catalog, en and nb.
 
 The customer detail energy tab (`customers/$customerId.energy.tsx`) also
 renders `ModuleNotEnabledPage` inline when energy is disabled, because it

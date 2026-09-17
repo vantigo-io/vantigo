@@ -101,4 +101,4 @@ module that starts requiring another module's contract adds its own check there.
    `apps/host/frontend/src/navigation.ts`, register the app (label, icon,
    home path, sidebar entries) in `apps/host/frontend/src/apps.ts`, and add a
    layout route `apps/host/frontend/src/routes/<name>.tsx` that renders
-   `<AppLayout app="<name>" />`.
+   `createFileRoute("/<name>")(appLayoutOptions("<name>"))`.
