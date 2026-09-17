@@ -45,6 +45,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/mail"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/products"
+	"github.com/vantigo-io/vantigo/server/internal/projects"
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/server"
@@ -281,6 +282,7 @@ func businessModules(access *identity.Access) []module.Module {
 		products.Module(),
 		energy.Module(),
 		communications.Module(),
+		projects.Module(),
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -14,6 +15,17 @@ import (
 )
 
 const corpusDir = "../../../../openapi/testdata/exchanges"
+
+// portedModules are the modules whose contract was derived from the retired
+// .NET application, and which therefore have a recorded exchange corpus.
+// A module written for this codebase from the start (projects, the first)
+// has no .NET ancestor and so no corpus to hold it to: its contract is held
+// to its own module's recorded-exchange gate instead
+// (contracttest.RequireCoverage in the module's main_test.go), which is
+// stricter — it requires every operation to be exercised, not merely every
+// recorded exchange to validate. The list is not derived from Modules
+// because that is exactly the distinction it exists to draw.
+var portedModules = []string{"identity", "customers", "products", "energy", "communications"}
 
 // TestRecordedExchangesMatchTheContract validates every exchange recorded
 // from the .NET suites against the module that owns its path, and checks
@@ -30,6 +42,9 @@ func TestRecordedExchangesMatchTheContract(t *testing.T) {
 		}
 		for _, p := range Lint(doc) {
 			failing[p.OperationID] = append(failing[p.OperationID], p.Message)
+		}
+		if !slices.Contains(portedModules, name) {
+			continue
 		}
 		corpus := readCorpus(t, filepath.Join(corpusDir, name+".jsonl"))
 		if len(corpus) == 0 {

@@ -825,8 +825,8 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications"}) {
-		t.Errorf("Modules = %v, want the default customers,products,energy,communications when MODULES is unset", cfg.Modules)
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects"}) {
+		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects when MODULES is unset", cfg.Modules)
 	}
 
 	cfg := mustLoad(t, with(validEnv(), "MODULES", " Customers ,, ENERGY,products "))
@@ -834,7 +834,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
@@ -846,9 +846,13 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("error = %q, want communications without customers named", msg)
 	}
 
-	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,energy,communications"))
-	if !slices.Equal(cfg.Modules, []string{"customers", "energy", "communications"}) {
-		t.Errorf("Modules = %v, want exactly customers,energy,communications", cfg.Modules)
+	if msg := loadError(t, with(validEnv(), "MODULES", "projects")); !strings.Contains(msg, "MODULES: projects requires customers") {
+		t.Errorf("error = %q, want projects without customers named", msg)
+	}
+
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,energy,communications,projects"))
+	if !slices.Equal(cfg.Modules, []string{"customers", "energy", "communications", "projects"}) {
+		t.Errorf("Modules = %v, want exactly customers,energy,communications,projects", cfg.Modules)
 	}
 }
 
