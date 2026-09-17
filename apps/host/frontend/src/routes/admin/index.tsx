@@ -1,6 +1,6 @@
-import { Stack, Text, Title } from "@mantine/core";
+import { Stack } from "@mantine/core";
 import { createFileRoute } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { MaintenanceControls } from "./-maintenance-controls";
 import "../../i18n";
 
@@ -13,13 +13,11 @@ export function AdminOverview() {
 
   return (
     <Stack gap="xl">
-      <div>
-        <Text tt="uppercase" size="xs" fw={700} c="dimmed">
-          {t("systemAdmin.controlPlane")}
-        </Text>
-        <Title order={1}>{t("systemAdmin.title")}</Title>
-        <Text c="dimmed">{t("systemAdmin.description")}</Text>
-      </div>
+      <PageHeader
+        eyebrow={t("navigation.systemAdmin")}
+        title={t("systemAdmin.controlPlane")}
+        description={t("systemAdmin.description")}
+      />
       <MaintenanceControls />
     </Stack>
   );

@@ -12,7 +12,6 @@ import {
   Stack,
   Text,
   ThemeIcon,
-  Title,
 } from "@mantine/core";
 import { DatePickerInput } from "@mantine/dates";
 import {
@@ -29,7 +28,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { KpiCard, WidgetCard } from "@vantigo/frontend-shell/ui";
 import { fetchSession, sessionQueryKey } from "../api/auth";
 import { getAuthorizationMe } from "../api/authorization";
@@ -467,39 +466,40 @@ const DashboardPage = () => {
 
   return (
     <Stack gap="xl">
-      <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
-        <Stack gap={2}>
-          <Text c="dimmed">{t("dashboard.greeting", { name: session?.user.displayName ?? "" })}</Text>
-          <Title order={2}>{t("dashboard.title")}</Title>
-        </Stack>
-        <Group align="flex-end" gap="sm">
-          <SegmentedControl
-            value={search.preset}
-            onChange={updatePreset}
-            data={[
-              { value: "7d", label: t("dashboard.7d") },
-              { value: "30d", label: t("dashboard.30d") },
-              { value: "90d", label: t("dashboard.90d") },
-              { value: "12m", label: t("dashboard.12m") },
-              { value: "custom", label: t("dashboard.custom") },
-            ]}
-          />
-          {search.preset === "custom" && (
-            <DatePickerInput
-              type="range"
-              aria-label={t("dashboard.dateRange")}
-              value={[
-                search.from ? new Date(`${search.from}T00:00:00`) : null,
-                search.to ? new Date(`${search.to}T00:00:00`) : null,
+      <PageHeader
+        eyebrow={t("navigation.home")}
+        title={t("dashboard.title")}
+        description={t("dashboard.greeting", { name: session?.user.displayName ?? "" })}
+        actions={
+          <Group align="flex-end" gap="sm">
+            <SegmentedControl
+              value={search.preset}
+              onChange={updatePreset}
+              data={[
+                { value: "7d", label: t("dashboard.7d") },
+                { value: "30d", label: t("dashboard.30d") },
+                { value: "90d", label: t("dashboard.90d") },
+                { value: "12m", label: t("dashboard.12m") },
+                { value: "custom", label: t("dashboard.custom") },
               ]}
-              onChange={(value) => updateCustomRange(value)}
-              valueFormat="YYYY-MM-DD"
-              placeholder={t("dashboard.selectDateRange")}
-              clearable
             />
-          )}
-        </Group>
-      </Group>
+            {search.preset === "custom" && (
+              <DatePickerInput
+                type="range"
+                aria-label={t("dashboard.dateRange")}
+                value={[
+                  search.from ? new Date(`${search.from}T00:00:00`) : null,
+                  search.to ? new Date(`${search.to}T00:00:00`) : null,
+                ]}
+                onChange={(value) => updateCustomRange(value)}
+                valueFormat="YYYY-MM-DD"
+                placeholder={t("dashboard.selectDateRange")}
+                clearable
+              />
+            )}
+          </Group>
+        }
+      />
 
       <SimpleGrid cols={{ base: 1, xs: 2, md: modules.length || 1 }} spacing="md">
         {modules.map((module) => {

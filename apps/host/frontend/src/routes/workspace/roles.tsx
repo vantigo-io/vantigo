@@ -20,10 +20,10 @@ import { useForm } from "@mantine/form";
 import { useDisclosure } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconLock, IconPlus, IconShield, IconTrash, IconUsers } from "@tabler/icons-react";
+import { IconLock, IconPlus, IconTrash, IconUsers } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type AuthorizationRole,
@@ -82,7 +82,9 @@ const RolesPage = () => {
     queryFn: listDelegations,
     enabled: manageable && isOwner,
   });
-  const [activeSection, setActiveSection] = useState("roles");
+  const navigate = Route.useNavigate();
+  // The view lives in the URL: `?section=` names it, and its absence is the roles view.
+  const activeSection: RolesSection = Route.useSearch().section ?? "roles";
   const [selectedRole, setSelectedRole] = useState<AuthorizationRole | null>(null);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [selectedScopeId, setSelectedScopeId] = useState<string | null>(null);
@@ -254,31 +256,28 @@ const RolesPage = () => {
     );
   return (
     <Stack maw={1180} mx="auto" gap="xl">
-      <Group justify="space-between" align="flex-end">
-        <div>
-          <Group gap="sm">
-            <IconShield size={30} color="var(--mantine-color-vantigo-6)" />
-            <Title order={2}>{t("admin.rolesAccess")}</Title>
-          </Group>
-          <Text c="dimmed" mt={5}>
-            {t("admin.rolesDescription")}
-          </Text>
-        </div>
-        <Group>
-          {activeSection === "roles" && canCreateRole && (
+      <PageHeader
+        eyebrow={t("navigation.workspaceAdmin")}
+        title={t("admin.rolesAccess")}
+        description={t("admin.rolesDescription")}
+        actions={
+          activeSection === "roles" && canCreateRole ? (
             <Button leftSection={<IconPlus size={16} />} onClick={() => openRoleEditor()}>
               {t("admin.createCustomRole")}
             </Button>
-          )}
-        </Group>
-      </Group>
-      <Tabs value={activeSection} onChange={(value) => setActiveSection(value ?? "roles")} keepMounted>
-        <Tabs.List aria-label={t("admin.rolesAdministration")}>
-          <Tabs.Tab value="roles">{t("admin.roles")}</Tabs.Tab>
-          <Tabs.Tab value="assignments">{t("admin.assignments")}</Tabs.Tab>
-          <Tabs.Tab value="delegations">{t("admin.delegations")}</Tabs.Tab>
-        </Tabs.List>
-
+          ) : undefined
+        }
+      />
+      <PageTabs
+        aria-label={t("admin.rolesAdministration")}
+        items={[
+          { value: "roles", label: t("admin.roles") },
+          { value: "assignments", label: t("admin.assignments") },
+          { value: "delegations", label: t("admin.delegations") },
+        ]}
+        value={activeSection}
+        onChange={(section) => void navigate({ search: { section } })}
+      >
         <Tabs.Panel value="roles" pt="xl">
           <Card withBorder>
             <Stack>
@@ -484,7 +483,7 @@ const RolesPage = () => {
             </Stack>
           </Card>
         </Tabs.Panel>
-      </Tabs>
+      </PageTabs>
       <Modal
         opened={roleModal}
         onClose={closeRole}
@@ -620,7 +619,15 @@ const RolesPage = () => {
   );
 };
 
+const rolesSections = ["roles", "assignments", "delegations"] as const;
+export type RolesSection = (typeof rolesSections)[number];
+const isRolesSection = (value: unknown): value is RolesSection => rolesSections.includes(value as RolesSection);
+
 export const Route = createFileRoute("/workspace/roles")({
+  // Optional so every existing link to the page keeps working without a search object.
+  validateSearch: (search: Record<string, unknown>): { section?: RolesSection } => ({
+    section: isRolesSection(search.section) ? search.section : undefined,
+  }),
   beforeLoad: async ({ context }) => {
     const access = await context.queryClient.fetchQuery({
       queryKey: ["authorization", "me"],
