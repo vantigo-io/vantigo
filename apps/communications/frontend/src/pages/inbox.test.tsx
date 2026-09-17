@@ -85,7 +85,10 @@ vi.mock("../api/conversations", () => ({
     queryFn: () => mocks.fetchConversation(id),
     enabled: Boolean(id),
   }),
-  tagsQueryOptions: () => ({ queryKey: ["communication-tags"], queryFn: () => Promise.resolve([]) }),
+  tagsQueryOptions: () => ({
+    queryKey: ["communication-tags"],
+    queryFn: () => Promise.resolve([{ id: "tag-1", name: "Billing", color: null }]),
+  }),
   replyToConversation: mocks.replyToConversation,
   markConversationRead: vi.fn().mockResolvedValue(undefined),
   updateConversation: vi.fn().mockResolvedValue(undefined),
@@ -136,7 +139,7 @@ vi.mock("@tanstack/react-router", () => ({
 
 const renderPage = () =>
   render(
-    <MantineProvider>
+    <MantineProvider env="test">
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <InboxPage />
       </QueryClientProvider>
@@ -195,6 +198,39 @@ describe("inbox", () => {
     expect(await screen.findByRole("heading", { name: "Second question" })).toBeTruthy();
   });
 
+  it("puts the filters in the toolbar, with no side column and no mobile filters toggle", async () => {
+    mocks.fetchConversations.mockResolvedValue(page([]));
+    const { container } = renderPage();
+    await screen.findByText("No conversations match these filters.");
+
+    const toolbar = container.querySelector(".inbox-toolbar");
+    expect(toolbar).toContainElement(screen.getByRole("radio", { name: "Open" }));
+    expect(toolbar).toContainElement(screen.getByRole("checkbox", { name: "Unread" }));
+    expect(toolbar).toContainElement(screen.getByRole("combobox", { name: "Tag" }));
+    expect(container.querySelector(".inbox-filters")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
+  });
+
+  it("filters by status from the segmented control and clears the selected conversation", async () => {
+    mocks.search = { conversationId: "c-1" };
+    mocks.fetchConversations.mockResolvedValue(page([]));
+    renderPage();
+    await screen.findByText("No conversations match these filters.");
+    expect(screen.getByRole("radio", { name: "All" })).toBeChecked();
+
+    mocks.navigate.mockImplementation((options: { search: Record<string, unknown> }) => {
+      mocks.search = options.search;
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Closed" }));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({ search: { status: "closed", conversationId: undefined } });
+    renderPage();
+    await waitFor(() =>
+      expect(mocks.fetchConversations).toHaveBeenCalledWith(expect.objectContaining({ status: "closed" })),
+    );
+    expect(screen.getAllByRole("radio", { name: "Closed" }).at(-1)).toBeChecked();
+  });
+
   it("toggles the unread filter and fetches with unreadOnly", async () => {
     mocks.fetchConversations.mockResolvedValue(page([]));
     renderPage();
@@ -203,13 +239,32 @@ describe("inbox", () => {
     mocks.navigate.mockImplementation((options: { search: Record<string, unknown> }) => {
       mocks.search = options.search;
     });
-    fireEvent.click(screen.getByRole("button", { name: "Unread" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unread" }));
     renderPage();
 
     await waitFor(() =>
       expect(mocks.fetchConversations).toHaveBeenCalledWith(
         expect.objectContaining({ page: 1, pageSize: 30, unreadOnly: true }),
       ),
+    );
+    expect(screen.getAllByRole("checkbox", { name: "Unread" }).at(-1)).toBeChecked();
+  });
+
+  it("filters by tag from the tag select", async () => {
+    mocks.fetchConversations.mockResolvedValue(page([]));
+    renderPage();
+    await screen.findByText("No conversations match these filters.");
+
+    mocks.navigate.mockImplementation((options: { search: Record<string, unknown> }) => {
+      mocks.search = options.search;
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Tag" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Billing" }));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({ search: { tagId: "tag-1", conversationId: undefined } });
+    renderPage();
+    await waitFor(() =>
+      expect(mocks.fetchConversations).toHaveBeenCalledWith(expect.objectContaining({ tagId: "tag-1" })),
     );
   });
 
