@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http/httptest"
@@ -226,8 +227,15 @@ func runCoverage(args []string) error {
 			return err
 		}
 		file := filepath.Join(*corpus, name+".jsonl")
+		// A module with no corpus file at all has no recorded exchanges, so
+		// every one of its operations is uncovered — which is precisely what
+		// this report is for. Modules written here rather than ported from
+		// .NET (projects is the first) have no file and never will. Any
+		// other read failure is a corpus that exists but cannot be read, a
+		// broken checkout rather than an absent recording, and still stops
+		// the run rather than silently reporting everything uncovered.
 		data, err := os.ReadFile(file)
-		if err != nil {
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {

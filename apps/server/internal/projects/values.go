@@ -346,13 +346,22 @@ func numericFromFloatPtr(v *float64) (pgtype.Numeric, error) {
 // floatPtrFromNumeric reads an optional numeric column back onto the wire as
 // a JSON number, nil for a SQL NULL — never 0, which is a budget somebody
 // actually set to nothing.
-func floatPtrFromNumeric(n pgtype.Numeric) *float64 {
+//
+// The conversion's own failure is returned rather than folded into that nil:
+// a number the column holds but Go cannot read is an infrastructure failure,
+// and rendering it as an absent field would tell the caller their budget was
+// never set. It can only fire for a value outside float64's range, which
+// numeric(12,2) cannot hold, so nothing reachable produces one today.
+func floatPtrFromNumeric(n pgtype.Numeric) (*float64, error) {
 	if !n.Valid {
-		return nil
+		return nil, nil
 	}
 	f, err := n.Float64Value()
-	if err != nil || !f.Valid {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("projects: read a stored decimal: %w", err)
 	}
-	return &f.Float64
+	if !f.Valid {
+		return nil, nil
+	}
+	return &f.Float64, nil
 }

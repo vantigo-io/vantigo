@@ -1,17 +1,46 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/vantigo-io/vantigo/server/internal/openapi"
 )
 
+// A corpus file that exists but cannot be read is a broken checkout, not an
+// unrecorded module: runCoverage must stop rather than report every
+// operation of that module uncovered. The unreadable file here is a
+// directory where a .jsonl is expected, which os.ReadFile refuses with
+// something other than os.ErrNotExist — the one error the missing-file case
+// below is allowed to swallow.
 func TestCoverageFailsOnAnUnreadableCorpus(t *testing.T) {
 	dir := t.TempDir()
-	err := runCoverage([]string{"-corpus", filepath.Join(dir, "missing"), "-out", filepath.Join(dir, "COVERAGE.md")})
+	if err := os.Mkdir(filepath.Join(dir, openapi.Modules[0]+".jsonl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := runCoverage([]string{"-corpus", dir, "-out", filepath.Join(dir, "COVERAGE.md")})
 	if err == nil {
 		t.Fatal("runCoverage ignored a corpus it could not read")
+	}
+}
+
+// A module with no corpus file has no recorded exchanges, which is a report
+// of an entirely uncovered module rather than a failure — every module born
+// in this repository, projects first, is in that position permanently.
+func TestCoverageTreatsAMissingCorpusFileAsNoExchanges(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "COVERAGE.md")
+	if err := runCoverage([]string{"-corpus", dir, "-out", out}); err != nil {
+		t.Fatalf("runCoverage on an empty corpus directory: %v", err)
+	}
+	report, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(report), "- `POST /api/v1/projects` (postProjects)") {
+		t.Errorf("report does not list projects' own operations as uncovered:\n%s", report)
 	}
 }
 
