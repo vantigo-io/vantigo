@@ -66,6 +66,9 @@ type CreateCustomerRequest struct {
 	Identity *LegalIdentityRequest `json:"identity,omitempty"`
 	Name     string                `json:"name"`
 	Status   *string               `json:"status,omitempty"`
+
+	// Type 'business' or 'person'. Defaults to 'business'. When an identity is supplied, its type must agree. Changed afterwards only through PUT /customers/{id}/type.
+	Type *string `json:"type,omitempty"`
 }
 
 // CreateCustomerResponse defines model for CreateCustomerResponse.
@@ -121,6 +124,12 @@ type CustomerStatsSummaryResponse struct {
 	To                        time.Time `json:"to"`
 	TotalActiveCustomers      int32     `json:"totalActiveCustomers"`
 	TotalActiveCustomersDelta int32     `json:"totalActiveCustomersDelta"`
+}
+
+// CustomerTypeRequest defines model for CustomerTypeRequest.
+type CustomerTypeRequest struct {
+	// Type 'business' or 'person', case-insensitive.
+	Type string `json:"type"`
 }
 
 // GetContactCustomersContactCustomerResponse defines model for GetContactCustomersContactCustomerResponse.
@@ -212,7 +221,10 @@ type SafeCustomerResponse struct {
 	Name            string                `json:"name"`
 	Status          string                `json:"status"`
 	TimelineSummary SafeTimelineSummary   `json:"timelineSummary"`
-	UpdatedAt       time.Time             `json:"updatedAt"`
+
+	// Type 'business' or 'person'. Always present; optional here only because the recorded exchange corpus predates it.
+	Type      *string   `json:"type,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // SafeTimelineSummary defines model for SafeTimelineSummary.
@@ -369,6 +381,9 @@ type PostCustomersByIdTimelineJSONRequestBody = TimelineManualTimelineRequest
 // PutCustomersByIdTimelineByEntryIdJSONRequestBody defines body for PutCustomersByIdTimelineByEntryId for application/json ContentType.
 type PutCustomersByIdTimelineByEntryIdJSONRequestBody = TimelineManualTimelineRequest
 
+// PutCustomersByIdTypeJSONRequestBody defines body for PutCustomersByIdType for application/json ContentType.
+type PutCustomersByIdTypeJSONRequestBody = CustomerTypeRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetCustomers List all customers
@@ -458,6 +473,9 @@ type ServerInterface interface {
 	// GetCustomersByIdTimelineByEntryIdRevisions List timeline entry revisions
 	// (GET /api/v1/customers/{id}/timeline/{entryId}/revisions)
 	GetCustomersByIdTimelineByEntryIdRevisions(w http.ResponseWriter, r *http.Request, id int32, entryId int32)
+	// PutCustomersByIdType Change a customer's type
+	// (PUT /api/v1/customers/{id}/type)
+	PutCustomersByIdType(w http.ResponseWriter, r *http.Request, id int32)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1530,6 +1548,32 @@ func (siw *ServerInterfaceWrapper) GetCustomersByIdTimelineByEntryIdRevisions(w 
 	handler.ServeHTTP(w, r)
 }
 
+// PutCustomersByIdType operation middleware
+func (siw *ServerInterfaceWrapper) PutCustomersByIdType(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutCustomersByIdType(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1662,6 +1706,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.DeleteCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.GetCustomersByIdLegalIdentity)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/legal-identity", wrapper.PutCustomersByIdLegalIdentity)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/customers/{id}/type", wrapper.PutCustomersByIdType)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.GetCustomersByIdTimeline)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/customers/{id}/timeline", wrapper.PostCustomersByIdTimeline)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/customers/{id}/timeline/{entryId}", wrapper.DeleteCustomersByIdTimelineByEntryId)
@@ -3582,6 +3627,79 @@ func (response GetCustomersByIdTimelineByEntryIdRevisions404Response) VisitGetCu
 	return nil
 }
 
+type PutCustomersByIdTypeRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutCustomersByIdTypeJSONRequestBody
+}
+
+type PutCustomersByIdTypeResponseObject interface {
+	VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error
+}
+
+type PutCustomersByIdType200JSONResponse SafeCustomerResponse
+
+func (response PutCustomersByIdType200JSONResponse) VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdType400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutCustomersByIdType400ApplicationProblemPlusJSONResponse) VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdType401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdType401JSONResponse) VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdType403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutCustomersByIdType403JSONResponse) VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutCustomersByIdType404Response struct {
+}
+
+func (response PutCustomersByIdType404Response) VisitPutCustomersByIdTypeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetCustomers List all customers
@@ -3671,6 +3789,9 @@ type StrictServerInterface interface {
 	// GetCustomersByIdTimelineByEntryIdRevisions List timeline entry revisions
 	// (GET /api/v1/customers/{id}/timeline/{entryId}/revisions)
 	GetCustomersByIdTimelineByEntryIdRevisions(ctx context.Context, request GetCustomersByIdTimelineByEntryIdRevisionsRequestObject) (GetCustomersByIdTimelineByEntryIdRevisionsResponseObject, error)
+	// PutCustomersByIdType Change a customer's type
+	// (PUT /api/v1/customers/{id}/type)
+	PutCustomersByIdType(ctx context.Context, request PutCustomersByIdTypeRequestObject) (PutCustomersByIdTypeResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -4522,6 +4643,39 @@ func (sh *strictHandler) GetCustomersByIdTimelineByEntryIdRevisions(w http.Respo
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetCustomersByIdTimelineByEntryIdRevisionsResponseObject); ok {
 		if err := validResponse.VisitGetCustomersByIdTimelineByEntryIdRevisionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutCustomersByIdType operation middleware
+func (sh *strictHandler) PutCustomersByIdType(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutCustomersByIdTypeRequestObject
+
+	request.Id = id
+
+	var body PutCustomersByIdTypeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutCustomersByIdType(ctx, request.(PutCustomersByIdTypeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutCustomersByIdType")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutCustomersByIdTypeResponseObject); ok {
+		if err := validResponse.VisitPutCustomersByIdTypeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

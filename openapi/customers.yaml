@@ -101,8 +101,20 @@ components:
                 status:
                     nullable: true
                     type: string
+                type:
+                    description: "'business' or 'person'. Defaults to 'business'. When an identity is supplied, its type must agree. Changed afterwards only through PUT /customers/{id}/type."
+                    nullable: true
+                    type: string
             required:
                 - name
+            type: object
+        CustomerTypeRequest:
+            properties:
+                type:
+                    description: "'business' or 'person', case-insensitive."
+                    type: string
+            required:
+                - type
             type: object
         CreateCustomerResponse:
             properties:
@@ -419,6 +431,9 @@ components:
                     type: string
                 timelineSummary:
                     $ref: '#/components/schemas/SafeTimelineSummary'
+                type:
+                    description: "'business' or 'person'. Always present; optional here only because the recorded exchange corpus predates it."
+                    type: string
                 updatedAt:
                     format: date-time
                     type: string
@@ -1130,6 +1145,54 @@ paths:
             tags:
                 - Customers
             x-vantigo-access: permission:customers:legal-identity-manage+customers:legal-identity-view
+    /api/v1/customers/{id}/type:
+        put:
+            description: Sets whether the customer is a business or a private person. Rarely the right action for a customer with history, which is why it is not part of PUT /customers/{id}. A legal identity of the previous type is removed in the same change, since a business identity from Brreg makes no sense on a person and vice versa; contacts, timeline and everything else stay. Resubmitting the current type changes nothing.
+            operationId: putCustomersByIdType
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CustomerTypeRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SafeCustomerResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found
+            summary: Change a customer's type
+            tags:
+                - Customers
+            x-vantigo-access: permission:customers:update+customers:view
     /api/v1/customers/{id}/timeline:
         get:
             description: 'Filters: provenance, repeated eventType, occurredFrom, and occurredTo. Cursors are scoped to these filters.'

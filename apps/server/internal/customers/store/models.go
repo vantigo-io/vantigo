@@ -39,6 +39,7 @@ type CustomersCustomer struct {
 	LegalType      *string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	Type           string
 }
 
 type CustomersCustomersContact struct {

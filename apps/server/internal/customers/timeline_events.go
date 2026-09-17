@@ -125,6 +125,21 @@ func recordCustomerUpdated(ctx context.Context, q *store.Queries, now time.Time,
 	return recordGeneratedEvent(ctx, q, customerID, now, "customer.updated", summary, payload, 2)
 }
 
+// recordCustomerTypeChanged is the customer.type_changed event
+// PutCustomersByIdType writes, shaped like recordCustomerStatusChanged's:
+// no .NET ancestor, since the customer type is new to this port
+// (00007_customers_type.sql).
+func recordCustomerTypeChanged(ctx context.Context, q *store.Queries, now time.Time, customerID int32, previousType, currentType string) error {
+	summary := fmt.Sprintf("Customer type changed: %s → %s", previousType, currentType)
+	payload := map[string]any{
+		"customerId": customerID,
+		"before":     map[string]any{"type": previousType},
+		"after":      map[string]any{"type": currentType},
+		"changes":    map[string]any{"type": map[string]any{"before": previousType, "after": currentType}},
+	}
+	return recordGeneratedEvent(ctx, q, customerID, now, "customer.type_changed", summary, payload, 1)
+}
+
 // recordCustomerStatusChanged is RecordCustomerStatusChanged
 // (SV/CustomerTimelineRecorder.cs:65-76): called from both PutCustomersById
 // (an explicit status change) and DeleteCustomersById (the archive

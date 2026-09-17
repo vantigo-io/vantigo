@@ -14,18 +14,18 @@ RETURNING next_value;
 -- same instant on creation, supplied by the caller from Deps.Clock().
 INSERT INTO customers.customers (
     customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-    created_at, updated_at
+    created_at, updated_at, type
 ) VALUES (
     @customer_number, @name, @status, @legal_country, @legal_id, @legal_name, @legal_source, @legal_type,
-    @now::timestamptz, @now::timestamptz
+    @now::timestamptz, @now::timestamptz, @type
 )
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at;
+          created_at, updated_at, type;
 
 -- name: GetCustomer :one
 -- GetCustomer fetches one customer by id.
 SELECT id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-       created_at, updated_at
+       created_at, updated_at, type
 FROM customers.customers
 WHERE id = @id;
 
@@ -46,7 +46,7 @@ SET name = @name,
     updated_at = @updated_at::timestamptz
 WHERE id = @id
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at;
+          created_at, updated_at, type;
 
 -- name: SetCustomerStatus :one
 -- SetCustomerStatus is DeleteCustomerEndpoint's archive transition
@@ -56,7 +56,25 @@ UPDATE customers.customers
 SET status = @status, updated_at = @now::timestamptz
 WHERE id = @id
 RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
-          created_at, updated_at;
+          created_at, updated_at, type;
+
+-- name: SetCustomerType :one
+-- SetCustomerType is PUT /customers/{id}/type's write: the customer type
+-- and, because a legal identity of the old type makes no sense on the new
+-- one, the five legal columns the handler passes (all NULL when it clears
+-- the identity, the row's own values otherwise). updated_at is the
+-- caller's, as for UpdateCustomer.
+UPDATE customers.customers
+SET type = @type,
+    legal_country = @legal_country,
+    legal_id = @legal_id,
+    legal_name = @legal_name,
+    legal_source = @legal_source,
+    legal_type = @legal_type,
+    updated_at = @updated_at::timestamptz
+WHERE id = @id
+RETURNING id, customer_number, name, status, legal_country, legal_id, legal_name, legal_source, legal_type,
+          created_at, updated_at, type;
 
 -- name: CountCustomers :one
 -- CountCustomers is the total row count GetCustomers paginates over
@@ -76,7 +94,7 @@ WHERE (@include_archived::bool OR status <> 'archived')
 -- ListCustomersByID is GetCustomers's default sort (id, ascending unless
 -- descending is requested), one page of rows with each row's timeline
 -- summary inlined (GetCustomersEndpoint.cs:60-103, SafeCustomerProjection).
-SELECT c.id, c.customer_number, c.name, c.status, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
+SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
        c.legal_type, c.created_at, c.updated_at,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
@@ -97,7 +115,7 @@ LIMIT @page_size::int OFFSET @row_offset::int;
 -- for every row in a given call (the sort direction is a query-wide
 -- parameter, not a per-row one), so the other pair contributes nothing to
 -- the ordering.
-SELECT c.id, c.customer_number, c.name, c.status, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
+SELECT c.id, c.customer_number, c.name, c.status, c.type, c.legal_country, c.legal_id, c.legal_name, c.legal_source,
        c.legal_type, c.created_at, c.updated_at,
        (SELECT count(*) FROM customers.customers_timeline_entries e
          WHERE e.customer_id = c.id AND e.state = 'active') AS entry_count,
@@ -170,13 +188,16 @@ FROM customers.customers;
 -- CustomerIdentityFigures is GetCustomerStatsEndpoint's identity-derived
 -- counts (GetCustomerStatsEndpoint.cs:48-62), only ever queried when the
 -- caller holds legal-identity-view; archived customers excluded, as for
--- CustomerKeyFigures. legal_country IS NULL stands in for "Identity is
--- null": the five legal_* columns are written all-or-nothing by this
--- module's own handlers (inventory §2.1's owned-type invariant, app-level
--- only — see the schema migration's comment).
+-- CustomerKeyFigures. business_count and person_count count the customer
+-- type column (00007_customers_type.sql), not legal_type, so a customer
+-- without an identity is still counted as what it is. legal_country IS
+-- NULL stands in for "Identity is null": the five legal_* columns are
+-- written all-or-nothing by this module's own handlers (inventory §2.1's
+-- owned-type invariant, app-level only — see the schema migration's
+-- comment).
 SELECT
-    count(*) FILTER (WHERE legal_type = 'business') AS business_count,
-    count(*) FILTER (WHERE legal_type = 'person') AS person_count,
+    count(*) FILTER (WHERE type = 'business') AS business_count,
+    count(*) FILTER (WHERE type = 'person') AS person_count,
     count(*) FILTER (WHERE legal_country IS NULL) AS missing_identity_count,
     count(DISTINCT legal_country) AS distinct_country_count
 FROM customers.customers
