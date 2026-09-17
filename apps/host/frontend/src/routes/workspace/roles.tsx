@@ -6,7 +6,6 @@ import {
   Checkbox,
   Divider,
   Group,
-  Loader,
   Modal,
   MultiSelect,
   Select,
@@ -23,7 +22,7 @@ import { notifications } from "@mantine/notifications";
 import { IconLock, IconPlus, IconTrash, IconUsers } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   type AuthorizationRole,
@@ -233,7 +232,7 @@ const RolesPage = () => {
     );
     openRole();
   };
-  if (me.isPending) return <Loader />;
+  if (me.isPending) return <ContentSkeleton rows={5} rowHeight={52} />;
   if (me.isError)
     return (
       <Alert color="red" title={t("admin.authUnavailable")}>
@@ -255,9 +254,8 @@ const RolesPage = () => {
         role.permissions.every((key) => item.grantablePermissionKeys.includes(key)),
     );
   return (
-    <Stack maw={1180} mx="auto" gap="xl">
+    <Stack gap="xl">
       <PageHeader
-        eyebrow={t("navigation.workspaceAdmin")}
         title={t("admin.rolesAccess")}
         description={t("admin.rolesDescription")}
         actions={
@@ -293,7 +291,7 @@ const RolesPage = () => {
                 </Badge>
               </Group>
               {roles.isPending || catalog.isPending ? (
-                <Loader />
+                <ContentSkeleton rows={4} rowHeight={52} />
               ) : (
                 <Stack>
                   {displayRoles.map((role) => {
@@ -416,7 +414,7 @@ const RolesPage = () => {
                   />
                 </>
               ) : selectedUser ? (
-                <Loader />
+                <ContentSkeleton rows={3} rowHeight={32} />
               ) : (
                 <Text size="sm" c="dimmed">
                   {t("admin.reviewAccess")}

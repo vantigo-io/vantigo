@@ -6,8 +6,8 @@ import {
   Card,
   Group,
   Menu,
+  SegmentedControl,
   SimpleGrid,
-  Skeleton,
   Stack,
   Table,
   Text,
@@ -18,7 +18,7 @@ import { notifications } from "@mantine/notifications";
 import { IconDots, IconMailForward, IconPlus, IconUserPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { type Invitation, invitationAction, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -86,9 +86,8 @@ const InvitationsPage = () => {
         })
       : action.mutate({ id: i.id, kind });
   return (
-    <Stack maw={1100} mx="auto" gap="xl">
+    <Stack gap="xl">
       <PageHeader
-        eyebrow={t("navigation.workspaceAdmin")}
         title={t("admin.invitations")}
         description={t("admin.invitationsDescriptionShort")}
         actions={
@@ -106,21 +105,18 @@ const InvitationsPage = () => {
             onChange={(e) => setSearch(e.currentTarget.value)}
             style={{ flex: "1 1 280px" }}
           />
-          <SimpleGrid cols={5} spacing={5} style={{ flex: "1 1 360px" }}>
-            {["all", "pending", "expired", "revoked", "accepted"].map((v) => (
-              <Button key={v} variant={filter === v ? "filled" : "subtle"} size="xs" onClick={() => setFilter(v)}>
-                {v === "all"
-                  ? t("common.all")
-                  : v === "pending"
-                    ? t("common.pending")
-                    : v === "expired"
-                      ? t("common.expired")
-                      : v === "revoked"
-                        ? t("common.revoked")
-                        : t("common.accepted")}
-              </Button>
-            ))}
-          </SimpleGrid>
+          <SegmentedControl
+            value={filter}
+            onChange={setFilter}
+            style={{ flex: "1 1 360px" }}
+            data={[
+              { value: "all", label: t("common.all") },
+              { value: "pending", label: t("common.pending") },
+              { value: "expired", label: t("common.expired") },
+              { value: "revoked", label: t("common.revoked") },
+              { value: "accepted", label: t("common.accepted") },
+            ]}
+          />
         </Group>
         {query.isError ? (
           <Alert m="md" color="red" title={t("admin.invitationLoadFailed")}>
@@ -129,16 +125,9 @@ const InvitationsPage = () => {
             </Button>
           </Alert>
         ) : query.isPending ? (
-          <Stack p="md">
-            {[1, 2, 3].map((n) => (
-              <Skeleton key={n} height={52} radius="sm" />
-            ))}
-          </Stack>
+          <ContentSkeleton rows={3} rowHeight={52} p="md" />
         ) : items.length === 0 ? (
-          <Stack align="center" p={50}>
-            <IconUserPlus size={38} color="var(--mantine-color-gray-5)" />
-            <Text c="dimmed">{t("admin.noInvitationFilters")}</Text>
-          </Stack>
+          <EmptyState icon={IconUserPlus} title={t("admin.noInvitationFilters")} />
         ) : (
           <>
             <div className="users-desktop-table">

@@ -1,7 +1,7 @@
-import { Button, Center, Group, Loader, Stack } from "@mantine/core";
+import { Button, Group, Stack } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { customerConsumptionAggregateQueryOptions, customerMeteringPointsQueryOptions } from "../api/energy";
 import { AttachMeteringPointModal } from "./-attach-metering-point-modal";
@@ -34,13 +34,7 @@ export const CustomerEnergyPanel = ({ customerId }: { customerId: number }) => {
         </Button>
       </Group>
       <AttachMeteringPointModal customerId={customerId} opened={attachOpen} onClose={() => setAttachOpen(false)} />
-      {isPending ? (
-        <Center py="xl">
-          <Loader />
-        </Center>
-      ) : (
-        <CustomerMetersTable meters={meters ?? []} />
-      )}
+      {isPending ? <ContentSkeleton rows={4} rowHeight={52} /> : <CustomerMetersTable meters={meters ?? []} />}
     </Stack>
   );
 };

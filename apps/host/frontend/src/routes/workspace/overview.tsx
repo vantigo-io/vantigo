@@ -98,12 +98,8 @@ const AdminDashboardPage = () => {
   const retry = () => void status.refetch();
 
   return (
-    <Stack maw={1100} mx="auto" gap="xl">
-      <PageHeader
-        eyebrow={t("navigation.workspaceAdmin")}
-        title={t("admin.dashboard")}
-        description={t("admin.overview")}
-      />
+    <Stack gap="xl">
+      <PageHeader title={t("admin.dashboard")} description={t("admin.overview")} />
       {failed && (
         <Alert color="red" title={t("admin.statusLoadFailed")}>
           <Group justify="space-between" align="center">

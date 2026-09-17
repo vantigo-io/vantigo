@@ -4,7 +4,7 @@ import { notifications } from "@mantine/notifications";
 import { IconUser } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader, setLanguagePreference, useTranslation } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, setLanguagePreference, useTranslation } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../../i18n";
 import { getProfile, profileQueryKey, removeProfilePhoto, updateProfile, uploadProfilePhoto } from "../../api/account";
@@ -55,7 +55,7 @@ function ProfileForm() {
     },
     onError: (e) => notify(t("photoCouldNotRemove"), e, t("requestCouldNotComplete")),
   });
-  if (query.isPending) return <Text c="dimmed">{t("loadingProfile")}</Text>;
+  if (query.isPending) return <ContentSkeleton rows={4} rowHeight={52} />;
   if (query.isError)
     return (
       <Alert color="red" title={t("profileCouldNotLoad")}>
@@ -124,10 +124,9 @@ function ProfileForm() {
 
 const ProfilePage = () => {
   const { t } = useTranslation("settings");
-  const { t: hostT } = useTranslation("host");
   return (
-    <Stack maw={1180} mx="auto" gap="xl">
-      <PageHeader eyebrow={hostT("navigation.settings")} title={t("profile")} description={t("profileDescription")} />
+    <Stack gap="xl">
+      <PageHeader title={t("profile")} description={t("profileDescription")} />
       <ProfileForm />
     </Stack>
   );

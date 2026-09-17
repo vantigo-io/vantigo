@@ -77,7 +77,6 @@ export const TaxCategoriesPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow={t("navigation.products")}
         title={t("navigation.taxCategories")}
         description={t("taxCategories.description")}
         actions={

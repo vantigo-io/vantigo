@@ -8,10 +8,9 @@ import { PageHeader } from "./page-header";
 const wrap = (ui: ReactNode) => render(<MantineProvider env="test">{ui}</MantineProvider>);
 
 describe("PageHeader", () => {
-  it("renders the eyebrow, title and description", () => {
-    wrap(<PageHeader eyebrow="Customers" title="All customers" description="Everyone you bill." />);
+  it("renders the title and description", () => {
+    wrap(<PageHeader title="All customers" description="Everyone you bill." />);
 
-    expect(screen.getByText("Customers")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "All customers" })).toBeInTheDocument();
     expect(screen.getByText("Everyone you bill.")).toBeInTheDocument();
   });
@@ -36,7 +35,7 @@ describe("PageHeader", () => {
     expect(screen.getByRole("link", { name: "Customers" })).toHaveAttribute("href", "#fake/customers");
   });
 
-  it("renders no eyebrow and no breadcrumb trail when neither is given", () => {
+  it("renders no breadcrumb trail when none is given", () => {
     wrap(<PageHeader title="Dashboard" />);
 
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();

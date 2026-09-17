@@ -1,6 +1,6 @@
-import { ActionIcon, Alert, Badge, Group, Loader, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Group, Text } from "@mantine/core";
 import { IconCheck } from "@tabler/icons-react";
-import { useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import type { ConversationListItem, Page } from "../api/conversations";
 import { participantName, relative } from "./conversationHelpers";
 
@@ -34,15 +34,13 @@ export function ConversationList({
         </ActionIcon>
       </Group>
       {isPending ? (
-        <Loader m="md" />
+        <ContentSkeleton rows={4} rowHeight={56} p="md" />
       ) : isError ? (
         <Alert m="md" color="red">
           {t("couldNotLoadConversations", { error: error?.message })}
         </Alert>
       ) : data?.data.length === 0 ? (
-        <Text c="dimmed" p="md">
-          {t("noConversationsMatch")}
-        </Text>
+        <EmptyState title={t("noConversationsMatch")} />
       ) : (
         data?.data.map((item) => (
           <button

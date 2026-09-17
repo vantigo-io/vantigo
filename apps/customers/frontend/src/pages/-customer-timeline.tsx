@@ -4,10 +4,8 @@ import {
   Badge,
   Button,
   Card,
-  Center,
   Drawer,
   Group,
-  Loader,
   Menu,
   Modal,
   MultiSelect,
@@ -36,7 +34,7 @@ import {
   IconWand,
 } from "@tabler/icons-react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import {
   createTimelineEntry,
@@ -359,9 +357,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
           </Group>
         )}
         {feed.isPending ? (
-          <Center py="xl">
-            <Loader size="sm" />
-          </Center>
+          <ContentSkeleton rows={4} />
         ) : feed.isError ? (
           <Stack align="center" py="md">
             <Text c="red">{t("couldNotLoadTimeline")}</Text>
@@ -370,9 +366,7 @@ export const CustomerTimeline = ({ customerId }: { customerId: number }) => {
             </Button>
           </Stack>
         ) : entries.length === 0 ? (
-          <Center py="xl">
-            <Text c="dimmed">{activeCount ? t("noEventsMatch") : t("noEventsYet")}</Text>
-          </Center>
+          <EmptyState title={activeCount ? t("noEventsMatch") : t("noEventsYet")} />
         ) : (
           <Timeline active={-1} bulletSize={30} lineWidth={2}>
             {entries.map((entry) => {
@@ -638,7 +632,7 @@ const RevisionPanel = ({
         {t("revisionAuditDescription")}
       </Text>
       {query.isPending ? (
-        <Loader size="sm" />
+        <ContentSkeleton rows={2} rowHeight={32} />
       ) : query.isError ? (
         <Text c="red">{t("couldNotLoadRevisions")}</Text>
       ) : (

@@ -5,20 +5,17 @@ import {
   Badge,
   Button,
   Card,
-  Center,
   Group,
-  Loader,
   Pagination,
   Stack,
   Table,
-  Text,
   TextInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import { type ContactListItem, contactsQueryOptions, deleteContact } from "../api/contacts";
@@ -81,7 +78,6 @@ export const ContactsPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow={t("customers")}
         title={t("contacts")}
         description={t("contactsDescription")}
         actions={
@@ -116,11 +112,7 @@ export const ContactsPage = () => {
             </Alert>
           )}
 
-          {isPending && (
-            <Center py="xl">
-              <Loader />
-            </Center>
-          )}
+          {isPending && <ContentSkeleton rows={6} rowHeight={52} />}
 
           {data && (
             <>
@@ -179,11 +171,7 @@ export const ContactsPage = () => {
                 </Table>
               </Table.ScrollContainer>
 
-              {data.data.length === 0 && (
-                <Center py="xl">
-                  <Text c="dimmed">{t("noContactsFound")}</Text>
-                </Center>
-              )}
+              {data.data.length === 0 && <EmptyState title={t("noContactsFound")} />}
 
               {data.pagination.totalPages > 1 && (
                 <Group justify="center">

@@ -159,7 +159,7 @@ describe("inbox", () => {
   it("shows the loading state", () => {
     mocks.fetchConversations.mockReturnValue(new Promise(() => undefined));
     renderPage();
-    expect(document.querySelector(".mantine-Loader-root")).toBeTruthy();
+    expect(screen.getByTestId("content-skeleton")).toBeTruthy();
   });
 
   it("shows the conversation list error state", async () => {

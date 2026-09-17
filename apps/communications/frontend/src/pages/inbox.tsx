@@ -1,8 +1,8 @@
-import { Alert, Button, Card, Group, Loader, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Button, Card, Group, Stack, Text, TextInput, Title } from "@mantine/core";
 import { IconInbox } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   addTag,
@@ -64,7 +64,7 @@ export function InboxPage() {
 
   return (
     <Stack gap="lg" className="inbox-shell">
-      <PageHeader eyebrow={t("communications")} title={t("inbox")} description={t("inboxDescription")} />
+      <PageHeader title={t("inbox")} description={t("inboxDescription")} />
       <Card withBorder radius="lg" padding={0} className="inbox-card">
         <Group className="inbox-toolbar" justify="space-between" p="sm">
           <Group gap="xs">
@@ -99,7 +99,7 @@ export function InboxPage() {
                 <Text c="dimmed">{t("repliesAndNotesTogether")}</Text>
               </Stack>
             ) : detail.isPending ? (
-              <Loader m="xl" />
+              <ContentSkeleton rows={5} p="md" />
             ) : detail.isError ? (
               <Alert m="md" color="red">
                 {t("couldNotLoadConversation")}

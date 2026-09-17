@@ -1,14 +1,6 @@
 import { Anchor, Breadcrumbs, Group, Text, Title } from "@mantine/core";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useShellLink } from "./link-context";
-
-const eyebrowStyle: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  color: "var(--mantine-color-vantigo-5)",
-};
 
 export interface PageBreadcrumb {
   label: ReactNode;
@@ -18,13 +10,9 @@ export interface PageBreadcrumb {
 
 export interface PageHeaderProps {
   /**
-   * The area the page belongs to, e.g. "Communications". For top-level pages
-   * (sidebar destinations); detail pages pass `breadcrumbs` instead, never both.
-   */
-  eyebrow?: string;
-  /**
-   * The trail to this page, ending with the page itself. For detail pages:
-   * the area's list page, then the entity.
+   * The trail to this page, ending with the page itself. Detail pages pass
+   * the area's list page, then the entity; sidebar destinations pass
+   * nothing, since the shell header already names the area.
    */
   breadcrumbs?: readonly PageBreadcrumb[];
   /** Page name, ideally matching the navigation label. Text plus optional badges; no icons. */
@@ -60,21 +48,19 @@ const Crumb = ({ label, to }: PageBreadcrumb) => {
 };
 
 /**
- * The header every page renders: context above (eyebrow or breadcrumbs),
- * the title, an optional description, and right-aligned actions.
+ * The header every page renders: breadcrumbs above on detail pages, the
+ * title, an optional description, and right-aligned actions.
  */
-export function PageHeader({ eyebrow, breadcrumbs, title, description, actions }: PageHeaderProps) {
+export function PageHeader({ breadcrumbs, title, description, actions }: PageHeaderProps) {
   return (
     <Group justify="space-between" align="end">
       <div>
-        {breadcrumbs && breadcrumbs.length > 0 ? (
+        {breadcrumbs && breadcrumbs.length > 0 && (
           <Breadcrumbs mb={4}>
             {breadcrumbs.map((crumb, index) => (
               <Crumb key={index} {...crumb} />
             ))}
           </Breadcrumbs>
-        ) : (
-          eyebrow && <Text style={eyebrowStyle}>{eyebrow}</Text>
         )}
         <Title order={2}>{title}</Title>
         {description && (

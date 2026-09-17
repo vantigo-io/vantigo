@@ -1,10 +1,10 @@
-import { Alert, Badge, Button, Card, Group, Modal, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, PasswordInput, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { IconKey, IconLock, IconShieldLock } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { PageHeader, useTranslation } from "@vantigo/frontend-shell";
+import { EmptyState, PageHeader, useTranslation } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../../i18n";
 import {
@@ -22,6 +22,7 @@ import {
 import { sessionQueryKey } from "../../api/auth";
 import { MfaEnrolmentNotice } from "../../components/mfa-enrolment-notice";
 import { isOidcError, message, mfaKey, notify, passkeyKey } from "./-helpers";
+import { ReauthModal } from "./-reauth-modal";
 
 function SecurityForm() {
   const { t } = useTranslation("settings");
@@ -261,7 +262,7 @@ function SecurityForm() {
               </Group>
             ))
           ) : (
-            <Text c="dimmed">{t("noPasskeys")}</Text>
+            <EmptyState size="sm" title={t("noPasskeys")} />
           )}
           <form onSubmit={passkeyForm.onSubmit((v) => enroll.mutate(v))}>
             <Stack>
@@ -281,53 +282,49 @@ function SecurityForm() {
           </Text>
         </Stack>
       </Card>
-      <Modal opened={disableOpen} onClose={() => setDisableOpen(false)} title={t("disableAuthenticatorTitle")}>
-        <form onSubmit={reauth.onSubmit((v) => disable.mutate(v.password))}>
-          <Stack>
-            <Text size="sm">{t("sensitiveChangeDescription")}</Text>
-            <PasswordInput label={t("currentPassword")} {...reauth.getInputProps("password")} />
-            <Button color="red" type="submit" loading={disable.isPending}>
-              {t("disableAuthenticator")}
-            </Button>
-          </Stack>
-        </form>
-      </Modal>
-      <Modal opened={recoveryOpen} onClose={() => setRecoveryOpen(false)} title={t("regenerateRecoveryCodes")}>
-        <form onSubmit={reauth.onSubmit((v) => regenerate.mutate({ password: v.password, code: v.code }))}>
-          <Stack>
-            <PasswordInput label={t("currentPassword")} {...reauth.getInputProps("password")} />
-            <TextInput label={t("authenticatorCode")} {...reauth.getInputProps("code")} />
-            <Button type="submit" loading={regenerate.isPending}>
-              {t("regenerateCodes")}
-            </Button>
-          </Stack>
-        </form>
-      </Modal>
-      <Modal opened={removeId !== null} onClose={() => setRemoveId(null)} title={t("removePasskeyTitle")}>
-        <form
-          onSubmit={reauth.onSubmit((v) => {
-            if (removeId) remove.mutate({ id: removeId, password: v.password });
-          })}
-        >
-          <Stack>
-            <Text>{t("cannotUndoDescription")}</Text>
-            <PasswordInput label={t("currentPassword")} {...reauth.getInputProps("password")} />
-            <Button color="red" type="submit" loading={remove.isPending}>
-              {t("removePasskey")}
-            </Button>
-          </Stack>
-        </form>
-      </Modal>
+      <ReauthModal
+        opened={disableOpen}
+        onClose={() => setDisableOpen(false)}
+        title={t("disableAuthenticatorTitle")}
+        description={t("sensitiveChangeDescription")}
+        form={reauth}
+        confirmLabel={t("disableAuthenticator")}
+        confirmColor="red"
+        loading={disable.isPending}
+        onSubmit={(v) => disable.mutate(v.password)}
+      />
+      <ReauthModal
+        opened={recoveryOpen}
+        onClose={() => setRecoveryOpen(false)}
+        title={t("regenerateRecoveryCodes")}
+        form={reauth}
+        requireCode
+        confirmLabel={t("regenerateCodes")}
+        loading={regenerate.isPending}
+        onSubmit={(v) => regenerate.mutate({ password: v.password, code: v.code })}
+      />
+      <ReauthModal
+        opened={removeId !== null}
+        onClose={() => setRemoveId(null)}
+        title={t("removePasskeyTitle")}
+        description={t("cannotUndoDescription")}
+        form={reauth}
+        confirmLabel={t("removePasskey")}
+        confirmColor="red"
+        loading={remove.isPending}
+        onSubmit={(v) => {
+          if (removeId) remove.mutate({ id: removeId, password: v.password });
+        }}
+      />
     </Stack>
   );
 }
 
 const SecurityPage = () => {
   const { t } = useTranslation("settings");
-  const { t: hostT } = useTranslation("host");
   return (
-    <Stack maw={1180} mx="auto" gap="xl">
-      <PageHeader eyebrow={hostT("navigation.settings")} title={t("security")} description={t("securityDescription")} />
+    <Stack gap="xl">
+      <PageHeader title={t("security")} description={t("securityDescription")} />
       <SecurityForm />
     </Stack>
   );

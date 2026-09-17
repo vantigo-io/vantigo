@@ -4,21 +4,18 @@ import {
   Badge,
   Button,
   Card,
-  Center,
   Group,
-  Loader,
   Pagination,
   Select,
   Stack,
   Table,
-  Text,
   TextInput,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
 import "../i18n";
 import { buildCategoryTree, categoriesQueryOptions } from "../api/categories";
@@ -69,7 +66,6 @@ export const ProductsPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow={t("navigation.products")}
         title={
           <>
             {t("products.heading")}
@@ -134,11 +130,7 @@ export const ProductsPage = () => {
               {error.message}
             </Alert>
           )}
-          {isPending && (
-            <Center py="xl">
-              <Loader />
-            </Center>
-          )}
+          {isPending && <ContentSkeleton rows={6} rowHeight={52} />}
           {data && (
             <>
               <Table.ScrollContainer minWidth={760}>
@@ -205,11 +197,7 @@ export const ProductsPage = () => {
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
-              {data.data.length === 0 && (
-                <Center py="xl">
-                  <Text c="dimmed">{t("products.noProducts")}</Text>
-                </Center>
-              )}
+              {data.data.length === 0 && <EmptyState title={t("products.noProducts")} />}
               {data.pagination.totalPages > 1 && (
                 <Group justify="center">
                   <Pagination

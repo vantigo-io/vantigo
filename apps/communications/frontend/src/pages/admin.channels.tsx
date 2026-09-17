@@ -1,7 +1,7 @@
-import { Alert, Badge, Button, Card, Group, Loader, Stack, Table, Text } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Stack, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { channelsQueryOptions, updateChannel, verifyChannel } from "../api/channels";
 import { ChannelForm } from "../components/ChannelForm";
@@ -23,7 +23,6 @@ export function ChannelsPage() {
   return (
     <Stack gap="xl">
       <PageHeader
-        eyebrow={t("communications")}
         title={t("channels")}
         description={t("channelsDescription")}
         actions={<Button onClick={() => setOpened(true)}>{t("addChannel")}</Button>}
@@ -35,7 +34,7 @@ export function ChannelsPage() {
       )}
       <Card withBorder radius="lg">
         {query.isPending ? (
-          <Loader />
+          <ContentSkeleton rows={4} rowHeight={52} />
         ) : (
           <Table.ScrollContainer minWidth={650}>
             <Table highlightOnHover>

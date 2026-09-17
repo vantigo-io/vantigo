@@ -1,8 +1,8 @@
-import { Alert, Button, Card, Group, Loader, Modal, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Card, Group, Modal, Stack, Table, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import type { ApiError } from "../api/request";
 import { createSuppression, deleteSuppression, suppressionsQueryOptions } from "../api/suppressions";
@@ -40,14 +40,14 @@ export function SuppressionsPage() {
     onError: (error: ApiError) =>
       notifications.show({ color: "red", title: t("suppressionNotDeleted"), message: error.message }),
   });
-  if (query.isPending) return <Loader />;
+  if (query.isPending) return <ContentSkeleton rows={5} rowHeight={52} />;
   if (query.isError) return <Alert color="red">{query.error.message}</Alert>;
   const visible = query.data.filter((item) =>
     `${item.emailAddress} ${item.reason || ""}`.toLowerCase().includes(search.toLowerCase()),
   );
   return (
     <Stack gap="xl">
-      <PageHeader eyebrow={t("communications")} title={t("suppressions")} description={t("suppressionsDescription")} />
+      <PageHeader title={t("suppressions")} description={t("suppressionsDescription")} />
       <Card withBorder radius="lg">
         <form
           onSubmit={form.onSubmit((values) =>
@@ -99,11 +99,7 @@ export function SuppressionsPage() {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
-        {visible.length === 0 && (
-          <Text c="dimmed" ta="center" py="lg">
-            {t("noSuppressionsFound")}
-          </Text>
-        )}
+        {visible.length === 0 && <EmptyState title={t("noSuppressionsFound")} />}
       </Card>
       <Modal opened={deleteId !== null} onClose={() => setDeleteId(null)} title={t("deleteSuppression")} centered>
         <Stack>

@@ -4,9 +4,7 @@ import {
   Badge,
   Button,
   Card,
-  Center,
   Group,
-  Loader,
   Modal,
   Select,
   SimpleGrid,
@@ -20,7 +18,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KpiCard, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, KpiCard, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
 import {
@@ -142,7 +140,6 @@ export const CategoriesPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow={t("navigation.products")}
         title={t("navigation.categories")}
         description={t("categories.description")}
         actions={
@@ -178,11 +175,7 @@ export const CategoriesPage = () => {
               {error.message}
             </Alert>
           )}
-          {isPending && (
-            <Center py="xl">
-              <Loader />
-            </Center>
-          )}
+          {isPending && <ContentSkeleton rows={6} rowHeight={52} />}
           {categories && (
             <>
               <Table striped highlightOnHover>
@@ -245,11 +238,7 @@ export const CategoriesPage = () => {
                   })}
                 </Table.Tbody>
               </Table>
-              {categories.length === 0 && (
-                <Center py="xl">
-                  <Text c="dimmed">{t("categories.noCategories")}</Text>
-                </Center>
-              )}
+              {categories.length === 0 && <EmptyState title={t("categories.noCategories")} />}
             </>
           )}
         </Stack>
