@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -333,7 +332,7 @@ func (s *server) PostIdentityInvitationsAccept(ctx context.Context, req gen.Post
 			User:                  &user,
 			RequiresTwoFactor:     false,
 			TwoFactorEnabled:      false,
-			MfaEnrollmentRequired: slices.Contains(user.Roles, RoleOwner) && s.deps.Config.OwnersRequireMFA,
+			MfaEnrollmentRequired: s.mfaEnrollmentRequired(user.Roles, false), // a new account has no TOTP
 		},
 	}, nil
 }

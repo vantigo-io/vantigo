@@ -39,7 +39,7 @@ func (s *server) GetIdentitySession(ctx context.Context, _ gen.GetIdentitySessio
 	return gen.GetIdentitySession200JSONResponse{
 		User:                  authUser(u.ID, u.DisplayName, u.Email, p.Roles),
 		TwoFactorEnabled:      u.TotpEnabled,
-		MfaEnrollmentRequired: slices.Contains(p.Roles, RoleOwner) && s.deps.Config.OwnersRequireMFA && !u.TotpEnabled,
+		MfaEnrollmentRequired: s.mfaEnrollmentRequired(p.Roles, u.TotpEnabled),
 		MfaAuthenticated:      p.MFAVerified,
 		IsSystemAdmin:         slices.Contains(p.Roles, RoleSystemAdmin),
 	}, nil

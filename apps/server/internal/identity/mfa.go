@@ -150,11 +150,17 @@ func (s *server) mfaCaller(ctx context.Context) (contracts.Principal, store.Iden
 	return p, u, nil
 }
 
-// mfaEnrollmentRequired is whether a user with roles must still enrol:
-// an Owner without TOTP while owners are required to use MFA
-// (EA/AuthAccountEndpoints.cs:121-124).
+// mfaEnrollmentRequired is whether a user with roles must still enrol: an
+// administrator without TOTP while administrators are required to use MFA.
+// .NET asked this of Owners alone (EA/AuthAccountEndpoints.cs:121-124); it
+// binds SystemAdmins too, since the SystemAdmin policy is held to MFA
+// exactly as the Owner policy is (policySatisfied), and a SystemAdmin who
+// is not an Owner would otherwise reach a control plane that refuses them
+// with no hint why. The frontend holds a session with this set at the
+// security settings until an authenticator is enabled.
 func (s *server) mfaEnrollmentRequired(roles []string, enrolled bool) bool {
-	return slices.Contains(roles, RoleOwner) && s.deps.Config.OwnersRequireMFA && !enrolled
+	admin := slices.Contains(roles, RoleOwner) || slices.Contains(roles, RoleSystemAdmin)
+	return admin && s.deps.Config.OwnersRequireMFA && !enrolled
 }
 
 // mfaStatus is GET /mfa (EA/AuthAccountEndpoints.cs:108-125): whether TOTP

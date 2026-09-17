@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { isRedirect } from "@tanstack/react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Route as RootRoute } from "./__root";
 import { Route as CommunicationsIndexRoute } from "./communications/index";
 import { Route as EnergyIndexRoute } from "./energy/index";
 import { Route as IndexRoute } from "./index";
@@ -10,14 +11,20 @@ import { Route as WorkspaceOverviewRoute } from "./workspace/overview";
 import { Route as WorkspaceRolesRoute } from "./workspace/roles";
 import { Route as WorkspaceUsersRoute } from "./workspace/users";
 
-const { fetchSession, getAuthorizationMe } = vi.hoisted(() => ({
+const { fetchSession, getAuthorizationMe, fetchBootstrapStatus } = vi.hoisted(() => ({
   fetchSession: vi.fn(),
   getAuthorizationMe: vi.fn(),
+  fetchBootstrapStatus: vi.fn(),
 }));
 
 vi.mock("../api/auth", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/auth")>()),
   fetchSession,
+}));
+
+vi.mock("../api/account-lifecycle", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/account-lifecycle")>()),
+  fetchBootstrapStatus,
 }));
 
 vi.mock("../api/authorization", async (importOriginal) => ({
@@ -27,34 +34,83 @@ vi.mock("../api/authorization", async (importOriginal) => ({
 
 type GuardedRoute = { options: { beforeLoad?: unknown } };
 
-const sessionWithRoles = (roles: string[], isSystemAdmin = false) => ({
+const sessionWithRoles = (roles: string[], isSystemAdmin = false, mfaEnrollmentRequired = false) => ({
   user: { id: "user-1", displayName: "Test User", email: "test@vantigo.test", roles },
   isSystemAdmin,
+  mfaEnrollmentRequired,
 });
 
 /** Drives a route's `beforeLoad` guard directly; returns whatever it throws. */
-const runGuard = async (route: GuardedRoute) => {
+const runGuard = async (route: GuardedRoute, pathname = "/workspace") => {
   const beforeLoad = route.options.beforeLoad as ((context: unknown) => unknown) | undefined;
   if (!beforeLoad) throw new Error("the route declares no beforeLoad guard");
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   try {
-    await beforeLoad({ context: { queryClient }, location: { pathname: "/workspace" } });
+    await beforeLoad({ context: { queryClient }, location: { pathname } });
   } catch (error) {
     return error;
   }
   return undefined;
 };
 
-const expectRedirectTo = async (route: GuardedRoute, to: string) => {
-  const thrown = await runGuard(route);
+const expectRedirectTo = async (route: GuardedRoute, to: string, pathname?: string) => {
+  const thrown = await runGuard(route, pathname);
   // A TanStack redirect is a Response carrying its navigation options.
   expect(isRedirect(thrown)).toBe(true);
   expect((thrown as { options?: { to?: string } }).options?.to).toBe(to);
 };
 
-const expectAdmitted = async (route: GuardedRoute) => {
-  expect(await runGuard(route)).toBeUndefined();
+const expectAdmitted = async (route: GuardedRoute, pathname?: string) => {
+  expect(await runGuard(route, pathname)).toBeUndefined();
 };
+
+// The root route holds the gates every signed-in page shares: the sign-in
+// redirect, the SystemAdmin-only control plane, and the MFA enrolment gate
+// that holds an administrator at the security settings until an
+// authenticator is enabled.
+describe("the root route's MFA enrolment gate", () => {
+  beforeEach(() => {
+    fetchBootstrapStatus.mockResolvedValue({ available: false });
+  });
+
+  it("sends an administrator who must enrol to the security settings from any app page", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"], false, true));
+
+    await expectRedirectTo(RootRoute, "/settings/security", "/dashboard");
+    await expectRedirectTo(RootRoute, "/settings/security", "/customers");
+  });
+
+  it("holds a SystemAdmin who must enrol too, before the control-plane check runs", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Member"], true, true));
+
+    await expectRedirectTo(RootRoute, "/settings/security", "/admin");
+  });
+
+  it("lets the gated administrator use the settings tree, where enrolment happens", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"], false, true));
+
+    await expectAdmitted(RootRoute, "/settings/security");
+    await expectAdmitted(RootRoute, "/settings/profile");
+  });
+
+  it("lifts as soon as the session no longer requires enrolment", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"], false, false));
+
+    await expectAdmitted(RootRoute, "/dashboard");
+  });
+
+  it("keeps the control plane SystemAdmin-only once the gate is clear", async () => {
+    fetchSession.mockResolvedValue(sessionWithRoles(["Owner"], false, false));
+
+    await expectRedirectTo(RootRoute, "/", "/admin");
+  });
+
+  it("still sends a visitor without a session to sign in", async () => {
+    fetchSession.mockResolvedValue(null);
+
+    await expectRedirectTo(RootRoute, "/sign-in", "/dashboard");
+  });
+});
 
 // The five routes behind the /workspace segment. The parent and three of the
 // children gate on the Owner role; /workspace/roles gates on the authorization

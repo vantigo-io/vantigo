@@ -105,7 +105,13 @@ The opt-out exists for demo deployments; set it deliberately, not by default.
 `MFA_ISSUER` (default `Vantigo`) is the label authenticator apps show.
 
 MFA enrollment and status stay reachable to a session that has not enrolled yet, so
-turning the requirement on never locks out the account that must enable it.
+turning the requirement on never locks out the account that must enable it. Such a
+session carries `mfaEnrollmentRequired: true` (GET `/session`, the sign-in and
+invitation responses, GET `/account/mfa`) whenever the account holds Owner or
+SystemAdmin, the requirement is on, and no authenticator is enrolled. The frontend
+holds that session at `/settings/security`: every other signed-in page redirects
+there, the page explains what to do, and enabling the authenticator marks the
+session MFA-verified so access returns without a new sign-in.
 Recovery codes are shown once. An MFA-authenticated Owner can reset another Owner's
 MFA, which ends that account's sessions and requires re-enrollment.
 

@@ -5,6 +5,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { appConfig, appUrl, useI18n } from "@vantigo/frontend-shell";
 import { acceptInvitation, validateInvitation } from "../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../api/auth";
+import { mfaEnrolmentDestination } from "../lib/mfa-enrolment-gate";
 import "../i18n";
 
 export const AcceptInvitationPage = ({ token }: { token: string }) => {
@@ -22,7 +23,7 @@ export const AcceptInvitationPage = ({ token }: { token: string }) => {
     onSuccess: async () => {
       const session = await queryClient.fetchQuery({ queryKey: sessionQueryKey, queryFn: fetchSession, staleTime: 0 });
       queryClient.setQueryData(sessionQueryKey, session);
-      if (session?.mfaEnrollmentRequired) window.location.assign(appUrl("/settings"));
+      if (session?.mfaEnrollmentRequired) window.location.assign(appUrl(mfaEnrolmentDestination));
       else void navigate({ to: "/" });
     },
   });
