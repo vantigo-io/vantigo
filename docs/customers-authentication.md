@@ -101,7 +101,11 @@ OWNERS_REQUIRE_MFA: must not be 0 outside development unless OWNERS_ALLOW_INSECU
 and tenant control-plane endpoint)
 ```
 
-The opt-out exists for demo deployments; set it deliberately, not by default.
+The opt-out exists for demo deployments; set it deliberately, not by default. It takes
+both keys: `OWNERS_REQUIRE_MFA=0` turns the requirement off, and
+`OWNERS_ALLOW_INSECURE_NO_MFA=1` lets the process start with it off. The acknowledgement
+alone changes nothing — the requirement stays on, and an administrator without an
+enrolled authenticator is refused by every module and control-plane endpoint.
 `MFA_ISSUER` (default `Vantigo`) is the label authenticator apps show.
 
 MFA enrollment and status stay reachable to a session that has not enrolled yet, so
@@ -276,7 +280,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | --- | --- | --- |
 | `APP_SECRET` | Process-wide key material, ≥ 32 bytes | **required** |
 | `OWNERS_REQUIRE_MFA` | Require MFA for Owner and SystemAdmin | on outside development |
-| `OWNERS_ALLOW_INSECURE_NO_MFA` | Escape hatch for the above | `0` |
+| `OWNERS_ALLOW_INSECURE_NO_MFA` | Lets the process start with the above set to `0`; does not turn it off by itself | `0` |
 | `MFA_ISSUER` | Authenticator app label | `Vantigo` |
 | `SESSION_IDLE_TIMEOUT` | Standard idle window | `8h` |
 | `SESSION_PRIVILEGED_IDLE_TIMEOUT` | Privileged idle window | `2h` |
