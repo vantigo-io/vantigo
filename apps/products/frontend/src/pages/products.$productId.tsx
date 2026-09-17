@@ -1,8 +1,6 @@
 import {
   Alert,
-  Anchor,
   Badge,
-  Breadcrumbs,
   Button,
   Card,
   Group,
@@ -18,9 +16,9 @@ import { DateTimePicker } from "@mantine/dates";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconAlertTriangle, IconArchive, IconPackage, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArchive, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { useParams } from "@tanstack/react-router";
 import { PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
@@ -210,18 +208,11 @@ export const ProductDetailsPage = () => {
 
   return (
     <Stack gap="lg">
-      <Breadcrumbs>
-        <Anchor component={Link} to={"/products" as never} size="sm">
-          {t("navigation.products")}
-        </Anchor>
-        <Text size="sm">{product.name}</Text>
-      </Breadcrumbs>
       <PageHeader
-        eyebrow={t("navigation.products")}
+        breadcrumbs={[{ label: t("navigation.products"), to: "/products" }, { label: product.name }]}
         title={
           <>
-            <IconPackage size={28} /> {product.name}
-            <Badge color={statusColor(product.status)}>{t(`status.${product.status}`)}</Badge>
+            {product.name} <Badge color={statusColor(product.status)}>{t(`status.${product.status}`)}</Badge>
           </>
         }
         description={t("prices.detailsDescription")}
