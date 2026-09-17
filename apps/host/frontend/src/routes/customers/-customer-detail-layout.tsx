@@ -1,26 +1,33 @@
-import { Tabs } from "@mantine/core";
+import { Button } from "@mantine/core";
 import { IconBolt, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
+import { Link, Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$customerId";
-import { useI18n } from "@vantigo/frontend-shell";
+import { PageTabs, useI18n } from "@vantigo/frontend-shell";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
 import { getAuthorizationMe } from "../../api/authorization";
 import { enabledModuleKeys } from "../../lib/enabled-modules";
 import { hasPermissions, type ModuleKey } from "../../navigation";
 import "../../i18n";
 
-type CustomerDetailTab = {
-  value: "overview" | "energy" | "correspondence";
-  labelKey: "customer.overviewTab" | "customer.energyTab" | "customer.correspondenceTab";
-  icon: typeof IconLayoutDashboard;
-  to: "/customers/$customerId" | "/customers/$customerId/energy";
+/** What a customer-page entry needs before the caller may see it. */
+interface CustomerDetailGate {
   /** The module that must be enabled for the tenant; omitted = always shown. */
   module?: ModuleKey;
-  /** Any one of these grants the tab; omitted = no permission needed. */
+  /** Any one of these grants the entry; omitted = no permission needed. */
   requiredPermissions?: readonly string[];
-};
+}
 
+type CustomerDetailView = "overview" | "energy";
+
+interface CustomerDetailTab extends CustomerDetailGate {
+  value: CustomerDetailView;
+  labelKey: "customer.overviewTab" | "customer.energyTab";
+  icon: typeof IconLayoutDashboard;
+  to: "/customers/$customerId" | "/customers/$customerId/energy";
+}
+
+/** The views of the customer page, each a child route, so the tab row follows the URL. */
 export const customerDetailTabs: CustomerDetailTab[] = [
   {
     value: "overview",
@@ -36,26 +43,36 @@ export const customerDetailTabs: CustomerDetailTab[] = [
     module: "energy",
     requiredPermissions: ["energy:metering-points-view"],
   },
-  {
-    value: "correspondence",
-    labelKey: "customer.correspondenceTab",
-    icon: IconMessages,
-    to: "/customers/$customerId",
-    module: "communications",
-    requiredPermissions: ["communications:conversations-view"],
-  },
 ];
+
+/**
+ * Header actions that lead out of the customer page. Correspondence lives in
+ * the Communications inbox, so it is an action here rather than a tab: a tab
+ * that leaves the page could never be the active one.
+ */
+export const customerDetailActions = {
+  correspondence: { module: "communications", requiredPermissions: ["communications:conversations-view"] },
+} as const satisfies Record<string, CustomerDetailGate>;
+
+const passesGate = (
+  gate: CustomerDetailGate,
+  enabledModules: readonly ModuleKey[] | undefined,
+  permissions: string[] | undefined,
+) =>
+  (gate.module === undefined || enabledModules?.includes(gate.module) === true) &&
+  hasPermissions(permissions, gate.requiredPermissions);
 
 /** The tabs the caller may see: module enabled for the tenant and permission granted. */
 export const visibleCustomerDetailTabs = (
   enabledModules: readonly ModuleKey[] | undefined,
   permissions: string[] | undefined,
-): CustomerDetailTab[] =>
-  customerDetailTabs.filter(
-    (tab) =>
-      (tab.module === undefined || enabledModules?.includes(tab.module) === true) &&
-      hasPermissions(permissions, tab.requiredPermissions),
-  );
+): CustomerDetailTab[] => customerDetailTabs.filter((tab) => passesGate(tab, enabledModules, permissions));
+
+/** Whether the "Open in inbox" action shows, under the same rules as a tab. */
+export const showCorrespondenceAction = (
+  enabledModules: readonly ModuleKey[] | undefined,
+  permissions: string[] | undefined,
+) => passesGate(customerDetailActions.correspondence, enabledModules, permissions);
 
 export const CustomerDetailLayout = () => {
   const { t } = useI18n("host");
@@ -73,33 +90,53 @@ export const CustomerDetailLayout = () => {
     retry: false,
     staleTime: 300_000,
   });
-  const visibleTabs = visibleCustomerDetailTabs(enabledModuleKeys(), authorization.data?.permissions);
-  const activeTab = matches.some((match) => match.routeId === "/customers/$customerId/energy") ? "energy" : "overview";
+  const enabledModules = enabledModuleKeys();
+  const permissions = authorization.data?.permissions;
+  const visibleTabs = visibleCustomerDetailTabs(enabledModules, permissions);
+  const activeTab: CustomerDetailView = matches.some((match) => match.routeId === "/customers/$customerId/energy")
+    ? "energy"
+    : "overview";
 
   return (
     <>
-      <CustomerDetailHeader customerId={customerId} />
+      <CustomerDetailHeader
+        customerId={customerId}
+        actions={
+          showCorrespondenceAction(enabledModules, permissions) ? (
+            <Button
+              variant="default"
+              leftSection={<IconMessages size={16} />}
+              // renderRoot keeps the route-typed Link (search is validated by
+              // the inbox route); `component={Link}` would erase that typing.
+              renderRoot={(props) => (
+                <Link
+                  to="/communications/inbox"
+                  search={{
+                    customerId,
+                    conversationId: undefined,
+                    status: undefined,
+                    tagId: undefined,
+                    unreadOnly: undefined,
+                  }}
+                  {...props}
+                />
+              )}
+            >
+              {t("customer.openInInbox")}
+            </Button>
+          ) : undefined
+        }
+      />
       {visibleTabs.length > 1 && (
-        <Tabs
+        <PageTabs
+          aria-label={t("customer.views")}
+          items={visibleTabs.map(({ value, labelKey, icon }) => ({ value, label: t(labelKey), icon }))}
           value={activeTab}
           onChange={(value) => {
             const tab = visibleTabs.find((item) => item.value === value);
-            if (tab)
-              void (navigate as (options: unknown) => void)(
-                tab.value === "correspondence"
-                  ? { to: "/communications/inbox", search: { customerId: String(customerId) } }
-                  : { to: tab.to, params: { customerId } },
-              );
+            if (tab) void navigate({ to: tab.to, params: { customerId } });
           }}
-        >
-          <Tabs.List>
-            {visibleTabs.map(({ value, labelKey, icon: Icon }) => (
-              <Tabs.Tab key={value} value={value} leftSection={<Icon size={16} />}>
-                {t(labelKey)}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-        </Tabs>
+        />
       )}
       <Outlet />
     </>
