@@ -110,6 +110,19 @@ describe("AppSpotlight navigation authorization", () => {
     expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/customers" }));
   });
 
+  it.each([
+    ["Create customer", "/customers"],
+    ["Add product", "/products"],
+  ])("opens the create form from the %s quick action", async (label, to) => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["*"], true, true, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText(label, { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to, search: { create: true } }));
+  });
+
   it("matches sidebar navigation for a permitted owner", async () => {
     renderSpotlight(["*"], true, true);
 

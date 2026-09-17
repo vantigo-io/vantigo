@@ -1,17 +1,22 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProductsPage } from "./products.index";
+
+const router = vi.hoisted(() => ({
+  search: { page: 1, search: "", status: "", categoryId: "" } as Record<string, unknown>,
+  navigate: vi.fn(),
+}));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: { component: unknown }) => ({
     ...options,
-    useSearch: () => ({ page: 1, search: "", status: "", categoryId: "" }),
-    useNavigate: () => vi.fn(),
+    useSearch: () => router.search,
+    useNavigate: () => router.navigate,
   }),
-  useSearch: () => ({ page: 1, search: "", status: "", categoryId: "" }),
-  useNavigate: () => vi.fn(),
+  useSearch: () => router.search,
+  useNavigate: () => router.navigate,
 }));
 
 const stubFetch = () =>
@@ -19,6 +24,9 @@ const stubFetch = () =>
     "fetch",
     vi.fn().mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.includes("/api/v1/products/tax-categories")) {
+        return Promise.resolve(new Response("[]", { status: 200 }));
+      }
       if (url.includes("/api/v1/products/categories")) {
         return Promise.resolve(
           new Response(
@@ -68,7 +76,33 @@ describe("ProductsPage", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    router.search = { page: 1, search: "", status: "", categoryId: "" };
+    router.navigate.mockReset();
   });
+
+  it("keeps the create form closed on an ordinary list URL", async () => {
+    stubFetch();
+    renderPage();
+    await screen.findByText("Widget");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens the create form when the URL asks for it, and drops the intent when the form closes", async () => {
+    stubFetch();
+    router.search = { page: 1, search: "", status: "", categoryId: "", create: true };
+    renderPage();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Create new product");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ search: { page: 1, search: "", status: "", categoryId: "" }, replace: true }),
+    );
+  });
+
   it("renders product rows and status filters", async () => {
     stubFetch();
     renderPage();

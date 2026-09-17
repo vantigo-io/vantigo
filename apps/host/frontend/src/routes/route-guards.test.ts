@@ -3,8 +3,10 @@ import { isRedirect } from "@tanstack/react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Route as RootRoute } from "./__root";
 import { Route as CommunicationsIndexRoute } from "./communications/index";
+import { Route as CustomersIndexRoute } from "./customers/index";
 import { Route as EnergyIndexRoute } from "./energy/index";
 import { Route as IndexRoute } from "./index";
+import { Route as ProductsIndexRoute } from "./products/index";
 import { Route as SettingsIndexRoute } from "./settings/index";
 import { Route as WorkspaceRoute } from "./workspace";
 import { Route as WorkspaceIndexRoute } from "./workspace/index";
@@ -228,6 +230,23 @@ describe("area index routes", () => {
   it("sends /workspace to the overview", async () => {
     expect(WorkspaceIndexRoute.options.component).toBeUndefined();
     await expectRedirectTo(WorkspaceIndexRoute, "/workspace/overview");
+  });
+});
+
+// The customers and products lists take `create` in the URL so Spotlight's quick
+// actions can land on the list with the create form already open. It is only
+// ever present when true, so an ordinary list URL stays as short as before.
+describe("list routes' create intent", () => {
+  it.each([
+    ["customers", CustomersIndexRoute],
+    ["products", ProductsIndexRoute],
+  ])("keeps create in the %s list URL only when it is true", (_name, route) => {
+    const validate = route.options.validateSearch as (search: Record<string, unknown>) => { create?: boolean };
+    expect(validate({ create: true }).create).toBe(true);
+    expect(validate({ create: "true" }).create).toBe(true);
+    expect(validate({ create: false })).not.toHaveProperty("create", true);
+    expect(validate({ create: "yes" })).not.toHaveProperty("create", true);
+    expect(validate({})).not.toHaveProperty("create", true);
   });
 });
 

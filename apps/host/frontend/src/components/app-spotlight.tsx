@@ -67,15 +67,17 @@ export const AppSpotlight = ({
     onNavigate?.();
     action();
   };
+  // The create actions land on the list with its create form already open
+  // (the list routes validate `create` in their search params).
   const quickActions = [
     ...(enabledModules?.includes("customers") && hasPermissions(permissions, ["customers:create"])
-      ? [{ label: t("dashboard.createCustomer"), icon: IconPlus, path: "/customers" }]
+      ? [{ label: t("dashboard.createCustomer"), icon: IconPlus, path: "/customers", search: { create: true } }]
       : []),
     ...(enabledModules?.includes("communications") && hasPermissions(permissions, ["communications:conversations-view"])
-      ? [{ label: t("dashboard.composeMessage"), icon: IconMail, path: "/communications/inbox" }]
+      ? [{ label: t("dashboard.composeMessage"), icon: IconMail, path: "/communications/inbox", search: undefined }]
       : []),
     ...(enabledModules?.includes("products") && hasPermissions(permissions, ["products:products-manage"])
-      ? [{ label: t("dashboard.addProduct"), icon: IconPackage, path: "/products" }]
+      ? [{ label: t("dashboard.addProduct"), icon: IconPackage, path: "/products", search: { create: true } }]
       : []),
   ];
 
@@ -121,7 +123,9 @@ export const AppSpotlight = ({
                 key={action.label}
                 label={action.label}
                 leftSection={<action.icon size={20} stroke={1.5} />}
-                onClick={() => handleNavigate(() => void navigate({ to: action.path as never }))}
+                onClick={() =>
+                  handleNavigate(() => void navigate({ to: action.path as never, search: action.search as never }))
+                }
               />
             ))}
           </Spotlight.ActionsGroup>

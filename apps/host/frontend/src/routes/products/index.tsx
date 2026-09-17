@@ -9,6 +9,8 @@ export const Route = createFileRoute("/products/")({
       : "",
     categoryId:
       Number.isInteger(Number(search.categoryId)) && Number(search.categoryId) > 0 ? Number(search.categoryId) : "",
+    // Present only when true: the create form opens on arrival (Spotlight's quick action).
+    ...(search.create === true || search.create === "true" ? { create: true as const } : {}),
   }),
   component: ProductsPage,
 });
