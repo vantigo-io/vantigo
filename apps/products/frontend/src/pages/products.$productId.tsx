@@ -19,7 +19,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconArchive, IconPencil, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
 import { categoriesQueryOptions, categoryPath } from "../api/categories";
@@ -434,7 +434,7 @@ export const ProductDetailsPage = () => {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
-          {prices.length === 0 && <Text c="dimmed">{t("prices.noPrices")}</Text>}
+          {prices.length === 0 && <EmptyState size="sm" title={t("prices.noPrices")} />}
         </Stack>
       </Card>
       <Modal

@@ -13,7 +13,6 @@ import {
   SegmentedControl,
   Select,
   SimpleGrid,
-  Skeleton,
   Stack,
   Table,
   Text,
@@ -36,7 +35,7 @@ import {
 } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { appUrl, PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { appUrl, ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useMemo, useState } from "react";
 import { createInvitation, listInvitations } from "../../api/account-lifecycle";
 import { fetchSession, sessionQueryKey } from "../../api/auth";
@@ -308,9 +307,8 @@ const UsersPage = () => {
     />
   );
   return (
-    <Stack maw={1100} mx="auto" gap="xl">
+    <Stack gap="xl">
       <PageHeader
-        eyebrow={t("navigation.workspaceAdmin")}
         title={t("admin.users")}
         description={t("admin.usersDescription")}
         actions={
@@ -410,16 +408,12 @@ const UsersPage = () => {
           </Alert>
         )}
         {users.isPending ? (
-          <Stack p="md">
-            {[1, 2, 3].map((n) => (
-              <Skeleton key={n} height={52} radius="sm" />
-            ))}
-          </Stack>
+          <ContentSkeleton rows={3} rowHeight={52} p="md" />
         ) : filtered.length === 0 ? (
-          <Stack align="center" p={50}>
-            <IconUsers size={38} color="var(--mantine-color-gray-5)" />
-            <Text c="dimmed">
-              {search
+          <EmptyState
+            icon={IconUsers}
+            title={
+              search
                 ? t("admin.noUsersSearch")
                 : metricFilter
                   ? t("admin.noFilteredUsers", {
@@ -432,9 +426,9 @@ const UsersPage = () => {
                               ? t("admin.ssoShort")
                               : t("admin.admins"),
                     })
-                  : t("admin.noUsers")}
-            </Text>
-          </Stack>
+                  : t("admin.noUsers")
+            }
+          />
         ) : (
           <>
             <div className="users-desktop-table">

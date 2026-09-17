@@ -1,22 +1,8 @@
-import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Center,
-  Group,
-  Loader,
-  Pagination,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Alert, Badge, Button, Card, Group, Pagination, Stack, Table, TextInput } from "@mantine/core";
 import { IconAlertCircle, IconBolt, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ConnectionStatus, meteringPointsQueryOptions } from "../api/energy";
 import "../i18n";
@@ -46,7 +32,6 @@ export const MeteringPointsPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow={t("energy")}
         title={
           <>
             <IconBolt size={28} /> {t("meteringPoints")}{" "}
@@ -79,11 +64,7 @@ export const MeteringPointsPage = () => {
               {error.message}
             </Alert>
           )}
-          {isPending && (
-            <Center py="xl">
-              <Loader />
-            </Center>
-          )}
+          {isPending && <ContentSkeleton rows={6} rowHeight={52} />}
           {data && (
             <>
               <Table.ScrollContainer minWidth={860}>
@@ -140,11 +121,7 @@ export const MeteringPointsPage = () => {
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
-              {data.data.length === 0 && (
-                <Center py="xl">
-                  <Text c="dimmed">{t("noMeteringPointsFound")}</Text>
-                </Center>
-              )}
+              {data.data.length === 0 && <EmptyState title={t("noMeteringPointsFound")} />}
               {data.pagination.totalPages > 1 && (
                 <Group justify="center">
                   <Pagination total={data.pagination.totalPages} value={page} onChange={onPageChange} />

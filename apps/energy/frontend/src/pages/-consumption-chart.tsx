@@ -1,6 +1,5 @@
 import { AreaChart } from "@mantine/charts";
-import { Text } from "@mantine/core";
-import { useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, useI18n } from "@vantigo/frontend-shell";
 import type { ConsumptionAggregate, ConsumptionResolution } from "../api/energy";
 import "../i18n";
 
@@ -14,7 +13,7 @@ export const ConsumptionChart = ({
   color?: string;
 }) => {
   const { t, formatters } = useI18n("energy");
-  if (aggregates.length === 0) return <Text c="dimmed">{t("noConsumptionReadings")}</Text>;
+  if (aggregates.length === 0) return <EmptyState size="sm" title={t("noConsumptionReadings")} />;
   const data = aggregates.map((item) => ({
     date: formatters.formatDate(item.bucketStart, {
       month: "short",

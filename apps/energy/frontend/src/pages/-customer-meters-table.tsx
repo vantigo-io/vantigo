@@ -1,6 +1,6 @@
-import { Badge, Card, Group, Stack, Table, Text, Title, Tooltip } from "@mantine/core";
+import { Badge, Card, Group, Table, Text, Tooltip } from "@mantine/core";
 import { useNavigate } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, useI18n } from "@vantigo/frontend-shell";
 import type { ConnectionStatus, CustomerMeteringPoint, SupplyPeriod } from "../api/energy";
 import "../i18n";
 
@@ -55,10 +55,7 @@ export const CustomerMetersTable = ({ meters }: { meters: CustomerMeteringPoint[
   if (meters.length === 0)
     return (
       <Card withBorder>
-        <Stack align="center">
-          <Title order={3}>{t("noCustomerMeteringPoints")}</Title>
-          <Text c="dimmed">{t("attachToTrackConsumption")}</Text>
-        </Stack>
+        <EmptyState title={t("noCustomerMeteringPoints")} description={t("attachToTrackConsumption")} />
       </Card>
     );
   return (

@@ -4,9 +4,7 @@ import {
   Badge,
   Button,
   Card,
-  Center,
   Group,
-  Loader,
   Pagination,
   SimpleGrid,
   Stack,
@@ -17,7 +15,14 @@ import {
 import { IconAlertCircle, IconPencil, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { KpiCard, PageHeader, useDebouncedListSearch, useI18n } from "@vantigo/frontend-shell";
+import {
+  ContentSkeleton,
+  EmptyState,
+  KpiCard,
+  PageHeader,
+  useDebouncedListSearch,
+  useI18n,
+} from "@vantigo/frontend-shell";
 import { useState } from "react";
 
 import { customerStatsQueryOptions, customersQueryOptions } from "../api/customers";
@@ -59,7 +64,6 @@ export const CustomersPage = () => {
   return (
     <Stack gap="lg">
       <PageHeader
-        eyebrow={t("customers")}
         title={t("customers")}
         description={t("customersDescription")}
         actions={
@@ -110,11 +114,7 @@ export const CustomersPage = () => {
             </Alert>
           )}
 
-          {isPending && (
-            <Center py="xl">
-              <Loader />
-            </Center>
-          )}
+          {isPending && <ContentSkeleton rows={6} rowHeight={52} />}
 
           {data && (
             <>
@@ -211,11 +211,7 @@ export const CustomersPage = () => {
                 </Table>
               </Table.ScrollContainer>
 
-              {data.data.length === 0 && (
-                <Center py="xl">
-                  <Text c="dimmed">{t("noCustomersFound")}</Text>
-                </Center>
-              )}
+              {data.data.length === 0 && <EmptyState title={t("noCustomersFound")} />}
 
               {data.pagination.totalPages > 1 && (
                 <Group justify="center">

@@ -2,7 +2,6 @@ import {
   ActionIcon,
   Button,
   Card,
-  Center,
   Combobox,
   Divider,
   Group,
@@ -21,7 +20,7 @@ import { notifications } from "@mantine/notifications";
 import { IconPencil, IconPlus, IconUserOff, IconUsersGroup } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import {
   attachCustomerContact,
@@ -108,15 +107,9 @@ export const CustomerContactsCard = ({ customerId }: { customerId: number }) => 
         </Group>
 
         {isPending ? (
-          <Center py="md">
-            <Loader size="sm" />
-          </Center>
+          <ContentSkeleton rows={2} rowHeight={32} />
         ) : associations.length === 0 ? (
-          <Center py="md">
-            <Text size="sm" c="dimmed">
-              {t("noContactsAssociated")}
-            </Text>
-          </Center>
+          <EmptyState size="sm" title={t("noContactsAssociated")} />
         ) : (
           <Table.ScrollContainer minWidth={480}>
             <Table highlightOnHover>

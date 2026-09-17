@@ -1,10 +1,10 @@
-import { Alert, Badge, Button, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
+import { Badge, Button, Card, Group, SegmentedControl, Stack, Table, Text, Title } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IconCalendar, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
-import { PageHeader, useI18n } from "@vantigo/frontend-shell";
+import { EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { Fragment, useState } from "react";
 import { customersQueryOptions } from "../api/customers";
 import {
@@ -149,7 +149,7 @@ export const MeteringPointDetailsPage = () => {
               </Table.Tbody>
             </Table>
           ) : (
-            <Text c="dimmed">{t("noMeterHistory")}</Text>
+            <EmptyState size="sm" title={t("noMeterHistory")} />
           )}
         </Stack>
       </Card>
@@ -201,7 +201,7 @@ export const MeteringPointDetailsPage = () => {
               </Table.Tbody>
             </Table>
           ) : (
-            <Text c="dimmed">{t("noSupplyPeriods")}</Text>
+            <EmptyState size="sm" title={t("noSupplyPeriods")} />
           )}
         </Stack>
       </Card>
@@ -286,7 +286,7 @@ export const MeteringPointDetailsPage = () => {
                 </Table.Tbody>
               </Table>
             ) : (
-              <Alert color="gray">{t("noReadingsForRange")}</Alert>
+              <EmptyState size="sm" title={t("noReadingsForRange")} />
             )
           ) : aggregates && aggregates.length > 0 ? (
             <Table>
@@ -323,7 +323,7 @@ export const MeteringPointDetailsPage = () => {
               </Table.Tbody>
             </Table>
           ) : (
-            <Alert color="gray">{t("noReadingsForRange")}</Alert>
+            <EmptyState size="sm" title={t("noReadingsForRange")} />
           )}
           <ManualReadingModal
             meteringPointId={meteringPointId}

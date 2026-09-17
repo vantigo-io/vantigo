@@ -54,7 +54,7 @@ describe("admin channels", () => {
   it("shows the loading state", () => {
     mocks.fetchChannels.mockReturnValue(new Promise(() => undefined));
     renderPage();
-    expect(document.querySelector(".mantine-Loader-root")).toBeTruthy();
+    expect(screen.getByTestId("content-skeleton")).toBeTruthy();
   });
 
   it("renders an empty channel table", async () => {

@@ -13,11 +13,7 @@ export function AdminOverview() {
 
   return (
     <Stack gap="xl">
-      <PageHeader
-        eyebrow={t("navigation.systemAdmin")}
-        title={t("systemAdmin.controlPlane")}
-        description={t("systemAdmin.description")}
-      />
+      <PageHeader title={t("systemAdmin.controlPlane")} description={t("systemAdmin.description")} />
       <MaintenanceControls />
     </Stack>
   );

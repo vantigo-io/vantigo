@@ -177,9 +177,20 @@ Navigation — *one pattern per level*, so every page reads the same way:
   link. A tab never leaves the page; something that does is a header action.
 - **Segmented controls** = filters and form modes (a date range, a
   resolution), never navigation.
-- **`PageHeader`** on every page: `eyebrow` (the area name) on sidebar
-  destinations, `breadcrumbs` (the area's list page, then the entity) on
-  detail pages, never both; text titles, with badges where useful, no icons.
+- **`PageHeader`** on every page: `breadcrumbs` (the area's list page, then
+  the entity) on detail pages, nothing above the title on sidebar
+  destinations — the shell header already names the area. Text titles, with
+  badges where useful, no icons.
+- **Pages are full width.** The shell owns the gutter; no page caps its own
+  width.
+- **Loading and empty.** A page or card body that is loading shows
+  `ContentSkeleton`; a spinner (`Loader`) is for inline waits only (a
+  button, an input's right section). A list, table or card with nothing to
+  show renders `EmptyState`, never a bare dimmed line.
+- **Confirmations** go through the shared confirm modal
+  (`modals.openConfirmModal`); a change that must re-authenticate uses the
+  settings area's `ReauthModal`, which has the same shape plus the password
+  field.
 
 ## Design principles
 

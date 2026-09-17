@@ -467,7 +467,6 @@ const DashboardPage = () => {
   return (
     <Stack gap="xl">
       <PageHeader
-        eyebrow={t("navigation.home")}
         title={t("dashboard.title")}
         description={t("dashboard.greeting", { name: session?.user.displayName ?? "" })}
         actions={
