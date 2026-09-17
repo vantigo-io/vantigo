@@ -292,13 +292,15 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
   `application/scim+json`. Set `SCIM_TOKEN`; during rotation, optionally set
   `SCIM_PREVIOUS_TOKEN` together with `SCIM_PREVIOUS_TOKEN_EXPIRES_AT`
   (future, and no more than 24 hours after startup).
-- **Remove `OWNERS_ALLOW_INSECURE_NO_MFA=1` from `vantigo.env`.** The
-  quick-start stack ships with it because a fresh installation has no
-  enrolled authenticator, and requiring MFA before one exists would leave no
-  way to sign in at all. Left in place, a compromised Owner or SystemAdmin
-  password alone is enough for full control of identity and the tenant
-  control plane. Enroll an authenticator for every privileged account, then
-  set `OWNERS_REQUIRE_MFA=1` and drop this flag — see
+- **Remove `OWNERS_REQUIRE_MFA=0` and `OWNERS_ALLOW_INSECURE_NO_MFA=1` from
+  `vantigo.env`.** The quick-start stack ships with both because a fresh
+  installation has no enrolled authenticator, and with the requirement on an
+  administrator is held at `/settings/security` until one is enrolled. The
+  `=0` is what turns the requirement off; the acknowledgement alone does not,
+  it only lets the API start with it off. Left in place, a compromised Owner
+  or SystemAdmin password alone is enough for full control of identity and
+  the tenant control plane. Enroll an authenticator for every privileged
+  account, then set `OWNERS_REQUIRE_MFA=1` and drop the acknowledgement — see
   [customer authentication](../../docs/customers-authentication.md).
 - Never run `seed` in production; it is development-only (`APP_ENV=development`).
 - `APP_SECRET` derives every encryption key this process uses (CSRF tokens,
