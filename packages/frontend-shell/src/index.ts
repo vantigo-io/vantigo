@@ -41,8 +41,10 @@ export {
   useLocale,
   useTranslation,
 } from "./i18n";
+export { type ShellLinkComponent, ShellLinkProvider, useShellLink } from "./link-context";
 export { vantigoLogo } from "./logo";
-export { PageHeader, type PageHeaderProps } from "./page-header";
+export { type PageBreadcrumb, PageHeader, type PageHeaderProps } from "./page-header";
+export { type PageTab, PageTabs, type PageTabsProps } from "./page-tabs";
 export { SpotlightSearchBox } from "./spotlight-search-box";
 export { SpotlightSearchButton } from "./spotlight-search-button";
 export { vantigoTheme } from "./theme";
