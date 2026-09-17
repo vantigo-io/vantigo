@@ -174,14 +174,14 @@ func WithDirectory(d contracts.CustomerDirectory) Option {
 	return func(s *setup) { s.directory = d }
 }
 
-// WithUsers sets Deps.Users directly to u, for a module under test that
-// reads identity's user directory (contracts.UserDirectory): this task adds
-// the slot but no module implements Module.Users yet, so a test that needs
-// one builds its own fake directly against the contracts interface, the
-// same seam WithDirectory gives a module reading contracts.CustomerDirectory
-// before composing its provider. module.Compose only ever overwrites
-// Deps.Users when one of the composed modules declares Module.Users, so a
-// value set here survives Compose unchanged.
+// WithUsers sets Deps.Users directly to u. Unlike WithDirectory and
+// WithProducts, this has no effect against New's own harness: New always
+// composes identity beside the module under test, and identity always
+// declares Module.Users, so Compose always resolves Deps.Users from
+// identity's real directory over identity's real tables, discarding
+// whatever u was set to. It exists for a caller building Deps by hand
+// outside New (module.Compose is not the only way to assemble Deps), where
+// no such always-on provider is in the mix.
 func WithUsers(u contracts.UserDirectory) Option {
 	return func(s *setup) { s.users = u }
 }
