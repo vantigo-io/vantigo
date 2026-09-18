@@ -23,18 +23,19 @@ SELECT * FROM projects.projects WHERE id = @id;
 
 -- name: ListProjects :many
 -- ListProjects is one page of the projects a caller may see, filtered.
--- Visibility is decided here rather than in Go so that the count below —
--- which repeats this WHERE clause exactly — is the count of what the caller
--- can actually see (design §5). see_all is the caller's view-all/manage-all;
--- without it only projects they hold a role on match, and `mine` narrows
--- that same predicate for a caller who has see_all.
+-- Visibility is decided here rather than in Go so that the count below — and
+-- every stats query — is over what the caller can actually see (design §5).
+-- projects.visible (the baseline migration) is that one predicate: see_all is
+-- the caller's view-all/manage-all, and without it only projects they hold a
+-- role on match. `mine` is its own EXISTS rather than a second visible() call
+-- because it narrows to the caller's own projects even for a caller who has
+-- see_all, which is the opposite question.
 --
 -- search is already ILIKE-escaped by the caller and arrives without its
 -- wildcards, which are added here: a '%' or '_' somebody typed is a
 -- character, not a pattern. An empty search filters nothing.
 SELECT p.* FROM projects.projects p
-WHERE (sqlc.arg(see_all)::boolean OR EXISTS (
-         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = sqlc.arg(user_id)))
+WHERE projects.visible(p.id, sqlc.arg(user_id), sqlc.arg(see_all)::boolean)
   AND (NOT sqlc.arg(mine)::boolean OR EXISTS (
          SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = sqlc.arg(user_id)))
   AND (sqlc.narg(status)::text IS NULL OR p.status = sqlc.narg(status))
@@ -47,12 +48,11 @@ LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
 
 -- name: CountProjects :one
 -- CountProjects is ListProjects' total, under the identical WHERE clause.
--- The two must stay byte-for-byte the same predicate: a filter applied to
--- one and not the other gives a page whose rows and whose totalCount
--- disagree, which is a paging bug nobody notices until the last page.
+-- The two must stay the same predicate: a filter applied to one and not the
+-- other gives a page whose rows and whose totalCount disagree, which is a
+-- paging bug nobody notices until the last page.
 SELECT count(*) FROM projects.projects p
-WHERE (sqlc.arg(see_all)::boolean OR EXISTS (
-         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = sqlc.arg(user_id)))
+WHERE projects.visible(p.id, sqlc.arg(user_id), sqlc.arg(see_all)::boolean)
   AND (NOT sqlc.arg(mine)::boolean OR EXISTS (
          SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = sqlc.arg(user_id)))
   AND (sqlc.narg(status)::text IS NULL OR p.status = sqlc.narg(status))

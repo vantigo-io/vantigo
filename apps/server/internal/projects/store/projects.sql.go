@@ -15,10 +15,9 @@ import (
 
 const countProjects = `-- name: CountProjects :one
 SELECT count(*) FROM projects.projects p
-WHERE ($1::boolean OR EXISTS (
-         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+WHERE projects.visible(p.id, $1, $2::boolean)
   AND (NOT $3::boolean OR EXISTS (
-         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $1))
   AND ($4::text IS NULL OR p.status = $4)
   AND ($5::integer IS NULL OR p.customer_id = $5)
   AND ($6::boolean IS NULL OR (p.customer_id IS NULL) = $6)
@@ -27,8 +26,8 @@ WHERE ($1::boolean OR EXISTS (
 `
 
 type CountProjectsParams struct {
-	SeeAll     bool
 	UserID     uuid.UUID
+	SeeAll     bool
 	Mine       bool
 	Status     *string
 	CustomerID *int32
@@ -37,13 +36,13 @@ type CountProjectsParams struct {
 }
 
 // CountProjects is ListProjects' total, under the identical WHERE clause.
-// The two must stay byte-for-byte the same predicate: a filter applied to
-// one and not the other gives a page whose rows and whose totalCount
-// disagree, which is a paging bug nobody notices until the last page.
+// The two must stay the same predicate: a filter applied to one and not the
+// other gives a page whose rows and whose totalCount disagree, which is a
+// paging bug nobody notices until the last page.
 func (q *Queries) CountProjects(ctx context.Context, arg CountProjectsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countProjects,
-		arg.SeeAll,
 		arg.UserID,
+		arg.SeeAll,
 		arg.Mine,
 		arg.Status,
 		arg.CustomerID,
@@ -162,10 +161,9 @@ func (q *Queries) InsertProject(ctx context.Context, arg InsertProjectParams) (P
 
 const listProjects = `-- name: ListProjects :many
 SELECT p.id, p.code, p.name, p.description, p.customer_id, p.status, p.start_date, p.end_date, p.billing_type, p.currency, p.fixed_price_amount, p.budget_hours, p.budget_amount, p.revision, p.created_by_user_id, p.created_at, p.updated_at FROM projects.projects p
-WHERE ($1::boolean OR EXISTS (
-         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+WHERE projects.visible(p.id, $1, $2::boolean)
   AND (NOT $3::boolean OR EXISTS (
-         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $1))
   AND ($4::text IS NULL OR p.status = $4)
   AND ($5::integer IS NULL OR p.customer_id = $5)
   AND ($6::boolean IS NULL OR (p.customer_id IS NULL) = $6)
@@ -176,8 +174,8 @@ LIMIT $9 OFFSET $8
 `
 
 type ListProjectsParams struct {
-	SeeAll     bool
 	UserID     uuid.UUID
+	SeeAll     bool
 	Mine       bool
 	Status     *string
 	CustomerID *int32
@@ -188,19 +186,21 @@ type ListProjectsParams struct {
 }
 
 // ListProjects is one page of the projects a caller may see, filtered.
-// Visibility is decided here rather than in Go so that the count below —
-// which repeats this WHERE clause exactly — is the count of what the caller
-// can actually see (design §5). see_all is the caller's view-all/manage-all;
-// without it only projects they hold a role on match, and `mine` narrows
-// that same predicate for a caller who has see_all.
+// Visibility is decided here rather than in Go so that the count below — and
+// every stats query — is over what the caller can actually see (design §5).
+// projects.visible (the baseline migration) is that one predicate: see_all is
+// the caller's view-all/manage-all, and without it only projects they hold a
+// role on match. `mine` is its own EXISTS rather than a second visible() call
+// because it narrows to the caller's own projects even for a caller who has
+// see_all, which is the opposite question.
 //
 // search is already ILIKE-escaped by the caller and arrives without its
 // wildcards, which are added here: a '%' or '_' somebody typed is a
 // character, not a pattern. An empty search filters nothing.
 func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]ProjectsProject, error) {
 	rows, err := q.db.Query(ctx, listProjects,
-		arg.SeeAll,
 		arg.UserID,
+		arg.SeeAll,
 		arg.Mine,
 		arg.Status,
 		arg.CustomerID,
