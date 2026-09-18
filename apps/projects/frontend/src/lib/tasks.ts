@@ -1,3 +1,13 @@
+/**
+ * What the contract accepts, so a form says so before the API has to. The
+ * backend trims first and measures the trimmed value; every check here does
+ * the same.
+ */
+export const TASK_TITLE_MAX = 200;
+export const TASK_DESCRIPTION_MAX = 4000;
+export const CHECKLIST_TEXT_MAX = 500;
+export const COMMENT_BODY_MAX = 4000;
+
 /** A task's status, in the order work moves through it — the order every board column and grouped list uses. */
 export const taskStatuses = ["todo", "in-progress", "done"] as const;
 

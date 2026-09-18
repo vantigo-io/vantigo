@@ -8,12 +8,17 @@ import { ApiValidationError } from "../api/projects";
 import { createTask, projectTasksQueryOptions, type TaskInput } from "../api/tasks";
 import { AssigneePicker } from "../components/assignee-picker";
 import "../i18n";
-import { isTaskStatus, type TaskStatus, taskStatuses, taskStatusLabelKey } from "../lib/tasks";
+import {
+  isTaskStatus,
+  TASK_DESCRIPTION_MAX,
+  TASK_TITLE_MAX,
+  type TaskStatus,
+  taskStatuses,
+  taskStatusLabelKey,
+} from "../lib/tasks";
 
 /** Adding a task, optionally under a parent the caller already picked. */
 export type TaskModalState = { mode: "create"; parentTaskId?: number };
-
-const TITLE_MAX = 200;
 
 interface TaskFormValues {
   title: string;
@@ -74,8 +79,9 @@ const TaskForm = ({ projectId, state, onClose }: TaskFormModalProps & { state: T
       title: (value) => {
         const title = value.trim();
         if (!title) return t("taskTitleRequired");
-        return title.length > TITLE_MAX ? t("taskTitleTooLong") : null;
+        return title.length > TASK_TITLE_MAX ? t("taskTitleTooLong") : null;
       },
+      description: (value) => (value.trim().length > TASK_DESCRIPTION_MAX ? t("descriptionTooLong") : null),
       estimateHours: (value) => {
         const estimate = hours(value);
         return estimate !== undefined && estimate <= 0 ? t("estimateMustBePositive") : null;
