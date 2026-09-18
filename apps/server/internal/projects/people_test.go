@@ -107,6 +107,21 @@ func disableUser(t *testing.T, h *modtest.Harness, userID uuid.UUID) {
 	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, userID)
 }
 
+// payloads is every timeline payload of one type on one project, oldest
+// first, for a case whose subject is how many entries a mutation wrote and
+// what each of them said.
+func payloads(t *testing.T, h *modtest.Harness, projectID int32, eventType string) []map[string]any {
+	t.Helper()
+	raw := modtest.One[string](t, h, `SELECT coalesce(json_agg(payload ORDER BY id)::text, '[]')
+	                                  FROM projects.timeline_entries WHERE project_id = $1 AND event_type = $2`,
+		projectID, eventType)
+	var out []map[string]any
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("decode %s: %v", raw, err)
+	}
+	return out
+}
+
 // lastPayload is the payload of the newest timeline entry of one type, which
 // is what a mutation's assertion is actually about.
 func lastPayload(t *testing.T, h *modtest.Harness, projectID int32, eventType string) map[string]any {
@@ -129,7 +144,7 @@ func displayNames(users []personJSON) []string {
 	return out
 }
 
-func roleNames(roles []roleJSON) []string {
+func roleDisplayNames(roles []roleJSON) []string {
 	out := make([]string, 0, len(roles))
 	for _, r := range roles {
 		out = append(out, r.DisplayName)
@@ -164,7 +179,7 @@ func TestProjectRoles_AddChangeAndRemoveAMember_TracksVisibilityAndTheTimeline(t
 	if r := getProject(t, member, project.Id); r.Status != http.StatusOK {
 		t.Fatalf("after the assignment: status %d body %s, want 200", r.Status, r.Body)
 	}
-	if got := roleNames(listRoles(t, creator, project.Id)); len(got) != 2 {
+	if got := roleDisplayNames(listRoles(t, creator, project.Id)); len(got) != 2 {
 		t.Errorf("roles = %v, want the creator and the new member", got)
 	}
 	payload := lastPayload(t, h, project.Id, "role-added")
@@ -230,7 +245,7 @@ func TestGetProjectsByIdRoles_ManagersFirstThenByDisplayName(t *testing.T) {
 	}
 
 	want := []string{"Arne Leder", "Zara Leder", "Anna Seer", "Bjørn Medlem"}
-	if got := roleNames(listRoles(t, creator, project.Id)); fmt.Sprint(got) != fmt.Sprint(want) {
+	if got := roleDisplayNames(listRoles(t, creator, project.Id)); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("roles = %v, want %v (managers first, then by display name)", got, want)
 	}
 }
@@ -392,6 +407,31 @@ func TestProjectRoles_Member_MayReadButNotManage(t *testing.T) {
 	}
 }
 
+// projects:view-all sees every project but manages none of them (design §5):
+// the same 403 a member gets, from a caller who reached the project through a
+// global permission rather than a role.
+func TestProjectRoles_ViewAllWithoutARole_MayReadButNotManage(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	creator, _ := signIn(t, h, "projects:create")
+	project := createProject(t, creator, map[string]any{"code": "VALL1000"})
+	viewer, _ := signIn(t, h, "projects:view-all")
+	_, otherID := signIn(t, h)
+
+	if got := roleDisplayNames(listRoles(t, viewer, project.Id)); len(got) != 1 {
+		t.Errorf("roles = %v, want view-all to read the list", got)
+	}
+	if r := putRole(t, viewer, project.Id, otherID, "member"); r.Status != http.StatusForbidden {
+		t.Errorf("view-all assigning: status %d body %s, want 403", r.Status, r.Body)
+	}
+	if r := deleteRole(t, viewer, project.Id, otherID); r.Status != http.StatusForbidden {
+		t.Errorf("view-all removing: status %d body %s, want 403", r.Status, r.Body)
+	}
+	if r := viewer.Do(http.MethodGet, fmt.Sprintf("/api/v1/projects/%d/assignable-users", project.Id), nil); r.Status != http.StatusForbidden {
+		t.Errorf("view-all searching: status %d body %s, want 403", r.Status, r.Body)
+	}
+}
+
 // D7: an outsider cannot tell any of the four operations' projects from one
 // that does not exist.
 func TestProjectRoles_Outsider_Returns404(t *testing.T) {
@@ -492,6 +532,86 @@ func TestGetProjectsByIdAssignableUsers_ExcludesAssignedAndDisabled(t *testing.T
 	}
 }
 
+// Two managers removing the same person at once: exactly one 204, exactly one
+// role-removed. A second entry would record a removal that did not happen.
+//
+// Unlike the concurrency tests in projects_concurrency_test.go, this does not
+// reproduce the interleaving it names: the window between the locked read and
+// the delete is microseconds against a request preamble of milliseconds, and
+// the assertions hold either way (checked by re-running it against the
+// pre-lock implementation). What it pins is the invariant; what guarantees it
+// is the row lock and the delete's own row count.
+func TestDeleteProjectsByIdRolesByUserId_ConcurrentRemovals_RemoveItOnce(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	creator, _ := signIn(t, h, "projects:create")
+	project := createProject(t, creator, map[string]any{"code": "RACED1000"})
+	_, memberID := signIn(t, h)
+	setDisplayName(t, h, memberID, "Rita Racer")
+	assignRole(t, creator, project.Id, memberID, "member")
+
+	responses := race(
+		func() *modtest.Response { return deleteRole(t, creator, project.Id, memberID) },
+		func() *modtest.Response { return deleteRole(t, creator, project.Id, memberID) },
+	)
+	statuses := map[int]int{}
+	for _, r := range responses {
+		statuses[r.Status]++
+	}
+	if statuses[http.StatusNoContent] != 1 || statuses[http.StatusNotFound] != 1 {
+		t.Errorf("statuses = %v, want exactly one 204 and one 404", statuses)
+	}
+	if got := payloads(t, h, project.Id, "role-removed"); len(got) != 1 {
+		t.Errorf("role-removed entries = %v, want exactly one", got)
+	}
+}
+
+// Two managers changing the same person's role at once. Each change is
+// recorded against the role that was actually there when it was applied, so
+// the two entries chain — the second's oldRole is the first's newRole — and
+// only one of them can have started from the role the user held before either
+// request arrived. The same caveat as the removal race above applies: this
+// pins the invariant rather than reproducing the interleaving.
+func TestPutProjectsByIdRolesByUserId_ConcurrentChanges_ChainTheTimeline(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	creator, _ := signIn(t, h, "projects:create")
+	project := createProject(t, creator, map[string]any{"code": "RACEP1000"})
+	_, memberID := signIn(t, h)
+	setDisplayName(t, h, memberID, "Rolf Racer")
+	assignRole(t, creator, project.Id, memberID, "member")
+
+	responses := race(
+		func() *modtest.Response { return putRole(t, creator, project.Id, memberID, "viewer") },
+		func() *modtest.Response { return putRole(t, creator, project.Id, memberID, "manager") },
+	)
+	for i, r := range responses {
+		if r.Status != http.StatusOK {
+			t.Fatalf("change %d: status %d body %s, want 200", i, r.Status, r.Body)
+		}
+	}
+
+	entries := payloads(t, h, project.Id, "role-changed")
+	if len(entries) != 2 {
+		t.Fatalf("role-changed entries = %v, want exactly two", entries)
+	}
+	if entries[0]["oldRole"] != "member" {
+		t.Errorf("first entry = %v, want it to start from the role the user held", entries[0])
+	}
+	if entries[1]["oldRole"] == "member" {
+		t.Errorf("entries = %v, want the second change recorded against what the first left behind, not against 'member'", entries)
+	}
+	if entries[0]["newRole"] != entries[1]["oldRole"] {
+		t.Errorf("entries = %v, want the second to continue from the first", entries)
+	}
+	roles := listRoles(t, creator, project.Id)
+	for _, r := range roles {
+		if r.UserId == memberID && r.Role != entries[1]["newRole"] {
+			t.Errorf("stored role = %q, want the last entry's newRole %v", r.Role, entries[1]["newRole"])
+		}
+	}
+}
+
 // D6: there is no last-manager rule. A manager may step off the project they
 // run, and manage-all is what puts somebody back on it.
 func TestDeleteProjectsByIdRolesByUserId_LastManagerMayRemoveThemself(t *testing.T) {
@@ -513,7 +633,7 @@ func TestDeleteProjectsByIdRolesByUserId_LastManagerMayRemoveThemself(t *testing
 	if assigned := assignRole(t, admin, project.Id, newManagerID, "manager"); assigned.Role != "manager" {
 		t.Errorf("assigned = %+v, want manage-all to appoint a new manager", assigned)
 	}
-	if got := roleNames(listRoles(t, admin, project.Id)); fmt.Sprint(got) != fmt.Sprint([]string{"Ny Leder"}) {
+	if got := roleDisplayNames(listRoles(t, admin, project.Id)); fmt.Sprint(got) != fmt.Sprint([]string{"Ny Leder"}) {
 		t.Errorf("roles = %v, want only the new manager", got)
 	}
 }

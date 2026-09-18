@@ -45,6 +45,16 @@ func userDisabled(id uuid.UUID) string {
 	return fmt.Sprintf("User %s is disabled and cannot be given a project role", id)
 }
 
+// errUnknownSubject and errDisabledSubject carry those two refusals out of the
+// assignment's transaction. Whether the user is being *added* is only known
+// under the row lock the transaction takes, and the rule applies to an add
+// alone, so the check has to happen in there — and a refusal has to roll the
+// transaction back rather than return a response from inside it.
+var (
+	errUnknownSubject  = errors.New("projects: the assigned user does not exist")
+	errDisabledSubject = errors.New("projects: the assigned user is disabled")
+)
+
 // userEntries names a project's people in one directory call. An id the
 // directory does not know still gets an entry — unknownUser, inactive — so
 // every assignment has something to render and the caller never has to
@@ -156,9 +166,17 @@ func (s *server) GetProjectsByIdRoles(ctx context.Context, req gen.GetProjectsBy
 // events, and the role somebody already holds is neither, so re-sending it
 // answers the assignment and writes nothing.
 //
+// Which of the three it was is decided by the write itself — the assignment
+// is locked, the upsert reports whether it created the row — and not by a read
+// taken beforehand. Two managers assigning the same user at once, or an
+// assignment racing its own removal, would otherwise both be told they added
+// somebody, or that they changed a role that had just been deleted out from
+// under them. A timeline is only worth reading if it never says that.
+//
 // The user must resolve and be active to be *added*; changing or removing the
 // role of an account disabled afterwards stays possible, or a project could
-// never be tidied up after somebody left.
+// never be tidied up after somebody left. That check belongs under the same
+// lock, because "is this an add" is only settled there.
 func (s *server) PutProjectsByIdRolesByUserId(ctx context.Context, req gen.PutProjectsByIdRolesByUserIdRequestObject) (gen.PutProjectsByIdRolesByUserIdResponseObject, error) {
 	body := gen.ProjectRoleAssignmentRequest{}
 	if req.Body != nil {
@@ -192,37 +210,11 @@ func (s *server) PutProjectsByIdRolesByUserId(ctx context.Context, req gen.PutPr
 			invalidProject(fieldError("role", msg))), nil
 	}
 
-	held, err := q.GetProjectRole(ctx, store.GetProjectRoleParams{ProjectID: row.ID, UserID: req.UserId})
-	adding := errors.Is(err, pgx.ErrNoRows)
-	if err != nil && !adding {
-		return nil, fmt.Errorf("projects: get project role: %w", err)
-	}
-
 	subject, entry, err := s.subjectOf(ctx, req.UserId)
 	if err != nil {
 		return nil, err
 	}
-	if adding {
-		switch {
-		case entry == nil:
-			return gen.PutProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse(
-				invalidProject(fieldError("userId", userNotFound(req.UserId)))), nil
-		case !entry.Active:
-			return gen.PutProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse(
-				invalidProject(fieldError("userId", userDisabled(req.UserId)))), nil
-		}
-	}
 	active := entry != nil && entry.Active
-
-	if !adding && held.Role == role {
-		return gen.PutProjectsByIdRolesByUserId200JSONResponse(gen.ProjectRoleResponse{
-			UserId:      held.UserID,
-			DisplayName: subject.Display,
-			Active:      active,
-			Role:        held.Role,
-			CreatedAt:   held.CreatedAt,
-		}), nil
-	}
 
 	by, err := s.callerAs(ctx)
 	if err != nil {
@@ -232,19 +224,50 @@ func (s *server) PutProjectsByIdRolesByUserId(ctx context.Context, req gen.PutPr
 	var assigned store.UpsertProjectRoleRow
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		var err error
+		held, err := txq.LockProjectRole(ctx, store.LockProjectRoleParams{ProjectID: row.ID, UserID: req.UserId})
+		heldNone := errors.Is(err, pgx.ErrNoRows)
+		if err != nil && !heldNone {
+			return fmt.Errorf("projects: lock project role: %w", err)
+		}
+		if heldNone {
+			switch {
+			case entry == nil:
+				return errUnknownSubject
+			case !active:
+				return errDisabledSubject
+			}
+		}
+
 		assigned, err = txq.UpsertProjectRole(ctx, store.UpsertProjectRoleParams{
 			ProjectID: row.ID, UserID: req.UserId, Role: role, Now: now,
 		})
 		if err != nil {
 			return err
 		}
-		if adding {
-			return recordRoleAdded(ctx, txq, now, row.ID, subject, role, by)
+		switch {
+		case assigned.Inserted || heldNone:
+			// heldNone with a row that was updated rather than inserted is the
+			// one interleaving the lock cannot serialise — two first-time
+			// assignments of the same user, where the loser's read saw nothing
+			// and its insert became an update. From this transaction's side
+			// the user held no role and now holds one, so that is what the
+			// timeline is told; the winner's own entry records theirs.
+			return recordRoleAdded(ctx, txq, now, row.ID, subject, assigned.Role, by)
+		case held.Role == assigned.Role:
+			// Assigning the role somebody already holds happened to nobody.
+			return nil
+		default:
+			return recordRoleChanged(ctx, txq, now, row.ID, subject, held.Role, assigned.Role, by)
 		}
-		return recordRoleChanged(ctx, txq, now, row.ID, subject, held.Role, role, by)
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, errUnknownSubject):
+		return gen.PutProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse(
+			invalidProject(fieldError("userId", userNotFound(req.UserId)))), nil
+	case errors.Is(err, errDisabledSubject):
+		return gen.PutProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse(
+			invalidProject(fieldError("userId", userDisabled(req.UserId)))), nil
+	case err != nil:
 		return nil, fmt.Errorf("projects: assign a project role: %w", err)
 	}
 
@@ -266,6 +289,11 @@ func (s *server) PutProjectsByIdRolesByUserId(ctx context.Context, req gen.PutPr
 // costs is that a manager who steps off a project they hold no global
 // permission over stops seeing it — which is exactly what removing their own
 // role means.
+//
+// The role is read under a lock and deleted in the same transaction, and it is
+// the delete's own row count that decides both the 404 and the timeline entry:
+// two managers removing the same person at once must not both be told they
+// did it, and only one role-removed may be written.
 func (s *server) DeleteProjectsByIdRolesByUserId(ctx context.Context, req gen.DeleteProjectsByIdRolesByUserIdRequestObject) (gen.DeleteProjectsByIdRolesByUserIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	row, err := q.GetProject(ctx, req.Id)
@@ -286,14 +314,6 @@ func (s *server) DeleteProjectsByIdRolesByUserId(ctx context.Context, req gen.De
 		return gen.DeleteProjectsByIdRolesByUserId403JSONResponse(forbidden()), nil
 	}
 
-	held, err := q.GetProjectRole(ctx, store.GetProjectRoleParams{ProjectID: row.ID, UserID: req.UserId})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.DeleteProjectsByIdRolesByUserId404Response{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("projects: get project role: %w", err)
-	}
-
 	subject, _, err := s.subjectOf(ctx, req.UserId)
 	if err != nil {
 		return nil, err
@@ -304,15 +324,31 @@ func (s *server) DeleteProjectsByIdRolesByUserId(ctx context.Context, req gen.De
 	}
 
 	now := s.deps.Clock()
+	removed := false
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if err := txq.DeleteProjectRole(ctx, store.DeleteProjectRoleParams{ProjectID: row.ID, UserID: req.UserId}); err != nil {
+		held, err := txq.LockProjectRole(ctx, store.LockProjectRoleParams{ProjectID: row.ID, UserID: req.UserId})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("projects: lock project role: %w", err)
+		}
+		rows, err := txq.DeleteProjectRole(ctx, store.DeleteProjectRoleParams{ProjectID: row.ID, UserID: req.UserId})
+		if err != nil {
 			return err
 		}
+		if rows == 0 {
+			return nil
+		}
+		removed = true
 		return recordRoleRemoved(ctx, txq, now, row.ID, subject, held.Role, by)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("projects: remove a project role: %w", err)
+	}
+	if !removed {
+		return gen.DeleteProjectsByIdRolesByUserId404Response{}, nil
 	}
 	return gen.DeleteProjectsByIdRolesByUserId204Response{}, nil
 }
