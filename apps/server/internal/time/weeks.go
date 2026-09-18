@@ -274,13 +274,7 @@ func (s *server) PostTimeWeeksByWeekStartSubmit(ctx context.Context, req gen.Pos
 func (s *server) PostTimeEntriesSubmit(ctx context.Context, req gen.PostTimeEntriesSubmitRequestObject) (gen.PostTimeEntriesSubmitResponseObject, error) {
 	var ids []int64
 	if req.Body != nil {
-		seen := make(map[int64]bool, len(req.Body.Ids))
-		for _, id := range req.Body.Ids {
-			if !seen[id] {
-				seen[id] = true
-				ids = append(ids, id)
-			}
-		}
+		ids = uniqueIDs(req.Body.Ids)
 	}
 	if len(ids) == 0 {
 		return gen.PostTimeEntriesSubmit400ApplicationProblemPlusJSONResponse(

@@ -77,3 +77,22 @@ func revisionConflict(current, supplied int32) apicommon.ProblemDetails {
 		fmt.Sprintf("The entry has revision %d; the supplied revision was %d.", current, supplied),
 		http.StatusConflict)
 }
+
+// invalidApprovalTitle is the title of the 400 an approve, a reject or an
+// unapprove answers when something in it may not be done: no ids, a reject
+// without a reason, or ids naming entries that may not make the transition.
+const invalidApprovalTitle = "Invalid approval"
+
+// invalidApproval is that 400's body.
+func invalidApproval(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidApprovalTitle, errs)
+}
+
+// invalidRateTitle is the title of the 400 a person rate card row's create
+// or update answers when its fields did not pass §4.3.
+const invalidRateTitle = "Invalid rate"
+
+// invalidRate is that 400's body.
+func invalidRate(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidRateTitle, errs)
+}

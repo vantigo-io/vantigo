@@ -9,6 +9,16 @@ import (
 	"context"
 )
 
+const deleteSetting = `-- name: DeleteSetting :exec
+DELETE FROM time.settings WHERE key = $1
+`
+
+// DeleteSetting removes one setting; an unset key stays unset.
+func (q *Queries) DeleteSetting(ctx context.Context, key string) error {
+	_, err := q.db.Exec(ctx, deleteSetting, key)
+	return err
+}
+
 const getSetting = `-- name: GetSetting :one
 SELECT value FROM time.settings WHERE key = $1
 `
@@ -21,4 +31,20 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const setSetting = `-- name: SetSetting :exec
+INSERT INTO time.settings (key, value) VALUES ($1, $2)
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+`
+
+type SetSettingParams struct {
+	Key   string
+	Value string
+}
+
+// SetSetting stores one setting, replacing what the key held.
+func (q *Queries) SetSetting(ctx context.Context, arg SetSettingParams) error {
+	_, err := q.db.Exec(ctx, setSetting, arg.Key, arg.Value)
+	return err
 }

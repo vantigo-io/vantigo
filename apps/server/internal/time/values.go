@@ -416,5 +416,10 @@ func notAMonday(weekStart time.Time) string {
 	return fmt.Sprintf("A week starts on a Monday, but %s is a %s", weekStart.Format(time.DateOnly), weekStart.Weekday())
 }
 
+// mondayOf is the Monday of the week date falls in.
+func mondayOf(date time.Time) time.Time {
+	return date.AddDate(0, 0, -((int(date.Weekday()) + daysInWeek - 1) % daysInWeek))
+}
+
 // weekEnd is the Sunday of the week starting on the Monday weekStart.
 func weekEnd(weekStart time.Time) time.Time { return weekStart.AddDate(0, 0, daysInWeek-1) }

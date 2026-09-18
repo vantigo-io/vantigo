@@ -7,10 +7,24 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const deletePersonRate = `-- name: DeletePersonRate :execrows
+DELETE FROM time.person_rates WHERE id = $1
+`
+
+// DeletePersonRate removes a row. Entries it priced keep their snapshots.
+func (q *Queries) DeletePersonRate(ctx context.Context, id int32) (int64, error) {
+	result, err := q.db.Exec(ctx, deletePersonRate, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
 
 const effectivePersonRate = `-- name: EffectivePersonRate :one
 SELECT id, user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at FROM time.person_rates
@@ -30,6 +44,150 @@ type EffectivePersonRateParams struct {
 // rate".
 func (q *Queries) EffectivePersonRate(ctx context.Context, arg EffectivePersonRateParams) (TimePersonRate, error) {
 	row := q.db.QueryRow(ctx, effectivePersonRate, arg.UserID, arg.OnDate)
+	var i TimePersonRate
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ValidFrom,
+		&i.BillRate,
+		&i.CostRate,
+		&i.Currency,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getPersonRate = `-- name: GetPersonRate :one
+SELECT id, user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at FROM time.person_rates WHERE id = $1
+`
+
+func (q *Queries) GetPersonRate(ctx context.Context, id int32) (TimePersonRate, error) {
+	row := q.db.QueryRow(ctx, getPersonRate, id)
+	var i TimePersonRate
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ValidFrom,
+		&i.BillRate,
+		&i.CostRate,
+		&i.Currency,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertPersonRate = `-- name: InsertPersonRate :one
+INSERT INTO time.person_rates (user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::timestamptz)
+RETURNING id, user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at
+`
+
+type InsertPersonRateParams struct {
+	UserID    uuid.UUID
+	ValidFrom pgtype.Date
+	BillRate  pgtype.Numeric
+	CostRate  pgtype.Numeric
+	Currency  string
+	Now       time.Time
+}
+
+// InsertPersonRate adds a rate card row. A second row for the same person and
+// day raises 23505 on ux_person_rates_user_id_valid_from, which the handler
+// turns into the validFrom field error.
+func (q *Queries) InsertPersonRate(ctx context.Context, arg InsertPersonRateParams) (TimePersonRate, error) {
+	row := q.db.QueryRow(ctx, insertPersonRate,
+		arg.UserID,
+		arg.ValidFrom,
+		arg.BillRate,
+		arg.CostRate,
+		arg.Currency,
+		arg.Now,
+	)
+	var i TimePersonRate
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ValidFrom,
+		&i.BillRate,
+		&i.CostRate,
+		&i.Currency,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listPersonRates = `-- name: ListPersonRates :many
+SELECT id, user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at FROM time.person_rates
+WHERE $1::uuid IS NULL OR user_id = $1::uuid
+ORDER BY user_id, valid_from DESC
+`
+
+// ListPersonRates is the rate card rows, one person's (user_id) or everyone's
+// (NULL), each person's latest first. The handler orders people by name,
+// which lives in identity.
+func (q *Queries) ListPersonRates(ctx context.Context, userID *uuid.UUID) ([]TimePersonRate, error) {
+	rows, err := q.db.Query(ctx, listPersonRates, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimePersonRate
+	for rows.Next() {
+		var i TimePersonRate
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ValidFrom,
+			&i.BillRate,
+			&i.CostRate,
+			&i.Currency,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updatePersonRate = `-- name: UpdatePersonRate :one
+UPDATE time.person_rates SET
+    valid_from = $1,
+    bill_rate = $2,
+    cost_rate = $3,
+    currency = $4,
+    updated_at = $5::timestamptz
+WHERE id = $6
+RETURNING id, user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at
+`
+
+type UpdatePersonRateParams struct {
+	ValidFrom pgtype.Date
+	BillRate  pgtype.Numeric
+	CostRate  pgtype.Numeric
+	Currency  string
+	Now       time.Time
+	ID        int32
+}
+
+// UpdatePersonRate replaces a row's day, rates and currency; the person stays
+// the row's own. No row is an unknown id.
+func (q *Queries) UpdatePersonRate(ctx context.Context, arg UpdatePersonRateParams) (TimePersonRate, error) {
+	row := q.db.QueryRow(ctx, updatePersonRate,
+		arg.ValidFrom,
+		arg.BillRate,
+		arg.CostRate,
+		arg.Currency,
+		arg.Now,
+		arg.ID,
+	)
 	var i TimePersonRate
 	err := row.Scan(
 		&i.ID,
