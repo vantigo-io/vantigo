@@ -138,6 +138,67 @@ describe("MyWeekPage", () => {
     });
   });
 
+  it("cancels an edit on Escape without saving anything", async () => {
+    const fetchMock = stubTimeApi({ week: typicalWeek() });
+    renderRoute(`/time?week=${WEEK}`);
+
+    const monday = await findCell(PM, "Monday");
+    await userEvent.clear(monday);
+    await userEvent.type(monday, "3{Escape}");
+    await userEvent.tab();
+
+    expect(cell(PM, "Monday")).toHaveValue("7.5");
+    expect(fetchMock.actualCalls.some(([, init]) => (init?.method ?? "GET") !== "GET")).toBe(false);
+  });
+
+  it("keeps a day out of the grid while its entry has a start and an end time", async () => {
+    const fetchMock = stubTimeApi({
+      week: week([
+        weekRow(pmRow, [entry({ id: 530, entryDate: "2026-09-18", hours: 2, startTime: "08:00", endTime: "10:00" })]),
+      ]),
+    });
+    const { router } = renderRoute(`/time?week=${WEEK}`);
+
+    const timed = await findCell(PM, "Friday");
+    expect(timed).toHaveValue("2");
+    expect(timed).toHaveAttribute("readonly");
+
+    await userEvent.hover(timed);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("08:00–10:00");
+
+    await userEvent.click(timed);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/time/day"));
+    expect(router.state.location.search).toEqual({ date: "2026-09-18" });
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
+
+  it("keeps a row whose only entry was cleared, ready to be typed into again", async () => {
+    let current = week([weekRow(pmRow, [entry({ id: 540, entryDate: WEEK, hours: 7.5 })])]);
+    const fetchMock = stubTimeApi({
+      week: () => current,
+      write: (method) => {
+        if (method === "DELETE") current = week([]);
+        return undefined;
+      },
+    });
+    renderRoute(`/time?week=${WEEK}`);
+
+    await userEvent.clear(await findCell(PM, "Monday"));
+    await userEvent.tab();
+
+    await waitFor(() => expect(cell(PM, "Monday")).toHaveValue(""));
+    await userEvent.type(cell(PM, "Tuesday"), "4{Enter}");
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST").body).toEqual({
+        projectId: 1001,
+        billingLineId: 3001,
+        entryDate: "2026-09-15",
+        hours: 4,
+      }),
+    );
+  });
+
   it("keeps submitted and approved hours read-only and says why on hover", async () => {
     stubTimeApi({ week: typicalWeek() });
     renderRoute(`/time?week=${WEEK}`);

@@ -21,7 +21,7 @@ import { HoursCell } from "../components/hours-cell";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useHoursFormat } from "../lib/hours";
-import { rowKey, rowLabel, type WeekRowRef } from "../lib/rows";
+import { rowKey, rowLabel, rowRef, type WeekRowRef } from "../lib/rows";
 import { timeEntryStatusLabelKey } from "../lib/status";
 import { addDays, dayUrl, isIsoDate, mondayOf, today, weekDays } from "../lib/week";
 import { RowPicker } from "./-row-picker";
@@ -172,9 +172,13 @@ const WeekGrid = ({ week, days, settings }: WeekGridProps) => {
     ...added.filter((row) => !serverKeys.has(rowKey(row))).map((row) => ({ ...row, days: [] })),
   ];
 
+  // Kept against the rows added here rather than against the week's own: a
+  // row whose last entry was just deleted is still in the response being
+  // read back, and it is exactly the row that has to stay on the page. A
+  // duplicate of a row the server answers is filtered out above instead.
   const addRows = (refs: WeekRowRef[]) =>
     setAdded((current) => {
-      const known = new Set([...week.rows, ...current].map(rowKey));
+      const known = new Set(current.map(rowKey));
       const next = [...current];
       for (const ref of refs) {
         if (known.has(rowKey(ref))) continue;
@@ -252,7 +256,13 @@ const WeekGrid = ({ week, days, settings }: WeekGridProps) => {
             </Table.Thead>
             <Table.Tbody>
               {rows.map((row) => (
-                <WeekRowView key={rowKey(row)} row={row} days={days} settings={settings} />
+                <WeekRowView
+                  key={rowKey(row)}
+                  row={row}
+                  days={days}
+                  settings={settings}
+                  onKeep={() => addRows([rowRef(row)])}
+                />
               ))}
             </Table.Tbody>
             <Table.Tfoot>
@@ -295,7 +305,15 @@ const DayLink = ({ date }: { date: string }) => {
 
 const sum = (entries: TimeEntry[]) => entries.reduce((total, entry) => total + entry.hours, 0);
 
-const WeekRowView = ({ row, days, settings }: { row: TimeWeekRow; days: string[]; settings?: TimeSettings }) => {
+interface WeekRowViewProps {
+  row: TimeWeekRow;
+  days: string[];
+  settings?: TimeSettings;
+  /** The row's last entry has just gone; keep the row on the page so it can be typed into again. */
+  onKeep: () => void;
+}
+
+const WeekRowView = ({ row, days, settings, onKeep }: WeekRowViewProps) => {
   const { t } = useI18n("time");
   const dates = useDayFormat();
   const hours = useHoursFormat();
@@ -321,6 +339,7 @@ const WeekRowView = ({ row, days, settings }: { row: TimeWeekRow; days: string[]
             entries={entriesOn(date)}
             locked={isLocked(date, settings)}
             label={t("hoursCellLabel", { row: label, day: dates.long(date) })}
+            onKeep={onKeep}
           />
         </Table.Td>
       ))}
@@ -335,15 +354,19 @@ interface WeekCellProps {
   entries: TimeEntry[];
   locked: boolean;
   label: string;
+  onKeep: () => void;
 }
 
 /**
- * One row's day: at most one entry, which the cell creates, replaces or
- * deletes. A day holding several entries of the row (logged with clock times
- * in the day view) shows their sum and is changed in the day view instead.
+ * One row's day: at most one entry without clock times, which the cell
+ * creates, replaces or deletes. A day holding several entries of the row, or
+ * one entry worked between a start and an end time, shows the sum read-only
+ * and opens the day view instead — the grid writes a duration, and a duration
+ * typed over clock times would silently throw them away.
  */
-const WeekCell = ({ row, date, entries, locked, label }: WeekCellProps) => {
+const WeekCell = ({ row, date, entries, locked, label, onKeep }: WeekCellProps) => {
   const { t } = useI18n("time");
+  const navigate = useNavigate() as (options: unknown) => void;
   const queryClient = useQueryClient();
   // Bumped on a refused write so the cell remounts showing the saved value.
   const [attempt, setAttempt] = useState(0);
@@ -354,9 +377,7 @@ const WeekCell = ({ row, date, entries, locked, label }: WeekCellProps) => {
     mutationFn: async (hours: number | null) => {
       if (entry && hours === null) return deleteTimeEntry(entry.id);
       if (hours === null) return;
-      // A new duration drops the clock times: they would no longer add up to it.
-      if (entry)
-        return updateTimeEntry(entry.id, timeEntryUpdateFrom(entry, { hours, startTime: null, endTime: null }));
+      if (entry) return updateTimeEntry(entry.id, timeEntryUpdateFrom(entry, { hours }));
       await createTimeEntry({
         projectId: row.projectId,
         entryDate: date,
@@ -365,17 +386,26 @@ const WeekCell = ({ row, date, entries, locked, label }: WeekCellProps) => {
         ...(row.taskId != null && { taskId: row.taskId }),
       });
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["time"] }),
+    onSuccess: (_result, hours) => {
+      // The server drops a row once its last entry is gone; the person who
+      // just cleared it is most likely about to type the day again.
+      if (hours === null) onKeep();
+      return queryClient.invalidateQueries({ queryKey: ["time"] });
+    },
     onError: (failure) => {
       setAttempt((n) => n + 1);
       notifications.show({ color: "red", title: t("couldNotSaveHours"), message: refusalMessage(failure) });
     },
   });
 
-  const readOnly = locked || several || (entry !== undefined && !entry.capabilities.canEdit);
+  const timed = entry !== undefined && Boolean(entry.startTime && entry.endTime);
+  const inDayView = several || timed;
+  const readOnly = locked || inDayView || (entry !== undefined && !entry.capabilities.canEdit);
   let tooltip: string | undefined;
   if (locked) tooltip = t("lockedDay");
   else if (several) tooltip = t("severalEntries", { count: entries.length });
+  else if (timed && entry)
+    tooltip = t("timedEntry", { range: t("timeRange", { start: entry.startTime, end: entry.endTime }) });
   else if (entry?.status === "rejected")
     tooltip = entry.rejectionReason
       ? t("rejectedBecause", { reason: entry.rejectionReason })
@@ -392,6 +422,7 @@ const WeekCell = ({ row, date, entries, locked, label }: WeekCellProps) => {
       tooltip={tooltip}
       onCommit={(hours) => save.mutate(hours)}
       onInvalid={() => notifications.show({ color: "red", title: t("invalidHoursTitle"), message: t("invalidHours") })}
+      onActivate={inDayView && !locked ? () => navigate({ to: "/time/day", search: { date } }) : undefined}
     />
   );
 };
