@@ -155,6 +155,9 @@ describe("ProjectTasks", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Board" }));
 
     const card = await screen.findByTestId("task-card-1");
+    // Initials are all the card has room for, so the avatar has to say who
+    // they belong to for anyone not reading them off the screen.
+    expect(within(card).getByLabelText("Ada Lovelace")).toHaveTextContent("AL");
     await userEvent.click(within(card).getByRole("button", { name: "Task actions" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Move to In progress" }));
 

@@ -420,7 +420,15 @@ const TaskCard = ({
         </Group>
         <Group gap="xs" wrap="nowrap">
           {task.assignee ? (
-            <Avatar size="sm" radius="xl" color="blue">
+            // Initials alone say nothing to a screen reader, and the card has
+            // no room to spell the name out, so the avatar carries it.
+            <Avatar
+              size="sm"
+              radius="xl"
+              color="blue"
+              title={task.assignee.displayName}
+              aria-label={task.assignee.displayName}
+            >
               {initialsOf(task.assignee.displayName)}
             </Avatar>
           ) : (

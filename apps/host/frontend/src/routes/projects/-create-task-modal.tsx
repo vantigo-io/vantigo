@@ -2,8 +2,7 @@ import { Modal, Select, Stack, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { projectsQueryOptions } from "@vantigo/projects-ui/api/projects";
-import { TaskFormModal } from "@vantigo/projects-ui/pages/-task-form-modal";
+import { projectsQueryOptions, TaskFormModal } from "@vantigo/projects-ui";
 import { useState } from "react";
 import "../../i18n";
 
@@ -24,6 +23,18 @@ export const CreateTaskModal = ({ opened, onClose }: { opened: boolean; onClose:
     ...projectsQueryOptions({ page: 1, search: debouncedSearch.trim(), status: "", mine: true }),
     enabled: opened,
   });
+
+  // Back drops `?create=true` without going through `close`, so the choice is
+  // forgotten here too — otherwise the next Create task would skip the picker
+  // and open the form on whatever project was chosen last time.
+  const [openedSeen, setOpenedSeen] = useState(opened);
+  if (opened !== openedSeen) {
+    setOpenedSeen(opened);
+    if (!opened) {
+      setProjectId(null);
+      setSearch("");
+    }
+  }
 
   const close = () => {
     setProjectId(null);
@@ -60,7 +71,11 @@ export const CreateTaskModal = ({ opened, onClose }: { opened: boolean; onClose:
           </Text>
         </Stack>
       </Modal>
-      {projectId !== null && <TaskFormModal projectId={projectId} state={{ mode: "create" }} onClose={close} />}
+      {/* `opened` as well as the project: Back drops `?create=true` from the
+          URL without going through `close`, and the form has to go with it. */}
+      {opened && projectId !== null && (
+        <TaskFormModal projectId={projectId} state={{ mode: "create" }} onClose={close} />
+      )}
     </>
   );
 };

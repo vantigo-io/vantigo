@@ -8,7 +8,10 @@ import "../../i18n";
 
 // The package's task form is exercised by its own tests; what belongs to the
 // host is picking the project it is opened on, so the form is reduced to that.
-vi.mock("@vantigo/projects-ui/pages/-task-form-modal", () => ({
+// Everything else in the package — the projects query this picker reads — is
+// the real thing.
+vi.mock("@vantigo/projects-ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@vantigo/projects-ui")>()),
   TaskFormModal: ({ projectId }: { projectId: number }) => <div>task form for {projectId}</div>,
 }));
 
@@ -26,14 +29,17 @@ const project = (id: number, code: string, name: string) => ({
 
 const renderModal = (onClose = vi.fn()) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const tree = (opened: boolean) => (
     <MantineProvider env="test">
       <QueryClientProvider client={queryClient}>
-        <CreateTaskModal opened onClose={onClose} />
+        <CreateTaskModal opened={opened} onClose={onClose} />
       </QueryClientProvider>
-    </MantineProvider>,
+    </MantineProvider>
   );
-  return onClose;
+  const { rerender } = render(tree(true));
+  // The route renders this from `?create=true`, so "the URL changed" is a
+  // rerender with a different `opened`, not a call to onClose.
+  return { onClose, setOpened: (opened: boolean) => rerender(tree(opened)) };
 };
 
 describe("the Create task quick action's project picker", () => {
@@ -70,6 +76,37 @@ describe("the Create task quick action's project picker", () => {
     expect(await screen.findByText("task form for 31")).toBeInTheDocument();
     // The picker steps aside once it has answered its one question.
     expect(screen.queryByPlaceholderText("Search your projects")).not.toBeInTheDocument();
+  });
+
+  it("closes the task form when the intent leaves the URL, and forgets the project", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: [project(31, "ACME1000", "Roof replacement")],
+            total: 1,
+            page: 1,
+            pageSize: 25,
+            totalPages: 1,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    const { setOpened } = renderModal();
+
+    await userEvent.click(await screen.findByPlaceholderText("Search your projects"));
+    await userEvent.click(await screen.findByText("ACME1000 — Roof replacement"));
+    expect(await screen.findByText("task form for 31")).toBeInTheDocument();
+
+    // Back drops `?create=true` without going through the close button.
+    setOpened(false);
+    await waitFor(() => expect(screen.queryByText("task form for 31")).not.toBeInTheDocument());
+
+    // And the next Create task starts at the picker, not on the old project.
+    setOpened(true);
+    expect(await screen.findByPlaceholderText("Search your projects")).toBeInTheDocument();
+    expect(screen.queryByText("task form for 31")).not.toBeInTheDocument();
   });
 
   it("says so when the caller has no projects to put a task on", async () => {
