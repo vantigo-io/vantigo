@@ -10,6 +10,7 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
@@ -143,10 +144,29 @@ func (s *server) PostProjectsTasksByTaskIdComments(ctx context.Context, req gen.
 			invalidProject(fieldError("body", msg))), nil
 	}
 
+	// The task is held while the comment is written, so a comment can never be
+	// written onto a task that is being deleted at the same moment — which
+	// would otherwise fail on the foreign key rather than answer the 404 a
+	// deleted task deserves.
 	p, _ := contracts.PrincipalFrom(ctx)
-	created, err := q.InsertTaskComment(ctx, store.InsertTaskCommentParams{
-		TaskID: scope.Task.ID, AuthorUserID: p.UserID, Body: written, Now: s.deps.Clock(),
+	now := s.deps.Clock()
+	var created store.ProjectsTaskComment
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		if _, err := txq.LockTask(ctx, scope.Task.ID); errors.Is(err, pgx.ErrNoRows) {
+			return errTaskGone
+		} else if err != nil {
+			return fmt.Errorf("projects: lock task: %w", err)
+		}
+		var err error
+		created, err = txq.InsertTaskComment(ctx, store.InsertTaskCommentParams{
+			TaskID: scope.Task.ID, AuthorUserID: p.UserID, Body: written, Now: now,
+		})
+		return err
 	})
+	if errors.Is(err, errTaskGone) {
+		return gen.PostProjectsTasksByTaskIdComments404Response{}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("projects: write a comment: %w", err)
 	}
