@@ -71,10 +71,13 @@ const FinancialSummary = ({ project }: { project: Project }) => {
         <Text fw={600} component="h3">
           {t("financialSummary")}
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 5 }} spacing="md">
           <Field label={t("billingType")}>{t(billingTypeLabelKey(project.billingType))}</Field>
           <Field label={t("fixedPriceAmount")}>{money(project.financials?.fixedPriceAmount)}</Field>
           <Field label={t("budgetAmount")}>{money(project.financials?.budgetAmount)}</Field>
+          {/* The rate a time entry falls back to when no billing line sets one:
+              written on the project form, and readable only here. */}
+          <Field label={t("defaultBillRate")}>{money(project.financials?.defaultBillRate)}</Field>
           <Field label={t("currency")}>{currency ?? t("notAvailable")}</Field>
         </SimpleGrid>
       </Stack>

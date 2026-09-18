@@ -58,8 +58,11 @@ export const AssigneePicker = ({ projectId, value, onChange, selected, label, di
       searchable
       clearable
       disabled={disabled}
-      // Both APIs have already filtered; filtering again would hide a project
-      // member whose display name does not contain the term literally.
+      // The list above is already the answer to the search: the project's own
+      // people narrowed here, the directory's narrowed by the API — on their
+      // email too, which their display name need not contain — and whoever is
+      // assigned kept on it regardless. Mantine's own filter would drop the
+      // last two, so it is replaced by one that keeps every option.
       filter={({ options: parsed }) => parsed}
       onSearchChange={setSearch}
       nothingFoundMessage={t("noAssignableUsers")}

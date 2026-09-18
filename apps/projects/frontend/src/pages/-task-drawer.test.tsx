@@ -213,6 +213,33 @@ describe("TaskDrawer", () => {
     });
   });
 
+  it("offers no subtask section on a task that is itself a subtask", async () => {
+    // One level of nesting: the API refuses a subtask of a subtask, so the
+    // drawer must not offer the add at all — and a subtask can never have
+    // children of its own, so the whole section goes.
+    const subtask = (task.subtasks ?? [])[0];
+    stubFetch((input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/v1/projects/tasks/13") return Promise.resolve(jsonResponse(200, subtask));
+      if (url.pathname === "/api/v1/projects/tasks/13/checklist") return Promise.resolve(jsonResponse(200, []));
+      if (url.pathname === "/api/v1/projects/tasks/13/comments") {
+        return Promise.resolve(
+          jsonResponse(200, { data: [], pagination: { page: 1, totalCount: 0, totalPages: 0, hasNextPage: false } }),
+        );
+      }
+      if (url.pathname === "/api/v1/projects/7/roles") return Promise.resolve(jsonResponse(200, []));
+      if (url.pathname === "/api/v1/projects/7/assignable-users") return Promise.resolve(jsonResponse(200, []));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderDrawer({ taskId: 13 });
+
+    await screen.findByRole("heading", { name: "Draft the outline" });
+    expect(screen.queryByText("Subtasks")).not.toBeInTheDocument();
+    expect(screen.queryByText("No subtasks yet.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Subtask title" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add subtask" })).not.toBeInTheDocument();
+  });
+
   it("asks before deleting the task, warning what goes with it", async () => {
     const fetchMock = stubTask();
     renderDrawer({ canManage: true });
