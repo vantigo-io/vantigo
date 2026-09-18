@@ -136,22 +136,6 @@ func myTasks(t *testing.T, c *modtest.Client) []taskJSON {
 	return tasks
 }
 
-// insertChecklistItem and insertComment write the two child tables directly,
-// because the endpoints that manage them are Task 3's: the counts the tree
-// embeds, and the cascade a delete performs, have to be testable before the
-// write side of either exists.
-func insertChecklistItem(t *testing.T, h *modtest.Harness, taskID int32, text string, done bool) {
-	t.Helper()
-	h.Exec(t, `INSERT INTO projects.task_checklist_items (task_id, text, done, position, created_at, updated_at)
-	           VALUES ($1, $2, $3, 1, now(), now())`, taskID, text, done)
-}
-
-func insertComment(t *testing.T, h *modtest.Harness, taskID int32, body string) {
-	t.Helper()
-	h.Exec(t, `INSERT INTO projects.task_comments (task_id, author_user_id, body, created_at)
-	           VALUES ($1, $2, $3, now())`, taskID, uuid.New(), body)
-}
-
 // taskTitles and taskPositions are what a tree assertion is actually about:
 // which tasks came back and in what order, and the numbers they carry.
 func taskTitles(tasks []taskJSON) []string {
@@ -372,13 +356,13 @@ func TestGetProjectsByIdTasks_CarriesChecklistProgressAndCommentCounts(t *testin
 	subtask := createTask(t, c, project.Id, map[string]any{"title": "Bestill maskinvare", "parentTaskId": parent.Id})
 	createTask(t, c, project.Id, map[string]any{"title": "Gjennomføring"})
 
-	insertChecklistItem(t, h, parent.Id, "Avklar omfang", true)
-	insertChecklistItem(t, h, parent.Id, "Avklar budsjett", false)
-	insertChecklistItem(t, h, parent.Id, "Avklar frist", false)
-	insertComment(t, h, parent.Id, "Ser bra ut")
-	insertChecklistItem(t, h, subtask.Id, "Velg leverandør", true)
-	insertComment(t, h, subtask.Id, "Bestilt")
-	insertComment(t, h, subtask.Id, "Levert")
+	tickChecklistItem(t, c, parent.Id, "Avklar omfang")
+	addChecklistItem(t, c, parent.Id, "Avklar budsjett")
+	addChecklistItem(t, c, parent.Id, "Avklar frist")
+	addComment(t, c, parent.Id, "Ser bra ut")
+	tickChecklistItem(t, c, subtask.Id, "Velg leverandør")
+	addComment(t, c, subtask.Id, "Bestilt")
+	addComment(t, c, subtask.Id, "Levert")
 
 	tree := getTasks(t, c, project.Id)
 	if len(tree) != 2 {
@@ -546,11 +530,11 @@ func TestDeleteProjectsTasksByTaskId_CascadesToSubtasksChecklistAndComments(t *t
 	parent := createTask(t, c, project.Id, map[string]any{"title": "Forberedelser"})
 	subtask := createTask(t, c, project.Id, map[string]any{"title": "Bestill maskinvare", "parentTaskId": parent.Id})
 	survivor := createTask(t, c, project.Id, map[string]any{"title": "Gjennomføring"})
-	insertChecklistItem(t, h, parent.Id, "Avklar omfang", false)
-	insertChecklistItem(t, h, subtask.Id, "Velg leverandør", false)
-	insertComment(t, h, parent.Id, "Ser bra ut")
-	insertComment(t, h, subtask.Id, "Bestilt")
-	insertChecklistItem(t, h, survivor.Id, "Kjør i gang", false)
+	addChecklistItem(t, c, parent.Id, "Avklar omfang")
+	addChecklistItem(t, c, subtask.Id, "Velg leverandør")
+	addComment(t, c, parent.Id, "Ser bra ut")
+	addComment(t, c, subtask.Id, "Bestilt")
+	addChecklistItem(t, c, survivor.Id, "Kjør i gang")
 
 	if r := deleteTask(t, c, parent.Id); r.Status != http.StatusNoContent {
 		t.Fatalf("delete: status %d body %s, want 204", r.Status, r.Body)

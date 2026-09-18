@@ -89,6 +89,59 @@ type BillingLineResponse struct {
 	VariantMissing bool `json:"variantMissing"`
 }
 
+// ChecklistItemRequest One thing to tick off a task. The text is trimmed before validation and storage; the item is appended after the ones already there, open.
+type ChecklistItemRequest struct {
+	// Text At most 500 characters once trimmed, and never blank.
+	Text string `json:"text"`
+}
+
+// ChecklistItemResponse One item of a task's checklist. The counts the task tree carries are aggregates over these, so a tree renders progress without reading them.
+type ChecklistItemResponse struct {
+	Done bool  `json:"done"`
+	Id   int64 `json:"id"`
+
+	// Position The item's 1-based place in its task's checklist.
+	Position int32  `json:"position"`
+	Text     string `json:"text"`
+}
+
+// ChecklistItemUpdateRequest What the change should make of the item. Every field is optional and an absent one leaves that part of the item as it stands, so ticking an item off says nothing about its text or its place.
+type ChecklistItemUpdateRequest struct {
+	// Done Ticks the item off, or opens it again.
+	Done *bool `json:"done,omitempty"`
+
+	// Position The 1-based place among the task's items to move it to; the rest are renumbered 1..n. A position past the end means last.
+	Position *int32 `json:"position,omitempty"`
+
+	// Text At most 500 characters once trimmed, and never blank.
+	Text *string `json:"text,omitempty"`
+}
+
+// CommentAuthor Who wrote a comment. active is the user directory's answer, not the comment's — an account disabled or removed afterwards keeps the comment and is reported inactive.
+type CommentAuthor struct {
+	Active      bool               `json:"active"`
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// CommentRequest What a comment says. The body is trimmed before validation and storage.
+type CommentRequest struct {
+	// Body At most 4000 characters once trimmed, and never blank.
+	Body string `json:"body"`
+}
+
+// CommentResponse One comment on a task. A task's comments are its own history, which is why a task writes nothing to the project timeline.
+type CommentResponse struct {
+	// Author Who wrote a comment. active is the user directory's answer, not the comment's — an account disabled or removed afterwards keeps the comment and is reported inactive.
+	Author    CommentAuthor `json:"author"`
+	Body      string        `json:"body"`
+	CreatedAt time.Time     `json:"createdAt"`
+
+	// EditedAt When the author last rewrote the comment. Absent — not null — on a comment nobody has edited.
+	EditedAt *time.Time `json:"editedAt,omitempty"`
+	Id       int64      `json:"id"`
+}
+
 // GetProjectStatsResponse How many of the projects the caller may see stand in each status, for the list page's key-figure row. Every status is always present, 0 included.
 type GetProjectStatsResponse struct {
 	Active    int32 `json:"active"`
@@ -126,6 +179,12 @@ type MyTaskResponse struct {
 	Status    string    `json:"status"`
 	Title     string    `json:"title"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// PaginatedResponseOfCommentResponse defines model for PaginatedResponseOfCommentResponse.
+type PaginatedResponseOfCommentResponse struct {
+	Data       []CommentResponse               `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
 // PaginatedResponseOfProjectSummaryResponse defines model for PaginatedResponseOfProjectSummaryResponse.
@@ -479,6 +538,12 @@ type GetProjectsStatsTimeseriesParams struct {
 	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
+// GetProjectsTasksByTaskIdCommentsParams defines parameters for GetProjectsTasksByTaskIdComments.
+type GetProjectsTasksByTaskIdCommentsParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // GetProjectsByIdAssignableUsersParams defines parameters for GetProjectsByIdAssignableUsers.
 type GetProjectsByIdAssignableUsersParams struct {
 	// Search Matches the user's display name, case-insensitively. Absent or empty answers the first users assignable to this project.
@@ -505,6 +570,18 @@ type PostProjectsJSONRequestBody = ProjectCreateRequest
 
 // PutProjectsTasksByTaskIdJSONRequestBody defines body for PutProjectsTasksByTaskId for application/json ContentType.
 type PutProjectsTasksByTaskIdJSONRequestBody = TaskUpdateRequest
+
+// PostProjectsTasksByTaskIdChecklistJSONRequestBody defines body for PostProjectsTasksByTaskIdChecklist for application/json ContentType.
+type PostProjectsTasksByTaskIdChecklistJSONRequestBody = ChecklistItemRequest
+
+// PutProjectsTasksByTaskIdChecklistByItemIdJSONRequestBody defines body for PutProjectsTasksByTaskIdChecklistByItemId for application/json ContentType.
+type PutProjectsTasksByTaskIdChecklistByItemIdJSONRequestBody = ChecklistItemUpdateRequest
+
+// PostProjectsTasksByTaskIdCommentsJSONRequestBody defines body for PostProjectsTasksByTaskIdComments for application/json ContentType.
+type PostProjectsTasksByTaskIdCommentsJSONRequestBody = CommentRequest
+
+// PutProjectsTasksByTaskIdCommentsByCommentIdJSONRequestBody defines body for PutProjectsTasksByTaskIdCommentsByCommentId for application/json ContentType.
+type PutProjectsTasksByTaskIdCommentsByCommentIdJSONRequestBody = CommentRequest
 
 // PutProjectsTasksByTaskIdPositionJSONRequestBody defines body for PutProjectsTasksByTaskIdPosition for application/json ContentType.
 type PutProjectsTasksByTaskIdPositionJSONRequestBody = TaskPositionRequest
@@ -562,6 +639,30 @@ type ServerInterface interface {
 	// PutProjectsTasksByTaskId Update a task
 	// (PUT /api/v1/projects/tasks/{taskId})
 	PutProjectsTasksByTaskId(w http.ResponseWriter, r *http.Request, taskId int32)
+	// GetProjectsTasksByTaskIdChecklist List a task's checklist
+	// (GET /api/v1/projects/tasks/{taskId}/checklist)
+	GetProjectsTasksByTaskIdChecklist(w http.ResponseWriter, r *http.Request, taskId int32)
+	// PostProjectsTasksByTaskIdChecklist Add a checklist item to a task
+	// (POST /api/v1/projects/tasks/{taskId}/checklist)
+	PostProjectsTasksByTaskIdChecklist(w http.ResponseWriter, r *http.Request, taskId int32)
+	// DeleteProjectsTasksByTaskIdChecklistByItemId Delete a checklist item
+	// (DELETE /api/v1/projects/tasks/{taskId}/checklist/{itemId})
+	DeleteProjectsTasksByTaskIdChecklistByItemId(w http.ResponseWriter, r *http.Request, taskId int32, itemId int64)
+	// PutProjectsTasksByTaskIdChecklistByItemId Change a checklist item
+	// (PUT /api/v1/projects/tasks/{taskId}/checklist/{itemId})
+	PutProjectsTasksByTaskIdChecklistByItemId(w http.ResponseWriter, r *http.Request, taskId int32, itemId int64)
+	// GetProjectsTasksByTaskIdComments List a task's comments
+	// (GET /api/v1/projects/tasks/{taskId}/comments)
+	GetProjectsTasksByTaskIdComments(w http.ResponseWriter, r *http.Request, taskId int32, params GetProjectsTasksByTaskIdCommentsParams)
+	// PostProjectsTasksByTaskIdComments Comment on a task
+	// (POST /api/v1/projects/tasks/{taskId}/comments)
+	PostProjectsTasksByTaskIdComments(w http.ResponseWriter, r *http.Request, taskId int32)
+	// DeleteProjectsTasksByTaskIdCommentsByCommentId Delete a comment
+	// (DELETE /api/v1/projects/tasks/{taskId}/comments/{commentId})
+	DeleteProjectsTasksByTaskIdCommentsByCommentId(w http.ResponseWriter, r *http.Request, taskId int32, commentId int64)
+	// PutProjectsTasksByTaskIdCommentsByCommentId Edit a comment
+	// (PUT /api/v1/projects/tasks/{taskId}/comments/{commentId})
+	PutProjectsTasksByTaskIdCommentsByCommentId(w http.ResponseWriter, r *http.Request, taskId int32, commentId int64)
 	// PutProjectsTasksByTaskIdPosition Move a task among its siblings
 	// (PUT /api/v1/projects/tasks/{taskId}/position)
 	PutProjectsTasksByTaskIdPosition(w http.ResponseWriter, r *http.Request, taskId int32)
@@ -1002,6 +1103,279 @@ func (siw *ServerInterfaceWrapper) PutProjectsTasksByTaskId(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutProjectsTasksByTaskId(w, r, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsTasksByTaskIdChecklist operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsTasksByTaskIdChecklist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsTasksByTaskIdChecklist(w, r, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProjectsTasksByTaskIdChecklist operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsTasksByTaskIdChecklist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsTasksByTaskIdChecklist(w, r, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProjectsTasksByTaskIdChecklistByItemId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProjectsTasksByTaskIdChecklistByItemId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProjectsTasksByTaskIdChecklistByItemId(w, r, taskId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsTasksByTaskIdChecklistByItemId operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsTasksByTaskIdChecklistByItemId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsTasksByTaskIdChecklistByItemId(w, r, taskId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsTasksByTaskIdComments operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsTasksByTaskIdComments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsTasksByTaskIdCommentsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsTasksByTaskIdComments(w, r, taskId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProjectsTasksByTaskIdComments operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsTasksByTaskIdComments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsTasksByTaskIdComments(w, r, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProjectsTasksByTaskIdCommentsByCommentId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProjectsTasksByTaskIdCommentsByCommentId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "commentId" -------------
+	var commentId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "commentId", r.PathValue("commentId"), &commentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "commentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProjectsTasksByTaskIdCommentsByCommentId(w, r, taskId, commentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsTasksByTaskIdCommentsByCommentId operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsTasksByTaskIdCommentsByCommentId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "commentId" -------------
+	var commentId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "commentId", r.PathValue("commentId"), &commentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "commentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsTasksByTaskIdCommentsByCommentId(w, r, taskId, commentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1620,6 +1994,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}", wrapper.DeleteProjectsTasksByTaskId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}", wrapper.GetProjectsTasksByTaskId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}", wrapper.PutProjectsTasksByTaskId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/checklist", wrapper.GetProjectsTasksByTaskIdChecklist)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/checklist", wrapper.PostProjectsTasksByTaskIdChecklist)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/checklist/{itemId}", wrapper.DeleteProjectsTasksByTaskIdChecklistByItemId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/checklist/{itemId}", wrapper.PutProjectsTasksByTaskIdChecklistByItemId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/comments", wrapper.GetProjectsTasksByTaskIdComments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/comments", wrapper.PostProjectsTasksByTaskIdComments)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/comments/{commentId}", wrapper.DeleteProjectsTasksByTaskIdCommentsByCommentId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/comments/{commentId}", wrapper.PutProjectsTasksByTaskIdCommentsByCommentId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/tasks/{taskId}/position", wrapper.PutProjectsTasksByTaskIdPosition)
 
 	return m
@@ -2273,6 +2655,537 @@ func (response PutProjectsTasksByTaskId409ApplicationProblemPlusJSONResponse) Vi
 	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type GetProjectsTasksByTaskIdChecklistRequestObject struct {
+	TaskId int32 `json:"taskId"`
+}
+
+type GetProjectsTasksByTaskIdChecklistResponseObject interface {
+	VisitGetProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsTasksByTaskIdChecklist200JSONResponse []ChecklistItemResponse
+
+func (response GetProjectsTasksByTaskIdChecklist200JSONResponse) VisitGetProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTasksByTaskIdChecklist401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTasksByTaskIdChecklist401JSONResponse) VisitGetProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTasksByTaskIdChecklist403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTasksByTaskIdChecklist403JSONResponse) VisitGetProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTasksByTaskIdChecklist404Response struct {
+}
+
+func (response GetProjectsTasksByTaskIdChecklist404Response) VisitGetProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProjectsTasksByTaskIdChecklistRequestObject struct {
+	TaskId int32 `json:"taskId"`
+	Body   *PostProjectsTasksByTaskIdChecklistJSONRequestBody
+}
+
+type PostProjectsTasksByTaskIdChecklistResponseObject interface {
+	VisitPostProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsTasksByTaskIdChecklist201JSONResponse ChecklistItemResponse
+
+func (response PostProjectsTasksByTaskIdChecklist201JSONResponse) VisitPostProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdChecklist400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsTasksByTaskIdChecklist400ApplicationProblemPlusJSONResponse) VisitPostProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdChecklist401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTasksByTaskIdChecklist401JSONResponse) VisitPostProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdChecklist403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTasksByTaskIdChecklist403JSONResponse) VisitPostProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdChecklist404Response struct {
+}
+
+func (response PostProjectsTasksByTaskIdChecklist404Response) VisitPostProjectsTasksByTaskIdChecklistResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteProjectsTasksByTaskIdChecklistByItemIdRequestObject struct {
+	TaskId int32 `json:"taskId"`
+	ItemId int64 `json:"itemId"`
+}
+
+type DeleteProjectsTasksByTaskIdChecklistByItemIdResponseObject interface {
+	VisitDeleteProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteProjectsTasksByTaskIdChecklistByItemId204Response struct {
+}
+
+func (response DeleteProjectsTasksByTaskIdChecklistByItemId204Response) VisitDeleteProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProjectsTasksByTaskIdChecklistByItemId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsTasksByTaskIdChecklistByItemId401JSONResponse) VisitDeleteProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsTasksByTaskIdChecklistByItemId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsTasksByTaskIdChecklistByItemId403JSONResponse) VisitDeleteProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsTasksByTaskIdChecklistByItemId404Response struct {
+}
+
+func (response DeleteProjectsTasksByTaskIdChecklistByItemId404Response) VisitDeleteProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsTasksByTaskIdChecklistByItemIdRequestObject struct {
+	TaskId int32 `json:"taskId"`
+	ItemId int64 `json:"itemId"`
+	Body   *PutProjectsTasksByTaskIdChecklistByItemIdJSONRequestBody
+}
+
+type PutProjectsTasksByTaskIdChecklistByItemIdResponseObject interface {
+	VisitPutProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsTasksByTaskIdChecklistByItemId200JSONResponse ChecklistItemResponse
+
+func (response PutProjectsTasksByTaskIdChecklistByItemId200JSONResponse) VisitPutProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdChecklistByItemId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsTasksByTaskIdChecklistByItemId400ApplicationProblemPlusJSONResponse) VisitPutProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdChecklistByItemId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsTasksByTaskIdChecklistByItemId401JSONResponse) VisitPutProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdChecklistByItemId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsTasksByTaskIdChecklistByItemId403JSONResponse) VisitPutProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdChecklistByItemId404Response struct {
+}
+
+func (response PutProjectsTasksByTaskIdChecklistByItemId404Response) VisitPutProjectsTasksByTaskIdChecklistByItemIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetProjectsTasksByTaskIdCommentsRequestObject struct {
+	TaskId int32 `json:"taskId"`
+	Params GetProjectsTasksByTaskIdCommentsParams
+}
+
+type GetProjectsTasksByTaskIdCommentsResponseObject interface {
+	VisitGetProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsTasksByTaskIdComments200JSONResponse PaginatedResponseOfCommentResponse
+
+func (response GetProjectsTasksByTaskIdComments200JSONResponse) VisitGetProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTasksByTaskIdComments400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetProjectsTasksByTaskIdComments400ApplicationProblemPlusJSONResponse) VisitGetProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTasksByTaskIdComments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTasksByTaskIdComments401JSONResponse) VisitGetProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTasksByTaskIdComments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsTasksByTaskIdComments403JSONResponse) VisitGetProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsTasksByTaskIdComments404Response struct {
+}
+
+func (response GetProjectsTasksByTaskIdComments404Response) VisitGetProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProjectsTasksByTaskIdCommentsRequestObject struct {
+	TaskId int32 `json:"taskId"`
+	Body   *PostProjectsTasksByTaskIdCommentsJSONRequestBody
+}
+
+type PostProjectsTasksByTaskIdCommentsResponseObject interface {
+	VisitPostProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsTasksByTaskIdComments201JSONResponse CommentResponse
+
+func (response PostProjectsTasksByTaskIdComments201JSONResponse) VisitPostProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdComments400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsTasksByTaskIdComments400ApplicationProblemPlusJSONResponse) VisitPostProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdComments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTasksByTaskIdComments401JSONResponse) VisitPostProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdComments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsTasksByTaskIdComments403JSONResponse) VisitPostProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsTasksByTaskIdComments404Response struct {
+}
+
+func (response PostProjectsTasksByTaskIdComments404Response) VisitPostProjectsTasksByTaskIdCommentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteProjectsTasksByTaskIdCommentsByCommentIdRequestObject struct {
+	TaskId    int32 `json:"taskId"`
+	CommentId int64 `json:"commentId"`
+}
+
+type DeleteProjectsTasksByTaskIdCommentsByCommentIdResponseObject interface {
+	VisitDeleteProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteProjectsTasksByTaskIdCommentsByCommentId204Response struct {
+}
+
+func (response DeleteProjectsTasksByTaskIdCommentsByCommentId204Response) VisitDeleteProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProjectsTasksByTaskIdCommentsByCommentId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsTasksByTaskIdCommentsByCommentId401JSONResponse) VisitDeleteProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsTasksByTaskIdCommentsByCommentId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsTasksByTaskIdCommentsByCommentId403JSONResponse) VisitDeleteProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsTasksByTaskIdCommentsByCommentId404Response struct {
+}
+
+func (response DeleteProjectsTasksByTaskIdCommentsByCommentId404Response) VisitDeleteProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsTasksByTaskIdCommentsByCommentIdRequestObject struct {
+	TaskId    int32 `json:"taskId"`
+	CommentId int64 `json:"commentId"`
+	Body      *PutProjectsTasksByTaskIdCommentsByCommentIdJSONRequestBody
+}
+
+type PutProjectsTasksByTaskIdCommentsByCommentIdResponseObject interface {
+	VisitPutProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsTasksByTaskIdCommentsByCommentId200JSONResponse CommentResponse
+
+func (response PutProjectsTasksByTaskIdCommentsByCommentId200JSONResponse) VisitPutProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdCommentsByCommentId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsTasksByTaskIdCommentsByCommentId400ApplicationProblemPlusJSONResponse) VisitPutProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdCommentsByCommentId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsTasksByTaskIdCommentsByCommentId401JSONResponse) VisitPutProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdCommentsByCommentId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsTasksByTaskIdCommentsByCommentId403JSONResponse) VisitPutProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsTasksByTaskIdCommentsByCommentId404Response struct {
+}
+
+func (response PutProjectsTasksByTaskIdCommentsByCommentId404Response) VisitPutProjectsTasksByTaskIdCommentsByCommentIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
 }
 
 type PutProjectsTasksByTaskIdPositionRequestObject struct {
@@ -3325,6 +4238,30 @@ type StrictServerInterface interface {
 	// PutProjectsTasksByTaskId Update a task
 	// (PUT /api/v1/projects/tasks/{taskId})
 	PutProjectsTasksByTaskId(ctx context.Context, request PutProjectsTasksByTaskIdRequestObject) (PutProjectsTasksByTaskIdResponseObject, error)
+	// GetProjectsTasksByTaskIdChecklist List a task's checklist
+	// (GET /api/v1/projects/tasks/{taskId}/checklist)
+	GetProjectsTasksByTaskIdChecklist(ctx context.Context, request GetProjectsTasksByTaskIdChecklistRequestObject) (GetProjectsTasksByTaskIdChecklistResponseObject, error)
+	// PostProjectsTasksByTaskIdChecklist Add a checklist item to a task
+	// (POST /api/v1/projects/tasks/{taskId}/checklist)
+	PostProjectsTasksByTaskIdChecklist(ctx context.Context, request PostProjectsTasksByTaskIdChecklistRequestObject) (PostProjectsTasksByTaskIdChecklistResponseObject, error)
+	// DeleteProjectsTasksByTaskIdChecklistByItemId Delete a checklist item
+	// (DELETE /api/v1/projects/tasks/{taskId}/checklist/{itemId})
+	DeleteProjectsTasksByTaskIdChecklistByItemId(ctx context.Context, request DeleteProjectsTasksByTaskIdChecklistByItemIdRequestObject) (DeleteProjectsTasksByTaskIdChecklistByItemIdResponseObject, error)
+	// PutProjectsTasksByTaskIdChecklistByItemId Change a checklist item
+	// (PUT /api/v1/projects/tasks/{taskId}/checklist/{itemId})
+	PutProjectsTasksByTaskIdChecklistByItemId(ctx context.Context, request PutProjectsTasksByTaskIdChecklistByItemIdRequestObject) (PutProjectsTasksByTaskIdChecklistByItemIdResponseObject, error)
+	// GetProjectsTasksByTaskIdComments List a task's comments
+	// (GET /api/v1/projects/tasks/{taskId}/comments)
+	GetProjectsTasksByTaskIdComments(ctx context.Context, request GetProjectsTasksByTaskIdCommentsRequestObject) (GetProjectsTasksByTaskIdCommentsResponseObject, error)
+	// PostProjectsTasksByTaskIdComments Comment on a task
+	// (POST /api/v1/projects/tasks/{taskId}/comments)
+	PostProjectsTasksByTaskIdComments(ctx context.Context, request PostProjectsTasksByTaskIdCommentsRequestObject) (PostProjectsTasksByTaskIdCommentsResponseObject, error)
+	// DeleteProjectsTasksByTaskIdCommentsByCommentId Delete a comment
+	// (DELETE /api/v1/projects/tasks/{taskId}/comments/{commentId})
+	DeleteProjectsTasksByTaskIdCommentsByCommentId(ctx context.Context, request DeleteProjectsTasksByTaskIdCommentsByCommentIdRequestObject) (DeleteProjectsTasksByTaskIdCommentsByCommentIdResponseObject, error)
+	// PutProjectsTasksByTaskIdCommentsByCommentId Edit a comment
+	// (PUT /api/v1/projects/tasks/{taskId}/comments/{commentId})
+	PutProjectsTasksByTaskIdCommentsByCommentId(ctx context.Context, request PutProjectsTasksByTaskIdCommentsByCommentIdRequestObject) (PutProjectsTasksByTaskIdCommentsByCommentIdResponseObject, error)
 	// PutProjectsTasksByTaskIdPosition Move a task among its siblings
 	// (PUT /api/v1/projects/tasks/{taskId}/position)
 	PutProjectsTasksByTaskIdPosition(ctx context.Context, request PutProjectsTasksByTaskIdPositionRequestObject) (PutProjectsTasksByTaskIdPositionResponseObject, error)
@@ -3693,6 +4630,247 @@ func (sh *strictHandler) PutProjectsTasksByTaskId(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProjectsTasksByTaskIdResponseObject); ok {
 		if err := validResponse.VisitPutProjectsTasksByTaskIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsTasksByTaskIdChecklist operation middleware
+func (sh *strictHandler) GetProjectsTasksByTaskIdChecklist(w http.ResponseWriter, r *http.Request, taskId int32) {
+	var request GetProjectsTasksByTaskIdChecklistRequestObject
+
+	request.TaskId = taskId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsTasksByTaskIdChecklist(ctx, request.(GetProjectsTasksByTaskIdChecklistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsTasksByTaskIdChecklist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsTasksByTaskIdChecklistResponseObject); ok {
+		if err := validResponse.VisitGetProjectsTasksByTaskIdChecklistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsTasksByTaskIdChecklist operation middleware
+func (sh *strictHandler) PostProjectsTasksByTaskIdChecklist(w http.ResponseWriter, r *http.Request, taskId int32) {
+	var request PostProjectsTasksByTaskIdChecklistRequestObject
+
+	request.TaskId = taskId
+
+	var body PostProjectsTasksByTaskIdChecklistJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsTasksByTaskIdChecklist(ctx, request.(PostProjectsTasksByTaskIdChecklistRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsTasksByTaskIdChecklist")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsTasksByTaskIdChecklistResponseObject); ok {
+		if err := validResponse.VisitPostProjectsTasksByTaskIdChecklistResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProjectsTasksByTaskIdChecklistByItemId operation middleware
+func (sh *strictHandler) DeleteProjectsTasksByTaskIdChecklistByItemId(w http.ResponseWriter, r *http.Request, taskId int32, itemId int64) {
+	var request DeleteProjectsTasksByTaskIdChecklistByItemIdRequestObject
+
+	request.TaskId = taskId
+	request.ItemId = itemId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProjectsTasksByTaskIdChecklistByItemId(ctx, request.(DeleteProjectsTasksByTaskIdChecklistByItemIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProjectsTasksByTaskIdChecklistByItemId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProjectsTasksByTaskIdChecklistByItemIdResponseObject); ok {
+		if err := validResponse.VisitDeleteProjectsTasksByTaskIdChecklistByItemIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsTasksByTaskIdChecklistByItemId operation middleware
+func (sh *strictHandler) PutProjectsTasksByTaskIdChecklistByItemId(w http.ResponseWriter, r *http.Request, taskId int32, itemId int64) {
+	var request PutProjectsTasksByTaskIdChecklistByItemIdRequestObject
+
+	request.TaskId = taskId
+	request.ItemId = itemId
+
+	var body PutProjectsTasksByTaskIdChecklistByItemIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsTasksByTaskIdChecklistByItemId(ctx, request.(PutProjectsTasksByTaskIdChecklistByItemIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsTasksByTaskIdChecklistByItemId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsTasksByTaskIdChecklistByItemIdResponseObject); ok {
+		if err := validResponse.VisitPutProjectsTasksByTaskIdChecklistByItemIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsTasksByTaskIdComments operation middleware
+func (sh *strictHandler) GetProjectsTasksByTaskIdComments(w http.ResponseWriter, r *http.Request, taskId int32, params GetProjectsTasksByTaskIdCommentsParams) {
+	var request GetProjectsTasksByTaskIdCommentsRequestObject
+
+	request.TaskId = taskId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsTasksByTaskIdComments(ctx, request.(GetProjectsTasksByTaskIdCommentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsTasksByTaskIdComments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsTasksByTaskIdCommentsResponseObject); ok {
+		if err := validResponse.VisitGetProjectsTasksByTaskIdCommentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsTasksByTaskIdComments operation middleware
+func (sh *strictHandler) PostProjectsTasksByTaskIdComments(w http.ResponseWriter, r *http.Request, taskId int32) {
+	var request PostProjectsTasksByTaskIdCommentsRequestObject
+
+	request.TaskId = taskId
+
+	var body PostProjectsTasksByTaskIdCommentsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsTasksByTaskIdComments(ctx, request.(PostProjectsTasksByTaskIdCommentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsTasksByTaskIdComments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsTasksByTaskIdCommentsResponseObject); ok {
+		if err := validResponse.VisitPostProjectsTasksByTaskIdCommentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProjectsTasksByTaskIdCommentsByCommentId operation middleware
+func (sh *strictHandler) DeleteProjectsTasksByTaskIdCommentsByCommentId(w http.ResponseWriter, r *http.Request, taskId int32, commentId int64) {
+	var request DeleteProjectsTasksByTaskIdCommentsByCommentIdRequestObject
+
+	request.TaskId = taskId
+	request.CommentId = commentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProjectsTasksByTaskIdCommentsByCommentId(ctx, request.(DeleteProjectsTasksByTaskIdCommentsByCommentIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProjectsTasksByTaskIdCommentsByCommentId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProjectsTasksByTaskIdCommentsByCommentIdResponseObject); ok {
+		if err := validResponse.VisitDeleteProjectsTasksByTaskIdCommentsByCommentIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsTasksByTaskIdCommentsByCommentId operation middleware
+func (sh *strictHandler) PutProjectsTasksByTaskIdCommentsByCommentId(w http.ResponseWriter, r *http.Request, taskId int32, commentId int64) {
+	var request PutProjectsTasksByTaskIdCommentsByCommentIdRequestObject
+
+	request.TaskId = taskId
+	request.CommentId = commentId
+
+	var body PutProjectsTasksByTaskIdCommentsByCommentIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsTasksByTaskIdCommentsByCommentId(ctx, request.(PutProjectsTasksByTaskIdCommentsByCommentIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsTasksByTaskIdCommentsByCommentId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsTasksByTaskIdCommentsByCommentIdResponseObject); ok {
+		if err := validResponse.VisitPutProjectsTasksByTaskIdCommentsByCommentIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
