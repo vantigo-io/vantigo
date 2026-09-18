@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,8 +131,8 @@ func listLines(t *testing.T, c *modtest.Client, projectID int32) []lineJSON {
 
 // payloadFields is a line entry's `fields` as the strings it holds. The
 // payload is decoded from jsonb, so the array arrives as []any; a payload
-// without one answers nothing rather than failing, because "which fields does
-// this entry name" is the question every caller of it is asking.
+// without one fails the test, because every caller of this is asking which
+// fields the entry names.
 func payloadFields(t *testing.T, payload map[string]any) []string {
 	t.Helper()
 	raw, ok := payload["fields"].([]any)
@@ -143,6 +144,18 @@ func payloadFields(t *testing.T, payload map[string]any) []string {
 		out = append(out, fmt.Sprint(v))
 	}
 	return out
+}
+
+// lastPayloadText is the newest entry of one type as it is actually stored —
+// the whole serialised payload, not a decoded field of it. D12's "never an
+// amount" can only be proven against the whole thing: a field-name array
+// could not hold an amount even if the writer tried to put one somewhere
+// else in the payload.
+func lastPayloadText(t *testing.T, h *modtest.Harness, projectID int32, eventType string) string {
+	t.Helper()
+	return modtest.One[string](t, h, `SELECT payload::text FROM projects.timeline_entries
+	                                  WHERE project_id = $1 AND event_type = $2 ORDER BY id DESC LIMIT 1`,
+		projectID, eventType)
 }
 
 // insertLineRow inserts one billing_lines row directly, for the two cases the
@@ -372,8 +385,14 @@ func TestPutProjectsByIdBillingLines_RecordsWhichFieldsChanged(t *testing.T) {
 			t.Errorf("fields = %v, want %q named", fields, want)
 		}
 	}
-	if contains(fields, "900") {
-		t.Errorf("fields = %v, want field names only and never an amount (D12)", fields)
+	// The whole stored payload, not only the field names: an amount must not
+	// reach the timeline anywhere in it (D12).
+	raw := lastPayloadText(t, h, project.Id, "line-changed")
+	if !strings.Contains(raw, "fixedAmount") {
+		t.Errorf("line-changed payload = %s, want the field name in it", raw)
+	}
+	if strings.Contains(raw, "900") {
+		t.Errorf("line-changed payload = %s, want no amount in it (900 leaked)", raw)
 	}
 
 	before := eventTypes(t, h, project.Id)
@@ -582,6 +601,108 @@ func TestBillingLines_WithoutProducts_Return409AndLeaveStoredLinesAlone(t *testi
 	}
 }
 
+// The 409 sits behind the access gates, not in front of them (D7/D10): a
+// stranger must not be able to learn that a project exists — or that this
+// installation has no products module — by getting a conflict where the
+// answer should have been "there is nothing here", and a member must still be
+// told they may not write.
+func TestBillingLines_WithoutProducts_AnswerTheAccessGatesFirst(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithoutProducts(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "NOPROD1001"})
+	lineID := insertLineRow(t, h, project.Id, "PM", variantProjectManagerHour)
+	outsider, _ := signIn(t, h)
+	member, memberID := signIn(t, h)
+	addRole(t, h, project.Id, memberID, "member")
+
+	for _, r := range []*modtest.Response{
+		readLines(t, outsider, project.Id),
+		postLine(t, outsider, project.Id, map[string]any{"code": "DEV"}),
+		putLine(t, outsider, project.Id, lineID, lineBody(nil)),
+	} {
+		if r.Status != http.StatusNotFound {
+			t.Errorf("outsider: status %d body %s, want 404 rather than the products 409", r.Status, r.Body)
+		}
+	}
+
+	for _, r := range []*modtest.Response{
+		postLine(t, member, project.Id, map[string]any{"code": "DEV"}),
+		putLine(t, member, project.Id, lineID, lineBody(nil)),
+	} {
+		if r.Status != http.StatusForbidden {
+			t.Errorf("member write: status %d body %s, want 403 rather than the products 409", r.Status, r.Body)
+		}
+	}
+	// A member may read the project's lines when products is on, so what
+	// stops them here is products, not their role.
+	if r := readLines(t, member, project.Id); r.Status != http.StatusConflict {
+		t.Errorf("member GET: status %d body %s, want 409", r.Status, r.Body)
+	}
+}
+
+// The unique index guards a rename as much as an insert: moving a line onto a
+// sibling's code is the same collision, answered the same way.
+func TestPutProjectsByIdBillingLines_RenamingOntoASiblingsCode_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LDUP1000"})
+	createLine(t, c, project.Id, nil)
+	developer := createLine(t, c, project.Id, map[string]any{"code": "DEV", "variantId": variantDeveloperHour})
+
+	r := putLine(t, c, project.Id, developer.Id, lineBody(map[string]any{"variantId": variantDeveloperHour}))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["code"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'code'", problem.Errors)
+	}
+	if got := modtest.One[string](t, h, `SELECT code FROM projects.billing_lines WHERE id = $1`, developer.Id); got != "DEV" {
+		t.Errorf("stored code = %q, want the refused rename to have left it alone", got)
+	}
+}
+
+// A manager must still be able to edit — above all, to deactivate — a line
+// whose product has since been removed from the catalog. The variant is only
+// validated when the caller is actually changing it: a body that carries the
+// variant the line already has is not asking for that variant to exist today.
+func TestPutProjectsByIdBillingLines_VariantGoneFromTheCatalog_StillEditable(t *testing.T) {
+	t.Parallel()
+	catalog := newFakeCatalog()
+	h := newHarnessWithCatalog(t, catalog)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LFORGET1000"})
+	line := createLine(t, c, project.Id, nil)
+
+	catalog.forget(variantProjectManagerHour)
+
+	deactivated := changeLine(t, c, project.Id, line.Id, lineBody(map[string]any{"active": false}))
+	if deactivated.Active {
+		t.Error("Active = true, want the line deactivated")
+	}
+	if !deactivated.VariantMissing || deactivated.ProductName != nil {
+		t.Errorf("line = %+v, want variantMissing and no product name once the catalog has forgotten the variant", deactivated)
+	}
+	if payload := lastPayload(t, h, project.Id, "line-deactivated"); payload["code"] != "PM" {
+		t.Errorf("line-deactivated payload = %v, want the line's code", payload)
+	}
+
+	// Moving the line to a variant that never existed is still refused: the
+	// rule is about changing the variant, not about skipping the check.
+	r := putLine(t, c, project.Id, line.Id, lineBody(map[string]any{"variantId": variantUnknown}))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["variantId"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'variantId'", problem.Errors)
+	}
+}
+
 // D13's other half, enforced where the currency is actually cleared: a
 // project carrying a fixed line has an amount denominated in its currency, so
 // the currency cannot go. A list line prices itself in whatever currency the
@@ -649,7 +770,8 @@ func TestPostProjectsByIdBillingLines_WritesTheLineAddedEntry(t *testing.T) {
 	if !contains(fields, "variantId") || !contains(fields, "pricingMode") || !contains(fields, "fixedAmount") {
 		t.Errorf("fields = %v, want the fields the line was created with, by name", fields)
 	}
-	if contains(fields, "900") {
-		t.Errorf("fields = %v, want field names only and never an amount (D12)", fields)
+	raw := lastPayloadText(t, h, project.Id, "line-added")
+	if strings.Contains(raw, "900") {
+		t.Errorf("line-added payload = %s, want no amount in it (900 leaked)", raw)
 	}
 }

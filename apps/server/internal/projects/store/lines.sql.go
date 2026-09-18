@@ -21,11 +21,47 @@ WHERE project_id = $1 AND pricing_mode = 'fixed'
 // is an amount denominated in the project's currency, so the currency cannot
 // be cleared while one exists. Deactivated lines count too — their amount is
 // still what an hour already logged against them was worth.
+//
+// 'fixed' here is the pricingFixed constant (lines_validation.go), the same
+// string the contract's pricingMode enumeration writes.
 func (q *Queries) CountFixedBillingLines(ctx context.Context, projectID int32) (int64, error) {
 	row := q.db.QueryRow(ctx, countFixedBillingLines, projectID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const getBillingLine = `-- name: GetBillingLine :one
+SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at FROM projects.billing_lines
+WHERE id = $1 AND project_id = $2
+`
+
+type GetBillingLineParams struct {
+	ID        int32
+	ProjectID int32
+}
+
+// GetBillingLine is one line of one project, read before the change's own
+// transaction because validation has to know what the line already says: a
+// body that keeps the variant the line is pinned to is not asking for that
+// variant to still exist in the catalog. It informs the rules only — what
+// the timeline is decided from is the locked read below.
+func (q *Queries) GetBillingLine(ctx context.Context, arg GetBillingLineParams) (ProjectsBillingLine, error) {
+	row := q.db.QueryRow(ctx, getBillingLine, arg.ID, arg.ProjectID)
+	var i ProjectsBillingLine
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Code,
+		&i.VariantID,
+		&i.PricingMode,
+		&i.FixedAmount,
+		&i.DiscountPercent,
+		&i.Active,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const insertBillingLine = `-- name: InsertBillingLine :one

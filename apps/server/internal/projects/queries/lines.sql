@@ -24,6 +24,15 @@ INSERT INTO projects.billing_lines (
 )
 RETURNING *;
 
+-- name: GetBillingLine :one
+-- GetBillingLine is one line of one project, read before the change's own
+-- transaction because validation has to know what the line already says: a
+-- body that keeps the variant the line is pinned to is not asking for that
+-- variant to still exist in the catalog. It informs the rules only — what
+-- the timeline is decided from is the locked read below.
+SELECT * FROM projects.billing_lines
+WHERE id = @id AND project_id = @project_id;
+
 -- name: LockBillingLine :one
 -- LockBillingLine is one line of one project, locked for the rest of the
 -- transaction. The change reads it this way because the row as it stood is
@@ -56,5 +65,8 @@ RETURNING *;
 -- is an amount denominated in the project's currency, so the currency cannot
 -- be cleared while one exists. Deactivated lines count too — their amount is
 -- still what an hour already logged against them was worth.
+--
+-- 'fixed' here is the pricingFixed constant (lines_validation.go), the same
+-- string the contract's pricingMode enumeration writes.
 SELECT count(*) FROM projects.billing_lines
 WHERE project_id = @project_id AND pricing_mode = 'fixed';

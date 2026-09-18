@@ -113,7 +113,7 @@ func (s *server) PostProjectsByIdBillingLines(ctx context.Context, req gen.PostP
 		return gen.PostProjectsByIdBillingLines409ApplicationProblemPlusJSONResponse(productsDisabled()), nil
 	}
 
-	parsed, fieldErrs, err := s.validateLine(ctx, body, project)
+	parsed, fieldErrs, err := s.validateLine(ctx, body, project, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,21 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 		return gen.PutProjectsByIdBillingLinesByLineId409ApplicationProblemPlusJSONResponse(productsDisabled()), nil
 	}
 
-	parsed, fieldErrs, err := s.validateLine(ctx, body, project)
+	// The line as it stands is read before the rules run, because one of them
+	// is about what is changing rather than about the body alone: keeping the
+	// variant a line is already pinned to is always allowed, even when the
+	// catalog has since dropped it. The read is unlocked — it informs the
+	// validation, and the locked read inside the transaction below is what
+	// the write and the timeline are decided from.
+	existing, err := q.GetBillingLine(ctx, store.GetBillingLineParams{ID: req.LineId, ProjectID: project.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PutProjectsByIdBillingLinesByLineId404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("projects: get billing line: %w", err)
+	}
+
+	parsed, fieldErrs, err := s.validateLine(ctx, body, project, &existing)
 	if err != nil {
 		return nil, err
 	}
