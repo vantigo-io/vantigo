@@ -10,7 +10,6 @@ const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 const ADA = "11111111-1111-1111-1111-111111111111";
-const ALAN = "22222222-2222-2222-2222-222222222222";
 
 const task: Task = {
   id: 12,
@@ -147,62 +146,56 @@ describe("TaskDrawer", () => {
     ).toBeInTheDocument();
   });
 
-  it("ticks a checklist item off", async () => {
-    const fetchMock = stubTask();
+  it("saves the details against the revision the form was seeded from, not a newer one", async () => {
+    // The drawer reads the task at revision 3, the caller starts editing, and
+    // ticking a checklist item invalidates and refetches a task somebody else
+    // has since moved to revision 4. The fields in the form are still the old
+    // ones, so the save has to carry revision 3 and be refused.
+    let revision = 3;
+    const fetchMock = stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/v1/projects/tasks/12") {
+        if (init?.method === "PUT") return Promise.resolve(jsonResponse(409, { title: "Revision conflict" }));
+        return Promise.resolve(jsonResponse(200, { ...task, revision }));
+      }
+      if (url.pathname === "/api/v1/projects/tasks/12/checklist") return Promise.resolve(jsonResponse(200, checklist));
+      if (url.pathname.startsWith("/api/v1/projects/tasks/12/checklist/")) {
+        revision = 4;
+        return Promise.resolve(jsonResponse(200, { ...checklist[0], done: true }));
+      }
+      if (url.pathname === "/api/v1/projects/tasks/12/comments") {
+        return Promise.resolve(
+          jsonResponse(200, { data: comments, pagination: { page: 1, totalCount: 1, totalPages: 1 } }),
+        );
+      }
+      if (url.pathname === "/api/v1/projects/7/roles") return Promise.resolve(jsonResponse(200, []));
+      if (url.pathname === "/api/v1/projects/7/assignable-users") return Promise.resolve(jsonResponse(200, []));
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
     renderDrawer();
+
+    const reads = () =>
+      fetchMock.actualCalls.filter(
+        ([url, init]) => String(url) === "/api/v1/projects/tasks/12" && (init?.method ?? "GET") === "GET",
+      );
+    await screen.findByRole("heading", { name: "Write the docs" });
+    expect(reads()).toHaveLength(1);
 
     await userEvent.click(await screen.findByRole("checkbox", { name: "Outline the pages" }));
+    await waitFor(() => expect(reads().length).toBeGreaterThan(1));
+
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
-      const [url, init] = fetchMock.actualCalls.find(([, request]) => request?.method === "PUT") ?? [];
-      expect(String(url)).toBe("/api/v1/projects/tasks/12/checklist/5");
-      expect(JSON.parse(String(init?.body))).toEqual({ done: true });
+      const [, init] =
+        fetchMock.actualCalls.find(
+          ([url, request]) => String(url) === "/api/v1/projects/tasks/12" && request?.method === "PUT",
+        ) ?? [];
+      expect(JSON.parse(String(init?.body))).toMatchObject({ revision: 3, title: "Write the docs" });
     });
-  });
-
-  it("posts a comment", async () => {
-    const fetchMock = stubTask();
-    renderDrawer();
-
-    await screen.findByText("Looks good to me");
-    await userEvent.type(screen.getByRole("textbox", { name: "Write a comment…" }), "One more thing");
-    await userEvent.click(screen.getByRole("button", { name: "Post comment" }));
-
-    await waitFor(() => {
-      const [url, init] = fetchMock.actualCalls.find(([, request]) => request?.method === "POST") ?? [];
-      expect(String(url)).toBe("/api/v1/projects/tasks/12/comments");
-      expect(JSON.parse(String(init?.body))).toEqual({ body: "One more thing" });
-    });
-  });
-
-  it("loads the next page of comments on demand", async () => {
-    stubTask({ totalPages: 2 });
-    renderDrawer();
-
-    await screen.findByText("Looks good to me");
-    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
-
-    expect(await screen.findByText("And one more")).toBeInTheDocument();
-    expect(screen.getByText("Looks good to me")).toBeInTheDocument();
-  });
-
-  it("offers deleting a comment only to its author or a manager", async () => {
-    stubTask();
-    const own = renderDrawer();
-    await screen.findByText("Looks good to me");
-    expect(screen.getByRole("button", { name: "Delete the comment" })).toBeInTheDocument();
-    own.unmount();
-
-    stubTask();
-    const other = renderDrawer({ currentUserId: ALAN });
-    await screen.findByText("Looks good to me");
-    expect(screen.queryByRole("button", { name: "Delete the comment" })).not.toBeInTheDocument();
-    other.unmount();
-
-    stubTask();
-    renderDrawer({ currentUserId: ALAN, canManage: true });
-    await screen.findByText("Looks good to me");
-    expect(screen.getByRole("button", { name: "Delete the comment" })).toBeInTheDocument();
+    expect(
+      await screen.findByText("The task was changed by someone else. Reload it and try again."),
+    ).toBeInTheDocument();
   });
 
   it("adds a subtask under the task it is opened on", async () => {

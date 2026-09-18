@@ -32,10 +32,24 @@ export const AssigneePicker = ({ projectId, value, onChange, selected, label, di
   const { data: people } = useQuery(projectRolesQueryOptions(projectId));
   const { data: others } = useQuery(assignableUsersQueryOptions(projectId, debouncedSearch));
 
+  const term = debouncedSearch.trim().toLowerCase();
   const options = new Map<string, string>();
-  for (const person of people ?? []) if (person.active) options.set(person.userId, person.displayName);
+  // The roles endpoint takes no search term, so the project's own people are
+  // narrowed here. The directory has already narrowed the others — and on
+  // their email too, which their display name need not contain — so the same
+  // filter must not be applied to them.
+  for (const person of people ?? []) {
+    if (!person.active) continue;
+    if (term && !person.displayName.toLowerCase().includes(term)) continue;
+    options.set(person.userId, person.displayName);
+  }
   for (const person of others ?? []) options.set(person.userId, person.displayName);
-  if (value && selected && !options.has(value)) options.set(value, selected.displayName);
+  // Whoever is assigned stays on the list whatever the search narrows to,
+  // otherwise the picker would blank the name it is meant to be showing.
+  if (value && !options.has(value)) {
+    const assigned = selected?.displayName ?? (people ?? []).find((person) => person.userId === value)?.displayName;
+    if (assigned) options.set(value, assigned);
+  }
 
   return (
     <Select

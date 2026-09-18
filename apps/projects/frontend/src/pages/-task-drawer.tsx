@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Alert,
-  Badge,
   Button,
   Checkbox,
   Divider,
@@ -24,29 +23,23 @@ import { IconAlertCircle, IconCheck, IconPencil, IconPlus, IconTrash } from "@ta
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import {
-  addChecklistItem,
-  addComment,
-  type ChecklistItem,
-  checklistQueryOptions,
-  commentsQueryOptions,
-  createTask,
-  deleteChecklistItem,
-  deleteComment,
-  deleteTask,
-  type Task,
-  type TaskComment,
-  taskQueryOptions,
-  updateChecklistItem,
-  updateComment,
-} from "../api/tasks";
+import { createTask, deleteTask, type Task, taskQueryOptions } from "../api/tasks";
 import { AssigneePicker } from "../components/assignee-picker";
 import { Field } from "../components/field";
 import { TaskStatusBadge } from "../components/task-status-badge";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
-import { isTaskStatus, type TaskStatus, taskStatuses, taskStatusLabelKey } from "../lib/tasks";
+import {
+  isTaskStatus,
+  TASK_DESCRIPTION_MAX,
+  TASK_TITLE_MAX,
+  type TaskStatus,
+  taskStatuses,
+  taskStatusLabelKey,
+} from "../lib/tasks";
 import { useTaskSave } from "../lib/use-task-save";
+import { TaskChecklist } from "./-task-checklist";
+import { TaskComments } from "./-task-comments";
 
 export interface TaskDrawerProps {
   projectId: number;
@@ -99,9 +92,14 @@ const TaskDrawerBody = ({ projectId, taskId, onClose, canContribute, canManage, 
       <Divider />
       <Subtasks projectId={projectId} task={task} canContribute={canContribute} />
       <Divider />
-      <Checklist taskId={task.id} canContribute={canContribute} />
+      <TaskChecklist taskId={task.id} canContribute={canContribute} />
       <Divider />
-      <Comments taskId={task.id} canContribute={canContribute} canManage={canManage} currentUserId={currentUserId} />
+      <TaskComments
+        taskId={task.id}
+        canContribute={canContribute}
+        canManage={canManage}
+        currentUserId={currentUserId}
+      />
     </Stack>
   );
 };
@@ -118,7 +116,9 @@ const TaskHeader = ({
 }) => {
   const { t } = useI18n("projects");
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<string | null>(null);
+  // The title being typed, and the revision the task stood at when the caller
+  // started typing it — the same reason the details form holds one.
+  const [draft, setDraft] = useState<{ title: string; revision: number } | null>(null);
   const save = useTaskSave();
 
   const remove = useMutation({
@@ -143,25 +143,29 @@ const TaskHeader = ({
     });
 
   const submitTitle = () => {
-    const title = (draft ?? "").trim();
-    if (!title) return;
-    save.mutate({ task, changes: { title } }, { onSuccess: () => setDraft(null) });
+    if (draft === null) return;
+    const title = draft.title.trim();
+    if (!title || title.length > TASK_TITLE_MAX) return;
+    save.mutate({ task, changes: { title, revision: draft.revision } }, { onSuccess: () => setDraft(null) });
   };
 
   if (draft !== null) {
+    const tooLong = draft.title.trim().length > TASK_TITLE_MAX;
     return (
-      <Group align="end" wrap="nowrap">
+      <Group align="start" wrap="nowrap">
         <TextInput
           aria-label={t("taskTitle")}
           flex={1}
           data-autofocus
-          value={draft}
-          onChange={(event) => setDraft(event.currentTarget.value)}
+          value={draft.title}
+          error={tooLong ? t("taskTitleTooLong") : undefined}
+          onChange={(event) => setDraft({ ...draft, title: event.currentTarget.value })}
         />
         <ActionIcon
           variant="filled"
           aria-label={t("saveTaskTitle")}
           loading={save.isPending}
+          disabled={!draft.title.trim() || tooLong}
           onClick={submitTitle}
           size="lg"
         >
@@ -181,7 +185,11 @@ const TaskHeader = ({
       </Title>
       {canContribute && (
         <Group gap="xs" wrap="nowrap">
-          <ActionIcon variant="subtle" aria-label={t("editTaskTitle")} onClick={() => setDraft(task.title)}>
+          <ActionIcon
+            variant="subtle"
+            aria-label={t("editTaskTitle")}
+            onClick={() => setDraft({ title: task.title, revision: task.revision })}
+          >
             <IconPencil size={16} />
           </ActionIcon>
           <ActionIcon variant="subtle" color="red" aria-label={t("deleteTask")} onClick={confirmRemove}>
@@ -227,8 +235,15 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
         return estimate !== undefined && estimate <= 0 ? t("estimateMustBePositive") : null;
       },
       dueDate: (value, values) => (value && values.startDate && value < values.startDate ? t("dueBeforeStart") : null),
+      description: (value) => (value.trim().length > TASK_DESCRIPTION_MAX ? t("descriptionTooLong") : null),
     },
   });
+  // The revision the fields on screen were read at. The form seeds once, but
+  // the task behind it is refetched by every invalidation the drawer causes —
+  // a ticked checklist item, a posted comment — and sending that newer
+  // revision with these older fields would quietly overwrite whatever somebody
+  // else changed meanwhile instead of being refused with a 409.
+  const [seededRevision, setSeededRevision] = useState(task.revision);
   const save = useTaskSave(form.setErrors);
 
   if (!canContribute) {
@@ -254,17 +269,28 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
   return (
     <form
       onSubmit={form.onSubmit((values) =>
-        save.mutate({
-          task,
-          changes: {
-            status: values.status,
-            assigneeUserId: values.assigneeUserId,
-            startDate: values.startDate,
-            dueDate: values.dueDate,
-            estimateHours: hours(values.estimateHours) ?? null,
-            description: values.description.trim() || null,
+        save.mutate(
+          {
+            task,
+            changes: {
+              status: values.status,
+              assigneeUserId: values.assigneeUserId,
+              startDate: values.startDate,
+              dueDate: values.dueDate,
+              estimateHours: hours(values.estimateHours) ?? null,
+              description: values.description.trim() || null,
+              revision: seededRevision,
+            },
           },
-        }),
+          // What was just saved is what the form now stands at, so the next
+          // save is guarded by the revision this one produced.
+          {
+            onSuccess: (saved) => {
+              setSeededRevision(saved.revision);
+              form.setInitialValues(values);
+            },
+          },
+        ),
       )}
     >
       <Stack gap="md">
@@ -370,289 +396,6 @@ const Subtasks = ({ projectId, task, canContribute }: { projectId: number; task:
             {t("addSubtask")}
           </Button>
         </Group>
-      )}
-    </Stack>
-  );
-};
-
-const Checklist = ({ taskId, canContribute }: { taskId: number; canContribute: boolean }) => {
-  const { t } = useI18n("projects");
-  const queryClient = useQueryClient();
-  const { data: items, isPending, isError, error } = useQuery(checklistQueryOptions(taskId));
-  const [text, setText] = useState("");
-
-  const write = useMutation({
-    mutationFn: (action: () => Promise<unknown>) => action(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      setText("");
-    },
-    onError: (failure) => {
-      notifications.show({ color: "red", title: t("couldNotSaveChecklistItem"), message: failure.message });
-    },
-  });
-
-  return (
-    <Stack gap="xs">
-      <Text fw={600} component="h4">
-        {t("checklist")}
-      </Text>
-      {isError && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadChecklist")}>
-          {error.message}
-        </Alert>
-      )}
-      {isPending && <ContentSkeleton rows={2} rowHeight={28} />}
-      {items && items.length === 0 && (
-        <Text size="sm" c="dimmed">
-          {t("noChecklistItems")}
-        </Text>
-      )}
-      {(items ?? []).map((item: ChecklistItem) => (
-        <Group key={item.id} gap="sm" wrap="nowrap" justify="space-between">
-          <Checkbox
-            label={item.text}
-            disabled={!canContribute}
-            checked={item.done}
-            onChange={(event) => {
-              // Read off the event now: the mutation runs the closure after
-              // React has let go of it, when `currentTarget` is already null.
-              const done = event.currentTarget.checked;
-              write.mutate(() => updateChecklistItem(taskId, item.id, { done }));
-            }}
-          />
-          {canContribute && (
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              aria-label={t("deleteChecklistItem")}
-              onClick={() => write.mutate(() => deleteChecklistItem(taskId, item.id))}
-            >
-              <IconTrash size={16} />
-            </ActionIcon>
-          )}
-        </Group>
-      ))}
-      {canContribute && (
-        <Group gap="xs" wrap="nowrap" mt="xs">
-          <TextInput
-            aria-label={t("checklistItem")}
-            placeholder={t("checklistItem")}
-            flex={1}
-            value={text}
-            onChange={(event) => setText(event.currentTarget.value)}
-          />
-          <Button
-            variant="light"
-            leftSection={<IconPlus size={14} />}
-            loading={write.isPending}
-            disabled={!text.trim()}
-            onClick={() => write.mutate(() => addChecklistItem(taskId, { text: text.trim() }))}
-          >
-            {t("addChecklistItem")}
-          </Button>
-        </Group>
-      )}
-    </Stack>
-  );
-};
-
-interface CommentsProps {
-  taskId: number;
-  canContribute: boolean;
-  canManage: boolean;
-  currentUserId?: string;
-}
-
-/**
- * The task's own history. Comments come oldest first, so "load more" reaches
- * forward in time and the pages simply stack: page 1 stays where it is.
- */
-const Comments = ({ taskId, canContribute, canManage, currentUserId }: CommentsProps) => {
-  const { t } = useI18n("projects");
-  const queryClient = useQueryClient();
-  const [pageCount, setPageCount] = useState(1);
-  const [body, setBody] = useState("");
-  // The last page is what says whether there is another; every earlier page is
-  // rendered by its own child, which reads the very same query key.
-  const { data: lastPage, isPending, isError, error } = useQuery(commentsQueryOptions(taskId, pageCount));
-
-  const post = useMutation({
-    mutationFn: () => addComment(taskId, { body: body.trim() }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      setBody("");
-    },
-    onError: (failure) => {
-      notifications.show({ color: "red", title: t("couldNotSaveComment"), message: failure.message });
-    },
-  });
-
-  return (
-    <Stack gap="xs">
-      <Text fw={600} component="h4">
-        {t("comments")}
-      </Text>
-      {isError && (
-        <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadComments")}>
-          {error.message}
-        </Alert>
-      )}
-      {isPending && <ContentSkeleton rows={2} rowHeight={40} />}
-      {lastPage && lastPage.pagination.totalCount === 0 && (
-        <Text size="sm" c="dimmed">
-          {t("noComments")}
-        </Text>
-      )}
-      {Array.from({ length: pageCount }, (_, index) => index + 1).map((page) => (
-        <CommentPage
-          key={page}
-          taskId={taskId}
-          page={page}
-          canContribute={canContribute}
-          canManage={canManage}
-          currentUserId={currentUserId}
-        />
-      ))}
-      {lastPage?.pagination.hasNextPage && (
-        <Group justify="center">
-          <Button variant="subtle" size="xs" onClick={() => setPageCount((count) => count + 1)}>
-            {t("loadMoreComments")}
-          </Button>
-        </Group>
-      )}
-      {canContribute && (
-        <Stack gap="xs" mt="xs">
-          <Textarea
-            aria-label={t("writeComment")}
-            placeholder={t("writeComment")}
-            rows={3}
-            value={body}
-            onChange={(event) => setBody(event.currentTarget.value)}
-          />
-          <Group justify="flex-end">
-            <Button loading={post.isPending} disabled={!body.trim()} onClick={() => post.mutate()}>
-              {t("postComment")}
-            </Button>
-          </Group>
-        </Stack>
-      )}
-    </Stack>
-  );
-};
-
-const CommentPage = ({ taskId, page, canContribute, canManage, currentUserId }: CommentsProps & { page: number }) => {
-  const { data } = useQuery(commentsQueryOptions(taskId, page));
-  return (
-    <>
-      {(data?.data ?? []).map((comment) => (
-        <CommentRow
-          key={comment.id}
-          taskId={taskId}
-          comment={comment}
-          canContribute={canContribute}
-          canManage={canManage}
-          currentUserId={currentUserId}
-        />
-      ))}
-    </>
-  );
-};
-
-const CommentRow = ({
-  taskId,
-  comment,
-  canContribute,
-  canManage,
-  currentUserId,
-}: CommentsProps & { comment: TaskComment }) => {
-  const { t, formatters } = useI18n("projects");
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<string | null>(null);
-  const isAuthor = currentUserId !== undefined && comment.author.userId === currentUserId;
-  const canEdit = canContribute && isAuthor;
-  const canDelete = canManage || canEdit;
-
-  const write = useMutation({
-    mutationFn: (action: () => Promise<unknown>) => action(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      setDraft(null);
-    },
-    onError: (failure) => {
-      notifications.show({ color: "red", title: t("couldNotSaveComment"), message: failure.message });
-    },
-  });
-
-  const confirmRemove = () =>
-    modals.openConfirmModal({
-      title: t("deleteCommentTitle"),
-      children: <Text size="sm">{t("deleteCommentWarning")}</Text>,
-      labels: { confirm: t("deleteTheComment"), cancel: t("cancel") },
-      confirmProps: { color: "red" },
-      onConfirm: () => write.mutate(() => deleteComment(taskId, comment.id)),
-    });
-
-  return (
-    <Stack gap={4}>
-      <Group gap="xs" wrap="nowrap" justify="space-between">
-        <Group gap="xs" wrap="nowrap">
-          <Text size="sm" fw={600}>
-            {comment.author.displayName}
-          </Text>
-          {!comment.author.active && (
-            <Badge size="xs" variant="light" color="gray">
-              {t("inactiveUser")}
-            </Badge>
-          )}
-          <Text size="xs" c="dimmed">
-            {formatters.formatDate(comment.createdAt, { dateStyle: "medium", timeStyle: "short" })}
-          </Text>
-          {comment.editedAt && (
-            <Text size="xs" c="dimmed">
-              {t("commentEdited")}
-            </Text>
-          )}
-        </Group>
-        <Group gap={4} wrap="nowrap">
-          {canEdit && draft === null && (
-            <ActionIcon variant="subtle" aria-label={t("editTheComment")} onClick={() => setDraft(comment.body)}>
-              <IconPencil size={14} />
-            </ActionIcon>
-          )}
-          {canDelete && (
-            <ActionIcon variant="subtle" color="red" aria-label={t("deleteTheComment")} onClick={confirmRemove}>
-              <IconTrash size={14} />
-            </ActionIcon>
-          )}
-        </Group>
-      </Group>
-      {draft === null ? (
-        <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-          {comment.body}
-        </Text>
-      ) : (
-        <Stack gap="xs">
-          <Textarea
-            aria-label={t("editTheComment")}
-            rows={3}
-            value={draft}
-            onChange={(event) => setDraft(event.currentTarget.value)}
-          />
-          <Group justify="flex-end" gap="xs">
-            <Button variant="default" size="xs" onClick={() => setDraft(null)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              size="xs"
-              loading={write.isPending}
-              disabled={!draft.trim()}
-              onClick={() => write.mutate(() => updateComment(taskId, comment.id, { body: draft.trim() }))}
-            >
-              {t("saveChanges")}
-            </Button>
-          </Group>
-        </Stack>
       )}
     </Stack>
   );
