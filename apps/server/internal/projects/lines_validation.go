@@ -127,6 +127,27 @@ func validateFixedNeedsCurrency(mode string, currency *string) string {
 	return fmt.Sprintf("A '%s' line is an amount in the project's currency; set a project currency first", pricingFixed)
 }
 
+// variantNotFound is the `variantId` message for a variant products does not
+// know. Like a role assignment's unknown user, it is an ordinary field error
+// rather than a 404: the project exists and the caller may manage it, so what
+// is wrong is the body they sent, not the resource they addressed.
+func variantNotFound(variantID int32) string {
+	return fmt.Sprintf("Product variant %d does not exist", variantID)
+}
+
+// variantExists asks the catalog whether products still knows a variant. It
+// is the one line rule that is not a property of the body alone, which is why
+// it is not part of validateLine: a create always asks it, while a change
+// asks it only when it is actually moving the line to another variant — and
+// only the locked row can say whether it is (lines.go).
+func (s *server) variantExists(ctx context.Context, variantID int32) (bool, error) {
+	variant, err := s.deps.Products.Variant(ctx, variantID)
+	if err != nil {
+		return false, fmt.Errorf("projects: look up product variant: %w", err)
+	}
+	return variant != nil, nil
+}
+
 // currencyLockedByFixedLine is D13's other half, reported on the project
 // update that would clear the currency out from under a 'fixed' line. It does
 // not say how many lines there are: one is already the answer, and the fix —
@@ -148,21 +169,23 @@ type parsedLine struct {
 	Active          *bool
 }
 
-// validateLine runs every line rule over one body and returns the write-ready
-// line, the field errors (nil when there are none), and an error for an
-// infrastructure failure — a catalog lookup that failed, or a number Postgres
-// could not store — which is never the caller's fault and so is never a field
-// error.
+// validateLine runs every line rule that is a property of the body alone and
+// returns the write-ready line, the field errors (nil when there are none),
+// and an error for an infrastructure failure — a number Postgres could not
+// store — which is never the caller's fault and so is never a field error.
+//
+// The variant's existence is deliberately not among them (variantExists):
+// whether it has to be checked at all depends on what the line already says,
+// and on a change that is only settled under the row lock. Everything here is
+// decidable from the body and the project, so it runs before any transaction
+// and still reports every problem with the body in one round trip.
 //
 // The rules that depend on the pricing mode's *validated* value are skipped
 // when that field failed: a second message derived from a value already
 // rejected only adds noise. project is the line's own project, read by the
 // handler: it is what says whether there is a currency to price a 'fixed'
-// line in. current is the line as it stands, nil on a create.
-//
-// Deps.Products is never nil here — the handlers answer 409 before they
-// validate anything (D10).
-func (s *server) validateLine(ctx context.Context, body gen.BillingLineRequest, project store.ProjectsProject, current *store.ProjectsBillingLine) (parsedLine, map[string][]string, error) {
+// line in.
+func validateLine(body gen.BillingLineRequest, project store.ProjectsProject) (parsedLine, map[string][]string, error) {
 	errs := map[string][]string{}
 	add := func(field, msg string) {
 		if msg != "" {
@@ -172,24 +195,6 @@ func (s *server) validateLine(ctx context.Context, body gen.BillingLineRequest, 
 
 	code, msg := validateLineCode(body.Code)
 	add("code", msg)
-
-	// D9: a line is pinned to a variant, so a variant nobody has is a body
-	// this module cannot store rather than a line with a dangling reference.
-	//
-	// Only a change of variant is checked. A body that carries the variant
-	// the line is already pinned to is not asking for that variant to exist
-	// today: products may have dropped it since, and a line whose product is
-	// gone must stay editable — deactivating it is exactly what a manager
-	// wants to do then, and the response says variantMissing either way.
-	if current == nil || current.VariantID != body.VariantId {
-		variant, err := s.deps.Products.Variant(ctx, body.VariantId)
-		if err != nil {
-			return parsedLine{}, nil, fmt.Errorf("projects: look up product variant: %w", err)
-		}
-		if variant == nil {
-			add("variantId", fmt.Sprintf("Product variant %d does not exist", body.VariantId))
-		}
-	}
 
 	mode, msg := validatePricingMode(body.PricingMode)
 	add("pricingMode", msg)

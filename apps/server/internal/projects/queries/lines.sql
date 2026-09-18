@@ -24,21 +24,15 @@ INSERT INTO projects.billing_lines (
 )
 RETURNING *;
 
--- name: GetBillingLine :one
--- GetBillingLine is one line of one project, read before the change's own
--- transaction because validation has to know what the line already says: a
--- body that keeps the variant the line is pinned to is not asking for that
--- variant to still exist in the catalog. It informs the rules only — what
--- the timeline is decided from is the locked read below.
-SELECT * FROM projects.billing_lines
-WHERE id = @id AND project_id = @project_id;
-
 -- name: LockBillingLine :one
 -- LockBillingLine is one line of one project, locked for the rest of the
--- transaction. The change reads it this way because the row as it stood is
--- what decides the timeline: which fields moved, and whether the line was
--- deactivated or reactivated. Scoping by project_id is also the 404 for a
--- line id that exists but belongs to somebody else's project.
+-- transaction. It is the change's only read of the line, because everything
+-- the change decides from the row as it stood has to be decided from the row
+-- nobody else can move: which fields the timeline says moved, whether the
+-- line was deactivated or reactivated, and whether the request is pinning it
+-- to a different variant (which is the only case that re-checks the catalog).
+-- Scoping by project_id is also the 404 for a line id that exists but belongs
+-- to somebody else's project.
 SELECT * FROM projects.billing_lines
 WHERE id = @id AND project_id = @project_id
 FOR UPDATE;

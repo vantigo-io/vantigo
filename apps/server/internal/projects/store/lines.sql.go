@@ -31,39 +31,6 @@ func (q *Queries) CountFixedBillingLines(ctx context.Context, projectID int32) (
 	return count, err
 }
 
-const getBillingLine = `-- name: GetBillingLine :one
-SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at FROM projects.billing_lines
-WHERE id = $1 AND project_id = $2
-`
-
-type GetBillingLineParams struct {
-	ID        int32
-	ProjectID int32
-}
-
-// GetBillingLine is one line of one project, read before the change's own
-// transaction because validation has to know what the line already says: a
-// body that keeps the variant the line is pinned to is not asking for that
-// variant to still exist in the catalog. It informs the rules only — what
-// the timeline is decided from is the locked read below.
-func (q *Queries) GetBillingLine(ctx context.Context, arg GetBillingLineParams) (ProjectsBillingLine, error) {
-	row := q.db.QueryRow(ctx, getBillingLine, arg.ID, arg.ProjectID)
-	var i ProjectsBillingLine
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.Code,
-		&i.VariantID,
-		&i.PricingMode,
-		&i.FixedAmount,
-		&i.DiscountPercent,
-		&i.Active,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const insertBillingLine = `-- name: InsertBillingLine :one
 INSERT INTO projects.billing_lines (
     project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent,
@@ -171,10 +138,13 @@ type LockBillingLineParams struct {
 }
 
 // LockBillingLine is one line of one project, locked for the rest of the
-// transaction. The change reads it this way because the row as it stood is
-// what decides the timeline: which fields moved, and whether the line was
-// deactivated or reactivated. Scoping by project_id is also the 404 for a
-// line id that exists but belongs to somebody else's project.
+// transaction. It is the change's only read of the line, because everything
+// the change decides from the row as it stood has to be decided from the row
+// nobody else can move: which fields the timeline says moved, whether the
+// line was deactivated or reactivated, and whether the request is pinning it
+// to a different variant (which is the only case that re-checks the catalog).
+// Scoping by project_id is also the 404 for a line id that exists but belongs
+// to somebody else's project.
 func (q *Queries) LockBillingLine(ctx context.Context, arg LockBillingLineParams) (ProjectsBillingLine, error) {
 	row := q.db.QueryRow(ctx, lockBillingLine, arg.ID, arg.ProjectID)
 	var i ProjectsBillingLine
