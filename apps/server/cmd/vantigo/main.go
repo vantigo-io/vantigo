@@ -50,6 +50,7 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/secrets"
 	"github.com/vantigo-io/vantigo/server/internal/server"
 	"github.com/vantigo-io/vantigo/server/internal/telemetry"
+	timetracking "github.com/vantigo-io/vantigo/server/internal/time"
 	"github.com/vantigo-io/vantigo/server/internal/web"
 	"github.com/vantigo-io/vantigo/server/internal/worker"
 )
@@ -283,6 +284,7 @@ func businessModules(access *identity.Access) []module.Module {
 		energy.Module(),
 		communications.Module(),
 		projects.Module(),
+		timetracking.Module(),
 	}
 }
 

@@ -121,6 +121,7 @@ type setup struct {
 	backoff     func(int) time.Duration
 	directory   contracts.CustomerDirectory
 	products    contracts.ProductCatalog
+	projects    contracts.ProjectDirectory
 	smtpVerify  func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend    func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore storage.ObjectStore
@@ -185,6 +186,21 @@ func WithProducts(p contracts.ProductCatalog) Option {
 	return func(s *setup) { s.products = p }
 }
 
+// WithProjects sets Deps.Projects directly to p, for a module under test
+// that reads projects through contracts.ProjectDirectory (time, so far)
+// without composing projects beside it — depguard forbids the module's own
+// test package from importing projects, the same reason WithDirectory and
+// WithProducts give. module.Compose only ever overwrites Deps.Projects when
+// one of the composed modules declares Module.Projects, so a value set here
+// survives Compose unchanged.
+//
+// It also lists "projects" in the harness's MODULES (see modulesEnv): a
+// module that requires projects is only valid configuration beside it, and
+// the fake is what stands in for it here.
+func WithProjects(p contracts.ProjectDirectory) Option {
+	return func(s *setup) { s.projects = p }
+}
+
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
 // whose own SMTP connectivity check (communications' channel verification)
 // must succeed in a test without a live SMTP server or the production
@@ -246,13 +262,24 @@ func WithEnv(key, value string) Option {
 // Including it
 // unconditionally costs nothing for a harness that did not ask for it and
 // keeps this file from having to mirror config.go's dependency rule as new
-// modules grow their own. The result is sorted and comma-joined, with no
-// duplicates even when "customers" is itself one of mods or a name repeats
-// across more than one WithModule call.
-func modulesEnv(mods []module.Module) string {
+// modules grow their own.
+//
+// stubbed names the modules a harness stands in for with a fake contract
+// rather than composing — "projects" when WithProjects was given, because
+// config.go rejects "time" without "projects" and a time harness supplies a
+// fake contracts.ProjectDirectory instead of the module. A stubbed name is
+// listed as enabled but never mounted: enabledModules only ever filters the
+// modules actually passed to Compose. The result is sorted and comma-joined,
+// with no duplicates even when "customers" is itself one of mods, a name
+// repeats across more than one WithModule call, or a stubbed name is also
+// composed.
+func modulesEnv(mods []module.Module, stubbed ...string) string {
 	moduleSet := map[string]bool{"customers": true}
 	for _, m := range mods {
 		moduleSet[m.Name] = true
+	}
+	for _, name := range stubbed {
+		moduleSet[name] = true
 	}
 	names := make([]string, 0, len(moduleSet))
 	for name := range moduleSet {
@@ -291,7 +318,11 @@ func New(t *testing.T, opts ...Option) *Harness {
 		t.Fatal("modtest: no module under test; pass modtest.WithModule(m)")
 	}
 
-	env["MODULES"] = modulesEnv(s.modules)
+	var stubbed []string
+	if s.projects != nil {
+		stubbed = append(stubbed, "projects")
+	}
+	env["MODULES"] = modulesEnv(s.modules, stubbed...)
 
 	cfg, err := config.Load(env)
 	if err != nil {
@@ -318,6 +349,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		HTTPBackoff:   s.backoff,
 		Directory:     s.directory,
 		Products:      s.products,
+		Projects:      s.projects,
 		SMTPVerify:    s.smtpVerify,
 		SMTPSend:      s.smtpSend,
 		ObjectStore:   s.objectStore,

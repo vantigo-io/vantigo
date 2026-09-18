@@ -1,0 +1,13 @@
+# oapi-codegen: models and the strict net/http server interface for
+# openapi/time.yaml. References into common.yaml become imports of
+# internal/apicommon/gen.
+package: gen
+output: internal/time/gen/api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+import-mapping:
+  common.yaml: github.com/vantigo-io/vantigo/server/internal/apicommon/gen
+output-options:
+  skip-prune: true

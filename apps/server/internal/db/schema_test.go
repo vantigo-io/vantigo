@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -24,7 +25,7 @@ import (
 // moduleSchemas are the PostgreSQL schemas owned by one module each. The
 // platform schema is deliberately not one of these: internal/ratelimit
 // reaches it from outside its own module, by design (Global Constraints).
-var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects"}
+var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects", "time"}
 
 // schemaOwnedFile is one migration or query file, with the module that owns
 // it and its full text.
@@ -89,6 +90,16 @@ func collectSchemaOwnedFiles(t *testing.T) []schemaOwnedFile {
 	return files
 }
 
+// schemaReference matches schema as SQL qualifies a name with it: the whole
+// word, then a dot, then the start of an identifier. The word boundary and
+// the identifier keep an English word that happens to name a schema from
+// counting — "time" ends sentences ("a second time.") and prefixes Go types
+// in comments ("time.Time") — while every real qualified reference in this
+// codebase, all of them lower-case unquoted identifiers, still matches.
+func schemaReference(schema string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(schema) + `\.[a-z_]`)
+}
+
 // TestNoModuleReferencesAnotherModulesSchema is the cross-schema scan: no
 // migration or query file owned by one module may reference another
 // module's schema.
@@ -98,14 +109,37 @@ func TestNoModuleReferencesAnotherModulesSchema(t *testing.T) {
 		t.Fatal("no schema-owned files found")
 	}
 	for _, schema := range moduleSchemas {
-		needle := schema + "."
+		pattern := schemaReference(schema)
 		for _, f := range files {
 			if f.owner == schema {
 				continue
 			}
-			if strings.Contains(f.body, needle) {
-				t.Errorf("%s (owned by %q) references schema %q via %q", f.path, f.owner, schema, needle)
+			if match := pattern.FindString(f.body); match != "" {
+				t.Errorf("%s (owned by %q) references schema %q via %q", f.path, f.owner, schema, match)
 			}
+		}
+	}
+}
+
+// TestSchemaReference_MatchesQualifiedNamesOnly pins what the cross-schema
+// scan counts as a reference, so tightening it for an English-word schema
+// name never quietly stops it catching a real one.
+func TestSchemaReference_MatchesQualifiedNamesOnly(t *testing.T) {
+	for _, tc := range []struct {
+		schema, text string
+		want         bool
+	}{
+		{"time", "SELECT * FROM time.entries", true},
+		{"time", "(time.settings)", true},
+		{"time", "time.entries at the start of a file", true},
+		{"customers", "JOIN customers.customers c ON", true},
+		{"time", "-- must not be queued a second time.", false},
+		{"time", "-- so sqlc maps the Go parameter to time.Time", false},
+		{"time", "-- the start time.\n-- next line", false},
+		{"time", "SELECT runtime.x", false},
+	} {
+		if got := schemaReference(tc.schema).MatchString(tc.text); got != tc.want {
+			t.Errorf("schemaReference(%q).MatchString(%q) = %v, want %v", tc.schema, tc.text, got, tc.want)
 		}
 	}
 }
@@ -1263,6 +1297,41 @@ func insertTestProduct(t *testing.T, ctx context.Context, pool *pgxpool.Pool) in
 		t.Fatalf("insert product: %v", err)
 	}
 	return productID
+}
+
+// TestTimeBaseline_AppliesAndIsIdempotent proves 00010_time_baseline.sql
+// applies, rolls back and re-applies cleanly — its schema is named after a
+// SQL keyword, so the unquoted `time.` qualifier is itself under test here —
+// and that a person's rate card is unique per (user, valid_from).
+func TestTimeBaseline_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 10) // 00010_time_baseline.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'time' ORDER BY table_name`)
+	if err != nil {
+		t.Fatalf("query tables: %v", err)
+	}
+	gotTables, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect tables: %v", err)
+	}
+	if want := []string{"entries", "person_rates", "settings", "week_submissions"}; !equalStrings(gotTables, want) {
+		t.Errorf("tables = %v, want %v", gotTables, want)
+	}
+
+	if cols := indexColumns(t, ctx, pool, "time", "ux_person_rates_user_id_valid_from"); !equalStrings(cols, []string{"user_id", "valid_from"}) {
+		t.Errorf("ux_person_rates_user_id_valid_from columns = %v, want [user_id valid_from]", cols)
+	}
+	if cols := primaryKeyColumns(t, ctx, pool, "time", "week_submissions"); !equalStrings(cols, []string{"user_id", "week_start"}) {
+		t.Errorf("week_submissions primary key columns = %v, want [user_id week_start]", cols)
+	}
 }
 
 // isUniqueViolation reports whether err is Postgres SQL state 23505
