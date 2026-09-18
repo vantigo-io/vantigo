@@ -132,12 +132,17 @@ func entryResponse(row store.TimeEntry, a entryAccess, names entryNames) (gen.Ti
 		resp.ProjectCode, resp.ProjectName = p.Code, p.Name
 	}
 	// A line the directory no longer lists keeps its id and loses its codes:
-	// the entry still renders, and says which line it was on.
+	// the entry still renders, and says which line it was on. The trackable
+	// code needs both halves, so a project the directory cannot resolve
+	// quotes none rather than a code like "-PM" nobody ever wrote.
 	if row.BillingLineID != nil {
 		if l, ok := names.lines[*row.BillingLineID]; ok {
 			code := l.Code
-			trackable := trackableCode(resp.ProjectCode, l.Code)
-			resp.BillingLineCode, resp.TrackableCode = &code, &trackable
+			resp.BillingLineCode = &code
+			if resp.ProjectCode != "" {
+				trackable := trackableCode(resp.ProjectCode, l.Code)
+				resp.TrackableCode = &trackable
+			}
 		}
 	}
 	if row.ApprovedByUserID != nil {

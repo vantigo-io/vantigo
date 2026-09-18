@@ -332,11 +332,6 @@ func floatPtrFromNumeric(n pgtype.Numeric) (*float64, error) {
 	return &f.Float64, nil
 }
 
-// roundCents rounds an amount to two decimals, the columns' scale: the one
-// place the rate chain does arithmetic (a discount on a list price), rounded
-// half away from zero.
-func roundCents(v float64) float64 { return math.Round(v*100) / 100 }
-
 // timeFromMinutes stores minutes after midnight in a time column.
 func timeFromMinutes(minutes *int) pgtype.Time {
 	if minutes == nil {

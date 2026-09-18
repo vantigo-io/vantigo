@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,7 +21,9 @@ import (
 // underneath never moves an entry's money. No currency is ever converted —
 // the bill rate is in the project's currency when a line or the project
 // priced it and in the person card's when the person did, the cost rate
-// always in the card's.
+// always in the card's. A project bills in one currency: a card in another
+// cannot price its hours, so that step answers nothing rather than storing,
+// say, a NOK rate on a EUR project.
 
 // rateRequest is what the chain resolves from: whose hours, whether they are
 // billable, on which project and billing line (nil for none), on which day.
@@ -48,7 +52,9 @@ type rateSnapshot struct {
 //   - bill, only when billable: the billing line's rule (a fixed amount, or
 //     the variant's list price in the project's currency on the entry date,
 //     discounted when the line says so) → the project's default bill rate →
-//     the person's bill rate in effect on the date → none;
+//     the person's bill rate in effect on the date, when their card is in the
+//     project's currency (or the project has none, and the card's is taken)
+//     → none;
 //   - cost, always: the person's cost rate in effect on the date → none.
 //
 // A step that cannot answer falls through to the next rather than ending the
@@ -89,7 +95,7 @@ func (s *server) resolveRates(ctx context.Context, q *store.Queries, req rateReq
 	case req.Project.DefaultBillRate != nil && req.Project.Currency != nil:
 		rate := *req.Project.DefaultBillRate
 		snap.Source, snap.BillRate, snap.BillCurrency = sourceProject, &rate, req.Project.Currency
-	case cardBill != nil:
+	case cardBill != nil && (req.Project.Currency == nil || *req.Project.Currency == card.Currency):
 		currency := card.Currency
 		snap.Source, snap.BillRate, snap.BillCurrency = sourcePerson, cardBill, &currency
 	}
@@ -130,9 +136,8 @@ func (s *server) lineRate(ctx context.Context, req rateRequest) (*float64, error
 		}
 		amount := price.Amount
 		if line.PricingMode == pricingDiscount && line.DiscountPercent != nil {
-			amount *= 1 - *line.DiscountPercent/100
+			amount = discounted(amount, *line.DiscountPercent)
 		}
-		amount = roundCents(amount)
 		return &amount, nil
 	default:
 		return nil, nil
@@ -151,4 +156,40 @@ func personRate(ctx context.Context, q *store.Queries, userID uuid.UUID, date ti
 		return nil, fmt.Errorf("time: look up the person's rate card: %w", err)
 	}
 	return &row, nil
+}
+
+// discounted is a discount line's arithmetic (D3): the list price less
+// percent, rounded half up to cents, the columns' scale. It is done in exact
+// decimal — each number read from its shortest decimal text, the same text
+// the numeric columns store — because in float64 a half-cent result can land
+// a hair under the half and round the wrong way (101.10 at 15 % is 85.935,
+// which float arithmetic rounds to 85.93).
+func discounted(list, percent float64) float64 {
+	amount := exactDecimal(list)
+	remaining := new(big.Rat).Sub(big.NewRat(100, 1), exactDecimal(percent))
+	amount.Mul(amount, remaining)
+	amount.Quo(amount, big.NewRat(100, 1))
+	return roundHalfUpCents(amount)
+}
+
+// exactDecimal is v as the exact decimal its shortest text spells, never the
+// binary fraction the float64 happens to hold.
+func exactDecimal(v float64) *big.Rat {
+	r, _ := new(big.Rat).SetString(strconv.FormatFloat(v, 'f', -1, 64))
+	return r
+}
+
+// roundHalfUpCents rounds r to two decimals, a half cent away from zero,
+// and answers the nearest float64 — whose shortest text is then exactly those
+// two decimals, which is what the column stores.
+func roundHalfUpCents(r *big.Rat) float64 {
+	cents := new(big.Rat).Mul(r, big.NewRat(100, 1))
+	half := big.NewRat(1, 2)
+	if cents.Sign() < 0 {
+		half.Neg(half)
+	}
+	cents.Add(cents, half)
+	whole := new(big.Int).Quo(cents.Num(), cents.Denom()) // truncates toward zero
+	f, _ := new(big.Rat).SetFrac(whole, big.NewInt(100)).Float64()
+	return f
 }

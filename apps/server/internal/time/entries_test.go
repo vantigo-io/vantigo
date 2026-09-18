@@ -123,6 +123,49 @@ func TestPostTimeEntries_NoProjectDefault_UsesThePersonRate(t *testing.T) {
 	wantRate(t, createEntry(t, c, map[string]any{"projectId": projectEuro}), 1100, "EUR", "person")
 }
 
+// One bill currency per project (D3): a card in another currency than the
+// project's cannot price its hours — nothing is converted — so the chain
+// ends at none rather than storing a NOK rate on a EUR project.
+func TestPostTimeEntries_PersonCardInAnotherCurrency_ResolvesNone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, userID := signInAs(t, h, projectEuro, roleMember)
+	seedRate(t, h, userID, "2026-01-01", 1100.0, 650.0, "NOK")
+
+	wantNoRate(t, createEntry(t, c, map[string]any{"projectId": projectEuro}))
+}
+
+// A project with no currency has none to hold a card to, so the person's
+// rate prices it in the card's own currency.
+func TestPostTimeEntries_ProjectWithoutCurrency_TakesThePersonCardsCurrency(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, userID := signInAs(t, h, projectNoCurrency, roleMember)
+	seedRate(t, h, userID, "2026-01-01", 1100.0, 650.0, "SEK")
+
+	wantRate(t, createEntry(t, c, map[string]any{"projectId": projectNoCurrency}), 1100, "SEK", "person")
+}
+
+// Billable defaults from the billing type: time and materials and fixed
+// price are billable unless the caller says otherwise; non-billable never is.
+func TestPostTimeEntries_FixedPriceProject_IsBillableByDefault(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, userID := signInAs(t, h, projectFixedPrice, roleMember)
+	seedRate(t, h, userID, "2026-01-01", 1100.0, nil, "NOK")
+
+	e := createEntry(t, c, map[string]any{"projectId": projectFixedPrice})
+	if !e.Billable {
+		t.Error("billable = false, want a fixed-price project's entry billable by default")
+	}
+	wantRate(t, e, 1100, "NOK", "person")
+
+	e = createEntry(t, c, map[string]any{"projectId": projectFixedPrice, "billable": false, "entryDate": "2026-09-15"})
+	if e.Billable {
+		t.Error("billable = true, want the caller's false kept on a fixed-price project")
+	}
+}
+
 func TestPostTimeEntries_NoRateAnywhere_ResolvesNone(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

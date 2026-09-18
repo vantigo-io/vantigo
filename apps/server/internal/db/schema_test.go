@@ -91,13 +91,27 @@ func collectSchemaOwnedFiles(t *testing.T) []schemaOwnedFile {
 }
 
 // schemaReference matches schema as SQL qualifies a name with it: the whole
-// word, then a dot, then the start of an identifier. The word boundary and
-// the identifier keep an English word that happens to name a schema from
-// counting — "time" ends sentences ("a second time.") and prefixes Go types
-// in comments ("time.Time") — while every real qualified reference in this
-// codebase, all of them lower-case unquoted identifiers, still matches.
+// word, then a dot, then the start of an identifier — in any case, with the
+// schema or the name double-quoted or not, and with whitespace around the
+// dot, since Postgres accepts every one of those spellings. The word boundary
+// and the identifier keep an English word that happens to name a schema from
+// counting ("SELECT runtime.x"); comments, where "time" ends sentences and
+// prefixes Go types, are stripped before it runs (sqlComments).
 func schemaReference(schema string) *regexp.Regexp {
-	return regexp.MustCompile(`(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(schema) + `\.[a-z_]`)
+	return regexp.MustCompile(`(?i)(^|[^a-z0-9_])"?` + regexp.QuoteMeta(schema) + `"?\s*\.\s*"?[a-z_]`)
+}
+
+// sqlComments matches SQL's two comment forms: a -- line comment up to the
+// end of its line, and a /* */ block comment across lines. Nested block
+// comments are not modelled; none of the scanned files uses one.
+var sqlComments = regexp.MustCompile(`(?s)--[^\n]*|/\*.*?\*/`)
+
+// referencesSchema reports whether body — a migration or query file —
+// qualifies a name with schema anywhere outside a comment. A comment is
+// replaced by a space rather than removed, so it cannot join the words on
+// either side of it into a reference.
+func referencesSchema(schema, body string) bool {
+	return schemaReference(schema).MatchString(sqlComments.ReplaceAllString(body, " "))
 }
 
 // TestNoModuleReferencesAnotherModulesSchema is the cross-schema scan: no
@@ -109,12 +123,12 @@ func TestNoModuleReferencesAnotherModulesSchema(t *testing.T) {
 		t.Fatal("no schema-owned files found")
 	}
 	for _, schema := range moduleSchemas {
-		pattern := schemaReference(schema)
 		for _, f := range files {
 			if f.owner == schema {
 				continue
 			}
-			if match := pattern.FindString(f.body); match != "" {
+			if referencesSchema(schema, f.body) {
+				match := schemaReference(schema).FindString(sqlComments.ReplaceAllString(f.body, " "))
 				t.Errorf("%s (owned by %q) references schema %q via %q", f.path, f.owner, schema, match)
 			}
 		}
@@ -137,9 +151,17 @@ func TestSchemaReference_MatchesQualifiedNamesOnly(t *testing.T) {
 		{"time", "-- so sqlc maps the Go parameter to time.Time", false},
 		{"time", "-- the start time.\n-- next line", false},
 		{"time", "SELECT runtime.x", false},
+		{"time", `SELECT * FROM time."entries"`, true},
+		{"time", "SELECT * FROM time.Entries", true},
+		{"time", `SELECT * FROM "time".entries`, true},
+		{"time", "SELECT * FROM TIME.entries", true},
+		{"time", "SELECT * FROM time . entries", true},
+		{"time", "SELECT 1 /* time.Time */", false},
+		{"time", "SELECT 1 /* a\nsecond time.\n */ FROM x", false},
+		{"time", "SELECT 1 -- a second time.\nFROM x", false},
 	} {
-		if got := schemaReference(tc.schema).MatchString(tc.text); got != tc.want {
-			t.Errorf("schemaReference(%q).MatchString(%q) = %v, want %v", tc.schema, tc.text, got, tc.want)
+		if got := referencesSchema(tc.schema, tc.text); got != tc.want {
+			t.Errorf("referencesSchema(%q, %q) = %v, want %v", tc.schema, tc.text, got, tc.want)
 		}
 	}
 }
