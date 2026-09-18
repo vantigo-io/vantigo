@@ -226,9 +226,12 @@ type ProjectCreateRequest struct {
 	Currency *string `json:"currency,omitempty"`
 
 	// CustomerId The customer this project bills to. Absent means an internal project.
-	CustomerId  *int32              `json:"customerId,omitempty"`
-	Description *string             `json:"description,omitempty"`
-	EndDate     *openapi_types.Date `json:"endDate,omitempty"`
+	CustomerId *int32 `json:"customerId,omitempty"`
+
+	// DefaultBillRate The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+	DefaultBillRate *float64            `json:"defaultBillRate,omitempty"`
+	Description     *string             `json:"description,omitempty"`
+	EndDate         *openapi_types.Date `json:"endDate,omitempty"`
 
 	// FixedPriceAmount Required and greater than zero when billingType is 'fixed-price', absent otherwise.
 	FixedPriceAmount *float64            `json:"fixedPriceAmount,omitempty"`
@@ -238,8 +241,11 @@ type ProjectCreateRequest struct {
 
 // ProjectFinancials The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see".
 type ProjectFinancials struct {
-	BudgetAmount     *float64 `json:"budgetAmount,omitempty"`
-	Currency         *string  `json:"currency,omitempty"`
+	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
+	Currency     *string  `json:"currency,omitempty"`
+
+	// DefaultBillRate The rate a time entry bills at when no billing line sets one, in this currency.
+	DefaultBillRate  *float64 `json:"defaultBillRate,omitempty"`
 	FixedPriceAmount *float64 `json:"fixedPriceAmount,omitempty"`
 }
 
@@ -369,9 +375,12 @@ type ProjectUpdateRequest struct {
 	Currency *string `json:"currency,omitempty"`
 
 	// CustomerId The customer this project bills to. Absent means an internal project.
-	CustomerId  *int32              `json:"customerId,omitempty"`
-	Description *string             `json:"description,omitempty"`
-	EndDate     *openapi_types.Date `json:"endDate,omitempty"`
+	CustomerId *int32 `json:"customerId,omitempty"`
+
+	// DefaultBillRate The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+	DefaultBillRate *float64            `json:"defaultBillRate,omitempty"`
+	Description     *string             `json:"description,omitempty"`
+	EndDate         *openapi_types.Date `json:"endDate,omitempty"`
 
 	// FixedPriceAmount Required and greater than zero when billingType is 'fixed-price', absent otherwise.
 	FixedPriceAmount *float64 `json:"fixedPriceAmount,omitempty"`

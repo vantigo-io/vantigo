@@ -395,6 +395,11 @@ components:
                     format: int32
                     nullable: true
                     type: integer
+                defaultBillRate:
+                    description: The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+                    format: double
+                    nullable: true
+                    type: number
                 description:
                     nullable: true
                     type: string
@@ -428,6 +433,11 @@ components:
                 currency:
                     nullable: true
                     type: string
+                defaultBillRate:
+                    description: The rate a time entry bills at when no billing line sets one, in this currency.
+                    format: double
+                    nullable: true
+                    type: number
                 fixedPriceAmount:
                     format: double
                     nullable: true
@@ -709,6 +719,11 @@ components:
                     format: int32
                     nullable: true
                     type: integer
+                defaultBillRate:
+                    description: The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+                    format: double
+                    nullable: true
+                    type: number
                 description:
                     nullable: true
                     type: string

@@ -609,6 +609,11 @@ export interface components {
              * @description The customer this project bills to. Absent means an internal project.
              */
             customerId?: number | null;
+            /**
+             * Format: double
+             * @description The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+             */
+            defaultBillRate?: number | null;
             description?: string | null;
             /** Format: date */
             endDate?: string | null;
@@ -626,6 +631,11 @@ export interface components {
             /** Format: double */
             budgetAmount?: number | null;
             currency?: string | null;
+            /**
+             * Format: double
+             * @description The rate a time entry bills at when no billing line sets one, in this currency.
+             */
+            defaultBillRate?: number | null;
             /** Format: double */
             fixedPriceAmount?: number | null;
         };
@@ -769,6 +779,11 @@ export interface components {
              * @description The customer this project bills to. Absent means an internal project.
              */
             customerId?: number | null;
+            /**
+             * Format: double
+             * @description The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+             */
+            defaultBillRate?: number | null;
             description?: string | null;
             /** Format: date */
             endDate?: string | null;

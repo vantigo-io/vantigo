@@ -90,12 +90,12 @@ func (q *Queries) GetProject(ctx context.Context, id int32) (ProjectsProject, er
 const insertProject = `-- name: InsertProject :one
 INSERT INTO projects.projects (
     code, name, description, customer_id, start_date, end_date, billing_type,
-    currency, fixed_price_amount, budget_hours, budget_amount,
+    currency, fixed_price_amount, budget_hours, budget_amount, default_bill_rate,
     created_by_user_id, created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11,
-    $12, $13::timestamptz, $13::timestamptz
+    $8, $9, $10, $11, $12,
+    $13, $14::timestamptz, $14::timestamptz
 )
 RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at, default_bill_rate
 `
@@ -112,6 +112,7 @@ type InsertProjectParams struct {
 	FixedPriceAmount pgtype.Numeric
 	BudgetHours      pgtype.Numeric
 	BudgetAmount     pgtype.Numeric
+	DefaultBillRate  pgtype.Numeric
 	CreatedByUserID  uuid.UUID
 	Now              time.Time
 }
@@ -134,6 +135,7 @@ func (q *Queries) InsertProject(ctx context.Context, arg InsertProjectParams) (P
 		arg.FixedPriceAmount,
 		arg.BudgetHours,
 		arg.BudgetAmount,
+		arg.DefaultBillRate,
 		arg.CreatedByUserID,
 		arg.Now,
 	)
@@ -343,9 +345,10 @@ UPDATE projects.projects SET
     fixed_price_amount = $9,
     budget_hours = $10,
     budget_amount = $11,
+    default_bill_rate = $12,
     revision = revision + 1,
-    updated_at = $12::timestamptz
-WHERE id = $13 AND revision = $14
+    updated_at = $13::timestamptz
+WHERE id = $14 AND revision = $15
 RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at, default_bill_rate
 `
 
@@ -361,6 +364,7 @@ type UpdateProjectParams struct {
 	FixedPriceAmount pgtype.Numeric
 	BudgetHours      pgtype.Numeric
 	BudgetAmount     pgtype.Numeric
+	DefaultBillRate  pgtype.Numeric
 	Now              time.Time
 	ID               int32
 	Revision         int32
@@ -383,6 +387,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		arg.FixedPriceAmount,
 		arg.BudgetHours,
 		arg.BudgetAmount,
+		arg.DefaultBillRate,
 		arg.Now,
 		arg.ID,
 		arg.Revision,

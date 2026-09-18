@@ -276,6 +276,7 @@ type financialsJSON struct {
 	Currency         *string  `json:"currency"`
 	FixedPriceAmount *float64 `json:"fixedPriceAmount"`
 	BudgetAmount     *float64 `json:"budgetAmount"`
+	DefaultBillRate  *float64 `json:"defaultBillRate"`
 }
 
 // taskJSON decodes TaskResponse and, since it is that shape plus the two

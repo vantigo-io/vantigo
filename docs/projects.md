@@ -17,8 +17,8 @@ that bills.
 - **Project** — the unit of work: a unique `code`, `name`, plain-text `description`,
   optional `customerId` (absent means *internal*), `status`, `startDate`/`endDate`,
   `billingType`, and the financial fields `currency`, `fixedPriceAmount`,
-  `budgetAmount` plus the non-financial `budgetHours`. The integer `id` is generated
-  and never changes; `revision` guards concurrent edits.
+  `budgetAmount`, `defaultBillRate` plus the non-financial `budgetHours`. The integer
+  `id` is generated and never changes; `revision` guards concurrent edits.
 - **Project role** — one row per (project, user): `manager`, `member` or `viewer`.
   One role per user per project; the creator of a project becomes its manager.
 - **Billing line** — a short code within the project pinned to a product variant plus
@@ -48,9 +48,9 @@ Cancelled projects and inactive lines still resolve through the contract below, 
 old hours stay readable.
 
 **One currency per project.** `currency` (ISO 4217 shape, `^[A-Z]{3}$`) is required
-as soon as any amount is set — a fixed price, a budget amount, or a `fixed` billing
-line — and while a `fixed` line exists it can be neither cleared nor changed to
-another currency (deactivated lines count: their amount is still denominated in the
+as soon as any amount is set — a fixed price, a budget amount, a default bill rate, or
+a `fixed` billing line — and while a `fixed` line exists it can be neither cleared nor
+changed to another currency (deactivated lines count: their amount is still denominated in the
 currency it was typed in, and the line can be reactivated). Reprice or remove those
 lines first. `list` and `discount` lines resolve in the project's currency, so they
 never hold it back.
@@ -174,11 +174,14 @@ Communications already uses.
 
 Concretely:
 
-- `ProjectResponse.financials` (`currency`, `fixedPriceAmount`, `budgetAmount`) is
-  present exactly when the caller may see the money, and then always present even if
-  empty, so a client can tell "may see, nothing entered" from "may not see".
-  `currency` lives only inside `financials`: a caller who may not see the money sees
-  no currency either.
+- `ProjectResponse.financials` (`currency`, `fixedPriceAmount`, `budgetAmount`,
+  `defaultBillRate`) is present exactly when the caller may see the money, and then
+  always present even if empty, so a client can tell "may see, nothing entered" from
+  "may not see". `currency` lives only inside `financials`: a caller who may not see
+  the money sees no currency either. `defaultBillRate` — the rate Time tracking bills
+  an entry at when no billing line sets one — is an amount for D13's purposes: it
+  requires `currency` exactly as the other amounts do, and clearing the currency while
+  it is set fails validation rather than silently dropping it.
 - `BillingLineResponse.pricing` (`mode`, `fixedAmount`, `discountPercent`,
   `listPrice`) is absent the same way.
 - `budgetHours` is deliberately outside `financials`: hours are planning data,
