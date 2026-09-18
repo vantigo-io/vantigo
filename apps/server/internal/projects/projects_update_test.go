@@ -359,7 +359,10 @@ func TestPutProjectsById_UnchangedBody_WritesNoTimelineEntry(t *testing.T) {
 		"code": "UPDNOP1000", "description": "Uendret", "startDate": "2026-01-01", "budgetHours": 100,
 	})
 
-	updated := putProject(t, c, project, nil)
+	// The code goes back lower-cased: it is upper-cased before it is
+	// compared or stored (D2), so a case-only edit is not a code change and
+	// must not write code-changed.
+	updated := putProject(t, c, project, map[string]any{"code": strings.ToLower(project.Code)})
 	if updated.Revision != project.Revision+1 {
 		t.Errorf("Revision = %d, want %d: the write still happened", updated.Revision, project.Revision+1)
 	}
