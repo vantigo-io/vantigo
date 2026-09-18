@@ -1,10 +1,17 @@
 import "@testing-library/jest-dom/vitest";
 
 import { notifications } from "@mantine/notifications";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 import { setAuthStateClearer, setUnauthorizedHandler } from "../api/request";
+
+// testing-library gives findBy/waitFor one second by default, which a first
+// render of the memory router plus Mantine can exceed on a single slow core —
+// a CI runner or a pinned CPU. The wait still ends as soon as the assertion
+// passes, so the only thing a longer ceiling costs is how long a genuinely
+// failing test takes to say so.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(() => {
   // The notification store is a module-level singleton: without this, one

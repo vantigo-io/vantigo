@@ -333,10 +333,14 @@ like every other module package; module packages never import each other.
 | Route | Page |
 | --- | --- |
 | `/projects` | List, with the KPI row, filters in the URL and the create modal |
-| `/projects/$projectId` | Detail → Overview tab (details, status control, budget hours, timeline) |
+| `/projects/$projectId` | Detail → Overview tab (details, budget hours, timeline) |
 | `/projects/$projectId/people` | People tab (assignments, role badges, add/change/remove for managers) |
 | `/projects/$projectId/billing` | Billing tab, gated on `capabilities.canSeeFinancials` |
 | `/customers/$customerId/projects` | Projects tab on the customer page |
+
+The project header — code, name, customer, status badge and the status control a
+manager changes it with — is `ProjectDetailHeader`, above the tab row, so it stands on
+every tab of the detail page rather than on the Overview tab alone.
 
 The app is registered in `apps/host/frontend/src/apps.ts` and shows in the switcher
 for anyone with `projects:access`, greying out with "Not enabled" when the module is
