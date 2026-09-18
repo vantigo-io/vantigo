@@ -151,6 +151,9 @@ pass "energy demands authentication"
 [ "$(status "$base/api/v1/communications/conversations")" = 401 ] || fail "communications conversations is not 401 without a session"
 pass "communications demands authentication"
 
+[ "$(status "$base/api/v1/projects")" = 401 ] || fail "projects is not 401 without a session"
+pass "projects demands authentication"
+
 docker exec "$APP" /app/vantigo healthcheck || fail "the healthcheck command failed inside the container"
 health=""
 for _ in $(seq 1 30); do
