@@ -2,7 +2,7 @@
 // them, their billing lines, their timeline and the statistics over them,
 // serving openapi/projects.yaml under /api/v1/projects/. A project is what
 // later modules — time tracking first — attach work to; they read it through
-// the contracts.ProjectDirectory this module will publish.
+// the contracts.ProjectDirectory this module publishes (directory.go).
 package projects
 
 import (
@@ -35,14 +35,15 @@ var permissions = []contracts.Permission{
 var limits = map[string]ratelimit.Policy{}
 
 // Module is projects as a platform module: its contract mounted under
-// /api/v1/projects/, and its five permissions in the composed catalog. The
-// contracts.ProjectDirectory it will publish to the modules built on top of
-// it is not wired yet.
+// /api/v1/projects/, its five permissions in the composed catalog, and the
+// contracts.ProjectDirectory it publishes to the modules built on top of it
+// — Time tracking first.
 func Module() module.Module {
 	return module.Module{
 		Name:        "projects",
 		Permissions: permissions,
 		Mount:       mount,
+		Projects:    newDirectory,
 	}
 }
 
