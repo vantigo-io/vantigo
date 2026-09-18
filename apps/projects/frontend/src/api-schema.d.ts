@@ -717,7 +717,7 @@ export interface operations {
     getProjectsCodeSuggestion: {
         parameters: {
             query?: {
-                /** @description The customer the project bills to. Absent means an internal project, prefixed 'INT'. */
+                /** @description The customer the project bills to. Absent means an internal project, prefixed 'INT'. A customer that does not exist contributes no letters rather than an error. */
                 customerId?: number;
                 /** @description The project's working name, whose letters follow the customer prefix. Absent or empty contributes no letters. */
                 name?: string;
@@ -735,15 +735,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectCodeSuggestionResponse"];
-                };
-            };
-            /** @description Bad Request — customerId was given but does not resolve to a customer. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
             /** @description Unauthorized */

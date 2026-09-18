@@ -184,17 +184,18 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 	}
 
 	// D13's other half, which only an update can break: a 'fixed' billing
-	// line is an amount denominated in the project's currency, so the
-	// currency cannot be cleared while one exists. It is checked here rather
-	// than in validateProject because a project being *created* has no lines
-	// yet, and it is checked whatever Deps.Products holds: lines stored
-	// before products was switched off are still stored, and their amounts
-	// are still in this currency (D10).
+	// line is an amount denominated in the project's currency, so that
+	// currency can be neither cleared nor swapped for another one while such
+	// a line exists — swapping it would silently reprice the line. It is
+	// checked here rather than in validateProject because a project being
+	// *created* has no lines yet, and it is checked whatever Deps.Products
+	// holds: lines stored before products was switched off are still stored,
+	// and their amounts are still in this currency (D10).
 	//
-	// Only a request that actually clears a currency the project has pays for
+	// Only a request that actually moves a currency the project has pays for
 	// the query: a project that never had one cannot have a 'fixed' line to
 	// protect, since such a line could not have been created without it.
-	if before.Currency != nil && parsed.Currency == nil {
+	if before.Currency != nil && !equalStringPtr(before.Currency, parsed.Currency) {
 		fixedLines, err := q.CountFixedBillingLines(ctx, before.ID)
 		if err != nil {
 			return nil, fmt.Errorf("projects: count fixed billing lines: %w", err)

@@ -149,11 +149,12 @@ func (s *server) variantExists(ctx context.Context, variantID int32) (bool, erro
 }
 
 // currencyLockedByFixedLine is D13's other half, reported on the project
-// update that would clear the currency out from under a 'fixed' line. It does
-// not say how many lines there are: one is already the answer, and the fix —
-// reprice those lines first — is the same either way.
+// update that would move the currency out from under a 'fixed' line, by
+// clearing it or by swapping it for another one. It does not say how many
+// lines there are: one is already the answer, and the fix — reprice those
+// lines first — is the same either way.
 func currencyLockedByFixedLine() string {
-	return fmt.Sprintf("A currency cannot be cleared while the project has a '%s' billing line priced in it", pricingFixed)
+	return fmt.Sprintf("A currency cannot be changed or cleared while the project has a '%s' billing line priced in it", pricingFixed)
 }
 
 // parsedLine is one validated line body, in the shape the write wants: the
