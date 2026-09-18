@@ -1,7 +1,16 @@
 import { Center, Loader, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Spotlight } from "@mantine/spotlight";
-import { IconBolt, IconBuilding, IconMail, IconPackage, IconPlus, IconSearch, IconUser } from "@tabler/icons-react";
+import {
+  IconBolt,
+  IconBriefcase,
+  IconBuilding,
+  IconMail,
+  IconPackage,
+  IconPlus,
+  IconSearch,
+  IconUser,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { contactsQueryOptions } from "@vantigo/customers-ui/api/contacts";
@@ -11,11 +20,23 @@ import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import "../i18n";
+import { request } from "../api/request";
 import { spotlightNavSections } from "../apps";
 import { hasPermissions, type ModuleKey, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
+
+/**
+ * What the spotlight needs of a project row. The list endpoint answers a whole
+ * summary; the package's query options page it at the list's own size, so the
+ * five rows shown here are asked for directly instead.
+ */
+interface ProjectResult {
+  id: number;
+  code: string;
+  name: string;
+}
 
 interface AppSpotlightProps {
   permissions: string[] | undefined;
@@ -63,6 +84,8 @@ export const AppSpotlight = ({
     customersEnabled && hasPermissions(permissions, ["customers:contacts-view", "customers:associations-view"]);
   const canSearchMeteringPoints =
     enabledModules?.includes("energy") === true && hasPermissions(permissions, ["energy:metering-points-view"]);
+  const canSearchProjects =
+    enabledModules?.includes("projects") === true && hasPermissions(permissions, ["projects:access"]);
   const handleNavigate = (action: () => void) => {
     onNavigate?.();
     action();
@@ -79,6 +102,9 @@ export const AppSpotlight = ({
     ...(enabledModules?.includes("products") && hasPermissions(permissions, ["products:products-manage"])
       ? [{ label: t("dashboard.addProduct"), icon: IconPackage, path: "/products", search: { create: true } }]
       : []),
+    ...(enabledModules?.includes("projects") && hasPermissions(permissions, ["projects:create"])
+      ? [{ label: t("dashboard.createProject"), icon: IconBriefcase, path: "/projects", search: { create: true } }]
+      : []),
   ];
 
   const customers = useQuery({
@@ -93,6 +119,14 @@ export const AppSpotlight = ({
     ...meteringPointsQueryOptions({ search, pageSize: MAX_RESULTS }),
     enabled: searchEnabled && canSearchMeteringPoints,
   });
+  const projects = useQuery({
+    queryKey: ["spotlight", "projects", search],
+    queryFn: ({ signal }) => {
+      const query = new URLSearchParams({ search, pageSize: String(MAX_RESULTS) });
+      return request<{ data: ProjectResult[] }>(`/api/v1/projects?${query}`, { signal });
+    },
+    enabled: searchEnabled && canSearchProjects,
+  });
 
   const matchingNavigation = navigationActions.filter((action) =>
     t(action.label).toLowerCase().includes(query.trim().toLowerCase()),
@@ -100,13 +134,16 @@ export const AppSpotlight = ({
   const customerResults = searchEnabled && canSearchCustomers ? (customers.data?.data ?? []) : [];
   const contactResults = searchEnabled && canSearchContacts ? (contacts.data?.data ?? []) : [];
   const meteringPointResults = searchEnabled && canSearchMeteringPoints ? (meteringPoints.data?.data ?? []) : [];
+  const projectResults = searchEnabled && canSearchProjects ? (projects.data?.data ?? []) : [];
 
-  const isSearching = searchEnabled && (customers.isFetching || contacts.isFetching || meteringPoints.isFetching);
+  const isSearching =
+    searchEnabled && (customers.isFetching || contacts.isFetching || meteringPoints.isFetching || projects.isFetching);
   const isEmpty =
     matchingNavigation.length === 0 &&
     customerResults.length === 0 &&
     contactResults.length === 0 &&
-    meteringPointResults.length === 0;
+    meteringPointResults.length === 0 &&
+    projectResults.length === 0;
 
   return (
     <Spotlight.Root shortcut="mod + K" query={query} onQueryChange={setQuery} onSpotlightClose={() => setQuery("")}>
@@ -213,6 +250,27 @@ export const AppSpotlight = ({
                     navigate({
                       to: "/energy/metering-points/$meteringPointId",
                       params: { meteringPointId: point.id },
+                    }),
+                  )
+                }
+              />
+            ))}
+          </Spotlight.ActionsGroup>
+        )}
+
+        {projectResults.length > 0 && (
+          <Spotlight.ActionsGroup label={t("navigation.projects")}>
+            {projectResults.map((project) => (
+              <Spotlight.Action
+                key={project.id}
+                label={`${project.code} — ${project.name}`}
+                description={t("navigation.project")}
+                leftSection={<IconBriefcase size={20} stroke={1.5} />}
+                onClick={() =>
+                  handleNavigate(() =>
+                    navigate({
+                      to: "/projects/$projectId",
+                      params: { projectId: project.id },
                     }),
                   )
                 }

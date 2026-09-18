@@ -3,7 +3,7 @@ import type { ComponentType } from "react";
 // The module keys this build knows. Which of them are enabled comes from the
 // injected runtime config (see lib/enabled-modules.ts); which destinations
 // belong to which module is declared by the app registry (apps.ts).
-export const moduleKeys = ["communications", "customers", "energy", "products"] as const;
+export const moduleKeys = ["communications", "customers", "energy", "products", "projects"] as const;
 export type ModuleKey = (typeof moduleKeys)[number];
 
 export interface NavItem {
@@ -17,7 +17,7 @@ export interface NavItem {
   /** The module that must be enabled for this destination. */
   module?: ModuleKey;
   /** Search defaults used when Spotlight opens this destination. */
-  searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list";
+  searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list" | "projects-list";
 }
 export interface NavSection {
   /** Optional section heading; unlabeled sections render items only. */
@@ -78,6 +78,8 @@ export const navSearchFor = (strategy: NavItem["searchStrategy"]) => {
       return { page: 1, search: "", status: "", categoryId: "" };
     case "energy-list":
       return { page: 1, search: "" };
+    case "projects-list":
+      return { page: 1, search: "", status: "", mine: false };
     default:
       return undefined;
   }

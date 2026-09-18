@@ -10,6 +10,8 @@ const en = {
   "dashboard.reviewMessages": "Review and send messages.",
   "dashboard.manageProducts": "Manage products, prices and categories.",
   "dashboard.energy": "Energy",
+  "dashboard.projects": "Projects",
+  "dashboard.manageProjects": "Manage projects, people and billing.",
   "dashboard.manageEnergy": "Manage metering points and meters.",
   "dashboard.open": "Open",
   "dashboard.greeting": "Welcome back, {{name}}",
@@ -28,6 +30,9 @@ const en = {
   "dashboard.activeProducts": "Active products",
   "dashboard.newProducts": "New products",
   "dashboard.newProductsHint": "{{count}} new in this period",
+  "dashboard.activeProjects": "Active projects",
+  "dashboard.newProjects": "New projects",
+  "dashboard.newProjectsHint": "{{count}} new in this period",
   "dashboard.consumption": "Consumption",
   "dashboard.energyKpiHint": "Energy used in this period",
   "dashboard.vsPrevious": "vs previous period",
@@ -54,10 +59,12 @@ const en = {
   "dashboard.connectChannel": "Connect a mailbox or channel",
   "dashboard.createProduct": "Create a product",
   "dashboard.configureMetering": "Configure a metering point",
+  "dashboard.createFirstProject": "Start your first project",
   "dashboard.quickActions": "Quick actions",
   "dashboard.createCustomer": "Create customer",
   "dashboard.composeMessage": "Compose message",
   "dashboard.addProduct": "Add product",
+  "dashboard.createProject": "Create project",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -70,6 +77,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.reviewMessages": "Se gjennom og send meldinger.",
   "dashboard.manageProducts": "Administrer produkter, priser og kategorier.",
   "dashboard.energy": "Energi",
+  "dashboard.projects": "Prosjekter",
+  "dashboard.manageProjects": "Administrer prosjekter, personer og fakturering.",
   "dashboard.manageEnergy": "Administrer målepunkter og målere.",
   "dashboard.open": "Åpne",
   "dashboard.greeting": "Velkommen tilbake, {{name}}",
@@ -88,6 +97,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.activeProducts": "Aktive produkter",
   "dashboard.newProducts": "Nye produkter",
   "dashboard.newProductsHint": "{{count}} nye i denne perioden",
+  "dashboard.activeProjects": "Aktive prosjekter",
+  "dashboard.newProjects": "Nye prosjekter",
+  "dashboard.newProjectsHint": "{{count}} nye i denne perioden",
   "dashboard.consumption": "Forbruk",
   "dashboard.energyKpiHint": "Energi brukt i denne perioden",
   "dashboard.vsPrevious": "mot forrige periode",
@@ -114,10 +126,12 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.connectChannel": "Koble til en postkasse eller kanal",
   "dashboard.createProduct": "Opprett et produkt",
   "dashboard.configureMetering": "Konfigurer et målepunkt",
+  "dashboard.createFirstProject": "Start ditt første prosjekt",
   "dashboard.quickActions": "Hurtighandlinger",
   "dashboard.createCustomer": "Opprett kunde",
   "dashboard.composeMessage": "Skriv melding",
   "dashboard.addProduct": "Legg til produkt",
+  "dashboard.createProject": "Opprett prosjekt",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;

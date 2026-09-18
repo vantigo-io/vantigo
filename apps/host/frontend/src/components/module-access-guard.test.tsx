@@ -68,6 +68,32 @@ describe("ModuleAccessGuard", () => {
     expect(screen.queryByRole("heading", { name: "Access denied" })).not.toBeInTheDocument();
   });
 
+  // The rules are derived from the app registry, so a new app is guarded the
+  // moment it registers a sidebar entry. Projects is pinned here because its
+  // whole app sits behind one permission: losing the rule would open every
+  // project page to a caller the backend still refuses.
+  it.each(["/projects", "/projects/42", "/projects/42/billing"])("guards %s behind projects:access", (pathname) => {
+    routerState.pathname = pathname;
+
+    renderGuard();
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+    expect(screen.queryByText("Allowed content")).not.toBeInTheDocument();
+  });
+
+  it("renders the projects pages for a caller holding projects:access", () => {
+    routerState.pathname = "/projects/42";
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions: ["projects:access"] }, isPending: false } as never)
+        : ({ data: { user: { roles: [] } } } as never),
+    );
+
+    renderGuard();
+
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
   // The `!rule` fall-through is what keeps the guard's now-global root mount
   // (task 4 of the frontend de-tenanting plan) off destinations that carry no
   // `module` in the navigation catalog. Losing this silently would gate

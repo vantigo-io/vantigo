@@ -12,13 +12,20 @@ import {
   switcherTiles,
 } from "./apps";
 
-const allModules = ["communications", "customers", "energy", "products"] as const;
+const allModules = ["communications", "customers", "energy", "products", "projects"] as const;
 
 describe("the app registry", () => {
   it("lists Home first, without a module, and every module app once", () => {
     expect(apps[0]).toMatchObject({ key: "home", home: "/dashboard", navSections: [] });
     expect(apps[0]?.module).toBeUndefined();
-    expect(apps.map((app) => app.key)).toEqual(["home", "customers", "communications", "products", "energy"]);
+    expect(apps.map((app) => app.key)).toEqual([
+      "home",
+      "customers",
+      "projects",
+      "communications",
+      "products",
+      "energy",
+    ]);
     for (const app of apps.slice(1)) expect(app.module).toBe(app.key);
   });
 
@@ -38,6 +45,7 @@ describe("the app registry", () => {
     expect(paths).toEqual([
       "/customers",
       "/customers/contacts",
+      "/projects",
       "/communications/inbox",
       "/communications/channels",
       "/communications/suppressions",
@@ -61,6 +69,27 @@ describe("the app registry", () => {
     expect(() => appForKey("billing" as never)).toThrow(/billing/);
   });
 
+  // The Projects app is one sidebar entry behind one permission, so its tile
+  // is exactly as visible as that entry: shown to a caller holding
+  // projects:access, absent without it, and muted rather than hidden when the
+  // installation did not mount the module.
+  it("gives Projects one entry behind projects:access and a tile that follows it", () => {
+    const projects = appForKey("projects");
+    expect(projects).toMatchObject({ module: "projects", label: "navigation.projects", home: "/projects" });
+    expect(projects.requiredPermissions).toEqual(["projects:access"]);
+    expect(projects.navSections.flatMap((section) => section.items).map((item) => item.searchStrategy)).toEqual([
+      "projects-list",
+    ]);
+  });
+
+  it("shows the Projects tile for projects:access, hides it without, and mutes it when the module is off", () => {
+    const keys = (permissions: string[], enabled: readonly (typeof allModules)[number][]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["projects:access"], allModules)).toContainEqual(["projects", true]);
+    expect(keys(["customers:view"], allModules).map(([key]) => key)).not.toContain("projects");
+    expect(keys(["projects:access"], ["customers"])).toContainEqual(["projects", false]);
+  });
+
   it("treats Home as always enabled and module apps as enabled when their module is", () => {
     expect(isAppEnabled(appForKey("home"), [])).toBe(true);
     expect(isAppEnabled(appForKey("energy"), ["customers"])).toBe(false);
@@ -74,7 +103,14 @@ describe("the administration areas", () => {
   it("declares settings, workspace and admin, none of them a switcher tile", () => {
     expect(areas.map((area) => area.key)).toEqual(["settings", "workspace", "admin"]);
     const tiles = switcherTiles(["*"], allModules, "settings");
-    expect(tiles.map((tile) => tile.app.key)).toEqual(["home", "customers", "communications", "products", "energy"]);
+    expect(tiles.map((tile) => tile.app.key)).toEqual([
+      "home",
+      "customers",
+      "projects",
+      "communications",
+      "products",
+      "energy",
+    ]);
     expect(tiles.some((tile) => tile.current)).toBe(false);
   });
 
@@ -158,6 +194,7 @@ describe("switcherTiles", () => {
     expect(tiles.map((tile) => [tile.app.key, tile.enabled])).toEqual([
       ["home", true],
       ["customers", true],
+      ["projects", false],
       ["communications", false],
       ["products", false],
       ["energy", false],

@@ -7,6 +7,7 @@ import { Route as CustomersIndexRoute } from "./customers/index";
 import { Route as EnergyIndexRoute } from "./energy/index";
 import { Route as IndexRoute } from "./index";
 import { Route as ProductsIndexRoute } from "./products/index";
+import { Route as ProjectsIndexRoute } from "./projects/index";
 import { Route as SettingsIndexRoute } from "./settings/index";
 import { Route as WorkspaceRoute } from "./workspace";
 import { Route as WorkspaceIndexRoute } from "./workspace/index";
@@ -240,6 +241,7 @@ describe("list routes' create intent", () => {
   it.each([
     ["customers", CustomersIndexRoute],
     ["products", ProductsIndexRoute],
+    ["projects", ProjectsIndexRoute],
   ])("keeps create in the %s list URL only when it is true", (_name, route) => {
     const validate = route.options.validateSearch as (search: Record<string, unknown>) => { create?: boolean };
     expect(validate({ create: true }).create).toBe(true);
@@ -247,6 +249,35 @@ describe("list routes' create intent", () => {
     expect(validate({ create: false })).not.toHaveProperty("create", true);
     expect(validate({ create: "yes" })).not.toHaveProperty("create", true);
     expect(validate({})).not.toHaveProperty("create", true);
+  });
+});
+
+// The projects list keeps every filter in the URL, so a pasted link restores
+// the same list. The defaults are the ones navSearchFor("projects-list") hands
+// Spotlight, and an unknown status falls back to "any" rather than reaching the
+// API as a value it would reject.
+describe("the projects list's search params", () => {
+  const validate = ProjectsIndexRoute.options.validateSearch as (
+    search: Record<string, unknown>,
+  ) => Record<string, unknown>;
+
+  it("falls back to the first page, no search, any status and everyone's projects", () => {
+    expect(validate({})).toEqual({
+      page: 1,
+      search: "",
+      status: "",
+      customerId: undefined,
+      internal: undefined,
+      mine: false,
+    });
+  });
+
+  it("keeps the filters a pasted link carries and drops a status it does not know", () => {
+    expect(
+      validate({ page: "3", search: "roof", status: "on-hold", customerId: "7", internal: "true", mine: "true" }),
+    ).toEqual({ page: 3, search: "roof", status: "on-hold", customerId: 7, internal: true, mine: true });
+    expect(validate({ status: "archived" }).status).toBe("");
+    expect(validate({ page: "0" }).page).toBe(1);
   });
 });
 
