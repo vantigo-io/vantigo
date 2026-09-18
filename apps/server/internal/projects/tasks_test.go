@@ -2,6 +2,7 @@ package projects_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -322,12 +323,16 @@ func TestPostProjectsByIdTasks_ImpossibleParent_Returns400(t *testing.T) {
 	elsewhere := createTask(t, c, other.Id, map[string]any{"title": "På et annet prosjekt"})
 
 	cases := []struct {
-		name   string
-		parent int32
+		name        string
+		parent      int32
+		wantMessage string
 	}{
-		{"a task of another project", elsewhere.Id},
-		{"a task that is itself a subtask", subtask.Id},
-		{"a task that does not exist", 999_999},
+		{"a task of another project", elsewhere.Id, "does not exist"},
+		{"a task that is itself a subtask", subtask.Id, "nested one level deep"},
+		{"a task that does not exist", 999_999, "does not exist"},
+		// Zero is no task's id, so it is unknown rather than "itself": a
+		// create has no task yet for a parent to be.
+		{"a parent id of zero", 0, "does not exist"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -338,8 +343,12 @@ func TestPostProjectsByIdTasks_ImpossibleParent_Returns400(t *testing.T) {
 			}
 			var problem validationProblemJSON
 			r.JSON(&problem)
-			if len(problem.Errors["parentTaskId"]) == 0 {
-				t.Errorf("errors = %v, want a message on 'parentTaskId'", problem.Errors)
+			messages := problem.Errors["parentTaskId"]
+			if len(messages) == 0 {
+				t.Fatalf("errors = %v, want a message on 'parentTaskId'", problem.Errors)
+			}
+			if !strings.Contains(messages[0], tc.wantMessage) {
+				t.Errorf("message = %q, want it to say %q", messages[0], tc.wantMessage)
 			}
 		})
 	}
@@ -403,6 +412,22 @@ func TestGetProjectsByIdTasks_FiltersByStatusAndAssignee(t *testing.T) {
 	}
 	if got := taskTitles(listTasks(t, c, project.Id, "status=")); len(got) != 3 {
 		t.Errorf("status= (empty) = %v, want no filter at all", got)
+	}
+
+	// A subtask that matches while its parent does not is answered at the top
+	// level rather than dropped: a filter never hides a task it matched. It
+	// still says whose subtask it is.
+	parent := createTask(t, c, project.Id, map[string]any{"title": "Forberedelser"})
+	createTask(t, c, project.Id, map[string]any{"title": "Bestill maskinvare", "parentTaskId": parent.Id, "assigneeUserId": memberID})
+	promoted := listTasks(t, c, project.Id, "assigneeUserId="+memberID.String())
+	if got := taskTitles(promoted); !equalStrings(got, []string{"Min oppgave", "Bestill maskinvare"}) {
+		t.Fatalf("assigneeUserId = %v, want the matching subtask answered beside the matching task", got)
+	}
+	if promoted[1].ParentTaskId == nil || *promoted[1].ParentTaskId != parent.Id {
+		t.Errorf("promoted subtask = %+v, want it to keep its parentTaskId", promoted[1])
+	}
+	if len(promoted[1].Subtasks) != 0 || len(promoted[0].Subtasks) != 0 {
+		t.Errorf("promoted = %+v, want no nesting when the parent did not match", promoted)
 	}
 
 	r := c.Do(http.MethodGet, tasksPath(project.Id)+"?status=blocked", nil)
@@ -554,6 +579,11 @@ func TestDeleteProjectsTasksByTaskId_CascadesToSubtasksChecklistAndComments(t *t
 	}
 	if n := h.Count(t, `SELECT count(*) FROM projects.task_comments`); n != 0 {
 		t.Errorf("comments left = %d, want none", n)
+	}
+	// The group the task was in closes its gap: a delete decides positions the
+	// same way a move does.
+	if got := taskPositions(getTasks(t, c, project.Id)); !equalInt32s(got, []int32{1}) {
+		t.Errorf("positions = %v, want 1..n with the deleted task's number reused", got)
 	}
 	if r := deleteTask(t, c, parent.Id); r.Status != http.StatusNotFound {
 		t.Errorf("deleting it twice: status %d, want 404", r.Status)
@@ -867,11 +897,35 @@ func TestGetProjectsByIdTasks_AssigneeDisabledAfterwards_StaysAssignedAndInactiv
 	if got.Assignee.Active {
 		t.Error("Assignee.Active = true, want false for a disabled account")
 	}
-	// The assignment may still be edited away, but not re-made onto the
-	// disabled account.
-	r := putTask(t, c, got, map[string]any{"assigneeUserId": memberID, "title": "Fortsatt tildelt"})
+	// The task is still editable: an update that re-sends the assignment it
+	// already carries is not making a new one, so a disabled account does not
+	// freeze the task — it only stops being somebody anything new can be given
+	// to.
+	kept := changeTask(t, c, got, map[string]any{"assigneeUserId": memberID, "title": "Fortsatt tildelt"})
+	if kept.Title != "Fortsatt tildelt" {
+		t.Errorf("Title = %q, want the rename applied", kept.Title)
+	}
+	if kept.Assignee == nil || kept.Assignee.UserId != memberID || kept.Assignee.Active {
+		t.Errorf("Assignee = %+v, want the same person, still inactive", kept.Assignee)
+	}
+
+	// Handing it to a *different* disabled account is a new assignment, and
+	// that is what the rule is about.
+	_, otherDisabledID := signIn(t, h)
+	disableUser(t, h, otherDisabledID)
+	r := putTask(t, c, kept, map[string]any{"assigneeUserId": otherDisabledID})
 	if r.Status != http.StatusBadRequest {
-		t.Errorf("re-assigning a disabled user: status %d body %s, want 400", r.Status, r.Body)
+		t.Fatalf("assigning another disabled user: status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["assigneeUserId"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'assigneeUserId'", problem.Errors)
+	}
+
+	// And it can always be edited away.
+	if cleared := changeTask(t, c, kept, map[string]any{"assigneeUserId": nil}); cleared.Assignee != nil {
+		t.Errorf("Assignee = %+v, want the assignment cleared", cleared.Assignee)
 	}
 }
 
