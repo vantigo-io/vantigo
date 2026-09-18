@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
@@ -179,17 +178,20 @@ func (s *server) GetProjectsCodeSuggestion(ctx context.Context, req gen.GetProje
 		if err != nil {
 			return nil, fmt.Errorf("projects: look up a customer for a code suggestion: %w", err)
 		}
-		if customer == nil {
-			return gen.GetProjectsCodeSuggestion400ApplicationProblemPlusJSONResponse(apicommon.Problem(
-				"Invalid code suggestion query",
-				fmt.Sprintf("Customer %d does not exist", *req.Params.CustomerId),
-			)), nil
+		// A customerId that resolves to nothing contributes no letters, the
+		// same as a customer whose name yields none: this endpoint asks for
+		// nothing but projects:access (D8), and refusing it by name would
+		// make it an oracle answering "does customer N exist?" for every N.
+		// The create it feeds keeps its own "customer does not exist", where
+		// the caller holds customers:view for the picker anyway.
+		prefix = ""
+		if customer != nil {
+			codes, err := q.RecentProjectCodesForCustomer(ctx, req.Params.CustomerId)
+			if err != nil {
+				return nil, fmt.Errorf("projects: list a customer's recent project codes: %w", err)
+			}
+			prefix = customerLetters(lettersFor(customer.Name), codes)
 		}
-		codes, err := q.RecentProjectCodesForCustomer(ctx, req.Params.CustomerId)
-		if err != nil {
-			return nil, fmt.Errorf("projects: list a customer's recent project codes: %w", err)
-		}
-		prefix = customerLetters(lettersFor(customer.Name), codes)
 	}
 
 	name := ""

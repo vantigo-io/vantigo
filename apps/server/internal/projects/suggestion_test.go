@@ -132,16 +132,19 @@ func TestGetProjectsCodeSuggestion_TakenCandidateIsSkipped(t *testing.T) {
 	}
 }
 
-// customerId given but unresolvable is the operation's own field error,
-// distinct from a project id lookup's 404 (design §4.2).
-func TestGetProjectsCodeSuggestion_UnknownCustomer_Returns400(t *testing.T) {
+// customerId given but unresolvable contributes no letters, exactly as a
+// customer whose name yields none would: the endpoint asks for nothing but
+// projects:access (D8), so a refusal naming the customer would answer "does
+// customer N exist?" for every N. The create this feeds keeps its own 400,
+// where the caller holds customers:view anyway.
+func TestGetProjectsCodeSuggestion_UnknownCustomer_FallsBackToTheProjectLetters(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	c, _ := signIn(t, h)
 
-	r := c.Do(http.MethodGet, fmt.Sprintf("/api/v1/projects/code-suggestion?customerId=%d", customerUnknown), nil)
-	if r.Status != http.StatusBadRequest {
-		t.Errorf("status = %d body %s, want 400", r.Status, r.Body)
+	code := suggestCode(t, c, intPtr(customerUnknown), "Energy migration")
+	if code != "EM1000" {
+		t.Errorf("code = %q, want EM1000 — the project's own letters and the next number", code)
 	}
 }
 

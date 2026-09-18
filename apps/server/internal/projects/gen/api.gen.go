@@ -322,7 +322,7 @@ type GetProjectsParams struct {
 
 // GetProjectsCodeSuggestionParams defines parameters for GetProjectsCodeSuggestion.
 type GetProjectsCodeSuggestionParams struct {
-	// CustomerId The customer the project bills to. Absent means an internal project, prefixed 'INT'.
+	// CustomerId The customer the project bills to. Absent means an internal project, prefixed 'INT'. A customer that does not exist contributes no letters rather than an error.
 	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
 
 	// Name The project's working name, whose letters follow the customer prefix. Absent or empty contributes no letters.
@@ -1389,20 +1389,6 @@ func (response GetProjectsCodeSuggestion200JSONResponse) VisitGetProjectsCodeSug
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetProjectsCodeSuggestion400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
-
-func (response GetProjectsCodeSuggestion400ApplicationProblemPlusJSONResponse) VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }

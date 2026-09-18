@@ -741,6 +741,42 @@ func TestPutProjectsById_ClearingTheCurrencyWithAFixedLine_Returns400(t *testing
 	}
 }
 
+// The same half of D13, on the change rather than the clear: a fixed line's
+// amount is denominated in the currency the project had when it was priced,
+// so moving the project to another currency would silently reprice it. A
+// deactivated line counts, as it does everywhere else — it can be
+// reactivated, and its amount is still in the currency it was typed in.
+func TestPutProjectsById_ChangingTheCurrencyWithAFixedLine_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "CCUR1000", "currency": "NOK"})
+	line := createLine(t, c, project.Id, map[string]any{"pricingMode": "fixed", "fixedAmount": 900})
+
+	r := updateProject(t, c, project, map[string]any{"currency": "EUR"})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["currency"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'currency'", problem.Errors)
+	}
+
+	listOnly := createProject(t, c, map[string]any{"code": "CCUR1001", "currency": "NOK"})
+	createLine(t, c, listOnly.Id, nil)
+	moved := putProject(t, c, listOnly, map[string]any{"currency": "EUR"})
+	if moved.Financials == nil || moved.Financials.Currency == nil || *moved.Financials.Currency != "EUR" {
+		t.Errorf("Financials = %+v, want the currency changed on a project with only a list line", moved.Financials)
+	}
+
+	changeLine(t, c, project.Id, line.Id, lineBody(map[string]any{
+		"pricingMode": "fixed", "fixedAmount": 900, "active": false}))
+	if again := updateProject(t, c, project, map[string]any{"currency": "EUR"}); again.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s after deactivating the line, want 400", again.Status, again.Body)
+	}
+}
+
 // The line a manager creates through the API is the line other modules
 // resolve through contracts.ProjectDirectory: one row, one rule, read by id.
 func TestDirectory_BillingLine_ResolvesALineCreatedThroughTheAPI(t *testing.T) {

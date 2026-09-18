@@ -49,9 +49,11 @@ old hours stay readable.
 
 **One currency per project.** `currency` (ISO 4217 shape, `^[A-Z]{3}$`) is required
 as soon as any amount is set — a fixed price, a budget amount, or a `fixed` billing
-line — and it cannot be cleared while a `fixed` line exists (deactivated lines count:
-their amount is still denominated in that currency). `list` and `discount` lines
-resolve in the project's currency.
+line — and while a `fixed` line exists it can be neither cleared nor changed to
+another currency (deactivated lines count: their amount is still denominated in the
+currency it was typed in, and the line can be reactivated). Reprice or remove those
+lines first. `list` and `discount` lines resolve in the project's currency, so they
+never hold it back.
 
 The `projects` schema holds no foreign key that leaves it: `customer_id`,
 `variant_id` and every user ID are opaque, per
@@ -99,6 +101,10 @@ It is a suggestion, never imposed — the user may type anything valid instead.
 - A candidate longer than 20 characters is shortened by trimming the project letters
   first, then the customer prefix. The number is never touched.
 
+- A `customerId` that resolves to no customer contributes no letters, exactly as a
+  customer whose name yields none would: the suggestion is then the project letters
+  and the number. The endpoint never confirms whether a customer exists.
+
 The endpoint needs only `projects:access`, not `projects:create`: editing an existing
 project's code uses it too.
 
@@ -143,6 +149,16 @@ role never takes away what a global permission granted.
 **Outsiders get "not found", not "forbidden".** Reading a project you hold no role in,
 without `view-all` or `manage-all`, answers **404**, so project codes and existence do
 not leak. Acting on a project you *can* see but may not manage answers **403**.
+
+**What `projects:create` can learn about customers.** Creating or updating a project
+with a `customerId` that does not exist answers 400 "customer does not exist", and a
+project response carries the customer's name — so a holder of `projects:create` can
+probe the customer list without holding `customers:view`. That is an accepted
+trade-off: the create form's customer picker needs `customers:view` to work at all,
+so whoever may create projects is expected to hold both, and a project list that hid
+customer names would be unreadable. The code suggestion is the one exception, because
+it asks for nothing but `projects:access` — an id nobody can resolve is treated there
+as no customer letters rather than refused (above).
 
 Visibility is one SQL definition, the `projects.visible(project_id, user_id, see_all)`
 function, shared by the list, its count and every stats query — so rows, totals and
