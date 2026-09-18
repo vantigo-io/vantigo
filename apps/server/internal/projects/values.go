@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -27,6 +28,52 @@ const (
 	billingFixedPrice       = "fixed-price"
 	billingNonBillable      = "non-billable"
 )
+
+// The statuses a project may be in (D14). Any transition between them is
+// allowed, reopening a completed project included; only 'active' means "open
+// for work", which is the one question time tracking will ask and nothing
+// here asks yet.
+const (
+	statusPlanned   = "planned"
+	statusActive    = "active"
+	statusOnHold    = "on-hold"
+	statusCompleted = "completed"
+	statusCancelled = "cancelled"
+)
+
+// projectStatuses is the enumeration in the order it is written everywhere
+// else — the contract's description, the design's §2 and the frontend's
+// filter — so a message built from it reads the way the documentation does.
+var projectStatuses = []string{statusPlanned, statusActive, statusOnHold, statusCompleted, statusCancelled}
+
+// validProjectStatus reports whether status is one of the five, exactly as
+// written: the strings are what other modules will key on, so they are not
+// matched case-insensitively.
+func validProjectStatus(status string) bool {
+	return slices.Contains(projectStatuses, status)
+}
+
+// projectStatusList is the enumeration as a message names it:
+// "'planned', 'active', 'on-hold', 'completed' or 'cancelled'".
+func projectStatusList() string {
+	quoted := make([]string, 0, len(projectStatuses))
+	for _, s := range projectStatuses {
+		quoted = append(quoted, "'"+s+"'")
+	}
+	return strings.Join(quoted[:len(quoted)-1], ", ") + " or " + quoted[len(quoted)-1]
+}
+
+// validateProjectStatus is the status rule for the dedicated status
+// operation: required, and one of the five.
+func validateProjectStatus(raw string) (string, string) {
+	if strings.TrimSpace(raw) == "" {
+		return "", "A status cannot be null or empty"
+	}
+	if !validProjectStatus(raw) {
+		return "", fmt.Sprintf("A status must be one of %s, but was '%s'", projectStatusList(), raw)
+	}
+	return raw, ""
+}
 
 // projectCodePattern is D2's project code: upper-case letters and digits, no
 // hyphen, so `<project>-<line>` always splits cleanly.
@@ -296,6 +343,70 @@ func (s *server) validateProject(ctx context.Context, body gen.ProjectCreateRequ
 		BudgetHours:      budgetHours,
 		BudgetAmount:     budgetAmount,
 	}, nil, nil
+}
+
+// projectFromUpdate is an update body seen as the create body §4.1's rules
+// are written against. An update carries every field of the project as it
+// should stand afterwards, so the two bodies differ in exactly one thing:
+// the revision, which is a concurrency token rather than a value any rule
+// has an opinion about. One validator therefore serves both paths, and a
+// rule can never be enforced on a create but forgotten on an update.
+func projectFromUpdate(body gen.ProjectUpdateRequest) gen.ProjectCreateRequest {
+	return gen.ProjectCreateRequest{
+		Code:             body.Code,
+		Name:             body.Name,
+		Description:      body.Description,
+		CustomerId:       body.CustomerId,
+		StartDate:        body.StartDate,
+		EndDate:          body.EndDate,
+		BillingType:      body.BillingType,
+		Currency:         body.Currency,
+		FixedPriceAmount: body.FixedPriceAmount,
+		BudgetHours:      body.BudgetHours,
+		BudgetAmount:     body.BudgetAmount,
+	}
+}
+
+// equalStringPtr, equalInt32Ptr, equalDate and numericChanged are the "did
+// this column move" comparisons the update's diff is built from. Two absent
+// values are equal; an absent and a present one are not.
+func equalStringPtr(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func equalInt32Ptr(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func equalDate(a, b pgtype.Date) bool {
+	if !a.Valid || !b.Valid {
+		return a.Valid == b.Valid
+	}
+	return a.Time.Equal(b.Time)
+}
+
+// numericChanged compares two decimal columns as the API renders them, so
+// the same number written with a different scale is not a change: the column
+// is numeric(12,2) and 1000 comes back as 1000.00, which nobody edited.
+func numericChanged(before, after pgtype.Numeric) (bool, error) {
+	a, err := floatPtrFromNumeric(before)
+	if err != nil {
+		return false, err
+	}
+	b, err := floatPtrFromNumeric(after)
+	if err != nil {
+		return false, err
+	}
+	if a == nil || b == nil {
+		return (a == nil) != (b == nil), nil
+	}
+	return *a != *b, nil
 }
 
 // dateToPgtype converts the contract's optional date into the nullable SQL

@@ -1,6 +1,11 @@
 package projects
 
-import "github.com/vantigo-io/vantigo/server/internal/apicommon"
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+)
 
 // This module's refusals are bare RFC 7807 problems and field-level
 // validation text (apicommon.Problem, apicommon.ProblemStatus,
@@ -27,7 +32,28 @@ func invalidProject(errs map[string][]string) apicommon.HttpValidationProblemDet
 }
 
 // fieldError is the one-field error map invalidProject takes, for a rule
-// that can only fail on its own — the code the unique index refused, so far.
+// that can only fail on its own — the code the unique index refused, and the
+// status of the dedicated status operation.
 func fieldError(field, message string) map[string][]string {
 	return map[string][]string{field: {message}}
+}
+
+// forbidden is the access layer's own 403 body, answered by a handler that
+// denies on something the router could not evaluate — whether the caller
+// manages *this* project, which depends on a role the router never reads. A
+// handler-level denial has to look exactly like a router-level one, or a
+// client could tell the two apart and learn something about the project.
+func forbidden() apicommon.AuthErrorResponse { return apicommon.ForbiddenBody() }
+
+// revisionConflictTitle is the title of the only 409 this module answers:
+// an edit carrying a revision the project has moved past.
+const revisionConflictTitle = "Project revision conflict"
+
+// revisionConflict is that 409's body. It names both revisions, so a client
+// can tell "somebody else saved first" from "I sent the wrong number" — the
+// same shape customers' timeline reports a stale entry revision with.
+func revisionConflict(current, supplied int32) apicommon.ProblemDetails {
+	return apicommon.ProblemStatus(revisionConflictTitle,
+		fmt.Sprintf("The project has revision %d; the supplied revision was %d.", current, supplied),
+		http.StatusConflict)
 }

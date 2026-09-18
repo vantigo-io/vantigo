@@ -135,3 +135,112 @@ func (s *server) GetProjectsById(ctx context.Context, req gen.GetProjectsByIdReq
 	}
 	return gen.GetProjectsById200JSONResponse(resp), nil
 }
+
+// PutProjectsById Update a project
+// (PUT /api/v1/projects/{id})
+//
+// An update carries every field of the project as it should stand
+// afterwards, plus the revision the caller read it at. The order is the one
+// D7 forces: the row first, then the caller's access to it (404 before 403
+// before any field error), so a stranger never learns a project exists by
+// the shape of the refusal they get.
+//
+// The revision is enforced by the UPDATE's own WHERE clause, not by
+// comparing the loaded row: between the read and the write another request
+// can commit, and only the database can decide that race. Zero rows updated
+// is that loss, and answers 409.
+func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdRequestObject) (gen.PutProjectsByIdResponseObject, error) {
+	body := gen.ProjectUpdateRequest{}
+	if req.Body != nil {
+		body = *req.Body
+	}
+
+	q := store.New(s.deps.Pool)
+	before, err := q.GetProject(ctx, req.Id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return gen.PutProjectsById404Response{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("projects: get project: %w", err)
+	}
+
+	a, err := s.authorize(ctx, q, before.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !a.CanSee {
+		return gen.PutProjectsById404Response{}, nil
+	}
+	if !a.CanManage {
+		return gen.PutProjectsById403JSONResponse(forbidden()), nil
+	}
+
+	parsed, fieldErrs, err := s.validateProject(ctx, projectFromUpdate(body))
+	if err != nil {
+		return nil, err
+	}
+	if len(fieldErrs) > 0 {
+		return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
+	}
+
+	by, err := s.callerAs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	now := s.deps.Clock()
+	var after store.ProjectsProject
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		var err error
+		after, err = txq.UpdateProject(ctx, store.UpdateProjectParams{
+			ID:               req.Id,
+			Revision:         body.Revision,
+			Code:             parsed.Code,
+			Name:             parsed.Name,
+			Description:      parsed.Description,
+			CustomerID:       parsed.CustomerID,
+			StartDate:        parsed.StartDate,
+			EndDate:          parsed.EndDate,
+			BillingType:      parsed.BillingType,
+			Currency:         parsed.Currency,
+			FixedPriceAmount: parsed.FixedPriceAmount,
+			BudgetHours:      parsed.BudgetHours,
+			BudgetAmount:     parsed.BudgetAmount,
+			Now:              now,
+		})
+		if err != nil {
+			return err
+		}
+		diff, err := diffProjects(before, after)
+		if err != nil {
+			return err
+		}
+		if diff.empty() {
+			return nil
+		}
+		return recordProjectUpdated(ctx, txq, now, diff, after.ID, by)
+	})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// The revision the project actually carries is read again rather
+		// than taken from `before`: the row that beat this one to the write
+		// committed after `before` was loaded, so `before`'s revision would
+		// report the number the caller already sent.
+		current, err := q.GetProject(ctx, req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("projects: re-read the project after a revision conflict: %w", err)
+		}
+		return gen.PutProjectsById409ApplicationProblemPlusJSONResponse(revisionConflict(current.Revision, body.Revision)), nil
+	case db.IsUniqueViolation(err, "ux_projects_code"):
+		return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(invalidProject(fieldError("code", codeTaken(parsed.Code)))), nil
+	case err != nil:
+		return nil, fmt.Errorf("projects: update project: %w", err)
+	}
+
+	resp, err := s.projectResponseFor(ctx, q, after, a)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutProjectsById200JSONResponse(resp), nil
+}
