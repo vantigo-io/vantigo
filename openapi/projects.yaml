@@ -195,6 +195,38 @@ components:
                 - capabilities
                 - billingLinesAvailable
             type: object
+        ProjectRoleAssignmentRequest:
+            properties:
+                role:
+                    description: "'manager', 'member' or 'viewer'."
+                    type: string
+            required:
+                - role
+            type: object
+        ProjectRoleResponse:
+            description: One user's role on one project. active is the user directory's answer, not the assignment's — a disabled account keeps the role it was given and is reported inactive.
+            properties:
+                active:
+                    description: Whether the user can still act. A user the directory no longer knows is reported inactive and named 'Unknown user'.
+                    type: boolean
+                createdAt:
+                    format: date-time
+                    type: string
+                displayName:
+                    type: string
+                role:
+                    description: "'manager', 'member' or 'viewer'."
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - active
+                - role
+                - createdAt
+            type: object
         ProjectStatusChangeRequest:
             properties:
                 status:
@@ -582,6 +614,180 @@ paths:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Conflict — the supplied revision is not the project's current one.
             summary: Update a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/assignable-users:
+        get:
+            operationId: getProjectsByIdAssignableUsers
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Matches the user's display name, case-insensitively. Absent or empty answers the first users assignable to this project.
+                  in: query
+                  name: search
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProjectPersonSummary'
+                                type: array
+                    description: OK — at most 20 active users, none of whom already holds a role on this project.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+            summary: Search users assignable to a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/roles:
+        get:
+            operationId: getProjectsByIdRoles
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ProjectRoleResponse'
+                                type: array
+                    description: OK — managers first, then by display name.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+            summary: List a project's people
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/roles/{userId}:
+        delete:
+            operationId: deleteProjectsByIdRolesByUserId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "204":
+                    description: No Content
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, the caller holds no role on it and no view-all/manage-all permission, or the user holds no role on it.
+            summary: Remove a user's role on a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        put:
+            operationId: putProjectsByIdRolesByUserId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ProjectRoleAssignmentRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectRoleResponse'
+                    description: OK — the assignment as it now stands, whether it was added, changed or already what was asked for.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+            summary: Add or change a user's role on a project
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access

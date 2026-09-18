@@ -115,6 +115,24 @@ type ProjectResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// ProjectRoleAssignmentRequest defines model for ProjectRoleAssignmentRequest.
+type ProjectRoleAssignmentRequest struct {
+	// Role 'manager', 'member' or 'viewer'.
+	Role string `json:"role"`
+}
+
+// ProjectRoleResponse One user's role on one project. active is the user directory's answer, not the assignment's — a disabled account keeps the role it was given and is reported inactive.
+type ProjectRoleResponse struct {
+	// Active Whether the user can still act. A user the directory no longer knows is reported inactive and named 'Unknown user'.
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"createdAt"`
+	DisplayName string    `json:"displayName"`
+
+	// Role 'manager', 'member' or 'viewer'.
+	Role   string             `json:"role"`
+	UserId openapi_types.UUID `json:"userId"`
+}
+
 // ProjectStatusChangeRequest defines model for ProjectStatusChangeRequest.
 type ProjectStatusChangeRequest struct {
 	// Status 'planned', 'active', 'on-hold', 'completed' or 'cancelled'. Any transition is allowed, reopening a completed project included.
@@ -207,6 +225,12 @@ type GetProjectsCodeSuggestionParams struct {
 	Name *string `form:"name,omitempty" json:"name,omitempty"`
 }
 
+// GetProjectsByIdAssignableUsersParams defines parameters for GetProjectsByIdAssignableUsers.
+type GetProjectsByIdAssignableUsersParams struct {
+	// Search Matches the user's display name, case-insensitively. Absent or empty answers the first users assignable to this project.
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+}
+
 // GetProjectsByIdTimelineParams defines parameters for GetProjectsByIdTimeline.
 type GetProjectsByIdTimelineParams struct {
 	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
@@ -218,6 +242,9 @@ type PostProjectsJSONRequestBody = ProjectCreateRequest
 
 // PutProjectsByIdJSONRequestBody defines body for PutProjectsById for application/json ContentType.
 type PutProjectsByIdJSONRequestBody = ProjectUpdateRequest
+
+// PutProjectsByIdRolesByUserIdJSONRequestBody defines body for PutProjectsByIdRolesByUserId for application/json ContentType.
+type PutProjectsByIdRolesByUserIdJSONRequestBody = ProjectRoleAssignmentRequest
 
 // PutProjectsByIdStatusJSONRequestBody defines body for PutProjectsByIdStatus for application/json ContentType.
 type PutProjectsByIdStatusJSONRequestBody = ProjectStatusChangeRequest
@@ -239,6 +266,18 @@ type ServerInterface interface {
 	// PutProjectsById Update a project
 	// (PUT /api/v1/projects/{id})
 	PutProjectsById(w http.ResponseWriter, r *http.Request, id int32)
+	// GetProjectsByIdAssignableUsers Search users assignable to a project
+	// (GET /api/v1/projects/{id}/assignable-users)
+	GetProjectsByIdAssignableUsers(w http.ResponseWriter, r *http.Request, id int32, params GetProjectsByIdAssignableUsersParams)
+	// GetProjectsByIdRoles List a project's people
+	// (GET /api/v1/projects/{id}/roles)
+	GetProjectsByIdRoles(w http.ResponseWriter, r *http.Request, id int32)
+	// DeleteProjectsByIdRolesByUserId Remove a user's role on a project
+	// (DELETE /api/v1/projects/{id}/roles/{userId})
+	DeleteProjectsByIdRolesByUserId(w http.ResponseWriter, r *http.Request, id int32, userId openapi_types.UUID)
+	// PutProjectsByIdRolesByUserId Add or change a user's role on a project
+	// (PUT /api/v1/projects/{id}/roles/{userId})
+	PutProjectsByIdRolesByUserId(w http.ResponseWriter, r *http.Request, id int32, userId openapi_types.UUID)
 	// PutProjectsByIdStatus Change a project's status
 	// (PUT /api/v1/projects/{id}/status)
 	PutProjectsByIdStatus(w http.ResponseWriter, r *http.Request, id int32)
@@ -479,6 +518,144 @@ func (siw *ServerInterfaceWrapper) PutProjectsById(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetProjectsByIdAssignableUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsByIdAssignableUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsByIdAssignableUsersParams
+
+	// ------------- Optional query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsByIdAssignableUsers(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsByIdRoles operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsByIdRoles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsByIdRoles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteProjectsByIdRolesByUserId operation middleware
+func (siw *ServerInterfaceWrapper) DeleteProjectsByIdRolesByUserId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteProjectsByIdRolesByUserId(w, r, id, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsByIdRolesByUserId operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsByIdRolesByUserId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "userId" -------------
+	var userId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", r.PathValue("userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsByIdRolesByUserId(w, r, id, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutProjectsByIdStatus operation middleware
 func (siw *ServerInterfaceWrapper) PutProjectsByIdStatus(w http.ResponseWriter, r *http.Request) {
 
@@ -685,6 +862,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/code-suggestion", wrapper.GetProjectsCodeSuggestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.GetProjectsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.PutProjectsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/assignable-users", wrapper.GetProjectsByIdAssignableUsers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/roles", wrapper.GetProjectsByIdRoles)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{id}/roles/{userId}", wrapper.DeleteProjectsByIdRolesByUserId)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/roles/{userId}", wrapper.PutProjectsByIdRolesByUserId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/status", wrapper.PutProjectsByIdStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/timeline", wrapper.GetProjectsByIdTimeline)
 
@@ -1028,6 +1209,264 @@ func (response PutProjectsById409ApplicationProblemPlusJSONResponse) VisitPutPro
 	return err
 }
 
+type GetProjectsByIdAssignableUsersRequestObject struct {
+	Id     int32 `json:"id"`
+	Params GetProjectsByIdAssignableUsersParams
+}
+
+type GetProjectsByIdAssignableUsersResponseObject interface {
+	VisitGetProjectsByIdAssignableUsersResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsByIdAssignableUsers200JSONResponse []ProjectPersonSummary
+
+func (response GetProjectsByIdAssignableUsers200JSONResponse) VisitGetProjectsByIdAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdAssignableUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdAssignableUsers401JSONResponse) VisitGetProjectsByIdAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdAssignableUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdAssignableUsers403JSONResponse) VisitGetProjectsByIdAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdAssignableUsers404Response struct {
+}
+
+func (response GetProjectsByIdAssignableUsers404Response) VisitGetProjectsByIdAssignableUsersResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetProjectsByIdRolesRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetProjectsByIdRolesResponseObject interface {
+	VisitGetProjectsByIdRolesResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsByIdRoles200JSONResponse []ProjectRoleResponse
+
+func (response GetProjectsByIdRoles200JSONResponse) VisitGetProjectsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdRoles401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdRoles401JSONResponse) VisitGetProjectsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdRoles403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdRoles403JSONResponse) VisitGetProjectsByIdRolesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdRoles404Response struct {
+}
+
+func (response GetProjectsByIdRoles404Response) VisitGetProjectsByIdRolesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type DeleteProjectsByIdRolesByUserIdRequestObject struct {
+	Id     int32              `json:"id"`
+	UserId openapi_types.UUID `json:"userId"`
+}
+
+type DeleteProjectsByIdRolesByUserIdResponseObject interface {
+	VisitDeleteProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteProjectsByIdRolesByUserId204Response struct {
+}
+
+func (response DeleteProjectsByIdRolesByUserId204Response) VisitDeleteProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response DeleteProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse) VisitDeleteProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsByIdRolesByUserId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsByIdRolesByUserId401JSONResponse) VisitDeleteProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsByIdRolesByUserId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteProjectsByIdRolesByUserId403JSONResponse) VisitDeleteProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteProjectsByIdRolesByUserId404Response struct {
+}
+
+func (response DeleteProjectsByIdRolesByUserId404Response) VisitDeleteProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsByIdRolesByUserIdRequestObject struct {
+	Id     int32              `json:"id"`
+	UserId openapi_types.UUID `json:"userId"`
+	Body   *PutProjectsByIdRolesByUserIdJSONRequestBody
+}
+
+type PutProjectsByIdRolesByUserIdResponseObject interface {
+	VisitPutProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsByIdRolesByUserId200JSONResponse ProjectRoleResponse
+
+func (response PutProjectsByIdRolesByUserId200JSONResponse) VisitPutProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsByIdRolesByUserId400ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdRolesByUserId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdRolesByUserId401JSONResponse) VisitPutProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdRolesByUserId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdRolesByUserId403JSONResponse) VisitPutProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdRolesByUserId404Response struct {
+}
+
+func (response PutProjectsByIdRolesByUserId404Response) VisitPutProjectsByIdRolesByUserIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type PutProjectsByIdStatusRequestObject struct {
 	Id   int32 `json:"id"`
 	Body *PutProjectsByIdStatusJSONRequestBody
@@ -1191,6 +1630,18 @@ type StrictServerInterface interface {
 	// PutProjectsById Update a project
 	// (PUT /api/v1/projects/{id})
 	PutProjectsById(ctx context.Context, request PutProjectsByIdRequestObject) (PutProjectsByIdResponseObject, error)
+	// GetProjectsByIdAssignableUsers Search users assignable to a project
+	// (GET /api/v1/projects/{id}/assignable-users)
+	GetProjectsByIdAssignableUsers(ctx context.Context, request GetProjectsByIdAssignableUsersRequestObject) (GetProjectsByIdAssignableUsersResponseObject, error)
+	// GetProjectsByIdRoles List a project's people
+	// (GET /api/v1/projects/{id}/roles)
+	GetProjectsByIdRoles(ctx context.Context, request GetProjectsByIdRolesRequestObject) (GetProjectsByIdRolesResponseObject, error)
+	// DeleteProjectsByIdRolesByUserId Remove a user's role on a project
+	// (DELETE /api/v1/projects/{id}/roles/{userId})
+	DeleteProjectsByIdRolesByUserId(ctx context.Context, request DeleteProjectsByIdRolesByUserIdRequestObject) (DeleteProjectsByIdRolesByUserIdResponseObject, error)
+	// PutProjectsByIdRolesByUserId Add or change a user's role on a project
+	// (PUT /api/v1/projects/{id}/roles/{userId})
+	PutProjectsByIdRolesByUserId(ctx context.Context, request PutProjectsByIdRolesByUserIdRequestObject) (PutProjectsByIdRolesByUserIdResponseObject, error)
 	// PutProjectsByIdStatus Change a project's status
 	// (PUT /api/v1/projects/{id}/status)
 	PutProjectsByIdStatus(ctx context.Context, request PutProjectsByIdStatusRequestObject) (PutProjectsByIdStatusResponseObject, error)
@@ -1373,6 +1824,120 @@ func (sh *strictHandler) PutProjectsById(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProjectsByIdResponseObject); ok {
 		if err := validResponse.VisitPutProjectsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsByIdAssignableUsers operation middleware
+func (sh *strictHandler) GetProjectsByIdAssignableUsers(w http.ResponseWriter, r *http.Request, id int32, params GetProjectsByIdAssignableUsersParams) {
+	var request GetProjectsByIdAssignableUsersRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsByIdAssignableUsers(ctx, request.(GetProjectsByIdAssignableUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsByIdAssignableUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsByIdAssignableUsersResponseObject); ok {
+		if err := validResponse.VisitGetProjectsByIdAssignableUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsByIdRoles operation middleware
+func (sh *strictHandler) GetProjectsByIdRoles(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetProjectsByIdRolesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsByIdRoles(ctx, request.(GetProjectsByIdRolesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsByIdRoles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsByIdRolesResponseObject); ok {
+		if err := validResponse.VisitGetProjectsByIdRolesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteProjectsByIdRolesByUserId operation middleware
+func (sh *strictHandler) DeleteProjectsByIdRolesByUserId(w http.ResponseWriter, r *http.Request, id int32, userId openapi_types.UUID) {
+	var request DeleteProjectsByIdRolesByUserIdRequestObject
+
+	request.Id = id
+	request.UserId = userId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteProjectsByIdRolesByUserId(ctx, request.(DeleteProjectsByIdRolesByUserIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteProjectsByIdRolesByUserId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteProjectsByIdRolesByUserIdResponseObject); ok {
+		if err := validResponse.VisitDeleteProjectsByIdRolesByUserIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsByIdRolesByUserId operation middleware
+func (sh *strictHandler) PutProjectsByIdRolesByUserId(w http.ResponseWriter, r *http.Request, id int32, userId openapi_types.UUID) {
+	var request PutProjectsByIdRolesByUserIdRequestObject
+
+	request.Id = id
+	request.UserId = userId
+
+	var body PutProjectsByIdRolesByUserIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsByIdRolesByUserId(ctx, request.(PutProjectsByIdRolesByUserIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsByIdRolesByUserId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsByIdRolesByUserIdResponseObject); ok {
+		if err := validResponse.VisitPutProjectsByIdRolesByUserIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
