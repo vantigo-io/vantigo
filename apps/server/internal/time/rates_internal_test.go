@@ -65,6 +65,7 @@ func TestResolveRates(t *testing.T) {
 	withCard := uuid.New()    // bill 1100 / cost 650 NOK from January, 1200 / 700 from 15 September
 	costOnly := uuid.New()    // a card with a cost rate and no bill rate
 	withoutCard := uuid.New() // no rate card at all
+	euroCard := uuid.New()    // bill 1000 / cost 500 EUR
 	for _, row := range []struct {
 		user       uuid.UUID
 		from       string
@@ -74,6 +75,7 @@ func TestResolveRates(t *testing.T) {
 		{withCard, "2026-01-01", 1100.0, 650.0, "NOK"},
 		{withCard, "2026-09-15", 1200.0, 700.0, "NOK"},
 		{costOnly, "2026-01-01", nil, 500.0, "SEK"},
+		{euroCard, "2026-01-01", 1000.0, 500.0, "EUR"},
 	} {
 		if _, err := pool.Exec(ctx, `INSERT INTO time.person_rates (user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at)
 		                             VALUES ($1, $2::date, $3::numeric, $4::numeric, $5, now(), now())`,
@@ -85,6 +87,7 @@ func TestResolveRates(t *testing.T) {
 	nok := contracts.ProjectEntry{ID: 1, Code: "P1", Currency: text("NOK"), DefaultBillRate: float(900), BillingType: "time-and-materials"}
 	noDefault := contracts.ProjectEntry{ID: 2, Code: "P2", Currency: text("NOK"), BillingType: "time-and-materials"}
 	noCurrency := contracts.ProjectEntry{ID: 3, Code: "P3", DefaultBillRate: float(900), BillingType: "time-and-materials"}
+	euro := contracts.ProjectEntry{ID: 4, Code: "P4", Currency: text("EUR"), BillingType: "time-and-materials"}
 	fixed := &contracts.BillingLineEntry{ID: 10, PricingMode: "fixed", FixedAmount: float(1500), VariantID: 7, Active: true}
 	list := &contracts.BillingLineEntry{ID: 11, PricingMode: "list", VariantID: 7, Active: true}
 	discount := &contracts.BillingLineEntry{ID: 12, PricingMode: "discount", DiscountPercent: float(12.5), VariantID: 7, Active: true}
@@ -117,6 +120,9 @@ func TestResolveRates(t *testing.T) {
 		"person card without a bill rate":                            {catalog(), costOnly, true, noDefault, nil, "2026-09-14", "none", nil, nil, float(500), text("SEK")},
 		"no card before the first one":                               {catalog(), withCard, true, noDefault, nil, "2025-12-31", "none", nil, nil, nil, nil},
 		"no rate anywhere":                                           {catalog(), withoutCard, true, noDefault, nil, "2026-09-14", "none", nil, nil, nil, nil},
+		"NOK card on a EUR project is no rate":                       {catalog(), withCard, true, euro, nil, "2026-09-14", "none", nil, nil, float(650), text("NOK")},
+		"EUR card on a EUR project":                                  {catalog(), euroCard, true, euro, nil, "2026-09-14", "person", float(1000), text("EUR"), float(500), text("EUR")},
+		"card on a currency-less project takes the card's currency":  {catalog(), euroCard, true, noCurrency, nil, "2026-09-14", "person", float(1000), text("EUR"), float(500), text("EUR")},
 		"not billable, cost still resolved":                          {catalog(), withCard, false, nok, fixed, "2026-09-14", "none", nil, nil, float(650), text("NOK")},
 	} {
 		deps := module.Deps{}
@@ -179,4 +185,47 @@ func show[T any](p *T) any {
 		return "<nil>"
 	}
 	return *p
+}
+
+// TestDiscounted is the discount arithmetic done in exact decimal and
+// rounded half up to cents: in float64 the half-cent results below land a
+// hair under the half and round down (101.10 at 15 % came out 85.93).
+func TestDiscounted(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		list, percent, want float64
+	}{
+		{101.10, 15, 85.94},      // 85.935
+		{100.50, 33, 67.34},      // 67.335
+		{101.30, 15, 86.11},      // 86.105
+		{1333.33, 12.5, 1166.66}, // 1166.66375
+		{1600, 10, 1440},
+		{1600, 100, 0},
+		{0.01, 50, 0.01}, // 0.005
+	} {
+		if got := discounted(tc.list, tc.percent); got != tc.want {
+			t.Errorf("discounted(%v, %v) = %v, want %v", tc.list, tc.percent, got, tc.want)
+		}
+	}
+}
+
+// TestResolveRates_DiscountLine_HalfCentRoundsUp is TestDiscounted through
+// the chain, so the line step cannot quietly go back to float arithmetic.
+func TestResolveRates_DiscountLine_HalfCentRoundsUp(t *testing.T) {
+	t.Parallel()
+	pool, _ := testdb.Migrated(t)
+	s := newServer(module.Deps{Products: &priceList{prices: map[string]float64{"NOK": 101.10}}})
+
+	got, err := s.resolveRates(context.Background(), store.New(pool), rateRequest{
+		UserID: uuid.New(), Billable: true,
+		Project: contracts.ProjectEntry{Currency: text("NOK")},
+		Line:    &contracts.BillingLineEntry{PricingMode: "discount", DiscountPercent: float(15), VariantID: 7, Active: true},
+		Date:    date(t, "2026-09-14"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != "line" || !equalPtr(got.BillRate, float(85.94)) {
+		t.Errorf("rate = %s %v, want line 85.94", got.Source, show(got.BillRate))
+	}
 }

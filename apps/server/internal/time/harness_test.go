@@ -70,12 +70,18 @@ func newTimeHarness(t *testing.T, catalog *fakeCatalog, opts ...modtest.Option) 
 //   - 1002 is active and non-billable, so billable is forced false on it;
 //   - 1003 is completed, so nobody may log time on it;
 //   - 1004 is active, in EUR, with no default bill rate, so an entry without
-//     a line falls through to the person's rate.
+//     a line falls through to the person's rate — when the person's card is
+//     in EUR too;
+//   - 1005 is active and fixed-price, in NOK, which is billable by default;
+//   - 1006 is active, time and materials, with no currency at all, so a
+//     person-priced entry takes the card's currency.
 const (
 	projectKraftVerket = 1001
 	projectInternal    = 1002
 	projectCompleted   = 1003
 	projectEuro        = 1004
+	projectFixedPrice  = 1005
+	projectNoCurrency  = 1006
 	projectUnknown     = 9999
 
 	projectKraftVerketCode = "KVEM1000"
@@ -156,6 +162,15 @@ func newFakeProjects() *fakeProjects {
 				ID: projectEuro, Code: "EURO2026", Name: "Euro-prosjektet",
 				CustomerID: &customer, Status: "active", OpenForWork: true, BillingType: "time-and-materials",
 				Currency: ptr("EUR"),
+			},
+			projectFixedPrice: {
+				ID: projectFixedPrice, Code: "FAST2026", Name: "Fastprisprosjektet",
+				CustomerID: &customer, Status: "active", OpenForWork: true, BillingType: "fixed-price",
+				Currency: ptr("NOK"),
+			},
+			projectNoCurrency: {
+				ID: projectNoCurrency, Code: "UTENVAL", Name: "Prosjekt uten valuta",
+				CustomerID: &customer, Status: "active", OpenForWork: true, BillingType: "time-and-materials",
 			},
 		},
 		lines: map[int32]contracts.BillingLineEntry{

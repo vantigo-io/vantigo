@@ -272,8 +272,12 @@ func (s *server) DeleteTimeEntriesById(ctx context.Context, req gen.DeleteTimeEn
 	if deleted == 0 {
 		// Something committed between the read and the delete: a concurrent
 		// delete (the entry is gone) or a submit (it is no longer a draft).
-		if _, err := q.GetEntry(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+		_, err := q.GetEntry(ctx, req.Id)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return gen.DeleteTimeEntriesById404Response{}, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("time: re-read entry after a delete that removed nothing: %w", err)
 		}
 		return gen.DeleteTimeEntriesById403JSONResponse(forbidden()), nil
 	}
