@@ -376,7 +376,7 @@ func TestGetTimeEntriesById_Visibility(t *testing.T) {
 	viewer, _ := signInAs(t, h, projectKraftVerket, roleViewer)
 	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
 	viewAll, _ := signIn(t, h, "time:view-all")
-	outsider, _ := signIn(t, h, "time:approve", "projects:view-financials")
+	outsider, _ := signIn(t, h, "projects:view-financials", "projects:view-all")
 
 	e := createEntry(t, owner, map[string]any{"billingLineId": lineFixed})
 
@@ -421,6 +421,37 @@ func TestGetTimeEntriesById_Visibility(t *testing.T) {
 	}
 	if len(cost) != 0 {
 		t.Errorf("view-all: cost = %v, want it present and empty for a person with no cost rate", cost)
+	}
+}
+
+// time:approve and time:manage see every entry too: an approver has to see
+// what they approve, and time:manage what it unapproves. Neither grants the
+// bill rate on its own (D8); time:manage carries the cost rate.
+func TestGetTimeEntriesById_TimeApproveAndTimeManage_SeeEveryEntry(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	approver, _ := signIn(t, h, "time:approve")
+	manager, _ := signIn(t, h, "time:manage")
+	member, _ := signInAs(t, h, projectKraftVerket, roleMember, "projects:manage-all")
+
+	e := createEntry(t, owner, map[string]any{"billingLineId": lineFixed})
+
+	got := getEntry(t, approver, e.Id)
+	if got.Billing != nil || got.Cost != nil {
+		t.Errorf("approver: billing/cost = %+v/%+v, want both absent", got.Billing, got.Cost)
+	}
+	if got.Capabilities.CanEdit || got.Capabilities.CanSubmit || got.Capabilities.CanApprove {
+		t.Errorf("approver: capabilities = %+v, want nothing to do with a draft", got.Capabilities)
+	}
+	got = getEntry(t, manager, e.Id)
+	if got.Billing != nil || got.Cost == nil {
+		t.Errorf("time:manage: billing/cost = %+v/%+v, want no billing and the cost block", got.Billing, got.Cost)
+	}
+	// Another member stays out, whatever projects grants them: seeing a
+	// project's money is not seeing its people's time.
+	if r := member.Do(http.MethodGet, entryPath(e.Id), nil); r.Status != http.StatusNotFound {
+		t.Errorf("member with projects:manage-all: %d, want 404", r.Status)
 	}
 }
 

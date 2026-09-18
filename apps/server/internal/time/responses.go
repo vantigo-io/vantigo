@@ -173,6 +173,30 @@ func (s *server) entryResponseFor(ctx context.Context, row store.TimeEntry, a en
 	return entryResponse(row, a, names)
 }
 
+// entryResponses renders a set of rows for one caller: the names resolved
+// once for all of them (namesFor), the access resolved per row through the
+// caller's cached roles, so a page of entries on one project asks the
+// directory about it once.
+func (s *server) entryResponses(ctx context.Context, c *caller, rows []store.TimeEntry) ([]gen.TimeEntryResponse, error) {
+	names, err := s.namesFor(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gen.TimeEntryResponse, 0, len(rows))
+	for _, row := range rows {
+		a, err := s.entryAccess(ctx, c, row)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := entryResponse(row, a, names)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, resp)
+	}
+	return out, nil
+}
+
 // trackableCode is the pair an entry quotes its line by — the project's code
 // and the line's, joined with a hyphen ('KVEM1000-PM') — computed the way
 // projects computes it (D2/D9 of the projects design), from the codes as they

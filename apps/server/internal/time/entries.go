@@ -4,19 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/time/gen"
 	"github.com/vantigo-io/vantigo/server/internal/time/store"
 )
 
-// This file is the time entries' CRUD. Create, get and delete live here; the
-// list and the update join them as they are built.
+// This file is the time entries' CRUD: create, list, get, update and delete.
+// Submitting them is weeks.go's.
 
 // dayLockClass is the class every per-person-per-day advisory lock is taken
 // in ("TDAY"), with a hash of the person and the day as the object. Postgres
@@ -280,16 +284,22 @@ func (s *server) DeleteTimeEntriesById(ctx context.Context, req gen.DeleteTimeEn
 // found=false both for an unknown id and for an entry the caller may not see,
 // so the two can never be told apart.
 func (s *server) visibleEntry(ctx context.Context, q *store.Queries, id int64) (store.TimeEntry, entryAccess, bool, error) {
+	c, err := s.callerFor(ctx, q)
+	if err != nil {
+		return store.TimeEntry{}, entryAccess{}, false, err
+	}
+	return s.visibleEntryFor(ctx, q, c, id)
+}
+
+// visibleEntryFor is visibleEntry for a handler that already holds its
+// caller.
+func (s *server) visibleEntryFor(ctx context.Context, q *store.Queries, c *caller, id int64) (store.TimeEntry, entryAccess, bool, error) {
 	row, err := q.GetEntry(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.TimeEntry{}, entryAccess{}, false, nil
 	}
 	if err != nil {
 		return store.TimeEntry{}, entryAccess{}, false, fmt.Errorf("time: get entry: %w", err)
-	}
-	c, err := s.callerFor(ctx, q)
-	if err != nil {
-		return store.TimeEntry{}, entryAccess{}, false, err
 	}
 	a, err := s.entryAccess(ctx, c, row)
 	if err != nil {
@@ -299,4 +309,285 @@ func (s *server) visibleEntry(ctx context.Context, q *store.Queries, id int64) (
 		return store.TimeEntry{}, entryAccess{}, false, nil
 	}
 	return row, a, true, nil
+}
+
+// requestFromUpdate is an update body without its revision: the fields an
+// entry stands with, which parseEntry validates the same for both saves.
+func requestFromUpdate(body gen.TimeEntryUpdateRequest) gen.TimeEntryRequest {
+	return gen.TimeEntryRequest{
+		ProjectId:     body.ProjectId,
+		BillingLineId: body.BillingLineId,
+		TaskId:        body.TaskId,
+		EntryDate:     body.EntryDate,
+		Hours:         body.Hours,
+		StartTime:     body.StartTime,
+		EndTime:       body.EndTime,
+		Note:          body.Note,
+		Billable:      body.Billable,
+	}
+}
+
+// editable reports whether an entry in status is still its owner's to
+// change (D7, D10).
+func editable(status string) bool {
+	return status == statusDraft || status == statusRejected
+}
+
+// PutTimeEntriesById Update a time entry
+// (PUT /api/v1/time/entries/{id})
+//
+// A full replace, by the entry's owner, while it is a draft or rejected and
+// not before the lock unless the caller holds time:manage — exactly
+// capabilities.canEdit — held to every rule a create is held to, with its
+// rates resolved again (D3). A save always leaves a draft: a rejected entry
+// returns to draft with its reason cleared.
+//
+// The refusals come in the order that tells the caller least about what they
+// may not touch: an entry they may not see is the unknown id's 404, one they
+// may see but not change the access layer's 403, and only then are the body's
+// fields judged (400). Inside the transaction the entry's row is locked and
+// read again: a submit that committed since the handler read it answers 403,
+// an edit that did answers 409 — the status first, because a caller holding a
+// stale revision of an entry that has been submitted can do nothing with a
+// fresher one either. The day cap is decided last, under the day lock, with
+// the entry's own hours left out of the day's sum.
+func (s *server) PutTimeEntriesById(ctx context.Context, req gen.PutTimeEntriesByIdRequestObject) (gen.PutTimeEntriesByIdResponseObject, error) {
+	body := gen.TimeEntryUpdateRequest{}
+	if req.Body != nil {
+		body = *req.Body
+	}
+
+	q := store.New(s.deps.Pool)
+	c, err := s.callerFor(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	_, a, found, err := s.visibleEntryFor(ctx, q, c, req.Id)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return gen.PutTimeEntriesById404Response{}, nil
+	}
+	if !a.CanEdit {
+		return gen.PutTimeEntriesById403JSONResponse(forbidden()), nil
+	}
+
+	parsed, errs := parseEntry(requestFromUpdate(body))
+	refs, errs, err := s.checkReferences(ctx, c.UserID, parsed, errs)
+	if err != nil {
+		return nil, err
+	}
+	if !parsed.Date.IsZero() && c.locked(parsed.Date) && !c.Manage {
+		errs = withFieldError(errs, "entryDate", lockedBeforeMessage(*c.LockedBefore))
+	}
+	if len(errs) > 0 {
+		return gen.PutTimeEntriesById400ApplicationProblemPlusJSONResponse(invalidEntry(errs)), nil
+	}
+
+	billable := resolveBillable(refs.Project.BillingType, parsed.Billable)
+	rates, err := s.resolveRates(ctx, q, rateRequest{
+		UserID: c.UserID, Billable: billable, Project: refs.Project, Line: refs.Line, Date: parsed.Date,
+	})
+	if err != nil {
+		return nil, err
+	}
+	billRate, err := numericFromFloatPtr(rates.BillRate)
+	if err != nil {
+		return nil, err
+	}
+	costRate, err := numericFromFloatPtr(rates.CostRate)
+	if err != nil {
+		return nil, err
+	}
+
+	now := s.deps.Clock()
+	var (
+		updated  store.TimeEntry
+		gone     bool
+		settled  bool   // no longer a draft or rejected
+		conflict *int32 // the revision the entry has moved on to
+		capMsg   string
+	)
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		current, err := txq.LockEntry(ctx, req.Id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			gone = true
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("time: lock entry: %w", err)
+		}
+		switch {
+		case !editable(current.Status):
+			settled = true
+			return nil
+		case current.Revision != body.Revision:
+			conflict = &current.Revision
+			return nil
+		}
+		id := current.ID
+		msg, err := checkDayCap(ctx, txq, c.UserID, parsed.Date, parsed.HoursCents, &id)
+		if err != nil {
+			return err
+		}
+		if msg != "" {
+			capMsg = msg
+			return nil
+		}
+		updated, err = txq.UpdateEntry(ctx, store.UpdateEntryParams{
+			ID:            current.ID,
+			Revision:      body.Revision,
+			ProjectID:     parsed.ProjectID,
+			BillingLineID: parsed.LineID,
+			TaskID:        parsed.TaskID,
+			TaskTitle:     refs.TaskTitle,
+			EntryDate:     pgDate(parsed.Date),
+			Hours:         numericFromCents(parsed.HoursCents),
+			StartTime:     timeFromMinutes(parsed.Start),
+			EndTime:       timeFromMinutes(parsed.End),
+			Note:          parsed.Note,
+			Billable:      billable,
+			BillRate:      billRate,
+			BillCurrency:  rates.BillCurrency,
+			CostRate:      costRate,
+			CostCurrency:  rates.CostCurrency,
+			RateSource:    rates.Source,
+			Now:           now,
+		})
+		return err
+	})
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("time: update entry: %w", err)
+	case gone:
+		return gen.PutTimeEntriesById404Response{}, nil
+	case settled:
+		return gen.PutTimeEntriesById403JSONResponse(forbidden()), nil
+	case conflict != nil:
+		return gen.PutTimeEntriesById409ApplicationProblemPlusJSONResponse(revisionConflict(*conflict, body.Revision)), nil
+	case capMsg != "":
+		return gen.PutTimeEntriesById400ApplicationProblemPlusJSONResponse(invalidEntry(fieldError("hours", capMsg))), nil
+	}
+
+	a, err = s.entryAccess(ctx, c, updated)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.entryResponseFor(ctx, updated, a)
+	if err != nil {
+		return nil, err
+	}
+	return gen.PutTimeEntriesById200JSONResponse(resp), nil
+}
+
+// validateListParams is the list's query rules: the paging, a status from
+// the enumeration (a typo is a mistake worth reporting, not a filter that
+// matches nothing) and a weekStart that is a Monday.
+func validateListParams(p gen.GetTimeEntriesParams) []string {
+	errs := validatePageParams(p.Page, p.PageSize)
+	if p.Status != nil && *p.Status != "" && !validStatus(*p.Status) {
+		errs = append(errs, fmt.Sprintf("'status' must be one of %s, but was '%s'.", statusList(), *p.Status))
+	}
+	if p.WeekStart != nil {
+		if msg := notAMonday(p.WeekStart.Time); msg != "" {
+			errs = append(errs, fmt.Sprintf("'weekStart' must be a Monday: %s.", msg))
+		}
+	}
+	return errs
+}
+
+// GetTimeEntries List time entries
+// (GET /api/v1/time/entries)
+//
+// One person's entries, the caller's own unless userId names someone else.
+// Visibility is the query's first predicate, the same rule entryAccess
+// applies to one entry (see_all for time:view-all, time:approve and
+// time:manage; the caller's own; the projects the caller manages), so the
+// total is the number of entries the caller may see, every page is full but
+// the last, and the list never holds an entry its own read answers 404 for.
+//
+// The projects a caller manages are resolved through the project directory
+// before the query (managedProjects) rather than filtered after it, because
+// a filter after the fetch would page through rows the caller never sees.
+// Naming someone the caller can see none of — no global time permission, and
+// managing no project (or not the one filtered on) — is the access layer's
+// 403 rather than an empty page: an empty page would say "they logged
+// nothing", which the caller cannot know.
+func (s *server) GetTimeEntries(ctx context.Context, req gen.GetTimeEntriesRequestObject) (gen.GetTimeEntriesResponseObject, error) {
+	p := req.Params
+	if msgs := validateListParams(p); len(msgs) > 0 {
+		return gen.GetTimeEntries400ApplicationProblemPlusJSONResponse(
+			apicommon.Problem(invalidQueryTitle, strings.Join(msgs, " "))), nil
+	}
+	page, pageSize := pageParams(p.Page, p.PageSize)
+
+	q := store.New(s.deps.Pool)
+	c, err := s.callerFor(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	userID := c.UserID
+	if p.UserId != nil {
+		userID = *p.UserId
+	}
+	managed := []int32{}
+	if userID != c.UserID && !c.seesEveryone() {
+		if managed, err = c.managedProjects(ctx, s); err != nil {
+			return nil, err
+		}
+		if len(managed) == 0 || (p.ProjectId != nil && !slices.Contains(managed, *p.ProjectId)) {
+			return gen.GetTimeEntries403JSONResponse(forbidden()), nil
+		}
+	}
+
+	var weekStart, weekEndDate pgtype.Date
+	if p.WeekStart != nil {
+		weekStart, weekEndDate = pgDate(p.WeekStart.Time), pgDate(weekEnd(p.WeekStart.Time))
+	}
+	// An empty status is no filter, not a filter for the empty string: a
+	// frontend that clears its status dropdown sends `status=`.
+	status := p.Status
+	if status != nil && *status == "" {
+		status = nil
+	}
+	filter := store.CountEntriesParams{
+		UserID:            userID,
+		SeeAll:            c.seesEveryone(),
+		CallerID:          c.UserID,
+		ManagedProjectIds: managed,
+		WeekStart:         weekStart,
+		WeekEnd:           weekEndDate,
+		ProjectID:         p.ProjectId,
+		Status:            status,
+	}
+	total, err := q.CountEntries(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("time: count entries: %w", err)
+	}
+	rows, err := q.ListEntries(ctx, store.ListEntriesParams{
+		UserID:            filter.UserID,
+		SeeAll:            filter.SeeAll,
+		CallerID:          filter.CallerID,
+		ManagedProjectIds: filter.ManagedProjectIds,
+		WeekStart:         filter.WeekStart,
+		WeekEnd:           filter.WeekEnd,
+		ProjectID:         filter.ProjectID,
+		Status:            filter.Status,
+		PageSize:          pageSize,
+		PageOffset:        (page - 1) * pageSize,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("time: list entries: %w", err)
+	}
+
+	data, err := s.entryResponses(ctx, c, rows)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetTimeEntries200JSONResponse{
+		Data:       data,
+		Pagination: apicommon.Pagination(page, pageSize, int32(total)),
+	}, nil
 }

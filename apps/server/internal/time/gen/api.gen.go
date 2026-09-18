@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -17,6 +18,12 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
+
+// PaginatedResponseOfTimeEntryResponse defines model for PaginatedResponseOfTimeEntryResponse.
+type PaginatedResponseOfTimeEntryResponse struct {
+	Data       []TimeEntryResponse             `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
 
 // TimeEntryApprover The user who approved an entry, named for display. A user the directory no longer knows is named 'Unknown user'.
 type TimeEntryApprover struct {
@@ -137,20 +144,148 @@ type TimeEntryResponse struct {
 	UserId          openapi_types.UUID `json:"userId"`
 }
 
+// TimeEntrySubmitRequest The entries to submit, each the caller's own draft. All or nothing — one entry that may not be submitted refuses the whole request and changes nothing.
+type TimeEntrySubmitRequest struct {
+	Ids []int64 `json:"ids"`
+}
+
+// TimeEntryUpdateRequest Every field of the entry as it should stand after the update — a full replace — carrying the revision it was read at. A revision that has moved on answers 409. The rates are resolved again (D3), and a rejected entry returns to draft with its rejection reason cleared.
+type TimeEntryUpdateRequest struct {
+	// Billable Absent defaults from the project's billing type. Always false on a non-billable project, whatever is sent.
+	Billable *bool `json:"billable,omitempty"`
+
+	// BillingLineId One of the project's active billing lines.
+	BillingLineId *int32 `json:"billingLineId,omitempty"`
+
+	// EndTime HH:MM on the entry date, after startTime. Required when startTime is given.
+	EndTime *string `json:"endTime,omitempty"`
+
+	// EntryDate The day worked. Not before the lock date, unless the caller holds time:manage.
+	EntryDate openapi_types.Date `json:"entryDate"`
+
+	// Hours Greater than zero, at most 24, at most two decimals; the caller's entries on one day total at most 24.
+	Hours float64 `json:"hours"`
+
+	// Note At most 2000 characters once trimmed; a blank note is stored as none.
+	Note *string `json:"note,omitempty"`
+
+	// ProjectId A project the caller may log time on — active, and the caller holds the member or manager role on it.
+	ProjectId int32 `json:"projectId"`
+
+	// Revision The revision the caller read the entry at.
+	Revision int32 `json:"revision"`
+
+	// StartTime HH:MM on the entry date. Required when endTime is given.
+	StartTime *string `json:"startTime,omitempty"`
+
+	// TaskId A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
+	TaskId *int32 `json:"taskId,omitempty"`
+}
+
+// TimeWeekDay One day of a week row.
+type TimeWeekDay struct {
+	Date openapi_types.Date `json:"date"`
+
+	// Entries The row's entries on the day, in start time order (entries without one last), then in the order they were created.
+	Entries []TimeEntryResponse `json:"entries"`
+}
+
+// TimeWeekResponse The caller's own week, Monday to Sunday, as timesheet rows.
+type TimeWeekResponse struct {
+	// HasUnsubmittedChanges True when the week has been submitted and holds a draft entry — one added or edited back to draft since.
+	HasUnsubmittedChanges bool `json:"hasUnsubmittedChanges"`
+
+	// Rows One row per project, billing line and task the caller logged time on in the week, ordered by project code, then line code (no line first), then task title (no task first).
+	Rows []TimeWeekRow `json:"rows"`
+
+	// SubmittedAt When the week was last submitted as a whole. Absent when it never has been; submitting single entries does not submit the week.
+	SubmittedAt *time.Time `json:"submittedAt,omitempty"`
+
+	// Totals The week's hours, whatever the entries' statuses.
+	Totals TimeWeekTotals `json:"totals"`
+
+	// WeekStart The week's Monday.
+	WeekStart openapi_types.Date `json:"weekStart"`
+}
+
+// TimeWeekRow A project, billing line and task the caller logged time on in the week, with the week's seven days.
+type TimeWeekRow struct {
+	BillingLineCode *string `json:"billingLineCode,omitempty"`
+	BillingLineId   *int32  `json:"billingLineId,omitempty"`
+
+	// Days Seven days, Monday to Sunday.
+	Days        []TimeWeekDay `json:"days"`
+	ProjectCode string        `json:"projectCode"`
+	ProjectId   int32         `json:"projectId"`
+	ProjectName string        `json:"projectName"`
+	TaskId      *int32        `json:"taskId,omitempty"`
+
+	// TaskTitle The task's title as the row's latest entry snapshotted it.
+	TaskTitle *string `json:"taskTitle,omitempty"`
+
+	// TrackableCode The project's code and the billing line's joined with a hyphen ('KVEM1000-PM'). Absent when the row has no billing line.
+	TrackableCode *string `json:"trackableCode,omitempty"`
+}
+
+// TimeWeekTotals The week's hours, whatever the entries' statuses.
+type TimeWeekTotals struct {
+	// PerDay Seven totals, Monday to Sunday.
+	PerDay []float64 `json:"perDay"`
+	Week   float64   `json:"week"`
+}
+
+// GetTimeEntriesParams defines parameters for GetTimeEntries.
+type GetTimeEntriesParams struct {
+	// UserId Whose entries. Absent means the caller's own. Another person's needs time:view-all, time:approve or time:manage, or the manager role on at least one project (then only the entries on the projects the caller manages are listed) — otherwise 403.
+	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
+
+	// WeekStart A Monday; narrows the list to that week, Monday to Sunday.
+	WeekStart *openapi_types.Date `form:"weekStart,omitempty" json:"weekStart,omitempty"`
+
+	// ProjectId Narrows the list to one project. With someone else's userId, the caller must manage this project or hold time:view-all, time:approve or time:manage — otherwise 403.
+	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
+
+	// Status 'draft', 'submitted', 'approved', 'rejected' or 'invoiced'.
+	Status   *string `form:"status,omitempty" json:"status,omitempty"`
+	Page     *int32  `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // PostTimeEntriesJSONRequestBody defines body for PostTimeEntries for application/json ContentType.
 type PostTimeEntriesJSONRequestBody = TimeEntryRequest
 
+// PostTimeEntriesSubmitJSONRequestBody defines body for PostTimeEntriesSubmit for application/json ContentType.
+type PostTimeEntriesSubmitJSONRequestBody = TimeEntrySubmitRequest
+
+// PutTimeEntriesByIdJSONRequestBody defines body for PutTimeEntriesById for application/json ContentType.
+type PutTimeEntriesByIdJSONRequestBody = TimeEntryUpdateRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetTimeEntries List time entries
+	// (GET /api/v1/time/entries)
+	GetTimeEntries(w http.ResponseWriter, r *http.Request, params GetTimeEntriesParams)
 	// PostTimeEntries Log time
 	// (POST /api/v1/time/entries)
 	PostTimeEntries(w http.ResponseWriter, r *http.Request)
+	// PostTimeEntriesSubmit Submit time entries
+	// (POST /api/v1/time/entries/submit)
+	PostTimeEntriesSubmit(w http.ResponseWriter, r *http.Request)
 	// DeleteTimeEntriesById Delete a time entry
 	// (DELETE /api/v1/time/entries/{id})
 	DeleteTimeEntriesById(w http.ResponseWriter, r *http.Request, id int64)
 	// GetTimeEntriesById Get a time entry by id
 	// (GET /api/v1/time/entries/{id})
 	GetTimeEntriesById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutTimeEntriesById Update a time entry
+	// (PUT /api/v1/time/entries/{id})
+	PutTimeEntriesById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetTimeWeeksByWeekStart Get my week
+	// (GET /api/v1/time/weeks/{weekStart})
+	GetTimeWeeksByWeekStart(w http.ResponseWriter, r *http.Request, weekStart openapi_types.Date)
+	// PostTimeWeeksByWeekStartSubmit Submit my week
+	// (POST /api/v1/time/weeks/{weekStart}/submit)
+	PostTimeWeeksByWeekStartSubmit(w http.ResponseWriter, r *http.Request, weekStart openapi_types.Date)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -162,11 +297,123 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// GetTimeEntries operation middleware
+func (siw *ServerInterfaceWrapper) GetTimeEntries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTimeEntriesParams
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "weekStart" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "weekStart", r.URL.Query(), &params.WeekStart, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "weekStart"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "weekStart", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "projectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "projectId", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "projectId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTimeEntries(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostTimeEntries operation middleware
 func (siw *ServerInterfaceWrapper) PostTimeEntries(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostTimeEntries(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostTimeEntriesSubmit operation middleware
+func (siw *ServerInterfaceWrapper) PostTimeEntriesSubmit(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostTimeEntriesSubmit(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -219,6 +466,84 @@ func (siw *ServerInterfaceWrapper) GetTimeEntriesById(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetTimeEntriesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutTimeEntriesById operation middleware
+func (siw *ServerInterfaceWrapper) PutTimeEntriesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutTimeEntriesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTimeWeeksByWeekStart operation middleware
+func (siw *ServerInterfaceWrapper) GetTimeWeeksByWeekStart(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "weekStart" -------------
+	var weekStart openapi_types.Date
+
+	err = runtime.BindStyledParameterWithOptions("simple", "weekStart", r.PathValue("weekStart"), &weekStart, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "date", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "weekStart", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTimeWeeksByWeekStart(w, r, weekStart)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostTimeWeeksByWeekStartSubmit operation middleware
+func (siw *ServerInterfaceWrapper) PostTimeWeeksByWeekStartSubmit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "weekStart" -------------
+	var weekStart openapi_types.Date
+
+	err = runtime.BindStyledParameterWithOptions("simple", "weekStart", r.PathValue("weekStart"), &weekStart, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "date", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "weekStart", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostTimeWeeksByWeekStartSubmit(w, r, weekStart)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -348,11 +673,80 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/time/entries", wrapper.GetTimeEntries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/time/entries", wrapper.PostTimeEntries)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/time/entries/submit", wrapper.PostTimeEntriesSubmit)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/time/entries/{id}", wrapper.DeleteTimeEntriesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/time/entries/{id}", wrapper.GetTimeEntriesById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/time/entries/{id}", wrapper.PutTimeEntriesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/time/weeks/{weekStart}", wrapper.GetTimeWeeksByWeekStart)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/time/weeks/{weekStart}/submit", wrapper.PostTimeWeeksByWeekStartSubmit)
 
 	return m
+}
+
+type GetTimeEntriesRequestObject struct {
+	Params GetTimeEntriesParams
+}
+
+type GetTimeEntriesResponseObject interface {
+	VisitGetTimeEntriesResponse(w http.ResponseWriter) error
+}
+
+type GetTimeEntries200JSONResponse PaginatedResponseOfTimeEntryResponse
+
+func (response GetTimeEntries200JSONResponse) VisitGetTimeEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeEntries400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetTimeEntries400ApplicationProblemPlusJSONResponse) VisitGetTimeEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeEntries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetTimeEntries401JSONResponse) VisitGetTimeEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeEntries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetTimeEntries403JSONResponse) VisitGetTimeEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostTimeEntriesRequestObject struct {
@@ -408,6 +802,70 @@ func (response PostTimeEntries401JSONResponse) VisitPostTimeEntriesResponse(w ht
 type PostTimeEntries403JSONResponse externalRef0.AuthErrorResponse
 
 func (response PostTimeEntries403JSONResponse) VisitPostTimeEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeEntriesSubmitRequestObject struct {
+	Body *PostTimeEntriesSubmitJSONRequestBody
+}
+
+type PostTimeEntriesSubmitResponseObject interface {
+	VisitPostTimeEntriesSubmitResponse(w http.ResponseWriter) error
+}
+
+type PostTimeEntriesSubmit200JSONResponse []TimeEntryResponse
+
+func (response PostTimeEntriesSubmit200JSONResponse) VisitPostTimeEntriesSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeEntriesSubmit400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostTimeEntriesSubmit400ApplicationProblemPlusJSONResponse) VisitPostTimeEntriesSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeEntriesSubmit401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostTimeEntriesSubmit401JSONResponse) VisitPostTimeEntriesSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeEntriesSubmit403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostTimeEntriesSubmit403JSONResponse) VisitPostTimeEntriesSubmitResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -529,17 +987,247 @@ func (response GetTimeEntriesById404Response) VisitGetTimeEntriesByIdResponse(w 
 	return nil
 }
 
+type PutTimeEntriesByIdRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutTimeEntriesByIdJSONRequestBody
+}
+
+type PutTimeEntriesByIdResponseObject interface {
+	VisitPutTimeEntriesByIdResponse(w http.ResponseWriter) error
+}
+
+type PutTimeEntriesById200JSONResponse TimeEntryResponse
+
+func (response PutTimeEntriesById200JSONResponse) VisitPutTimeEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTimeEntriesById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutTimeEntriesById400ApplicationProblemPlusJSONResponse) VisitPutTimeEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTimeEntriesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutTimeEntriesById401JSONResponse) VisitPutTimeEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTimeEntriesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutTimeEntriesById403JSONResponse) VisitPutTimeEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutTimeEntriesById404Response struct {
+}
+
+func (response PutTimeEntriesById404Response) VisitPutTimeEntriesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutTimeEntriesById409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutTimeEntriesById409ApplicationProblemPlusJSONResponse) VisitPutTimeEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeWeeksByWeekStartRequestObject struct {
+	WeekStart openapi_types.Date `json:"weekStart"`
+}
+
+type GetTimeWeeksByWeekStartResponseObject interface {
+	VisitGetTimeWeeksByWeekStartResponse(w http.ResponseWriter) error
+}
+
+type GetTimeWeeksByWeekStart200JSONResponse TimeWeekResponse
+
+func (response GetTimeWeeksByWeekStart200JSONResponse) VisitGetTimeWeeksByWeekStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeWeeksByWeekStart400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetTimeWeeksByWeekStart400ApplicationProblemPlusJSONResponse) VisitGetTimeWeeksByWeekStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeWeeksByWeekStart401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetTimeWeeksByWeekStart401JSONResponse) VisitGetTimeWeeksByWeekStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeWeeksByWeekStart403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetTimeWeeksByWeekStart403JSONResponse) VisitGetTimeWeeksByWeekStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeWeeksByWeekStartSubmitRequestObject struct {
+	WeekStart openapi_types.Date `json:"weekStart"`
+}
+
+type PostTimeWeeksByWeekStartSubmitResponseObject interface {
+	VisitPostTimeWeeksByWeekStartSubmitResponse(w http.ResponseWriter) error
+}
+
+type PostTimeWeeksByWeekStartSubmit200JSONResponse TimeWeekResponse
+
+func (response PostTimeWeeksByWeekStartSubmit200JSONResponse) VisitPostTimeWeeksByWeekStartSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeWeeksByWeekStartSubmit400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostTimeWeeksByWeekStartSubmit400ApplicationProblemPlusJSONResponse) VisitPostTimeWeeksByWeekStartSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeWeeksByWeekStartSubmit401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostTimeWeeksByWeekStartSubmit401JSONResponse) VisitPostTimeWeeksByWeekStartSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTimeWeeksByWeekStartSubmit403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostTimeWeeksByWeekStartSubmit403JSONResponse) VisitPostTimeWeeksByWeekStartSubmitResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetTimeEntries List time entries
+	// (GET /api/v1/time/entries)
+	GetTimeEntries(ctx context.Context, request GetTimeEntriesRequestObject) (GetTimeEntriesResponseObject, error)
 	// PostTimeEntries Log time
 	// (POST /api/v1/time/entries)
 	PostTimeEntries(ctx context.Context, request PostTimeEntriesRequestObject) (PostTimeEntriesResponseObject, error)
+	// PostTimeEntriesSubmit Submit time entries
+	// (POST /api/v1/time/entries/submit)
+	PostTimeEntriesSubmit(ctx context.Context, request PostTimeEntriesSubmitRequestObject) (PostTimeEntriesSubmitResponseObject, error)
 	// DeleteTimeEntriesById Delete a time entry
 	// (DELETE /api/v1/time/entries/{id})
 	DeleteTimeEntriesById(ctx context.Context, request DeleteTimeEntriesByIdRequestObject) (DeleteTimeEntriesByIdResponseObject, error)
 	// GetTimeEntriesById Get a time entry by id
 	// (GET /api/v1/time/entries/{id})
 	GetTimeEntriesById(ctx context.Context, request GetTimeEntriesByIdRequestObject) (GetTimeEntriesByIdResponseObject, error)
+	// PutTimeEntriesById Update a time entry
+	// (PUT /api/v1/time/entries/{id})
+	PutTimeEntriesById(ctx context.Context, request PutTimeEntriesByIdRequestObject) (PutTimeEntriesByIdResponseObject, error)
+	// GetTimeWeeksByWeekStart Get my week
+	// (GET /api/v1/time/weeks/{weekStart})
+	GetTimeWeeksByWeekStart(ctx context.Context, request GetTimeWeeksByWeekStartRequestObject) (GetTimeWeeksByWeekStartResponseObject, error)
+	// PostTimeWeeksByWeekStartSubmit Submit my week
+	// (POST /api/v1/time/weeks/{weekStart}/submit)
+	PostTimeWeeksByWeekStartSubmit(ctx context.Context, request PostTimeWeeksByWeekStartSubmitRequestObject) (PostTimeWeeksByWeekStartSubmitResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -581,6 +1269,32 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
+// GetTimeEntries operation middleware
+func (sh *strictHandler) GetTimeEntries(w http.ResponseWriter, r *http.Request, params GetTimeEntriesParams) {
+	var request GetTimeEntriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTimeEntries(ctx, request.(GetTimeEntriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTimeEntries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTimeEntriesResponseObject); ok {
+		if err := validResponse.VisitGetTimeEntriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostTimeEntries operation middleware
 func (sh *strictHandler) PostTimeEntries(w http.ResponseWriter, r *http.Request) {
 	var request PostTimeEntriesRequestObject
@@ -605,6 +1319,37 @@ func (sh *strictHandler) PostTimeEntries(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostTimeEntriesResponseObject); ok {
 		if err := validResponse.VisitPostTimeEntriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostTimeEntriesSubmit operation middleware
+func (sh *strictHandler) PostTimeEntriesSubmit(w http.ResponseWriter, r *http.Request) {
+	var request PostTimeEntriesSubmitRequestObject
+
+	var body PostTimeEntriesSubmitJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostTimeEntriesSubmit(ctx, request.(PostTimeEntriesSubmitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostTimeEntriesSubmit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostTimeEntriesSubmitResponseObject); ok {
+		if err := validResponse.VisitPostTimeEntriesSubmitResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -657,6 +1402,91 @@ func (sh *strictHandler) GetTimeEntriesById(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetTimeEntriesByIdResponseObject); ok {
 		if err := validResponse.VisitGetTimeEntriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutTimeEntriesById operation middleware
+func (sh *strictHandler) PutTimeEntriesById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutTimeEntriesByIdRequestObject
+
+	request.Id = id
+
+	var body PutTimeEntriesByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutTimeEntriesById(ctx, request.(PutTimeEntriesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutTimeEntriesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutTimeEntriesByIdResponseObject); ok {
+		if err := validResponse.VisitPutTimeEntriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTimeWeeksByWeekStart operation middleware
+func (sh *strictHandler) GetTimeWeeksByWeekStart(w http.ResponseWriter, r *http.Request, weekStart openapi_types.Date) {
+	var request GetTimeWeeksByWeekStartRequestObject
+
+	request.WeekStart = weekStart
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTimeWeeksByWeekStart(ctx, request.(GetTimeWeeksByWeekStartRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTimeWeeksByWeekStart")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTimeWeeksByWeekStartResponseObject); ok {
+		if err := validResponse.VisitGetTimeWeeksByWeekStartResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostTimeWeeksByWeekStartSubmit operation middleware
+func (sh *strictHandler) PostTimeWeeksByWeekStartSubmit(w http.ResponseWriter, r *http.Request, weekStart openapi_types.Date) {
+	var request PostTimeWeeksByWeekStartSubmitRequestObject
+
+	request.WeekStart = weekStart
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostTimeWeeksByWeekStartSubmit(ctx, request.(PostTimeWeeksByWeekStartSubmitRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostTimeWeeksByWeekStartSubmit")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostTimeWeeksByWeekStartSubmitResponseObject); ok {
+		if err := validResponse.VisitPostTimeWeeksByWeekStartSubmitResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
