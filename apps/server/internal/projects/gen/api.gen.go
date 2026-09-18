@@ -37,6 +37,11 @@ type ProjectCapabilities struct {
 	CanSeeFinancials bool `json:"canSeeFinancials"`
 }
 
+// ProjectCodeSuggestionResponse A project code nobody has used yet, derived from the customer and project names (design §4.2). The caller may type anything valid instead.
+type ProjectCodeSuggestionResponse struct {
+	Code string `json:"code"`
+}
+
 // ProjectCreateRequest defines model for ProjectCreateRequest.
 type ProjectCreateRequest struct {
 	// BillingType 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'.
@@ -193,6 +198,15 @@ type GetProjectsParams struct {
 	Mine *bool `form:"mine,omitempty" json:"mine,omitempty"`
 }
 
+// GetProjectsCodeSuggestionParams defines parameters for GetProjectsCodeSuggestion.
+type GetProjectsCodeSuggestionParams struct {
+	// CustomerId The customer the project bills to. Absent means an internal project, prefixed 'INT'.
+	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
+
+	// Name The project's working name, whose letters follow the customer prefix. Absent or empty contributes no letters.
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+}
+
 // GetProjectsByIdTimelineParams defines parameters for GetProjectsByIdTimeline.
 type GetProjectsByIdTimelineParams struct {
 	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
@@ -216,6 +230,9 @@ type ServerInterface interface {
 	// PostProjects Create a project
 	// (POST /api/v1/projects)
 	PostProjects(w http.ResponseWriter, r *http.Request)
+	// GetProjectsCodeSuggestion Suggest a project code
+	// (GET /api/v1/projects/code-suggestion)
+	GetProjectsCodeSuggestion(w http.ResponseWriter, r *http.Request, params GetProjectsCodeSuggestionParams)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(w http.ResponseWriter, r *http.Request, id int32)
@@ -355,6 +372,52 @@ func (siw *ServerInterfaceWrapper) PostProjects(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostProjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsCodeSuggestion operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsCodeSuggestion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsCodeSuggestionParams
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsCodeSuggestion(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -619,6 +682,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects", wrapper.GetProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects", wrapper.PostProjects)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/code-suggestion", wrapper.GetProjectsCodeSuggestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.GetProjectsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.PutProjectsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/status", wrapper.PutProjectsByIdStatus)
@@ -744,6 +808,70 @@ func (response PostProjects401JSONResponse) VisitPostProjectsResponse(w http.Res
 type PostProjects403JSONResponse externalRef0.AuthErrorResponse
 
 func (response PostProjects403JSONResponse) VisitPostProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsCodeSuggestionRequestObject struct {
+	Params GetProjectsCodeSuggestionParams
+}
+
+type GetProjectsCodeSuggestionResponseObject interface {
+	VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsCodeSuggestion200JSONResponse ProjectCodeSuggestionResponse
+
+func (response GetProjectsCodeSuggestion200JSONResponse) VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsCodeSuggestion400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetProjectsCodeSuggestion400ApplicationProblemPlusJSONResponse) VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsCodeSuggestion401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsCodeSuggestion401JSONResponse) VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsCodeSuggestion403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsCodeSuggestion403JSONResponse) VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -1054,6 +1182,9 @@ type StrictServerInterface interface {
 	// PostProjects Create a project
 	// (POST /api/v1/projects)
 	PostProjects(ctx context.Context, request PostProjectsRequestObject) (PostProjectsResponseObject, error)
+	// GetProjectsCodeSuggestion Suggest a project code
+	// (GET /api/v1/projects/code-suggestion)
+	GetProjectsCodeSuggestion(ctx context.Context, request GetProjectsCodeSuggestionRequestObject) (GetProjectsCodeSuggestionResponseObject, error)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(ctx context.Context, request GetProjectsByIdRequestObject) (GetProjectsByIdResponseObject, error)
@@ -1157,6 +1288,32 @@ func (sh *strictHandler) PostProjects(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostProjectsResponseObject); ok {
 		if err := validResponse.VisitPostProjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsCodeSuggestion operation middleware
+func (sh *strictHandler) GetProjectsCodeSuggestion(w http.ResponseWriter, r *http.Request, params GetProjectsCodeSuggestionParams) {
+	var request GetProjectsCodeSuggestionRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsCodeSuggestion(ctx, request.(GetProjectsCodeSuggestionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsCodeSuggestion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsCodeSuggestionResponseObject); ok {
+		if err := validResponse.VisitGetProjectsCodeSuggestionResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

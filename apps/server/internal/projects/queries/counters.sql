@@ -14,3 +14,11 @@ INSERT INTO projects.counters (counter_name, next_value)
 VALUES (@counter_name, 1001)
 ON CONFLICT (counter_name) DO UPDATE SET next_value = projects.counters.next_value + 1
 RETURNING (next_value - 1)::bigint AS allocated;
+
+-- name: PeekCounterValue :one
+-- PeekCounterValue reads a counter's next_value without allocating: the
+-- code suggestion's own read (design §4.2), which must never advance what a
+-- real create later allocates. A counter nobody has allocated from yet has
+-- no row at all, which the caller (not this query) treats as 1000 —
+-- NextCounterValue's own first-call value.
+SELECT next_value FROM projects.counters WHERE counter_name = @counter_name;

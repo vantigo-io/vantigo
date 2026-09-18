@@ -96,6 +96,24 @@ UPDATE projects.projects SET
 WHERE id = @id
 RETURNING *;
 
+-- name: RecentProjectCodesForCustomer :many
+-- RecentProjectCodesForCustomer is a customer's 20 most recently created
+-- project codes, the input to customerLetters' "does a hand-chosen prefix
+-- stick" rule (design §4.2): a customer with existing projects whose codes
+-- agree on a prefix other than the one derived from their name keeps that
+-- prefix on the next suggestion.
+SELECT code FROM projects.projects
+WHERE customer_id = @customer_id
+ORDER BY created_at DESC, id DESC
+LIMIT 20;
+
+-- name: ProjectCodeExists :one
+-- ProjectCodeExists reports whether code is already in use by any project.
+-- ux_projects_code is what actually enforces uniqueness on create; this is
+-- only the code suggestion's own check, so it can skip an already-taken
+-- candidate before offering it (design §4.2).
+SELECT EXISTS(SELECT 1 FROM projects.projects WHERE code = @code) AS taken;
+
 -- name: ManagersForProjects :many
 -- ManagersForProjects is the managers of a whole page of projects in one
 -- query, for the list's embedded `managers` — one round trip for the page

@@ -33,3 +33,19 @@ func (q *Queries) NextCounterValue(ctx context.Context, counterName string) (int
 	err := row.Scan(&allocated)
 	return allocated, err
 }
+
+const peekCounterValue = `-- name: PeekCounterValue :one
+SELECT next_value FROM projects.counters WHERE counter_name = $1
+`
+
+// PeekCounterValue reads a counter's next_value without allocating: the
+// code suggestion's own read (design §4.2), which must never advance what a
+// real create later allocates. A counter nobody has allocated from yet has
+// no row at all, which the caller (not this query) treats as 1000 —
+// NextCounterValue's own first-call value.
+func (q *Queries) PeekCounterValue(ctx context.Context, counterName string) (int64, error) {
+	row := q.db.QueryRow(ctx, peekCounterValue, counterName)
+	var next_value int64
+	err := row.Scan(&next_value)
+	return next_value, err
+}

@@ -280,6 +280,53 @@ func (q *Queries) ManagersForProjects(ctx context.Context, projectIds []int32) (
 	return items, nil
 }
 
+const projectCodeExists = `-- name: ProjectCodeExists :one
+SELECT EXISTS(SELECT 1 FROM projects.projects WHERE code = $1) AS taken
+`
+
+// ProjectCodeExists reports whether code is already in use by any project.
+// ux_projects_code is what actually enforces uniqueness on create; this is
+// only the code suggestion's own check, so it can skip an already-taken
+// candidate before offering it (design §4.2).
+func (q *Queries) ProjectCodeExists(ctx context.Context, code string) (bool, error) {
+	row := q.db.QueryRow(ctx, projectCodeExists, code)
+	var taken bool
+	err := row.Scan(&taken)
+	return taken, err
+}
+
+const recentProjectCodesForCustomer = `-- name: RecentProjectCodesForCustomer :many
+SELECT code FROM projects.projects
+WHERE customer_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 20
+`
+
+// RecentProjectCodesForCustomer is a customer's 20 most recently created
+// project codes, the input to customerLetters' "does a hand-chosen prefix
+// stick" rule (design §4.2): a customer with existing projects whose codes
+// agree on a prefix other than the one derived from their name keeps that
+// prefix on the next suggestion.
+func (q *Queries) RecentProjectCodesForCustomer(ctx context.Context, customerID *int32) ([]string, error) {
+	rows, err := q.db.Query(ctx, recentProjectCodesForCustomer, customerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, err
+		}
+		items = append(items, code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects.projects SET
     code = $1,
