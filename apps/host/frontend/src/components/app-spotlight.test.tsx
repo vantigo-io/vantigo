@@ -115,6 +115,9 @@ describe("AppSpotlight navigation authorization", () => {
     ["Create customer", "/customers"],
     ["Add product", "/products"],
     ["Create project", "/projects"],
+    // Nothing in the spotlight knows which project a new task belongs to, so
+    // the action lands on My tasks, which opens the project picker first.
+    ["Create task", "/projects/my-tasks"],
   ])("opens the create form from the %s quick action", async (label, to) => {
     const onNavigate = vi.fn();
     renderSpotlight(["*"], true, true, onNavigate);
@@ -123,6 +126,27 @@ describe("AppSpotlight navigation authorization", () => {
 
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to, search: { create: true } }));
+  });
+
+  // Creating a task needs no permission of its own — tasks follow the
+  // project's roles — but it does need the app, so projects:access alone
+  // offers it while a caller without it never sees it.
+  it("offers Create task on projects:access and hides it without", async () => {
+    renderSpotlight(["projects:access"], false, false);
+    await waitFor(() => expect(screen.getByText("Create task", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Create project", { exact: true })).not.toBeInTheDocument();
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["customers:view"], false, false);
+    await waitFor(() => expect(screen.queryByText("Create task", { exact: true })).not.toBeInTheDocument());
+  });
+
+  it("hides Create task when the projects module is not enabled", async () => {
+    renderSpotlight(["*"], true, true, undefined, ["customers", "communications", "products", "energy"]);
+
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Create task", { exact: true })).not.toBeInTheDocument();
   });
 
   it("matches sidebar navigation for a permitted owner", async () => {

@@ -41,6 +41,7 @@ import { Route as ProductsCategoriesRouteImport } from './routes/products/catego
 import { Route as ProductsTaxCategoriesRouteImport } from './routes/products/tax-categories'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
+import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
@@ -59,6 +60,7 @@ import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './route
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
 import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
+import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -221,6 +223,11 @@ const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   path: '/$projectId',
   getParentRoute: () => ProjectsRoute,
 } as any)
+const ProjectsMyTasksRoute = ProjectsMyTasksRouteImport.update({
+  id: '/my-tasks',
+  path: '/my-tasks',
+  getParentRoute: () => ProjectsRoute,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -318,6 +325,11 @@ const ProjectsProjectIdPeopleRoute = ProjectsProjectIdPeopleRouteImport.update({
   path: '/people',
   getParentRoute: () => ProjectsProjectIdRoute,
 } as any)
+const ProjectsProjectIdTasksRoute = ProjectsProjectIdTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => ProjectsProjectIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -346,6 +358,7 @@ export interface FileRoutesByFullPath {
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -366,6 +379,7 @@ export interface FileRoutesByFullPath {
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
+  '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
@@ -388,6 +402,7 @@ export interface FileRoutesByTo {
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
+  '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -408,6 +423,7 @@ export interface FileRoutesByTo {
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
+  '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
@@ -441,6 +457,7 @@ export interface FileRoutesById {
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -461,6 +478,7 @@ export interface FileRoutesById {
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
+  '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
@@ -495,6 +513,7 @@ export interface FileRouteTypes {
     | '/products/categories'
     | '/products/tax-categories'
     | '/projects/$projectId'
+    | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
     | '/workspace/invitations'
@@ -515,6 +534,7 @@ export interface FileRouteTypes {
     | '/energy/metering-points/$meteringPointId'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/people'
+    | '/projects/$projectId/tasks'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
@@ -537,6 +557,7 @@ export interface FileRouteTypes {
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
+    | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
     | '/workspace/invitations'
@@ -557,6 +578,7 @@ export interface FileRouteTypes {
     | '/energy/metering-points/$meteringPointId'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/people'
+    | '/projects/$projectId/tasks'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/energy/metering-points'
@@ -589,6 +611,7 @@ export interface FileRouteTypes {
     | '/products/categories'
     | '/products/tax-categories'
     | '/projects/$projectId'
+    | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
     | '/workspace/invitations'
@@ -609,6 +632,7 @@ export interface FileRouteTypes {
     | '/energy/metering-points/$meteringPointId'
     | '/projects/$projectId/billing'
     | '/projects/$projectId/people'
+    | '/projects/$projectId/tasks'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
@@ -862,6 +886,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
       parentRoute: typeof ProjectsRoute
     }
+    '/projects/my-tasks': {
+      id: '/projects/my-tasks'
+      path: '/my-tasks'
+      fullPath: '/projects/my-tasks'
+      preLoaderRoute: typeof ProjectsMyTasksRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
     '/settings/': {
       id: '/settings/'
       path: '/'
@@ -988,6 +1019,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdPeopleRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/tasks': {
+      id: '/projects/$projectId/tasks'
+      path: '/tasks'
+      fullPath: '/projects/$projectId/tasks'
+      preLoaderRoute: typeof ProjectsProjectIdTasksRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
   }
 }
 
@@ -1089,12 +1127,14 @@ const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
 interface ProjectsProjectIdRouteChildren {
   ProjectsProjectIdBillingRoute: typeof ProjectsProjectIdBillingRoute
   ProjectsProjectIdPeopleRoute: typeof ProjectsProjectIdPeopleRoute
+  ProjectsProjectIdTasksRoute: typeof ProjectsProjectIdTasksRoute
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
 }
 
 const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
   ProjectsProjectIdBillingRoute: ProjectsProjectIdBillingRoute,
   ProjectsProjectIdPeopleRoute: ProjectsProjectIdPeopleRoute,
+  ProjectsProjectIdTasksRoute: ProjectsProjectIdTasksRoute,
   ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
 }
 
@@ -1103,11 +1143,13 @@ const ProjectsProjectIdRouteWithChildren =
 
 interface ProjectsRouteChildren {
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
+  ProjectsMyTasksRoute: typeof ProjectsMyTasksRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
 
 const ProjectsRouteChildren: ProjectsRouteChildren = {
   ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
+  ProjectsMyTasksRoute: ProjectsMyTasksRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
 }
 

@@ -65,6 +65,7 @@ const en = {
   "dashboard.composeMessage": "Compose message",
   "dashboard.addProduct": "Add product",
   "dashboard.createProject": "Create project",
+  "dashboard.createTask": "Create task",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -132,6 +133,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.composeMessage": "Skriv melding",
   "dashboard.addProduct": "Legg til produkt",
   "dashboard.createProject": "Opprett prosjekt",
+  "dashboard.createTask": "Opprett oppgave",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;

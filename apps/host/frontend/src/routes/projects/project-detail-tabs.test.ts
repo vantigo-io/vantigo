@@ -12,7 +12,19 @@ const canSeeEverything = { canManage: true, canContribute: true, canSeeFinancial
 
 describe("project detail tab visibility", () => {
   it("shows every tab to a caller who may see the project's financial fields", () => {
-    expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual(["overview", "people", "billing"]);
+    expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual(["overview", "tasks", "people", "billing"]);
+  });
+
+  // Tasks follow the project's own roles — there is no task permission and no
+  // task capability (design §6) — so seeing the project is seeing its tasks.
+  // A viewer gets the tab and a read-only board; the package decides that from
+  // canContribute, not the host.
+  it("shows the tasks tab to anyone who sees the project, financials or not", () => {
+    expect(values(moduleKeys, [], { canManage: false, canContribute: false, canSeeFinancials: false })).toEqual([
+      "overview",
+      "tasks",
+      "people",
+    ]);
   });
 
   // The capability, not a permission, decides: the backend shapes the
@@ -22,20 +34,21 @@ describe("project detail tab visibility", () => {
   it("hides the billing tab without canSeeFinancials on this project", () => {
     expect(values(moduleKeys, ["*"], { canManage: true, canContribute: true, canSeeFinancials: false })).toEqual([
       "overview",
+      "tasks",
       "people",
     ]);
   });
 
   it("hides the billing tab while the project is still loading", () => {
-    expect(values(moduleKeys, ["*"], undefined)).toEqual(["overview", "people"]);
+    expect(values(moduleKeys, ["*"], undefined)).toEqual(["overview", "tasks", "people"]);
   });
 
-  // The three tabs of the app itself carry no module or permission gate: the
+  // The app's own tabs carry no module or permission gate: the
   // whole /projects prefix already sits behind projects:access in the
   // permission guard. The gate exists for the tabs other modules will add,
   // the way Energy adds one to the customer page.
   it("leaves the app's own tabs to the route guard rather than re-checking projects:access", () => {
-    expect(values(moduleKeys, [], canSeeEverything)).toEqual(["overview", "people", "billing"]);
-    expect(values(moduleKeys, undefined, canSeeEverything)).toEqual(["overview", "people", "billing"]);
+    expect(values(moduleKeys, [], canSeeEverything)).toEqual(["overview", "tasks", "people", "billing"]);
+    expect(values(moduleKeys, undefined, canSeeEverything)).toEqual(["overview", "tasks", "people", "billing"]);
   });
 });
