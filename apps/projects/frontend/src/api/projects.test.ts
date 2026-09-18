@@ -6,6 +6,7 @@ import {
   createProject,
   NotFoundError,
   projectQueryOptions,
+  projectSearchQueryOptions,
   projectStatsQueryOptions,
   projectsQueryOptions,
   projectTimelineQueryOptions,
@@ -51,6 +52,22 @@ describe("projectsQueryOptions", () => {
     await runQuery(projectsQueryOptions({ page: 1, search: "", status: "", internal: true, mine: false }));
 
     expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/projects?page=1&pageSize=25&internal=true");
+  });
+});
+
+describe("projectSearchQueryOptions", () => {
+  it("asks for one page of the given size and answers the rows themselves", async () => {
+    const rows = [{ id: 7, code: "KVEM1000", name: "Kverneland" }];
+    const fetchMock = stubFetch(() =>
+      Promise.resolve(jsonResponse(200, { data: rows, pagination: { page: 1, pageSize: 5, totalCount: 1 } })),
+    );
+
+    const options = projectSearchQueryOptions("kver", 5);
+    const result = await runQuery(options);
+
+    expect(options.queryKey).toEqual(["projects", "search", "kver", 5]);
+    expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/projects?search=kver&pageSize=5");
+    expect(result).toEqual(rows);
   });
 });
 

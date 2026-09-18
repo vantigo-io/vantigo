@@ -18,25 +18,14 @@ import { customersQueryOptions } from "@vantigo/customers-ui/api/customers";
 import { formatContactName } from "@vantigo/customers-ui/lib/format-contact-name";
 import { meteringPointsQueryOptions } from "@vantigo/energy-ui";
 import { useI18n } from "@vantigo/frontend-shell";
+import { projectSearchQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { useState } from "react";
 import "../i18n";
-import { request } from "../api/request";
 import { spotlightNavSections } from "../apps";
 import { hasPermissions, type ModuleKey, navSearchFor, visibleNavSections } from "../navigation";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 5;
-
-/**
- * What the spotlight needs of a project row. The list endpoint answers a whole
- * summary; the package's query options page it at the list's own size, so the
- * five rows shown here are asked for directly instead.
- */
-interface ProjectResult {
-  id: number;
-  code: string;
-  name: string;
-}
 
 interface AppSpotlightProps {
   permissions: string[] | undefined;
@@ -120,11 +109,7 @@ export const AppSpotlight = ({
     enabled: searchEnabled && canSearchMeteringPoints,
   });
   const projects = useQuery({
-    queryKey: ["spotlight", "projects", search],
-    queryFn: ({ signal }) => {
-      const query = new URLSearchParams({ search, pageSize: String(MAX_RESULTS) });
-      return request<{ data: ProjectResult[] }>(`/api/v1/projects?${query}`, { signal });
-    },
+    ...projectSearchQueryOptions(search, MAX_RESULTS),
     enabled: searchEnabled && canSearchProjects,
   });
 
@@ -134,7 +119,7 @@ export const AppSpotlight = ({
   const customerResults = searchEnabled && canSearchCustomers ? (customers.data?.data ?? []) : [];
   const contactResults = searchEnabled && canSearchContacts ? (contacts.data?.data ?? []) : [];
   const meteringPointResults = searchEnabled && canSearchMeteringPoints ? (meteringPoints.data?.data ?? []) : [];
-  const projectResults = searchEnabled && canSearchProjects ? (projects.data?.data ?? []) : [];
+  const projectResults = searchEnabled && canSearchProjects ? (projects.data ?? []) : [];
 
   const isSearching =
     searchEnabled && (customers.isFetching || contacts.isFetching || meteringPoints.isFetching || projects.isFetching);

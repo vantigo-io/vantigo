@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { ProjectSummary } from "../api/projects";
 import { stubFetch } from "../test/fetch";
-import { routeTree } from "../test/route-tree";
+import { makeRouteTree } from "../test/route-tree";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -47,14 +47,9 @@ const page = (rows: ProjectSummary[]) => ({
   },
 });
 
-const ALL_PERMISSIONS = ["projects:access", "projects:create"];
-
-const stubProjects = (list: Response, permissions: string[] = ALL_PERMISSIONS) =>
+const stubProjects = (list: Response) =>
   stubFetch((input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://localhost");
-    if (url.pathname === "/api/v1/identity/access/me") {
-      return Promise.resolve(jsonResponse(200, { permissions }));
-    }
     if (url.pathname === "/api/v1/projects/stats") {
       return Promise.resolve(jsonResponse(200, { planned: 4, active: 9, onHold: 2, completed: 11, cancelled: 1 }));
     }
@@ -65,10 +60,10 @@ const stubProjects = (list: Response, permissions: string[] = ALL_PERMISSIONS) =
     return Promise.resolve(new Response(null, { status: 404 }));
   });
 
-const renderPage = (url = "/projects") => {
+const renderPage = (url = "/projects", canCreate = true) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createRouter({
-    routeTree,
+    routeTree: makeRouteTree(canCreate),
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [url] }),
   });
@@ -141,8 +136,8 @@ describe("ProjectsPage", () => {
   });
 
   it("offers the create button only to someone who may create projects", async () => {
-    stubProjects(jsonResponse(200, page([summary({})])), ["projects:access"]);
-    renderPage();
+    stubProjects(jsonResponse(200, page([summary({})])));
+    renderPage("/projects", false);
 
     await screen.findByRole("link", { name: "KVEWEBS" });
     expect(screen.queryByRole("button", { name: "New project" })).not.toBeInTheDocument();
@@ -181,8 +176,8 @@ describe("ProjectsPage", () => {
   });
 
   it("never opens the create form for someone who may not create projects", async () => {
-    stubProjects(jsonResponse(200, page([summary({})])), ["projects:access"]);
-    const { router } = renderPage("/projects?create=true");
+    stubProjects(jsonResponse(200, page([summary({})])));
+    const { router } = renderPage("/projects?create=true", false);
 
     await screen.findByRole("link", { name: "KVEWEBS" });
     await waitFor(() => expect(router.state.location.search).not.toHaveProperty("create"));

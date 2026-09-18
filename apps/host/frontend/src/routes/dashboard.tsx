@@ -556,7 +556,9 @@ const DashboardPage = () => {
         }
       />
 
-      <SimpleGrid cols={{ base: 1, xs: 2, md: modules.length || 1 }} spacing="md">
+      {/* One column per card up to four; a fifth module wraps rather than
+          squeezing every card past reading width. */}
+      <SimpleGrid cols={{ base: 1, xs: 2, md: Math.min(modules.length, 4) || 1 }} spacing="md">
         {modules.map((module) => {
           const href = module.path;
           if (module.module === "customers") {
@@ -944,7 +946,7 @@ const DashboardPage = () => {
       {modules.length > 0 && (
         <Stack gap="sm">
           <Text fw={600}>{t("dashboard.modules")}</Text>
-          <SimpleGrid cols={{ base: 1, xs: 2, md: modules.length || 1 }} spacing="sm">
+          <SimpleGrid cols={{ base: 1, xs: 2, md: Math.min(modules.length, 4) || 1 }} spacing="sm">
             {modules.map((module) => (
               <Card key={module.path} withBorder padding="sm">
                 <Group justify="space-between" wrap="nowrap">

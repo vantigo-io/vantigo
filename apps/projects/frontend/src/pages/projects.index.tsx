@@ -27,7 +27,6 @@ import {
   useShellLink,
 } from "@vantigo/frontend-shell";
 import { useEffect, useState } from "react";
-import { accessQueryOptions } from "../api/access";
 import {
   type ProjectListParams,
   type ProjectSummary,
@@ -38,7 +37,6 @@ import { CustomerPicker } from "../components/customer-picker";
 import { ProjectStatusBadge } from "../components/project-status-badge";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
-import { holdsPermission } from "../lib/permissions";
 import { isProjectStatus, projectStatuses, projectStatusLabelKey } from "../lib/status";
 import { ProjectFormModal, type ProjectModalState } from "./-project-form-modal";
 
@@ -61,8 +59,13 @@ const isProjectTypeFilter = (value: string): value is ProjectTypeFilter =>
  * in the URL, and the table. Search, filters and page live in validated URL
  * search params the host route declares; the page reads and navigates them
  * the way every other module's list page does.
+ *
+ * Whether this caller may create a project is the host's answer — it owns the
+ * session and the authorization query — so it arrives as a prop, exactly as
+ * CustomerProjectsPanel takes it. No page in this package reads permissions
+ * itself.
  */
-export const ProjectsPage = () => {
+export const ProjectsPage = ({ canCreate }: { canCreate: boolean }) => {
   const { t, formatters } = useI18n("projects");
   const { create, ...params } = useSearch({ strict: false }) as ProjectsSearch;
   const navigate = useNavigate() as (options: unknown) => void;
@@ -75,24 +78,21 @@ export const ProjectsPage = () => {
   // The intent is consumed: it must not reopen the form on refresh or back.
   const dropCreateIntent = () => navigate({ search: params, replace: true });
 
-  const access = useQuery(accessQueryOptions());
-  const canCreate = holdsPermission(access.data?.permissions, "projects:create");
-
   const [modalState, setModalState] = useState<ProjectModalState | null>(null);
   // Open the create form when `create` arrives in the URL, once per arrival:
   // state adjusted during render from the previous render's value, the way
   // React documents, rather than an effect that would flash the closed form.
-  // It waits for the permissions, so a caller who may not create never sees it.
+  // A caller who may not create never sees it; the intent is dropped instead.
   const [createSeen, setCreateSeen] = useState(false);
-  if (create && !access.isPending && !createSeen) {
+  if (create && !createSeen) {
     setCreateSeen(true);
     if (canCreate) setModalState({ mode: "create" });
   }
   if (!create && createSeen) setCreateSeen(false);
   useEffect(() => {
-    if (create && !access.isPending && !canCreate) dropCreateIntent();
+    if (create && !canCreate) dropCreateIntent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [create, access.isPending, canCreate]);
+  }, [create, canCreate]);
   const closeModal = () => {
     setModalState(null);
     if (create) dropCreateIntent();

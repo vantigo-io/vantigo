@@ -9,7 +9,7 @@ const en = {
 
 const nb: { [Key in keyof typeof en]: string } = {
   "project.overviewTab": "Oversikt",
-  "project.peopleTab": "Personer",
+  "project.peopleTab": "Deltakere",
   "project.billingTab": "Fakturering",
   "project.views": "Prosjektvisninger",
 };

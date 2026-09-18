@@ -91,6 +91,21 @@ export const projectsQueryOptions = (params: ProjectListParams) =>
     placeholderData: keepPreviousData,
   });
 
+/**
+ * A handful of projects matching free text, for a search box rather than a
+ * list page — the host's spotlight reads this. It answers the rows alone: the
+ * pagination of a five-row peek says nothing anyone acts on.
+ */
+export const projectSearchQueryOptions = (search: string, limit: number) =>
+  queryOptions({
+    queryKey: ["projects", "search", search, limit],
+    queryFn: async ({ signal }) => {
+      const query = new URLSearchParams({ search, pageSize: String(limit) });
+      const page = await request<PaginatedResponse<ProjectSummary>>(`/api/v1/projects?${query}`, { signal });
+      return page.data;
+    },
+  });
+
 export const projectQueryOptions = (id: number) =>
   queryOptions({
     queryKey: ["projects", "detail", id],

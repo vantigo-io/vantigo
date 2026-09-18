@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { projectStatsQueryOptions, projectsQueryOptions } from "@vantigo/projects-ui/api/projects";
 import { isProjectStatus } from "@vantigo/projects-ui/lib/status";
-import { ProjectsPage, type ProjectsSearch } from "@vantigo/projects-ui/pages/projects.index";
+import type { ProjectsSearch } from "@vantigo/projects-ui/pages/projects.index";
+import { ProjectsListPage } from "./-projects-list-page";
 
 const flag = (value: unknown) => value === true || value === "true";
 
@@ -45,5 +46,5 @@ export const Route = createFileRoute("/projects/")({
       queryClient.ensureQueryData(projectsQueryOptions(deps)),
       queryClient.ensureQueryData(projectStatsQueryOptions()),
     ]),
-  component: ProjectsPage,
+  component: ProjectsListPage,
 });
