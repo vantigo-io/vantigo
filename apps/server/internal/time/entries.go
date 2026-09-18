@@ -14,7 +14,6 @@ import (
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
-	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/time/gen"
 	"github.com/vantigo-io/vantigo/server/internal/time/store"
 )
@@ -151,8 +150,7 @@ func (s *server) PostTimeEntries(ctx context.Context, req gen.PostTimeEntriesReq
 	now := s.deps.Clock()
 	var created store.TimeEntry
 	var capMsg string
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
+	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		msg, err := checkDayCap(ctx, txq, c.UserID, parsed.Date, parsed.HoursCents, nil)
 		if err != nil {
 			return err
@@ -378,6 +376,12 @@ func (s *server) PutTimeEntriesById(ctx context.Context, req gen.PutTimeEntriesB
 	}
 
 	parsed, errs := parseEntry(requestFromUpdate(body))
+	// Revisions start at 1, and an absent one decodes as 0 (the decoder does
+	// not enforce required): refused on the field rather than answered with
+	// a conflict against a revision nobody read.
+	if body.Revision < 1 {
+		errs = withFieldError(errs, "revision", "The revision the entry was read at is required")
+	}
 	refs, errs, err := s.checkReferences(ctx, c.UserID, parsed, errs)
 	if err != nil {
 		return nil, err
@@ -413,8 +417,7 @@ func (s *server) PutTimeEntriesById(ctx context.Context, req gen.PutTimeEntriesB
 		conflict *int32 // the revision the entry has moved on to
 		capMsg   string
 	)
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
+	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		current, err := txq.LockEntry(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			gone = true
@@ -494,10 +497,9 @@ func validateListParams(p gen.GetTimeEntriesParams) []string {
 	if p.Status != nil && *p.Status != "" && !validStatus(*p.Status) {
 		errs = append(errs, fmt.Sprintf("'status' must be one of %s, but was '%s'.", statusList(), *p.Status))
 	}
-	if p.WeekStart != nil {
-		if msg := notAMonday(p.WeekStart.Time); msg != "" {
-			errs = append(errs, fmt.Sprintf("'weekStart' must be a Monday: %s.", msg))
-		}
+	if p.WeekStart != nil && p.WeekStart.Weekday() != time.Monday {
+		errs = append(errs, fmt.Sprintf("'weekStart' must be a Monday, but %s is a %s.",
+			p.WeekStart.Format(time.DateOnly), p.WeekStart.Weekday()))
 	}
 	return errs
 }
@@ -505,8 +507,9 @@ func validateListParams(p gen.GetTimeEntriesParams) []string {
 // GetTimeEntries List time entries
 // (GET /api/v1/time/entries)
 //
-// One person's entries, the caller's own unless userId names someone else.
-// Visibility is the query's first predicate, the same rule entryAccess
+// One person's entries — the caller's own unless userId names someone else —
+// or, with projectId and no userId, every entry on that project the caller
+// may see. Visibility is a predicate of the query itself, the same rule entryAccess
 // applies to one entry (see_all for time:view-all, time:approve and
 // time:manage; the caller's own; the projects the caller manages), so the
 // total is the number of entries the caller may see, every page is full but
@@ -532,12 +535,30 @@ func (s *server) GetTimeEntries(ctx context.Context, req gen.GetTimeEntriesReque
 	if err != nil {
 		return nil, err
 	}
-	userID := c.UserID
-	if p.UserId != nil {
-		userID = *p.UserId
+	// Whose entries: the named user; with a project and no user, everyone's
+	// on the project that the caller may see; with neither, the caller's own.
+	var userID *uuid.UUID
+	switch {
+	case p.UserId != nil:
+		userID = p.UserId
+	case p.ProjectId == nil:
+		userID = &c.UserID
 	}
 	managed := []int32{}
-	if userID != c.UserID && !c.seesEveryone() {
+	switch {
+	case c.seesEveryone():
+	case userID == nil:
+		// One project: the caller sees everyone's on it if they manage it,
+		// and otherwise their own (the visibility predicate) — never a 403,
+		// since their own is always theirs to list.
+		role, err := c.role(ctx, s, *p.ProjectId)
+		if err != nil {
+			return nil, err
+		}
+		if role == roleManager {
+			managed = []int32{*p.ProjectId}
+		}
+	case *userID != c.UserID:
 		if managed, err = c.managedProjects(ctx, s); err != nil {
 			return nil, err
 		}

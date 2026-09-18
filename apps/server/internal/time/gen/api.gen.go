@@ -172,7 +172,7 @@ type TimeEntryUpdateRequest struct {
 	// ProjectId A project the caller may log time on — active, and the caller holds the member or manager role on it.
 	ProjectId int32 `json:"projectId"`
 
-	// Revision The revision the caller read the entry at.
+	// Revision The revision the caller read the entry at. Revisions start at 1; an absent or smaller one is refused on revision.
 	Revision int32 `json:"revision"`
 
 	// StartTime HH:MM on the entry date. Required when endTime is given.
@@ -236,13 +236,13 @@ type TimeWeekTotals struct {
 
 // GetTimeEntriesParams defines parameters for GetTimeEntries.
 type GetTimeEntriesParams struct {
-	// UserId Whose entries. Absent means the caller's own. Another person's needs time:view-all, time:approve or time:manage, or the manager role on at least one project (then only the entries on the projects the caller manages are listed) — otherwise 403.
+	// UserId Whose entries. Absent means the caller's own — unless projectId is given, and then everyone's on that project that the caller may see. Another person's needs time:view-all, time:approve or time:manage, or the manager role on at least one project (then only the entries on the projects the caller manages are listed) — otherwise 403.
 	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
 
 	// WeekStart A Monday; narrows the list to that week, Monday to Sunday.
 	WeekStart *openapi_types.Date `form:"weekStart,omitempty" json:"weekStart,omitempty"`
 
-	// ProjectId Narrows the list to one project. With someone else's userId, the caller must manage this project or hold time:view-all, time:approve or time:manage — otherwise 403.
+	// ProjectId Narrows the list to one project. Without userId, the list is every entry on it the caller may see — everyone's for its managers and for time:view-all, time:approve and time:manage, the caller's own for anyone else. With someone else's userId, the caller must manage this project or hold time:view-all, time:approve or time:manage — otherwise 403.
 	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
 
 	// Status 'draft', 'submitted', 'approved', 'rejected' or 'invoiced'.

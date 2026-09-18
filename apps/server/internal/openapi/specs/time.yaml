@@ -281,8 +281,9 @@ components:
                     format: int32
                     type: integer
                 revision:
-                    description: The revision the caller read the entry at.
+                    description: The revision the caller read the entry at. Revisions start at 1; an absent or smaller one is refused on revision.
                     format: int32
+                    minimum: 1
                     type: integer
                 startTime:
                     description: HH:MM on the entry date. Required when endTime is given.
@@ -406,10 +407,10 @@ openapi: 3.0.3
 paths:
     /api/v1/time/entries:
         get:
-            description: The entries of one person, newest first — the caller's own unless userId names someone else. Another person's entries are listed only where the caller may see them (the same rule a single read applies), so the list never holds an entry its own read would answer 404 for.
+            description: Time entries, newest first — one person's (the caller's own unless userId names someone else), or, with projectId and no userId, every entry on that project the caller may see. Entries are listed only where the caller may see them (the same rule a single read applies), so the list never holds an entry its own read would answer 404 for.
             operationId: getTimeEntries
             parameters:
-                - description: Whose entries. Absent means the caller's own. Another person's needs time:view-all, time:approve or time:manage, or the manager role on at least one project (then only the entries on the projects the caller manages are listed) — otherwise 403.
+                - description: Whose entries. Absent means the caller's own — unless projectId is given, and then everyone's on that project that the caller may see. Another person's needs time:view-all, time:approve or time:manage, or the manager role on at least one project (then only the entries on the projects the caller manages are listed) — otherwise 403.
                   in: query
                   name: userId
                   schema:
@@ -421,7 +422,7 @@ paths:
                   schema:
                     format: date
                     type: string
-                - description: Narrows the list to one project. With someone else's userId, the caller must manage this project or hold time:view-all, time:approve or time:manage — otherwise 403.
+                - description: Narrows the list to one project. Without userId, the list is every entry on it the caller may see — everyone's for its managers and for time:view-all, time:approve and time:manage, the caller's own for anyone else. With someone else's userId, the caller must manage this project or hold time:view-all, time:approve or time:manage — otherwise 403.
                   in: query
                   name: projectId
                   schema:

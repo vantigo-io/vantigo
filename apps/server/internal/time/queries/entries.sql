@@ -90,12 +90,14 @@ RETURNING *;
 -- name: CountEntries :one
 -- CountEntries counts what ListEntries pages through, under exactly the same
 -- predicate, so the total is the number of entries the caller may see and
--- the last page is never empty. Visibility is the first predicate (the rule
--- authorize.go's entryAccess applies to one entry): everything for see_all,
--- the caller's own, and the entries on the projects the caller manages. The
--- filters are optional; week_start and week_end are a Monday and its Sunday.
+-- the last page is never empty. Visibility is a predicate of its own (the
+-- rule authorize.go's entryAccess applies to one entry): everything for
+-- see_all, the caller's own, and the entries on the projects the caller
+-- manages. The filters are optional — user_id NULL is everyone's, which the
+-- handler only allows with a project filter; week_start and week_end are a
+-- Monday and its Sunday.
 SELECT count(*) FROM time.entries
-WHERE user_id = @user_id
+WHERE (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
   AND (@see_all::boolean OR user_id = @caller_id::uuid OR project_id = ANY(@managed_project_ids::integer[]))
   AND (sqlc.narg(week_start)::date IS NULL
        OR entry_date BETWEEN sqlc.narg(week_start)::date AND sqlc.narg(week_end)::date)
@@ -106,7 +108,7 @@ WHERE user_id = @user_id
 -- ListEntries is one page of CountEntries' entries, the latest day first and,
 -- within a day, the latest created first.
 SELECT * FROM time.entries
-WHERE user_id = @user_id
+WHERE (sqlc.narg(user_id)::uuid IS NULL OR user_id = sqlc.narg(user_id)::uuid)
   AND (@see_all::boolean OR user_id = @caller_id::uuid OR project_id = ANY(@managed_project_ids::integer[]))
   AND (sqlc.narg(week_start)::date IS NULL
        OR entry_date BETWEEN sqlc.narg(week_start)::date AND sqlc.narg(week_end)::date)
@@ -136,3 +138,9 @@ UPDATE time.entries SET
     updated_at = @now::timestamptz
 WHERE id = ANY(@ids::bigint[]) AND status = 'draft'
 RETURNING *;
+
+-- name: GetEntries :many
+-- GetEntries reads the entries in ids without locking them: what a batch
+-- reads before its transaction, to learn which projects it will need the
+-- caller's role on. An id with no entry is simply absent from the result.
+SELECT * FROM time.entries WHERE id = ANY(@ids::bigint[]);

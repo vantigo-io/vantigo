@@ -228,3 +228,22 @@ func TestPutTimeEntriesById_TheLock_HoldsBackEveryoneButTimeManage(t *testing.T)
 		t.Errorf("time:manage past the lock: hours = %v, want 3", got.Hours)
 	}
 }
+
+// A body without a revision is refused on revision rather than answered with
+// a conflict against revision 0: revisions start at 1.
+func TestPutTimeEntriesById_NoRevision_IsRefusedOnRevision(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	e := createEntry(t, owner, nil)
+
+	for _, revision := range []any{nil, 0, -1} {
+		r := owner.Do(http.MethodPut, entryPath(e.Id), updateBody(e, map[string]any{"revision": revision}))
+		if errs := validationErrors(t, r, "Invalid time entry"); len(errs["revision"]) != 1 {
+			t.Errorf("revision %v: errors = %v, want one on revision", revision, errs)
+		}
+	}
+	if got := getEntry(t, owner, e.Id); got.Revision != 1 {
+		t.Errorf("revision = %d, want the entry untouched", got.Revision)
+	}
+}

@@ -176,3 +176,58 @@ func TestGetTimeEntries_AnotherUser_FollowsTheReadRule(t *testing.T) {
 		t.Errorf("view-all, unknown user: %d entries, want none", len(got.Data))
 	}
 }
+
+// With projectId and no userId the list is every entry on the project the
+// caller may see: all of them for the project's manager and for
+// time:approve, time:view-all and time:manage; a member's own.
+func TestGetTimeEntries_ProjectWithoutUserId_ListsEveryVisibleEntryOnIt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	member, memberID := signInAs(t, h, projectKraftVerket, roleMember)
+	h.projects.addRole(projectEuro, memberID, roleMember)
+	colleague, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+	approver, _ := signIn(t, h, "time:approve")
+	outsider, _ := signIn(t, h)
+
+	mine := createEntry(t, member, nil)
+	createEntry(t, member, map[string]any{"projectId": projectEuro})
+	theirs := createEntry(t, colleague, map[string]any{"entryDate": "2026-09-15"})
+	managers := createEntry(t, manager, map[string]any{"entryDate": "2026-09-16"})
+
+	onKraft := fmt.Sprintf("projectId=%d", projectKraftVerket)
+	all := []int64{managers.Id, theirs.Id, mine.Id}
+	for name, tc := range map[string]struct {
+		c    *modtest.Client
+		want []int64
+	}{
+		"manager":  {manager, all},
+		"approver": {approver, all},
+		"member":   {member, []int64{mine.Id}},
+		"outsider": {outsider, nil},
+	} {
+		page := listEntries(t, tc.c, onKraft)
+		if !slices.Equal(pageIDs(page), tc.want) || int(page.Pagination.TotalCount) != len(tc.want) {
+			t.Errorf("%s: ids %v of %d, want %v", name, pageIDs(page), page.Pagination.TotalCount, tc.want)
+		}
+	}
+	// The status and week filters narrow it further.
+	if got := listEntries(t, manager, onKraft+"&weekStart=2026-09-14&status=draft"); !slices.Equal(pageIDs(got), all) {
+		t.Errorf("manager, filtered: ids %v, want %v", pageIDs(got), all)
+	}
+}
+
+func TestGetTimeEntries_WeekStartNotAMonday_NamesTheDay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+
+	r := owner.Do(http.MethodGet, entriesPath+"?weekStart=2026-09-15", nil)
+	var problem struct {
+		Detail string `json:"detail"`
+	}
+	r.JSON(&problem)
+	if want := "'weekStart' must be a Monday, but 2026-09-15 is a Tuesday."; r.Status != http.StatusBadRequest || problem.Detail != want {
+		t.Errorf("%d %q, want 400 %q", r.Status, problem.Detail, want)
+	}
+}
