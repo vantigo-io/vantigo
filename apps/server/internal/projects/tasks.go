@@ -267,7 +267,7 @@ func (s *server) PostProjectsByIdTasks(ctx context.Context, req gen.PostProjects
 		return gen.PostProjectsByIdTasks403JSONResponse(forbidden()), nil
 	}
 
-	parsed, fieldErrs, err := s.validateTask(ctx, body, nil)
+	parsed, fieldErrs, err := s.validateTask(ctx, body, nil, statusDefaultsToTodo)
 	if err != nil {
 		return nil, err
 	}
@@ -401,7 +401,7 @@ func (s *server) PutProjectsTasksByTaskId(ctx context.Context, req gen.PutProjec
 	// it apart from one that is handing the task to somebody else: only the
 	// second is a new assignment, and only a new assignment needs an active
 	// account (tasks_validation.go).
-	parsed, fieldErrs, err := s.validateTask(ctx, taskFromUpdate(body), scope.Task.AssigneeUserID)
+	parsed, fieldErrs, err := s.validateTask(ctx, taskFromUpdate(body), scope.Task.AssigneeUserID, statusIsRequired)
 	if err != nil {
 		return nil, err
 	}
@@ -649,12 +649,11 @@ func (s *server) PutProjectsTasksByTaskIdPosition(ctx context.Context, req gen.P
 	case errors.Is(err, errTaskGone):
 		return gen.PutProjectsTasksByTaskIdPosition404Response{}, nil
 	case isParentRefusal(err):
-		parentID := scope.Task.ID
-		if body.ParentTaskId != nil {
-			parentID = *body.ParentTaskId
-		}
+		// Every parent refusal is raised under `body.ParentTaskId != nil`
+		// above, so the parent the message names is always the one that was
+		// sent — the create path reads its own the same way.
 		return gen.PutProjectsTasksByTaskIdPosition400ApplicationProblemPlusJSONResponse(
-			invalidProject(parentFieldError(err, parentID))), nil
+			invalidProject(parentFieldError(err, *body.ParentTaskId))), nil
 	case err != nil:
 		return nil, fmt.Errorf("projects: move task: %w", err)
 	}
