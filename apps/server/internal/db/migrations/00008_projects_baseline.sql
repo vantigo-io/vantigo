@@ -73,5 +73,20 @@ CREATE TABLE projects.counters (
     next_value   bigint NOT NULL
 );
 
+-- visible reports whether the caller sees project_id: everyone with a
+-- see-all permission does, otherwise only a user holding a role there.
+-- One definition shared by the list, its count and every stats query, so
+-- rows, totals and numbers can never disagree about who sees what.
+-- +goose StatementBegin
+CREATE FUNCTION projects.visible(project_id integer, user_id uuid, see_all boolean)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+    SELECT see_all OR EXISTS (
+        SELECT 1 FROM projects.project_roles r
+        WHERE r.project_id = $1 AND r.user_id = $2)
+$$;
+-- +goose StatementEnd
+
 -- +goose Down
+-- DROP SCHEMA ... CASCADE drops projects.visible with everything else in the
+-- schema; a function is schema-scoped like the tables above it.
 DROP SCHEMA projects CASCADE;

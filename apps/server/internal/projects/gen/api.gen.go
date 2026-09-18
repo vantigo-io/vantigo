@@ -19,6 +19,15 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// GetProjectStatsResponse How many of the projects the caller may see stand in each status, for the list page's key-figure row. Every status is always present, 0 included.
+type GetProjectStatsResponse struct {
+	Active    int32 `json:"active"`
+	Cancelled int32 `json:"cancelled"`
+	Completed int32 `json:"completed"`
+	OnHold    int32 `json:"onHold"`
+	Planned   int32 `json:"planned"`
+}
+
 // PaginatedResponseOfProjectSummaryResponse defines model for PaginatedResponseOfProjectSummaryResponse.
 type PaginatedResponseOfProjectSummaryResponse struct {
 	Data       []ProjectSummaryResponse        `json:"data"`
@@ -133,6 +142,31 @@ type ProjectRoleResponse struct {
 	UserId openapi_types.UUID `json:"userId"`
 }
 
+// ProjectStatsAttentionItem One project the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention; entityId is the project id, which the dashboard turns into a link to /projects/{id}.
+type ProjectStatsAttentionItem struct {
+	EntityId   string    `json:"entityId"`
+	Id         string    `json:"id"`
+	OccurredAt time.Time `json:"occurredAt"`
+	Title      string    `json:"title"`
+	Type       string    `json:"type"`
+}
+
+// ProjectStatsDailyBucket One UTC calendar day of a time series. Days with nothing in them are absent, not zero — the dashboard's sparkline plots the points it is given.
+type ProjectStatsDailyBucket struct {
+	Date  *openapi_types.Date `json:"date,omitempty"`
+	Value *int64              `json:"value,omitempty"`
+}
+
+// ProjectStatsSummaryResponse The dashboard's projects card over one period, in the envelope every module's /stats/summary shares. Only the two figures and their deltas differ.
+type ProjectStatsSummaryResponse struct {
+	ActiveProjects      int32     `json:"activeProjects"`
+	ActiveProjectsDelta int32     `json:"activeProjectsDelta"`
+	From                time.Time `json:"from"`
+	NewProjects         int32     `json:"newProjects"`
+	NewProjectsDelta    int32     `json:"newProjectsDelta"`
+	To                  time.Time `json:"to"`
+}
+
 // ProjectStatusChangeRequest defines model for ProjectStatusChangeRequest.
 type ProjectStatusChangeRequest struct {
 	// Status 'planned', 'active', 'on-hold', 'completed' or 'cancelled'. Any transition is allowed, reopening a completed project included.
@@ -225,6 +259,19 @@ type GetProjectsCodeSuggestionParams struct {
 	Name *string `form:"name,omitempty" json:"name,omitempty"`
 }
 
+// GetProjectsStatsSummaryParams defines parameters for GetProjectsStatsSummary.
+type GetProjectsStatsSummaryParams struct {
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To   *time.Time `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetProjectsStatsTimeseriesParams defines parameters for GetProjectsStatsTimeseries.
+type GetProjectsStatsTimeseriesParams struct {
+	Metric *string    `form:"metric,omitempty" json:"metric,omitempty"`
+	From   *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
+}
+
 // GetProjectsByIdAssignableUsersParams defines parameters for GetProjectsByIdAssignableUsers.
 type GetProjectsByIdAssignableUsersParams struct {
 	// Search Matches the user's display name, case-insensitively. Absent or empty answers the first users assignable to this project.
@@ -260,6 +307,18 @@ type ServerInterface interface {
 	// GetProjectsCodeSuggestion Suggest a project code
 	// (GET /api/v1/projects/code-suggestion)
 	GetProjectsCodeSuggestion(w http.ResponseWriter, r *http.Request, params GetProjectsCodeSuggestionParams)
+	// GetProjectsStats Get project counts per status
+	// (GET /api/v1/projects/stats)
+	GetProjectsStats(w http.ResponseWriter, r *http.Request)
+	// GetProjectsStatsAttention Get project dashboard attention items
+	// (GET /api/v1/projects/stats/attention)
+	GetProjectsStatsAttention(w http.ResponseWriter, r *http.Request)
+	// GetProjectsStatsSummary Get project dashboard summary
+	// (GET /api/v1/projects/stats/summary)
+	GetProjectsStatsSummary(w http.ResponseWriter, r *http.Request, params GetProjectsStatsSummaryParams)
+	// GetProjectsStatsTimeseries Get project dashboard time series
+	// (GET /api/v1/projects/stats/timeseries)
+	GetProjectsStatsTimeseries(w http.ResponseWriter, r *http.Request, params GetProjectsStatsTimeseriesParams)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(w http.ResponseWriter, r *http.Request, id int32)
@@ -457,6 +516,139 @@ func (siw *ServerInterfaceWrapper) GetProjectsCodeSuggestion(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProjectsCodeSuggestion(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsStats operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsStats(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsStats(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsStatsAttention operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsStatsAttention(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsStatsAttention(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsStatsSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsStatsSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsStatsSummaryParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsStatsSummary(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsStatsTimeseries operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsStatsTimeseries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsStatsTimeseriesParams
+
+	// ------------- Optional query parameter "metric" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "metric", r.URL.Query(), &params.Metric, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "metric"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "metric", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsStatsTimeseries(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -868,6 +1060,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/roles/{userId}", wrapper.PutProjectsByIdRolesByUserId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/status", wrapper.PutProjectsByIdStatus)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/timeline", wrapper.GetProjectsByIdTimeline)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/stats", wrapper.GetProjectsStats)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/stats/attention", wrapper.GetProjectsStatsAttention)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/stats/summary", wrapper.GetProjectsStatsSummary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/stats/timeseries", wrapper.GetProjectsStatsTimeseries)
 
 	return m
 }
@@ -1053,6 +1249,232 @@ func (response GetProjectsCodeSuggestion401JSONResponse) VisitGetProjectsCodeSug
 type GetProjectsCodeSuggestion403JSONResponse externalRef0.AuthErrorResponse
 
 func (response GetProjectsCodeSuggestion403JSONResponse) VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsRequestObject struct {
+}
+
+type GetProjectsStatsResponseObject interface {
+	VisitGetProjectsStatsResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsStats200JSONResponse GetProjectStatsResponse
+
+func (response GetProjectsStats200JSONResponse) VisitGetProjectsStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStats401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStats401JSONResponse) VisitGetProjectsStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStats403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStats403JSONResponse) VisitGetProjectsStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsAttentionRequestObject struct {
+}
+
+type GetProjectsStatsAttentionResponseObject interface {
+	VisitGetProjectsStatsAttentionResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsStatsAttention200JSONResponse []ProjectStatsAttentionItem
+
+func (response GetProjectsStatsAttention200JSONResponse) VisitGetProjectsStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsAttention401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStatsAttention401JSONResponse) VisitGetProjectsStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsAttention403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStatsAttention403JSONResponse) VisitGetProjectsStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsSummaryRequestObject struct {
+	Params GetProjectsStatsSummaryParams
+}
+
+type GetProjectsStatsSummaryResponseObject interface {
+	VisitGetProjectsStatsSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsStatsSummary200JSONResponse ProjectStatsSummaryResponse
+
+func (response GetProjectsStatsSummary200JSONResponse) VisitGetProjectsStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsSummary400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetProjectsStatsSummary400ApplicationProblemPlusJSONResponse) VisitGetProjectsStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsSummary401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStatsSummary401JSONResponse) VisitGetProjectsStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsSummary403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStatsSummary403JSONResponse) VisitGetProjectsStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsTimeseriesRequestObject struct {
+	Params GetProjectsStatsTimeseriesParams
+}
+
+type GetProjectsStatsTimeseriesResponseObject interface {
+	VisitGetProjectsStatsTimeseriesResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsStatsTimeseries200JSONResponse []ProjectStatsDailyBucket
+
+func (response GetProjectsStatsTimeseries200JSONResponse) VisitGetProjectsStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsTimeseries400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetProjectsStatsTimeseries400ApplicationProblemPlusJSONResponse) VisitGetProjectsStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsTimeseries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStatsTimeseries401JSONResponse) VisitGetProjectsStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsStatsTimeseries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsStatsTimeseries403JSONResponse) VisitGetProjectsStatsTimeseriesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -1624,6 +2046,18 @@ type StrictServerInterface interface {
 	// GetProjectsCodeSuggestion Suggest a project code
 	// (GET /api/v1/projects/code-suggestion)
 	GetProjectsCodeSuggestion(ctx context.Context, request GetProjectsCodeSuggestionRequestObject) (GetProjectsCodeSuggestionResponseObject, error)
+	// GetProjectsStats Get project counts per status
+	// (GET /api/v1/projects/stats)
+	GetProjectsStats(ctx context.Context, request GetProjectsStatsRequestObject) (GetProjectsStatsResponseObject, error)
+	// GetProjectsStatsAttention Get project dashboard attention items
+	// (GET /api/v1/projects/stats/attention)
+	GetProjectsStatsAttention(ctx context.Context, request GetProjectsStatsAttentionRequestObject) (GetProjectsStatsAttentionResponseObject, error)
+	// GetProjectsStatsSummary Get project dashboard summary
+	// (GET /api/v1/projects/stats/summary)
+	GetProjectsStatsSummary(ctx context.Context, request GetProjectsStatsSummaryRequestObject) (GetProjectsStatsSummaryResponseObject, error)
+	// GetProjectsStatsTimeseries Get project dashboard time series
+	// (GET /api/v1/projects/stats/timeseries)
+	GetProjectsStatsTimeseries(ctx context.Context, request GetProjectsStatsTimeseriesRequestObject) (GetProjectsStatsTimeseriesResponseObject, error)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(ctx context.Context, request GetProjectsByIdRequestObject) (GetProjectsByIdResponseObject, error)
@@ -1765,6 +2199,106 @@ func (sh *strictHandler) GetProjectsCodeSuggestion(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProjectsCodeSuggestionResponseObject); ok {
 		if err := validResponse.VisitGetProjectsCodeSuggestionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsStats operation middleware
+func (sh *strictHandler) GetProjectsStats(w http.ResponseWriter, r *http.Request) {
+	var request GetProjectsStatsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsStats(ctx, request.(GetProjectsStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsStatsResponseObject); ok {
+		if err := validResponse.VisitGetProjectsStatsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsStatsAttention operation middleware
+func (sh *strictHandler) GetProjectsStatsAttention(w http.ResponseWriter, r *http.Request) {
+	var request GetProjectsStatsAttentionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsStatsAttention(ctx, request.(GetProjectsStatsAttentionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsStatsAttention")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsStatsAttentionResponseObject); ok {
+		if err := validResponse.VisitGetProjectsStatsAttentionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsStatsSummary operation middleware
+func (sh *strictHandler) GetProjectsStatsSummary(w http.ResponseWriter, r *http.Request, params GetProjectsStatsSummaryParams) {
+	var request GetProjectsStatsSummaryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsStatsSummary(ctx, request.(GetProjectsStatsSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsStatsSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsStatsSummaryResponseObject); ok {
+		if err := validResponse.VisitGetProjectsStatsSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsStatsTimeseries operation middleware
+func (sh *strictHandler) GetProjectsStatsTimeseries(w http.ResponseWriter, r *http.Request, params GetProjectsStatsTimeseriesParams) {
+	var request GetProjectsStatsTimeseriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsStatsTimeseries(ctx, request.(GetProjectsStatsTimeseriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsStatsTimeseries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsStatsTimeseriesResponseObject); ok {
+		if err := validResponse.VisitGetProjectsStatsTimeseriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
