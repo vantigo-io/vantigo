@@ -66,6 +66,7 @@ vantigo/
 │   │       ├── communications/      # Communications vertical slice (outbound email)
 │   │       ├── products/            # Products vertical slice
 │   │       ├── energy/              # Energy vertical slice
+│   │       ├── projects/            # Projects vertical slice
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── contracts/           # Cross-module interfaces, permissions, access rules
 │   │       ├── config/              # The environment reference: one struct, one validation pass
@@ -80,7 +81,8 @@ vantigo/
 │   ├── customers/frontend/          # @vantigo/customers-ui (pages, API clients)
 │   ├── communications/frontend/     # @vantigo/communications-ui
 │   ├── products/frontend/           # @vantigo/products-ui
-│   └── energy/frontend/             # @vantigo/energy-ui
+│   ├── energy/frontend/             # @vantigo/energy-ui
+│   └── projects/frontend/           # @vantigo/projects-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared app shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client
@@ -101,9 +103,10 @@ own deployable without a rewrite.
 
 - A module is a package under `internal/<name>` that exposes one `Module()`
   returning a `module.Module`: its name, its `Mount`, the permissions it
-  contributes, the background workers it contributes, and — for the one module
-  that owns customer data — its `contracts.CustomerDirectory` implementation.
-  `module.Compose` mounts each at `/api/v1/<name>/`.
+  contributes, the background workers it contributes, and the cross-module
+  contracts it provides — a customer directory (customers), a user directory
+  (identity), a product catalog (products) or a project directory (projects), at
+  most one provider per slot. `module.Compose` mounts each at `/api/v1/<name>/`.
 - Modules **never import each other**. That is enforced by depguard
   (`apps/server/.golangci.yml`): `internal/<module>/...` may import platform
   packages and its own subpackages, never another module's, and `internal/module`
@@ -116,9 +119,12 @@ own deployable without a rewrite.
 ### Cross-module communication
 
 - **Synchronous queries** use contract interfaces from `internal/contracts`
-  (`contracts.CustomerDirectory`): DTOs only, never store types, implemented by the
-  owning module and resolved by `module.Compose`. If a module is extracted later, the
-  interface gets an HTTP client implementation and consumers stay unchanged.
+  (`contracts.CustomerDirectory`, `UserDirectory`, `ProductCatalog`,
+  `ProjectDirectory`): DTOs only, never store types, implemented by the owning module
+  and resolved by `module.Compose`. If a module is extracted later, the interface gets
+  an HTTP client implementation and consumers stay unchanged. A contract whose
+  provider may be disabled is **optional**: its `Deps` field is nil and the consumer
+  handles that (Projects answers 409 on billing lines when products is off).
 - **Asynchronous notifications** ("something happened, others may care") use a
   transactional outbox: the publishing module stores the event in the same
   transaction as its state change, and a background worker dispatches it with
@@ -131,7 +137,7 @@ own deployable without a rewrite.
 ### Database
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
-`energy` and `communications`. Schemas are hard boundaries:
+`energy`, `communications` and `projects`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -170,7 +176,7 @@ its own.
 SPA URL convention — *one prefix per app*: every route of a business module
 lives under its module's name, which is also its API prefix and its `MODULES`
 entry (`/customers`, `/customers/contacts`, `/communications/inbox`,
-`/products/categories`, `/energy/metering-points`). Nesting inside the prefix
+`/products/categories`, `/energy/metering-points`, `/projects`). Nesting inside the prefix
 means *belonging* (`/customers/:id`). The dashboard (`/dashboard`) is the
 "Home" app; `/settings`, `/workspace` and `/admin` are *areas*: declared in
 `apps.ts` like apps, with their own sidebar and header title, but reached from
@@ -184,8 +190,9 @@ Navigation — *one pattern per level*, so every page reads the same way:
 
 - **Sidebar** = the pages within the area you are in. Always the shell's
   sidebar, declared in `apps.ts`; never an in-content side menu.
-- **Tabs** = views of one page (a customer's Overview and Energy, the roles
-  page's Roles, Assignments and Delegations). Always `PageTabs` from
+- **Tabs** = views of one page (a customer's Overview, Energy and Projects, a
+  project's Overview, People and Billing, the roles page's Roles, Assignments
+  and Delegations). Always `PageTabs` from
   `@vantigo/frontend-shell`, directly under the page header, and always in
   the URL — a child route or a validated search param — so every view is a
   link. A tab never leaves the page; something that does is a header action.
@@ -215,8 +222,8 @@ Navigation — *one pattern per level*, so every page reads the same way:
 - **Contract first** — `openapi/*.yaml` is the source of truth; the router enforces
   each operation's access rule and rate limit from the contract at runtime.
 - **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
-  `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy` and
-  `/api/v1/communications`.
+  `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
+  `/api/v1/communications` and `/api/v1/projects`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
 - **Form-friendly errors** — validation errors use camelCase JSON field paths.
@@ -229,8 +236,9 @@ Navigation — *one pattern per level*, so every page reads the same way:
 All endpoints are versioned by URL segment. Each module's own contract lives in
 `openapi/<module>.yaml`, and the running server serves the merged contract of the
 enabled modules at `GET /api/openapi.json` (session required). Module prefixes are
-`/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy` and
-`/api/v1/communications`. Every other `/api` path answers the catch-all 404 problem.
+`/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
+`/api/v1/communications` and `/api/v1/projects`. Every other `/api` path answers the
+catch-all 404 problem.
 
 Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
 carry keys matching the JSON field path:
@@ -298,6 +306,7 @@ names the owning module, which is what ties the file to that module's `sqlc.yaml
 00005_energy_baseline.sql
 00006_communications_baseline.sql
 00007_customers_type.sql
+00008_projects_baseline.sql
 ```
 
 They are embedded into the binary (`//go:embed migrations/*.sql`), so the image needs
@@ -350,6 +359,10 @@ bun run gen:client
 the contract. **That corpus is frozen historical evidence and cannot be
 regenerated.** It was recorded from the .NET integration suites that this server
 replaced; those suites no longer exist, so there is nothing left to re-record from.
+It therefore covers only the ported modules (identity, customers, products, energy,
+communications). A module with no .NET ancestor has no corpus file, and both the
+corpus test and the coverage tool treat that as zero recorded exchanges — the
+module's own operation-coverage gate is what proves its endpoints are exercised.
 It is kept because it is the only record of what the replaced implementation actually
 served, and it is what the contract was validated against. Treat a failure there as
 "the contract or the Go implementation has drifted from what the API used to do", and
@@ -394,9 +407,9 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy and communications
+### Customers, products, energy, communications and projects
 
-Four business modules mount on that platform, each serving its own contract and
+Five business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
@@ -411,14 +424,22 @@ owning its own schema:
   messages, the composer, staged attachments on object storage, delivery and
   its event log, tags, suppressions, and the AI draft and customer-suggestion
   features. It also owns the outbox and the module's three background workers.
+- `internal/projects` → `/api/v1/projects/*` from `openapi/projects.yaml`:
+  projects and their codes, the roles users hold on them, billing lines pinned to
+  product variants, the project timeline and the stats. It provides
+  `contracts.ProjectDirectory` and consumes `contracts.UserDirectory` (identity,
+  always present) and `contracts.ProductCatalog` (products, **optional** — nil when
+  products is off, which makes billing-line operations answer 409). See
+  [`docs/projects.md`](docs/projects.md).
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
-parsed once at startup, defaulting to `customers,products,energy,communications`
-— every module this binary can mount. Identity is always mounted and is never
+parsed once at startup, defaulting to
+`customers,products,energy,communications,projects` — every module this binary can
+mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
-startup, naming the name and the known set. `energy` (and, later,
-`communications`) reads customer data through `contracts.CustomerDirectory`, so
-either without `customers` fails startup naming both. A disabled module
+startup, naming the name and the known set. `energy`, `communications` and
+`projects` read customer data through `contracts.CustomerDirectory`, so any of
+them without `customers` fails startup naming both. A disabled module
 contributes no route, no permission and no contract path, and its paths answer
 the `/api` catch-all 404 — but every schema is migrated regardless, so enabling
 a module later needs no migration.
@@ -451,9 +472,9 @@ ever waits.
 
 `docs/communications.md` is the module's deployment and integration guide.
 
-The customer directory is the only sanctioned cross-module read. No module
-imports another (enforced by depguard) and no module queries another's schema
-(enforced by `internal/db/schema_test.go`).
+The `internal/contracts` interfaces are the only sanctioned cross-module reads.
+No module imports another (enforced by depguard) and no module queries another's
+schema (enforced by `internal/db/schema_test.go`).
 
 A module can also contribute background workers (`internal/worker`: a `Worker`
 is `Run(ctx) error` plus a name and a poll interval, resolved from every
@@ -522,6 +543,7 @@ bun run --cwd apps/customers/frontend test
 bun run --cwd apps/communications/frontend test
 bun run --cwd apps/products/frontend test
 bun run --cwd apps/energy/frontend test
+bun run --cwd apps/projects/frontend test
 ```
 
 The SPA is **not** served by the dev server in production: `scripts/build-artifacts.sh`

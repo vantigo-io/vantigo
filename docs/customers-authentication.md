@@ -271,7 +271,7 @@ summary. Booleans are strict `0`/`1` switches — anything else fails startup.
 | `MIGRATIONS_DATABASE_URL` | Connection `migrate` uses (the owner role) | `DATABASE_URL` |
 | `SHUTDOWN_TIMEOUT` | Drain budget for in-flight requests and workers | `30s` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, `error` | `info` |
-| `MODULES` | Comma list of business modules to serve | `customers,products,energy,communications` |
+| `MODULES` | Comma list of business modules to serve | `customers,products,energy,communications,projects` |
 | `WORKERS_IN_PROCESS` | Whether `api` also runs background workers in-process | `1` |
 
 ### Secrets and identity
@@ -423,7 +423,7 @@ OIDC callback on that HTTPS origin. Outside development cookies are `Secure` and
 ## Database migrations
 
 One PostgreSQL database holds one schema per module — `identity`, `customers`,
-`products`, `energy` and `communications` — migrated by plain SQL files embedded in
+`products`, `energy`, `communications` and `projects` — migrated by plain SQL files embedded in
 the binary. Every schema is migrated regardless of which modules `MODULES` enables,
 so enabling a module later needs no migration. See the
 [contributor migration guide](../CONTRIBUTING.md#database-migrations) for how
