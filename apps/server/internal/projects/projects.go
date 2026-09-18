@@ -71,6 +71,7 @@ func (s *server) PostProjects(ctx context.Context, req gen.PostProjectsRequestOb
 			FixedPriceAmount: parsed.FixedPriceAmount,
 			BudgetHours:      parsed.BudgetHours,
 			BudgetAmount:     parsed.BudgetAmount,
+			DefaultBillRate:  parsed.DefaultBillRate,
 			CreatedByUserID:  by.UserID,
 			Now:              now,
 		})
@@ -230,6 +231,7 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 			FixedPriceAmount: parsed.FixedPriceAmount,
 			BudgetHours:      parsed.BudgetHours,
 			BudgetAmount:     parsed.BudgetAmount,
+			DefaultBillRate:  parsed.DefaultBillRate,
 			Now:              now,
 		})
 		if err != nil {

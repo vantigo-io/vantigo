@@ -49,6 +49,7 @@ interface ProjectFormValues {
   fixedPriceAmount: number | string;
   budgetHours: number | string;
   budgetAmount: number | string;
+  defaultBillRate: number | string;
   currency: string;
 }
 
@@ -107,6 +108,7 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
       fixedPriceAmount: project?.financials?.fixedPriceAmount ?? "",
       budgetHours: project?.budgetHours ?? "",
       budgetAmount: project?.financials?.budgetAmount ?? "",
+      defaultBillRate: project?.financials?.defaultBillRate ?? "",
       currency: project?.financials?.currency ?? DEFAULT_CURRENCY,
     },
     validate: {
@@ -129,7 +131,8 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
         // field is not sent otherwise, so it cannot require a currency.
         const hasAmount =
           (values.billingType === "fixed-price" && amount(values.fixedPriceAmount) !== undefined) ||
-          amount(values.budgetAmount) !== undefined;
+          amount(values.budgetAmount) !== undefined ||
+          amount(values.defaultBillRate) !== undefined;
         if (!currency) return hasAmount ? t("currencyRequired") : null;
         return CURRENCY_PATTERN.test(currency) ? null : t("currencyInvalid");
       },
@@ -315,6 +318,12 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
               />
             )}
             <NumberInput label={t("budgetAmount")} min={0} decimalScale={2} {...form.getInputProps("budgetAmount")} />
+            <NumberInput
+              label={t("defaultBillRate")}
+              min={0}
+              decimalScale={2}
+              {...form.getInputProps("defaultBillRate")}
+            />
             <TextInput label={t("currency")} maxLength={3} {...form.getInputProps("currency")} />
           </Group>
         ) : (
@@ -337,10 +346,11 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
 
 /** The project's own amounts, unchanged: what an update carries when the form did not show them. */
 const storedFinancials = (project?: Project) => {
-  const { currency, fixedPriceAmount, budgetAmount } = project?.financials ?? {};
+  const { currency, fixedPriceAmount, budgetAmount, defaultBillRate } = project?.financials ?? {};
   return {
     ...(fixedPriceAmount == null ? {} : { fixedPriceAmount }),
     ...(budgetAmount == null ? {} : { budgetAmount }),
+    ...(defaultBillRate == null ? {} : { defaultBillRate }),
     ...(currency == null ? {} : { currency }),
   };
 };
@@ -350,9 +360,11 @@ const financialFields = (values: ProjectFormValues) => {
   const currency = values.currency.trim().toUpperCase();
   const fixedPrice = values.billingType === "fixed-price" ? amount(values.fixedPriceAmount) : undefined;
   const budget = amount(values.budgetAmount);
+  const defaultBillRate = amount(values.defaultBillRate);
   return {
     ...(fixedPrice === undefined ? {} : { fixedPriceAmount: fixedPrice }),
     ...(budget === undefined ? {} : { budgetAmount: budget }),
+    ...(defaultBillRate === undefined ? {} : { defaultBillRate }),
     ...(currency ? { currency } : {}),
   };
 };

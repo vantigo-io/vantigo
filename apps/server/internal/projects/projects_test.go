@@ -1,6 +1,7 @@
 package projects_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -89,8 +90,10 @@ func TestPostProjects_ValidationRules(t *testing.T) {
 		{"fixed price amount on a time-and-materials project", map[string]any{"fixedPriceAmount": 1000, "currency": "NOK"}, "fixedPriceAmount"},
 		{"budget hours of zero", map[string]any{"budgetHours": 0}, "budgetHours"},
 		{"budget amount of zero", map[string]any{"budgetAmount": 0, "currency": "NOK"}, "budgetAmount"},
+		{"default bill rate of zero", map[string]any{"defaultBillRate": 0, "currency": "NOK"}, "defaultBillRate"},
 		{"currency that is not three letters", map[string]any{"currency": "kroner", "budgetAmount": 1000}, "currency"},
 		{"an amount with no currency", map[string]any{"budgetAmount": 1000}, "currency"},
+		{"a default bill rate with no currency", map[string]any{"defaultBillRate": 950}, "currency"},
 		{"end date before start date", map[string]any{"startDate": "2026-03-01", "endDate": "2026-02-01"}, "endDate"},
 	}
 	for _, tc := range cases {
@@ -186,6 +189,7 @@ func TestPostProjects_FixedPriceProject_CarriesItsFinancials(t *testing.T) {
 	project := createProject(t, c, map[string]any{
 		"code": "FIX1000", "billingType": "fixed-price",
 		"fixedPriceAmount": 125000.5, "budgetAmount": 130000, "budgetHours": 400, "currency": "nok",
+		"defaultBillRate": 950,
 	})
 	if project.Financials == nil {
 		t.Fatal("Financials is absent, want it present for the creator")
@@ -199,10 +203,69 @@ func TestPostProjects_FixedPriceProject_CarriesItsFinancials(t *testing.T) {
 	if project.Financials.BudgetAmount == nil || *project.Financials.BudgetAmount != 130000 {
 		t.Errorf("Financials.BudgetAmount = %v, want 130000", project.Financials.BudgetAmount)
 	}
+	if project.Financials.DefaultBillRate == nil || *project.Financials.DefaultBillRate != 950 {
+		t.Errorf("Financials.DefaultBillRate = %v, want 950", project.Financials.DefaultBillRate)
+	}
 	// Budget hours are planning data, outside the financial shaping.
 	if project.BudgetHours == nil || *project.BudgetHours != 400 {
 		t.Errorf("BudgetHours = %v, want 400", project.BudgetHours)
 	}
+}
+
+// The directory (another module's read of a project) reflects the same
+// default bill rate the API stored, through the same numeric column
+// TestDirectory_ProjectEntryCarriesCurrencyAndDefaultBillRate reads directly —
+// this proves the write path the API adds actually reaches it.
+func TestPostProjects_DefaultBillRate_ReflectsInTheDirectory(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+
+	project := createProject(t, c, map[string]any{
+		"code": "RATE1000", "currency": "NOK", "defaultBillRate": 875.5,
+	})
+
+	rate := modtest.One[float64](t, h, `SELECT default_bill_rate FROM projects.projects WHERE id = $1`, project.Id)
+	if rate != 875.5 {
+		t.Errorf("stored default_bill_rate = %v, want 875.5", rate)
+	}
+}
+
+// D8/D12: defaultBillRate lives only inside financials, so a caller who may
+// not see the project's financials — a member — sees neither the object nor
+// the field. The assertion is on the raw JSON, not the decoded struct: a nil
+// pointer cannot tell "absent" from "null".
+func TestGetProjectsById_Member_DefaultBillRateIsAbsent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, memberID := signIn(t, h)
+	project := createProject(t, mustSignInCreator(t, h), map[string]any{
+		"code": "RATEMEM1000", "currency": "NOK", "defaultBillRate": 800,
+	})
+	addRole(t, h, project.Id, memberID, "member")
+
+	r := getProject(t, c, project.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(r.Body, &raw); err != nil {
+		t.Fatalf("decode %s: %v", r.Body, err)
+	}
+	if _, present := raw["defaultBillRate"]; present {
+		t.Errorf("body %s carries a top-level 'defaultBillRate' key, want it absent", r.Body)
+	}
+	if _, present := raw["financials"]; present {
+		t.Errorf("body %s carries a 'financials' key, want it absent (not null) for a member", r.Body)
+	}
+}
+
+// mustSignInCreator signs in a fresh caller holding projects:create, for a
+// test whose subject is a different caller reading what they made.
+func mustSignInCreator(t *testing.T, h *modtest.Harness) *modtest.Client {
+	t.Helper()
+	c, _ := signIn(t, h, "projects:create")
+	return c
 }
 
 // Every state change writes its timeline entry in the same transaction as

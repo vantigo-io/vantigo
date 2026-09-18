@@ -53,6 +53,9 @@ func updateBody(p projectJSON, overrides map[string]any) map[string]any {
 		if p.Financials.BudgetAmount != nil {
 			body["budgetAmount"] = *p.Financials.BudgetAmount
 		}
+		if p.Financials.DefaultBillRate != nil {
+			body["defaultBillRate"] = *p.Financials.DefaultBillRate
+		}
 	}
 	maps.Copy(body, overrides)
 	for field, value := range overrides {
@@ -306,6 +309,74 @@ func TestPutProjectsById_FixedPriceChange_WritesBillingChangedWithoutTheAmount(t
 		if strings.Contains(raw, amount) {
 			t.Errorf("billing-changed payload = %s, want no amount in it (%s leaked)", raw, amount)
 		}
+	}
+}
+
+// defaultBillRate round-trips through an update exactly as the other amounts
+// do, and its own change is named on billing-changed, never its value.
+func TestPutProjectsById_DefaultBillRateChange_WritesBillingChangedWithoutTheAmount(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "UPDRATE1000", "currency": "NOK", "defaultBillRate": 800,
+	})
+
+	updated := putProject(t, c, project, map[string]any{"defaultBillRate": 950})
+	if updated.Financials == nil || updated.Financials.DefaultBillRate == nil || *updated.Financials.DefaultBillRate != 950 {
+		t.Fatalf("Financials = %+v, want DefaultBillRate 950", updated.Financials)
+	}
+
+	if got := eventTypes(t, h, project.Id); len(got) != 2 || got[1] != "billing-changed" {
+		t.Fatalf("timeline = %v, want [project-created billing-changed]", got)
+	}
+	raw := modtest.One[string](t, h, `SELECT payload::text FROM projects.timeline_entries
+	                                  WHERE project_id = $1 AND event_type = 'billing-changed'`, project.Id)
+	if !strings.Contains(raw, "defaultBillRate") {
+		t.Errorf("billing-changed payload = %s, want the field name in it", raw)
+	}
+	for _, amount := range []string{"950", "800"} {
+		if strings.Contains(raw, amount) {
+			t.Errorf("billing-changed payload = %s, want no amount in it (%s leaked)", raw, amount)
+		}
+	}
+}
+
+// A full-replace PUT that omits defaultBillRate clears it, the same as any
+// other optional amount — but clearing the currency it depends on while it is
+// still set must fail on the currency field rather than silently drop it.
+func TestPutProjectsById_ClearingCurrencyWithDefaultBillRateStillSet_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "UPDRATECUR1000", "currency": "NOK", "defaultBillRate": 800,
+	})
+
+	r := updateProject(t, c, project, map[string]any{"currency": nil, "defaultBillRate": 800})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["currency"]) == 0 {
+		t.Errorf("Errors = %v, want the failure on the 'currency' field", problem.Errors)
+	}
+}
+
+// Omitting defaultBillRate on an otherwise complete update clears it, exactly
+// as omitting budgetAmount would (a PUT is a full replace).
+func TestPutProjectsById_OmittingDefaultBillRate_ClearsIt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "UPDRATECLR1000", "currency": "NOK", "defaultBillRate": 800,
+	})
+
+	updated := putProject(t, c, project, map[string]any{"defaultBillRate": nil})
+	if updated.Financials == nil || updated.Financials.DefaultBillRate != nil {
+		t.Errorf("Financials = %+v, want DefaultBillRate absent after omitting it", updated.Financials)
 	}
 }
 

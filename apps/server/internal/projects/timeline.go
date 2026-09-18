@@ -263,6 +263,9 @@ func diffProjects(before, after store.ProjectsProject) (projectDiff, error) {
 	if d.Billing, err = changedAmount(d.Billing, "budgetAmount", before.BudgetAmount, after.BudgetAmount); err != nil {
 		return projectDiff{}, err
 	}
+	if d.Billing, err = changedAmount(d.Billing, "defaultBillRate", before.DefaultBillRate, after.DefaultBillRate); err != nil {
+		return projectDiff{}, err
+	}
 
 	if before.Name != after.Name {
 		d.Details = append(d.Details, "name")

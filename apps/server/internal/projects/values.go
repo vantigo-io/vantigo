@@ -284,6 +284,7 @@ type parsedProject struct {
 	FixedPriceAmount pgtype.Numeric
 	BudgetHours      pgtype.Numeric
 	BudgetAmount     pgtype.Numeric
+	DefaultBillRate  pgtype.Numeric
 }
 
 // validateProject runs every §4.1 rule over a create body and returns the
@@ -336,11 +337,12 @@ func (s *server) validateProject(ctx context.Context, body gen.ProjectCreateRequ
 
 	add("budgetHours", validatePositiveAmount("Budget hours", body.BudgetHours))
 	add("budgetAmount", validatePositiveAmount("A budget amount", body.BudgetAmount))
+	add("defaultBillRate", validatePositiveAmount("A default bill rate", body.DefaultBillRate))
 
 	currency, msg := validateCurrency(body.Currency)
 	add("currency", msg)
 	if msg == "" {
-		add("currency", validateCurrencyRequired(currency, body.FixedPriceAmount, body.BudgetAmount))
+		add("currency", validateCurrencyRequired(currency, body.FixedPriceAmount, body.BudgetAmount, body.DefaultBillRate))
 	}
 
 	add("endDate", validateDateOrder(body.StartDate, body.EndDate))
@@ -361,6 +363,10 @@ func (s *server) validateProject(ctx context.Context, body gen.ProjectCreateRequ
 	if err != nil {
 		return parsedProject{}, nil, err
 	}
+	defaultBillRate, err := numericFromFloatPtr(body.DefaultBillRate)
+	if err != nil {
+		return parsedProject{}, nil, err
+	}
 
 	return parsedProject{
 		Code:             code,
@@ -375,6 +381,7 @@ func (s *server) validateProject(ctx context.Context, body gen.ProjectCreateRequ
 		FixedPriceAmount: fixedPrice,
 		BudgetHours:      budgetHours,
 		BudgetAmount:     budgetAmount,
+		DefaultBillRate:  defaultBillRate,
 	}, nil, nil
 }
 
@@ -397,6 +404,7 @@ func projectFromUpdate(body gen.ProjectUpdateRequest) gen.ProjectCreateRequest {
 		FixedPriceAmount: body.FixedPriceAmount,
 		BudgetHours:      body.BudgetHours,
 		BudgetAmount:     body.BudgetAmount,
+		DefaultBillRate:  body.DefaultBillRate,
 	}
 }
 

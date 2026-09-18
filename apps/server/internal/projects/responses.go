@@ -59,10 +59,15 @@ func projectResponse(row store.ProjectsProject, a access, customerName *string, 
 		if err != nil {
 			return gen.ProjectResponse{}, err
 		}
+		defaultBillRate, err := floatPtrFromNumeric(row.DefaultBillRate)
+		if err != nil {
+			return gen.ProjectResponse{}, err
+		}
 		resp.Financials = &gen.ProjectFinancials{
 			Currency:         row.Currency,
 			FixedPriceAmount: fixedPrice,
 			BudgetAmount:     budgetAmount,
+			DefaultBillRate:  defaultBillRate,
 		}
 	}
 	return resp, nil

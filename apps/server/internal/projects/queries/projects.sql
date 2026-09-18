@@ -6,11 +6,11 @@
 -- field error rather than a 500 — that is what makes two racing creates safe.
 INSERT INTO projects.projects (
     code, name, description, customer_id, start_date, end_date, billing_type,
-    currency, fixed_price_amount, budget_hours, budget_amount,
+    currency, fixed_price_amount, budget_hours, budget_amount, default_bill_rate,
     created_by_user_id, created_at, updated_at
 ) VALUES (
     @code, @name, @description, @customer_id, @start_date, @end_date, @billing_type,
-    @currency, @fixed_price_amount, @budget_hours, @budget_amount,
+    @currency, @fixed_price_amount, @budget_hours, @budget_amount, @default_bill_rate,
     @created_by_user_id, @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
@@ -78,6 +78,7 @@ UPDATE projects.projects SET
     fixed_price_amount = @fixed_price_amount,
     budget_hours = @budget_hours,
     budget_amount = @budget_amount,
+    default_bill_rate = @default_bill_rate,
     revision = revision + 1,
     updated_at = @now::timestamptz
 WHERE id = @id AND revision = @revision

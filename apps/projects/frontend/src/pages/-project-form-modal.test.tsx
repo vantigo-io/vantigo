@@ -196,6 +196,21 @@ describe("ProjectFormModal", () => {
     });
   });
 
+  it("sends the default bill rate on create", async () => {
+    const fetchMock = stubProjectsApi(() => jsonResponse(201, project));
+    const { onClose } = renderModal({ mode: "create" });
+
+    await pickCustomer("Equinor");
+    await userEvent.type(screen.getByLabelText(/project name/i), "Website");
+    await waitFor(() => expect(codeInput()).toHaveValue("KVEWEBS"), { timeout: 3000 });
+    await userEvent.type(screen.getByLabelText(/default bill rate/i), "950");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const [, init] = fetchMock.actualCalls.find(([, request]) => request?.method === "POST") ?? [];
+    expect(JSON.parse(String(init?.body))).toMatchObject({ defaultBillRate: 950, currency: "NOK" });
+  });
+
   it("shows a server field error under the code input", async () => {
     stubProjectsApi(() =>
       jsonResponse(400, { title: "Invalid project", errors: { code: ["A project already uses the code KVEWEBS"] } }),
