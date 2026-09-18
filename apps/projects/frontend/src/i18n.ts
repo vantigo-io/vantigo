@@ -144,7 +144,6 @@ export const projectsCatalog = {
     roleChanged: "Role changed",
     couldNotUpdatePerson: "Could not update the assignment",
     inactiveUser: "Inactive",
-    lastManagerWarning: "A project needs at least one manager.",
 
     financialSummary: "Financial summary",
     financialsHiddenDescription: "Ask a project manager, or someone who may see the company's project finances.",
@@ -180,7 +179,8 @@ export const projectsCatalog = {
     lineCodeRequired: "A line code is required",
     lineCodeInvalid: "A line code is 1–10 letters and digits",
     variantRequired: "A product variant is required",
-    fixedAmountRequired: "A fixed line needs an amount",
+    fixedAmountRequired: "A fixed line needs an amount above 0",
+    fixedNeedsCurrency: "A fixed amount needs the project to have a currency",
     discountPercentRequired: "A discount line needs a percentage above 0 and at most 100",
   },
   nb: {
@@ -326,7 +326,6 @@ export const projectsCatalog = {
     roleChanged: "Rollen er endret",
     couldNotUpdatePerson: "Kunne ikke oppdatere tildelingen",
     inactiveUser: "Inaktiv",
-    lastManagerWarning: "Et prosjekt må ha minst én prosjektleder.",
 
     financialSummary: "Økonomisk sammendrag",
     financialsHiddenDescription: "Spør en prosjektleder, eller noen som kan se prosjektøkonomien.",
@@ -362,7 +361,8 @@ export const projectsCatalog = {
     lineCodeRequired: "Linjekode er påkrevd",
     lineCodeInvalid: "En linjekode er 1–10 bokstaver og tall",
     variantRequired: "Produktvariant er påkrevd",
-    fixedAmountRequired: "En fast linje må ha et beløp",
+    fixedAmountRequired: "En fast linje må ha et beløp over 0",
+    fixedNeedsCurrency: "Et fast beløp krever at prosjektet har en valuta",
     discountPercentRequired: "En rabattlinje må ha en prosent over 0 og høyst 100",
   },
 } as const satisfies CatalogResources;

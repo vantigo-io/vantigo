@@ -135,6 +135,20 @@ describe("ProjectPeople", () => {
     expect(fetchMock.actualCalls.some(([, init]) => init?.method === "DELETE")).toBe(false);
   });
 
+  it("reports a project it cannot read, rather than a table nobody may act on", async () => {
+    stubFetch((input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/v1/projects/7") {
+        return Promise.resolve(jsonResponse(500, { title: "Projects are unavailable" }));
+      }
+      return Promise.resolve(jsonResponse(200, roles));
+    });
+    renderWithProviders(<ProjectPeople projectId={7} />);
+
+    expect(await screen.findByText("Failed to load the project")).toBeInTheDocument();
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+  });
+
   it("says when nobody is assigned yet", async () => {
     stubPeople(true, []);
     renderWithProviders(<ProjectPeople projectId={7} />);

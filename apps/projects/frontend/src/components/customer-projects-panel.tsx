@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { type ProjectSummary, projectsQueryOptions } from "../api/projects";
+import { useProjectDates } from "../lib/dates";
 import "../i18n";
 import { ProjectFormModal, type ProjectModalState } from "../pages/-project-form-modal";
 import { ProjectStatusBadge } from "./project-status-badge";
@@ -83,14 +84,9 @@ export const CustomerProjectsPanel = ({ customerId, canCreate = false }: Custome
 };
 
 const PanelRow = ({ project }: { project: ProjectSummary }) => {
-  const { t, formatters } = useI18n("projects");
+  const dates = useProjectDates();
   const Link = useShellLink();
   const to = `/projects/${project.id}`;
-  // Plain calendar dates: formatted in UTC so a local evening does not move them a day.
-  const day = (value: string) => formatters.formatDate(value, { dateStyle: "medium", timeZone: "UTC" });
-  const start = project.startDate ? day(project.startDate) : null;
-  const end = project.endDate ? day(project.endDate) : null;
-
   return (
     <Table.Tr>
       <Table.Td>
@@ -109,9 +105,7 @@ const PanelRow = ({ project }: { project: ProjectSummary }) => {
         <ProjectStatusBadge status={project.status} />
       </Table.Td>
       <Table.Td>
-        <Text size="sm">
-          {start || end ? `${start ?? t("notAvailable")} – ${end ?? t("notAvailable")}` : t("notAvailable")}
-        </Text>
+        <Text size="sm">{dates.range(project.startDate, project.endDate)}</Text>
       </Table.Td>
     </Table.Tr>
   );

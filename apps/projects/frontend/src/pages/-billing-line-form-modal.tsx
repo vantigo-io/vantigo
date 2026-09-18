@@ -24,12 +24,12 @@ import { ApiValidationError } from "../api/projects";
 import type { ApiError } from "../api/request";
 import "../i18n";
 import { type PricingMode, pricingModeLabelKey, pricingModes } from "../lib/billing";
+import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
 /** Adding a line, or editing the one the caller just read off the table. */
 export type BillingLineModalState = { mode: "create" } | { mode: "edit"; line: BillingLine };
 
 const LINE_CODE_PATTERN = /^[A-Z0-9]{1,10}$/;
-const SEARCH_DEBOUNCE_MS = 300;
 
 interface BillingLineFormValues {
   code: string;
@@ -103,8 +103,14 @@ const BillingLineForm = ({
         return LINE_CODE_PATTERN.test(code) ? null : t("lineCodeInvalid");
       },
       variantId: (value) => (value ? null : t("variantRequired")),
-      fixedAmount: (value, values) =>
-        values.pricingMode === "fixed" && amount(value) === undefined ? t("fixedAmountRequired") : null,
+      fixedAmount: (value, values) => {
+        if (values.pricingMode !== "fixed") return null;
+        // The contract: greater than zero, and only on a project that has a
+        // currency to express it in (D13).
+        if (!currency) return t("fixedNeedsCurrency");
+        const fixed = amount(value);
+        return fixed === undefined || fixed <= 0 ? t("fixedAmountRequired") : null;
+      },
       discountPercent: (value, values) => {
         if (values.pricingMode !== "discount") return null;
         const percent = amount(value);
@@ -162,12 +168,20 @@ const BillingLineForm = ({
           {...form.getInputProps("code")}
           onChange={(event) => form.setFieldValue("code", event.currentTarget.value.toUpperCase())}
         />
-        <Input.Wrapper label={t("pricingMode")} labelElement="div">
+        <Input.Wrapper
+          label={t("pricingMode")}
+          labelElement="div"
+          description={currency ? undefined : t("fixedNeedsCurrency")}
+        >
           <SegmentedControl
             fullWidth
             mt={4}
             aria-label={t("pricingMode")}
-            data={pricingModes.map((mode) => ({ value: mode, label: t(pricingModeLabelKey(mode)) }))}
+            data={pricingModes.map((mode) => ({
+              value: mode,
+              label: t(pricingModeLabelKey(mode)),
+              disabled: mode === "fixed" && !currency,
+            }))}
             value={form.values.pricingMode}
             onChange={(value) => form.setFieldValue("pricingMode", value as PricingMode)}
           />

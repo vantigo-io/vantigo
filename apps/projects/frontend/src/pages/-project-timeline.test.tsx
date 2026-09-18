@@ -64,6 +64,30 @@ describe("ProjectTimeline", () => {
     expect(screen.getByText("Alan Turing was added as Manager.")).toBeInTheDocument();
   });
 
+  it("names the fields an update moved, on the project and on a line", async () => {
+    stubTimeline([
+      entry({ id: 5, eventType: "details-changed", payload: { fields: ["description", "startDate"] } }),
+      entry({ id: 6, eventType: "line-changed", payload: { code: "PM", fields: ["variantId", "pricingMode"] } }),
+    ]);
+    renderWithProviders(<ProjectTimeline projectId={7} />);
+
+    expect(await screen.findByText("Details changed: Description, Start date.")).toBeInTheDocument();
+    expect(screen.getByText("Billing line PM changed: Product variant, Pricing rule.")).toBeInTheDocument();
+  });
+
+  it("reads a role change as the roles it went between", async () => {
+    stubTimeline([
+      entry({
+        id: 7,
+        eventType: "role-changed",
+        payload: { userId: "2", displayName: "Alan Turing", oldRole: "member", newRole: "manager" },
+      }),
+    ]);
+    renderWithProviders(<ProjectTimeline projectId={7} />);
+
+    expect(await screen.findByText("Alan Turing changed from Member to Manager.")).toBeInTheDocument();
+  });
+
   it("falls back to the raw event type it does not know", async () => {
     stubTimeline([entry({ id: 4, eventType: "something-new", payload: {} })]);
     renderWithProviders(<ProjectTimeline projectId={7} />);

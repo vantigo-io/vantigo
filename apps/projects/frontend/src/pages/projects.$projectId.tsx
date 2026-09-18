@@ -5,9 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, PageHeader, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
 import { type Project, type ProjectStatus, projectQueryOptions, setProjectStatus } from "../api/projects";
+import { Field } from "../components/field";
 import { ProjectStatusBadge } from "../components/project-status-badge";
 import "../i18n";
 import { billingTypeLabelKey } from "../lib/billing";
+import { useProjectDates } from "../lib/dates";
 import { projectStatuses, projectStatusLabelKey } from "../lib/status";
 import { ProjectFormModal, type ProjectModalState } from "./-project-form-modal";
 import { ProjectTimeline } from "./-project-timeline";
@@ -142,7 +144,7 @@ const StatusMenu = ({ project }: { project: Project }) => {
 
 /** The Overview tab: what the project is, and what has happened to it. */
 export const ProjectOverview = ({ projectId }: { projectId: number }) => (
-  <Stack gap="lg">
+  <Stack gap="lg" mt="md">
     <ProjectDetailsCard projectId={projectId} />
     <ProjectTimeline projectId={projectId} />
   </Stack>
@@ -150,6 +152,7 @@ export const ProjectOverview = ({ projectId }: { projectId: number }) => (
 
 const ProjectDetailsCard = ({ projectId }: { projectId: number }) => {
   const { t, formatters } = useI18n("projects");
+  const dates = useProjectDates();
   const { data: project, isPending, isError, error } = useQuery(projectQueryOptions(projectId));
 
   if (isError) {
@@ -160,11 +163,6 @@ const ProjectDetailsCard = ({ projectId }: { projectId: number }) => {
     );
   }
   if (isPending) return <ContentSkeleton rows={4} rowHeight={40} />;
-
-  // Plain calendar dates: formatted in UTC so a local evening does not move them a day.
-  const day = (value: string) => formatters.formatDate(value, { dateStyle: "medium", timeZone: "UTC" });
-  const start = project.startDate ? day(project.startDate) : null;
-  const end = project.endDate ? day(project.endDate) : null;
 
   return (
     <Card withBorder padding="lg" radius="md" data-testid="project-details">
@@ -179,9 +177,7 @@ const ProjectDetailsCard = ({ projectId }: { projectId: number }) => {
           <Text size="sm">{project.description || t("noDescription")}</Text>
         </Stack>
         <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
-          <Field label={t("dates")}>
-            {start || end ? `${start ?? t("notAvailable")} – ${end ?? t("notAvailable")}` : t("notAvailable")}
-          </Field>
+          <Field label={t("dates")}>{dates.range(project.startDate, project.endDate)}</Field>
           <Field label={t("billingType")}>{t(billingTypeLabelKey(project.billingType))}</Field>
           <Field label={t("budgetHours")}>
             {project.budgetHours === undefined || project.budgetHours === null
@@ -198,12 +194,3 @@ const ProjectDetailsCard = ({ projectId }: { projectId: number }) => {
     </Card>
   );
 };
-
-const Field = ({ label, children }: { label: string; children: ReactNode }) => (
-  <Stack gap={2}>
-    <Text size="sm" c="dimmed">
-      {label}
-    </Text>
-    <Text size="sm">{children}</Text>
-  </Stack>
-);
