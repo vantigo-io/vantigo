@@ -85,12 +85,21 @@ const TaskDrawerBody = ({ projectId, taskId, onClose, canContribute, canManage, 
   }
   if (isPending) return <ContentSkeleton rows={5} rowHeight={40} />;
 
+  // Nesting is one level deep, so a subtask can neither be given subtasks nor
+  // ever have any: the section is left out of its drawer entirely rather than
+  // standing empty above an add the API would refuse.
+  const showSubtasks = task.parentTaskId == null || (task.subtasks?.length ?? 0) > 0;
+
   return (
     <Stack gap="lg">
       <TaskHeader task={task} canContribute={canContribute} onDeleted={onClose} />
       <TaskDetails projectId={projectId} task={task} canContribute={canContribute} />
-      <Divider />
-      <Subtasks projectId={projectId} task={task} canContribute={canContribute} />
+      {showSubtasks && (
+        <>
+          <Divider />
+          <Subtasks projectId={projectId} task={task} canContribute={canContribute} />
+        </>
+      )}
       <Divider />
       <TaskChecklist taskId={task.id} canContribute={canContribute} />
       <Divider />
@@ -333,7 +342,13 @@ const TaskDetails = ({ projectId, task, canContribute }: { projectId: number; ta
   );
 };
 
-/** One level down: the task's own subtasks, ticked off or added without leaving the drawer. */
+/**
+ * One level down: the task's own subtasks, ticked off or added without leaving
+ * the drawer. A task that is itself a subtask reads its own — there are never
+ * any — but is offered no add: the API refuses a third level, and the drawer
+ * opens on a subtask from a list row, a board card, a "my tasks" row and the
+ * `?task=` deep link alike.
+ */
 const Subtasks = ({ projectId, task, canContribute }: { projectId: number; task: Task; canContribute: boolean }) => {
   const { t } = useI18n("projects");
   const queryClient = useQueryClient();
@@ -353,6 +368,7 @@ const Subtasks = ({ projectId, task, canContribute }: { projectId: number; task:
   });
 
   const subtasks = task.subtasks ?? [];
+  const canAdd = canContribute && task.parentTaskId == null;
 
   return (
     <Stack gap="xs">
@@ -377,7 +393,7 @@ const Subtasks = ({ projectId, task, canContribute }: { projectId: number; task:
           <TaskStatusBadge status={subtask.status} size="xs" />
         </Group>
       ))}
-      {canContribute && (
+      {canAdd && (
         <Group gap="xs" wrap="nowrap" mt="xs">
           <TextInput
             aria-label={t("subtaskTitle")}

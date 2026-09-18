@@ -27,7 +27,7 @@ const project = (overrides: Partial<Project> = {}): Project =>
     internal: false,
     capabilities: { canManage: true, canContribute: true, canSeeFinancials: true },
     billingLinesAvailable: true,
-    financials: { currency: "NOK", fixedPriceAmount: 250000, budgetAmount: 300000 },
+    financials: { currency: "NOK", fixedPriceAmount: 250000, budgetAmount: 300000, defaultBillRate: 1250 },
     managers: [],
     revision: 3,
     createdAt: "2026-01-01T10:00:00Z",
@@ -84,6 +84,26 @@ describe("ProjectBilling", () => {
     expect(summary).toHaveTextContent(money(250000));
     expect(summary).toHaveTextContent(money(300000));
     expect(summary).toHaveTextContent("NOK");
+  });
+
+  // The rate a time entry falls back to is only readable here: the project
+  // form writes it, and nothing else on the tab shows what it stands at.
+  it("shows the default bill rate in the project's currency", async () => {
+    stubBilling(project());
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    const summary = await screen.findByTestId("financial-summary");
+    expect(within(summary).getByText("Default bill rate")).toBeInTheDocument();
+    expect(summary).toHaveTextContent(money(1250));
+  });
+
+  it("says so when no default bill rate is set", async () => {
+    stubBilling(project({ financials: { currency: "NOK" } }));
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    const summary = await screen.findByTestId("financial-summary");
+    const rate = within(summary).getByText("Default bill rate").closest("div") as HTMLElement;
+    expect(rate).toHaveTextContent("—");
   });
 
   it("hides the lines section when the products module is off", async () => {
