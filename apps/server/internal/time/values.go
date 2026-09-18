@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -357,3 +358,68 @@ func clockFromTime(t pgtype.Time) *string {
 
 // pgDate stores a date as the date column wants it.
 func pgDate(d time.Time) pgtype.Date { return pgtype.Date{Time: d, Valid: true} }
+
+// statuses is every status an entry can be in, in the order they are named.
+var statuses = []string{statusDraft, statusSubmitted, statusApproved, statusRejected, statusInvoiced}
+
+// validStatus reports whether s is one of statuses.
+func validStatus(s string) bool { return slices.Contains(statuses, s) }
+
+// statusList renders statuses the way a message quotes them: 'draft',
+// 'submitted', 'approved', 'rejected' or 'invoiced'.
+func statusList() string {
+	quoted := make([]string, len(statuses))
+	for i, s := range statuses {
+		quoted[i] = "'" + s + "'"
+	}
+	return strings.Join(quoted[:len(quoted)-1], ", ") + " or " + quoted[len(quoted)-1]
+}
+
+// listDefaultPageSize and listMaxPageSize are customers' and projects' list
+// defaults, so every list in the product pages the same way.
+const (
+	listDefaultPageSize = 25
+	listMaxPageSize     = 100
+)
+
+// validatePageParams is the paging rule every paged operation shares, in
+// customers' and projects' own words: every failure is collected rather than
+// the first one reported.
+func validatePageParams(page, pageSize *int32) []string {
+	var errs []string
+	if page != nil && *page < 1 {
+		errs = append(errs, fmt.Sprintf("'page' must be 1 or greater, but was %d.", *page))
+	}
+	if pageSize != nil && (*pageSize < 1 || *pageSize > listMaxPageSize) {
+		errs = append(errs, fmt.Sprintf("'pageSize' must be between 1 and %d, but was %d.", listMaxPageSize, *pageSize))
+	}
+	return errs
+}
+
+// pageParams is the validated paging as numbers: page 1 and
+// listDefaultPageSize rows unless the caller asked otherwise.
+func pageParams(page, pageSize *int32) (int32, int32) {
+	p, size := int32(1), int32(listDefaultPageSize)
+	if page != nil {
+		p = *page
+	}
+	if pageSize != nil {
+		size = *pageSize
+	}
+	return p, size
+}
+
+// daysInWeek is a week's length; a week starts on a Monday (D2).
+const daysInWeek = 7
+
+// notAMonday is the message a weekStart that is not a Monday is refused
+// with, "" when it is one.
+func notAMonday(weekStart time.Time) string {
+	if weekStart.Weekday() == time.Monday {
+		return ""
+	}
+	return fmt.Sprintf("A week starts on a Monday, but %s is a %s", weekStart.Format(time.DateOnly), weekStart.Weekday())
+}
+
+// weekEnd is the Sunday of the week starting on the Monday weekStart.
+func weekEnd(weekStart time.Time) time.Time { return weekStart.AddDate(0, 0, daysInWeek-1) }

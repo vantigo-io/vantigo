@@ -74,6 +74,38 @@ func (c *caller) role(ctx context.Context, s *server, projectID int32) (string, 
 	return role, nil
 }
 
+// seesEveryone reports whether the caller sees every entry, whoever's and on
+// whichever project: time:view-all to read them, time:approve to approve
+// them and time:manage to unapprove them — none of the three can do its job
+// on entries it cannot see.
+func (c *caller) seesEveryone() bool {
+	return c.ViewAll || c.Approve || c.Manage
+}
+
+// managedProjects is every project the caller holds the manager role on —
+// the projects whose entries they see whoever logged them. It asks the
+// directory for the caller's projects and then for the role on each through
+// role, so the answer is cached beside the roles entryAccess reads and a list
+// filtered on these ids can never disagree with the access its rows are
+// rendered with.
+func (c *caller) managedProjects(ctx context.Context, s *server) ([]int32, error) {
+	projects, err := s.deps.Projects.ProjectsForUser(ctx, c.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("time: list the caller's projects: %w", err)
+	}
+	managed := []int32{}
+	for _, p := range projects {
+		role, err := c.role(ctx, s, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		if role == roleManager {
+			managed = append(managed, p.ID)
+		}
+	}
+	return managed, nil
+}
+
 // locked reports whether date falls before the period lock (D9). The lock
 // date itself is open.
 func (c *caller) locked(date time.Time) bool {
@@ -83,9 +115,13 @@ func (c *caller) locked(date time.Time) bool {
 // entryAccess is what one caller may do with one entry.
 //
 // CanSee is visibility (§6): the owner sees their own entries, a manager of
-// the entry's project sees every entry on it, and time:view-all sees them
-// all; anyone else gets the bare 404 an unknown id gets. A project member
-// sees only their own.
+// the entry's project sees every entry on it, and time:view-all,
+// time:approve and time:manage see them all (seesEveryone); anyone else gets
+// the bare 404 an unknown id gets. A project member sees only their own, and
+// a project permission — projects:view-all, projects:view-financials,
+// projects:manage-all — sees no one's time. The list applies the same rule
+// in SQL (ListEntries: see_all, the caller's own, managedProjects), so it
+// never shows an entry a read of it would answer 404 for.
 //
 // CanSeeBilling and CanSeeCost are D8's shaping of the money on an entry the
 // caller sees: the bill rate to its owner and to whoever may see the
@@ -128,7 +164,7 @@ func (s *server) entryAccess(ctx context.Context, c *caller, entry store.TimeEnt
 		IsManager:     role == roleManager,
 	}
 	a.IsApprover = a.IsManager || c.Approve
-	a.CanSee = a.IsOwner || a.IsManager || c.ViewAll
+	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone()
 	a.CanSeeBilling = a.IsOwner || a.IsManager || c.ProjectsManageAll || (c.ProjectsFinancials && a.CanSeeProject)
 	a.CanSeeCost = c.Manage || c.ViewAll
 

@@ -542,3 +542,153 @@ func fieldErrors(t *testing.T, c *modtest.Client, body map[string]any) map[strin
 	}
 	return problem.Errors
 }
+
+// updateBody is a full-replace body for e: every field e stands with now, at
+// the revision it was read at, with overrides applied the way entryBody
+// applies them (a nil value removes the field).
+func updateBody(e entryJSON, overrides map[string]any) map[string]any {
+	body := map[string]any{
+		"projectId": e.ProjectId,
+		"entryDate": e.EntryDate,
+		"hours":     e.Hours,
+		"billable":  e.Billable,
+		"revision":  e.Revision,
+	}
+	for field, value := range map[string]any{
+		"billingLineId": e.BillingLineId, "taskId": e.TaskId, "startTime": e.StartTime, "endTime": e.EndTime, "note": e.Note,
+	} {
+		switch v := value.(type) {
+		case *int32:
+			if v != nil {
+				body[field] = *v
+			}
+		case *string:
+			if v != nil {
+				body[field] = *v
+			}
+		}
+	}
+	maps.Copy(body, overrides)
+	for field, value := range overrides {
+		if value == nil {
+			delete(body, field)
+		}
+	}
+	return body
+}
+
+// updateEntry replaces e with updateBody(e, overrides) and fails the test
+// unless it answered 200.
+func updateEntry(t *testing.T, c *modtest.Client, e entryJSON, overrides map[string]any) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPut, entryPath(e.Id), updateBody(e, overrides))
+	if r.Status != http.StatusOK {
+		t.Fatalf("update entry %d: status %d body %s, want 200", e.Id, r.Status, r.Body)
+	}
+	var updated entryJSON
+	r.JSON(&updated)
+	return updated
+}
+
+// entryPageJSON decodes PaginatedResponseOfTimeEntryResponse.
+type entryPageJSON struct {
+	Data       []entryJSON `json:"data"`
+	Pagination struct {
+		Page            int32 `json:"page"`
+		PageSize        int32 `json:"pageSize"`
+		TotalCount      int32 `json:"totalCount"`
+		TotalPages      int32 `json:"totalPages"`
+		HasNextPage     bool  `json:"hasNextPage"`
+		HasPreviousPage bool  `json:"hasPreviousPage"`
+	} `json:"pagination"`
+}
+
+// listEntries lists entries with query ("" or "userId=…&status=…") and fails
+// the test unless it answered 200.
+func listEntries(t *testing.T, c *modtest.Client, query string) entryPageJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, entriesPath+"?"+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("list entries ?%s: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	var page entryPageJSON
+	r.JSON(&page)
+	return page
+}
+
+// entryIDs is the ids of entries, in order.
+func entryIDs(entries ...entryJSON) []int64 {
+	ids := make([]int64, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, e.Id)
+	}
+	return ids
+}
+
+// submitPath is the single-entry submit operation's path.
+const submitPath = entriesPath + "/submit"
+
+// submitEntries submits ids and fails the test unless it answered 200.
+func submitEntries(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, submitPath, map[string]any{"ids": ids})
+	if r.Status != http.StatusOK {
+		t.Fatalf("submit entries %v: status %d body %s, want 200", ids, r.Status, r.Body)
+	}
+	var entries []entryJSON
+	r.JSON(&entries)
+	return entries
+}
+
+// weekPath is the week operation's path for the Monday weekStart.
+func weekPath(weekStart string) string { return "/api/v1/time/weeks/" + weekStart }
+
+// getWeek reads the caller's week and fails the test unless it answered 200.
+func getWeek(t *testing.T, c *modtest.Client, weekStart string) weekJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, weekPath(weekStart), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get week %s: status %d body %s, want 200", weekStart, r.Status, r.Body)
+	}
+	var week weekJSON
+	r.JSON(&week)
+	return week
+}
+
+// submitWeek submits the caller's week and fails the test unless it answered
+// 200.
+func submitWeek(t *testing.T, c *modtest.Client, weekStart string) weekJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, weekPath(weekStart)+"/submit", nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("submit week %s: status %d body %s, want 200", weekStart, r.Status, r.Body)
+	}
+	var week weekJSON
+	r.JSON(&week)
+	return week
+}
+
+// weekJSON decodes TimeWeekResponse.
+type weekJSON struct {
+	WeekStart             string     `json:"weekStart"`
+	SubmittedAt           *time.Time `json:"submittedAt"`
+	HasUnsubmittedChanges bool       `json:"hasUnsubmittedChanges"`
+	Rows                  []struct {
+		ProjectId       int32   `json:"projectId"`
+		ProjectCode     string  `json:"projectCode"`
+		ProjectName     string  `json:"projectName"`
+		BillingLineId   *int32  `json:"billingLineId"`
+		BillingLineCode *string `json:"billingLineCode"`
+		TrackableCode   *string `json:"trackableCode"`
+		TaskId          *int32  `json:"taskId"`
+		TaskTitle       *string `json:"taskTitle"`
+		Days            []struct {
+			Date    string      `json:"date"`
+			Entries []entryJSON `json:"entries"`
+		} `json:"days"`
+	} `json:"rows"`
+	Totals struct {
+		PerDay []float64 `json:"perDay"`
+		Week   float64   `json:"week"`
+	} `json:"totals"`
+}

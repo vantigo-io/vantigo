@@ -1,6 +1,11 @@
 package timetracking
 
-import "github.com/vantigo-io/vantigo/server/internal/apicommon"
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/vantigo-io/vantigo/server/internal/apicommon"
+)
 
 // This module's refusals are bare RFC 7807 problems and field-level
 // validation text (apicommon.ValidationProblem), never identity's {code,
@@ -20,8 +25,8 @@ import "github.com/vantigo-io/vantigo/server/internal/apicommon"
 // decode failures.
 const invalidEntryTitle = "Invalid time entry"
 
-// invalidEntry is the 400 body for a create whose fields did not pass design
-// §4.2.
+// invalidEntry is the 400 body for a create or an update whose fields did
+// not pass design §4.2.
 func invalidEntry(errs map[string][]string) apicommon.HttpValidationProblemDetails {
 	return apicommon.ValidationProblem(invalidEntryTitle, errs)
 }
@@ -37,3 +42,38 @@ func fieldError(field, message string) map[string][]string {
 // denies on something the router could not evaluate — whether the caller
 // owns *this* entry and it is still theirs to change.
 func forbidden() apicommon.AuthErrorResponse { return apicommon.ForbiddenBody() }
+
+// invalidWeekTitle is the title of the 400 a week operation answers when its
+// weekStart is not a Monday.
+const invalidWeekTitle = "Invalid week"
+
+// invalidWeek is that 400's body.
+func invalidWeek(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidWeekTitle, errs)
+}
+
+// invalidSubmissionTitle is the title of the 400 a submit answers when
+// something in it may not be submitted: a week holding drafts before the
+// lock, or ids naming entries that are not the caller's submittable drafts.
+const invalidSubmissionTitle = "Invalid submission"
+
+// invalidSubmission is that 400's body.
+func invalidSubmission(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidSubmissionTitle, errs)
+}
+
+// invalidQueryTitle is the title of the 400 a list answers for query
+// parameters it cannot use, projects' and customers' wording.
+const invalidQueryTitle = "Invalid query parameters"
+
+// revisionConflictTitle is the title of the 409 an update carrying a
+// revision that has moved on answers.
+const revisionConflictTitle = "Time entry revision conflict"
+
+// revisionConflict is that 409's body. It names both revisions, so a client
+// can tell "somebody else saved" from "I sent the wrong number".
+func revisionConflict(current, supplied int32) apicommon.ProblemDetails {
+	return apicommon.ProblemStatus(revisionConflictTitle,
+		fmt.Sprintf("The entry has revision %d; the supplied revision was %d.", current, supplied),
+		http.StatusConflict)
+}

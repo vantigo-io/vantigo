@@ -1,5 +1,17 @@
 components:
     schemas:
+        PaginatedResponseOfTimeEntryResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/TimeEntryResponse'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
         TimeEntryApprover:
             description: The user who approved an entry, named for display. A user the directory no longer knows is named 'Unknown user'.
             properties:
@@ -224,12 +236,241 @@ components:
                 - updatedAt
                 - capabilities
             type: object
+        TimeEntrySubmitRequest:
+            description: The entries to submit, each the caller's own draft. All or nothing — one entry that may not be submitted refuses the whole request and changes nothing.
+            properties:
+                ids:
+                    items:
+                        format: int64
+                        type: integer
+                    type: array
+            required:
+                - ids
+            type: object
+        TimeEntryUpdateRequest:
+            description: Every field of the entry as it should stand after the update — a full replace — carrying the revision it was read at. A revision that has moved on answers 409. The rates are resolved again (D3), and a rejected entry returns to draft with its rejection reason cleared.
+            properties:
+                billable:
+                    description: Absent defaults from the project's billing type. Always false on a non-billable project, whatever is sent.
+                    nullable: true
+                    type: boolean
+                billingLineId:
+                    description: One of the project's active billing lines.
+                    format: int32
+                    nullable: true
+                    type: integer
+                endTime:
+                    description: HH:MM on the entry date, after startTime. Required when startTime is given.
+                    nullable: true
+                    pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+                    type: string
+                entryDate:
+                    description: The day worked. Not before the lock date, unless the caller holds time:manage.
+                    format: date
+                    type: string
+                hours:
+                    description: Greater than zero, at most 24, at most two decimals; the caller's entries on one day total at most 24.
+                    format: double
+                    type: number
+                note:
+                    description: At most 2000 characters once trimmed; a blank note is stored as none.
+                    nullable: true
+                    type: string
+                projectId:
+                    description: A project the caller may log time on — active, and the caller holds the member or manager role on it.
+                    format: int32
+                    type: integer
+                revision:
+                    description: The revision the caller read the entry at.
+                    format: int32
+                    type: integer
+                startTime:
+                    description: HH:MM on the entry date. Required when endTime is given.
+                    nullable: true
+                    pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+                    type: string
+                taskId:
+                    description: A task on the project. Its title is snapshotted on the entry, so the entry stays readable after the task is deleted.
+                    format: int32
+                    nullable: true
+                    type: integer
+            required:
+                - projectId
+                - entryDate
+                - hours
+                - revision
+            type: object
+        TimeWeekDay:
+            description: One day of a week row.
+            properties:
+                date:
+                    format: date
+                    type: string
+                entries:
+                    description: The row's entries on the day, in start time order (entries without one last), then in the order they were created.
+                    items:
+                        $ref: '#/components/schemas/TimeEntryResponse'
+                    type: array
+            required:
+                - date
+                - entries
+            type: object
+        TimeWeekResponse:
+            description: The caller's own week, Monday to Sunday, as timesheet rows.
+            properties:
+                hasUnsubmittedChanges:
+                    description: True when the week has been submitted and holds a draft entry — one added or edited back to draft since.
+                    type: boolean
+                rows:
+                    description: One row per project, billing line and task the caller logged time on in the week, ordered by project code, then line code (no line first), then task title (no task first).
+                    items:
+                        $ref: '#/components/schemas/TimeWeekRow'
+                    type: array
+                submittedAt:
+                    description: When the week was last submitted as a whole. Absent when it never has been; submitting single entries does not submit the week.
+                    format: date-time
+                    nullable: true
+                    type: string
+                totals:
+                    $ref: '#/components/schemas/TimeWeekTotals'
+                weekStart:
+                    description: The week's Monday.
+                    format: date
+                    type: string
+            required:
+                - weekStart
+                - hasUnsubmittedChanges
+                - rows
+                - totals
+            type: object
+        TimeWeekRow:
+            description: A project, billing line and task the caller logged time on in the week, with the week's seven days.
+            properties:
+                billingLineCode:
+                    nullable: true
+                    type: string
+                billingLineId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                days:
+                    description: Seven days, Monday to Sunday.
+                    items:
+                        $ref: '#/components/schemas/TimeWeekDay'
+                    type: array
+                projectCode:
+                    type: string
+                projectId:
+                    format: int32
+                    type: integer
+                projectName:
+                    type: string
+                taskId:
+                    format: int32
+                    nullable: true
+                    type: integer
+                taskTitle:
+                    description: The task's title as the row's latest entry snapshotted it.
+                    nullable: true
+                    type: string
+                trackableCode:
+                    description: The project's code and the billing line's joined with a hyphen ('KVEM1000-PM'). Absent when the row has no billing line.
+                    nullable: true
+                    type: string
+            required:
+                - projectId
+                - projectCode
+                - projectName
+                - days
+            type: object
+        TimeWeekTotals:
+            description: The week's hours, whatever the entries' statuses.
+            properties:
+                perDay:
+                    description: Seven totals, Monday to Sunday.
+                    items:
+                        format: double
+                        type: number
+                    type: array
+                week:
+                    format: double
+                    type: number
+            required:
+                - perDay
+                - week
+            type: object
 info:
     title: Vantigo Time API
     version: "1"
 openapi: 3.0.3
 paths:
     /api/v1/time/entries:
+        get:
+            description: The entries of one person, newest first — the caller's own unless userId names someone else. Another person's entries are listed only where the caller may see them (the same rule a single read applies), so the list never holds an entry its own read would answer 404 for.
+            operationId: getTimeEntries
+            parameters:
+                - description: Whose entries. Absent means the caller's own. Another person's needs time:view-all, time:approve or time:manage, or the manager role on at least one project (then only the entries on the projects the caller manages are listed) — otherwise 403.
+                  in: query
+                  name: userId
+                  schema:
+                    format: uuid
+                    type: string
+                - description: A Monday; narrows the list to that week, Monday to Sunday.
+                  in: query
+                  name: weekStart
+                  schema:
+                    format: date
+                    type: string
+                - description: Narrows the list to one project. With someone else's userId, the caller must manage this project or hold time:view-all, time:approve or time:manage — otherwise 403.
+                  in: query
+                  name: projectId
+                  schema:
+                    format: int32
+                    type: integer
+                - description: "'draft', 'submitted', 'approved', 'rejected' or 'invoiced'."
+                  in: query
+                  name: status
+                  schema:
+                    type: string
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfTimeEntryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — paging out of range, a weekStart that is not a Monday, or an unknown status.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — userId names someone whose entries the caller may not see.
+            summary: List time entries
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
         post:
             operationId: postTimeEntries
             requestBody:
@@ -264,6 +505,47 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Log time
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+    /api/v1/time/entries/submit:
+        post:
+            description: Submits single entries (D2). Each must be the caller's own draft, not dated before the lock date unless the caller holds time:manage. The rates snapshotted on them are frozen from here on (D3).
+            operationId: postTimeEntriesSubmit
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeEntrySubmitRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeEntryResponse'
+                                type: array
+                    description: OK — the submitted entries, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no ids, or at least one entry that may not be submitted; the errors on ids name each offending id, and nothing was submitted.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Submit time entries
             tags:
                 - Time
             x-vantigo-access: permission:time:access
@@ -327,8 +609,142 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
                 "404":
-                    description: Not Found — the entry does not exist, or the caller may not see it. Its owner sees it; so does a manager of its project and anyone holding time:view-all.
+                    description: Not Found — the entry does not exist, or the caller may not see it. Its owner sees it; so does a manager of its project and anyone holding time:view-all, time:approve or time:manage.
             summary: Get a time entry by id
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+        put:
+            operationId: putTimeEntriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeEntryUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeEntryResponse'
+                    description: OK — the entry as it now stands, a draft, with its rates resolved again.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller may see the entry but may not change it, because it is not theirs, it is past draft or rejected, or it is dated before the lock date.
+                "404":
+                    description: Not Found — the entry does not exist, or the caller may not see it.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the entry has moved on from the revision the caller read.
+            summary: Update a time entry
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+    /api/v1/time/weeks/{weekStart}:
+        get:
+            description: The caller's own week as timesheet rows (project, billing line, task), with the week's submission state.
+            operationId: getTimeWeeksByWeekStart
+            parameters:
+                - description: The week's Monday.
+                  in: path
+                  name: weekStart
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeWeekResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — weekStart is not a Monday.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get my week
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+    /api/v1/time/weeks/{weekStart}/submit:
+        post:
+            description: Submits the caller's week (D2) — every one of their draft entries in it — and records the week as submitted. A week with no drafts submits as empty ("nothing to report"). Draft entries dated before the lock date refuse the whole submit unless the caller holds time:manage.
+            operationId: postTimeWeeksByWeekStartSubmit
+            parameters:
+                - description: The week's Monday.
+                  in: path
+                  name: weekStart
+                  required: true
+                  schema:
+                    format: date
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeWeekResponse'
+                    description: OK — the week as it now stands.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — weekStart is not a Monday, or the week holds draft entries dated before the lock date; nothing was submitted.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Submit my week
             tags:
                 - Time
             x-vantigo-access: permission:time:access

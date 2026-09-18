@@ -35,6 +35,49 @@ func (q *Queries) AcquireDayLock(ctx context.Context, arg AcquireDayLockParams) 
 	return err
 }
 
+const countEntries = `-- name: CountEntries :one
+SELECT count(*) FROM time.entries
+WHERE user_id = $1
+  AND ($2::boolean OR user_id = $3::uuid OR project_id = ANY($4::integer[]))
+  AND ($5::date IS NULL
+       OR entry_date BETWEEN $5::date AND $6::date)
+  AND ($7::integer IS NULL OR project_id = $7::integer)
+  AND ($8::text IS NULL OR status = $8::text)
+`
+
+type CountEntriesParams struct {
+	UserID            uuid.UUID
+	SeeAll            bool
+	CallerID          uuid.UUID
+	ManagedProjectIds []int32
+	WeekStart         pgtype.Date
+	WeekEnd           pgtype.Date
+	ProjectID         *int32
+	Status            *string
+}
+
+// CountEntries counts what ListEntries pages through, under exactly the same
+// predicate, so the total is the number of entries the caller may see and
+// the last page is never empty. Visibility is the first predicate (the rule
+// authorize.go's entryAccess applies to one entry): everything for see_all,
+// the caller's own, and the entries on the projects the caller manages. The
+// filters are optional; week_start and week_end are a Monday and its Sunday.
+func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countEntries,
+		arg.UserID,
+		arg.SeeAll,
+		arg.CallerID,
+		arg.ManagedProjectIds,
+		arg.WeekStart,
+		arg.WeekEnd,
+		arg.ProjectID,
+		arg.Status,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteEntry = `-- name: DeleteEntry :execrows
 DELETE FROM time.entries WHERE id = $1 AND status IN ('draft', 'rejected')
 `
@@ -183,6 +226,256 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (TimeE
 	return i, err
 }
 
+const listEntries = `-- name: ListEntries :many
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries
+WHERE user_id = $1
+  AND ($2::boolean OR user_id = $3::uuid OR project_id = ANY($4::integer[]))
+  AND ($5::date IS NULL
+       OR entry_date BETWEEN $5::date AND $6::date)
+  AND ($7::integer IS NULL OR project_id = $7::integer)
+  AND ($8::text IS NULL OR status = $8::text)
+ORDER BY entry_date DESC, id DESC
+LIMIT $10 OFFSET $9
+`
+
+type ListEntriesParams struct {
+	UserID            uuid.UUID
+	SeeAll            bool
+	CallerID          uuid.UUID
+	ManagedProjectIds []int32
+	WeekStart         pgtype.Date
+	WeekEnd           pgtype.Date
+	ProjectID         *int32
+	Status            *string
+	PageOffset        int32
+	PageSize          int32
+}
+
+// ListEntries is one page of CountEntries' entries, the latest day first and,
+// within a day, the latest created first.
+func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]TimeEntry, error) {
+	rows, err := q.db.Query(ctx, listEntries,
+		arg.UserID,
+		arg.SeeAll,
+		arg.CallerID,
+		arg.ManagedProjectIds,
+		arg.WeekStart,
+		arg.WeekEnd,
+		arg.ProjectID,
+		arg.Status,
+		arg.PageOffset,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimeEntry
+	for rows.Next() {
+		var i TimeEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ProjectID,
+			&i.BillingLineID,
+			&i.TaskID,
+			&i.TaskTitle,
+			&i.EntryDate,
+			&i.Hours,
+			&i.StartTime,
+			&i.EndTime,
+			&i.Note,
+			&i.Billable,
+			&i.BillRate,
+			&i.BillCurrency,
+			&i.CostRate,
+			&i.CostCurrency,
+			&i.RateSource,
+			&i.Status,
+			&i.RejectionReason,
+			&i.SubmittedAt,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.InvoicedAt,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockEntries = `-- name: LockEntries :many
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries
+WHERE id = ANY($1::bigint[])
+ORDER BY id
+FOR UPDATE
+`
+
+// LockEntries reads the entries in ids and holds their rows until the
+// transaction ends, in id order, so two batches over overlapping entries
+// take their locks in the same order and cannot deadlock. An id with no
+// entry is simply absent from the result.
+func (q *Queries) LockEntries(ctx context.Context, ids []int64) ([]TimeEntry, error) {
+	rows, err := q.db.Query(ctx, lockEntries, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimeEntry
+	for rows.Next() {
+		var i TimeEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ProjectID,
+			&i.BillingLineID,
+			&i.TaskID,
+			&i.TaskTitle,
+			&i.EntryDate,
+			&i.Hours,
+			&i.StartTime,
+			&i.EndTime,
+			&i.Note,
+			&i.Billable,
+			&i.BillRate,
+			&i.BillCurrency,
+			&i.CostRate,
+			&i.CostCurrency,
+			&i.RateSource,
+			&i.Status,
+			&i.RejectionReason,
+			&i.SubmittedAt,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.InvoicedAt,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockEntry = `-- name: LockEntry :one
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries WHERE id = $1 FOR UPDATE
+`
+
+// LockEntry reads one entry and holds its row until the transaction ends. An
+// update decides everything it refuses on (the status, the revision) from
+// this row, not from the one the handler read before the transaction, so a
+// submit that committed in between is seen and wins.
+func (q *Queries) LockEntry(ctx context.Context, id int64) (TimeEntry, error) {
+	row := q.db.QueryRow(ctx, lockEntry, id)
+	var i TimeEntry
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ProjectID,
+		&i.BillingLineID,
+		&i.TaskID,
+		&i.TaskTitle,
+		&i.EntryDate,
+		&i.Hours,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Note,
+		&i.Billable,
+		&i.BillRate,
+		&i.BillCurrency,
+		&i.CostRate,
+		&i.CostCurrency,
+		&i.RateSource,
+		&i.Status,
+		&i.RejectionReason,
+		&i.SubmittedAt,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
+		&i.InvoicedAt,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const submitEntries = `-- name: SubmitEntries :many
+UPDATE time.entries SET
+    status = 'submitted',
+    submitted_at = $1::timestamptz,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = ANY($2::bigint[]) AND status = 'draft'
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at
+`
+
+type SubmitEntriesParams struct {
+	Now time.Time
+	Ids []int64
+}
+
+// SubmitEntries moves drafts to submitted (D2), freezing their rates (D3).
+// The rows are already locked by the caller, which decided every one of them
+// may be submitted; the status guard is the last line, not the rule.
+func (q *Queries) SubmitEntries(ctx context.Context, arg SubmitEntriesParams) ([]TimeEntry, error) {
+	rows, err := q.db.Query(ctx, submitEntries, arg.Now, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimeEntry
+	for rows.Next() {
+		var i TimeEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ProjectID,
+			&i.BillingLineID,
+			&i.TaskID,
+			&i.TaskTitle,
+			&i.EntryDate,
+			&i.Hours,
+			&i.StartTime,
+			&i.EndTime,
+			&i.Note,
+			&i.Billable,
+			&i.BillRate,
+			&i.BillCurrency,
+			&i.CostRate,
+			&i.CostCurrency,
+			&i.RateSource,
+			&i.Status,
+			&i.RejectionReason,
+			&i.SubmittedAt,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.InvoicedAt,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sumDayHours = `-- name: SumDayHours :one
 SELECT COALESCE(SUM(hours), 0)::numeric(7,2) AS total
 FROM time.entries
@@ -205,4 +498,109 @@ func (q *Queries) SumDayHours(ctx context.Context, arg SumDayHoursParams) (pgtyp
 	var total pgtype.Numeric
 	err := row.Scan(&total)
 	return total, err
+}
+
+const updateEntry = `-- name: UpdateEntry :one
+UPDATE time.entries SET
+    project_id = $1,
+    billing_line_id = $2,
+    task_id = $3,
+    task_title = $4,
+    entry_date = $5,
+    hours = $6,
+    start_time = $7,
+    end_time = $8,
+    note = $9,
+    billable = $10,
+    bill_rate = $11,
+    bill_currency = $12,
+    cost_rate = $13,
+    cost_currency = $14,
+    rate_source = $15,
+    status = 'draft',
+    rejection_reason = NULL,
+    submitted_at = NULL,
+    revision = revision + 1,
+    updated_at = $16::timestamptz
+WHERE id = $17 AND revision = $18 AND status IN ('draft', 'rejected')
+RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at
+`
+
+type UpdateEntryParams struct {
+	ProjectID     int32
+	BillingLineID *int32
+	TaskID        *int32
+	TaskTitle     *string
+	EntryDate     pgtype.Date
+	Hours         pgtype.Numeric
+	StartTime     pgtype.Time
+	EndTime       pgtype.Time
+	Note          *string
+	Billable      bool
+	BillRate      pgtype.Numeric
+	BillCurrency  *string
+	CostRate      pgtype.Numeric
+	CostCurrency  *string
+	RateSource    string
+	Now           time.Time
+	ID            int64
+	Revision      int32
+}
+
+// UpdateEntry replaces an entry's content with its rates resolved again (D3).
+// A save always leaves a draft: a rejected entry returns to draft with its
+// rejection reason and its submission stamp cleared (design 4.2). The revision and
+// the status are guarded again here, although the row is already locked, so
+// that no caller can ever write over a revision it did not read.
+func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (TimeEntry, error) {
+	row := q.db.QueryRow(ctx, updateEntry,
+		arg.ProjectID,
+		arg.BillingLineID,
+		arg.TaskID,
+		arg.TaskTitle,
+		arg.EntryDate,
+		arg.Hours,
+		arg.StartTime,
+		arg.EndTime,
+		arg.Note,
+		arg.Billable,
+		arg.BillRate,
+		arg.BillCurrency,
+		arg.CostRate,
+		arg.CostCurrency,
+		arg.RateSource,
+		arg.Now,
+		arg.ID,
+		arg.Revision,
+	)
+	var i TimeEntry
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ProjectID,
+		&i.BillingLineID,
+		&i.TaskID,
+		&i.TaskTitle,
+		&i.EntryDate,
+		&i.Hours,
+		&i.StartTime,
+		&i.EndTime,
+		&i.Note,
+		&i.Billable,
+		&i.BillRate,
+		&i.BillCurrency,
+		&i.CostRate,
+		&i.CostCurrency,
+		&i.RateSource,
+		&i.Status,
+		&i.RejectionReason,
+		&i.SubmittedAt,
+		&i.ApprovedByUserID,
+		&i.ApprovedAt,
+		&i.InvoicedAt,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
