@@ -12,6 +12,7 @@ export const targets = [
   { module: "products", output: "apps/products/frontend/src/api-schema.d.ts" },
   { module: "energy", output: "apps/energy/frontend/src/api-schema.d.ts" },
   { module: "communications", output: "apps/communications/frontend/src/api-schema.d.ts" },
+  { module: "projects", output: "apps/projects/frontend/src/api-schema.d.ts" },
 ] as const;
 
 const header =

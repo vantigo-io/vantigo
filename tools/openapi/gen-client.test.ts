@@ -17,6 +17,7 @@ describe("gen:client", () => {
       products: "apps/products/frontend/src/api-schema.d.ts",
       energy: "apps/energy/frontend/src/api-schema.d.ts",
       communications: "apps/communications/frontend/src/api-schema.d.ts",
+      projects: "apps/projects/frontend/src/api-schema.d.ts",
     });
   });
 
@@ -24,7 +25,7 @@ describe("gen:client", () => {
     const root = await mkdtemp(join(tmpdir(), "gen-client-"));
     roots.push(root);
     const written = await generateClients(root);
-    expect(written).toHaveLength(5);
+    expect(written).toHaveLength(6);
     const customers = await readFile(join(root, "apps/customers/frontend/src/api-schema.d.ts"), "utf8");
     expect(customers).toContain("export interface paths");
     expect(customers).toContain('"/api/v1/customers"');

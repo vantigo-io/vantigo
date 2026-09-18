@@ -6,20 +6,20 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 const forbiddenModuleImports = [
-  "@vantigo/products-ui",
-  "@vantigo/products-ui/**",
+  "@vantigo/customers-ui",
+  "@vantigo/customers-ui/**",
   "@vantigo/communications-ui",
   "@vantigo/communications-ui/**",
   "@vantigo/energy-ui",
   "@vantigo/energy-ui/**",
-  "@vantigo/projects-ui",
-  "@vantigo/projects-ui/**",
+  "@vantigo/products-ui",
+  "@vantigo/products-ui/**",
   "@vantigo/app",
   "@vantigo/app/**",
-  "../../../products/**",
+  "../../../customers/**",
   "../../../communications/**",
   "../../../energy/**",
-  "../../../projects/**",
+  "../../../products/**",
   "../../../host/**",
 ];
 
