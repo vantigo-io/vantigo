@@ -852,6 +852,30 @@ func (*fakeProjectDirectory) ProjectsForUser(context.Context, uuid.UUID) ([]cont
 	return nil, nil
 }
 
+func (*fakeProjectDirectory) Projects(context.Context, []int32) ([]contracts.ProjectEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) ProjectByCode(context.Context, string) (*contracts.ProjectEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) BillingLines(context.Context, int32) ([]contracts.BillingLineEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) Task(context.Context, int32) (*contracts.TaskEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) OpenTasksForUser(context.Context, uuid.UUID) ([]contracts.TaskEntry, error) {
+	return nil, nil
+}
+
+func (*fakeProjectDirectory) CanLogTime(context.Context, int32, uuid.UUID) (bool, error) {
+	return false, nil
+}
+
 // Decision (task 1): the three new provider slots (Users, Products,
 // Projects) resolve the same way Directory does — before any Mount runs —
 // and each reaches every module's Deps, including a module that provides

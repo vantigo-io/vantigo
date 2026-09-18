@@ -10,9 +10,27 @@
 -- DirectoryProject is contracts.ProjectDirectory.Project's row: a project of
 -- any status, cancelled and completed included, since a consumer holding a
 -- historical reference (a logged hour, say) must still be able to name it.
-SELECT id, code, name, customer_id, status, billing_type
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
 FROM projects.projects
 WHERE id = @id;
+
+-- name: DirectoryProjects :many
+-- DirectoryProjects is contracts.ProjectDirectory.Projects' rows: every
+-- project in ids, in any status, ordered by code. An id in ids that does not
+-- exist simply has no matching row, which is what makes an unknown id
+-- "omitted" rather than an error.
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+FROM projects.projects
+WHERE id = ANY(@ids::integer[])
+ORDER BY code, id;
+
+-- name: DirectoryProjectByCode :one
+-- DirectoryProjectByCode is contracts.ProjectDirectory.ProjectByCode's row.
+-- The caller upper-cases code before calling, matching how codes are stored
+-- (validateProjectCode); this query does not itself normalize case.
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+FROM projects.projects
+WHERE code = @code;
 
 -- name: DirectoryRoleForUser :one
 -- DirectoryRoleForUser is contracts.ProjectDirectory.Role's row. No row means
@@ -36,8 +54,49 @@ WHERE id = @id AND project_id = @project_id;
 -- rows: every project userID holds any role on, whatever its status, ordered
 -- by code. project_roles' primary key (project_id, user_id) keeps this to one
 -- row per project.
-SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type
+SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type, p.currency, p.default_bill_rate
 FROM projects.projects p
 JOIN projects.project_roles r ON r.project_id = p.id
 WHERE r.user_id = @user_id
 ORDER BY p.code, p.id;
+
+-- name: DirectoryBillingLines :many
+-- DirectoryBillingLines is contracts.ProjectDirectory.BillingLines' rows:
+-- every billing line on projectID, active and inactive, ordered by code. A
+-- caller that wants only the active ones filters the result itself.
+SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active
+FROM projects.billing_lines
+WHERE project_id = @project_id
+ORDER BY code;
+
+-- name: DirectoryTask :one
+-- DirectoryTask is contracts.ProjectDirectory.Task's row. There is no
+-- soft-delete flag on projects.tasks, so a deleted task simply has no row,
+-- the same as one that never existed.
+SELECT id, project_id, title, status, assignee_user_id, due_date
+FROM projects.tasks
+WHERE id = @id;
+
+-- name: DirectoryOpenTasksForUser :many
+-- DirectoryOpenTasksForUser is contracts.ProjectDirectory.OpenTasksForUser's
+-- rows: userID's tasks whose status is not 'done', across every project,
+-- ordered by due date (nulls last), project ID and position — the same
+-- order "my tasks" (design §4.1) wants.
+SELECT id, project_id, title, status, assignee_user_id, due_date
+FROM projects.tasks
+WHERE assignee_user_id = @assignee_user_id AND status <> 'done'
+ORDER BY due_date NULLS LAST, project_id, position;
+
+-- name: DirectoryCanLogTime :one
+-- DirectoryCanLogTime is contracts.ProjectDirectory.CanLogTime's row: true
+-- when projectID is active and userID holds the member or manager role on
+-- it, exactly the condition Time will gate logging on.
+SELECT EXISTS (
+    SELECT 1
+    FROM projects.projects p
+    JOIN projects.project_roles r ON r.project_id = p.id
+    WHERE p.id = @project_id
+      AND p.status = 'active'
+      AND r.user_id = @user_id
+      AND r.role IN ('member', 'manager')
+);
