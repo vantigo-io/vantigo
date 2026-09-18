@@ -298,6 +298,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/tasks/{taskId}/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a task's checklist */
+        get: operations["getProjectsTasksByTaskIdChecklist"];
+        put?: never;
+        /** Add a checklist item to a task */
+        post: operations["postProjectsTasksByTaskIdChecklist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tasks/{taskId}/checklist/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a checklist item */
+        put: operations["putProjectsTasksByTaskIdChecklistByItemId"];
+        post?: never;
+        /** Delete a checklist item */
+        delete: operations["deleteProjectsTasksByTaskIdChecklistByItemId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tasks/{taskId}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a task's comments */
+        get: operations["getProjectsTasksByTaskIdComments"];
+        put?: never;
+        /** Comment on a task */
+        post: operations["postProjectsTasksByTaskIdComments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tasks/{taskId}/comments/{commentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit a comment */
+        put: operations["putProjectsTasksByTaskIdCommentsByCommentId"];
+        post?: never;
+        /** Delete a comment */
+        delete: operations["deleteProjectsTasksByTaskIdCommentsByCommentId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/tasks/{taskId}/position": {
         parameters: {
             query?: never;
@@ -391,6 +463,61 @@ export interface components {
             /** @description Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. */
             variantMissing: boolean;
         };
+        /** @description One thing to tick off a task. The text is trimmed before validation and storage; the item is appended after the ones already there, open. */
+        ChecklistItemRequest: {
+            /** @description At most 500 characters once trimmed, and never blank. */
+            text: string;
+        };
+        /** @description One item of a task's checklist. The counts the task tree carries are aggregates over these, so a tree renders progress without reading them. */
+        ChecklistItemResponse: {
+            done: boolean;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int32
+             * @description The item's 1-based place in its task's checklist.
+             */
+            position: number;
+            text: string;
+        };
+        /** @description What the change should make of the item. Every field is optional and an absent one leaves that part of the item as it stands, so ticking an item off says nothing about its text or its place. */
+        ChecklistItemUpdateRequest: {
+            /** @description Ticks the item off, or opens it again. */
+            done?: boolean;
+            /**
+             * Format: int32
+             * @description The 1-based place among the task's items to move it to; the rest are renumbered 1..n. A position past the end means last.
+             */
+            position?: number;
+            /** @description At most 500 characters once trimmed, and never blank. */
+            text?: string;
+        };
+        /** @description Who wrote a comment. active is the user directory's answer, not the comment's — an account disabled or removed afterwards keeps the comment and is reported inactive. */
+        CommentAuthor: {
+            active: boolean;
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description What a comment says. The body is trimmed before validation and storage. */
+        CommentRequest: {
+            /** @description At most 4000 characters once trimmed, and never blank. */
+            body: string;
+        };
+        /** @description One comment on a task. A task's comments are its own history, which is why a task writes nothing to the project timeline. */
+        CommentResponse: {
+            author: components["schemas"]["CommentAuthor"];
+            body: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the author last rewrote the comment. Absent — not null — on a comment nobody has edited.
+             */
+            editedAt?: string | null;
+            /** Format: int64 */
+            id: number;
+        };
         /** @description How many of the projects the caller may see stand in each status, for the list page's key-figure row. Every status is always present, 0 included. */
         GetProjectStatsResponse: {
             /** Format: int32 */
@@ -442,6 +569,10 @@ export interface components {
             title: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedResponseOfCommentResponse: {
+            data: components["schemas"]["CommentResponse"][];
+            pagination: components["schemas"]["PaginationMetadata"];
         };
         PaginatedResponseOfProjectSummaryResponse: {
             data: components["schemas"]["ProjectSummaryResponse"][];
@@ -2135,6 +2266,446 @@ export interface operations {
                 };
             };
             /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectsTasksByTaskIdChecklist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the task's checklist items by position. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistItemResponse"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsTasksByTaskIdChecklist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — appended after the items already there. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistItemResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsTasksByTaskIdChecklistByItemId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+                itemId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChecklistItemUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the item as it now stands; a move has renumbered the task's items 1..n. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChecklistItemResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task or the item does not exist, the item belongs to another task, or the task belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteProjectsTasksByTaskIdChecklistByItemId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+                itemId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the item is gone and the rest have been renumbered 1..n. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task or the item does not exist, the item belongs to another task, or the task belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getProjectsTasksByTaskIdComments: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — oldest first, the way a conversation is read. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseOfCommentResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsTasksByTaskIdComments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — written by the caller, at the end of the conversation. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsTasksByTaskIdCommentsByCommentId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+                commentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommentRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the rewritten comment, stamped with when it was edited. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — only the comment's author may change what it says. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task or the comment does not exist, the comment belongs to another task, or the task belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteProjectsTasksByTaskIdCommentsByCommentId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+                commentId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the comment is gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller is neither the comment's author nor a manager of the project. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task or the comment does not exist, the comment belongs to another task, or the task belongs to a project the caller cannot see. */
             404: {
                 headers: {
                     [name: string]: unknown;

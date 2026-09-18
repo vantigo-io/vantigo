@@ -616,15 +616,20 @@ func (s *server) PutProjectsTasksByTaskIdPosition(ctx context.Context, req gen.P
 	return gen.PutProjectsTasksByTaskIdPosition200JSONResponse(resp), nil
 }
 
-// moveWithin is the new order of one sibling group: ids with taskID taken out
+// moveWithin is the new order of one ordered group: ids with moved taken out
 // and put back at position, which is 1-based. A position past the end is the
-// end — dragging a task to the bottom of a list sends whatever number the list
-// happened to have — and a taskID that is not in ids (it was never there, or
-// it has just been re-parented into it) is simply inserted.
-func moveWithin(ids []int32, taskID, position int32) []int32 {
-	rest := make([]int32, 0, len(ids)+1)
+// end — dragging something to the bottom of a list sends whatever number the
+// list happened to have — and a moved that is not in ids (it was never there,
+// or it has just been re-parented into it) is simply inserted.
+//
+// It is generic over the id type because a task's siblings and a task's
+// checklist items are the same problem twice: one group, renumbered 1..n, with
+// one row put somewhere else in it. Tasks are numbered by integer ids,
+// checklist items by bigint ones.
+func moveWithin[T comparable](ids []T, moved T, position int32) []T {
+	rest := make([]T, 0, len(ids)+1)
 	for _, id := range ids {
-		if id != taskID {
+		if id != moved {
 			rest = append(rest, id)
 		}
 	}
@@ -632,9 +637,9 @@ func moveWithin(ids []int32, taskID, position int32) []int32 {
 	if at > len(rest) {
 		at = len(rest)
 	}
-	out := make([]int32, 0, len(rest)+1)
+	out := make([]T, 0, len(rest)+1)
 	out = append(out, rest[:at]...)
-	out = append(out, taskID)
+	out = append(out, moved)
 	out = append(out, rest[at:]...)
 	return out
 }

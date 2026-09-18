@@ -400,6 +400,83 @@ func (s *server) taskAssignees(ctx context.Context, rows []taskRow) (map[uuid.UU
 	return s.userEntries(ctx, ids)
 }
 
+// checklistItemResponse projects one checklist item. There is nothing to
+// resolve and nothing to shape: an item is a line of text, a tick box and the
+// place it sits in, and the counts a task carries are aggregates over exactly
+// these rows.
+func checklistItemResponse(row store.ProjectsTaskChecklistItem) gen.ChecklistItemResponse {
+	return gen.ChecklistItemResponse{
+		Id:       row.ID,
+		Text:     row.Text,
+		Done:     row.Done,
+		Position: row.Position,
+	}
+}
+
+// checklistItemResponses renders a whole checklist, in the order the query
+// answered. The slice is never nil: the contract answers an array, and an
+// omitted one would decode as null.
+func checklistItemResponses(rows []store.ProjectsTaskChecklistItem) []gen.ChecklistItemResponse {
+	out := make([]gen.ChecklistItemResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, checklistItemResponse(row))
+	}
+	return out
+}
+
+// commentResponse projects one comment. The author is embedded rather than
+// named by id alone, and an id the directory no longer knows still gets an
+// entry — unknownUser, inactive — so a comment survives the account that wrote
+// it, exactly as a task's assignee survives the account it points at.
+func commentResponse(row store.ProjectsTaskComment, authors map[uuid.UUID]contracts.UserEntry) gen.CommentResponse {
+	entry, ok := authors[row.AuthorUserID]
+	if !ok {
+		entry = contracts.UserEntry{ID: row.AuthorUserID, DisplayName: unknownUser}
+	}
+	return gen.CommentResponse{
+		Id:        row.ID,
+		Author:    gen.CommentAuthor{UserId: row.AuthorUserID, DisplayName: entry.DisplayName, Active: entry.Active},
+		Body:      row.Body,
+		CreatedAt: row.CreatedAt,
+		EditedAt:  row.EditedAt,
+	}
+}
+
+// commentResponses renders one page of comments with every author named in
+// one directory call for the whole page rather than one per comment — the
+// same shape taskAssignees gives a tree of tasks.
+func (s *server) commentResponses(ctx context.Context, rows []store.ProjectsTaskComment) ([]gen.CommentResponse, error) {
+	ids := make([]uuid.UUID, 0, len(rows))
+	seen := make(map[uuid.UUID]bool, len(rows))
+	for _, row := range rows {
+		if seen[row.AuthorUserID] {
+			continue
+		}
+		seen[row.AuthorUserID] = true
+		ids = append(ids, row.AuthorUserID)
+	}
+	authors, err := s.userEntries(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gen.CommentResponse, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, commentResponse(row, authors))
+	}
+	return out, nil
+}
+
+// commentResponseFor is commentResponses for the single comment a write
+// answers with, so one comment is rendered by exactly the code that renders a
+// page of them.
+func (s *server) commentResponseFor(ctx context.Context, row store.ProjectsTaskComment) (gen.CommentResponse, error) {
+	data, err := s.commentResponses(ctx, []store.ProjectsTaskComment{row})
+	if err != nil {
+		return gen.CommentResponse{}, err
+	}
+	return data[0], nil
+}
+
 // timelineEntryResponse renders one stored entry. The payload is decoded
 // from the jsonb column rather than passed through as text, so the contract
 // answers a JSON object and not a string containing one; a payload that

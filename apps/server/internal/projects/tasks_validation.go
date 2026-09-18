@@ -120,7 +120,37 @@ func taskHasSubtasks() string {
 	return "A task with subtasks of its own cannot become a subtask"
 }
 
-// validateTaskPosition is the move's own rule: positions are 1-based, so
+// validateChecklistText is the checklist item's only rule: non-blank, at most
+// 500 characters (the column's width), trimmed but case-preserved — a task's
+// title rule, in the smaller size a line of a checklist is written in.
+func validateChecklistText(raw string) (string, string) {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return "", "A checklist item cannot be null or empty"
+	}
+	if n := utf8.RuneCountInString(text); n > 500 {
+		return "", fmt.Sprintf("A checklist item cannot be longer than 500 characters, the given value was %d characters", n)
+	}
+	return text, ""
+}
+
+// validateCommentBody is the comment's only rule: non-blank, at most 4000
+// characters (the column's width, and the same length a task's description
+// gets). A blank comment is not an empty comment, it is a comment nobody
+// wrote, so it is refused rather than stored.
+func validateCommentBody(raw string) (string, string) {
+	body := strings.TrimSpace(raw)
+	if body == "" {
+		return "", "A comment cannot be null or empty"
+	}
+	if n := utf8.RuneCountInString(body); n > 4000 {
+		return "", fmt.Sprintf("A comment cannot be longer than 4000 characters, the given value was %d characters", n)
+	}
+	return body, ""
+}
+
+// validateTaskPosition is the move's own rule, shared by a task among its
+// siblings and a checklist item among its task's: positions are 1-based, so
 // anything below one is a mistake. There is no upper bound — a position past
 // the end of the group means last, which is what dragging a task to the
 // bottom of a list sends.
