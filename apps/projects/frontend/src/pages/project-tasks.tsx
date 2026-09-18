@@ -60,6 +60,14 @@ export interface ProjectTasksProps {
   projectId: number;
   /** Who is looking, so the drawer knows whose comments may be edited. The host owns the session. */
   currentUserId?: string;
+  /**
+   * The task the drawer should stand open on, which the host route reads out
+   * of `?task=<id>` (the URL `taskUrl` builds). Absent, the tab opens the
+   * drawer on its own and keeps the choice to itself.
+   */
+  openTaskId?: number;
+  /** Told whenever the open task changes, so the host can keep the URL in step; `undefined` = closed. */
+  onOpenTaskChange?: (taskId: number | undefined) => void;
 }
 
 /**
@@ -69,13 +77,33 @@ export interface ProjectTasksProps {
  * tab waits for it and says so when it fails rather than quietly rendering a
  * board nobody may act on.
  */
-export const ProjectTasks = ({ projectId, currentUserId }: ProjectTasksProps) => {
+export const ProjectTasks = ({
+  projectId,
+  currentUserId,
+  openTaskId: openTaskIdFromHost,
+  onOpenTaskChange,
+}: ProjectTasksProps) => {
   const { t } = useI18n("projects");
   const project = useQuery(projectQueryOptions(projectId));
   const tasks = useQuery(projectTasksQueryOptions(projectId));
   const [view, setView] = useState<TaskView>(readView);
-  const [openTaskId, setOpenTaskId] = useState<number | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<number | null>(openTaskIdFromHost ?? null);
   const [modalState, setModalState] = useState<TaskModalState | null>(null);
+
+  // The host's task follows the URL, and the URL follows the drawer: each new
+  // value the host hands down opens the drawer on it, adjusted during render
+  // from the previous render's value the way React documents rather than
+  // through an effect that would flash the wrong task. A click the host has
+  // not seen yet leaves this untouched, so the two never fight.
+  const [hostTaskSeen, setHostTaskSeen] = useState(openTaskIdFromHost);
+  if (openTaskIdFromHost !== hostTaskSeen) {
+    setHostTaskSeen(openTaskIdFromHost);
+    setOpenTaskId(openTaskIdFromHost ?? null);
+  }
+  const openTask = (taskId: number | null) => {
+    setOpenTaskId(taskId);
+    onOpenTaskChange?.(taskId ?? undefined);
+  };
 
   if (project.isError) {
     return (
@@ -131,9 +159,9 @@ export const ProjectTasks = ({ projectId, currentUserId }: ProjectTasksProps) =>
 
           {tree.length > 0 &&
             (view === "list" ? (
-              <TaskList tasks={tree} onOpen={setOpenTaskId} />
+              <TaskList tasks={tree} onOpen={openTask} />
             ) : (
-              <TaskBoard tasks={tree} canContribute={canContribute} onOpen={setOpenTaskId} />
+              <TaskBoard tasks={tree} canContribute={canContribute} onOpen={openTask} />
             ))}
         </Stack>
       </Card>
@@ -143,7 +171,7 @@ export const ProjectTasks = ({ projectId, currentUserId }: ProjectTasksProps) =>
         projectId={projectId}
         taskId={openTaskId}
         opened={openTaskId !== null}
-        onClose={() => setOpenTaskId(null)}
+        onClose={() => openTask(null)}
         canContribute={canContribute}
         canManage={canManage}
         currentUserId={currentUserId}

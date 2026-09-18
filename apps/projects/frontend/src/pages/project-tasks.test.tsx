@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../api/projects";
 import type { Task } from "../api/tasks";
 import { stubFetch } from "../test/fetch";
@@ -104,6 +105,46 @@ describe("ProjectTasks", () => {
 
     const drawer = await screen.findByRole("dialog", { name: "Task" });
     expect(within(drawer).getByRole("heading", { name: "Write the docs" })).toBeInTheDocument();
+  });
+
+  // The host route owns `?task=<id>` (lib/tasks.ts's taskUrl builds it), so a
+  // link from My tasks lands here with the drawer already open, and closing it
+  // tells the host to drop the intent from the URL again.
+  it("opens the drawer on the task the host names and closes it when the host drops it", async () => {
+    stubTasks(true);
+    const changes: (number | undefined)[] = [];
+    const Host = () => {
+      const [task, setTask] = useState<number | undefined>(1);
+      return (
+        <ProjectTasks
+          projectId={7}
+          openTaskId={task}
+          onOpenTaskChange={(id) => {
+            changes.push(id);
+            setTask(id);
+          }}
+        />
+      );
+    };
+    renderWithProviders(<Host />);
+
+    const drawer = await screen.findByRole("dialog", { name: "Task" });
+    expect(await within(drawer).findByRole("heading", { name: "Write the docs" })).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+    expect(changes).toEqual([undefined]);
+  });
+
+  it("reports the task a row opened, so the host can put it in the URL", async () => {
+    stubTasks(true);
+    const onOpenTaskChange = vi.fn();
+    renderWithProviders(<ProjectTasks projectId={7} onOpenTaskChange={onOpenTaskChange} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Ship the release" }));
+
+    expect(onOpenTaskChange).toHaveBeenCalledWith(2);
+    expect(await screen.findByRole("dialog", { name: "Task" })).toBeInTheDocument();
   });
 
   it("moves a card to another status from the card's menu", async () => {
