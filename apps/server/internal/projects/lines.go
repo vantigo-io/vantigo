@@ -29,11 +29,15 @@ import (
 // deactivated line stays listed: the rule behind an hour logged last month is
 // still the answer to what that hour cost.
 
-// errLineNotFound carries "this project has no such line" out of the change's
-// transaction. Whether the line exists is only known under the row lock the
-// transaction takes, and a miss has to roll back rather than return a
+// errLineNotFound and errVariantNotFound carry the change's two refusals out
+// of its transaction. Both are decided under the row lock — whether the line
+// exists at all, and whether this request is moving it to another variant —
+// and a refusal has to roll the transaction back rather than return a
 // response from inside it.
-var errLineNotFound = errors.New("projects: the project has no such billing line")
+var (
+	errLineNotFound    = errors.New("projects: the project has no such billing line")
+	errVariantNotFound = errors.New("projects: the line's new variant does not exist")
+)
 
 // GetProjectsByIdBillingLines List a project's billing lines
 // (GET /api/v1/projects/{id}/billing-lines)
@@ -113,9 +117,20 @@ func (s *server) PostProjectsByIdBillingLines(ctx context.Context, req gen.PostP
 		return gen.PostProjectsByIdBillingLines409ApplicationProblemPlusJSONResponse(productsDisabled()), nil
 	}
 
-	parsed, fieldErrs, err := s.validateLine(ctx, body, project, nil)
+	parsed, fieldErrs, err := validateLine(body, project)
 	if err != nil {
 		return nil, err
+	}
+	// D9: a line is pinned to a variant, so a variant nobody has is a body
+	// this module cannot store rather than a line with a dangling reference.
+	// A create always asks, because there is no line yet whose variant this
+	// one could be inheriting — the question the change has to lock for.
+	exists, err := s.variantExists(ctx, body.VariantId)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		fieldErrs = withFieldError(fieldErrs, "variantId", variantNotFound(body.VariantId))
 	}
 	if len(fieldErrs) > 0 {
 		return gen.PostProjectsByIdBillingLines400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
@@ -202,21 +217,7 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 		return gen.PutProjectsByIdBillingLinesByLineId409ApplicationProblemPlusJSONResponse(productsDisabled()), nil
 	}
 
-	// The line as it stands is read before the rules run, because one of them
-	// is about what is changing rather than about the body alone: keeping the
-	// variant a line is already pinned to is always allowed, even when the
-	// catalog has since dropped it. The read is unlocked — it informs the
-	// validation, and the locked read inside the transaction below is what
-	// the write and the timeline are decided from.
-	existing, err := q.GetBillingLine(ctx, store.GetBillingLineParams{ID: req.LineId, ProjectID: project.ID})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return gen.PutProjectsByIdBillingLinesByLineId404Response{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("projects: get billing line: %w", err)
-	}
-
-	parsed, fieldErrs, err := s.validateLine(ctx, body, project, &existing)
+	parsed, fieldErrs, err := validateLine(body, project)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +240,27 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 		}
 		if err != nil {
 			return fmt.Errorf("projects: lock billing line: %w", err)
+		}
+		// D9's variant rule, decided from the row this transaction holds
+		// rather than from a read taken before it. Keeping the variant a line
+		// is already pinned to is always allowed — products may have dropped
+		// it since, and a line whose product is gone must stay editable, not
+		// least to be deactivated — but whether this request is keeping it is
+		// exactly the question another manager's change can move underneath.
+		// Deciding it from an earlier read would let a variant nobody has
+		// reach the table between the two.
+		//
+		// The catalog is an in-process read over another module's own pool
+		// (contracts.ProductCatalog), so asking it here costs this
+		// transaction one short read and no lock of its own.
+		if before.VariantID != parsed.VariantID {
+			exists, err := s.variantExists(ctx, parsed.VariantID)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return errVariantNotFound
+			}
 		}
 		changed, err = txq.UpdateBillingLine(ctx, store.UpdateBillingLineParams{
 			ID:              req.LineId,
@@ -266,6 +288,9 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 	switch {
 	case errors.Is(err, errLineNotFound):
 		return gen.PutProjectsByIdBillingLinesByLineId404Response{}, nil
+	case errors.Is(err, errVariantNotFound):
+		return gen.PutProjectsByIdBillingLinesByLineId400ApplicationProblemPlusJSONResponse(
+			invalidProject(fieldError("variantId", variantNotFound(parsed.VariantID)))), nil
 	case db.IsUniqueViolation(err, "ux_billing_lines_project_id_code"):
 		return gen.PutProjectsByIdBillingLinesByLineId400ApplicationProblemPlusJSONResponse(
 			invalidProject(fieldError("code", lineCodeTaken(parsed.Code)))), nil

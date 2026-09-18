@@ -38,6 +38,19 @@ func fieldError(field, message string) map[string][]string {
 	return map[string][]string{field: {message}}
 }
 
+// withFieldError adds one message to a map another rule may already have put
+// something in — a rule that runs beside a validator rather than inside it,
+// because it needs something the validator does not have. A nil map is the
+// "nothing failed yet" case every validator answers with, so it is grown
+// rather than written to.
+func withFieldError(errs map[string][]string, field, message string) map[string][]string {
+	if errs == nil {
+		errs = map[string][]string{}
+	}
+	errs[field] = append(errs[field], message)
+	return errs
+}
+
 // forbidden is the access layer's own 403 body, answered by a handler that
 // denies on something the router could not evaluate — whether the caller
 // manages *this* project, which depends on a role the router never reads. A

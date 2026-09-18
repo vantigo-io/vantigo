@@ -692,7 +692,7 @@ func TestPutProjectsByIdBillingLines_VariantGoneFromTheCatalog_StillEditable(t *
 
 	// Moving the line to a variant that never existed is still refused: the
 	// rule is about changing the variant, not about skipping the check.
-	r := putLine(t, c, project.Id, line.Id, lineBody(map[string]any{"variantId": variantUnknown}))
+	r := putLine(t, c, project.Id, line.Id, lineBody(map[string]any{"variantId": variantUnknown, "active": true}))
 	if r.Status != http.StatusBadRequest {
 		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
 	}
@@ -700,6 +700,16 @@ func TestPutProjectsByIdBillingLines_VariantGoneFromTheCatalog_StillEditable(t *
 	r.JSON(&problem)
 	if len(problem.Errors["variantId"]) == 0 {
 		t.Errorf("errors = %v, want a message on 'variantId'", problem.Errors)
+	}
+	// That refusal is decided inside the change's own transaction, so it has
+	// to leave the line exactly as it stood — the reactivation the same body
+	// asked for included.
+	stored := modtest.One[int32](t, h, `SELECT variant_id FROM projects.billing_lines WHERE id = $1`, line.Id)
+	if stored != variantProjectManagerHour {
+		t.Errorf("stored variant = %d, want the refused change to have left %d", stored, variantProjectManagerHour)
+	}
+	if active := modtest.One[bool](t, h, `SELECT active FROM projects.billing_lines WHERE id = $1`, line.Id); active {
+		t.Error("stored active = true, want the refused change rolled back whole")
 	}
 }
 
