@@ -279,6 +279,25 @@ describe("the projects list's search params", () => {
     expect(validate({ status: "archived" }).status).toBe("");
     expect(validate({ page: "0" }).page).toBe(1);
   });
+
+  // A hand-edited URL must not reach the API as `customerId=NaN` or narrow the
+  // list to customer projects because `internal` held a word nobody meant as
+  // false. Both fall back to "no filter", which is what an absent one does.
+  it("drops a customer filter that is not a positive integer", () => {
+    expect(validate({ customerId: "abc" }).customerId).toBeUndefined();
+    expect(validate({ customerId: "1.5" }).customerId).toBeUndefined();
+    expect(validate({ customerId: "0" }).customerId).toBeUndefined();
+    expect(validate({ customerId: "-2" }).customerId).toBeUndefined();
+    expect(validate({ customerId: "" }).customerId).toBeUndefined();
+    expect(validate({ customerId: "7" }).customerId).toBe(7);
+  });
+
+  it("takes the internal filter only from the two literal booleans", () => {
+    expect(validate({ internal: "true" }).internal).toBe(true);
+    expect(validate({ internal: "false" }).internal).toBe(false);
+    expect(validate({ internal: "maybe" }).internal).toBeUndefined();
+    expect(validate({ internal: "1" }).internal).toBeUndefined();
+  });
 });
 
 describe("app index routes", () => {

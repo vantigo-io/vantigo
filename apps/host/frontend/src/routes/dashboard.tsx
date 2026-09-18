@@ -944,7 +944,7 @@ const DashboardPage = () => {
       {modules.length > 0 && (
         <Stack gap="sm">
           <Text fw={600}>{t("dashboard.modules")}</Text>
-          <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing="sm">
+          <SimpleGrid cols={{ base: 1, xs: 2, md: modules.length || 1 }} spacing="sm">
             {modules.map((module) => (
               <Card key={module.path} withBorder padding="sm">
                 <Group justify="space-between" wrap="nowrap">
