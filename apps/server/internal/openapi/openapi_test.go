@@ -169,7 +169,7 @@ func TestOperationIDsAreUniqueAcrossModules(t *testing.T) {
 // constraints — unlike the .NET host, which separates these with
 // {id:int}/{id:guid} — and no literal-before-parameter precedence across
 // differing segments, so it can't tell that an id will never literally equal
-// "contacts" or "variants". These are genuine ambiguities from ServeMux's
+// "contacts", "variants" or "tasks". These are genuine ambiguities from ServeMux's
 // point of view, not a contract defect; sub-project 3 mounts the generated
 // handlers on a precedence-aware router (via StdHTTPServerOptions.BaseRouter)
 // and must route each pair correctly — see TestKnownServeMuxConflictsMountOnModuleRouter,
@@ -189,8 +189,16 @@ var KnownServeMuxConflicts = []string{
 	"GET /api/v1/customers/contacts/{id}/customers ⟷ GET /api/v1/customers/{id}/timeline/{entryId}",
 	"GET /api/v1/products/categories/{id} ⟷ GET /api/v1/products/{id}/variants",
 	"GET /api/v1/products/tax-categories/{id} ⟷ GET /api/v1/products/{id}/variants",
+	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/assignable-users",
+	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/billing-lines",
+	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/roles",
+	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/tasks",
+	"GET /api/v1/projects/tasks/{taskId} ⟷ GET /api/v1/projects/{id}/timeline",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/legal-identity",
 	"PUT /api/v1/customers/contacts/{id} ⟷ PUT /api/v1/customers/{id}/type",
+	"PUT /api/v1/projects/tasks/{taskId} ⟷ PUT /api/v1/projects/{id}/status",
+	"PUT /api/v1/projects/tasks/{taskId}/position ⟷ PUT /api/v1/projects/{id}/billing-lines/{lineId}",
+	"PUT /api/v1/projects/tasks/{taskId}/position ⟷ PUT /api/v1/projects/{id}/roles/{userId}",
 }
 
 // TestServeMuxConflictsArePinned checks every pair of operations across every

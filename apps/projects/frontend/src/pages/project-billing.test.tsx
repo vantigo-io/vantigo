@@ -25,7 +25,7 @@ const project = (overrides: Partial<Project> = {}): Project =>
     status: "active",
     billingType: "fixed-price",
     internal: false,
-    capabilities: { canManage: true, canSeeFinancials: true },
+    capabilities: { canManage: true, canContribute: true, canSeeFinancials: true },
     billingLinesAvailable: true,
     financials: { currency: "NOK", fixedPriceAmount: 250000, budgetAmount: 300000 },
     managers: [],
@@ -63,7 +63,10 @@ const stubBilling = (row: Project, lines: BillingLine[] = [line()]) =>
 describe("ProjectBilling", () => {
   it("tells someone who may not see the amounts why the tab is empty, and asks for nothing", async () => {
     const fetchMock = stubBilling(
-      project({ capabilities: { canManage: false, canSeeFinancials: false }, financials: undefined }),
+      project({
+        capabilities: { canManage: false, canContribute: false, canSeeFinancials: false },
+        financials: undefined,
+      }),
     );
     renderWithProviders(<ProjectBilling projectId={7} />);
 
@@ -135,7 +138,7 @@ describe("ProjectBilling", () => {
   });
 
   it("offers no line actions to someone who may not manage the project", async () => {
-    stubBilling(project({ capabilities: { canManage: false, canSeeFinancials: true } }));
+    stubBilling(project({ capabilities: { canManage: false, canContribute: false, canSeeFinancials: true } }));
     renderWithProviders(<ProjectBilling projectId={7} />);
 
     await screen.findByText("KVEWEBS-PM");

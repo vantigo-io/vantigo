@@ -2,6 +2,7 @@ package projects_test
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"net/http"
 	"testing"
@@ -267,6 +268,7 @@ type personJSON struct {
 
 type capabilitiesJSON struct {
 	CanManage        bool `json:"canManage"`
+	CanContribute    bool `json:"canContribute"`
 	CanSeeFinancials bool `json:"canSeeFinancials"`
 }
 
@@ -274,6 +276,100 @@ type financialsJSON struct {
 	Currency         *string  `json:"currency"`
 	FixedPriceAmount *float64 `json:"fixedPriceAmount"`
 	BudgetAmount     *float64 `json:"budgetAmount"`
+}
+
+// taskJSON decodes TaskResponse and, since it is that shape plus the two
+// project fields, MyTaskResponse as well: one decoder, so a test that reads a
+// task through the tree and through my-tasks compares like with like.
+// assignee is a pointer because an unassigned task has no key at all.
+type taskJSON struct {
+	Id            int32         `json:"id"`
+	ProjectId     int32         `json:"projectId"`
+	ParentTaskId  *int32        `json:"parentTaskId"`
+	Title         string        `json:"title"`
+	Description   *string       `json:"description"`
+	Status        string        `json:"status"`
+	Assignee      *assigneeJSON `json:"assignee"`
+	StartDate     *string       `json:"startDate"`
+	DueDate       *string       `json:"dueDate"`
+	EstimateHours *float64      `json:"estimateHours"`
+	Position      int32         `json:"position"`
+	CompletedAt   *time.Time    `json:"completedAt"`
+	Revision      int32         `json:"revision"`
+	CreatedAt     time.Time     `json:"createdAt"`
+	UpdatedAt     time.Time     `json:"updatedAt"`
+	Checklist     checklistJSON `json:"checklist"`
+	CommentCount  int32         `json:"commentCount"`
+	Subtasks      []taskJSON    `json:"subtasks"`
+	ProjectCode   string        `json:"projectCode"`
+	ProjectName   string        `json:"projectName"`
+}
+
+// assigneeJSON decodes TaskAssignee. active is the user directory's answer,
+// exactly as a role assignment's is: an account disabled after the task was
+// assigned keeps the assignment and renders inactive.
+type assigneeJSON struct {
+	UserId      uuid.UUID `json:"userId"`
+	DisplayName string    `json:"displayName"`
+	Active      bool      `json:"active"`
+}
+
+// checklistJSON decodes a task's checklist progress, which is a pair of
+// counts rather than the items themselves: the tree renders progress, the
+// drawer reads the items (Task 3).
+type checklistJSON struct {
+	Total int32 `json:"total"`
+	Done  int32 `json:"done"`
+}
+
+// tasksPath is a project's task collection; taskPath is one task, which is
+// addressed without its project because a task id already names one.
+func tasksPath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/tasks", projectID)
+}
+
+func taskPath(taskID int32) string {
+	return fmt.Sprintf("/api/v1/projects/tasks/%d", taskID)
+}
+
+// taskBody is a valid minimal create body — nothing but a title, since that
+// is the only required field — which tests override one field of at a time. A
+// nil override value removes that field, the same convention createBody uses.
+func taskBody(overrides map[string]any) map[string]any {
+	body := map[string]any{"title": "Skriv spesifikasjonen"}
+	maps.Copy(body, overrides)
+	for field, value := range overrides {
+		if value == nil {
+			delete(body, field)
+		}
+	}
+	return body
+}
+
+// createTask creates one task and fails the test unless it was created.
+func createTask(t *testing.T, c *modtest.Client, projectID int32, overrides map[string]any) taskJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, tasksPath(projectID), taskBody(overrides))
+	if r.Status != http.StatusCreated {
+		t.Fatalf("create task: status %d body %s, want 201", r.Status, r.Body)
+	}
+	var task taskJSON
+	r.JSON(&task)
+	return task
+}
+
+// getTasks reads a project's task tree, failing the test unless it answered
+// 200. The order is the endpoint's: top-level tasks by position, each with
+// its subtasks by position.
+func getTasks(t *testing.T, c *modtest.Client, projectID int32) []taskJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, tasksPath(projectID), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("list tasks: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var tasks []taskJSON
+	r.JSON(&tasks)
+	return tasks
 }
 
 // validationProblemJSON decodes the field-error body every §4.1 refusal

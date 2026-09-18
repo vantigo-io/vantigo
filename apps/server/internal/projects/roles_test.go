@@ -17,10 +17,11 @@ func TestRoleCapabilities(t *testing.T) {
 		role string
 		want []capability
 	}{
-		{"manager", []capability{capSee, capSeeFinancials, capManage}},
-		// member and viewer are identical here on purpose: they differ in
-		// what later modules grant them, not in what this one does.
-		{"member", []capability{capSee}},
+		{"manager", []capability{capSee, capSeeFinancials, capContribute, capManage}},
+		// member and viewer part company over capContribute alone: a member
+		// writes the project's work — its tasks, and the checklists and
+		// comments on them — and a viewer reads it.
+		{"member", []capability{capSee, capContribute}},
 		{"viewer", []capability{capSee}},
 		// No role, and a role this module does not know, grant nothing —
 		// which is what makes "the caller holds no role" the zero case
@@ -44,11 +45,15 @@ func TestAccessWidenBy(t *testing.T) {
 	t.Parallel()
 
 	viewer := access{}.widenBy("viewer")
-	if !viewer.CanSee || viewer.CanSeeFinancials || viewer.CanManage || viewer.Role != "viewer" {
+	if !viewer.CanSee || viewer.CanSeeFinancials || viewer.CanContribute || viewer.CanManage || viewer.Role != "viewer" {
 		t.Errorf("access{}.widenBy(\"viewer\") = %+v, want see only", viewer)
 	}
+	member := access{}.widenBy(roleMember)
+	if !member.CanSee || !member.CanContribute || member.CanSeeFinancials || member.CanManage {
+		t.Errorf("access{}.widenBy(%q) = %+v, want see and contribute", roleMember, member)
+	}
 	manager := access{}.widenBy(roleManager)
-	if !manager.CanSee || !manager.CanSeeFinancials || !manager.CanManage {
+	if !manager.CanSee || !manager.CanSeeFinancials || !manager.CanContribute || !manager.CanManage {
 		t.Errorf("access{}.widenBy(%q) = %+v, want every capability", roleManager, manager)
 	}
 	// A global manage-all caller who is only a viewer on this project keeps
@@ -58,7 +63,7 @@ func TestAccessWidenBy(t *testing.T) {
 		t.Errorf("a manage-all caller widened by \"viewer\" = %+v, want nothing taken away", global)
 	}
 	none := access{}.widenBy("")
-	if none.CanSee || none.CanSeeFinancials || none.CanManage || none.Role != "" {
+	if none.CanSee || none.CanSeeFinancials || none.CanContribute || none.CanManage || none.Role != "" {
 		t.Errorf("access{}.widenBy(\"\") = %+v, want the zero access", none)
 	}
 }

@@ -16,11 +16,15 @@ import (
 // consults a role or a global permission on its own, so there is exactly one
 // place where "may this caller see this project" is answered.
 
-// access is what one caller may do with one project.
+// access is what one caller may do with one project. CanContribute is the
+// write side of the project's *work* — tasks and what hangs off them — which
+// a member has and a viewer has not; CanManage is the write side of the
+// project itself.
 type access struct {
 	Role             string // "" when the caller holds none
 	CanSee           bool
 	CanSeeFinancials bool
+	CanContribute    bool
 	CanManage        bool
 }
 
@@ -35,6 +39,7 @@ func (s *server) globalAccess(ctx context.Context) access {
 	return access{
 		CanSee:           manageAll || viewAll,
 		CanSeeFinancials: manageAll || financials,
+		CanContribute:    manageAll,
 		CanManage:        manageAll,
 	}
 }
@@ -53,6 +58,7 @@ func (s *server) authorize(ctx context.Context, q *store.Queries, projectID int3
 	a = a.widenBy(role)
 	if !a.CanSee {
 		a.CanSeeFinancials = false
+		a.CanContribute = false
 	}
 	return a, nil
 }
@@ -70,6 +76,8 @@ func (a access) widenBy(role string) access {
 			a.CanSee = true
 		case capSeeFinancials:
 			a.CanSeeFinancials = true
+		case capContribute:
+			a.CanContribute = true
 		case capManage:
 			a.CanManage = true
 		}

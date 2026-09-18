@@ -32,7 +32,7 @@ const project: Project = {
   endDate: null,
   budgetHours: 120,
   financials: { currency: "NOK", budgetAmount: 50000 },
-  capabilities: { canManage: true, canSeeFinancials: true },
+  capabilities: { canManage: true, canContribute: true, canSeeFinancials: true },
   billingLinesAvailable: true,
   managers: [],
   revision: 3,
@@ -295,7 +295,11 @@ describe("ProjectFormModal", () => {
     stubProjectsApi();
     renderModal({
       mode: "edit",
-      project: { ...project, financials: undefined, capabilities: { canManage: true, canSeeFinancials: false } },
+      project: {
+        ...project,
+        financials: undefined,
+        capabilities: { canManage: true, canContribute: true, canSeeFinancials: false },
+      },
     });
 
     expect(screen.queryByLabelText(/budget amount/i)).not.toBeInTheDocument();

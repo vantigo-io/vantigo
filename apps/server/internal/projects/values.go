@@ -78,6 +78,10 @@ func validTaskStatus(status string) bool {
 	return slices.Contains(taskStatuses, status)
 }
 
+// taskStatusList is the enumeration as a message names it: "'todo',
+// 'in-progress' or 'done'", the pair projectStatusList makes for a project.
+func taskStatusList() string { return quotedList(taskStatuses) }
+
 // quotedList is how every closed enumeration in this module names itself in a
 // validation message: quoted, comma-separated, the last one joined with
 // "or". One writer, so a role's message and a status's read the same way.
