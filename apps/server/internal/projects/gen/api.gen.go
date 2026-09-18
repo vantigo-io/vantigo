@@ -422,7 +422,7 @@ type TaskRequest struct {
 	// DueDate Not before startDate when both are set.
 	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
 
-	// EstimateHours Greater than zero when set.
+	// EstimateHours Greater than zero and at most 999999.99 when set.
 	EstimateHours *float64 `json:"estimateHours,omitempty"`
 
 	// ParentTaskId Creates the task as a subtask of this one, which must be a top-level task of the same project (D6 — one level of nesting).
@@ -482,15 +482,15 @@ type TaskUpdateRequest struct {
 	// DueDate Not before startDate when both are set.
 	DueDate *openapi_types.Date `json:"dueDate,omitempty"`
 
-	// EstimateHours Greater than zero when set.
+	// EstimateHours Greater than zero and at most 999999.99 when set.
 	EstimateHours *float64 `json:"estimateHours,omitempty"`
 
 	// Revision The revision the caller read the task at.
 	Revision  int32               `json:"revision"`
 	StartDate *openapi_types.Date `json:"startDate,omitempty"`
 
-	// Status 'todo', 'in-progress' or 'done'. Absent means 'todo'. Moving into 'done' stamps completedAt; leaving it clears the stamp.
-	Status *string `json:"status,omitempty"`
+	// Status 'todo', 'in-progress' or 'done'. Required: an update is a full replace, so a body that leaves the status out would silently reopen a finished task. Moving into 'done' stamps completedAt; leaving it clears the stamp.
+	Status string `json:"status"`
 
 	// Title Trimmed before validation and storage; at most 200 characters.
 	Title string `json:"title"`

@@ -250,6 +250,8 @@ func TestPostProjectsByIdTasks_InvalidBody_Returns400OnTheField(t *testing.T) {
 		{"due date before the start date", map[string]any{"startDate": "2026-03-10", "dueDate": "2026-03-09"}, "dueDate"},
 		{"estimate of zero", map[string]any{"estimateHours": 0}, "estimateHours"},
 		{"negative estimate", map[string]any{"estimateHours": -1}, "estimateHours"},
+		{"estimate wider than the column", map[string]any{"estimateHours": 1000000}, "estimateHours"},
+		{"estimate that rounds past the column", map[string]any{"estimateHours": 999999.999}, "estimateHours"},
 		{"assignee who does not exist", map[string]any{"assigneeUserId": uuid.New()}, "assigneeUserId"},
 		{"assignee whose account is disabled", map[string]any{"assigneeUserId": disabledID}, "assigneeUserId"},
 	}
@@ -307,6 +309,21 @@ func TestPostProjectsByIdTasks_Subtask_IsNumberedInsideItsParent(t *testing.T) {
 	}
 	if len(tree[1].Subtasks) != 0 {
 		t.Errorf("second task's subtasks = %v, want none", tree[1].Subtasks)
+	}
+}
+
+// The widest estimate the column holds is stored rather than refused: the
+// upper bound is the column's own, so the number on its edge has to go
+// through.
+func TestPostProjectsByIdTasks_EstimateAtTheColumnsWidth_IsStored(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "TEST1000"})
+
+	task := createTask(t, c, project.Id, map[string]any{"title": "Et svært anslag", "estimateHours": 999999.99})
+	if task.EstimateHours == nil || *task.EstimateHours != 999999.99 {
+		t.Errorf("EstimateHours = %v, want 999999.99", task.EstimateHours)
 	}
 }
 
@@ -517,6 +534,32 @@ func TestPutProjectsTasksByTaskId_ReplacesTheTaskAndTracksCompletedAt(t *testing
 	reopened := changeTask(t, c, stillDone, map[string]any{"status": "in-progress"})
 	if reopened.CompletedAt != nil {
 		t.Errorf("CompletedAt = %v, want it cleared when the task leaves 'done'", reopened.CompletedAt)
+	}
+}
+
+// `status` is required on an update. A full replace says what every field of
+// the task should be afterwards, so a body that leaves the status out has
+// forgotten a field rather than asked for 'todo' — and defaulting it would
+// quietly reopen a task somebody had finished.
+func TestPutProjectsTasksByTaskId_MissingStatus_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "TSTA1000"})
+	task := createTask(t, c, project.Id, map[string]any{"title": "Lever rapporten"})
+	done := changeTask(t, c, task, map[string]any{"status": "done"})
+
+	r := putTask(t, c, done, map[string]any{"status": nil})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["status"]) == 0 {
+		t.Errorf("errors = %v, want a message on %q", problem.Errors, "status")
+	}
+	if got := showTask(t, c, task.Id); got.Status != "done" || got.CompletedAt == nil {
+		t.Errorf("task = %+v, want it still done: the refused update wrote nothing", got)
 	}
 }
 

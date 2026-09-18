@@ -842,7 +842,7 @@ export interface components {
             dueDate?: string | null;
             /**
              * Format: double
-             * @description Greater than zero when set.
+             * @description Greater than zero and at most 999999.99 when set.
              */
             estimateHours?: number | null;
             /**
@@ -920,7 +920,7 @@ export interface components {
             dueDate?: string | null;
             /**
              * Format: double
-             * @description Greater than zero when set.
+             * @description Greater than zero and at most 999999.99 when set.
              */
             estimateHours?: number | null;
             /**
@@ -930,8 +930,8 @@ export interface components {
             revision: number;
             /** Format: date */
             startDate?: string | null;
-            /** @description 'todo', 'in-progress' or 'done'. Absent means 'todo'. Moving into 'done' stamps completedAt; leaving it clears the stamp. */
-            status?: string | null;
+            /** @description 'todo', 'in-progress' or 'done'. Required: an update is a full replace, so a body that leaves the status out would silently reopen a finished task. Moving into 'done' stamps completedAt; leaving it clears the stamp. */
+            status: string;
             /** @description Trimmed before validation and storage; at most 200 characters. */
             title: string;
         };

@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -52,12 +53,20 @@ func validateTaskDescription(raw *string) (*string, string) {
 	return &trimmed, ""
 }
 
-// validateTaskStatus is the status rule: optional on the wire, because a new
-// task is 'todo' and a body that says nothing about status means exactly that;
-// one of the three when it is given, exactly as written, since the strings are
-// what other modules key on (OpenTasksForUser's "not done" filter).
-func validateTaskStatus(raw *string) (string, string) {
+// validateTaskStatus is the status rule: one of the three, exactly as written,
+// since the strings are what other modules key on (OpenTasksForUser's "not
+// done" filter).
+//
+// required is what the two write paths disagree about. A create may leave the
+// status out, because a new task is 'todo' and a body that says nothing about
+// status means exactly that. An update may not: it is a full replace, so a
+// body without a status has forgotten a field rather than asked for 'todo',
+// and defaulting it would quietly reopen a task somebody had finished.
+func validateTaskStatus(raw *string, required bool) (string, string) {
 	if raw == nil || strings.TrimSpace(*raw) == "" {
+		if required {
+			return "", fmt.Sprintf("A task status is required and must be one of %s", taskStatusList())
+		}
 		return taskStatusTodo, ""
 	}
 	if !validTaskStatus(*raw) {
@@ -65,6 +74,13 @@ func validateTaskStatus(raw *string) (string, string) {
 	}
 	return *raw, ""
 }
+
+// The two ways validateTask reads `status`, named at the call site because a
+// bare true there would say nothing about which rule is being asked for.
+const (
+	statusDefaultsToTodo = false
+	statusIsRequired     = true
+)
 
 // validateTaskDateOrder is §4.1's date rule: a task cannot be due before it
 // starts. Either date alone is fine — a task with a due date and no start is
@@ -76,14 +92,30 @@ func validateTaskDateOrder(start, due *openapi_types.Date) string {
 	return "A due date cannot be before the start date"
 }
 
+// estimateHoursMax is the widest estimate the column can hold, numeric(8,2)
+// being six digits and two decimals. Without the rule a larger number is not
+// a refusal but a numeric field overflow from Postgres — a 500 about a body
+// the caller could have been told was wrong.
+const estimateHoursMax = 999999.99
+
 // validateEstimateHours is the estimate rule: set or absent, never zero or
-// negative. An estimate of nothing is an estimate nobody made, which is what
-// leaving the field out says.
+// negative, never wider than the column. An estimate of nothing is an estimate
+// nobody made, which is what leaving the field out says.
+//
+// The bound is asked of the value as it will be stored, rounded to the two
+// decimals the column keeps: 999999.999 fits in no other sense than that
+// nobody wrote it out, and Postgres would round it up and overflow.
 func validateEstimateHours(hours *float64) string {
-	if hours == nil || *hours > 0 {
+	switch {
+	case hours == nil:
+		return ""
+	case *hours <= 0:
+		return "An estimate must be greater than zero"
+	case math.Round(*hours*100)/100 > estimateHoursMax:
+		return fmt.Sprintf("An estimate cannot be greater than %.2f hours", estimateHoursMax)
+	default:
 		return ""
 	}
-	return "An estimate must be greater than zero"
 }
 
 // assigneeNotFound and assigneeDisabled are the two ways `assigneeUserId` can
@@ -201,7 +233,10 @@ type parsedTask struct {
 // the assignment it was given is not making one, so it is not asked about at
 // all — an account disabled or deleted since must not freeze the task
 // (assigneeNotFound, assigneeDisabled).
-func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigned *uuid.UUID) (parsedTask, map[string][]string, error) {
+//
+// statusRequired is the one rule a create and a full replace read differently
+// (validateTaskStatus); every other rule is the same on both paths.
+func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigned *uuid.UUID, statusRequired bool) (parsedTask, map[string][]string, error) {
 	errs := map[string][]string{}
 	add := func(field, msg string) {
 		if msg != "" {
@@ -213,7 +248,7 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigne
 	add("title", msg)
 	description, msg := validateTaskDescription(body.Description)
 	add("description", msg)
-	status, msg := validateTaskStatus(body.Status)
+	status, msg := validateTaskStatus(body.Status, statusRequired)
 	add("status", msg)
 	add("dueDate", validateTaskDateOrder(body.StartDate, body.DueDate))
 	add("estimateHours", validateEstimateHours(body.EstimateHours))
@@ -261,11 +296,16 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigne
 // opinion about, and the parent, which an update cannot move (that is the
 // position operation's). One validator therefore serves both paths, and a rule
 // can never be enforced on a create but forgotten on an update.
+//
+// `status` is required on an update and optional on a create, so it arrives
+// here as a plain string and leaves as the pointer the create body carries —
+// the empty string for a body that left it out, which is exactly what
+// validateTaskStatus refuses under statusIsRequired.
 func taskFromUpdate(body gen.TaskUpdateRequest) gen.TaskRequest {
 	return gen.TaskRequest{
 		Title:          body.Title,
 		Description:    body.Description,
-		Status:         body.Status,
+		Status:         &body.Status,
 		AssigneeUserId: body.AssigneeUserId,
 		StartDate:      body.StartDate,
 		DueDate:        body.DueDate,

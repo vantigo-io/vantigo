@@ -261,13 +261,20 @@ list, not an issue tracker.
   carries the `done`/`total` counts so a list row needs no extra request.
 - **Comments** are a flat, paged thread of `body` (≤ 4000) with an `edited_at` stamp.
 - **Validation:** `title` required and ≤ 200, `description` ≤ 4000,
-  `dueDate >= startDate` when both are set, `estimateHours > 0` when set, and an
-  `assigneeUserId` that resolves through `contracts.UserDirectory` and is **active
-  when assigned**. An assignee who is later disabled keeps the task readable and the
-  field editable, exactly as a project role does.
+  `dueDate >= startDate` when both are set, `0 < estimateHours <= 999999.99` (the
+  column's own width) when set, and an `assigneeUserId` that resolves through
+  `contracts.UserDirectory` and is **active when assigned**. An assignee who is later
+  disabled keeps the task readable and the field editable, exactly as a project role
+  does.
 - **Concurrency:** every task update is a full replace carrying the `revision` the
-  task was read at; a stale one answers **409**, as a project update does.
+  task was read at; a stale one answers **409**, as a project update does. `status` is
+  **required** on the update for the same reason: a full replace that left it out
+  would silently reopen a finished task. A create may omit it and gets `todo`.
 - **Deleting** a task cascades to its subtasks, checklist items and comments.
+- **Task writes are not gated on the project's status.** A cancelled or completed
+  project's tasks can still be created, edited, moved and deleted — only *time
+  logging* needs an `active` project (`CanLogTime`, `OpenForWork`). The task rules ask
+  the caller's role and nothing else.
 
 ### Authorization
 
@@ -363,9 +370,13 @@ Time tracking is the first consumer, and the seam is already in place:
   rule is not restated per consumer. `Role` is still there for anything finer, and
   `ProjectsForUser` answers "which projects can I pick".
 - Hang a time entry off a **task** with `Task(id)` for its title and project, and
-  offer the timesheet's "my open tasks" rows from **`OpenTasksForUser(userID)`**,
-  which is the same set `/projects/my-tasks` renders. Snapshot the title onto the
-  entry: a task can be renamed or deleted, and old hours must stay readable.
+  offer the timesheet's "my open tasks" rows from **`OpenTasksForUser(userID)`**.
+  Snapshot the title onto the entry: a task can be renamed or deleted, and old hours
+  must stay readable. ⚠️ **`OpenTasksForUser` is not visibility-filtered** — it
+  answers every open task assigned to the user, including ones on projects they have
+  since lost their role on, which is *not* what `/projects/my-tasks` renders (that
+  endpoint adds the project-visibility predicate). Combine it with
+  `CanLogTime(projectID, userID)` — or `Role` — before showing or accepting a row.
 - Rates: `ProjectEntry.DefaultBillRate` is the project's step of the rate chain
   (billing-line rule → project default → person default). It is a financial field —
   surface it only behind a financial-viewer permission of your own.

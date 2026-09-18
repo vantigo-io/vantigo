@@ -811,7 +811,7 @@ components:
                     nullable: true
                     type: string
                 estimateHours:
-                    description: Greater than zero when set.
+                    description: Greater than zero and at most 999999.99 when set.
                     format: double
                     nullable: true
                     type: number
@@ -930,7 +930,7 @@ components:
                     nullable: true
                     type: string
                 estimateHours:
-                    description: Greater than zero when set.
+                    description: Greater than zero and at most 999999.99 when set.
                     format: double
                     nullable: true
                     type: number
@@ -943,14 +943,14 @@ components:
                     nullable: true
                     type: string
                 status:
-                    description: "'todo', 'in-progress' or 'done'. Absent means 'todo'. Moving into 'done' stamps completedAt; leaving it clears the stamp."
-                    nullable: true
+                    description: "'todo', 'in-progress' or 'done'. Required: an update is a full replace, so a body that leaves the status out would silently reopen a finished task. Moving into 'done' stamps completedAt; leaving it clears the stamp."
                     type: string
                 title:
                     description: Trimmed before validation and storage; at most 200 characters.
                     type: string
             required:
                 - title
+                - status
                 - revision
             type: object
         TimelineEntryResponse:
