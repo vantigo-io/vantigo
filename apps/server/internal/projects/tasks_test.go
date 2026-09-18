@@ -929,6 +929,56 @@ func TestGetProjectsByIdTasks_AssigneeDisabledAfterwards_StaysAssignedAndInactiv
 	}
 }
 
+// The other half of the same rule, and the harder one: identity does not only
+// disable accounts, it deletes them (DeleteIdentityOwnerUsersById), after which
+// the directory cannot name the user at all. The assignment stays — a task
+// somebody did is still a task somebody did — and the task stays editable,
+// because the assignee an update re-sends is a stored fact rather than a choice
+// it is making. A *different* unknown user is still a choice, and is refused.
+func TestPutProjectsTasksByTaskId_AssigneeDeletedAfterwards_StaysEditable(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "TGONE1000"})
+	_, memberID := signIn(t, h)
+	setDisplayName(t, h, memberID, "Mia Medlem")
+	task := createTask(t, c, project.Id, map[string]any{"assigneeUserId": memberID})
+
+	// identity.users cascades to the account's roles, sessions, credentials
+	// and avatar (owner_users.sql's DeleteUser), so the row goes on its own.
+	h.Exec(t, `DELETE FROM identity.users WHERE id = $1`, memberID)
+
+	got := showTask(t, c, task.Id)
+	if got.Assignee == nil || got.Assignee.UserId != memberID {
+		t.Fatalf("Assignee = %+v, want the assignment kept", got.Assignee)
+	}
+	if got.Assignee.DisplayName != "Unknown user" || got.Assignee.Active {
+		t.Errorf("Assignee = %+v, want it named 'Unknown user' and inactive", got.Assignee)
+	}
+
+	renamed := changeTask(t, c, got, map[string]any{"title": "Fortsatt redigerbar"})
+	if renamed.Title != "Fortsatt redigerbar" {
+		t.Errorf("Title = %q, want the rename applied", renamed.Title)
+	}
+	if renamed.Assignee == nil || renamed.Assignee.UserId != memberID || renamed.Assignee.Active {
+		t.Errorf("Assignee = %+v, want the same lost account, still inactive", renamed.Assignee)
+	}
+
+	r := putTask(t, c, renamed, map[string]any{"assigneeUserId": uuid.New()})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("assigning an unknown user: status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["assigneeUserId"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'assigneeUserId'", problem.Errors)
+	}
+
+	if cleared := changeTask(t, c, renamed, map[string]any{"assigneeUserId": nil}); cleared.Assignee != nil {
+		t.Errorf("Assignee = %+v, want the assignment cleared", cleared.Assignee)
+	}
+}
+
 // A task on a project the caller cannot see is not a task they may edit or
 // delete either, and the refusal is the same bare 404 a reader gets.
 func TestTasks_Outsider_CannotWriteAndLearnsNothing(t *testing.T) {

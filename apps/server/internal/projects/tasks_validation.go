@@ -90,12 +90,17 @@ func validateEstimateHours(hours *float64) string {
 // fail. Both are ordinary field errors rather than a 404: the project exists
 // and the caller may write on it, so what is wrong is the body they sent.
 //
-// The disabled rule applies to the assignment being *made*, not to one that
-// already stands: an update that re-sends the assignee the task already
-// carries is left alone even when that account has since been disabled, so a
-// task nobody can reassign yet is still a task somebody can rename (validateTask's
-// `assigned`). Moving it to a *different* disabled user is still refused, and
-// the assignment itself renders inactive either way (taskResponse).
+// Both rules are about the assignment being *made*, never about one that
+// already stands. An update carries every field of the task, so it re-sends
+// the assignee it was given; that value is a stored fact rather than a choice,
+// and validateTask's `assigned` is what lets it through unasked. Otherwise an
+// account disabled — or deleted outright, which
+// DeleteIdentityOwnerUsersById does — after the assignment was made would
+// freeze the task: nobody could rename it, or even clear the assignment,
+// without first guessing that the assignment was the problem. Handing the task
+// to a *different* user is a new assignment and is checked in full, and the
+// assignment renders inactive (and named "Unknown user" for an account the
+// directory has lost) either way — taskResponse.
 func assigneeNotFound(id uuid.UUID) string {
 	return fmt.Sprintf("User %s does not exist", id)
 }
@@ -193,8 +198,9 @@ type parsedTask struct {
 // assigned is the assignee the task already carries, nil on a create and for
 // an unassigned task. It is what makes "may this user be given this task"
 // different from "is this task still assigned to them": an update that keeps
-// the assignment it was given is not making one, so a since-disabled account
-// does not freeze the task (assigneeDisabled).
+// the assignment it was given is not making one, so it is not asked about at
+// all — an account disabled or deleted since must not freeze the task
+// (assigneeNotFound, assigneeDisabled).
 func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigned *uuid.UUID) (parsedTask, map[string][]string, error) {
 	errs := map[string][]string{}
 	add := func(field, msg string) {
@@ -212,17 +218,18 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigne
 	add("dueDate", validateTaskDateOrder(body.StartDate, body.DueDate))
 	add("estimateHours", validateEstimateHours(body.EstimateHours))
 
-	if body.AssigneeUserId != nil {
-		entry, err := s.deps.Users.User(ctx, *body.AssigneeUserId)
+	// The assignee the task already carries is a stored fact, not a choice this
+	// body is making, so it is never re-validated — and never even looked up.
+	if id := body.AssigneeUserId; id != nil && (assigned == nil || *assigned != *id) {
+		entry, err := s.deps.Users.User(ctx, *id)
 		if err != nil {
 			return parsedTask{}, nil, fmt.Errorf("projects: resolve the task's assignee: %w", err)
 		}
-		kept := assigned != nil && *assigned == *body.AssigneeUserId
 		switch {
 		case entry == nil:
-			add("assigneeUserId", assigneeNotFound(*body.AssigneeUserId))
-		case !entry.Active && !kept:
-			add("assigneeUserId", assigneeDisabled(*body.AssigneeUserId))
+			add("assigneeUserId", assigneeNotFound(*id))
+		case !entry.Active:
+			add("assigneeUserId", assigneeDisabled(*id))
 		}
 	}
 
