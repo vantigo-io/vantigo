@@ -2,12 +2,13 @@ import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { ProjectSummary } from "../api/projects";
 import { stubFetch } from "../test/fetch";
-import { ProjectsPage, type ProjectsPageSearch } from "./projects.index";
+import { routeTree } from "../test/route-tree";
 
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -46,9 +47,14 @@ const page = (rows: ProjectSummary[]) => ({
   },
 });
 
-const stubProjects = (list: Response) =>
+const ALL_PERMISSIONS = ["projects:access", "projects:create"];
+
+const stubProjects = (list: Response, permissions: string[] = ALL_PERMISSIONS) =>
   stubFetch((input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://localhost");
+    if (url.pathname === "/api/v1/identity/access/me") {
+      return Promise.resolve(jsonResponse(200, { permissions }));
+    }
     if (url.pathname === "/api/v1/projects/stats") {
       return Promise.resolve(jsonResponse(200, { planned: 4, active: 9, onHold: 2, completed: 11, cancelled: 1 }));
     }
@@ -59,29 +65,24 @@ const stubProjects = (list: Response) =>
     return Promise.resolve(new Response(null, { status: 404 }));
   });
 
-const baseSearch: ProjectsPageSearch = { page: 1, search: "", status: "", mine: false };
-
-const renderPage = (
-  overrides: Partial<ProjectsPageSearch> = {},
-  permissions: readonly string[] = ["projects:access", "projects:create"],
-) => {
-  const onSearchChange = vi.fn();
+const renderPage = (url = "/projects") => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const router = createRouter({
+    routeTree,
+    context: { queryClient },
+    history: createMemoryHistory({ initialEntries: [url] }),
+  });
   render(
     <MantineProvider env="test">
       <Notifications />
       <ModalsProvider>
         <QueryClientProvider client={queryClient}>
-          <ProjectsPage
-            search={{ ...baseSearch, ...overrides }}
-            onSearchChange={onSearchChange}
-            permissions={permissions}
-          />
+          <RouterProvider router={router} />
         </QueryClientProvider>
       </ModalsProvider>
     </MantineProvider>,
   );
-  return { onSearchChange };
+  return { router };
 };
 
 describe("ProjectsPage", () => {
@@ -140,8 +141,8 @@ describe("ProjectsPage", () => {
   });
 
   it("offers the create button only to someone who may create projects", async () => {
-    stubProjects(jsonResponse(200, page([summary({})])));
-    renderPage({}, ["projects:access"]);
+    stubProjects(jsonResponse(200, page([summary({})])), ["projects:access"]);
+    renderPage();
 
     await screen.findByRole("link", { name: "KVEWEBS" });
     expect(screen.queryByRole("button", { name: "New project" })).not.toBeInTheDocument();
@@ -149,33 +150,42 @@ describe("ProjectsPage", () => {
 
   it("narrows the list to the caller's own projects, back on the first page", async () => {
     stubProjects(jsonResponse(200, page([summary({})])));
-    const { onSearchChange } = renderPage({ page: 3 });
+    const { router } = renderPage("/projects?page=3");
 
     await screen.findByRole("link", { name: "KVEWEBS" });
     await userEvent.click(screen.getByLabelText("My projects"));
 
-    expect(onSearchChange).toHaveBeenCalledWith({ page: 1, search: "", status: "", mine: true });
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ mine: true, page: 1 }));
   });
 
   it("filters by status without losing the other filters", async () => {
     stubProjects(jsonResponse(200, page([summary({})])));
-    const { onSearchChange } = renderPage({ mine: true, page: 2 });
+    const { router } = renderPage("/projects?page=2&mine=true");
 
     await screen.findByRole("link", { name: "KVEWEBS" });
     await userEvent.click(screen.getByRole("combobox", { name: "Status" }));
     await userEvent.click(await screen.findByRole("option", { name: "On hold" }));
 
-    expect(onSearchChange).toHaveBeenCalledWith({ page: 1, search: "", status: "on-hold", mine: true });
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ status: "on-hold", mine: true, page: 1 }));
   });
 
   it("opens the create form when the URL asks for it, and drops the intent when the form closes", async () => {
     stubProjects(jsonResponse(200, page([summary({})])));
-    const { onSearchChange } = renderPage({ create: true });
+    const { router } = renderPage("/projects?create=true");
 
     const dialog = await screen.findByRole("dialog", { name: "New project" });
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(onSearchChange).toHaveBeenCalledWith({ page: 1, search: "", status: "", mine: false }, { replace: true });
+    expect(router.state.location.search).not.toHaveProperty("create");
+  });
+
+  it("never opens the create form for someone who may not create projects", async () => {
+    stubProjects(jsonResponse(200, page([summary({})])), ["projects:access"]);
+    const { router } = renderPage("/projects?create=true");
+
+    await screen.findByRole("link", { name: "KVEWEBS" });
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty("create"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

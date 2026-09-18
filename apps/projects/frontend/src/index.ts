@@ -1,5 +1,6 @@
 import "./i18n";
 
+export * from "./api/access";
 export * from "./api/customers";
 export * from "./api/lines";
 export * from "./api/people";
@@ -9,8 +10,9 @@ export { CustomerPicker, type CustomerPickerProps, type CustomerPickerValue } fr
 export { ProjectStatusBadge, type ProjectStatusBadgeProps } from "./components/project-status-badge";
 export { projectsCatalog } from "./i18n";
 export * from "./lib/billing";
+export { holdsPermission } from "./lib/permissions";
 export * from "./lib/roles";
 export * from "./lib/status";
 export { type CodeSuggestion, useCodeSuggestion } from "./lib/use-code-suggestion";
 export { ProjectFormModal, type ProjectModalState } from "./pages/-project-form-modal";
-export { ProjectsPage, type ProjectsPageProps, type ProjectsPageSearch } from "./pages/projects.index";
+export { ProjectsPage, type ProjectsSearch } from "./pages/projects.index";

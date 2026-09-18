@@ -125,6 +125,46 @@ describe("ProjectFormModal", () => {
     expect(screen.getByRole("radio", { name: "Fixed price" })).toBeDisabled();
   });
 
+  it("offers the suggestion again once the code field is emptied", async () => {
+    stubProjectsApi();
+    renderModal({ mode: "create" });
+
+    await pickCustomer("Kverneland");
+    await userEvent.type(screen.getByLabelText(/project name/i), "Website");
+    await waitFor(() => expect(codeInput()).toHaveValue("KVEWEBS"), { timeout: 3000 });
+
+    await userEvent.clear(codeInput());
+    await userEvent.click(await screen.findByRole("button", { name: "Use suggestion: KVEWEBS" }));
+
+    expect(codeInput()).toHaveValue("KVEWEBS");
+  });
+
+  it("refuses to create a project until a customer or Internal project is chosen", async () => {
+    const fetchMock = stubProjectsApi();
+    const { onClose } = renderModal({ mode: "create" });
+
+    await userEvent.type(screen.getByLabelText(/project name/i), "Website");
+    await userEvent.type(codeInput(), "WEBSITE");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("Choose a customer, or select Internal project")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("refuses to save an existing project whose customer was cleared", async () => {
+    const fetchMock = stubProjectsApi();
+    const { onClose } = renderModal({ mode: "edit", project });
+
+    // Picking the customer it already has deselects it — Mantine's own way out.
+    await pickCustomer("Kverneland");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("Choose a customer, or select Internal project")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "PUT")).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("asks for a fixed price amount only on a fixed-price project", async () => {
     stubProjectsApi();
     renderModal({ mode: "create" });

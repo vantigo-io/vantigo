@@ -16,6 +16,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle, IconPlus, IconSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ContentSkeleton,
   EmptyState,
@@ -25,7 +26,8 @@ import {
   useI18n,
   useShellLink,
 } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { accessQueryOptions } from "../api/access";
 import {
   type ProjectListParams,
   type ProjectSummary,
@@ -35,57 +37,64 @@ import {
 import { CustomerPicker } from "../components/customer-picker";
 import { ProjectStatusBadge } from "../components/project-status-badge";
 import "../i18n";
+import { holdsPermission } from "../lib/permissions";
 import { isProjectStatus, projectStatuses, projectStatusLabelKey } from "../lib/status";
 import { ProjectFormModal, type ProjectModalState } from "./-project-form-modal";
 
-/** The list's URL search params. `create` only ever arrives as `true`, from Spotlight's quick action. */
-export interface ProjectsPageSearch extends ProjectListParams {
+/**
+ * The list's URL search params, which the host route validates (Task 14).
+ * `create` only ever arrives as `true`, from Spotlight's quick action.
+ */
+export interface ProjectsSearch extends ProjectListParams {
   create?: boolean;
 }
 
-export interface ProjectsPageProps {
-  search: ProjectsPageSearch;
-  /** Puts the next search in the URL; `replace` for changes the back button should not replay. */
-  onSearchChange: (search: ProjectsPageSearch, options?: { replace?: boolean }) => void;
-  /** The caller's permission keys, as the host's authorization payload lists them. */
-  permissions: readonly string[];
-}
-
-/** Which kind of project the toolbar's type filter is asking for. */
-const PROJECT_TYPES = { customer: false, internal: true } as const;
-
-const holds = (permissions: readonly string[], permission: string) =>
-  permissions.includes("*") || permissions.includes(permission);
+/** The toolbar's project-type filter, and the `internal` param each choice asks for. */
+const projectTypes = ["customer", "internal"] as const;
+type ProjectTypeFilter = (typeof projectTypes)[number];
+const isProjectTypeFilter = (value: string): value is ProjectTypeFilter =>
+  (projectTypes as readonly string[]).includes(value);
 
 /**
  * The project list (design §8.2): counts, a toolbar whose every choice lands
- * in the URL, and the table. The host route owns the URL; this page is given
- * the search it should show and a way to change it.
+ * in the URL, and the table. Search, filters and page live in validated URL
+ * search params the host route declares; the page reads and navigates them
+ * the way every other module's list page does.
  */
-export const ProjectsPage = ({ search, onSearchChange, permissions }: ProjectsPageProps) => {
+export const ProjectsPage = () => {
   const { t, formatters } = useI18n("projects");
-  const { create, ...params } = search;
+  const { create, ...params } = useSearch({ strict: false }) as ProjectsSearch;
+  const navigate = useNavigate() as (options: unknown) => void;
 
   const { searchInput, setSearchInput, onPageChange } = useDebouncedListSearch({
     currentSearch: params.search,
-    onNavigate: (next, options) => onSearchChange({ ...params, ...next }, options),
+    onNavigate: (next, options) => navigate({ search: { ...params, ...next }, ...options }),
   });
-  const filterBy = (next: Partial<ProjectListParams>) => onSearchChange({ ...params, ...next, page: 1 });
+  const filterBy = (next: Partial<ProjectListParams>) => navigate({ search: { ...params, ...next, page: 1 } });
+  // The intent is consumed: it must not reopen the form on refresh or back.
+  const dropCreateIntent = () => navigate({ search: params, replace: true });
+
+  const access = useQuery(accessQueryOptions());
+  const canCreate = holdsPermission(access.data?.permissions, "projects:create");
 
   const [modalState, setModalState] = useState<ProjectModalState | null>(null);
   // Open the create form when `create` arrives in the URL, once per arrival:
   // state adjusted during render from the previous render's value, the way
   // React documents, rather than an effect that would flash the closed form.
+  // It waits for the permissions, so a caller who may not create never sees it.
   const [createSeen, setCreateSeen] = useState(false);
-  if (create && !createSeen) {
+  if (create && !access.isPending && !createSeen) {
     setCreateSeen(true);
-    setModalState({ mode: "create" });
+    if (canCreate) setModalState({ mode: "create" });
   }
   if (!create && createSeen) setCreateSeen(false);
+  useEffect(() => {
+    if (create && !access.isPending && !canCreate) dropCreateIntent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [create, access.isPending, canCreate]);
   const closeModal = () => {
     setModalState(null);
-    // The intent is consumed: closing the form must not reopen it on refresh or back.
-    if (create) onSearchChange(params, { replace: true });
+    if (create) dropCreateIntent();
   };
 
   const { data, isPending, isError, error } = useQuery(projectsQueryOptions(params));
@@ -97,7 +106,7 @@ export const ProjectsPage = ({ search, onSearchChange, permissions }: ProjectsPa
         title={t("projects")}
         description={t("projectsDescription")}
         actions={
-          holds(permissions, "projects:create") && (
+          canCreate && (
             <Button leftSection={<IconPlus size={16} />} onClick={() => setModalState({ mode: "create" })}>
               {t("newProject")}
             </Button>
@@ -146,7 +155,7 @@ export const ProjectsPage = ({ search, onSearchChange, permissions }: ProjectsPa
               ]}
               value={params.internal === undefined ? null : params.internal ? "internal" : "customer"}
               onChange={(value) =>
-                filterBy({ internal: value === null ? undefined : PROJECT_TYPES[value as keyof typeof PROJECT_TYPES] })
+                filterBy({ internal: value && isProjectTypeFilter(value) ? value === "internal" : undefined })
               }
             />
             <CustomerPicker

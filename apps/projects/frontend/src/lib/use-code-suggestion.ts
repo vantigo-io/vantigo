@@ -54,8 +54,17 @@ export const useCodeSuggestion = (
     enabled: canSuggest,
   });
 
-  const setManual = useCallback((value: string) => setIsFollowing(value.trim() === ""), []);
-  const followAgain = useCallback(() => setIsFollowing(true), []);
+  // Both guards are gated on `enabled`: an edit form must never start
+  // following, whatever its code field is doing.
+  const setManual = useCallback(
+    (value: string) => {
+      if (enabled) setIsFollowing(value.trim() === "");
+    },
+    [enabled],
+  );
+  const followAgain = useCallback(() => {
+    if (enabled) setIsFollowing(true);
+  }, [enabled]);
 
   return {
     suggestion: canSuggest ? data?.code : undefined,
