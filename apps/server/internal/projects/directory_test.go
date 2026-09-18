@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -315,5 +316,251 @@ func TestDirectory_ProjectsForUserWithoutAnyRoleIsEmpty(t *testing.T) {
 	got, err := newDirectory(t, h).ProjectsForUser(context.Background(), uuid.New())
 	if err != nil || len(got) != 0 {
 		t.Errorf("ProjectsForUser = %+v, %v, want an empty result and no error", got, err)
+	}
+}
+
+// TestDirectory_ProjectsReturnsKnownIdsAndOmitsUnknown proves Projects
+// resolves every id that exists and simply omits one that does not, rather
+// than erroring or leaving a hole in the slice.
+func TestDirectory_ProjectsReturnsKnownIdsAndOmitsUnknown(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	first := createProject(t, c, map[string]any{"code": "DIR2000"})
+	second := createProject(t, c, map[string]any{"code": "DIR2001"})
+
+	got, err := newDirectory(t, h).Projects(context.Background(), []int32{first.Id, 999_999, second.Id})
+	if err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("Projects = %+v, want exactly the 2 known ids", got)
+	}
+	gotCodes := map[string]bool{got[0].Code: true, got[1].Code: true}
+	if !gotCodes["DIR2000"] || !gotCodes["DIR2001"] {
+		t.Errorf("Projects codes = %v, want DIR2000 and DIR2001", gotCodes)
+	}
+}
+
+// TestDirectory_ProjectsOfNoIdsIsEmpty proves an empty id slice answers an
+// empty result rather than every project (a bare `= ANY('{}')` would still
+// be well-defined SQL, but the guard is what keeps a caller's empty slice
+// cheap and unsurprising).
+func TestDirectory_ProjectsOfNoIdsIsEmpty(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	got, err := newDirectory(t, h).Projects(context.Background(), nil)
+	if err != nil || len(got) != 0 {
+		t.Errorf("Projects(nil) = %+v, %v, want an empty result and no error", got, err)
+	}
+}
+
+// TestDirectory_ProjectByCodeResolvesCaseInsensitively proves ProjectByCode
+// finds a project by its code regardless of the case it is asked in, since
+// codes are always stored upper-cased.
+func TestDirectory_ProjectByCodeResolvesCaseInsensitively(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "KVEM1000"})
+
+	got, err := newDirectory(t, h).ProjectByCode(context.Background(), "kvem1000")
+	if err != nil {
+		t.Fatalf("ProjectByCode: %v", err)
+	}
+	if got == nil || got.ID != project.Id || got.Code != "KVEM1000" {
+		t.Errorf("ProjectByCode(lower-case) = %+v, want the project created as KVEM1000", got)
+	}
+}
+
+// TestDirectory_ProjectByCodeUnknownIsNilWithoutAnError proves a code nobody
+// has is (nil, nil).
+func TestDirectory_ProjectByCodeUnknownIsNilWithoutAnError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	got, err := newDirectory(t, h).ProjectByCode(context.Background(), "NOSUCH1")
+	if got != nil || err != nil {
+		t.Errorf("ProjectByCode(unknown) = %+v, %v, want nil, nil", got, err)
+	}
+}
+
+// TestDirectory_BillingLinesReturnsActiveAndInactiveOrderedByCode proves
+// BillingLines lists every line on a project, active and inactive, ordered
+// by code — the read side a caller filters itself, rather than the
+// directory deciding which lines matter to them.
+func TestDirectory_BillingLinesReturnsActiveAndInactiveOrderedByCode(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DIR2002"})
+	insertBillingLine(t, h, project.Id, "ZZ", true)
+	insertBillingLine(t, h, project.Id, "AA", false)
+
+	got, err := newDirectory(t, h).BillingLines(context.Background(), project.Id)
+	if err != nil {
+		t.Fatalf("BillingLines: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("BillingLines = %+v, want 2 lines", got)
+	}
+	if got[0].Code != "AA" || got[1].Code != "ZZ" {
+		t.Errorf("BillingLines codes = [%s %s], want [AA ZZ] (ordered by code)", got[0].Code, got[1].Code)
+	}
+	if got[0].Active {
+		t.Errorf("BillingLines[0] (AA) Active = true, want false")
+	}
+	if !got[1].Active {
+		t.Errorf("BillingLines[1] (ZZ) Active = false, want true")
+	}
+}
+
+// insertTask inserts one projects.tasks row directly, because the endpoints
+// that manage tasks are Task 2's: this task only publishes the read side of
+// contracts.ProjectDirectory.Task/OpenTasksForUser, and it must be testable
+// before the write side exists.
+func insertTask(t *testing.T, h *modtest.Harness, projectID int32, title, status string, assigneeUserID *uuid.UUID, dueDate *time.Time, position int32) int32 {
+	t.Helper()
+	return modtest.One[int32](t, h, `
+		INSERT INTO projects.tasks
+			(project_id, title, status, assignee_user_id, due_date, position, created_by_user_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
+		RETURNING id`,
+		projectID, title, status, assigneeUserID, dueDate, position, uuid.New())
+}
+
+// TestDirectory_TaskResolvesARow proves Task resolves a task with the fields
+// the directory publishes.
+func TestDirectory_TaskResolvesARow(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DIR2003"})
+	assignee := uuid.New()
+	dueDate := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
+	taskID := insertTask(t, h, project.Id, "Write the spec", "in-progress", &assignee, &dueDate, 0)
+
+	got, err := newDirectory(t, h).Task(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("Task: %v", err)
+	}
+	if got == nil || got.ID != taskID || got.ProjectID != project.Id || got.Title != "Write the spec" ||
+		got.Status != "in-progress" || got.AssigneeUserID == nil || *got.AssigneeUserID != assignee ||
+		got.DueDate == nil || !got.DueDate.Equal(dueDate) {
+		t.Errorf("Task = %+v, want the task just inserted", got)
+	}
+}
+
+// TestDirectory_TaskUnknownIsNilWithoutAnError proves an unknown (or
+// deleted — there is no soft-delete flag) task id is (nil, nil).
+func TestDirectory_TaskUnknownIsNilWithoutAnError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	got, err := newDirectory(t, h).Task(context.Background(), 999_999)
+	if got != nil || err != nil {
+		t.Errorf("Task(unknown) = %+v, %v, want nil, nil", got, err)
+	}
+}
+
+// TestDirectory_OpenTasksForUserExcludesDoneAndOrdersByDueDate proves
+// OpenTasksForUser lists only a user's non-done tasks, earliest due date
+// first, nulls last.
+func TestDirectory_OpenTasksForUserExcludesDoneAndOrdersByDueDate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DIR2004"})
+	userID := uuid.New()
+	later := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	sooner := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	noDueDate := insertTask(t, h, project.Id, "No due date", "todo", &userID, nil, 0)
+	laterID := insertTask(t, h, project.Id, "Later", "todo", &userID, &later, 1)
+	soonerID := insertTask(t, h, project.Id, "Sooner", "in-progress", &userID, &sooner, 2)
+	insertTask(t, h, project.Id, "Already done", "done", &userID, &sooner, 3)
+	otherUser := uuid.New()
+	insertTask(t, h, project.Id, "Someone else's", "todo", &otherUser, nil, 4)
+
+	got, err := newDirectory(t, h).OpenTasksForUser(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("OpenTasksForUser: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("OpenTasksForUser = %+v, want 3 open tasks", got)
+	}
+	wantOrder := []int32{soonerID, laterID, noDueDate}
+	for i, wantID := range wantOrder {
+		if got[i].ID != wantID {
+			t.Errorf("OpenTasksForUser[%d].ID = %d, want %d (due date ascending, nulls last)", i, got[i].ID, wantID)
+		}
+	}
+}
+
+// TestDirectory_CanLogTime proves CanLogTime is true only for a member or
+// manager of an active project, and false for a viewer, for every other
+// project status, and for an outsider who holds no role at all.
+func TestDirectory_CanLogTime(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, ownerID := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DIR2005"})
+	memberID := uuid.New()
+	viewerID := uuid.New()
+	outsiderID := uuid.New()
+	addRole(t, h, project.Id, memberID, "member")
+	addRole(t, h, project.Id, viewerID, "viewer")
+	setStatus(t, c, project.Id, "active")
+	dir := newDirectory(t, h)
+	ctx := context.Background()
+
+	if ok, err := dir.CanLogTime(ctx, project.Id, ownerID); err != nil || !ok {
+		t.Errorf("CanLogTime(manager, active) = %v, %v, want true, nil", ok, err)
+	}
+	if ok, err := dir.CanLogTime(ctx, project.Id, memberID); err != nil || !ok {
+		t.Errorf("CanLogTime(member, active) = %v, %v, want true, nil", ok, err)
+	}
+	if ok, err := dir.CanLogTime(ctx, project.Id, viewerID); err != nil || ok {
+		t.Errorf("CanLogTime(viewer, active) = %v, %v, want false, nil", ok, err)
+	}
+	if ok, err := dir.CanLogTime(ctx, project.Id, outsiderID); err != nil || ok {
+		t.Errorf("CanLogTime(outsider, active) = %v, %v, want false, nil", ok, err)
+	}
+
+	for _, status := range []string{"planned", "on-hold", "completed", "cancelled"} {
+		setStatus(t, c, project.Id, status)
+		if ok, err := dir.CanLogTime(ctx, project.Id, memberID); err != nil || ok {
+			t.Errorf("CanLogTime(member, %s) = %v, %v, want false, nil", status, ok, err)
+		}
+	}
+}
+
+// TestDirectory_ProjectEntryCarriesCurrencyAndDefaultBillRate proves
+// Currency and DefaultBillRate round-trip onto ProjectEntry: nil when
+// unset, and the stored value once set. default_bill_rate has no write
+// endpoint yet (Task 2), so it is set directly.
+func TestDirectory_ProjectEntryCarriesCurrencyAndDefaultBillRate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DIR2006", "currency": "NOK"})
+	ctx := context.Background()
+	dir := newDirectory(t, h)
+
+	got, err := dir.Project(ctx, project.Id)
+	if err != nil {
+		t.Fatalf("Project: %v", err)
+	}
+	if got == nil || got.Currency == nil || *got.Currency != "NOK" || got.DefaultBillRate != nil {
+		t.Errorf("Project = %+v, want Currency NOK and DefaultBillRate nil (unset)", got)
+	}
+
+	h.Exec(t, `UPDATE projects.projects SET default_bill_rate = 950.00 WHERE id = $1`, project.Id)
+	got, err = dir.Project(ctx, project.Id)
+	if err != nil {
+		t.Fatalf("Project (after setting default_bill_rate): %v", err)
+	}
+	if got == nil || got.DefaultBillRate == nil || *got.DefaultBillRate != 950.0 {
+		t.Errorf("Project.DefaultBillRate = %v, want 950", got)
 	}
 }

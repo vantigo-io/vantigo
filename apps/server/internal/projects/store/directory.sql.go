@@ -54,20 +54,146 @@ func (q *Queries) DirectoryBillingLine(ctx context.Context, arg DirectoryBilling
 	return i, err
 }
 
+const directoryBillingLines = `-- name: DirectoryBillingLines :many
+SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active
+FROM projects.billing_lines
+WHERE project_id = $1
+ORDER BY code
+`
+
+type DirectoryBillingLinesRow struct {
+	ID              int32
+	ProjectID       int32
+	Code            string
+	VariantID       int32
+	PricingMode     string
+	FixedAmount     pgtype.Numeric
+	DiscountPercent pgtype.Numeric
+	Active          bool
+}
+
+// DirectoryBillingLines is contracts.ProjectDirectory.BillingLines' rows:
+// every billing line on projectID, active and inactive, ordered by code. A
+// caller that wants only the active ones filters the result itself.
+func (q *Queries) DirectoryBillingLines(ctx context.Context, projectID int32) ([]DirectoryBillingLinesRow, error) {
+	rows, err := q.db.Query(ctx, directoryBillingLines, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryBillingLinesRow
+	for rows.Next() {
+		var i DirectoryBillingLinesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Code,
+			&i.VariantID,
+			&i.PricingMode,
+			&i.FixedAmount,
+			&i.DiscountPercent,
+			&i.Active,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const directoryCanLogTime = `-- name: DirectoryCanLogTime :one
+SELECT EXISTS (
+    SELECT 1
+    FROM projects.projects p
+    JOIN projects.project_roles r ON r.project_id = p.id
+    WHERE p.id = $1
+      AND p.status = 'active'
+      AND r.user_id = $2
+      AND r.role IN ('member', 'manager')
+)
+`
+
+type DirectoryCanLogTimeParams struct {
+	ProjectID int32
+	UserID    uuid.UUID
+}
+
+// DirectoryCanLogTime is contracts.ProjectDirectory.CanLogTime's row: true
+// when projectID is active and userID holds the member or manager role on
+// it, exactly the condition Time will gate logging on.
+func (q *Queries) DirectoryCanLogTime(ctx context.Context, arg DirectoryCanLogTimeParams) (bool, error) {
+	row := q.db.QueryRow(ctx, directoryCanLogTime, arg.ProjectID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const directoryOpenTasksForUser = `-- name: DirectoryOpenTasksForUser :many
+SELECT id, project_id, title, status, assignee_user_id, due_date
+FROM projects.tasks
+WHERE assignee_user_id = $1 AND status <> 'done'
+ORDER BY due_date NULLS LAST, project_id, position
+`
+
+type DirectoryOpenTasksForUserRow struct {
+	ID             int32
+	ProjectID      int32
+	Title          string
+	Status         string
+	AssigneeUserID *uuid.UUID
+	DueDate        pgtype.Date
+}
+
+// DirectoryOpenTasksForUser is contracts.ProjectDirectory.OpenTasksForUser's
+// rows: userID's tasks whose status is not 'done', across every project,
+// ordered by due date (nulls last), project ID and position — the same
+// order "my tasks" (design §4.1) wants.
+func (q *Queries) DirectoryOpenTasksForUser(ctx context.Context, assigneeUserID *uuid.UUID) ([]DirectoryOpenTasksForUserRow, error) {
+	rows, err := q.db.Query(ctx, directoryOpenTasksForUser, assigneeUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryOpenTasksForUserRow
+	for rows.Next() {
+		var i DirectoryOpenTasksForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Title,
+			&i.Status,
+			&i.AssigneeUserID,
+			&i.DueDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const directoryProject = `-- name: DirectoryProject :one
 
-SELECT id, code, name, customer_id, status, billing_type
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
 FROM projects.projects
 WHERE id = $1
 `
 
 type DirectoryProjectRow struct {
-	ID          int32
-	Code        string
-	Name        string
-	CustomerID  *int32
-	Status      string
-	BillingType string
+	ID              int32
+	Code            string
+	Name            string
+	CustomerID      *int32
+	Status          string
+	BillingType     string
+	Currency        *string
+	DefaultBillRate pgtype.Numeric
 }
 
 // Directory queries back contracts.ProjectDirectory (directory.go), the one
@@ -90,12 +216,101 @@ func (q *Queries) DirectoryProject(ctx context.Context, id int32) (DirectoryProj
 		&i.CustomerID,
 		&i.Status,
 		&i.BillingType,
+		&i.Currency,
+		&i.DefaultBillRate,
 	)
 	return i, err
 }
 
+const directoryProjectByCode = `-- name: DirectoryProjectByCode :one
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+FROM projects.projects
+WHERE code = $1
+`
+
+type DirectoryProjectByCodeRow struct {
+	ID              int32
+	Code            string
+	Name            string
+	CustomerID      *int32
+	Status          string
+	BillingType     string
+	Currency        *string
+	DefaultBillRate pgtype.Numeric
+}
+
+// DirectoryProjectByCode is contracts.ProjectDirectory.ProjectByCode's row.
+// The caller upper-cases code before calling, matching how codes are stored
+// (validateProjectCode); this query does not itself normalize case.
+func (q *Queries) DirectoryProjectByCode(ctx context.Context, code string) (DirectoryProjectByCodeRow, error) {
+	row := q.db.QueryRow(ctx, directoryProjectByCode, code)
+	var i DirectoryProjectByCodeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.CustomerID,
+		&i.Status,
+		&i.BillingType,
+		&i.Currency,
+		&i.DefaultBillRate,
+	)
+	return i, err
+}
+
+const directoryProjects = `-- name: DirectoryProjects :many
+SELECT id, code, name, customer_id, status, billing_type, currency, default_bill_rate
+FROM projects.projects
+WHERE id = ANY($1::integer[])
+ORDER BY code, id
+`
+
+type DirectoryProjectsRow struct {
+	ID              int32
+	Code            string
+	Name            string
+	CustomerID      *int32
+	Status          string
+	BillingType     string
+	Currency        *string
+	DefaultBillRate pgtype.Numeric
+}
+
+// DirectoryProjects is contracts.ProjectDirectory.Projects' rows: every
+// project in ids, in any status, ordered by code. An id in ids that does not
+// exist simply has no matching row, which is what makes an unknown id
+// "omitted" rather than an error.
+func (q *Queries) DirectoryProjects(ctx context.Context, ids []int32) ([]DirectoryProjectsRow, error) {
+	rows, err := q.db.Query(ctx, directoryProjects, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DirectoryProjectsRow
+	for rows.Next() {
+		var i DirectoryProjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.CustomerID,
+			&i.Status,
+			&i.BillingType,
+			&i.Currency,
+			&i.DefaultBillRate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const directoryProjectsForUser = `-- name: DirectoryProjectsForUser :many
-SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type
+SELECT p.id, p.code, p.name, p.customer_id, p.status, p.billing_type, p.currency, p.default_bill_rate
 FROM projects.projects p
 JOIN projects.project_roles r ON r.project_id = p.id
 WHERE r.user_id = $1
@@ -103,12 +318,14 @@ ORDER BY p.code, p.id
 `
 
 type DirectoryProjectsForUserRow struct {
-	ID          int32
-	Code        string
-	Name        string
-	CustomerID  *int32
-	Status      string
-	BillingType string
+	ID              int32
+	Code            string
+	Name            string
+	CustomerID      *int32
+	Status          string
+	BillingType     string
+	Currency        *string
+	DefaultBillRate pgtype.Numeric
 }
 
 // DirectoryProjectsForUser is contracts.ProjectDirectory.ProjectsForUser's
@@ -131,6 +348,8 @@ func (q *Queries) DirectoryProjectsForUser(ctx context.Context, userID uuid.UUID
 			&i.CustomerID,
 			&i.Status,
 			&i.BillingType,
+			&i.Currency,
+			&i.DefaultBillRate,
 		); err != nil {
 			return nil, err
 		}
@@ -161,4 +380,36 @@ func (q *Queries) DirectoryRoleForUser(ctx context.Context, arg DirectoryRoleFor
 	var role string
 	err := row.Scan(&role)
 	return role, err
+}
+
+const directoryTask = `-- name: DirectoryTask :one
+SELECT id, project_id, title, status, assignee_user_id, due_date
+FROM projects.tasks
+WHERE id = $1
+`
+
+type DirectoryTaskRow struct {
+	ID             int32
+	ProjectID      int32
+	Title          string
+	Status         string
+	AssigneeUserID *uuid.UUID
+	DueDate        pgtype.Date
+}
+
+// DirectoryTask is contracts.ProjectDirectory.Task's row. There is no
+// soft-delete flag on projects.tasks, so a deleted task simply has no row,
+// the same as one that never existed.
+func (q *Queries) DirectoryTask(ctx context.Context, id int32) (DirectoryTaskRow, error) {
+	row := q.db.QueryRow(ctx, directoryTask, id)
+	var i DirectoryTaskRow
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Status,
+		&i.AssigneeUserID,
+		&i.DueDate,
+	)
+	return i, err
 }

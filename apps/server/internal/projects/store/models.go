@@ -47,6 +47,7 @@ type ProjectsProject struct {
 	CreatedByUserID  uuid.UUID
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	DefaultBillRate  pgtype.Numeric
 }
 
 type ProjectsProjectRole struct {
@@ -54,6 +55,44 @@ type ProjectsProjectRole struct {
 	UserID    uuid.UUID
 	Role      string
 	CreatedAt time.Time
+}
+
+type ProjectsTask struct {
+	ID              int32
+	ProjectID       int32
+	ParentTaskID    *int32
+	Title           string
+	Description     *string
+	Status          string
+	AssigneeUserID  *uuid.UUID
+	StartDate       pgtype.Date
+	DueDate         pgtype.Date
+	EstimateHours   pgtype.Numeric
+	Position        int32
+	CompletedAt     *time.Time
+	CreatedByUserID uuid.UUID
+	Revision        int32
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type ProjectsTaskChecklistItem struct {
+	ID        int64
+	TaskID    int32
+	Text      string
+	Done      bool
+	Position  int32
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type ProjectsTaskComment struct {
+	ID           int64
+	TaskID       int32
+	AuthorUserID uuid.UUID
+	Body         string
+	CreatedAt    time.Time
+	EditedAt     *time.Time
 }
 
 type ProjectsTimelineEntry struct {

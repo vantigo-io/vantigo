@@ -57,6 +57,27 @@ func validProjectStatus(status string) bool {
 // "'planned', 'active', 'on-hold', 'completed' or 'cancelled'".
 func projectStatusList() string { return quotedList(projectStatuses) }
 
+// The statuses a task may be in (design §3.1/§4.1). status -> 'done' sets
+// completed_at; leaving 'done' clears it. A parent's status is independent
+// of its subtasks: this phase has no auto-rollup.
+const (
+	taskStatusTodo       = "todo"
+	taskStatusInProgress = "in-progress"
+	taskStatusDone       = "done"
+)
+
+// taskStatuses is the enumeration in the order it is written everywhere
+// else, the same convention projectStatuses follows.
+var taskStatuses = []string{taskStatusTodo, taskStatusInProgress, taskStatusDone}
+
+// validTaskStatus reports whether status is one of the three, exactly as
+// written: like a project's status, it is what other modules will key on
+// (OpenTasksForUser's "not done" filter), so it is not matched
+// case-insensitively.
+func validTaskStatus(status string) bool {
+	return slices.Contains(taskStatuses, status)
+}
+
 // quotedList is how every closed enumeration in this module names itself in a
 // validation message: quoted, comma-separated, the last one joined with
 // "or". One writer, so a role's message and a status's read the same way.

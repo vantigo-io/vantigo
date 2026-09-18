@@ -55,7 +55,7 @@ func (q *Queries) CountProjects(ctx context.Context, arg CountProjectsParams) (i
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at FROM projects.projects WHERE id = $1
+SELECT id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at, default_bill_rate FROM projects.projects WHERE id = $1
 `
 
 // GetProject fetches one project by id. Visibility is decided in Go
@@ -82,6 +82,7 @@ func (q *Queries) GetProject(ctx context.Context, id int32) (ProjectsProject, er
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultBillRate,
 	)
 	return i, err
 }
@@ -96,7 +97,7 @@ INSERT INTO projects.projects (
     $8, $9, $10, $11,
     $12, $13::timestamptz, $13::timestamptz
 )
-RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at
+RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at, default_bill_rate
 `
 
 type InsertProjectParams struct {
@@ -155,12 +156,13 @@ func (q *Queries) InsertProject(ctx context.Context, arg InsertProjectParams) (P
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultBillRate,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT p.id, p.code, p.name, p.description, p.customer_id, p.status, p.start_date, p.end_date, p.billing_type, p.currency, p.fixed_price_amount, p.budget_hours, p.budget_amount, p.revision, p.created_by_user_id, p.created_at, p.updated_at FROM projects.projects p
+SELECT p.id, p.code, p.name, p.description, p.customer_id, p.status, p.start_date, p.end_date, p.billing_type, p.currency, p.fixed_price_amount, p.budget_hours, p.budget_amount, p.revision, p.created_by_user_id, p.created_at, p.updated_at, p.default_bill_rate FROM projects.projects p
 WHERE projects.visible(p.id, $1, $2::boolean)
   AND (NOT $3::boolean OR EXISTS (
          SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $1))
@@ -234,6 +236,7 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]P
 			&i.CreatedByUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DefaultBillRate,
 		); err != nil {
 			return nil, err
 		}
@@ -343,7 +346,7 @@ UPDATE projects.projects SET
     revision = revision + 1,
     updated_at = $12::timestamptz
 WHERE id = $13 AND revision = $14
-RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at
+RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at, default_bill_rate
 `
 
 type UpdateProjectParams struct {
@@ -403,6 +406,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultBillRate,
 	)
 	return i, err
 }
@@ -413,7 +417,7 @@ UPDATE projects.projects SET
     revision = revision + 1,
     updated_at = $2::timestamptz
 WHERE id = $3
-RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at
+RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at, default_bill_rate
 `
 
 type UpdateProjectStatusParams struct {
@@ -448,6 +452,7 @@ func (q *Queries) UpdateProjectStatus(ctx context.Context, arg UpdateProjectStat
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DefaultBillRate,
 	)
 	return i, err
 }
