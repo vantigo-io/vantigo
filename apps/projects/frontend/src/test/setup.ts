@@ -1,11 +1,16 @@
 import "@testing-library/jest-dom/vitest";
 
+import { notifications } from "@mantine/notifications";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 import { setAuthStateClearer, setUnauthorizedHandler } from "../api/request";
 
 afterEach(() => {
+  // The notification store is a module-level singleton: without this, one
+  // test's success notification is still on screen during the next one.
+  notifications.clean();
+  notifications.cleanQueue();
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

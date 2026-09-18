@@ -270,6 +270,27 @@ describe("ProjectFormModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("stops asking for a currency once the fixed price it belonged to is no longer billed", async () => {
+    const fetchMock = stubProjectsApi();
+    const { onClose } = renderModal({
+      mode: "edit",
+      project: { ...project, billingType: "fixed-price", financials: { currency: "NOK", fixedPriceAmount: 250000 } },
+    });
+
+    // The amount stays in the form's state; it is simply not sent any more,
+    // so it must not keep the currency required either.
+    await userEvent.click(screen.getByRole("radio", { name: "Time and materials" }));
+    await userEvent.clear(screen.getByLabelText(/^currency/i));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(screen.queryByText("A currency is required once an amount is set")).not.toBeInTheDocument();
+    const [, init] = fetchMock.actualCalls.find(([, request]) => request?.method === "PUT") ?? [];
+    const body = JSON.parse(String(init?.body));
+    expect(body).not.toHaveProperty("fixedPriceAmount");
+    expect(body).not.toHaveProperty("currency");
+  });
+
   it("hides the amounts from someone who may not see them", () => {
     stubProjectsApi();
     renderModal({
