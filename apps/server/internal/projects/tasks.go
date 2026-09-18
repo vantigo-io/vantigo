@@ -91,9 +91,12 @@ func (s *server) taskScopeFor(ctx context.Context, q *store.Queries, taskID int3
 // checkParent is D6's nesting rule, asked of the rows the transaction holds: a
 // parent has to be a task of this project, it has to be top-level itself, and
 // it cannot be the task being moved. movingTaskID is 0 on a create, where
-// there is no task yet for a parent to be.
+// there is no task yet for a parent to be — and 0 is no task's id, so a body
+// that sends `parentTaskId: 0` is answered "no such task" rather than "a task
+// cannot be a subtask of itself", which would be nonsense about a task that
+// does not exist.
 func checkParent(ctx context.Context, q *store.Queries, projectID, parentID, movingTaskID int32) error {
-	if parentID == movingTaskID {
+	if movingTaskID != 0 && parentID == movingTaskID {
 		return errParentIsItself
 	}
 	parent, err := q.GetTask(ctx, parentID)
@@ -264,7 +267,7 @@ func (s *server) PostProjectsByIdTasks(ctx context.Context, req gen.PostProjects
 		return gen.PostProjectsByIdTasks403JSONResponse(forbidden()), nil
 	}
 
-	parsed, fieldErrs, err := s.validateTask(ctx, body)
+	parsed, fieldErrs, err := s.validateTask(ctx, body, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +397,11 @@ func (s *server) PutProjectsTasksByTaskId(ctx context.Context, req gen.PutProjec
 		return gen.PutProjectsTasksByTaskId403JSONResponse(forbidden()), nil
 	}
 
-	parsed, fieldErrs, err := s.validateTask(ctx, taskFromUpdate(body))
+	// The assignee the task already carries is what tells an update that keeps
+	// it apart from one that is handing the task to somebody else: only the
+	// second is a new assignment, and only a new assignment needs an active
+	// account (tasks_validation.go).
+	parsed, fieldErrs, err := s.validateTask(ctx, taskFromUpdate(body), scope.Task.AssigneeUserID)
 	if err != nil {
 		return nil, err
 	}
@@ -467,6 +474,12 @@ func (s *server) PutProjectsTasksByTaskId(ctx context.Context, req gen.PutProjec
 // through the schema's cascades, and it is the delete's own row count that
 // decides the 404 — two deletes racing must not both answer 204.
 //
+// A delete is also a write that decides positions, so it runs under the
+// project's ordering lock and renumbers what is left of the group the task was
+// in: a removed task must close its gap, exactly as a task that moves out of a
+// group does. Only that one group needs it — the subtasks the cascade took are
+// a group that no longer exists.
+//
 // A time entry that referenced the task keeps its own title snapshot (D5), so
 // nothing another module holds becomes unreadable.
 func (s *server) DeleteProjectsTasksByTaskId(ctx context.Context, req gen.DeleteProjectsTasksByTaskIdRequestObject) (gen.DeleteProjectsTasksByTaskIdResponseObject, error) {
@@ -482,11 +495,48 @@ func (s *server) DeleteProjectsTasksByTaskId(ctx context.Context, req gen.Delete
 		return gen.DeleteProjectsTasksByTaskId403JSONResponse(forbidden()), nil
 	}
 
-	rows, err := q.DeleteTask(ctx, scope.Task.ID)
+	now := s.deps.Clock()
+	deleted := false
+	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		txq := store.New(tx)
+		if err := txq.AcquireTaskOrderLock(ctx, store.AcquireTaskOrderLockParams{
+			LockClass: taskOrderLockClass, ProjectID: scope.Project.ID,
+		}); err != nil {
+			return fmt.Errorf("projects: take the task ordering lock: %w", err)
+		}
+		// The parent is re-read under the lock rather than taken from the row
+		// the handler loaded: a move committed in between would otherwise have
+		// this renumber the group the task has just left.
+		task, err := txq.LockTask(ctx, scope.Task.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("projects: lock task: %w", err)
+		}
+		rows, err := txq.DeleteTask(ctx, task.ID)
+		if err != nil {
+			return fmt.Errorf("projects: delete task: %w", err)
+		}
+		if rows == 0 {
+			return nil
+		}
+		deleted = true
+		siblings, err := txq.SiblingTaskIDs(ctx, store.SiblingTaskIDsParams{
+			ProjectID: task.ProjectID, ParentTaskID: task.ParentTaskID,
+		})
+		if err != nil {
+			return fmt.Errorf("projects: lock the deleted task's siblings: %w", err)
+		}
+		if err := txq.RenumberTasks(ctx, store.RenumberTasksParams{Ids: siblings, Now: now}); err != nil {
+			return fmt.Errorf("projects: renumber the deleted task's siblings: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("projects: delete task: %w", err)
 	}
-	if rows == 0 {
+	if !deleted {
 		return gen.DeleteProjectsTasksByTaskId404Response{}, nil
 	}
 	return gen.DeleteProjectsTasksByTaskId204Response{}, nil

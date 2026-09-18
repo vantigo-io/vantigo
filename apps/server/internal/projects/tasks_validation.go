@@ -91,8 +91,11 @@ func validateEstimateHours(hours *float64) string {
 // and the caller may write on it, so what is wrong is the body they sent.
 //
 // The disabled rule applies to the assignment being *made*, not to one that
-// already stands: a task assigned to somebody whose account was disabled
-// afterwards keeps them, and renders them inactive (taskResponse).
+// already stands: an update that re-sends the assignee the task already
+// carries is left alone even when that account has since been disabled, so a
+// task nobody can reassign yet is still a task somebody can rename (validateTask's
+// `assigned`). Moving it to a *different* disabled user is still refused, and
+// the assignment itself renders inactive either way (taskResponse).
 func assigneeNotFound(id uuid.UUID) string {
 	return fmt.Sprintf("User %s does not exist", id)
 }
@@ -186,7 +189,13 @@ type parsedTask struct {
 // Every rule runs regardless of the others, so one round trip reports every
 // problem with the body. The assignee is resolved through
 // contracts.UserDirectory, the only way this module may read identity's users.
-func (s *server) validateTask(ctx context.Context, body gen.TaskRequest) (parsedTask, map[string][]string, error) {
+//
+// assigned is the assignee the task already carries, nil on a create and for
+// an unassigned task. It is what makes "may this user be given this task"
+// different from "is this task still assigned to them": an update that keeps
+// the assignment it was given is not making one, so a since-disabled account
+// does not freeze the task (assigneeDisabled).
+func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigned *uuid.UUID) (parsedTask, map[string][]string, error) {
 	errs := map[string][]string{}
 	add := func(field, msg string) {
 		if msg != "" {
@@ -208,10 +217,11 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest) (parsed
 		if err != nil {
 			return parsedTask{}, nil, fmt.Errorf("projects: resolve the task's assignee: %w", err)
 		}
+		kept := assigned != nil && *assigned == *body.AssigneeUserId
 		switch {
 		case entry == nil:
 			add("assigneeUserId", assigneeNotFound(*body.AssigneeUserId))
-		case !entry.Active:
+		case !entry.Active && !kept:
 			add("assigneeUserId", assigneeDisabled(*body.AssigneeUserId))
 		}
 	}
