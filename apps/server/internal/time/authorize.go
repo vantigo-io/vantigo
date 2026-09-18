@@ -205,12 +205,12 @@ func (c *caller) cachedRole(projectID int32) (string, bool) {
 func (c *caller) accessFor(entry store.TimeEntry, role string) entryAccess {
 	a := entryAccess{
 		IsOwner:       entry.UserID == c.UserID,
-		CanSeeProject: role != "" || c.ProjectsViewAll || c.ProjectsManageAll,
+		CanSeeProject: c.seesProject(role),
 		IsManager:     role == roleManager,
 	}
 	a.IsApprover = a.IsManager || c.Approve
 	a.CanSee = a.IsOwner || a.IsManager || c.seesEveryone()
-	a.CanSeeBilling = a.IsOwner || a.IsManager || c.ProjectsManageAll || (c.ProjectsFinancials && a.CanSeeProject)
+	a.CanSeeBilling = a.IsOwner || c.seesProjectFinancials(role)
 	a.CanSeeCost = c.Manage || c.ViewAll
 
 	open := !c.locked(entry.EntryDate.Time) || c.Manage
@@ -219,6 +219,21 @@ func (c *caller) accessFor(entry store.TimeEntry, role string) entryAccess {
 	a.CanApprove = a.IsApprover && open && entry.Status == statusSubmitted
 	a.CanUnapprove = (a.IsApprover || c.Manage) && open && entry.Status == statusApproved
 	return a
+}
+
+// seesProject reports whether c, holding role on a project ("" for none),
+// sees the project itself: any role on it, projects:view-all or
+// projects:manage-all — the rule projects applies. The time permissions see
+// entries, not projects.
+func (c *caller) seesProject(role string) bool {
+	return role != "" || c.ProjectsViewAll || c.ProjectsManageAll
+}
+
+// seesProjectFinancials reports whether c, holding role on a project, may see
+// the money on it (D8): its managers, projects:manage-all, and
+// projects:view-financials on a project c sees.
+func (c *caller) seesProjectFinancials(role string) bool {
+	return role == roleManager || c.ProjectsManageAll || (c.ProjectsFinancials && c.seesProject(role))
 }
 
 // lockedBefore reads the period lock (D9), nil when none is set.

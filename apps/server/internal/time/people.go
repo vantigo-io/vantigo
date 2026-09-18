@@ -39,8 +39,7 @@ func (s *server) GetTimePeople(ctx context.Context, req gen.GetTimePeopleRequest
 		}
 		weeks = *w
 	}
-	now := s.deps.Clock().UTC()
-	current := mondayOf(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC))
+	current := mondayOf(s.today())
 	windowStart := current.AddDate(0, 0, -daysInWeek*int(weeks-1))
 	window := store.PeopleWeekTotalsParams{WindowStart: pgDate(windowStart), WindowEnd: pgDate(weekEnd(current))}
 

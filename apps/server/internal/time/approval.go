@@ -10,7 +10,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
@@ -352,22 +351,16 @@ func (s *server) GetTimeApprovals(ctx context.Context, req gen.GetTimeApprovalsR
 	if err != nil {
 		return nil, err
 	}
-	managed := []int32{}
-	if !c.Approve {
-		if managed, err = c.managedProjects(ctx, s); err != nil {
-			return nil, err
-		}
-		if len(managed) == 0 {
-			return gen.GetTimeApprovals403JSONResponse(forbidden()), nil
-		}
+	scope, err := s.approvalScopeFor(ctx, c)
+	if err != nil {
+		return nil, err
 	}
-	var lock pgtype.Date
-	if c.LockedBefore != nil && !c.Manage {
-		lock = pgDate(*c.LockedBefore)
+	if !scope.approvesAny() {
+		return gen.GetTimeApprovals403JSONResponse(forbidden()), nil
 	}
 
 	groups, err := q.ListApprovalGroups(ctx, store.ListApprovalGroupsParams{
-		SeeAll: c.Approve, ManagedProjectIds: managed, LockedBefore: lock,
+		SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("time: list the approval groups: %w", err)
@@ -414,7 +407,7 @@ func (s *server) GetTimeApprovals(ctx context.Context, req gen.GetTimeApprovalsR
 	}
 	if len(keys) > 0 {
 		rows, err := q.ListApprovalEntries(ctx, store.ListApprovalEntriesParams{
-			SeeAll: c.Approve, ManagedProjectIds: managed, LockedBefore: lock, GroupKeys: keys,
+			SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock, GroupKeys: keys,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("time: list the approval queue's entries: %w", err)
