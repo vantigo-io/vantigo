@@ -35,6 +35,14 @@ components:
                 - canManage
                 - canSeeFinancials
             type: object
+        ProjectCodeSuggestionResponse:
+            description: A project code nobody has used yet, derived from the customer and project names (design §4.2). The caller may type anything valid instead.
+            properties:
+                code:
+                    type: string
+            required:
+                - code
+            type: object
         ProjectCreateRequest:
             properties:
                 billingType:
@@ -446,6 +454,50 @@ paths:
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access+projects:create
+    /api/v1/projects/code-suggestion:
+        get:
+            operationId: getProjectsCodeSuggestion
+            parameters:
+                - description: The customer the project bills to. Absent means an internal project, prefixed 'INT'.
+                  in: query
+                  name: customerId
+                  schema:
+                    format: int32
+                    type: integer
+                - description: The project's working name, whose letters follow the customer prefix. Absent or empty contributes no letters.
+                  in: query
+                  name: name
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectCodeSuggestionResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — customerId was given but does not resolve to a customer.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Suggest a project code
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
     /api/v1/projects/{id}:
         get:
             operationId: getProjectsById
