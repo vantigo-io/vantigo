@@ -5,7 +5,9 @@ work for one customer (or none, which means internal), the people who may act on
 and the commercial rules invoicing will later read. It is a vertical-slice module
 inside the single Vantigo binary (`apps/server/internal/projects`), owns the
 `projects` schema in the shared PostgreSQL database, and is the thing later modules —
-**Time tracking** first, then tasks, invoicing and documents — attach work to.
+**Time tracking** first, then invoicing and documents — attach work to. Tasks live
+here too: they are how a project's work is broken down, and they follow the project's
+own roles rather than permissions of their own.
 
 It deliberately stops there. Projects stores no hours, issues no invoice and
 **calculates no money**: it records the rule (billing type, fixed price, budget, and
@@ -24,6 +26,12 @@ that bills.
 - **Billing line** — a short code within the project pinned to a product variant plus
   one pricing rule (`list`, `fixed` or `discount`). A line can be deactivated, never
   deleted.
+- **Task** — a piece of the project's work: `title`, `description`, `status`, one
+  optional `assigneeUserId`, `startDate`/`dueDate`, `estimateHours`, a `position`
+  among its siblings and an optional `parentTaskId` (see [Tasks](#tasks)). Each task
+  carries **checklist items** and **comments**. Unlike projects and lines, tasks *are*
+  deleted, cascading to their subtasks, checklist and comments — nothing outside
+  Projects pins a task the way it pins a project or a line.
 - **Timeline entry** — one generated record per state change, written in the same
   transaction as the change: `project-created`, `code-changed`, `status-changed`,
   `details-changed`, `customer-changed`, `billing-changed`, `role-added`,
@@ -130,13 +138,13 @@ be added later without changing the data model:
 
 | Capability | manager | member | viewer |
 | --- | --- | --- | --- |
-| See the project, its people, its lines (unpriced) and its timeline | ✓ | ✓ | ✓ |
+| See the project, its people, its lines (unpriced), its timeline and its tasks | ✓ | ✓ | ✓ |
+| Write tasks, checklist items and comments ([Tasks](#tasks)) | ✓ | ✓ | – |
 | See financial fields | ✓ | – | – |
 | Edit the project, change status, manage roles, manage lines | ✓ | – | – |
 
-`member` and `viewer` are **identical inside this module**; they differ in what later
-modules grant them (members log time, viewers do not). Both ship now so the
-assignment data is right before its first consumer arrives.
+Writing tasks is where `member` and `viewer` stop being the same thing; Time tracking
+will draw the same line again (members log time, viewers do not).
 
 "At least one manager" is not enforced: `projects:manage-all` can always step in, and
 enforcing it gets awkward when an account is disabled.
@@ -232,6 +240,72 @@ status, dates, budgets and people — just no priced lines.
 `MODULES` carrying `projects` without `customers` fails startup with
 `projects requires customers`, exactly as `energy` and `communications` do.
 
+## Tasks
+
+A task is one piece of a project's work. The model is deliberately small: **one
+assignee**, a **fixed three-value status** (`todo`, `in-progress`, `done`), **one
+level of subtasks**, a checklist and a comment thread. There are no labels, no
+dependencies, no custom fields and no per-project workflow — a project tool's task
+list, not an issue tracker.
+
+- **Subtasks are one level deep.** A task's `parentTaskId` must name a *top-level*
+  task of the same project, so a subtask can never itself be a parent. A parent's
+  status is independent of its children: nothing rolls up in this phase.
+- **Ordering** is the `position` among siblings. New tasks append;
+  `PUT /tasks/{taskId}/position` takes `{ parentTaskId?, position }` and renumbers
+  the whole sibling set in one transaction, so re-parenting and reordering are the
+  same operation and no two siblings can end up sharing a slot.
+- **`status → done`** stamps `completed_at`; leaving `done` clears it again.
+- **Checklist items** are `text` (≤ 500) plus `done`, ordered by `position` — the
+  small steps inside one task, not tasks in their own right. The task resource
+  carries the `done`/`total` counts so a list row needs no extra request.
+- **Comments** are a flat, paged thread of `body` (≤ 4000) with an `edited_at` stamp.
+- **Validation:** `title` required and ≤ 200, `description` ≤ 4000,
+  `dueDate >= startDate` when both are set, `estimateHours > 0` when set, and an
+  `assigneeUserId` that resolves through `contracts.UserDirectory` and is **active
+  when assigned**. An assignee who is later disabled keeps the task readable and the
+  field editable, exactly as a project role does.
+- **Concurrency:** every task update is a full replace carrying the `revision` the
+  task was read at; a stale one answers **409**, as a project update does.
+- **Deleting** a task cascades to its subtasks, checklist items and comments.
+
+### Authorization
+
+Tasks add **no permission key**. They follow the project's roles, which is what makes
+`member` and `viewer` different for the first time:
+
+| Who | May |
+| --- | --- |
+| Sees the project (any role, or `projects:view-all`/`manage-all`) | Read tasks, checklists and comments |
+| `member` or `manager` | Create, edit, delete tasks; edit checklist items; add comments |
+| Comment author | Edit and delete their own comment |
+| `manager` | Delete anyone's comment |
+| Outsider | **404**, indistinguishable from an unknown id |
+
+`GET /api/v1/projects/my-tasks` is the one task endpoint that is not scoped to a
+project: it answers the caller's own open (not `done`) tasks across every project
+they can see, with the project code and name embedded, ordered by due date and then
+project. It needs nothing beyond `projects:access`.
+
+### In the app
+
+The Tasks tab (`/projects/$projectId/tasks`) shows the tree as either a list grouped
+by status, with subtasks folded under their parent and checklist progress on the row,
+or a board of three columns, one per status, where a card moves from its own menu.
+The task drawer holds the description, assignee, dates, estimate, subtasks, checklist
+and comments. A caller who may only read gets the same views without the actions.
+
+One task is deep-linkable: **`/projects/{projectId}/tasks?task={taskId}`**, which the
+package's `taskUrl` builds and "My tasks" links to. The host route validates `task`,
+opens the drawer on it, and drops it from the URL again when the drawer closes, so
+neither a refresh nor Back reopens a drawer the caller just shut.
+
+`/projects/my-tasks` is the cross-project list of the caller's own open tasks, a
+sidebar entry beside Projects. Spotlight's **Create task** action lands there with
+`?create=true`, which opens a project picker over the caller's own projects and then
+the ordinary task form on the project chosen — nothing in the spotlight knows which
+project a new task belongs to.
+
 ## Contracts for other modules
 
 Cross-module reads go through `internal/contracts` — never another module's schema or
@@ -254,9 +328,15 @@ missing row is `(nil, nil)`, never an error.
   restating it. A variant with no price in that currency at that moment is
   `(nil, nil)`.
 - **`contracts.ProjectDirectory`** — provided by *projects*. `Project`,
-  `Role(projectID, userID)` (`""` means no role), `BillingLine` and
-  `ProjectsForUser`. **Cancelled projects and inactive lines still resolve**, so a
-  consumer can read old work.
+  `Projects` (batch, for a list of ids), `ProjectByCode` (case-insensitive),
+  `Role(projectID, userID)` (`""` means no role), `BillingLine`, `BillingLines`
+  (every line on a project, active and inactive), `ProjectsForUser`, `Task`,
+  `OpenTasksForUser` and `CanLogTime(projectID, userID)`. **Cancelled projects and
+  inactive lines still resolve**, so a consumer can read old work. `ProjectEntry`
+  carries `Currency` and `DefaultBillRate`, which are financial fields: only a
+  consumer that gates on a financial-viewer permission of its own should surface
+  them. `TaskEntry` is deliberately thin — id, project, title, status, assignee and
+  due date — enough to name a task on a timesheet row, never enough to manage one.
 
 On the platform side, `module.Module` has provider fields `Users`, `Products` and
 `Projects` beside `Directory`, and `module.Deps` has the matching consumer fields.
@@ -278,10 +358,17 @@ Time tracking is the first consumer, and the seam is already in place:
   is what says *what kind of work* this was, and it carries the variant that prices
   it. `ProjectDirectory.BillingLine` resolves inactive lines too, so hours already
   logged stay priceable after a line is retired.
-- Use `ProjectDirectory.Role` for "may this person log time here", and
-  `ProjectsForUser` for "which projects can I pick". `member` and `viewer` are the
-  same inside Projects — **Time tracking is the module that gives them different
-  meanings** (members log time, viewers do not).
+- Ask **`CanLogTime(projectID, userID)`** for "may this person log time here": it
+  answers the project-is-active *and* member-or-manager question in one place, so the
+  rule is not restated per consumer. `Role` is still there for anything finer, and
+  `ProjectsForUser` answers "which projects can I pick".
+- Hang a time entry off a **task** with `Task(id)` for its title and project, and
+  offer the timesheet's "my open tasks" rows from **`OpenTasksForUser(userID)`**,
+  which is the same set `/projects/my-tasks` renders. Snapshot the title onto the
+  entry: a task can be renamed or deleted, and old hours must stay readable.
+- Rates: `ProjectEntry.DefaultBillRate` is the project's step of the rate chain
+  (billing-line rule → project default → person default). It is a financial field —
+  surface it only behind a financial-viewer permission of your own.
 - Resolve amounts yourself, or leave it to invoicing. Projects stores the rule; it
   never multiplies anything.
 
@@ -309,6 +396,16 @@ create additionally requires `projects:create`.
 | `GET /api/v1/projects/{id}/billing-lines` | The project's lines, pricing shaped. 409 when products is off |
 | `POST /api/v1/projects/{id}/billing-lines` | Add a line. Manager only |
 | `PUT /api/v1/projects/{id}/billing-lines/{lineId}` | Update a line, `active` included. Manager only |
+| `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |
+| `POST /api/v1/projects/{id}/tasks` | Add a task. Member or manager |
+| `PUT /api/v1/projects/tasks/{taskId}` | Replace a task, carrying `revision`; a stale one answers 409. Member or manager |
+| `DELETE /api/v1/projects/tasks/{taskId}` | Delete a task and everything under it. Member or manager |
+| `PUT /api/v1/projects/tasks/{taskId}/position` | Reorder and re-parent among siblings. Member or manager |
+| `GET/POST /api/v1/projects/tasks/{taskId}/checklist` | The task's checklist. GET: sees the project; POST: member or manager |
+| `PUT/DELETE /api/v1/projects/tasks/{taskId}/checklist/{itemId}` | Tick, rename or remove an item. Member or manager |
+| `GET/POST /api/v1/projects/tasks/{taskId}/comments` | The task's thread, paged. GET: sees the project; POST: member or manager |
+| `PUT/DELETE /api/v1/projects/tasks/{taskId}/comments/{commentId}` | The author, or a manager for DELETE |
+| `GET /api/v1/projects/my-tasks` | The caller's open tasks across every project they see, with project code and name |
 | `GET /api/v1/projects/{id}/timeline` | The project's generated events, newest first, paged |
 | `GET /api/v1/projects/stats` | Counts per status over the projects the caller may see |
 | `GET /api/v1/projects/stats/summary` | `newProjects` and `activeProjects` over a period, with deltas |
@@ -336,7 +433,9 @@ like every other module package; module packages never import each other.
 | Route | Page |
 | --- | --- |
 | `/projects` | List, with the KPI row, filters in the URL and the create modal |
+| `/projects/my-tasks` | The caller's open tasks across projects; sidebar entry beside Projects |
 | `/projects/$projectId` | Detail → Overview tab (details, budget hours, timeline) |
+| `/projects/$projectId/tasks` | Tasks tab (list and board, task drawer); `?task={id}` deep-links one task |
 | `/projects/$projectId/people` | People tab (assignments, role badges, add/change/remove for managers) |
 | `/projects/$projectId/billing` | Billing tab, gated on `capabilities.canSeeFinancials` |
 | `/customers/$customerId/projects` | Projects tab on the customer page |
@@ -347,10 +446,12 @@ every tab of the detail page rather than on the Overview tab alone.
 
 The app is registered in `apps/host/frontend/src/apps.ts` and shows in the switcher
 for anyone with `projects:access`, greying out with "Not enabled" when the module is
-off. The host also owns the detail tab list, so Time tracking and Tasks can add tabs
-later exactly as Energy does on the customer page. Spotlight has a **Create project**
-quick action and a Projects result group searching by code or name; the dashboard has
-a Projects card, the `newProjects` metric and the overdue-project attention items.
+off. The host also owns the detail tab list, so Time tracking can add a tab later
+exactly as Energy does on the customer page — the Tasks tab is one entry in that same
+list, gated on nothing but seeing the project. Spotlight has **Create project** and
+**Create task** quick actions and a Projects result group searching by code or name;
+the dashboard has a Projects card, the `newProjects` metric and the overdue-project
+attention items.
 
 The billing-line variant picker calls the **products** API from the browser — the
 existing cross-module frontend rule — filtered to `Service` products. A manager who

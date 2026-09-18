@@ -46,6 +46,7 @@ describe("the app registry", () => {
       "/customers",
       "/customers/contacts",
       "/projects",
+      "/projects/my-tasks",
       "/communications/inbox",
       "/communications/channels",
       "/communications/suppressions",
@@ -69,17 +70,22 @@ describe("the app registry", () => {
     expect(() => appForKey("billing" as never)).toThrow(/billing/);
   });
 
-  // The Projects app is one sidebar entry behind one permission, so its tile
-  // is exactly as visible as that entry: shown to a caller holding
+  // The Projects app is two sidebar entries behind the same one permission, so
+  // its tile is exactly as visible as they are: shown to a caller holding
   // projects:access, absent without it, and muted rather than hidden when the
-  // installation did not mount the module.
-  it("gives Projects one entry behind projects:access and a tile that follows it", () => {
+  // installation did not mount the module. My tasks comes after the list and
+  // carries no search strategy — it takes no URL search params of its own
+  // beyond the create intent Spotlight hands it.
+  it("gives Projects a list and My tasks behind projects:access, and a tile that follows them", () => {
     const projects = appForKey("projects");
     expect(projects).toMatchObject({ module: "projects", label: "navigation.projects", home: "/projects" });
     expect(projects.requiredPermissions).toEqual(["projects:access"]);
-    expect(projects.navSections.flatMap((section) => section.items).map((item) => item.searchStrategy)).toEqual([
-      "projects-list",
+    const items = projects.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.searchStrategy])).toEqual([
+      ["navigation.projects", "/projects", "projects-list"],
+      ["navigation.myTasks", "/projects/my-tasks", undefined],
     ]);
+    for (const item of items) expect(item.requiredPermissions).toEqual(["projects:access"]);
   });
 
   it("shows the Projects tile for projects:access, hides it without, and mutes it when the module is off", () => {

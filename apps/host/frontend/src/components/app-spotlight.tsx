@@ -5,6 +5,7 @@ import {
   IconBolt,
   IconBriefcase,
   IconBuilding,
+  IconListCheck,
   IconMail,
   IconPackage,
   IconPlus,
@@ -93,6 +94,18 @@ export const AppSpotlight = ({
       : []),
     ...(enabledModules?.includes("projects") && hasPermissions(permissions, ["projects:create"])
       ? [{ label: t("dashboard.createProject"), icon: IconBriefcase, path: "/projects", search: { create: true } }]
+      : []),
+    // Tasks need no permission beyond the app: they follow the project's own
+    // roles. Nothing here knows which project, so My tasks picks it first.
+    ...(enabledModules?.includes("projects") && hasPermissions(permissions, ["projects:access"])
+      ? [
+          {
+            label: t("dashboard.createTask"),
+            icon: IconListCheck,
+            path: "/projects/my-tasks",
+            search: { create: true },
+          },
+        ]
       : []),
   ];
 

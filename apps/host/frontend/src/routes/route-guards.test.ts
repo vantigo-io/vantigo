@@ -7,7 +7,9 @@ import { Route as CustomersIndexRoute } from "./customers/index";
 import { Route as EnergyIndexRoute } from "./energy/index";
 import { Route as IndexRoute } from "./index";
 import { Route as ProductsIndexRoute } from "./products/index";
+import { Route as ProjectTasksRoute } from "./projects/$projectId.tasks";
 import { Route as ProjectsIndexRoute } from "./projects/index";
+import { Route as MyTasksRoute } from "./projects/my-tasks";
 import { Route as SettingsIndexRoute } from "./settings/index";
 import { Route as WorkspaceRoute } from "./workspace";
 import { Route as WorkspaceIndexRoute } from "./workspace/index";
@@ -237,11 +239,14 @@ describe("area index routes", () => {
 // The customers and products lists take `create` in the URL so Spotlight's quick
 // actions can land on the list with the create form already open. It is only
 // ever present when true, so an ordinary list URL stays as short as before.
+// My tasks takes it the same way, for the Create task action, which opens a
+// project picker there because nothing in the spotlight knows the project.
 describe("list routes' create intent", () => {
   it.each([
     ["customers", CustomersIndexRoute],
     ["products", ProductsIndexRoute],
     ["projects", ProjectsIndexRoute],
+    ["my tasks", MyTasksRoute],
   ])("keeps create in the %s list URL only when it is true", (_name, route) => {
     const validate = route.options.validateSearch as (search: Record<string, unknown>) => { create?: boolean };
     expect(validate({ create: true }).create).toBe(true);
@@ -297,6 +302,28 @@ describe("the projects list's search params", () => {
     expect(validate({ internal: "false" }).internal).toBe(false);
     expect(validate({ internal: "maybe" }).internal).toBeUndefined();
     expect(validate({ internal: "1" }).internal).toBeUndefined();
+  });
+});
+
+// The Tasks tab deep-links a single task: /projects/31/tasks?task=1042, the
+// URL the package's taskUrl builds and My tasks links to. The route opens the
+// drawer on it and drops it again when the drawer closes, so a hand-edited or
+// stale value must degrade to "no task" rather than reach the API as NaN.
+describe("the project tasks tab's search params", () => {
+  const validate = ProjectTasksRoute.options.validateSearch as (search: Record<string, unknown>) => {
+    task?: number | undefined;
+  };
+
+  it("keeps the task a deep link names, as a number", () => {
+    expect(validate({ task: "1042" }).task).toBe(1042);
+    expect(validate({ task: 1042 }).task).toBe(1042);
+  });
+
+  it("drops anything that is not a positive integer, the ordinary tab URL included", () => {
+    for (const task of ["abc", "1.5", "0", "-2", "", true, null]) {
+      expect(validate({ task }).task).toBeUndefined();
+    }
+    expect(validate({}).task).toBeUndefined();
   });
 });
 

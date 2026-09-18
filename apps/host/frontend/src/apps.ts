@@ -5,6 +5,7 @@ import {
   IconCategory,
   IconInbox,
   IconLayoutDashboard,
+  IconListCheck,
   IconMailbox,
   IconMailOff,
   IconPackage,
@@ -116,6 +117,14 @@ export const apps: readonly AppDefinition[] = [
       icon: IconBriefcase,
       requiredPermissions: ["projects:access"],
       searchStrategy: "projects-list",
+    },
+    {
+      // Tasks follow the project's roles rather than a permission of their
+      // own, so seeing the app is seeing your own tasks across it.
+      label: "navigation.myTasks",
+      to: "/projects/my-tasks",
+      icon: IconListCheck,
+      requiredPermissions: ["projects:access"],
     },
   ]),
   moduleApp("communications", "navigation.communications", IconInbox, "/communications", [

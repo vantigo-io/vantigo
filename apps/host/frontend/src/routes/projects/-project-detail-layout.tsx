@@ -1,4 +1,4 @@
-import { IconCoin, IconLayoutDashboard, IconUsers } from "@tabler/icons-react";
+import { IconCoin, IconLayoutDashboard, IconListCheck, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { PageTabs, useI18n } from "@vantigo/frontend-shell";
@@ -20,18 +20,22 @@ interface ProjectDetailGate {
   capability?: keyof ProjectCapabilities;
 }
 
-type ProjectDetailView = "overview" | "people" | "billing";
+type ProjectDetailView = "overview" | "tasks" | "people" | "billing";
 
 interface ProjectDetailTab extends ProjectDetailGate {
   value: ProjectDetailView;
-  labelKey: "project.overviewTab" | "project.peopleTab" | "project.billingTab";
+  labelKey: "project.overviewTab" | "project.tasksTab" | "project.peopleTab" | "project.billingTab";
   icon: typeof IconLayoutDashboard;
-  to: "/projects/$projectId" | "/projects/$projectId/people" | "/projects/$projectId/billing";
+  to:
+    | "/projects/$projectId"
+    | "/projects/$projectId/tasks"
+    | "/projects/$projectId/people"
+    | "/projects/$projectId/billing";
 }
 
 /**
  * The views of the project page, each a child route, so the tab row follows
- * the URL. The three below belong to the Projects app itself, which the
+ * the URL. The four below belong to the Projects app itself, which the
  * permission guard already holds behind `projects:access`, so none of them
  * re-checks it; the module and permission fields are there for the tabs other
  * modules will add, the way Energy adds one to the customer page.
@@ -42,6 +46,15 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     labelKey: "project.overviewTab",
     icon: IconLayoutDashboard,
     to: "/projects/$projectId",
+  },
+  {
+    value: "tasks",
+    labelKey: "project.tasksTab",
+    icon: IconListCheck,
+    to: "/projects/$projectId/tasks",
+    // Tasks add no permission and no capability of their own (design §6):
+    // they follow the project's roles, so whoever sees the project sees its
+    // tasks, and the package's own read-only mode covers the rest.
   },
   {
     value: "people",
@@ -104,7 +117,9 @@ export const ProjectDetailLayout = () => {
     ? "billing"
     : matches.some((match) => match.routeId === "/projects/$projectId/people")
       ? "people"
-      : "overview";
+      : matches.some((match) => match.routeId === "/projects/$projectId/tasks")
+        ? "tasks"
+        : "overview";
 
   return (
     <>

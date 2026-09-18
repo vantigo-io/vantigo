@@ -176,7 +176,7 @@ them.
 *Unblocks:* Time tracking — a stable project identity, a code employees can quote,
 per-project authorization, and a priced line to book hours against.
 
-### Phase 2 — Time tracking and tasks (next)
+### Phase 2 — Time tracking and tasks (tasks done; time next)
 
 Decided in `docs/superpowers/specs/2026-09-18-project-management-plan.md`
 after surveying the Nordic ERPs, the international PSA tools and the dedicated
@@ -188,9 +188,15 @@ code, the active lines and the caller's open tasks. Rates resolve through an
 explicit chain (billing-line rule → project default → person default; cost
 always from the person) and are snapshotted onto the entry; approval is a
 state machine (`draft → submitted → approved → invoiced`) with period locking.
-Tasks: single assignee, a fixed status category under customisable labels, one
-level of subtasks, checklist items, dates and estimates; list, board and "my
-tasks". This is where `member` and `viewer` stop being the same thing.
+
+**Tasks — done.** Inside Projects, following the project's own roles and adding
+no permission key: single assignee, the fixed statuses `todo`/`in-progress`/
+`done`, one level of subtasks, checklist items, comments, dates and estimates;
+a Tasks tab with list and board and a task drawer, plus `/projects/my-tasks`
+across projects. This is where `member` and `viewer` stop being the same thing.
+`ProjectDirectory` grew `Projects`, `ProjectByCode`, `BillingLines`, `Task`,
+`OpenTasksForUser` and `CanLogTime` for Time to build on, and the project gained
+`defaultBillRate`. **Time tracking is what remains of this phase.**
 
 *Unblocks:* hours that can be invoiced, the first real consumer of billing
 lines, and a task list contractors and consultants will actually keep.
