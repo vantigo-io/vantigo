@@ -1,5 +1,17 @@
 components:
     schemas:
+        PaginatedResponseOfTimeApprovalGroup:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/TimeApprovalGroup'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
+            type: object
         PaginatedResponseOfTimeEntryResponse:
             properties:
                 data:
@@ -11,6 +23,46 @@ components:
             required:
                 - data
                 - pagination
+            type: object
+        TimeApprovalGroup:
+            description: One person's submitted entries in one week that the caller may approve.
+            properties:
+                displayName:
+                    description: The person's display name; 'Unknown user' when the directory no longer knows them.
+                    type: string
+                entries:
+                    description: The entries, by date, then start time (entries without one last), then as created.
+                    items:
+                        $ref: '#/components/schemas/TimeEntryResponse'
+                    type: array
+                hours:
+                    description: The entries' hours together.
+                    format: double
+                    type: number
+                userId:
+                    format: uuid
+                    type: string
+                weekStart:
+                    description: The week's Monday.
+                    format: date
+                    type: string
+            required:
+                - userId
+                - displayName
+                - weekStart
+                - hours
+                - entries
+            type: object
+        TimeEntryApproveRequest:
+            description: The entries to approve, each submitted, on a project the caller approves for (its manager, or time:approve), and not dated before the lock date unless the caller holds time:manage. All or nothing — one entry that may not be approved refuses the whole request and changes nothing.
+            properties:
+                ids:
+                    items:
+                        format: int64
+                        type: integer
+                    type: array
+            required:
+                - ids
             type: object
         TimeEntryApprover:
             description: The user who approved an entry, named for display. A user the directory no longer knows is named 'Unknown user'.
@@ -50,7 +102,7 @@ components:
                     description: Whether the caller may submit the entry — they own it, it is a draft, and it is not dated before the lock date (time:manage is not held back by the lock).
                     type: boolean
                 canUnapprove:
-                    description: Whether the caller may return the approved entry to draft — it is approved, and the caller manages its project or holds time:approve or time:manage.
+                    description: Whether the caller may return the approved entry to draft — it is approved, the caller manages its project or holds time:approve or time:manage, and it is not dated before the lock date (time:manage is not held back by the lock).
                     type: boolean
             required:
                 - canEdit
@@ -70,6 +122,21 @@ components:
                     description: The person rate card's currency.
                     nullable: true
                     type: string
+            type: object
+        TimeEntryRejectRequest:
+            description: The entries to reject and why, under the rules an approval follows. All or nothing — one entry that may not be rejected refuses the whole request and changes nothing.
+            properties:
+                ids:
+                    items:
+                        format: int64
+                        type: integer
+                    type: array
+                reason:
+                    description: Why the entries are rejected, shown to their owner. Required; at most 1000 characters once trimmed.
+                    type: string
+            required:
+                - ids
+                - reason
             type: object
         TimeEntryRequest:
             description: A time entry as it should stand. hours is the truth; startTime and endTime are optional, given together or not at all, and when given hours must equal their difference to two decimals (D1).
@@ -247,6 +314,17 @@ components:
             required:
                 - ids
             type: object
+        TimeEntryUnapproveRequest:
+            description: The approved entries to return to draft, each on a project the caller approves for (its manager, or time:approve) — or any, for time:manage. An invoiced entry never returns. All or nothing — one entry that may not be unapproved refuses the whole request and changes nothing.
+            properties:
+                ids:
+                    items:
+                        format: int64
+                        type: integer
+                    type: array
+            required:
+                - ids
+            type: object
         TimeEntryUpdateRequest:
             description: Every field of the entry as it should stand after the update — a full replace — carrying the revision it was read at. A revision that has moved on answers 409. The rates are resolved again (D3), and a rejected entry returns to draft with its rejection reason cleared.
             properties:
@@ -300,6 +378,157 @@ components:
                 - entryDate
                 - hours
                 - revision
+            type: object
+        TimePersonOverview:
+            description: One person's recent weeks, for the people overview.
+            properties:
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+                weeks:
+                    description: One per week of the window, oldest first.
+                    items:
+                        $ref: '#/components/schemas/TimePersonWeek'
+                    type: array
+            required:
+                - userId
+                - displayName
+                - weeks
+            type: object
+        TimePersonWeek:
+            description: One person's week, whatever the entries' statuses.
+            properties:
+                approvedHours:
+                    description: The hours approved — invoiced ones included, since they were approved before they were invoiced.
+                    format: double
+                    type: number
+                hours:
+                    description: Every entry's hours, whatever its status.
+                    format: double
+                    type: number
+                rejectedCount:
+                    description: How many of the week's entries stand rejected.
+                    format: int32
+                    type: integer
+                submittedAt:
+                    description: When the person last submitted the week as a whole. Absent when they never have.
+                    format: date-time
+                    nullable: true
+                    type: string
+                weekStart:
+                    description: The week's Monday.
+                    format: date
+                    type: string
+            required:
+                - weekStart
+                - hours
+                - approvedHours
+                - rejectedCount
+            type: object
+        TimeRateRequest:
+            description: A person rate card row (§4.3). At least one of billRate and costRate; the row is in effect from validFrom until the person's next row.
+            properties:
+                billRate:
+                    description: The hourly bill rate, greater than zero. Used for an entry only when no billing line or project default prices it and the card's currency is the project's.
+                    format: double
+                    nullable: true
+                    type: number
+                costRate:
+                    description: The hourly cost rate, greater than zero.
+                    format: double
+                    nullable: true
+                    type: number
+                currency:
+                    description: A three-letter ISO 4217 code; upper-cased.
+                    type: string
+                userId:
+                    description: The person. They must be known to the user directory; a disabled account's rates stay editable.
+                    format: uuid
+                    type: string
+                validFrom:
+                    description: The first day the row is in effect. One row per person and day.
+                    format: date
+                    type: string
+            required:
+                - userId
+                - validFrom
+                - currency
+            type: object
+        TimeRateResponse:
+            description: A person rate card row.
+            properties:
+                billRate:
+                    format: double
+                    nullable: true
+                    type: number
+                costRate:
+                    format: double
+                    nullable: true
+                    type: number
+                currency:
+                    type: string
+                displayName:
+                    description: The person's display name; 'Unknown user' when the directory no longer knows them.
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                userId:
+                    format: uuid
+                    type: string
+                validFrom:
+                    format: date
+                    type: string
+            required:
+                - id
+                - userId
+                - displayName
+                - validFrom
+                - currency
+            type: object
+        TimeRateUpdateRequest:
+            description: A person rate card row as it should stand — a full replace. The person stays the row's own.
+            properties:
+                billRate:
+                    description: The hourly bill rate, greater than zero.
+                    format: double
+                    nullable: true
+                    type: number
+                costRate:
+                    description: The hourly cost rate, greater than zero.
+                    format: double
+                    nullable: true
+                    type: number
+                currency:
+                    description: A three-letter ISO 4217 code; upper-cased.
+                    type: string
+                validFrom:
+                    description: The first day the row is in effect. One row per person and day.
+                    format: date
+                    type: string
+            required:
+                - validFrom
+                - currency
+            type: object
+        TimeSettingsRequest:
+            description: The time settings as they should stand — a full replace.
+            properties:
+                lockedBefore:
+                    description: The period lock (D9). Entries dated before it cannot be created, edited, submitted, approved or rejected by anyone but time:manage. Null or absent removes the lock.
+                    format: date
+                    nullable: true
+                    type: string
+            type: object
+        TimeSettingsResponse:
+            description: The installation's time settings.
+            properties:
+                lockedBefore:
+                    description: The period lock (D9); absent when there is none.
+                    format: date
+                    nullable: true
+                    type: string
             type: object
         TimeWeekDay:
             description: One day of a week row.
@@ -405,6 +634,50 @@ info:
     version: "1"
 openapi: 3.0.3
 paths:
+    /api/v1/time/approvals:
+        get:
+            description: The approval queue — the submitted entries the caller may approve (on the projects they manage, or on every project for time:approve; not those dated before the lock date unless the caller holds time:manage), grouped by person and week, the oldest week first and then by display name. Paged by group.
+            operationId: getTimeApprovals
+            parameters:
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfTimeApprovalGroup'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — paging out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller holds neither time:approve nor the manager role on any project.
+            summary: Get the approval queue
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
     /api/v1/time/entries:
         get:
             description: Time entries, newest first — one person's (the caller's own unless userId names someone else), or, with projectId and no userId, every entry on that project the caller may see. Entries are listed only where the caller may see them (the same rule a single read applies), so the list never holds an entry its own read would answer 404 for.
@@ -509,6 +782,88 @@ paths:
             tags:
                 - Time
             x-vantigo-access: permission:time:access
+    /api/v1/time/entries/approve:
+        post:
+            description: Approves submitted entries (D2), recording the approver and the time. Each must be submitted, on a project the caller approves for (its manager, or time:approve), and not dated before the lock date unless the caller holds time:manage.
+            operationId: postTimeEntriesApprove
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeEntryApproveRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeEntryResponse'
+                                type: array
+                    description: OK — the approved entries, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no ids, or at least one entry that may not be approved; the errors on ids name each offending id (an entry the caller may not see reads as not found), and nothing was approved.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller approves for no project at all — they hold neither time:approve nor the manager role on any project.
+            summary: Approve time entries
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+    /api/v1/time/entries/reject:
+        post:
+            description: Rejects submitted entries with a reason their owner sees, under the rules an approval follows. A rejected entry is its owner's to edit again, which returns it to draft.
+            operationId: postTimeEntriesReject
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeEntryRejectRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeEntryResponse'
+                                type: array
+                    description: OK — the rejected entries, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no ids, no reason or one too long, or at least one entry that may not be rejected; the errors on ids name each offending id, and nothing was rejected.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller approves for no project at all — they hold neither time:approve nor the manager role on any project.
+            summary: Reject time entries
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
     /api/v1/time/entries/submit:
         post:
             description: Submits single entries (D2). Each must be the caller's own draft, not dated before the lock date unless the caller holds time:manage. The rates snapshotted on them are frozen from here on (D3).
@@ -547,6 +902,47 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Submit time entries
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+    /api/v1/time/entries/unapprove:
+        post:
+            description: Returns approved entries to draft, clearing the approval and the submission, so their owner sees them as fresh drafts. Each must be approved — never invoiced — and on a project the caller approves for, or the caller holds time:manage; an entry dated before the lock date only for time:manage.
+            operationId: postTimeEntriesUnapprove
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeEntryUnapproveRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeEntryResponse'
+                                type: array
+                    description: OK — the entries, now drafts, in the order their ids were given.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — no ids, or at least one entry that may not be unapproved; the errors on ids name each offending id, and nothing changed.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller approves for no project at all — they hold neither time:approve nor the manager role on any project, nor time:manage.
+            summary: Unapprove time entries
             tags:
                 - Time
             x-vantigo-access: permission:time:access
@@ -667,6 +1063,292 @@ paths:
             tags:
                 - Time
             x-vantigo-access: permission:time:access
+    /api/v1/time/people:
+        get:
+            description: The people overview — for every person with an entry or a week submission in the window, their hours, approved hours and rejected entries per week, and when they submitted each week. Ordered by display name.
+            operationId: getTimePeople
+            parameters:
+                - description: How many weeks, 1 to 12, ending with the current one (weeks start on Monday, dates are UTC). Default 4.
+                  in: query
+                  name: weeks
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimePersonOverview'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — weeks out of range.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the people overview
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:view-all
+    /api/v1/time/rates:
+        get:
+            description: Person rate card rows, by display name and then the latest first.
+            operationId: getTimeRates
+            parameters:
+                - description: Only this person's rows.
+                  in: query
+                  name: userId
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeRateResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List person rates
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:manage
+        post:
+            description: Adds a person rate card row. It prices entries saved from now on; a submitted entry's rates never move (D3).
+            operationId: postTimeRates
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeRateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeRateResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — including a validFrom the person already has a row for.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Add a person rate
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:manage
+    /api/v1/time/rates/users/{userId}:
+        get:
+            description: One person's rate card rows, the latest first.
+            operationId: getTimeRatesUsersByUserId
+            parameters:
+                - in: path
+                  name: userId
+                  required: true
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeRateResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get a person's rates
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:manage
+    /api/v1/time/rates/{id}:
+        delete:
+            operationId: deleteTimeRatesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content — the row is gone. Entries it priced keep their snapshots.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no rate card row has this id.
+            summary: Delete a person rate
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:manage
+        put:
+            operationId: putTimeRatesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeRateUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeRateResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — including a validFrom the person already has another row for.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no rate card row has this id.
+            summary: Change a person rate
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:manage
+    /api/v1/time/settings:
+        get:
+            operationId: getTimeSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeSettingsResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the time settings
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+        put:
+            operationId: putTimeSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TimeSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeSettingsResponse'
+                    description: OK — the settings as they now stand.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Change the time settings
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:manage
     /api/v1/time/weeks/{weekStart}:
         get:
             description: The caller's own week as timesheet rows (project, billing line, task), with the week's submission state.

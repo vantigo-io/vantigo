@@ -106,6 +106,23 @@ func (c *caller) managedProjects(ctx context.Context, s *server) ([]int32, error
 	return managed, nil
 }
 
+// approvesAnything reports whether the caller approves on any project at
+// all: time:approve, or the manager role on at least one (read through
+// managedProjects, which also warms the role cache for those projects). With
+// orManage, time:manage counts too — it unapproves anywhere. A caller who
+// approves nothing is refused an approval operation outright, as the access
+// layer would, rather than told about each id.
+func (c *caller) approvesAnything(ctx context.Context, s *server, orManage bool) (bool, error) {
+	if c.Approve || (orManage && c.Manage) {
+		return true, nil
+	}
+	managed, err := c.managedProjects(ctx, s)
+	if err != nil {
+		return false, err
+	}
+	return len(managed) > 0, nil
+}
+
 // locked reports whether date falls before the period lock (D9). The lock
 // date itself is open.
 func (c *caller) locked(date time.Time) bool {
@@ -131,11 +148,13 @@ func (c *caller) locked(date time.Time) bool {
 //
 // The four capabilities are what the entry answers the caller with, so a
 // client never re-derives them: content edits (and delete) are the owner's,
-// in draft or rejected; submit is the owner's, in draft; approve is an
-// approver's (the project's manager or time:approve), in submitted;
-// unapprove is an approver's or time:manage's, in approved. The lock (D9)
-// holds back editing, submitting and approving for everyone but
-// time:manage.
+// in draft or rejected; submit is the owner's, in draft; approve (and
+// reject) is an approver's (the project's manager or time:approve), in
+// submitted; unapprove is an approver's or time:manage's, in approved. The
+// lock (D9) holds back every one of them for everyone but time:manage —
+// unapprove too, because an unapproved entry is a draft its owner could not
+// change or submit again past the lock, and a locked period's approved hours
+// are what gets invoiced. An invoiced entry allows nothing.
 type entryAccess struct {
 	IsOwner       bool
 	CanSeeProject bool
@@ -198,7 +217,7 @@ func (c *caller) accessFor(entry store.TimeEntry, role string) entryAccess {
 	a.CanEdit = a.IsOwner && open && slices.Contains([]string{statusDraft, statusRejected}, entry.Status)
 	a.CanSubmit = a.IsOwner && open && entry.Status == statusDraft
 	a.CanApprove = a.IsApprover && open && entry.Status == statusSubmitted
-	a.CanUnapprove = (a.IsApprover || c.Manage) && entry.Status == statusApproved
+	a.CanUnapprove = (a.IsApprover || c.Manage) && open && entry.Status == statusApproved
 	return a
 }
 

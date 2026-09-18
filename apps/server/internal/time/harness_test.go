@@ -504,9 +504,9 @@ func getEntry(t *testing.T, c *modtest.Client, id int64) entryJSON {
 	return entry
 }
 
-// seedRate writes one person rate card row directly, because the rate-card
-// endpoints are a later task's. bill and cost are a float64 or nil (no
-// rate).
+// seedRate writes one person rate card row directly, for a test whose subject
+// is what a rate does rather than how one is kept (ratecards_test.go). bill
+// and cost are a float64 or nil (no rate).
 func seedRate(t *testing.T, h *harness, userID uuid.UUID, validFrom string, bill, cost any, currency string) {
 	t.Helper()
 	h.Exec(t, `INSERT INTO time.person_rates (user_id, valid_from, bill_rate, cost_rate, currency, created_at, updated_at)
@@ -514,9 +514,9 @@ func seedRate(t *testing.T, h *harness, userID uuid.UUID, validFrom string, bill
 		userID, validFrom, bill, cost, currency)
 }
 
-// setLock sets the period lock (D9) directly, because the settings endpoint
-// is a later task's: entries dated before date are closed to everyone but
-// time:manage.
+// setLock sets the period lock (D9) directly, for a test whose subject is
+// what the lock holds back rather than how it is set (settings_test.go):
+// entries dated before date are closed to everyone but time:manage.
 func setLock(t *testing.T, h *harness, date string) {
 	t.Helper()
 	h.Exec(t, `INSERT INTO time.settings (key, value) VALUES ('locked_before', $1)
@@ -524,8 +524,8 @@ func setLock(t *testing.T, h *harness, date string) {
 }
 
 // setStatus moves an entry to status directly, for a test whose subject is
-// what may be done with an entry in that status before the transitions that
-// lead there exist.
+// what may be done with an entry in that status — invoiced above all, which
+// no operation of this module leads to.
 func setStatus(t *testing.T, h *harness, id int64, status string) {
 	t.Helper()
 	h.Exec(t, `UPDATE time.entries SET status = $2 WHERE id = $1`, id, status)
@@ -556,12 +556,20 @@ type entryJSON struct {
 	RateSource      string           `json:"rateSource"`
 	Status          string           `json:"status"`
 	RejectionReason *string          `json:"rejectionReason"`
+	SubmittedAt     *time.Time       `json:"submittedAt"`
+	ApprovedAt      *time.Time       `json:"approvedAt"`
+	ApprovedBy      *approverJSON    `json:"approvedBy"`
 	Revision        int32            `json:"revision"`
 	CreatedAt       time.Time        `json:"createdAt"`
 	UpdatedAt       time.Time        `json:"updatedAt"`
 	Capabilities    capabilitiesJSON `json:"capabilities"`
 	Billing         *billingJSON     `json:"billing"`
 	Cost            *costJSON        `json:"cost"`
+}
+
+type approverJSON struct {
+	UserId      uuid.UUID `json:"userId"`
+	DisplayName string    `json:"displayName"`
 }
 
 type capabilitiesJSON struct {
@@ -765,4 +773,63 @@ type weekJSON struct {
 		PerDay []float64 `json:"perDay"`
 		Week   float64   `json:"week"`
 	} `json:"totals"`
+}
+
+// The approval operations' paths.
+const (
+	approvePath   = entriesPath + "/approve"
+	rejectPath    = entriesPath + "/reject"
+	unapprovePath = entriesPath + "/unapprove"
+	approvalsPath = "/api/v1/time/approvals"
+)
+
+// batch posts ids (and body's other fields) to path and fails the test
+// unless it answered 200, answering the entries.
+func batch(t *testing.T, c *modtest.Client, path string, body map[string]any, ids ...int64) []entryJSON {
+	t.Helper()
+	if body == nil {
+		body = map[string]any{}
+	}
+	body["ids"] = ids
+	r := c.Do(http.MethodPost, path, body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("POST %s %v: status %d body %s, want 200", path, ids, r.Status, r.Body)
+	}
+	var entries []entryJSON
+	r.JSON(&entries)
+	return entries
+}
+
+// approveEntries approves ids and fails the test unless it answered 200.
+func approveEntries(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
+	t.Helper()
+	return batch(t, c, approvePath, nil, ids...)
+}
+
+// rejectEntries rejects ids with reason and fails the test unless it
+// answered 200.
+func rejectEntries(t *testing.T, c *modtest.Client, reason string, ids ...int64) []entryJSON {
+	t.Helper()
+	return batch(t, c, rejectPath, map[string]any{"reason": reason}, ids...)
+}
+
+// unapproveEntries unapproves ids and fails the test unless it answered 200.
+func unapproveEntries(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
+	t.Helper()
+	return batch(t, c, unapprovePath, nil, ids...)
+}
+
+// submittedEntry creates an entry with entryBody(overrides) and submits it.
+func submittedEntry(t *testing.T, c *modtest.Client, overrides map[string]any) entryJSON {
+	t.Helper()
+	e := createEntry(t, c, overrides)
+	return submitEntries(t, c, e.Id)[0]
+}
+
+// setDisplayName renames a seeded user in identity, for a test about the
+// order people are listed in: seeded users are named by their generated
+// e-mail address.
+func setDisplayName(t *testing.T, h *harness, userID uuid.UUID, name string) {
+	t.Helper()
+	h.Exec(t, `UPDATE identity.users SET display_name = $2 WHERE id = $1`, userID, name)
 }
