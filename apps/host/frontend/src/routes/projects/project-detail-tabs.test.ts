@@ -8,7 +8,7 @@ const values = (
   capabilities: Parameters<typeof visibleProjectDetailTabs>[2],
 ) => visibleProjectDetailTabs(enabledModules, permissions, capabilities).map((tab) => tab.value);
 
-const canSeeEverything = { canManage: true, canSeeFinancials: true };
+const canSeeEverything = { canManage: true, canContribute: true, canSeeFinancials: true };
 
 describe("project detail tab visibility", () => {
   it("shows every tab to a caller who may see the project's financial fields", () => {
@@ -20,7 +20,10 @@ describe("project detail tab visibility", () => {
   // who may see a project without its amounts gets no Billing tab — and, if
   // they paste the URL anyway, the package's own forbidden state.
   it("hides the billing tab without canSeeFinancials on this project", () => {
-    expect(values(moduleKeys, ["*"], { canManage: true, canSeeFinancials: false })).toEqual(["overview", "people"]);
+    expect(values(moduleKeys, ["*"], { canManage: true, canContribute: true, canSeeFinancials: false })).toEqual([
+      "overview",
+      "people",
+    ]);
   });
 
   it("hides the billing tab while the project is still loading", () => {

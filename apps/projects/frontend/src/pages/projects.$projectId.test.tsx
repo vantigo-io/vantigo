@@ -23,7 +23,7 @@ const project = (overrides: Partial<Project> = {}): Project => ({
   endDate: "2026-03-31",
   budgetHours: 120,
   financials: { currency: "NOK", budgetAmount: 50000 },
-  capabilities: { canManage: true, canSeeFinancials: true },
+  capabilities: { canManage: true, canContribute: true, canSeeFinancials: true },
   billingLinesAvailable: true,
   managers: [{ userId: "11111111-1111-1111-1111-111111111111", displayName: "Ada Lovelace" }],
   revision: 3,
@@ -77,7 +77,12 @@ describe("ProjectDetailHeader", () => {
   });
 
   it("hides editing and the status menu from someone who may not manage the project", async () => {
-    stubDetail(project({ capabilities: { canManage: false, canSeeFinancials: false }, financials: undefined }));
+    stubDetail(
+      project({
+        capabilities: { canManage: false, canContribute: false, canSeeFinancials: false },
+        financials: undefined,
+      }),
+    );
     renderWithProviders(<ProjectDetailHeader projectId={7} />);
 
     await screen.findByText("KVEWEBS");

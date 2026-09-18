@@ -27,23 +27,27 @@ func projectResponse(row store.ProjectsProject, a access, customerName *string, 
 		return gen.ProjectResponse{}, err
 	}
 	resp := gen.ProjectResponse{
-		Id:                    row.ID,
-		Code:                  row.Code,
-		Name:                  row.Name,
-		Description:           row.Description,
-		CustomerId:            row.CustomerID,
-		CustomerName:          customerName,
-		Internal:              row.CustomerID == nil,
-		Status:                row.Status,
-		StartDate:             dateFromPgtype(row.StartDate),
-		EndDate:               dateFromPgtype(row.EndDate),
-		BillingType:           row.BillingType,
-		BudgetHours:           budgetHours,
-		Revision:              row.Revision,
-		CreatedAt:             row.CreatedAt,
-		UpdatedAt:             row.UpdatedAt,
-		Managers:              managers,
-		Capabilities:          gen.ProjectCapabilities{CanManage: a.CanManage, CanSeeFinancials: a.CanSeeFinancials},
+		Id:           row.ID,
+		Code:         row.Code,
+		Name:         row.Name,
+		Description:  row.Description,
+		CustomerId:   row.CustomerID,
+		CustomerName: customerName,
+		Internal:     row.CustomerID == nil,
+		Status:       row.Status,
+		StartDate:    dateFromPgtype(row.StartDate),
+		EndDate:      dateFromPgtype(row.EndDate),
+		BillingType:  row.BillingType,
+		BudgetHours:  budgetHours,
+		Revision:     row.Revision,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+		Managers:     managers,
+		Capabilities: gen.ProjectCapabilities{
+			CanManage:        a.CanManage,
+			CanContribute:    a.CanContribute,
+			CanSeeFinancials: a.CanSeeFinancials,
+		},
 		BillingLinesAvailable: linesAvailable,
 	}
 	if a.CanSeeFinancials {
@@ -216,6 +220,184 @@ func (s *server) linePricing(ctx context.Context, project store.ProjectsProject,
 		pricing.ListPrice = &gen.BillingLineListPrice{Amount: price.Amount, Currency: price.Currency}
 	}
 	return pricing, nil
+}
+
+// taskRow is the shape every query that reads a task for the API answers in:
+// the stored row plus the two aggregates the contract embeds. sqlc emits a
+// distinct row type per query even when the selected columns are identical,
+// so each call site converts its own row into this one and taskResponse does
+// the single-written mapping — the same one-shared-conversion pattern
+// directoryProjectRow uses on the read side of the directory.
+type taskRow struct {
+	Task           store.ProjectsTask
+	ChecklistTotal int32
+	ChecklistDone  int32
+	CommentCount   int32
+}
+
+// countedTaskRows, taskRowsOf and taskRowOf convert the three queries that
+// carry the aggregates. newTaskRow is the fourth case: a task that was just
+// inserted, which has no checklist items and no comments yet because nothing
+// has had the chance to add any.
+func countedTaskRows(rows []store.ListProjectTasksRow) []taskRow {
+	out := make([]taskRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, taskRow{
+			Task: r.ProjectsTask, ChecklistTotal: r.ChecklistTotal,
+			ChecklistDone: r.ChecklistDone, CommentCount: r.CommentCount,
+		})
+	}
+	return out
+}
+
+func taskRowsOf(rows []store.ListTaskWithSubtasksRow) []taskRow {
+	out := make([]taskRow, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, taskRow{
+			Task: r.ProjectsTask, ChecklistTotal: r.ChecklistTotal,
+			ChecklistDone: r.ChecklistDone, CommentCount: r.CommentCount,
+		})
+	}
+	return out
+}
+
+func taskRowOf(row store.GetTaskWithCountsRow) taskRow {
+	return taskRow{
+		Task: row.ProjectsTask, ChecklistTotal: row.ChecklistTotal,
+		ChecklistDone: row.ChecklistDone, CommentCount: row.CommentCount,
+	}
+}
+
+func newTaskRow(task store.ProjectsTask) taskRow { return taskRow{Task: task} }
+
+// taskResponse projects one task. The assignee is embedded rather than named
+// by id alone (design §4.1), and an id the directory no longer knows still
+// gets an entry — unknownUser, inactive — so an assignment survives the
+// account it points at, exactly as a project role does.
+func taskResponse(row taskRow, assignees map[uuid.UUID]contracts.UserEntry) (gen.TaskResponse, error) {
+	estimateHours, err := floatPtrFromNumeric(row.Task.EstimateHours)
+	if err != nil {
+		return gen.TaskResponse{}, err
+	}
+	resp := gen.TaskResponse{
+		Id:            row.Task.ID,
+		ProjectId:     row.Task.ProjectID,
+		ParentTaskId:  row.Task.ParentTaskID,
+		Title:         row.Task.Title,
+		Description:   row.Task.Description,
+		Status:        row.Task.Status,
+		StartDate:     dateFromPgtype(row.Task.StartDate),
+		DueDate:       dateFromPgtype(row.Task.DueDate),
+		EstimateHours: estimateHours,
+		Position:      row.Task.Position,
+		CompletedAt:   row.Task.CompletedAt,
+		Revision:      row.Task.Revision,
+		CreatedAt:     row.Task.CreatedAt,
+		UpdatedAt:     row.Task.UpdatedAt,
+		Checklist:     gen.TaskChecklistProgress{Total: row.ChecklistTotal, Done: row.ChecklistDone},
+		CommentCount:  row.CommentCount,
+	}
+	if id := row.Task.AssigneeUserID; id != nil {
+		entry, ok := assignees[*id]
+		if !ok {
+			entry = contracts.UserEntry{ID: *id, DisplayName: unknownUser}
+		}
+		resp.Assignee = &gen.TaskAssignee{UserId: *id, DisplayName: entry.DisplayName, Active: entry.Active}
+	}
+	return resp, nil
+}
+
+// taskTree assembles the tree the project's task list answers with: every
+// top-level task in the order the query returned, each carrying its own
+// subtasks. A subtask whose parent is not in rows — which only a filtered read
+// can produce — is answered at the top level instead of being dropped, so a
+// filter never hides a task it actually matched; it still carries its
+// parentTaskId, so a client can tell the two apart.
+func taskTree(rows []taskRow, assignees map[uuid.UUID]contracts.UserEntry) ([]gen.TaskResponse, error) {
+	present := make(map[int32]bool, len(rows))
+	for _, row := range rows {
+		present[row.Task.ID] = true
+	}
+	// The tree is built by index rather than by pointer because a subtask is
+	// appended to a parent that is already in the slice, and appending to the
+	// slice may move it.
+	top := make([]gen.TaskResponse, 0, len(rows))
+	at := make(map[int32]int, len(rows))
+	for _, row := range rows {
+		task, err := taskResponse(row, assignees)
+		if err != nil {
+			return nil, err
+		}
+		parent := row.Task.ParentTaskID
+		if parent != nil && present[*parent] {
+			if i, ok := at[*parent]; ok {
+				subtasks := append(subtasksOf(top[i]), task)
+				top[i].Subtasks = &subtasks
+				continue
+			}
+		}
+		at[task.Id] = len(top)
+		top = append(top, task)
+	}
+	return top, nil
+}
+
+// subtasksOf is the parent's subtask slice as it stands, empty when the
+// contract's optional array is still absent.
+func subtasksOf(task gen.TaskResponse) []gen.TaskResponse {
+	if task.Subtasks == nil {
+		return nil
+	}
+	return *task.Subtasks
+}
+
+// myTaskResponse is one row of the cross-project list: a task plus the
+// project it belongs to, named. It is built from taskResponse so that the two
+// shapes can never drift on a field they share — the only thing my-tasks adds
+// is the project, and the only thing it drops is the subtasks, which a flat
+// list across projects has nothing to do with.
+func myTaskResponse(row taskRow, projectCode, projectName string, assignees map[uuid.UUID]contracts.UserEntry) (gen.MyTaskResponse, error) {
+	task, err := taskResponse(row, assignees)
+	if err != nil {
+		return gen.MyTaskResponse{}, err
+	}
+	return gen.MyTaskResponse{
+		Id:            task.Id,
+		ProjectId:     task.ProjectId,
+		ProjectCode:   projectCode,
+		ProjectName:   projectName,
+		ParentTaskId:  task.ParentTaskId,
+		Title:         task.Title,
+		Description:   task.Description,
+		Status:        task.Status,
+		Assignee:      task.Assignee,
+		StartDate:     task.StartDate,
+		DueDate:       task.DueDate,
+		EstimateHours: task.EstimateHours,
+		Position:      task.Position,
+		CompletedAt:   task.CompletedAt,
+		Revision:      task.Revision,
+		CreatedAt:     task.CreatedAt,
+		UpdatedAt:     task.UpdatedAt,
+		Checklist:     task.Checklist,
+		CommentCount:  task.CommentCount,
+	}, nil
+}
+
+// taskAssignees names every user a set of tasks is assigned to, in one
+// directory call for the whole set rather than one per task.
+func (s *server) taskAssignees(ctx context.Context, rows []taskRow) (map[uuid.UUID]contracts.UserEntry, error) {
+	ids := make([]uuid.UUID, 0, len(rows))
+	seen := make(map[uuid.UUID]bool, len(rows))
+	for _, row := range rows {
+		id := row.Task.AssigneeUserID
+		if id == nil || seen[*id] {
+			continue
+		}
+		seen[*id] = true
+		ids = append(ids, *id)
+	}
+	return s.userEntries(ctx, ids)
 }
 
 // timelineEntryResponse renders one stored entry. The payload is decoded

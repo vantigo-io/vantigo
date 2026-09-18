@@ -16,6 +16,7 @@ type capability string
 const (
 	capSee           capability = "see"
 	capSeeFinancials capability = "see-financials"
+	capContribute    capability = "contribute"
 	capManage        capability = "manage"
 )
 
@@ -28,11 +29,13 @@ const (
 )
 
 // roleCapabilities is what each project role grants inside this module.
-// member and viewer are identical here on purpose: they differ in what later
-// modules grant them (spec §5).
+// member and viewer part company over capContribute: a member writes the
+// project's work — its tasks, and the checklists and comments on them (design
+// §2 D7) — while a viewer only reads it. Everything a member may do that a
+// viewer may not is that one capability.
 var roleCapabilities = map[string][]capability{
-	roleManager: {capSee, capSeeFinancials, capManage},
-	roleMember:  {capSee},
+	roleManager: {capSee, capSeeFinancials, capContribute, capManage},
+	roleMember:  {capSee, capContribute},
 	roleViewer:  {capSee},
 }
 

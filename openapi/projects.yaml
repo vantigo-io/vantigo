@@ -143,6 +143,83 @@ components:
                 - completed
                 - cancelled
             type: object
+        MyTaskResponse:
+            description: One open task assigned to the caller, on a project they can see, named with the project it belongs to. It carries no subtasks — the list is flat, across projects.
+            properties:
+                assignee:
+                    allOf:
+                        - $ref: '#/components/schemas/TaskAssignee'
+                    description: Always the caller on this endpoint; carried so one decoder reads both shapes.
+                checklist:
+                    $ref: '#/components/schemas/TaskChecklistProgress'
+                commentCount:
+                    format: int32
+                    type: integer
+                completedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                dueDate:
+                    format: date
+                    nullable: true
+                    type: string
+                estimateHours:
+                    format: double
+                    nullable: true
+                    type: number
+                id:
+                    format: int32
+                    type: integer
+                parentTaskId:
+                    description: The top-level task this one is a subtask of, absent for a top-level task.
+                    format: int32
+                    nullable: true
+                    type: integer
+                position:
+                    format: int32
+                    type: integer
+                projectCode:
+                    type: string
+                projectId:
+                    format: int32
+                    type: integer
+                projectName:
+                    type: string
+                revision:
+                    format: int32
+                    type: integer
+                startDate:
+                    format: date
+                    nullable: true
+                    type: string
+                status:
+                    description: "'todo' or 'in-progress' — a done task is not open, and never listed here."
+                    type: string
+                title:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - projectId
+                - projectCode
+                - projectName
+                - title
+                - status
+                - position
+                - revision
+                - createdAt
+                - updatedAt
+                - checklist
+                - commentCount
+            type: object
         PaginatedResponseOfProjectSummaryResponse:
             properties:
                 data:
@@ -170,12 +247,16 @@ components:
         ProjectCapabilities:
             description: What the calling user may do with this project, so the frontend never re-derives authorization.
             properties:
+                canContribute:
+                    description: Whether the caller may write the project's work — tasks, checklists and comments. True for its members and its managers.
+                    type: boolean
                 canManage:
                     type: boolean
                 canSeeFinancials:
                     type: boolean
             required:
                 - canManage
+                - canContribute
                 - canSeeFinancials
             type: object
         ProjectCodeSuggestionResponse:
@@ -553,6 +634,207 @@ components:
                 - billingType
                 - revision
             type: object
+        TaskAssignee:
+            description: The one person a task is assigned to (D6). active is the user directory's answer, not the assignment's — an account disabled afterwards keeps the task and is reported inactive.
+            properties:
+                active:
+                    type: boolean
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - active
+            type: object
+        TaskChecklistProgress:
+            description: How far a task's checklist has come. The items themselves are read through the task's own checklist endpoints; the tree carries only the two counts.
+            properties:
+                done:
+                    format: int32
+                    type: integer
+                total:
+                    format: int32
+                    type: integer
+            required:
+                - total
+                - done
+            type: object
+        TaskPositionRequest:
+            description: Where a task should sit — among which siblings, and how far down. The siblings are renumbered 1..n in one transaction, so the order never has a gap.
+            properties:
+                parentTaskId:
+                    description: The top-level task to move under, absent to move among the project's top-level tasks. A task that has subtasks of its own cannot become a subtask (D6).
+                    format: int32
+                    nullable: true
+                    type: integer
+                position:
+                    description: The 1-based place among the siblings. A position past the end means last.
+                    format: int32
+                    type: integer
+            required:
+                - position
+            type: object
+        TaskRequest:
+            properties:
+                assigneeUserId:
+                    description: The one person the task is assigned to. The user must exist and be active.
+                    format: uuid
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                dueDate:
+                    description: Not before startDate when both are set.
+                    format: date
+                    nullable: true
+                    type: string
+                estimateHours:
+                    description: Greater than zero when set.
+                    format: double
+                    nullable: true
+                    type: number
+                parentTaskId:
+                    description: Creates the task as a subtask of this one, which must be a top-level task of the same project (D6 — one level of nesting).
+                    format: int32
+                    nullable: true
+                    type: integer
+                startDate:
+                    format: date
+                    nullable: true
+                    type: string
+                status:
+                    description: "'todo', 'in-progress' or 'done'. Absent means 'todo'."
+                    nullable: true
+                    type: string
+                title:
+                    description: Trimmed before validation and storage; at most 200 characters.
+                    type: string
+            required:
+                - title
+            type: object
+        TaskResponse:
+            description: One task of a project. checklist and commentCount are aggregates over the task's own children, so a tree renders progress without reading either.
+            properties:
+                assignee:
+                    allOf:
+                        - $ref: '#/components/schemas/TaskAssignee'
+                    description: Absent — not null — when nobody is assigned.
+                checklist:
+                    $ref: '#/components/schemas/TaskChecklistProgress'
+                commentCount:
+                    format: int32
+                    type: integer
+                completedAt:
+                    description: When the task entered 'done'. Cleared when it leaves it again.
+                    format: date-time
+                    nullable: true
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                dueDate:
+                    format: date
+                    nullable: true
+                    type: string
+                estimateHours:
+                    format: double
+                    nullable: true
+                    type: number
+                id:
+                    format: int32
+                    type: integer
+                parentTaskId:
+                    description: The top-level task this one is a subtask of, absent for a top-level task.
+                    format: int32
+                    nullable: true
+                    type: integer
+                position:
+                    description: The task's 1-based place among its siblings — the project's top-level tasks, or its parent's subtasks.
+                    format: int32
+                    type: integer
+                projectId:
+                    format: int32
+                    type: integer
+                revision:
+                    description: The revision an update must carry to be applied.
+                    format: int32
+                    type: integer
+                startDate:
+                    format: date
+                    nullable: true
+                    type: string
+                status:
+                    description: "'todo', 'in-progress' or 'done'."
+                    type: string
+                subtasks:
+                    description: The task's own subtasks, by position. Present only on the endpoints that answer a tree, and never on a subtask itself (D6 — one level of nesting).
+                    items:
+                        $ref: '#/components/schemas/TaskResponse'
+                    type: array
+                title:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - projectId
+                - title
+                - status
+                - position
+                - revision
+                - createdAt
+                - updatedAt
+                - checklist
+                - commentCount
+            type: object
+        TaskUpdateRequest:
+            description: Every field of the task as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409. Where the task sits is not part of it — that is the position operation's.
+            properties:
+                assigneeUserId:
+                    description: The one person the task is assigned to. The user must exist and be active; leaving it out clears the assignment.
+                    format: uuid
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                dueDate:
+                    description: Not before startDate when both are set.
+                    format: date
+                    nullable: true
+                    type: string
+                estimateHours:
+                    description: Greater than zero when set.
+                    format: double
+                    nullable: true
+                    type: number
+                revision:
+                    description: The revision the caller read the task at.
+                    format: int32
+                    type: integer
+                startDate:
+                    format: date
+                    nullable: true
+                    type: string
+                status:
+                    description: "'todo', 'in-progress' or 'done'. Absent means 'todo'. Moving into 'done' stamps completedAt; leaving it clears the stamp."
+                    nullable: true
+                    type: string
+                title:
+                    description: Trimmed before validation and storage; at most 200 characters.
+                    type: string
+            required:
+                - title
+                - revision
+            type: object
         TimelineEntryResponse:
             description: One generated event on a project's timeline. The actor's display name is the one captured when the change happened, not a name resolved on read.
             properties:
@@ -724,6 +1006,34 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Suggest a project code
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/my-tasks:
+        get:
+            operationId: getProjectsMyTasks
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/MyTaskResponse'
+                                type: array
+                    description: OK — the caller's open tasks on the projects they can see, by due date (nulls last), then project code, then position.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the caller's open tasks
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
@@ -1189,6 +1499,106 @@ paths:
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/tasks:
+        get:
+            operationId: getProjectsByIdTasks
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - description: "'todo', 'in-progress' or 'done'. An empty value is no filter at all."
+                  in: query
+                  name: status
+                  schema:
+                    type: string
+                - description: Narrows the tree to the tasks assigned to one user.
+                  in: query
+                  name: assigneeUserId
+                  schema:
+                    format: uuid
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TaskResponse'
+                                type: array
+                    description: OK — the project's top-level tasks by position, each carrying its own subtasks by position. A filtered subtask whose parent does not match is answered at the top level, so a filter never hides a task it matched.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+            summary: List a project's tasks
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        post:
+            operationId: postProjectsByIdTasks
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TaskRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskResponse'
+                    description: Created — appended after its siblings.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is neither a member nor a manager of it.
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+            summary: Add a task to a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
     /api/v1/projects/{id}/timeline:
         get:
             operationId: getProjectsByIdTimeline
@@ -1383,6 +1793,170 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Get project dashboard time series
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/tasks/{taskId}:
+        delete:
+            operationId: deleteProjectsTasksByTaskId
+            parameters:
+                - in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content — the task, its subtasks, its checklist and its comments are gone.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is neither a member nor a manager of it.
+                "404":
+                    description: Not Found — the task does not exist, or it belongs to a project the caller cannot see.
+            summary: Delete a task
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        get:
+            operationId: getProjectsTasksByTaskId
+            parameters:
+                - in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskResponse'
+                    description: OK — the task with its own subtasks, by position.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the task does not exist, or it belongs to a project the caller cannot see.
+            summary: Get a task by id
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        put:
+            operationId: putProjectsTasksByTaskId
+            parameters:
+                - in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TaskUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is neither a member nor a manager of it.
+                "404":
+                    description: Not Found — the task does not exist, or it belongs to a project the caller cannot see.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the supplied revision is not the task's current one.
+            summary: Update a task
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/tasks/{taskId}/position:
+        put:
+            operationId: putProjectsTasksByTaskIdPosition
+            parameters:
+                - in: path
+                  name: taskId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TaskPositionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TaskResponse'
+                    description: OK — the task where it now sits; its siblings have been renumbered 1..n.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is neither a member nor a manager of it.
+                "404":
+                    description: Not Found — the task does not exist, or it belongs to a project the caller cannot see.
+            summary: Move a task among its siblings
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access

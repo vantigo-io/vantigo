@@ -37,6 +37,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/my-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the caller's open tasks */
+        get: operations["getProjectsMyTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{id}": {
         parameters: {
             query?: never;
@@ -159,6 +176,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's tasks */
+        get: operations["getProjectsByIdTasks"];
+        put?: never;
+        /** Add a task to a project */
+        post: operations["postProjectsByIdTasks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{id}/timeline": {
         parameters: {
             query?: never;
@@ -237,6 +272,42 @@ export interface paths {
         /** Get project dashboard time series */
         get: operations["getProjectsStatsTimeseries"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a task by id */
+        get: operations["getProjectsTasksByTaskId"];
+        /** Update a task */
+        put: operations["putProjectsTasksByTaskId"];
+        post?: never;
+        /** Delete a task */
+        delete: operations["deleteProjectsTasksByTaskId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/tasks/{taskId}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Move a task among its siblings */
+        put: operations["putProjectsTasksByTaskIdPosition"];
         post?: never;
         delete?: never;
         options?: never;
@@ -333,6 +404,45 @@ export interface components {
             /** Format: int32 */
             planned: number;
         };
+        /** @description One open task assigned to the caller, on a project they can see, named with the project it belongs to. It carries no subtasks — the list is flat, across projects. */
+        MyTaskResponse: {
+            /** @description Always the caller on this endpoint; carried so one decoder reads both shapes. */
+            assignee?: components["schemas"]["TaskAssignee"];
+            checklist: components["schemas"]["TaskChecklistProgress"];
+            /** Format: int32 */
+            commentCount: number;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            description?: string | null;
+            /** Format: date */
+            dueDate?: string | null;
+            /** Format: double */
+            estimateHours?: number | null;
+            /** Format: int32 */
+            id: number;
+            /**
+             * Format: int32
+             * @description The top-level task this one is a subtask of, absent for a top-level task.
+             */
+            parentTaskId?: number | null;
+            /** Format: int32 */
+            position: number;
+            projectCode: string;
+            /** Format: int32 */
+            projectId: number;
+            projectName: string;
+            /** Format: int32 */
+            revision: number;
+            /** Format: date */
+            startDate?: string | null;
+            /** @description 'todo' or 'in-progress' — a done task is not open, and never listed here. */
+            status: string;
+            title: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         PaginatedResponseOfProjectSummaryResponse: {
             data: components["schemas"]["ProjectSummaryResponse"][];
             pagination: components["schemas"]["PaginationMetadata"];
@@ -343,6 +453,8 @@ export interface components {
         };
         /** @description What the calling user may do with this project, so the frontend never re-derives authorization. */
         ProjectCapabilities: {
+            /** @description Whether the caller may write the project's work — tasks, checklists and comments. True for its members and its managers. */
+            canContribute: boolean;
             canManage: boolean;
             canSeeFinancials: boolean;
         };
@@ -543,6 +655,140 @@ export interface components {
             /** Format: date */
             startDate?: string | null;
         };
+        /** @description The one person a task is assigned to (D6). active is the user directory's answer, not the assignment's — an account disabled afterwards keeps the task and is reported inactive. */
+        TaskAssignee: {
+            active: boolean;
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description How far a task's checklist has come. The items themselves are read through the task's own checklist endpoints; the tree carries only the two counts. */
+        TaskChecklistProgress: {
+            /** Format: int32 */
+            done: number;
+            /** Format: int32 */
+            total: number;
+        };
+        /** @description Where a task should sit — among which siblings, and how far down. The siblings are renumbered 1..n in one transaction, so the order never has a gap. */
+        TaskPositionRequest: {
+            /**
+             * Format: int32
+             * @description The top-level task to move under, absent to move among the project's top-level tasks. A task that has subtasks of its own cannot become a subtask (D6).
+             */
+            parentTaskId?: number | null;
+            /**
+             * Format: int32
+             * @description The 1-based place among the siblings. A position past the end means last.
+             */
+            position: number;
+        };
+        TaskRequest: {
+            /**
+             * Format: uuid
+             * @description The one person the task is assigned to. The user must exist and be active.
+             */
+            assigneeUserId?: string | null;
+            description?: string | null;
+            /**
+             * Format: date
+             * @description Not before startDate when both are set.
+             */
+            dueDate?: string | null;
+            /**
+             * Format: double
+             * @description Greater than zero when set.
+             */
+            estimateHours?: number | null;
+            /**
+             * Format: int32
+             * @description Creates the task as a subtask of this one, which must be a top-level task of the same project (D6 — one level of nesting).
+             */
+            parentTaskId?: number | null;
+            /** Format: date */
+            startDate?: string | null;
+            /** @description 'todo', 'in-progress' or 'done'. Absent means 'todo'. */
+            status?: string | null;
+            /** @description Trimmed before validation and storage; at most 200 characters. */
+            title: string;
+        };
+        /** @description One task of a project. checklist and commentCount are aggregates over the task's own children, so a tree renders progress without reading either. */
+        TaskResponse: {
+            /** @description Absent — not null — when nobody is assigned. */
+            assignee?: components["schemas"]["TaskAssignee"];
+            checklist: components["schemas"]["TaskChecklistProgress"];
+            /** Format: int32 */
+            commentCount: number;
+            /**
+             * Format: date-time
+             * @description When the task entered 'done'. Cleared when it leaves it again.
+             */
+            completedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            description?: string | null;
+            /** Format: date */
+            dueDate?: string | null;
+            /** Format: double */
+            estimateHours?: number | null;
+            /** Format: int32 */
+            id: number;
+            /**
+             * Format: int32
+             * @description The top-level task this one is a subtask of, absent for a top-level task.
+             */
+            parentTaskId?: number | null;
+            /**
+             * Format: int32
+             * @description The task's 1-based place among its siblings — the project's top-level tasks, or its parent's subtasks.
+             */
+            position: number;
+            /** Format: int32 */
+            projectId: number;
+            /**
+             * Format: int32
+             * @description The revision an update must carry to be applied.
+             */
+            revision: number;
+            /** Format: date */
+            startDate?: string | null;
+            /** @description 'todo', 'in-progress' or 'done'. */
+            status: string;
+            /** @description The task's own subtasks, by position. Present only on the endpoints that answer a tree, and never on a subtask itself (D6 — one level of nesting). */
+            subtasks?: components["schemas"]["TaskResponse"][];
+            title: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description Every field of the task as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409. Where the task sits is not part of it — that is the position operation's. */
+        TaskUpdateRequest: {
+            /**
+             * Format: uuid
+             * @description The one person the task is assigned to. The user must exist and be active; leaving it out clears the assignment.
+             */
+            assigneeUserId?: string | null;
+            description?: string | null;
+            /**
+             * Format: date
+             * @description Not before startDate when both are set.
+             */
+            dueDate?: string | null;
+            /**
+             * Format: double
+             * @description Greater than zero when set.
+             */
+            estimateHours?: number | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the task at.
+             */
+            revision: number;
+            /** Format: date */
+            startDate?: string | null;
+            /** @description 'todo', 'in-progress' or 'done'. Absent means 'todo'. Moving into 'done' stamps completedAt; leaving it clears the stamp. */
+            status?: string | null;
+            /** @description Trimmed before validation and storage; at most 200 characters. */
+            title: string;
+        };
         /** @description One generated event on a project's timeline. The actor's display name is the one captured when the change happened, not a name resolved on read. */
         TimelineEntryResponse: {
             actorDisplay: string;
@@ -735,6 +981,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectCodeSuggestionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getProjectsMyTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the caller's open tasks on the projects they can see, by due date (nulls last), then project code, then position. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTaskResponse"][];
                 };
             };
             /** @description Unauthorized */
@@ -1341,6 +1625,127 @@ export interface operations {
             };
         };
     };
+    getProjectsByIdTasks: {
+        parameters: {
+            query?: {
+                /** @description 'todo', 'in-progress' or 'done'. An empty value is no filter at all. */
+                status?: string;
+                /** @description Narrows the tree to the tasks assigned to one user. */
+                assigneeUserId?: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the project's top-level tasks by position, each carrying its own subtasks by position. A filtered subtask whose parent does not match is answered at the top level, so a filter never hides a task it matched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsByIdTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — appended after its siblings. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getProjectsByIdTimeline: {
         parameters: {
             query?: {
@@ -1574,6 +1979,227 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthErrorResponse"];
                 };
+            };
+        };
+    };
+    getProjectsTasksByTaskId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the task with its own subtasks, by position. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsTasksByTaskId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the supplied revision is not the task's current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteProjectsTasksByTaskId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the task, its subtasks, its checklist and its comments are gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsTasksByTaskIdPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPositionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the task where it now sits; its siblings have been renumbered 1..n. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is neither a member nor a manager of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the task does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
