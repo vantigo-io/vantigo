@@ -43,11 +43,12 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/identity/account` (putIdentityAccount)
 - `PUT /api/v1/identity/scim/v2/Users/{id}` (putIdentityScimV2UsersById)
 
-## customers (3 uncovered)
+## customers (4 uncovered)
 
 - `GET /api/v1/customers/stats/attention` (getCustomersStatsAttention)
 - `GET /api/v1/customers/stats/summary` (getCustomersStatsSummary)
 - `GET /api/v1/customers/stats/timeseries` (getCustomersStatsTimeseries)
+- `PUT /api/v1/customers/{id}/type` (putCustomersByIdType)
 
 ## products (7 uncovered)
 
@@ -86,4 +87,25 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/communications/tags` (postCommunicationsTags)
 - `PUT /api/v1/communications/conversations/{id}/tags/{tagId}` (putCommunicationsConversationsByIdTagsByTagId)
 
-Total: 69 of 204 operations have no recorded exchange.
+## projects (18 uncovered)
+
+- `DELETE /api/v1/projects/{id}/roles/{userId}` (deleteProjectsByIdRolesByUserId)
+- `GET /api/v1/projects/code-suggestion` (getProjectsCodeSuggestion)
+- `GET /api/v1/projects/stats/attention` (getProjectsStatsAttention)
+- `GET /api/v1/projects/stats/summary` (getProjectsStatsSummary)
+- `GET /api/v1/projects/stats/timeseries` (getProjectsStatsTimeseries)
+- `GET /api/v1/projects/stats` (getProjectsStats)
+- `GET /api/v1/projects/{id}/assignable-users` (getProjectsByIdAssignableUsers)
+- `GET /api/v1/projects/{id}/billing-lines` (getProjectsByIdBillingLines)
+- `GET /api/v1/projects/{id}/roles` (getProjectsByIdRoles)
+- `GET /api/v1/projects/{id}/timeline` (getProjectsByIdTimeline)
+- `GET /api/v1/projects/{id}` (getProjectsById)
+- `GET /api/v1/projects` (getProjects)
+- `POST /api/v1/projects/{id}/billing-lines` (postProjectsByIdBillingLines)
+- `POST /api/v1/projects` (postProjects)
+- `PUT /api/v1/projects/{id}/billing-lines/{lineId}` (putProjectsByIdBillingLinesByLineId)
+- `PUT /api/v1/projects/{id}/roles/{userId}` (putProjectsByIdRolesByUserId)
+- `PUT /api/v1/projects/{id}/status` (putProjectsByIdStatus)
+- `PUT /api/v1/projects/{id}` (putProjectsById)
+
+Total: 88 of 223 operations have no recorded exchange.
