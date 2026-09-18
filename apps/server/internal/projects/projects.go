@@ -190,7 +190,11 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 	// yet, and it is checked whatever Deps.Products holds: lines stored
 	// before products was switched off are still stored, and their amounts
 	// are still in this currency (D10).
-	if parsed.Currency == nil {
+	//
+	// Only a request that actually clears a currency the project has pays for
+	// the query: a project that never had one cannot have a 'fixed' line to
+	// protect, since such a line could not have been created without it.
+	if before.Currency != nil && parsed.Currency == nil {
 		fixedLines, err := q.CountFixedBillingLines(ctx, before.ID)
 		if err != nil {
 			return nil, fmt.Errorf("projects: count fixed billing lines: %w", err)

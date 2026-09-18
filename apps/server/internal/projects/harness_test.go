@@ -25,7 +25,7 @@ import (
 // real one.
 func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
-	return newProjectsHarness(t, true, opts...)
+	return newProjectsHarness(t, newFakeCatalog(), opts...)
 }
 
 // newHarnessWithoutProducts is newHarness with the products module off:
@@ -33,22 +33,30 @@ func newHarness(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 // (D10) and what billingLinesAvailable answers false for.
 func newHarnessWithoutProducts(t *testing.T, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
-	return newProjectsHarness(t, false, opts...)
+	return newProjectsHarness(t, nil, opts...)
 }
 
-// newProjectsHarness is the one composition both harnesses are: products is
-// the only thing they differ in, so it is the only thing either of them
-// says. A second copy of the option list would drift the moment this module
-// grows another dependency.
-func newProjectsHarness(t *testing.T, products bool, opts ...modtest.Option) *modtest.Harness {
+// newHarnessWithCatalog is newHarness over a catalog the test keeps a handle
+// on, for a case whose subject is the catalog changing under a stored line —
+// a variant products drops after a line was pinned to it.
+func newHarnessWithCatalog(t *testing.T, catalog *fakeCatalog, opts ...modtest.Option) *modtest.Harness {
+	t.Helper()
+	return newProjectsHarness(t, catalog, opts...)
+}
+
+// newProjectsHarness is the one composition every harness here is: the
+// catalog is the only thing they differ in, nil for "products disabled", so
+// it is the only thing any of them says. A second copy of the option list
+// would drift the moment this module grows another dependency.
+func newProjectsHarness(t *testing.T, catalog *fakeCatalog, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
 	base := []modtest.Option{
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(projects.Module()),
 		modtest.WithDirectory(fakeDirectory{}),
 	}
-	if products {
-		base = append(base, modtest.WithProducts(newFakeCatalog()))
+	if catalog != nil {
+		base = append(base, modtest.WithProducts(catalog))
 	}
 	return modtest.New(t, append(base, opts...)...)
 }
@@ -137,6 +145,15 @@ func newFakeCatalog() *fakeCatalog {
 			variantDeveloperHour:      1250,
 		},
 	}
+}
+
+// forget drops a variant the way products dropping it would look from here:
+// the catalog stops knowing it, while the lines already pinned to it stay in
+// the table. It is not concurrency-safe, so a test that calls it drives its
+// own harness (newHarnessWithCatalog) rather than sharing one.
+func (c *fakeCatalog) forget(id int32) {
+	delete(c.variants, id)
+	delete(c.prices, id)
 }
 
 func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEntry, error) {

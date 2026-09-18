@@ -158,11 +158,11 @@ type parsedLine struct {
 // when that field failed: a second message derived from a value already
 // rejected only adds noise. project is the line's own project, read by the
 // handler: it is what says whether there is a currency to price a 'fixed'
-// line in.
+// line in. current is the line as it stands, nil on a create.
 //
 // Deps.Products is never nil here — the handlers answer 409 before they
 // validate anything (D10).
-func (s *server) validateLine(ctx context.Context, body gen.BillingLineRequest, project store.ProjectsProject) (parsedLine, map[string][]string, error) {
+func (s *server) validateLine(ctx context.Context, body gen.BillingLineRequest, project store.ProjectsProject, current *store.ProjectsBillingLine) (parsedLine, map[string][]string, error) {
 	errs := map[string][]string{}
 	add := func(field, msg string) {
 		if msg != "" {
@@ -175,12 +175,20 @@ func (s *server) validateLine(ctx context.Context, body gen.BillingLineRequest, 
 
 	// D9: a line is pinned to a variant, so a variant nobody has is a body
 	// this module cannot store rather than a line with a dangling reference.
-	variant, err := s.deps.Products.Variant(ctx, body.VariantId)
-	if err != nil {
-		return parsedLine{}, nil, fmt.Errorf("projects: look up product variant: %w", err)
-	}
-	if variant == nil {
-		add("variantId", fmt.Sprintf("Product variant %d does not exist", body.VariantId))
+	//
+	// Only a change of variant is checked. A body that carries the variant
+	// the line is already pinned to is not asking for that variant to exist
+	// today: products may have dropped it since, and a line whose product is
+	// gone must stay editable — deactivating it is exactly what a manager
+	// wants to do then, and the response says variantMissing either way.
+	if current == nil || current.VariantID != body.VariantId {
+		variant, err := s.deps.Products.Variant(ctx, body.VariantId)
+		if err != nil {
+			return parsedLine{}, nil, fmt.Errorf("projects: look up product variant: %w", err)
+		}
+		if variant == nil {
+			add("variantId", fmt.Sprintf("Product variant %d does not exist", body.VariantId))
+		}
 	}
 
 	mode, msg := validatePricingMode(body.PricingMode)
