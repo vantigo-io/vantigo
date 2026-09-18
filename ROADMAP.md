@@ -176,28 +176,63 @@ them.
 *Unblocks:* Time tracking — a stable project identity, a code employees can quote,
 per-project authorization, and a priced line to book hours against.
 
-### Phase 2 — Time tracking (align with Time tracking)
+### Phase 2 — Time tracking and tasks (next)
 
-Hours booked against a project and one of its billing lines, keyed by the
-trackable code `<project>-<line>`, reading `contracts.ProjectDirectory` for the
-project, its `OpenForWork` flag, the caller's role and the line's pricing rule —
-never the `projects` schema. This is where `member` and `viewer` stop being the
-same thing: members log time, viewers only look. Projects still calculates no
-money; Time tracking stores quantities and lets invoicing resolve amounts.
+Decided in `docs/superpowers/specs/2026-09-18-project-management-plan.md`
+after surveying the Nordic ERPs, the international PSA tools and the dedicated
+PM tools. Time is its own module (`time`) that requires Projects and reads
+`contracts.ProjectDirectory`, never the `projects` schema; tasks live inside
+Projects. A time entry references a project, optionally a billing line
+(`KVEM1000-PM`) and optionally a task — the timesheet lists, under each project
+code, the active lines and the caller's open tasks. Rates resolve through an
+explicit chain (billing-line rule → project default → person default; cost
+always from the person) and are snapshotted onto the entry; approval is a
+state machine (`draft → submitted → approved → invoiced`) with period locking.
+Tasks: single assignee, a fixed status category under customisable labels, one
+level of subtasks, checklist items, dates and estimates; list, board and "my
+tasks". This is where `member` and `viewer` stop being the same thing.
 
-*Unblocks:* timesheets, utilisation and the first real consumer of the billing
-lines — and, after it, invoicing from hours.
+*Unblocks:* hours that can be invoiced, the first real consumer of billing
+lines, and a task list contractors and consultants will actually keep.
+
+### Phase 3 — Budgets, billing milestones and costs
+
+Budget vs actual per project and billing line (hours, cost, revenue: expected
+→ to invoice → invoiced); **billing milestones** on the commercial side (date,
+amount or % of the fixed price, a-konto as one kind), separate from delivery
+milestones; expenses and supplier costs with markup; overtime and work-type
+multipliers as billing-line rules.
+
+*Unblocks:* fixed-price and a-konto invoicing, profitability, budget alerts.
+
+### Phase 4 — Delivery milestones, timeline and templates
+
+Delivery milestones as a lightweight entity (name, optional target date, %
+complete derived from linked tasks); a lightweight timeline (bars, drag,
+finish-to-start dependencies, opt-in cascade) — never a full Gantt in-house;
+project and task templates with relative dates.
+
+*Unblocks:* planning at kickoff; the "are we on track" view.
+
+### Phase 5 — Capacity planning
+
+Allocations (person × project × date range × hours-or-percent,
+tentative/confirmed, placeholders) as a table of their own, compared with
+assignments and actuals; availability and utilisation.
+
+*Unblocks:* "who is free in week 42"; revenue forecasts from planned hours.
 
 ### Later
 
-- **Milestones and tasks** — a *separate* code dimension from billing lines (what
-  the work is *for* versus what *kind* of work it is), in the `KVEM1000-MIL1`
-  shape. It must never collide with the line codes that already occupy
-  `<project>-<code>`, so the two namespaces are decided together with Tasks, not
-  before.
-- **Rates per person or project role** — today there is exactly one pricing path,
-  the product variant. Per-person and per-role rates are the obvious next
-  dimension and are deliberately absent until the module that bills them exists.
+- **Full Gantt, WIP / earned value, multiple assignees, a customer portal** —
+  only on proven demand; the plan explains why every comparable product shipped
+  these last or bought them in.
+- **A Norwegian construction layer** — NS 8405–8407 milestone rules,
+  *innestående* (retention), kontrollskjema, Boligmappa: unserved in the SMB
+  tier today and a vertical of its own on top of phases 2–3.
+- **Milestone codes** — if delivery milestones ever get codes they use a shape
+  decided with phase 4, never a bare `<project>-<code>` suffix, which billing
+  lines own.
 - **Configurable project roles** — the three roles are named capability sets in
   code, so a role editor can be added without a schema change. It needs a real
   demand for a fourth role first.
