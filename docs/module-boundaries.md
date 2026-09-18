@@ -2,8 +2,9 @@
 
 Vantigo is a modular monolith: one Go binary, one container, one PostgreSQL
 database — with strict module boundaries so any module can later be extracted into
-its own deployable without a rewrite. Customers, Products, Energy and Communications
-are vertical-slice modules composed only by `cmd/vantigo`, on the Identity platform.
+its own deployable without a rewrite. Customers, Products, Energy, Communications and
+Projects are vertical-slice modules composed only by `cmd/vantigo`, on the Identity
+platform.
 
 Modules never reference each other directly. Synchronous cross-module needs go
 through the in-process contracts in `internal/contracts`; asynchronous ones use the
@@ -23,16 +24,20 @@ Communications' outbox is the working example.
    permissions and access rules as DTOs only, never store types, so any module or a
    future extracted service can implement or consume them.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
-   schema (`identity`, `customers`, `products`, `energy`, `communications`), and no
-   module's migrations or queries reference another's. **No cross-schema foreign keys
-   or joins** — reference other modules' data by opaque ID only. That is what keeps a
-   future "move this schema to its own server" a connection-string change instead of
-   a data migration.
+   schema (`identity`, `customers`, `products`, `energy`, `communications`,
+   `projects`), and no module's migrations or queries reference another's. **No
+   cross-schema foreign keys or joins** — reference other modules' data by opaque ID
+   only. That is what keeps a future "move this schema to its own server" a
+   connection-string change instead of a data migration.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
-   background workers it contributes, and — for the one module that owns customer
-   data — its `contracts.CustomerDirectory` implementation. `module.Compose` mounts
-   each at `/api/v1/<name>/`.
+   background workers it contributes, and the cross-module contracts it *provides*.
+   There are four provider slots, each filled by at most one enabled module:
+   `Directory` (`contracts.CustomerDirectory`, customers), `Users`
+   (`contracts.UserDirectory`, identity), `Products` (`contracts.ProductCatalog`,
+   products) and `Projects` (`contracts.ProjectDirectory`, projects).
+   `module.Compose` mounts each module at `/api/v1/<name>/` and builds every provider
+   before any `Mount` runs, so a module's `Deps` already carries what it consumes.
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -54,7 +59,8 @@ Communications' outbox is the working example.
 - **Rule 5**: `module.Compose` itself. It fails on a duplicate module name, an
   invalid or duplicate permission key, a `Mount` error, a path two modules both
   declare, a component two modules declare differently under the same name, or two
-  modules both declaring a customer directory — naming both.
+  modules both declaring the same provider — a customer directory, a user directory,
+  a product catalog or a project directory — naming both.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
 
@@ -68,9 +74,9 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications`). Identity is always mounted and is never
-listed. Entries are trimmed and lower-cased, empty entries are ignored, and a name
-the binary does not know fails startup naming both the value and the known set.
+(`customers,products,energy,communications,projects`). Identity is always mounted and
+is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
+name the binary does not know fails startup naming both the value and the known set.
 
 A disabled module contributes no route, no permission, no contract path and no
 background worker; its paths fall through to the `/api` catch-all and answer the 404
@@ -80,25 +86,65 @@ end up with endpoints mapped whose permissions were never contributed.
 **Every schema is migrated regardless of what `MODULES` enables**, so enabling a
 module later needs no migration.
 
-Some modules cannot be hosted alone. Energy and Communications read customer data
-through `contracts.CustomerDirectory`, which only Customers implements, so enabling
-either without `customers` is rejected at startup with a message naming both. A
-module that starts requiring another module's contract adds its own check there.
+Some modules cannot be hosted alone. Energy, Communications and Projects read
+customer data through `contracts.CustomerDirectory`, which only Customers implements,
+so enabling any of them without `customers` is rejected at startup with a message
+naming both (`projects requires customers`). A module that starts requiring another
+module's contract adds its own check in `internal/config`.
+
+A contract can also be **optional**. `contracts.ProductCatalog` is the first:
+Projects prices its billing lines through it, but when `products` is disabled
+`Deps.Products` is simply nil and Projects answers 409 on its billing-line operations
+instead of failing startup. That is the shape to copy — a required dependency gets a
+config check, an optional one leaves the `Deps` field nil and **the consumer must
+handle nil**. The one exception is `contracts.UserDirectory`: identity is always
+mounted, so `Deps.Users` is always set once composed.
 
 ## Adding a module
+
+**Backend**
 
 1. Create `internal/<name>` exposing `Module()`, and add it to `businessModules` in
    `cmd/vantigo/main.go`.
 2. Add its contract as `openapi/<name>.yaml`; the name is also its mount prefix and
-   its schema name.
-3. Add a `NNNNN_<name>_baseline.sql` migration owning only its own schema.
-4. Add a depguard rule set for it in `apps/server/.golangci.yml`, and add its import
+   its schema name. Add it to `Modules` in `internal/openapi/openapi.go` — the list
+   the merge, the lint and the coverage report iterate.
+3. Add `internal/openapi/gen/cfg-<name>.yaml` (the oapi-codegen config, which names
+   the generated package `internal/<name>/gen`) and the two matching
+   `//go:generate` lines in `apps/server/generate.go`: one oapi-codegen line and one
+   `sqlc generate -f internal/<name>/sqlc.yaml`.
+4. Add a `NNNNN_<name>_baseline.sql` migration owning only its own schema.
+5. Add a depguard rule set for it in `apps/server/.golangci.yml`, and add its import
    paths to every other module's deny list, so every pairwise isolation rule covers
    it.
-5. Add its schema to `moduleSchemas` in `internal/db/schema_test.go`.
-6. For a frontend package, copy the `no-restricted-imports` block into its
-   `eslint.config.js`, add the module key to `moduleKeys` in
-   `apps/host/frontend/src/navigation.ts`, register the app (label, icon,
-   home path, sidebar entries) in `apps/host/frontend/src/apps.ts`, and add a
-   layout route `apps/host/frontend/src/routes/<name>.tsx` that renders
+6. Add its schema to `moduleSchemas` in `internal/db/schema_test.go`, and its name to
+   the known set and any `MODULES` dependency check in `internal/config`.
+
+A module contributing no recorded exchanges needs nothing in
+`openapi/testdata/exchanges/`: that corpus is frozen evidence from the retired .NET
+suites, and the coverage tool treats a module with no corpus file as zero recorded
+exchanges. The module's own `contracttest.RequireCoverage` gate is what proves its
+operations are exercised.
+
+**Frontend**
+
+7. Add the package under `apps/<name>/frontend` (`@vantigo/<name>-ui`), copy the
+   `no-restricted-imports` block into its `eslint.config.js`, and add it to every
+   other module package's deny list.
+8. Add `{ module: "<name>", output: "apps/<name>/frontend/src/api-schema.d.ts" }` to
+   `tools/openapi/gen-client.ts`, then run `bun run gen:client`.
+9. Add the module key to `moduleKeys` in `apps/host/frontend/src/navigation.ts`
+   (plus a `searchStrategy` and its `navSearchFor` case if the app has a searchable
+   list), register the app (label, icon, home path, sidebar entries) in
+   `apps/host/frontend/src/apps.ts`, and add a layout route
+   `apps/host/frontend/src/routes/<name>.tsx` that renders
    `createFileRoute("/<name>")(appLayoutOptions("<name>"))`.
+10. Import the package's catalog in `apps/host/frontend/src/i18n.ts`
+    (`import "@vantigo/<name>-ui/i18n";`), and add the host-owned labels in every
+    language: navigation and dashboard strings, and **one entry per permission key in
+    `apps/host/frontend/src/catalogs/admin.ts`** — without it the admin role editor
+    shows a raw key.
+11. Wire the dashboard (`routes/dashboard.tsx`: the module card, its metric and its
+    attention items, all gated on the module and its permissions) and the spotlight
+    (`components/app-spotlight.tsx`: navigation comes from the registry, but a result
+    group and any quick action are hand-added).

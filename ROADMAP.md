@@ -151,3 +151,62 @@ Warehouse service.
 - **Tags/collections** — the designated answer for cross-cutting, multi-assignment
   grouping (e.g. "Summer sale"), deliberately separate from the single-assignment
   category hierarchy.
+
+## Projects
+
+### Phase 1 — Projects, roles and billing lines (done)
+
+A project per customer (or none, which means internal) with a unique, editable
+code (`KVEM1000`) suggested from the customer and project names plus a running
+number, a status the module never restricts (`planned`, `active`, `on-hold`,
+`completed`, `cancelled` — only `active` means "open for work"), dates, budget
+hours and the commercial rules invoicing will later read: billing type, fixed
+price, budget amount and one currency per project. Projects are cancelled, never
+deleted. Fixed roles per project (`manager`, `member`, `viewer`) sit under five
+global permissions, with `projects:access` gating the app; an outsider gets 404
+rather than 403, and financial fields are shaped out of the response rather than
+forbidden. Billing lines pin a product variant to a pricing rule (`list`,
+`fixed`, `discount`) under a short code, giving the trackable `KVEM1000-PM`.
+Products is an **optional** dependency — without it the module is a full planning
+tool and billing-line operations answer 409. Three contracts landed with it:
+`contracts.UserDirectory` (identity), `contracts.ProductCatalog` (products) and
+`contracts.ProjectDirectory` (projects), plus the platform's provider slots for
+them.
+
+*Unblocks:* Time tracking — a stable project identity, a code employees can quote,
+per-project authorization, and a priced line to book hours against.
+
+### Phase 2 — Time tracking (align with Time tracking)
+
+Hours booked against a project and one of its billing lines, keyed by the
+trackable code `<project>-<line>`, reading `contracts.ProjectDirectory` for the
+project, its `OpenForWork` flag, the caller's role and the line's pricing rule —
+never the `projects` schema. This is where `member` and `viewer` stop being the
+same thing: members log time, viewers only look. Projects still calculates no
+money; Time tracking stores quantities and lets invoicing resolve amounts.
+
+*Unblocks:* timesheets, utilisation and the first real consumer of the billing
+lines — and, after it, invoicing from hours.
+
+### Later
+
+- **Milestones and tasks** — a *separate* code dimension from billing lines (what
+  the work is *for* versus what *kind* of work it is), in the `KVEM1000-MIL1`
+  shape. It must never collide with the line codes that already occupy
+  `<project>-<code>`, so the two namespaces are decided together with Tasks, not
+  before.
+- **Rates per person or project role** — today there is exactly one pricing path,
+  the product variant. Per-person and per-role rates are the obvious next
+  dimension and are deliberately absent until the module that bills them exists.
+- **Configurable project roles** — the three roles are named capability sets in
+  code, so a role editor can be added without a schema change. It needs a real
+  demand for a fourth role first.
+- **Project documents** — files on a project, once the object-storage scopes and a
+  document model are settled (Communications' attachments are the working example).
+- **Domain events** — `ProjectCancelled` and friends once the event bus exists; see
+  [Platform](#cross-module-domain-events-deferred-until-orders). Until then every
+  consumer reads `contracts.ProjectDirectory` synchronously, which is enough.
+- **Assigning users who lack `projects:access`** — a manager can today only pick
+  from the user directory, and a colleague without the permission would be assigned
+  a role they cannot use. Whether to filter the picker, warn, or grant on
+  assignment is a product decision, not a technical one.

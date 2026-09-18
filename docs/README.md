@@ -15,6 +15,8 @@ Operator and contributor documentation for Vantigo:
   quick start, proxy example, upgrades, and production notes.
 - [Products module](products.md) — product domain and API reference.
 - [Communications module](communications.md) — communications domain and API reference.
+- [Projects module](projects.md) — projects, codes, roles, financial shaping, the
+  optional Products dependency and the contracts later modules build on.
 - [Module boundaries](module-boundaries.md) — implementation ownership and module
   conventions.
 - [Object storage](storage.md) — the filesystem-only provider, module scopes, key
