@@ -91,6 +91,12 @@ describe("useCodeSuggestion", () => {
     expect(fetchMock.actualCalls).toHaveLength(0);
     expect(result.current.suggestion).toBeUndefined();
     expect(result.current.isFollowing).toBe(false);
+
+    // Neither guard may let an edit form start following.
+    act(() => result.current.setManual(""));
+    expect(result.current.isFollowing).toBe(false);
+    act(() => result.current.useSuggestion());
+    expect(result.current.isFollowing).toBe(false);
   });
 
   it("asks for nothing until there is a name and either a customer or an internal project", async () => {

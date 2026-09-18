@@ -110,6 +110,9 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
       currency: project?.financials?.currency ?? DEFAULT_CURRENCY,
     },
     validate: {
+      // "Nothing chosen" is not "internal": an internal project is only ever
+      // the explicit choice, never a picker the user forgot.
+      customer: (value) => (value === null ? t("customerRequired") : null),
       name: (value) => (value.trim() ? null : t("nameRequired")),
       code: (value) => {
         const code = normalizeCode(value);
@@ -122,7 +125,11 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
         values.billingType === "fixed-price" && amount(value) === undefined ? t("fixedPriceRequired") : null,
       currency: (value, values) => {
         const currency = value.trim().toUpperCase();
-        const hasAmount = amount(values.fixedPriceAmount) !== undefined || amount(values.budgetAmount) !== undefined;
+        // A fixed price only counts while the project is fixed-price; the
+        // field is not sent otherwise, so it cannot require a currency.
+        const hasAmount =
+          (values.billingType === "fixed-price" && amount(values.fixedPriceAmount) !== undefined) ||
+          amount(values.budgetAmount) !== undefined;
         if (!currency) return hasAmount ? t("currencyRequired") : null;
         return CURRENCY_PATTERN.test(currency) ? null : t("currencyInvalid");
       },
@@ -150,6 +157,17 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
     if (isFollowing && suggestion) form.setFieldValue("code", suggestion);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFollowing, suggestion]);
+
+  /**
+   * The "use suggestion" action. It writes the code itself rather than
+   * leaving it to the effect, so it works even while the field is already
+   * following — the case of a field the user emptied.
+   */
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    form.setFieldValue("code", suggestion);
+    followSuggestionAgain();
+  };
 
   const mutation = useMutation({
     mutationFn: (values: ProjectFormValues) => {
@@ -220,6 +238,7 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
           }}
           withInternal
           selectedLabel={project?.customerName ?? undefined}
+          error={form.errors.customer}
           withAsterisk
         />
         <TextInput label={t("projectName")} withAsterisk data-autofocus {...form.getInputProps("name")} />
@@ -235,9 +254,9 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
               setManual(value);
             }}
           />
-          {!isEdit && suggestion && !isFollowing && suggestion !== form.values.code && (
+          {!isEdit && suggestion && suggestion !== form.values.code && (
             <Group>
-              <Button variant="subtle" size="compact-xs" onClick={followSuggestionAgain}>
+              <Button variant="subtle" size="compact-xs" onClick={applySuggestion}>
                 {t("useSuggestion")}: {suggestion}
               </Button>
             </Group>
