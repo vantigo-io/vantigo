@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteProjectRole = `-- name: DeleteProjectRole :exec
+const deleteProjectRole = `-- name: DeleteProjectRole :execrows
 DELETE FROM projects.project_roles
 WHERE project_id = $1 AND user_id = $2
 `
@@ -22,39 +22,18 @@ type DeleteProjectRoleParams struct {
 	UserID    uuid.UUID
 }
 
-// DeleteProjectRole takes one user off one project. A role is removed, never
+// DeleteProjectRole takes one user off one project, answering how many rows
+// it removed: one means this transaction is the one that removed it, zero
+// that there was nothing left to remove. A role is removed, never
 // deactivated: unlike a project or a billing line, nothing else in the
 // product holds a reference to it — the timeline keeps the record that it
 // existed.
-func (q *Queries) DeleteProjectRole(ctx context.Context, arg DeleteProjectRoleParams) error {
-	_, err := q.db.Exec(ctx, deleteProjectRole, arg.ProjectID, arg.UserID)
-	return err
-}
-
-const getProjectRole = `-- name: GetProjectRole :one
-SELECT user_id, role, created_at FROM projects.project_roles
-WHERE project_id = $1 AND user_id = $2
-`
-
-type GetProjectRoleParams struct {
-	ProjectID int32
-	UserID    uuid.UUID
-}
-
-type GetProjectRoleRow struct {
-	UserID    uuid.UUID
-	Role      string
-	CreatedAt time.Time
-}
-
-// GetProjectRole is one user's whole assignment on one project, for the
-// operations whose subject is the assignment itself. authorize() uses
-// RoleForUser instead: it needs the role and nothing else, on every request.
-func (q *Queries) GetProjectRole(ctx context.Context, arg GetProjectRoleParams) (GetProjectRoleRow, error) {
-	row := q.db.QueryRow(ctx, getProjectRole, arg.ProjectID, arg.UserID)
-	var i GetProjectRoleRow
-	err := row.Scan(&i.UserID, &i.Role, &i.CreatedAt)
-	return i, err
+func (q *Queries) DeleteProjectRole(ctx context.Context, arg DeleteProjectRoleParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteProjectRole, arg.ProjectID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertProjectRole = `-- name: InsertProjectRole :exec
@@ -146,6 +125,36 @@ func (q *Queries) ListProjectRoles(ctx context.Context, projectID int32) ([]List
 	return items, nil
 }
 
+const lockProjectRole = `-- name: LockProjectRole :one
+SELECT user_id, role, created_at FROM projects.project_roles
+WHERE project_id = $1 AND user_id = $2
+FOR UPDATE
+`
+
+type LockProjectRoleParams struct {
+	ProjectID int32
+	UserID    uuid.UUID
+}
+
+type LockProjectRoleRow struct {
+	UserID    uuid.UUID
+	Role      string
+	CreatedAt time.Time
+}
+
+// LockProjectRole is one user's whole assignment on one project, locked for
+// the rest of the transaction. Every operation whose subject is the
+// assignment itself reads it this way: the role it finds decides what the
+// timeline is told, so nothing may change that role between the read and the
+// write. authorize() uses RoleForUser instead — it needs the role and nothing
+// else, on every request, and takes no lock.
+func (q *Queries) LockProjectRole(ctx context.Context, arg LockProjectRoleParams) (LockProjectRoleRow, error) {
+	row := q.db.QueryRow(ctx, lockProjectRole, arg.ProjectID, arg.UserID)
+	var i LockProjectRoleRow
+	err := row.Scan(&i.UserID, &i.Role, &i.CreatedAt)
+	return i, err
+}
+
 const roleForUser = `-- name: RoleForUser :one
 SELECT role FROM projects.project_roles
 WHERE project_id = $1 AND user_id = $2
@@ -171,7 +180,7 @@ const upsertProjectRole = `-- name: UpsertProjectRole :one
 INSERT INTO projects.project_roles (project_id, user_id, role, created_at)
 VALUES ($1, $2, $3, $4::timestamptz)
 ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
-RETURNING user_id, role, created_at
+RETURNING user_id, role, created_at, (xmax = 0) AS inserted
 `
 
 type UpsertProjectRoleParams struct {
@@ -185,14 +194,19 @@ type UpsertProjectRoleRow struct {
 	UserID    uuid.UUID
 	Role      string
 	CreatedAt time.Time
+	Inserted  bool
 }
 
 // UpsertProjectRole adds one user's role on one project, or changes the role
 // they already hold. created_at is left alone on a change: an assignment that
-// moved from member to viewer is the same assignment, not a new one. Whether
-// this was an add or a change is decided by the caller from the role it read
-// first, so two managers assigning the same user at once both write a row
-// rather than one of them failing the primary key.
+// moved from member to viewer is the same assignment, not a new one.
+//
+// `inserted` is what the write itself did, read off the row's xmax: zero on a
+// row this statement created, non-zero on one it updated. The timeline's
+// role-added / role-changed decision is made from it rather than from a read
+// taken beforehand, because between such a read and this write another
+// request can insert or delete the very row in question — and then the entry
+// would describe something that did not happen.
 func (q *Queries) UpsertProjectRole(ctx context.Context, arg UpsertProjectRoleParams) (UpsertProjectRoleRow, error) {
 	row := q.db.QueryRow(ctx, upsertProjectRole,
 		arg.ProjectID,
@@ -201,6 +215,11 @@ func (q *Queries) UpsertProjectRole(ctx context.Context, arg UpsertProjectRolePa
 		arg.Now,
 	)
 	var i UpsertProjectRoleRow
-	err := row.Scan(&i.UserID, &i.Role, &i.CreatedAt)
+	err := row.Scan(
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
+		&i.Inserted,
+	)
 	return i, err
 }
