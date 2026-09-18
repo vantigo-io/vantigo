@@ -6,8 +6,8 @@ import { stubFetch } from "./fetch";
 import { entry, kvemLines, myProjects, myTasks, WEEK, week } from "./fixtures";
 
 export interface TimeServer {
-  /** The caller's week, whichever Monday is asked for. */
-  week?: TimeWeek;
+  /** The caller's week, whichever Monday is asked for; a function is asked again on every read. */
+  week?: TimeWeek | (() => TimeWeek);
   settings?: TimeSettings;
   projects?: MyProject[];
   lines?: Record<number, ProjectBillingLine[]>;
@@ -27,13 +27,14 @@ export const stubTimeApi = (server: TimeServer = {}) =>
     const path = url.pathname;
     const method = init?.method ?? "GET";
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    const currentWeek = (): TimeWeek => (typeof server.week === "function" ? server.week() : (server.week ?? week([])));
 
     if (method !== "GET") {
       const answer = server.write?.(method, path, body);
       if (answer) return Promise.resolve(answer);
       if (method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
       if (path.endsWith("/submit") && path.startsWith("/api/v1/time/weeks/")) {
-        return Promise.resolve(jsonResponse(200, server.week ?? week([])));
+        return Promise.resolve(jsonResponse(200, currentWeek()));
       }
       if (path === "/api/v1/time/entries" && method === "POST") {
         return Promise.resolve(jsonResponse(201, entry({ ...body, id: 900, revision: 1 })));
@@ -43,7 +44,7 @@ export const stubTimeApi = (server: TimeServer = {}) =>
 
     if (path.startsWith("/api/v1/time/weeks/")) {
       const weekStart = path.split("/").at(-1) ?? WEEK;
-      return Promise.resolve(jsonResponse(200, { ...(server.week ?? week([])), weekStart }));
+      return Promise.resolve(jsonResponse(200, { ...currentWeek(), weekStart }));
     }
     if (path === "/api/v1/time/settings") return Promise.resolve(jsonResponse(200, server.settings ?? {}));
     if (path === "/api/v1/projects") {

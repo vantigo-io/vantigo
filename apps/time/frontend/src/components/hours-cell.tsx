@@ -1,5 +1,5 @@
 import { TextInput, Tooltip } from "@mantine/core";
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, useRef, useState } from "react";
 import { useHoursFormat } from "../lib/hours";
 import { type TimeEntryStatus, timeEntryStatusColor } from "../lib/status";
 import { parseHours } from "../lib/week";
@@ -18,6 +18,8 @@ export interface HoursCellProps {
   onCommit: (hours: number | null) => void;
   /** The typed text is not a duration; the cell has already gone back to the saved value. */
   onInvalid: () => void;
+  /** Where a read-only cell sends the person instead — the day view, for a day the grid cannot write. */
+  onActivate?: () => void;
 }
 
 /**
@@ -26,19 +28,36 @@ export interface HoursCellProps {
  * the saved value back. Only a changed value is committed, so tabbing
  * through the grid saves nothing.
  */
-export const HoursCell = ({ label, hours, status, readOnly, tooltip, onCommit, onInvalid }: HoursCellProps) => {
+export const HoursCell = ({
+  label,
+  hours,
+  status,
+  readOnly,
+  tooltip,
+  onCommit,
+  onInvalid,
+  onActivate,
+}: HoursCellProps) => {
   const format = useHoursFormat();
   const saved = hours === undefined ? "" : format.input(hours);
   const [text, setText] = useState(saved);
   // The saved value moves when the week is read back after a write: follow
   // it, adjusting state during render as React documents, not in an effect.
   const [lastSaved, setLastSaved] = useState(saved);
+  const cancelled = useRef(false);
   if (saved !== lastSaved) {
     setLastSaved(saved);
     setText(saved);
   }
 
   const commit = () => {
+    // Escape blurs the input, so the blur that follows it must not save what
+    // the person just cancelled.
+    if (cancelled.current) {
+      cancelled.current = false;
+      setText(saved);
+      return;
+    }
     const value = text.trim();
     if (readOnly || value === saved) return;
     if (value === "") {
@@ -61,6 +80,7 @@ export const HoursCell = ({ label, hours, status, readOnly, tooltip, onCommit, o
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") event.currentTarget.blur();
     if (event.key === "Escape") {
+      cancelled.current = true;
       setText(saved);
       event.currentTarget.blur();
     }
@@ -79,6 +99,7 @@ export const HoursCell = ({ label, hours, status, readOnly, tooltip, onCommit, o
         readOnly={readOnly}
         data-status={status}
         onChange={(event) => setText(event.currentTarget.value)}
+        onClick={readOnly ? onActivate : undefined}
         onBlur={commit}
         onKeyDown={onKeyDown}
         styles={{
@@ -90,7 +111,7 @@ export const HoursCell = ({ label, hours, status, readOnly, tooltip, onCommit, o
                   backgroundColor: `var(--mantine-color-${color}-light)`,
                 }
               : {}),
-            ...(readOnly ? { cursor: "default" } : {}),
+            ...(readOnly ? { cursor: onActivate ? "pointer" : "default" } : {}),
           },
         }}
       />
