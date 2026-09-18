@@ -275,11 +275,14 @@ func (s *server) GetTimeStatsAttention(ctx context.Context, _ gen.GetTimeStatsAt
 // GetTimeProjectsByProjectIdSummary Get a project's time summary
 // (GET /api/v1/time/projects/{projectId}/summary)
 //
-// For any caller who sees the project (seesProject); anyone else, and a
-// project the directory does not know, gets the bare 404. The hours are an
-// aggregate — everyone's, per person — which a member sees although they see
-// only their own entries: it exposes no entry. The billing is D8's, for
-// callers who may see the project's financials (seesProjectFinancials).
+// For any caller who sees the project (seesProject), and for time:view-all,
+// time:approve and time:manage (seesEveryone), who see every entry on it
+// anyway; anyone else, and a project the directory does not know, gets the
+// bare 404. The hours are an aggregate — everyone's, per person — which a
+// member sees although they see only their own entries: it exposes no entry.
+// The billing is D8's, for callers who may see the project's financials: its
+// managers, projects:manage-all, and projects:view-financials on a summary
+// the caller may read — a time permission alone never adds it.
 func (s *server) GetTimeProjectsByProjectIdSummary(ctx context.Context, req gen.GetTimeProjectsByProjectIdSummaryRequestObject) (gen.GetTimeProjectsByProjectIdSummaryResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	c, err := s.callerFor(ctx, q)
@@ -290,7 +293,8 @@ func (s *server) GetTimeProjectsByProjectIdSummary(ctx context.Context, req gen.
 	if err != nil {
 		return nil, err
 	}
-	if !c.seesProject(role) {
+	readable := c.seesProject(role) || c.seesEveryone()
+	if !readable {
 		return gen.GetTimeProjectsByProjectIdSummary404Response{}, nil
 	}
 	project, err := s.deps.Projects.Project(ctx, req.ProjectId)
@@ -366,7 +370,7 @@ func (s *server) GetTimeProjectsByProjectIdSummary(ctx context.Context, req gen.
 			ByPerson: people,
 		},
 	}
-	if c.seesProjectFinancials(role) {
+	if role == roleManager || c.ProjectsManageAll || (c.ProjectsFinancials && readable) {
 		billing, err := projectBilling(ctx, q, req.ProjectId, project.Currency)
 		if err != nil {
 			return nil, err

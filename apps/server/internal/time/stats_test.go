@@ -516,9 +516,11 @@ func TestGetTimeProjectSummary_HoursAndBillingForAManager(t *testing.T) {
 }
 
 // D8 on the summary: a member sees the project's hours — everyone's, as an
-// aggregate — but not its money; projects:view-financials on a project the
-// caller sees, or projects:manage-all, adds the billing; projects:view-all
-// alone does not.
+// aggregate — but not its money; projects:view-financials on a summary the
+// caller may read, or projects:manage-all, adds the billing; projects:view-all
+// alone does not. The time permissions that see every entry — time:view-all,
+// time:approve — read the hours without a role on the project, and never the
+// money on their own.
 func TestGetTimeProjectSummary_BillingOnlyForThoseWhoSeeTheFinancials(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -536,6 +538,13 @@ func TestGetTimeProjectSummary_BillingOnlyForThoseWhoSeeTheFinancials(t *testing
 			return c
 		}(), true},
 		{"projects:manage-all", func() *modtest.Client { c, _ := signIn(t, h, "projects:manage-all"); return c }(), true},
+		{"time:view-all", func() *modtest.Client { c, _ := signIn(t, h, "time:view-all"); return c }(), false},
+		{"time:approve", func() *modtest.Client { c, _ := signIn(t, h, "time:approve"); return c }(), false},
+		{"time:manage", func() *modtest.Client { c, _ := signIn(t, h, "time:manage"); return c }(), false},
+		{"time:view-all+projects:view-financials", func() *modtest.Client {
+			c, _ := signIn(t, h, "time:view-all", "projects:view-financials")
+			return c
+		}(), true},
 	} {
 		s, raw := readProjectSummary(t, tc.client, projectKraftVerket)
 		if _, has := raw["billing"]; has != tc.wantBilling {
@@ -547,25 +556,26 @@ func TestGetTimeProjectSummary_BillingOnlyForThoseWhoSeeTheFinancials(t *testing
 	}
 }
 
-// A caller who does not see the project gets the bare 404 an unknown
-// project gets — time:view-all included, which sees entries, not projects —
-// and a project the directory does not know is 404 even to someone who sees
-// every project.
+// A caller with no path to the project — no role on it, no project-wide
+// projects permission and no time permission that sees every entry — gets
+// the bare 404 an unknown project gets, projects:view-financials alone
+// included, and a project the directory does not know is 404 even to
+// someone who sees every project and every entry.
 func TestGetTimeProjectSummary_NotFoundForOutsidersAndUnknownProjects(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	summaryFixture(t, h)
 	outsider, _ := signIn(t, h)
-	viewAllTime, _ := signIn(t, h, "time:view-all")
+	financialsOnly, _ := signIn(t, h, "projects:view-financials")
 	otherManager, _ := signInAs(t, h, projectEuro, roleManager)
-	projectsViewAll, _ := signIn(t, h, "projects:view-all")
+	seesEverything, _ := signIn(t, h, "projects:view-all", "time:view-all")
 
-	for name, c := range map[string]*modtest.Client{"outsider": outsider, "time:view-all": viewAllTime, "another project's manager": otherManager} {
+	for name, c := range map[string]*modtest.Client{"outsider": outsider, "projects:view-financials": financialsOnly, "another project's manager": otherManager} {
 		if r := c.Do(http.MethodGet, projectSummaryPath(projectKraftVerket), nil); r.Status != http.StatusNotFound || len(r.Body) != 0 {
 			t.Errorf("%s: status %d body %q, want a bare 404", name, r.Status, r.Body)
 		}
 	}
-	if r := projectsViewAll.Do(http.MethodGet, projectSummaryPath(projectUnknown), nil); r.Status != http.StatusNotFound || len(r.Body) != 0 {
+	if r := seesEverything.Do(http.MethodGet, projectSummaryPath(projectUnknown), nil); r.Status != http.StatusNotFound || len(r.Body) != 0 {
 		t.Errorf("unknown project: status %d body %q, want a bare 404", r.Status, r.Body)
 	}
 }
