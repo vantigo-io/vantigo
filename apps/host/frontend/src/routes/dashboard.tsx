@@ -17,6 +17,7 @@ import { DatePickerInput } from "@mantine/dates";
 import {
   IconAlertCircle,
   IconBolt,
+  IconBriefcase,
   IconChecklist,
   IconCircleCheck,
   IconClock,
@@ -95,6 +96,15 @@ interface EnergySummary {
   previousConsumptionKwh: number;
 }
 
+interface ProjectsSummary {
+  from: string;
+  to: string;
+  activeProjects: number;
+  activeProjectsDelta: number;
+  newProjects: number;
+  newProjectsDelta: number;
+}
+
 interface AttentionItem {
   id: string;
   type: string;
@@ -142,6 +152,14 @@ const moduleCards = [
     module: "energy" as ModuleKey,
     requiredPermissions: ["energy:metering-points-view", "energy:meters-view"],
   },
+  {
+    title: "dashboard.projects",
+    description: "dashboard.manageProjects",
+    path: "/projects",
+    icon: IconBriefcase,
+    module: "projects" as ModuleKey,
+    requiredPermissions: ["projects:access"],
+  },
 ] as const;
 
 const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {
@@ -161,6 +179,7 @@ const metrics = [
   },
   { module: "products" as ModuleKey, metric: "newProducts", color: "orange.6", label: "dashboard.newProducts" },
   { module: "energy" as ModuleKey, metric: "consumptionKwh", color: "teal.6", label: "dashboard.consumption" },
+  { module: "projects" as ModuleKey, metric: "newProjects", color: "grape.6", label: "dashboard.newProjects" },
 ] as const;
 
 const dateOnly = (value: Date) => value.toISOString().slice(0, 10);
@@ -280,6 +299,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const projectsSummary = useQuery({
+    queryKey: ["dashboard", "projects", "summary", range.from.toISOString(), range.to.toISOString()],
+    queryFn: ({ signal }) => fetchSummary<ProjectsSummary>("projects", range, signal),
+    enabled: allowed("projects"),
+    retry: false,
+  });
+
   const customersTimeseries = useQuery({
     queryKey: [
       "dashboard",
@@ -319,6 +345,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const projectsTimeseries = useQuery({
+    queryKey: ["dashboard", "projects", "timeseries", "newProjects", range.from.toISOString(), range.to.toISOString()],
+    queryFn: ({ signal }) => fetchTimeseries("projects", "newProjects", range, signal),
+    enabled: allowed("projects"),
+    retry: false,
+  });
+
   const customersAttention = useQuery({
     queryKey: ["dashboard", "customers", "attention"],
     queryFn: ({ signal }) => fetchAttention("customers", signal),
@@ -344,17 +377,26 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const projectsAttention = useQuery({
+    queryKey: ["dashboard", "projects", "attention"],
+    queryFn: ({ signal }) => fetchAttention("projects", signal),
+    enabled: allowed("projects"),
+    retry: false,
+  });
+
   const timeseriesByMetric: Record<string, DailyPoint[] | undefined> = {
     "customers:newCustomers": customersTimeseries.data,
     "communications:newConversations": communicationsTimeseries.data,
     "products:newProducts": productsTimeseries.data,
     "energy:consumptionKwh": energyTimeseries.data,
+    "projects:newProjects": projectsTimeseries.data,
   };
   const timeseriesQueries: Record<string, { isPending: boolean; isError: boolean }> = {
     "customers:newCustomers": customersTimeseries,
     "communications:newConversations": communicationsTimeseries,
     "products:newProducts": productsTimeseries,
     "energy:consumptionKwh": energyTimeseries,
+    "projects:newProjects": projectsTimeseries,
   };
   const availableMetrics = metrics.filter((metric) => allowed(metric.module));
   const defaultMetric = availableMetrics[0];
@@ -373,18 +415,21 @@ const DashboardPage = () => {
     (allowed("customers") && customersAttention.isPending) ||
     (allowed("communications") && communicationsAttention.isPending) ||
     (allowed("products") && productsAttention.isPending) ||
-    (allowed("energy") && energyAttention.isPending);
+    (allowed("energy") && energyAttention.isPending) ||
+    (allowed("projects") && projectsAttention.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
     (allowed("products") && productsTimeseries.isPending) ||
-    (allowed("energy") && energyTimeseries.isPending);
+    (allowed("energy") && energyTimeseries.isPending) ||
+    (allowed("projects") && projectsTimeseries.isPending);
 
   const attentionItems = [
     ...(customersAttention.data ?? []).map((item) => ({ ...item, module: "customers" as ModuleKey })),
     ...(communicationsAttention.data ?? []).map((item) => ({ ...item, module: "communications" as ModuleKey })),
     ...(productsAttention.data ?? []).map((item) => ({ ...item, module: "products" as ModuleKey })),
     ...(energyAttention.data ?? []).map((item) => ({ ...item, module: "energy" as ModuleKey })),
+    ...(projectsAttention.data ?? []).map((item) => ({ ...item, module: "projects" as ModuleKey })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -401,6 +446,9 @@ const DashboardPage = () => {
     ...(energyTimeseries.data ?? [])
       .slice(-3)
       .map((item) => ({ ...item, module: "energy" as ModuleKey, metric: "consumptionKwh" })),
+    ...(projectsTimeseries.data ?? [])
+      .slice(-3)
+      .map((item) => ({ ...item, module: "projects" as ModuleKey, metric: "newProjects" })),
   ]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
@@ -412,6 +460,7 @@ const DashboardPage = () => {
     if (item.module === "customers") return `/customers/${encodeURIComponent(item.entityId)}`;
     if (item.module === "products") return `/products/${encodeURIComponent(item.entityId)}`;
     if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
+    if (item.module === "projects") return `/projects/${encodeURIComponent(item.entityId)}`;
     return "/communications/inbox";
   };
   const setupItems = [
@@ -442,6 +491,13 @@ const DashboardPage = () => {
       href: "/energy/metering-points",
       complete: (energySummary.data?.meteringPointCount ?? 0) > 0,
       loading: energySummary.isPending,
+    },
+    {
+      module: "projects" as ModuleKey,
+      label: t("dashboard.createFirstProject"),
+      href: "/projects",
+      complete: (projectsSummary.data?.activeProjects ?? 0) > 0,
+      loading: projectsSummary.isPending,
     },
   ].filter((item) => allowed(item.module));
   const incompleteSetupItems = setupItems.filter((item) => !item.complete);
@@ -548,6 +604,27 @@ const DashboardPage = () => {
                 sparklineData={sparkline(communicationsTimeseries.data)}
                 href={href}
                 loading={communicationsSummary.isPending || communicationsTimeseries.isPending}
+              />
+            );
+          }
+          if (module.module === "projects") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.activeProjects")}
+                value={projectsSummary.data?.activeProjects ?? "—"}
+                hint={t("dashboard.newProjectsHint", { count: projectsSummary.data?.newProjects ?? 0 })}
+                delta={
+                  projectsSummary.data
+                    ? {
+                        value: deltaPercent(projectsSummary.data.newProjects, projectsSummary.data.newProjectsDelta),
+                        label: t("dashboard.vsPrevious"),
+                      }
+                    : undefined
+                }
+                sparklineData={sparkline(projectsTimeseries.data)}
+                href={href}
+                loading={projectsSummary.isPending || projectsTimeseries.isPending}
               />
             );
           }

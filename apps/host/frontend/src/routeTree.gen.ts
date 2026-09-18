@@ -19,6 +19,7 @@ import { Route as EnergyRouteImport } from './routes/energy'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as PasswordResetRouteImport } from './routes/password-reset'
 import { Route as ProductsRouteImport } from './routes/products'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SessionExpiredRouteImport } from './routes/session-expired'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -38,6 +39,8 @@ import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
 import { Route as ProductsCategoriesRouteImport } from './routes/products/categories'
 import { Route as ProductsTaxCategoriesRouteImport } from './routes/products/tax-categories'
+import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
+import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
@@ -48,10 +51,14 @@ import { Route as WorkspaceRolesRouteImport } from './routes/workspace/roles'
 import { Route as WorkspaceUsersRouteImport } from './routes/workspace/users'
 import { Route as CustomersCustomerIdIndexRouteImport } from './routes/customers/$customerId.index'
 import { Route as CustomersCustomerIdEnergyRouteImport } from './routes/customers/$customerId.energy'
+import { Route as CustomersCustomerIdProjectsRouteImport } from './routes/customers/$customerId.projects'
 import { Route as CustomersContactsIndexRouteImport } from './routes/customers/contacts/index'
 import { Route as CustomersContactsContactIdRouteImport } from './routes/customers/contacts/$contactId'
 import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/metering-points/index'
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
+import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
+import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
+import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -101,6 +108,11 @@ const PasswordResetRoute = PasswordResetRouteImport.update({
 const ProductsRoute = ProductsRouteImport.update({
   id: '/products',
   path: '/products',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
@@ -199,6 +211,16 @@ const ProductsTaxCategoriesRoute = ProductsTaxCategoriesRouteImport.update({
   path: '/tax-categories',
   getParentRoute: () => ProductsRoute,
 } as any)
+const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProjectsRoute,
+} as any)
+const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
+  id: '/$projectId',
+  path: '/$projectId',
+  getParentRoute: () => ProjectsRoute,
+} as any)
 const SettingsIndexRoute = SettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -251,6 +273,12 @@ const CustomersCustomerIdEnergyRoute =
     path: '/energy',
     getParentRoute: () => CustomersCustomerIdRoute,
   } as any)
+const CustomersCustomerIdProjectsRoute =
+  CustomersCustomerIdProjectsRouteImport.update({
+    id: '/projects',
+    path: '/projects',
+    getParentRoute: () => CustomersCustomerIdRoute,
+  } as any)
 const CustomersContactsIndexRoute = CustomersContactsIndexRouteImport.update({
   id: '/contacts/',
   path: '/contacts/',
@@ -274,6 +302,22 @@ const EnergyMeteringPointsMeteringPointIdRoute =
     path: '/metering-points/$meteringPointId',
     getParentRoute: () => EnergyRoute,
   } as any)
+const ProjectsProjectIdIndexRoute = ProjectsProjectIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProjectsProjectIdRoute,
+} as any)
+const ProjectsProjectIdBillingRoute =
+  ProjectsProjectIdBillingRouteImport.update({
+    id: '/billing',
+    path: '/billing',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
+const ProjectsProjectIdPeopleRoute = ProjectsProjectIdPeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
+  getParentRoute: () => ProjectsProjectIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -286,6 +330,7 @@ export interface FileRoutesByFullPath {
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/products': typeof ProductsRouteWithChildren
+  '/projects': typeof ProjectsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -300,6 +345,7 @@ export interface FileRoutesByFullPath {
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -311,14 +357,19 @@ export interface FileRoutesByFullPath {
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
   '/products/': typeof ProductsIndexRoute
+  '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
+  '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
+  '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -348,14 +399,19 @@ export interface FileRoutesByTo {
   '/customers': typeof CustomersIndexRoute
   '/energy': typeof EnergyIndexRoute
   '/products': typeof ProductsIndexRoute
+  '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
+  '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
+  '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
+  '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -369,6 +425,7 @@ export interface FileRoutesById {
   '/forgot-password': typeof ForgotPasswordRoute
   '/password-reset': typeof PasswordResetRoute
   '/products': typeof ProductsRouteWithChildren
+  '/projects': typeof ProjectsRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/session-expired': typeof SessionExpiredRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -383,6 +440,7 @@ export interface FileRoutesById {
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
@@ -394,14 +452,19 @@ export interface FileRoutesById {
   '/customers/': typeof CustomersIndexRoute
   '/energy/': typeof EnergyIndexRoute
   '/products/': typeof ProductsIndexRoute
+  '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
+  '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
+  '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
+  '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
+  '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -416,6 +479,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/password-reset'
     | '/products'
+    | '/projects'
     | '/reset-password'
     | '/session-expired'
     | '/settings'
@@ -430,6 +494,7 @@ export interface FileRouteTypes {
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
+    | '/projects/$projectId'
     | '/settings/profile'
     | '/settings/security'
     | '/workspace/invitations'
@@ -441,14 +506,19 @@ export interface FileRouteTypes {
     | '/customers/'
     | '/energy/'
     | '/products/'
+    | '/projects/'
     | '/settings/'
     | '/workspace/'
     | '/customers/$customerId/energy'
+    | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
+    | '/projects/$projectId/billing'
+    | '/projects/$projectId/people'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
+    | '/projects/$projectId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -478,14 +548,19 @@ export interface FileRouteTypes {
     | '/customers'
     | '/energy'
     | '/products'
+    | '/projects'
     | '/settings'
     | '/workspace'
     | '/customers/$customerId/energy'
+    | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
+    | '/projects/$projectId/billing'
+    | '/projects/$projectId/people'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/energy/metering-points'
+    | '/projects/$projectId'
   id:
     | '__root__'
     | '/'
@@ -498,6 +573,7 @@ export interface FileRouteTypes {
     | '/forgot-password'
     | '/password-reset'
     | '/products'
+    | '/projects'
     | '/reset-password'
     | '/session-expired'
     | '/settings'
@@ -512,6 +588,7 @@ export interface FileRouteTypes {
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
+    | '/projects/$projectId'
     | '/settings/profile'
     | '/settings/security'
     | '/workspace/invitations'
@@ -523,14 +600,19 @@ export interface FileRouteTypes {
     | '/customers/'
     | '/energy/'
     | '/products/'
+    | '/projects/'
     | '/settings/'
     | '/workspace/'
     | '/customers/$customerId/energy'
+    | '/customers/$customerId/projects'
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
+    | '/projects/$projectId/billing'
+    | '/projects/$projectId/people'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
+    | '/projects/$projectId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -544,6 +626,7 @@ export interface RootRouteChildren {
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   PasswordResetRoute: typeof PasswordResetRoute
   ProductsRoute: typeof ProductsRouteWithChildren
+  ProjectsRoute: typeof ProjectsRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SessionExpiredRoute: typeof SessionExpiredRoute
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -623,6 +706,13 @@ declare module '@tanstack/react-router' {
       path: '/products'
       fullPath: '/products'
       preLoaderRoute: typeof ProductsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reset-password': {
@@ -758,6 +848,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsTaxCategoriesRouteImport
       parentRoute: typeof ProductsRoute
     }
+    '/projects/': {
+      id: '/projects/'
+      path: '/'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof ProjectsIndexRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/$projectId': {
+      id: '/projects/$projectId'
+      path: '/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ProjectsProjectIdRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
     '/settings/': {
       id: '/settings/'
       path: '/'
@@ -828,6 +932,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CustomersCustomerIdEnergyRouteImport
       parentRoute: typeof CustomersCustomerIdRoute
     }
+    '/customers/$customerId/projects': {
+      id: '/customers/$customerId/projects'
+      path: '/projects'
+      fullPath: '/customers/$customerId/projects'
+      preLoaderRoute: typeof CustomersCustomerIdProjectsRouteImport
+      parentRoute: typeof CustomersCustomerIdRoute
+    }
     '/customers/contacts/': {
       id: '/customers/contacts/'
       path: '/contacts'
@@ -855,6 +966,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/energy/metering-points/$meteringPointId'
       preLoaderRoute: typeof EnergyMeteringPointsMeteringPointIdRouteImport
       parentRoute: typeof EnergyRoute
+    }
+    '/projects/$projectId/': {
+      id: '/projects/$projectId/'
+      path: '/'
+      fullPath: '/projects/$projectId/'
+      preLoaderRoute: typeof ProjectsProjectIdIndexRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/projects/$projectId/billing': {
+      id: '/projects/$projectId/billing'
+      path: '/billing'
+      fullPath: '/projects/$projectId/billing'
+      preLoaderRoute: typeof ProjectsProjectIdBillingRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
+    '/projects/$projectId/people': {
+      id: '/projects/$projectId/people'
+      path: '/people'
+      fullPath: '/projects/$projectId/people'
+      preLoaderRoute: typeof ProjectsProjectIdPeopleRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
     }
   }
 }
@@ -889,11 +1021,13 @@ const CommunicationsRouteWithChildren = CommunicationsRoute._addFileChildren(
 
 interface CustomersCustomerIdRouteChildren {
   CustomersCustomerIdEnergyRoute: typeof CustomersCustomerIdEnergyRoute
+  CustomersCustomerIdProjectsRoute: typeof CustomersCustomerIdProjectsRoute
   CustomersCustomerIdIndexRoute: typeof CustomersCustomerIdIndexRoute
 }
 
 const CustomersCustomerIdRouteChildren: CustomersCustomerIdRouteChildren = {
   CustomersCustomerIdEnergyRoute: CustomersCustomerIdEnergyRoute,
+  CustomersCustomerIdProjectsRoute: CustomersCustomerIdProjectsRoute,
   CustomersCustomerIdIndexRoute: CustomersCustomerIdIndexRoute,
 }
 
@@ -952,6 +1086,35 @@ const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
   ProductsRouteChildren,
 )
 
+interface ProjectsProjectIdRouteChildren {
+  ProjectsProjectIdBillingRoute: typeof ProjectsProjectIdBillingRoute
+  ProjectsProjectIdPeopleRoute: typeof ProjectsProjectIdPeopleRoute
+  ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
+}
+
+const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
+  ProjectsProjectIdBillingRoute: ProjectsProjectIdBillingRoute,
+  ProjectsProjectIdPeopleRoute: ProjectsProjectIdPeopleRoute,
+  ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
+}
+
+const ProjectsProjectIdRouteWithChildren =
+  ProjectsProjectIdRoute._addFileChildren(ProjectsProjectIdRouteChildren)
+
+interface ProjectsRouteChildren {
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
+  ProjectsIndexRoute: typeof ProjectsIndexRoute
+}
+
+const ProjectsRouteChildren: ProjectsRouteChildren = {
+  ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
+  ProjectsIndexRoute: ProjectsIndexRoute,
+}
+
+const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
+  ProjectsRouteChildren,
+)
+
 interface SettingsRouteChildren {
   SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
@@ -999,6 +1162,7 @@ const rootRouteChildren: RootRouteChildren = {
   ForgotPasswordRoute: ForgotPasswordRoute,
   PasswordResetRoute: PasswordResetRoute,
   ProductsRoute: ProductsRouteWithChildren,
+  ProjectsRoute: ProjectsRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SessionExpiredRoute: SessionExpiredRoute,
   SettingsRoute: SettingsRouteWithChildren,

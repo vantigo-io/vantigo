@@ -22,7 +22,7 @@ const fixture: readonly NavSection[] = [
     ],
   },
 ];
-const allModules = ["communications", "customers", "energy", "products"] as const;
+const allModules = ["communications", "customers", "energy", "products", "projects"] as const;
 const context = (overrides: Partial<Parameters<typeof visibleNavSections>[1]> = {}) => ({
   permissions: ["*"],
   isOwner: false,
@@ -95,6 +95,8 @@ describe("navigation permissions", () => {
       unreadOnly: undefined,
     });
     expect(navSearchFor("products-list")).toEqual({ page: 1, search: "", status: "", categoryId: "" });
+    expect(navSearchFor("energy-list")).toEqual({ page: 1, search: "" });
+    expect(navSearchFor("projects-list")).toEqual({ page: 1, search: "", status: "", mine: false });
     expect(navSearchFor(undefined)).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 import { Button } from "@mantine/core";
-import { IconBolt, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
+import { IconBolt, IconBriefcase, IconLayoutDashboard, IconMessages } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { CustomerDetailHeader } from "@vantigo/customers-ui/pages/customers.$customerId";
@@ -18,13 +18,13 @@ interface CustomerDetailGate {
   requiredPermissions?: readonly string[];
 }
 
-type CustomerDetailView = "overview" | "energy";
+type CustomerDetailView = "overview" | "energy" | "projects";
 
 interface CustomerDetailTab extends CustomerDetailGate {
   value: CustomerDetailView;
-  labelKey: "customer.overviewTab" | "customer.energyTab";
+  labelKey: "customer.overviewTab" | "customer.energyTab" | "customer.projectsTab";
   icon: typeof IconLayoutDashboard;
-  to: "/customers/$customerId" | "/customers/$customerId/energy";
+  to: "/customers/$customerId" | "/customers/$customerId/energy" | "/customers/$customerId/projects";
 }
 
 /** The views of the customer page, each a child route, so the tab row follows the URL. */
@@ -42,6 +42,14 @@ export const customerDetailTabs: CustomerDetailTab[] = [
     to: "/customers/$customerId/energy",
     module: "energy",
     requiredPermissions: ["energy:metering-points-view"],
+  },
+  {
+    value: "projects",
+    labelKey: "customer.projectsTab",
+    icon: IconBriefcase,
+    to: "/customers/$customerId/projects",
+    module: "projects",
+    requiredPermissions: ["projects:access"],
   },
 ];
 
@@ -95,7 +103,9 @@ export const CustomerDetailLayout = () => {
   const visibleTabs = visibleCustomerDetailTabs(enabledModules, permissions);
   const activeTab: CustomerDetailView = matches.some((match) => match.routeId === "/customers/$customerId/energy")
     ? "energy"
-    : "overview";
+    : matches.some((match) => match.routeId === "/customers/$customerId/projects")
+      ? "projects"
+      : "overview";
 
   return (
     <>

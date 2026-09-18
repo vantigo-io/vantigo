@@ -6,6 +6,7 @@ import "@vantigo/communications-ui/i18n";
 import "@vantigo/customers-ui/i18n";
 import "@vantigo/energy-ui/i18n";
 import "@vantigo/products-ui/i18n";
+import "@vantigo/projects-ui/i18n";
 import { adminCatalog } from "./catalogs/admin";
 import { authCatalog } from "./catalogs/auth";
 import { commonCatalog } from "./catalogs/common";
@@ -14,6 +15,7 @@ import { dashboardCatalog } from "./catalogs/dashboard";
 import { errorCatalog } from "./catalogs/error";
 import { legalCatalog } from "./catalogs/legal";
 import { navigationCatalog } from "./catalogs/navigation";
+import { projectCatalog } from "./catalogs/project";
 import { settingsCatalog } from "./catalogs/settings";
 import { systemAdminCatalog } from "./catalogs/system-admin";
 
@@ -38,6 +40,7 @@ export const hostCatalog = {
     ...authCatalog.en,
     ...dashboardCatalog.en,
     ...customerCatalog.en,
+    ...projectCatalog.en,
     ...adminCatalog.en,
     ...settingsCatalog.en,
     ...systemAdminCatalog.en,
@@ -50,6 +53,7 @@ export const hostCatalog = {
     ...authCatalog.nb,
     ...dashboardCatalog.nb,
     ...customerCatalog.nb,
+    ...projectCatalog.nb,
     ...adminCatalog.nb,
     ...settingsCatalog.nb,
     ...systemAdminCatalog.nb,

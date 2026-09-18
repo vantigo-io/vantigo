@@ -7,11 +7,20 @@ const values = (enabledModules: Parameters<typeof visibleCustomerDetailTabs>[0],
 
 describe("customer detail tab visibility", () => {
   it("shows every tab when all modules are enabled and permissions granted", () => {
-    expect(values(["communications", "customers", "energy", "products"], ["*"])).toEqual(["overview", "energy"]);
+    expect(values(moduleKeys, ["*"])).toEqual(["overview", "energy", "projects"]);
   });
 
   it("hides the energy tab when the energy module is disabled for the tenant", () => {
     expect(values(["communications", "customers"], ["*"])).toEqual(["overview"]);
+  });
+
+  it("hides the projects tab when the projects module is disabled for the tenant", () => {
+    expect(values(["communications", "customers", "energy"], ["*"])).toEqual(["overview", "energy"]);
+  });
+
+  it("hides the projects tab without projects:access even though the module is enabled", () => {
+    expect(values(moduleKeys, ["customers:view"])).toEqual(["overview"]);
+    expect(values(moduleKeys, ["projects:access"])).toEqual(["overview", "projects"]);
   });
 
   it("hides the energy tab when its view permission is missing even though the module is enabled", () => {
@@ -20,6 +29,7 @@ describe("customer detail tab visibility", () => {
       "overview",
       "energy",
     ]);
+    expect(values(moduleKeys, ["energy:metering-points-view"])).toEqual(["overview", "energy"]);
   });
 
   // Every module in the navigation catalog ships in this build (the

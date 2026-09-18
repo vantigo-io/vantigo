@@ -1,6 +1,7 @@
 import {
   IconAddressBook,
   IconBolt,
+  IconBriefcase,
   IconCategory,
   IconInbox,
   IconLayoutDashboard,
@@ -106,6 +107,15 @@ export const apps: readonly AppDefinition[] = [
       icon: IconAddressBook,
       requiredPermissions: ["customers:contacts-view", "customers:associations-view"],
       searchStrategy: "customer-list",
+    },
+  ]),
+  moduleApp("projects", "navigation.projects", IconBriefcase, "/projects", [
+    {
+      label: "navigation.projects",
+      to: "/projects",
+      icon: IconBriefcase,
+      requiredPermissions: ["projects:access"],
+      searchStrategy: "projects-list",
     },
   ]),
   moduleApp("communications", "navigation.communications", IconInbox, "/communications", [

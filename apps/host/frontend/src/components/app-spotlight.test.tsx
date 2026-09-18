@@ -8,7 +8,7 @@ import { spotlightNavSections } from "../apps";
 import { type ModuleKey, visibleNavSections } from "../navigation";
 import { AppSpotlight } from "./app-spotlight";
 
-const allModules: ModuleKey[] = ["communications", "customers", "energy", "products"];
+const allModules: ModuleKey[] = ["communications", "customers", "energy", "products", "projects"];
 
 const navigateMock = vi.hoisted(() => vi.fn());
 
@@ -18,6 +18,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 const customer = { id: 7, name: "Acme Corporation" };
+const project = { id: 31, code: "ACME1000", name: "Roof replacement" };
 const meteringPoint = {
   id: 12,
   gsrn: "707057500000000012",
@@ -113,6 +114,7 @@ describe("AppSpotlight navigation authorization", () => {
   it.each([
     ["Create customer", "/customers"],
     ["Add product", "/products"],
+    ["Create project", "/projects"],
   ])("opens the create form from the %s quick action", async (label, to) => {
     const onNavigate = vi.fn();
     renderSpotlight(["*"], true, true, onNavigate);
@@ -196,6 +198,60 @@ describe("AppSpotlight navigation authorization", () => {
     expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/api/v1/customers?"))).toBe(
       true,
     );
+    expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/api/v1/projects"))).toBe(
+      false,
+    );
+  });
+
+  it("finds projects by code or name for a caller holding projects:access", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      return Promise.resolve(
+        new Response(JSON.stringify(url.includes("/api/v1/projects") ? paginated([project]) : paginated([])), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const onNavigate = vi.fn();
+    renderSpotlight(["projects:access"], false, false, onNavigate);
+
+    await enterSearch("roof");
+
+    const label = `${project.code} — ${project.name}`;
+    await waitFor(() => expect(screen.getByText(label, { exact: true })).toBeInTheDocument());
+    expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("search=roof"))).toBe(true);
+
+    fireEvent.click(screen.getByText(label, { exact: true }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/projects/$projectId", params: { projectId: project.id } }),
+    );
+  });
+
+  it("does not search projects when the projects module is disabled", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(String(input).includes("/api/v1/projects") ? paginated([project]) : paginated([])),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderSpotlight(["*"], true, true, undefined, ["customers", "communications", "products", "energy"]);
+
+    await enterSearch("roof");
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("/api/v1/projects"))).toBe(
+      false,
+    );
+    expect(screen.queryByText(`${project.code} — ${project.name}`, { exact: true })).not.toBeInTheDocument();
   });
 
   it("finds metering points by search for users with the energy view permission", async () => {
@@ -278,7 +334,7 @@ describe("AppSpotlight navigation authorization", () => {
       const url = String(input);
       const body = url.includes("/api/v1/customers/contacts")
         ? paginated([{ contact, customer: null, customerCount: 0 }])
-        : url.includes("/metering-points")
+        : url.includes("/metering-points") || url.includes("/api/v1/projects")
           ? paginated([])
           : paginated([customer]);
       return Promise.resolve(
