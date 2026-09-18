@@ -1,0 +1,223 @@
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { sent } from "../test/api";
+import { devTaskRow, entry, pmRow, week, weekRow } from "../test/fixtures";
+import { renderRoute } from "../test/route-tree";
+import { stubTimeApi } from "../test/server";
+
+const DAY = "2026-09-16";
+
+const locked = { canEdit: false, canSubmit: false, canApprove: false, canUnapprove: false };
+
+const dayWeek = () =>
+  week([
+    weekRow(pmRow, [
+      entry({ id: 601, entryDate: DAY, hours: 2, startTime: "08:00", endTime: "10:00", note: "Status meeting" }),
+      entry({ id: 699, entryDate: "2026-09-17", hours: 5, note: "Another day" }),
+    ]),
+    weekRow(devTaskRow, [
+      entry({
+        id: 602,
+        ...devTaskRow,
+        entryDate: DAY,
+        hours: 4.5,
+        status: "submitted",
+        capabilities: locked,
+      }),
+    ]),
+  ]);
+
+/** Picks an option from a Mantine select inside the dialog. */
+const choose = async (dialog: HTMLElement, label: string, option: RegExp | string) => {
+  await userEvent.click(within(dialog).getByRole("combobox", { name: label }));
+  await userEvent.click(await screen.findByRole("option", { name: option }));
+};
+
+/** A native time input takes its value whole, the way a browser's time picker sets it. */
+const setTime = (dialog: HTMLElement, label: string, value: string) =>
+  fireEvent.change(within(dialog).getByLabelText(label), { target: { value } });
+
+describe("DayPage", () => {
+  it("lists the day's own entries with their times, notes, hours and status, and the day total", async () => {
+    stubTimeApi({ week: dayWeek() });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    const meeting = (await screen.findByText("Status meeting")).closest("[data-entry]") as HTMLElement;
+    expect(meeting).toHaveTextContent("KVEM1000 › PM");
+    expect(meeting).toHaveTextContent("08:00–10:00");
+    expect(meeting).toHaveTextContent("2 h");
+    expect(meeting).toHaveTextContent("Draft");
+
+    const task = screen.getByText("KVEM1000 › DEV › Skriv spesifikasjonen").closest("[data-entry]") as HTMLElement;
+    expect(task).toHaveTextContent("Submitted");
+    expect(within(task).queryByRole("button", { name: "Edit the entry" })).not.toBeInTheDocument();
+    expect(within(task).queryByRole("button", { name: "Delete the entry" })).not.toBeInTheDocument();
+
+    expect(screen.queryByText("Another day")).not.toBeInTheDocument();
+    expect(screen.getByTestId("day-total")).toHaveTextContent("6.5 h");
+  });
+
+  it("works the hours out from a start and end time and logs them", async () => {
+    const fetchMock = stubTimeApi({ week: dayWeek() });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    await screen.findByText("Status meeting");
+    await userEvent.click(screen.getByRole("button", { name: "Add entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Log time" });
+
+    await choose(dialog, "Project", /KVEM1000/);
+    await choose(dialog, "Line", /PM/);
+    setTime(dialog, "Start", "12:00");
+    setTime(dialog, "End", "15:30");
+
+    const hours = within(dialog).getByRole("textbox", { name: "Hours" });
+    expect(hours).toHaveValue("3.5");
+    expect(hours).toBeDisabled();
+    expect(within(dialog).getByText("Worked out from the start and end time.")).toBeInTheDocument();
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Note" }), "Workshop");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({
+        url: "/api/v1/time/entries",
+        body: {
+          projectId: 1001,
+          billingLineId: 3001,
+          taskId: null,
+          entryDate: DAY,
+          hours: 3.5,
+          startTime: "12:00",
+          endTime: "15:30",
+          note: "Workshop",
+          billable: true,
+        },
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("takes hours typed in any of the three forms when no times are given", async () => {
+    const fetchMock = stubTimeApi({ week: dayWeek() });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    await screen.findByText("Status meeting");
+    await userEvent.click(screen.getByRole("button", { name: "Add entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Log time" });
+    await choose(dialog, "Project", /KVEM1000/);
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Hours" }), "1:15");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST").body).toMatchObject({
+        hours: 1.25,
+        startTime: null,
+        endTime: null,
+        billingLineId: null,
+      }),
+    );
+  });
+
+  it("refuses a start without an end", async () => {
+    const fetchMock = stubTimeApi({ week: dayWeek() });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    await screen.findByText("Status meeting");
+    await userEvent.click(screen.getByRole("button", { name: "Add entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Log time" });
+    await choose(dialog, "Project", /KVEM1000/);
+    setTime(dialog, "Start", "12:00");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Hours" }), "2");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await within(dialog).findByText("Give both a start and an end time, or neither")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("hides the billable switch on a non-billable project and logs the time as not billable", async () => {
+    const fetchMock = stubTimeApi({ week: dayWeek() });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    await screen.findByText("Status meeting");
+    await userEvent.click(screen.getByRole("button", { name: "Add entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Log time" });
+    expect(within(dialog).queryByRole("switch", { name: "Billable" })).not.toBeInTheDocument();
+    await choose(dialog, "Project", /KVEM1000/);
+    expect(within(dialog).getByRole("switch", { name: "Billable" })).toBeChecked();
+    await choose(dialog, "Project", /INTERN/);
+    expect(within(dialog).queryByRole("switch", { name: "Billable" })).not.toBeInTheDocument();
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Hours" }), "1");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(sent(fetchMock, "POST").body).toMatchObject({ projectId: 1002, billable: false }));
+  });
+
+  it("edits a draft, carrying its revision", async () => {
+    const fetchMock = stubTimeApi({ week: dayWeek() });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    const meeting = (await screen.findByText("Status meeting")).closest("[data-entry]") as HTMLElement;
+    await userEvent.click(within(meeting).getByRole("button", { name: "Edit the entry" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit time" });
+    expect(within(dialog).getByRole("textbox", { name: "Hours" })).toHaveValue("2");
+    setTime(dialog, "End", "11:00");
+    expect(within(dialog).getByRole("textbox", { name: "Hours" })).toHaveValue("3");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      const { url, body } = sent(fetchMock, "PUT");
+      expect(url).toBe("/api/v1/time/entries/601");
+      expect(body).toEqual({
+        projectId: 1001,
+        billingLineId: 3001,
+        taskId: null,
+        entryDate: DAY,
+        hours: 3,
+        startTime: "08:00",
+        endTime: "11:00",
+        note: "Status meeting",
+        billable: true,
+        revision: 2,
+      });
+    });
+  });
+
+  it("deletes a draft once the caller confirms", async () => {
+    const fetchMock = stubTimeApi({ week: dayWeek() });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    const meeting = (await screen.findByText("Status meeting")).closest("[data-entry]") as HTMLElement;
+    await userEvent.click(within(meeting).getByRole("button", { name: "Delete the entry" }));
+    const confirm = await screen.findByRole("dialog", { name: "Delete the entry?" });
+    await userEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      const [url, init] = fetchMock.actualCalls.find(([, request]) => request?.method === "DELETE") ?? [];
+      expect(String(url)).toBe("/api/v1/time/entries/601");
+      expect(init?.method).toBe("DELETE");
+    });
+    expect(await screen.findByText("Entry deleted")).toBeInTheDocument();
+  });
+
+  it("offers no changes on a locked day", async () => {
+    stubTimeApi({ week: dayWeek(), settings: { lockedBefore: "2026-09-17" } });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    await screen.findByText("Status meeting");
+    expect(await screen.findByText("This day is locked. Its entries can no longer be changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add entry" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit the entry" })).not.toBeInTheDocument();
+  });
+
+  it("moves between days through the URL", async () => {
+    stubTimeApi({ week: dayWeek() });
+    const { router } = renderRoute(`/time/day?date=${DAY}`);
+
+    await screen.findByText("Status meeting");
+    await userEvent.click(screen.getByRole("button", { name: "Next day" }));
+    await waitFor(() => expect(router.state.location.search).toEqual({ date: "2026-09-17" }));
+    expect(await screen.findByText("Another day")).toBeInTheDocument();
+  });
+});
