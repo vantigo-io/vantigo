@@ -82,3 +82,23 @@ func TestModulesEnv_DoesNotDuplicateCustomers(t *testing.T) {
 		t.Errorf("modulesEnv(products, products) = %q, want exactly %q", got, "customers,products")
 	}
 }
+
+// TestModulesEnv_ListsAStubbedModuleAsEnabled proves a module a harness
+// stands in for with a fake contract (WithProjects) counts as enabled: time
+// is only valid configuration beside projects (config.go's "time requires
+// projects"), and a harness testing time composes a fake
+// contracts.ProjectDirectory rather than projects itself, so without this
+// config.Load would refuse the harness before Compose ever ran.
+func TestModulesEnv_ListsAStubbedModuleAsEnabled(t *testing.T) {
+	t.Parallel()
+
+	got := modulesEnv([]module.Module{{Name: "time"}}, "projects")
+	if got != "customers,projects,time" {
+		t.Errorf("modulesEnv(time; stubbed projects) = %q, want exactly %q", got, "customers,projects,time")
+	}
+
+	got = modulesEnv([]module.Module{{Name: "projects"}}, "projects")
+	if got != "customers,projects" {
+		t.Errorf("modulesEnv(projects; stubbed projects) = %q, want exactly %q", got, "customers,projects")
+	}
+}

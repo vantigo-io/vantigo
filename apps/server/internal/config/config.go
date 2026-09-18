@@ -1007,7 +1007,9 @@ var defaultModules = knownModules
 // knownModules is a problem naming both the offending value and the known
 // set. energy depends on customers, and so do communications and projects:
 // enabling any of them without customers is its own problem, naming both.
-// Identity is always mounted and is never listed here.
+// time depends on projects the same way (it reads contracts.ProjectDirectory,
+// which only projects provides). Identity is always mounted and is never
+// listed here.
 func modules(p *problems, env map[string]string) []string {
 	v := env["MODULES"]
 	if v == "" {
@@ -1035,6 +1037,9 @@ func modules(p *problems, env map[string]string) []string {
 	}
 	if slices.Contains(out, "projects") && !slices.Contains(out, "customers") {
 		p.add("MODULES", "projects requires customers")
+	}
+	if slices.Contains(out, "time") && !slices.Contains(out, "projects") {
+		p.add("MODULES", "time requires projects")
 	}
 
 	return out
