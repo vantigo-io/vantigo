@@ -12,6 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
+const countTimelineEntries = `-- name: CountTimelineEntries :one
+SELECT count(*) FROM projects.timeline_entries WHERE project_id = $1
+`
+
+// CountTimelineEntries is ListTimelineEntries' total, for the page envelope.
+func (q *Queries) CountTimelineEntries(ctx context.Context, projectID int32) (int64, error) {
+	row := q.db.QueryRow(ctx, countTimelineEntries, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const insertTimelineEntry = `-- name: InsertTimelineEntry :exec
 INSERT INTO projects.timeline_entries (project_id, event_type, payload, actor_user_id, actor_display, occurred_at)
 VALUES ($1, $2, $3, $4, $5, $6::timestamptz)
@@ -41,4 +53,50 @@ func (q *Queries) InsertTimelineEntry(ctx context.Context, arg InsertTimelineEnt
 		arg.Now,
 	)
 	return err
+}
+
+const listTimelineEntries = `-- name: ListTimelineEntries :many
+SELECT id, project_id, event_type, payload, actor_user_id, actor_display, occurred_at FROM projects.timeline_entries
+WHERE project_id = $1
+ORDER BY occurred_at DESC, id DESC
+LIMIT $3 OFFSET $2
+`
+
+type ListTimelineEntriesParams struct {
+	ProjectID  int32
+	PageOffset int32
+	PageSize   int32
+}
+
+// ListTimelineEntries is one page of a project's timeline, newest first, in
+// the order ix_timeline_entries_project_id_occurred_at is built for. The id
+// breaks ties: several entries of one change share an instant (they are
+// written in one transaction from one clock reading), and they must still
+// come back in a stable order, newest written first.
+func (q *Queries) ListTimelineEntries(ctx context.Context, arg ListTimelineEntriesParams) ([]ProjectsTimelineEntry, error) {
+	rows, err := q.db.Query(ctx, listTimelineEntries, arg.ProjectID, arg.PageOffset, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsTimelineEntry
+	for rows.Next() {
+		var i ProjectsTimelineEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.EventType,
+			&i.Payload,
+			&i.ActorUserID,
+			&i.ActorDisplay,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

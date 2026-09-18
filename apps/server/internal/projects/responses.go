@@ -2,6 +2,7 @@ package projects
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -60,6 +61,58 @@ func projectResponse(row store.ProjectsProject, a access, customerName *string, 
 		}
 	}
 	return resp, nil
+}
+
+// projectSummaryResponse is one list row. It is not projectResponse with
+// fields removed: the summary schema has no financial fields at all, so
+// there is nothing here to shape and no caller who could be shown a price by
+// mistake. capabilities and billingLinesAvailable are left out for the same
+// reason — they are answers about one project the caller opened, not about a
+// row in a table.
+func projectSummaryResponse(row store.ProjectsProject, customerName *string, managers []gen.ProjectPersonSummary) (gen.ProjectSummaryResponse, error) {
+	budgetHours, err := floatPtrFromNumeric(row.BudgetHours)
+	if err != nil {
+		return gen.ProjectSummaryResponse{}, err
+	}
+	return gen.ProjectSummaryResponse{
+		Id:           row.ID,
+		Code:         row.Code,
+		Name:         row.Name,
+		CustomerId:   row.CustomerID,
+		CustomerName: customerName,
+		Internal:     row.CustomerID == nil,
+		Status:       row.Status,
+		StartDate:    dateFromPgtype(row.StartDate),
+		EndDate:      dateFromPgtype(row.EndDate),
+		BillingType:  row.BillingType,
+		BudgetHours:  budgetHours,
+		Revision:     row.Revision,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+		Managers:     managers,
+	}, nil
+}
+
+// timelineEntryResponse renders one stored entry. The payload is decoded
+// from the jsonb column rather than passed through as text, so the contract
+// answers a JSON object and not a string containing one; a payload that
+// cannot be decoded is an error rather than an empty object, because an
+// entry whose payload is silently dropped is worse than no answer.
+func timelineEntryResponse(e store.ProjectsTimelineEntry) (gen.TimelineEntryResponse, error) {
+	payload := map[string]any{}
+	if len(e.Payload) > 0 {
+		if err := json.Unmarshal(e.Payload, &payload); err != nil {
+			return gen.TimelineEntryResponse{}, fmt.Errorf("projects: decode timeline payload: %w", err)
+		}
+	}
+	return gen.TimelineEntryResponse{
+		Id:           e.ID,
+		EventType:    e.EventType,
+		Payload:      payload,
+		ActorUserId:  e.ActorUserID,
+		ActorDisplay: e.ActorDisplay,
+		OccurredAt:   e.OccurredAt,
+	}, nil
 }
 
 // projectResponseFor is projectResponse with the two lookups it needs made

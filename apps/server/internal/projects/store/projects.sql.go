@@ -13,6 +13,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countProjects = `-- name: CountProjects :one
+SELECT count(*) FROM projects.projects p
+WHERE ($1::boolean OR EXISTS (
+         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+  AND (NOT $3::boolean OR EXISTS (
+         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+  AND ($4::text IS NULL OR p.status = $4)
+  AND ($5::integer IS NULL OR p.customer_id = $5)
+  AND ($6::boolean IS NULL OR (p.customer_id IS NULL) = $6)
+  AND ($7::text = '' OR p.code ILIKE '%' || $7 || '%' ESCAPE '\'
+                                   OR p.name ILIKE '%' || $7 || '%' ESCAPE '\')
+`
+
+type CountProjectsParams struct {
+	SeeAll     bool
+	UserID     uuid.UUID
+	Mine       bool
+	Status     *string
+	CustomerID *int32
+	Internal   *bool
+	Search     string
+}
+
+// CountProjects is ListProjects' total, under the identical WHERE clause.
+// The two must stay byte-for-byte the same predicate: a filter applied to
+// one and not the other gives a page whose rows and whose totalCount
+// disagree, which is a paging bug nobody notices until the last page.
+func (q *Queries) CountProjects(ctx context.Context, arg CountProjectsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countProjects,
+		arg.SeeAll,
+		arg.UserID,
+		arg.Mine,
+		arg.Status,
+		arg.CustomerID,
+		arg.Internal,
+		arg.Search,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getProject = `-- name: GetProject :one
 SELECT id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at FROM projects.projects WHERE id = $1
 `
@@ -95,6 +137,251 @@ func (q *Queries) InsertProject(ctx context.Context, arg InsertProjectParams) (P
 		arg.CreatedByUserID,
 		arg.Now,
 	)
+	var i ProjectsProject
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.CustomerID,
+		&i.Status,
+		&i.StartDate,
+		&i.EndDate,
+		&i.BillingType,
+		&i.Currency,
+		&i.FixedPriceAmount,
+		&i.BudgetHours,
+		&i.BudgetAmount,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listProjects = `-- name: ListProjects :many
+SELECT p.id, p.code, p.name, p.description, p.customer_id, p.status, p.start_date, p.end_date, p.billing_type, p.currency, p.fixed_price_amount, p.budget_hours, p.budget_amount, p.revision, p.created_by_user_id, p.created_at, p.updated_at FROM projects.projects p
+WHERE ($1::boolean OR EXISTS (
+         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+  AND (NOT $3::boolean OR EXISTS (
+         SELECT 1 FROM projects.project_roles r WHERE r.project_id = p.id AND r.user_id = $2))
+  AND ($4::text IS NULL OR p.status = $4)
+  AND ($5::integer IS NULL OR p.customer_id = $5)
+  AND ($6::boolean IS NULL OR (p.customer_id IS NULL) = $6)
+  AND ($7::text = '' OR p.code ILIKE '%' || $7 || '%' ESCAPE '\'
+                                   OR p.name ILIKE '%' || $7 || '%' ESCAPE '\')
+ORDER BY p.code, p.id
+LIMIT $9 OFFSET $8
+`
+
+type ListProjectsParams struct {
+	SeeAll     bool
+	UserID     uuid.UUID
+	Mine       bool
+	Status     *string
+	CustomerID *int32
+	Internal   *bool
+	Search     string
+	PageOffset int32
+	PageSize   int32
+}
+
+// ListProjects is one page of the projects a caller may see, filtered.
+// Visibility is decided here rather than in Go so that the count below —
+// which repeats this WHERE clause exactly — is the count of what the caller
+// can actually see (design §5). see_all is the caller's view-all/manage-all;
+// without it only projects they hold a role on match, and `mine` narrows
+// that same predicate for a caller who has see_all.
+//
+// search is already ILIKE-escaped by the caller and arrives without its
+// wildcards, which are added here: a '%' or '_' somebody typed is a
+// character, not a pattern. An empty search filters nothing.
+func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]ProjectsProject, error) {
+	rows, err := q.db.Query(ctx, listProjects,
+		arg.SeeAll,
+		arg.UserID,
+		arg.Mine,
+		arg.Status,
+		arg.CustomerID,
+		arg.Internal,
+		arg.Search,
+		arg.PageOffset,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsProject
+	for rows.Next() {
+		var i ProjectsProject
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Description,
+			&i.CustomerID,
+			&i.Status,
+			&i.StartDate,
+			&i.EndDate,
+			&i.BillingType,
+			&i.Currency,
+			&i.FixedPriceAmount,
+			&i.BudgetHours,
+			&i.BudgetAmount,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const managersForProjects = `-- name: ManagersForProjects :many
+SELECT project_id, user_id FROM projects.project_roles
+WHERE project_id = ANY($1::integer[]) AND role = 'manager'
+ORDER BY project_id, created_at, user_id
+`
+
+type ManagersForProjectsRow struct {
+	ProjectID int32
+	UserID    uuid.UUID
+}
+
+// ManagersForProjects is the managers of a whole page of projects in one
+// query, for the list's embedded `managers` — one round trip for the page
+// rather than one per row. The order is the same as ListProjectManagers':
+// oldest assignment first, so a project's creator leads.
+func (q *Queries) ManagersForProjects(ctx context.Context, projectIds []int32) ([]ManagersForProjectsRow, error) {
+	rows, err := q.db.Query(ctx, managersForProjects, projectIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ManagersForProjectsRow
+	for rows.Next() {
+		var i ManagersForProjectsRow
+		if err := rows.Scan(&i.ProjectID, &i.UserID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateProject = `-- name: UpdateProject :one
+UPDATE projects.projects SET
+    code = $1,
+    name = $2,
+    description = $3,
+    customer_id = $4,
+    start_date = $5,
+    end_date = $6,
+    billing_type = $7,
+    currency = $8,
+    fixed_price_amount = $9,
+    budget_hours = $10,
+    budget_amount = $11,
+    revision = revision + 1,
+    updated_at = $12::timestamptz
+WHERE id = $13 AND revision = $14
+RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at
+`
+
+type UpdateProjectParams struct {
+	Code             string
+	Name             string
+	Description      *string
+	CustomerID       *int32
+	StartDate        pgtype.Date
+	EndDate          pgtype.Date
+	BillingType      string
+	Currency         *string
+	FixedPriceAmount pgtype.Numeric
+	BudgetHours      pgtype.Numeric
+	BudgetAmount     pgtype.Numeric
+	Now              time.Time
+	ID               int32
+	Revision         int32
+}
+
+// UpdateProject applies one edit, guarded by the revision the caller read
+// (design §3). A revision that has moved on matches no row, which is the
+// handler's 409: the second writer never silently overwrites the first. The
+// code's uniqueness is left to ux_projects_code here as it is on the insert.
+func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (ProjectsProject, error) {
+	row := q.db.QueryRow(ctx, updateProject,
+		arg.Code,
+		arg.Name,
+		arg.Description,
+		arg.CustomerID,
+		arg.StartDate,
+		arg.EndDate,
+		arg.BillingType,
+		arg.Currency,
+		arg.FixedPriceAmount,
+		arg.BudgetHours,
+		arg.BudgetAmount,
+		arg.Now,
+		arg.ID,
+		arg.Revision,
+	)
+	var i ProjectsProject
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.CustomerID,
+		&i.Status,
+		&i.StartDate,
+		&i.EndDate,
+		&i.BillingType,
+		&i.Currency,
+		&i.FixedPriceAmount,
+		&i.BudgetHours,
+		&i.BudgetAmount,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateProjectStatus = `-- name: UpdateProjectStatus :one
+UPDATE projects.projects SET
+    status = $1,
+    revision = revision + 1,
+    updated_at = $2::timestamptz
+WHERE id = $3
+RETURNING id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at
+`
+
+type UpdateProjectStatusParams struct {
+	Status string
+	Now    time.Time
+	ID     int32
+}
+
+// UpdateProjectStatus is D14's own operation, so the change gets its own
+// timeline entry and, later, its own rules. It carries no revision guard:
+// the handler has already read the row it is changing and a status is not a
+// field two people edit against each other. It still bumps the revision, so
+// an update based on a project read before the status changed is stale.
+func (q *Queries) UpdateProjectStatus(ctx context.Context, arg UpdateProjectStatusParams) (ProjectsProject, error) {
+	row := q.db.QueryRow(ctx, updateProjectStatus, arg.Status, arg.Now, arg.ID)
 	var i ProjectsProject
 	err := row.Scan(
 		&i.ID,

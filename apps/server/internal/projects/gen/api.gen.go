@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -17,6 +18,18 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
+
+// PaginatedResponseOfProjectSummaryResponse defines model for PaginatedResponseOfProjectSummaryResponse.
+type PaginatedResponseOfProjectSummaryResponse struct {
+	Data       []ProjectSummaryResponse        `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// PaginatedResponseOfTimelineEntryResponse defines model for PaginatedResponseOfTimelineEntryResponse.
+type PaginatedResponseOfTimelineEntryResponse struct {
+	Data       []TimelineEntryResponse         `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
 
 // ProjectCapabilities What the calling user may do with this project, so the frontend never re-derives authorization.
 type ProjectCapabilities struct {
@@ -97,17 +110,124 @@ type ProjectResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// ProjectStatusChangeRequest defines model for ProjectStatusChangeRequest.
+type ProjectStatusChangeRequest struct {
+	// Status 'planned', 'active', 'on-hold', 'completed' or 'cancelled'. Any transition is allowed, reopening a completed project included.
+	Status string `json:"status"`
+}
+
+// ProjectSummaryResponse One project as a list row. It carries no financial fields at all — not shaped out, absent from the schema — so no caller ever sees a price in a list.
+type ProjectSummaryResponse struct {
+	BillingType  string              `json:"billingType"`
+	BudgetHours  *float64            `json:"budgetHours,omitempty"`
+	Code         string              `json:"code"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	CustomerId   *int32              `json:"customerId,omitempty"`
+	CustomerName *string             `json:"customerName,omitempty"`
+	EndDate      *openapi_types.Date `json:"endDate,omitempty"`
+	Id           int32               `json:"id"`
+
+	// Internal Whether the project has no customer.
+	Internal  bool                   `json:"internal"`
+	Managers  []ProjectPersonSummary `json:"managers"`
+	Name      string                 `json:"name"`
+	Revision  int32                  `json:"revision"`
+	StartDate *openapi_types.Date    `json:"startDate,omitempty"`
+	Status    string                 `json:"status"`
+	UpdatedAt time.Time              `json:"updatedAt"`
+}
+
+// ProjectUpdateRequest Every field of the project as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409.
+type ProjectUpdateRequest struct {
+	// BillingType 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'.
+	BillingType  string   `json:"billingType"`
+	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
+	BudgetHours  *float64 `json:"budgetHours,omitempty"`
+
+	// Code Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{2,20}$ and be unique.
+	Code string `json:"code"`
+
+	// Currency ISO-4217 alphabetic code, upper-cased. Required as soon as any amount is set.
+	Currency *string `json:"currency,omitempty"`
+
+	// CustomerId The customer this project bills to. Absent means an internal project.
+	CustomerId  *int32              `json:"customerId,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	EndDate     *openapi_types.Date `json:"endDate,omitempty"`
+
+	// FixedPriceAmount Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+	FixedPriceAmount *float64 `json:"fixedPriceAmount,omitempty"`
+	Name             string   `json:"name"`
+
+	// Revision The revision the caller read the project at.
+	Revision  int32               `json:"revision"`
+	StartDate *openapi_types.Date `json:"startDate,omitempty"`
+}
+
+// TimelineEntryResponse One generated event on a project's timeline. The actor's display name is the one captured when the change happened, not a name resolved on read.
+type TimelineEntryResponse struct {
+	ActorDisplay string              `json:"actorDisplay"`
+	ActorUserId  *openapi_types.UUID `json:"actorUserId,omitempty"`
+	EventType    string              `json:"eventType"`
+	Id           int64               `json:"id"`
+	OccurredAt   time.Time           `json:"occurredAt"`
+
+	// Payload The event's own fields. Billing events name which fields changed and never their amounts, so a timeline needs no financial shaping.
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// GetProjectsParams defines parameters for GetProjects.
+type GetProjectsParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// Search Matches the project code or name, case-insensitively. '%' and '_' are literal characters, not wildcards.
+	Search     *string `form:"search,omitempty" json:"search,omitempty"`
+	Status     *string `form:"status,omitempty" json:"status,omitempty"`
+	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
+
+	// Internal true for projects with no customer, false for projects with one.
+	Internal *bool `form:"internal,omitempty" json:"internal,omitempty"`
+
+	// Mine Narrows the list to projects the caller holds a role on.
+	Mine *bool `form:"mine,omitempty" json:"mine,omitempty"`
+}
+
+// GetProjectsByIdTimelineParams defines parameters for GetProjectsByIdTimeline.
+type GetProjectsByIdTimelineParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // PostProjectsJSONRequestBody defines body for PostProjects for application/json ContentType.
 type PostProjectsJSONRequestBody = ProjectCreateRequest
 
+// PutProjectsByIdJSONRequestBody defines body for PutProjectsById for application/json ContentType.
+type PutProjectsByIdJSONRequestBody = ProjectUpdateRequest
+
+// PutProjectsByIdStatusJSONRequestBody defines body for PutProjectsByIdStatus for application/json ContentType.
+type PutProjectsByIdStatusJSONRequestBody = ProjectStatusChangeRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// GetProjects List projects
+	// (GET /api/v1/projects)
+	GetProjects(w http.ResponseWriter, r *http.Request, params GetProjectsParams)
 	// PostProjects Create a project
 	// (POST /api/v1/projects)
 	PostProjects(w http.ResponseWriter, r *http.Request)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(w http.ResponseWriter, r *http.Request, id int32)
+	// PutProjectsById Update a project
+	// (PUT /api/v1/projects/{id})
+	PutProjectsById(w http.ResponseWriter, r *http.Request, id int32)
+	// PutProjectsByIdStatus Change a project's status
+	// (PUT /api/v1/projects/{id}/status)
+	PutProjectsByIdStatus(w http.ResponseWriter, r *http.Request, id int32)
+	// GetProjectsByIdTimeline List a project's timeline
+	// (GET /api/v1/projects/{id}/timeline)
+	GetProjectsByIdTimeline(w http.ResponseWriter, r *http.Request, id int32, params GetProjectsByIdTimelineParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -118,6 +238,117 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// GetProjects operation middleware
+func (siw *ServerInterfaceWrapper) GetProjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "internal" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "internal", r.URL.Query(), &params.Internal, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "internal"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "internal", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "mine" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "mine", r.URL.Query(), &params.Mine, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "mine"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mine", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjects(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // PostProjects operation middleware
 func (siw *ServerInterfaceWrapper) PostProjects(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +381,113 @@ func (siw *ServerInterfaceWrapper) GetProjectsById(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProjectsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsById operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsByIdStatus operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsByIdStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsByIdStatus(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsByIdTimeline operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsByIdTimeline(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsByIdTimelineParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsByIdTimeline(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -279,10 +617,78 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects", wrapper.GetProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects", wrapper.PostProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.GetProjectsById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.PutProjectsById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/status", wrapper.PutProjectsByIdStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/timeline", wrapper.GetProjectsByIdTimeline)
 
 	return m
+}
+
+type GetProjectsRequestObject struct {
+	Params GetProjectsParams
+}
+
+type GetProjectsResponseObject interface {
+	VisitGetProjectsResponse(w http.ResponseWriter) error
+}
+
+type GetProjects200JSONResponse PaginatedResponseOfProjectSummaryResponse
+
+func (response GetProjects200JSONResponse) VisitGetProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjects400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetProjects400ApplicationProblemPlusJSONResponse) VisitGetProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjects401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjects401JSONResponse) VisitGetProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjects403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjects403JSONResponse) VisitGetProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type PostProjectsRequestObject struct {
@@ -407,14 +813,259 @@ func (response GetProjectsById404Response) VisitGetProjectsByIdResponse(w http.R
 	return nil
 }
 
+type PutProjectsByIdRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutProjectsByIdJSONRequestBody
+}
+
+type PutProjectsByIdResponseObject interface {
+	VisitPutProjectsByIdResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsById200JSONResponse ProjectResponse
+
+func (response PutProjectsById200JSONResponse) VisitPutProjectsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsById400ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsById401JSONResponse) VisitPutProjectsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsById403JSONResponse) VisitPutProjectsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsById404Response struct {
+}
+
+func (response PutProjectsById404Response) VisitPutProjectsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsById409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutProjectsById409ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdStatusRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PutProjectsByIdStatusJSONRequestBody
+}
+
+type PutProjectsByIdStatusResponseObject interface {
+	VisitPutProjectsByIdStatusResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsByIdStatus200JSONResponse ProjectResponse
+
+func (response PutProjectsByIdStatus200JSONResponse) VisitPutProjectsByIdStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdStatus400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsByIdStatus400ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdStatus401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdStatus401JSONResponse) VisitPutProjectsByIdStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdStatus403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdStatus403JSONResponse) VisitPutProjectsByIdStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdStatus404Response struct {
+}
+
+func (response PutProjectsByIdStatus404Response) VisitPutProjectsByIdStatusResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetProjectsByIdTimelineRequestObject struct {
+	Id     int32 `json:"id"`
+	Params GetProjectsByIdTimelineParams
+}
+
+type GetProjectsByIdTimelineResponseObject interface {
+	VisitGetProjectsByIdTimelineResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsByIdTimeline200JSONResponse PaginatedResponseOfTimelineEntryResponse
+
+func (response GetProjectsByIdTimeline200JSONResponse) VisitGetProjectsByIdTimelineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdTimeline400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetProjectsByIdTimeline400ApplicationProblemPlusJSONResponse) VisitGetProjectsByIdTimelineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdTimeline401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdTimeline401JSONResponse) VisitGetProjectsByIdTimelineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdTimeline403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdTimeline403JSONResponse) VisitGetProjectsByIdTimelineResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdTimeline404Response struct {
+}
+
+func (response GetProjectsByIdTimeline404Response) VisitGetProjectsByIdTimelineResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// GetProjects List projects
+	// (GET /api/v1/projects)
+	GetProjects(ctx context.Context, request GetProjectsRequestObject) (GetProjectsResponseObject, error)
 	// PostProjects Create a project
 	// (POST /api/v1/projects)
 	PostProjects(ctx context.Context, request PostProjectsRequestObject) (PostProjectsResponseObject, error)
 	// GetProjectsById Get a project by id
 	// (GET /api/v1/projects/{id})
 	GetProjectsById(ctx context.Context, request GetProjectsByIdRequestObject) (GetProjectsByIdResponseObject, error)
+	// PutProjectsById Update a project
+	// (PUT /api/v1/projects/{id})
+	PutProjectsById(ctx context.Context, request PutProjectsByIdRequestObject) (PutProjectsByIdResponseObject, error)
+	// PutProjectsByIdStatus Change a project's status
+	// (PUT /api/v1/projects/{id}/status)
+	PutProjectsByIdStatus(ctx context.Context, request PutProjectsByIdStatusRequestObject) (PutProjectsByIdStatusResponseObject, error)
+	// GetProjectsByIdTimeline List a project's timeline
+	// (GET /api/v1/projects/{id}/timeline)
+	GetProjectsByIdTimeline(ctx context.Context, request GetProjectsByIdTimelineRequestObject) (GetProjectsByIdTimelineResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -454,6 +1105,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GetProjects operation middleware
+func (sh *strictHandler) GetProjects(w http.ResponseWriter, r *http.Request, params GetProjectsParams) {
+	var request GetProjectsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjects(ctx, request.(GetProjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsResponseObject); ok {
+		if err := validResponse.VisitGetProjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // PostProjects operation middleware
@@ -506,6 +1183,99 @@ func (sh *strictHandler) GetProjectsById(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProjectsByIdResponseObject); ok {
 		if err := validResponse.VisitGetProjectsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsById operation middleware
+func (sh *strictHandler) PutProjectsById(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutProjectsByIdRequestObject
+
+	request.Id = id
+
+	var body PutProjectsByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsById(ctx, request.(PutProjectsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsByIdResponseObject); ok {
+		if err := validResponse.VisitPutProjectsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsByIdStatus operation middleware
+func (sh *strictHandler) PutProjectsByIdStatus(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PutProjectsByIdStatusRequestObject
+
+	request.Id = id
+
+	var body PutProjectsByIdStatusJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsByIdStatus(ctx, request.(PutProjectsByIdStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsByIdStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsByIdStatusResponseObject); ok {
+		if err := validResponse.VisitPutProjectsByIdStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsByIdTimeline operation middleware
+func (sh *strictHandler) GetProjectsByIdTimeline(w http.ResponseWriter, r *http.Request, id int32, params GetProjectsByIdTimelineParams) {
+	var request GetProjectsByIdTimelineRequestObject
+
+	request.Id = id
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsByIdTimeline(ctx, request.(GetProjectsByIdTimelineRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsByIdTimeline")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsByIdTimelineResponseObject); ok {
+		if err := validResponse.VisitGetProjectsByIdTimelineResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

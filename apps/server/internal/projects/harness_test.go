@@ -171,6 +171,16 @@ func createBody(overrides map[string]any) map[string]any {
 	return body
 }
 
+// addRole assigns one user one role on one project directly, because the
+// endpoints that assign roles are Task 7's: every test whose subject is what
+// a member or a viewer may do needs the assignment to exist first, and the
+// insert is the same one InsertProjectRole makes.
+func addRole(t *testing.T, h *modtest.Harness, projectID int32, userID uuid.UUID, role string) {
+	t.Helper()
+	h.Exec(t, `INSERT INTO projects.project_roles (project_id, user_id, role, created_at) VALUES ($1, $2, $3, now())`,
+		projectID, userID, role)
+}
+
 // createProject creates a project with createBody(overrides) and fails the
 // test if it is not created. A nil override value removes that field, which
 // is how a test builds an internal project (no customerId).
@@ -232,4 +242,24 @@ type financialsJSON struct {
 type validationProblemJSON struct {
 	Title  string              `json:"title"`
 	Errors map[string][]string `json:"errors"`
+}
+
+// problemJSON decodes the bare RFC 7807 body the two refusals that carry no
+// field map answer with: a list's invalid query parameters and an update's
+// stale revision.
+type problemJSON struct {
+	Title  string `json:"title"`
+	Detail string `json:"detail"`
+	Status int32  `json:"status"`
+}
+
+// paginationJSON decodes common.yaml's PaginationMetadata, shared by the
+// project list and the timeline.
+type paginationJSON struct {
+	Page            int32 `json:"page"`
+	PageSize        int32 `json:"pageSize"`
+	TotalCount      int32 `json:"totalCount"`
+	TotalPages      int32 `json:"totalPages"`
+	HasNextPage     bool  `json:"hasNextPage"`
+	HasPreviousPage bool  `json:"hasPreviousPage"`
 }
