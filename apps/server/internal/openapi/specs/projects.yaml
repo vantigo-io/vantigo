@@ -1,5 +1,123 @@
 components:
     schemas:
+        BillingLineListPrice:
+            description: The variant's list price in the project's currency at the moment of the read, resolved through the products catalog. Absent when the project has no currency or the variant has no price in it.
+            properties:
+                amount:
+                    format: double
+                    type: number
+                currency:
+                    type: string
+            required:
+                - amount
+                - currency
+            type: object
+        BillingLinePricing:
+            description: What this line bills by, present only when the caller may see the project's financial fields (capabilities.canSeeFinancials). Projects stores the rule and never calculates money; whoever invoices resolves the amount.
+            properties:
+                discountPercent:
+                    description: Set exactly when mode is 'discount'; greater than zero and at most 100.
+                    format: double
+                    nullable: true
+                    type: number
+                fixedAmount:
+                    description: Set exactly when mode is 'fixed'; an amount in the project's currency.
+                    format: double
+                    nullable: true
+                    type: number
+                listPrice:
+                    allOf:
+                        - $ref: '#/components/schemas/BillingLineListPrice'
+                    description: Absent when the project has no currency, or the variant has no list price in it.
+                mode:
+                    description: "'list', 'fixed' or 'discount'."
+                    type: string
+            required:
+                - mode
+            type: object
+        BillingLineRequest:
+            description: A billing line as it should stand. The line's variant and pricing rule are always carried in full; active is the one field a PUT may leave out, which leaves the line as it stands.
+            properties:
+                active:
+                    description: PUT only. Absent leaves the line as it stands. There is no DELETE — a line other modules may have billed against is deactivated, never removed.
+                    nullable: true
+                    type: boolean
+                code:
+                    description: Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{1,10}$ and be unique within the project.
+                    type: string
+                discountPercent:
+                    description: Required and in (0, 100] when pricingMode is 'discount', absent otherwise.
+                    format: double
+                    nullable: true
+                    type: number
+                fixedAmount:
+                    description: Required and greater than zero when pricingMode is 'fixed', absent otherwise. A 'fixed' line needs the project to have a currency.
+                    format: double
+                    nullable: true
+                    type: number
+                pricingMode:
+                    description: "'list', 'fixed' or 'discount'."
+                    type: string
+                variantId:
+                    description: The product variant this line is pinned to; it must resolve through the products catalog.
+                    format: int32
+                    type: integer
+            required:
+                - code
+                - variantId
+                - pricingMode
+            type: object
+        BillingLineResponse:
+            description: One billing line — a product variant plus a pricing rule (D9). The variant's product name, SKU and unit are embedded so a reader needs no products permission to render the line.
+            properties:
+                active:
+                    type: boolean
+                code:
+                    type: string
+                createdAt:
+                    format: date-time
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                pricing:
+                    allOf:
+                        - $ref: '#/components/schemas/BillingLinePricing'
+                    description: Absent — not null — when the caller may not see the project's financial fields.
+                productName:
+                    description: Absent when the catalog no longer knows the variant.
+                    nullable: true
+                    type: string
+                sku:
+                    description: Absent when the catalog no longer knows the variant.
+                    nullable: true
+                    type: string
+                trackableCode:
+                    description: The project's code and the line's code joined with a hyphen, as later modules quote it ('KVEM1000-PM'). It follows the project's code when that is changed.
+                    type: string
+                unit:
+                    description: Absent when the catalog no longer knows the variant.
+                    nullable: true
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                variantId:
+                    format: int32
+                    type: integer
+                variantMissing:
+                    description: Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced.
+                    type: boolean
+            required:
+                - id
+                - code
+                - trackableCode
+                - variantId
+                - variantMissing
+                - active
+                - createdAt
+                - updatedAt
+            type: object
         GetProjectStatsResponse:
             description: How many of the projects the caller may see stand in each status, for the list page's key-figure row. Every status is always present, 0 included.
             properties:
@@ -741,6 +859,160 @@ paths:
                 "404":
                     description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
             summary: Search users assignable to a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/billing-lines:
+        get:
+            operationId: getProjectsByIdBillingLines
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/BillingLineResponse'
+                                type: array
+                    description: OK — every line of the project, deactivated ones included, by code. Pricing is shaped out for a caller who may not see financials.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the products module is not enabled, so this installation has no billing lines.
+            summary: List a project's billing lines
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        post:
+            operationId: postProjectsByIdBillingLines
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BillingLineRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingLineResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller holds no role on it and no view-all/manage-all permission.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the products module is not enabled, so this installation has no billing lines.
+            summary: Add a billing line to a project
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/billing-lines/{lineId}:
+        put:
+            operationId: putProjectsByIdBillingLinesByLineId
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+                - in: path
+                  name: lineId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BillingLineRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingLineResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, the caller holds no role on it and no view-all/manage-all permission, or the project has no such line.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the products module is not enabled, so this installation has no billing lines.
+            summary: Change a project's billing line
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
@@ -91,6 +92,130 @@ func projectSummaryResponse(row store.ProjectsProject, customerName *string, man
 		UpdatedAt:    row.UpdatedAt,
 		Managers:     managers,
 	}, nil
+}
+
+// trackableCode is the pair a later module quotes a line by — the project's
+// code and the line's, joined with a hyphen (D2/D9). It is computed from the
+// project as it stands rather than stored beside the line, so renaming a
+// project (D1) moves every one of its lines' trackable codes with it; neither
+// code may contain a hyphen, so the pair always splits cleanly.
+func trackableCode(projectCode, lineCode string) string {
+	return projectCode + "-" + lineCode
+}
+
+// billingLineResponses renders a project's lines for one caller. The variant
+// details every line embeds (D15) are resolved in one catalog call for the
+// whole list rather than one per line; a variant the catalog no longer knows
+// is simply absent from its answer, which is what variantMissing reports.
+// Deps.Products is never nil here: the handlers answer 409 first (D10).
+func (s *server) billingLineResponses(ctx context.Context, project store.ProjectsProject, a access, rows []store.ProjectsBillingLine) ([]gen.BillingLineResponse, error) {
+	ids := make([]int32, 0, len(rows))
+	seen := make(map[int32]bool, len(rows))
+	for _, row := range rows {
+		if !seen[row.VariantID] {
+			seen[row.VariantID] = true
+			ids = append(ids, row.VariantID)
+		}
+	}
+	variants := make(map[int32]contracts.VariantEntry, len(ids))
+	if len(ids) > 0 {
+		found, err := s.deps.Products.Variants(ctx, ids)
+		if err != nil {
+			return nil, fmt.Errorf("projects: resolve the lines' variants: %w", err)
+		}
+		for _, v := range found {
+			variants[v.ID] = v
+		}
+	}
+
+	data := make([]gen.BillingLineResponse, 0, len(rows))
+	for _, row := range rows {
+		line, err := s.billingLineResponse(ctx, project, a, row, variants)
+		if err != nil {
+			return nil, err
+		}
+		data = append(data, line)
+	}
+	return data, nil
+}
+
+// billingLineResponseFor is billingLineResponses for the single line a create
+// or a change answers with, so one line is rendered by exactly the code that
+// renders a list of them.
+func (s *server) billingLineResponseFor(ctx context.Context, project store.ProjectsProject, a access, row store.ProjectsBillingLine) (gen.BillingLineResponse, error) {
+	data, err := s.billingLineResponses(ctx, project, a, []store.ProjectsBillingLine{row})
+	if err != nil {
+		return gen.BillingLineResponse{}, err
+	}
+	return data[0], nil
+}
+
+// billingLineResponse projects one line for one caller. pricing is set
+// exactly when the caller may see the project's money (D12) — the same
+// shaping the project's own financials get, for the same reason: the rates a
+// project bills at are not a member's business.
+func (s *server) billingLineResponse(ctx context.Context, project store.ProjectsProject, a access, row store.ProjectsBillingLine, variants map[int32]contracts.VariantEntry) (gen.BillingLineResponse, error) {
+	resp := gen.BillingLineResponse{
+		Id:            row.ID,
+		Code:          row.Code,
+		TrackableCode: trackableCode(project.Code, row.Code),
+		VariantId:     row.VariantID,
+		Active:        row.Active,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
+	}
+	// A line whose variant products has since dropped keeps resolving, so
+	// that work already billed against it stays readable; it says its variant
+	// is gone rather than inventing a name for it.
+	if variant, ok := variants[row.VariantID]; ok {
+		resp.ProductName = &variant.ProductName
+		resp.Sku = &variant.SKU
+		resp.Unit = &variant.Unit
+	} else {
+		resp.VariantMissing = true
+	}
+	if a.CanSeeFinancials {
+		pricing, err := s.linePricing(ctx, project, row)
+		if err != nil {
+			return gen.BillingLineResponse{}, err
+		}
+		resp.Pricing = pricing
+	}
+	return resp, nil
+}
+
+// linePricing is one line's pricing block: the stored rule, plus the
+// variant's list price in the project's currency at this moment. The list
+// price is resolved rather than stored — a price list the products module
+// changes tomorrow must show through here — and it is simply absent when the
+// project has no currency (D13) or the variant has no price in it. Projects
+// never applies the rule to the price: that is the invoice's arithmetic, not
+// this module's.
+func (s *server) linePricing(ctx context.Context, project store.ProjectsProject, row store.ProjectsBillingLine) (*gen.BillingLinePricing, error) {
+	fixedAmount, err := floatPtrFromNumeric(row.FixedAmount)
+	if err != nil {
+		return nil, err
+	}
+	discountPercent, err := floatPtrFromNumeric(row.DiscountPercent)
+	if err != nil {
+		return nil, err
+	}
+	pricing := &gen.BillingLinePricing{
+		Mode:            row.PricingMode,
+		FixedAmount:     fixedAmount,
+		DiscountPercent: discountPercent,
+	}
+	if project.Currency == nil {
+		return pricing, nil
+	}
+	price, err := s.deps.Products.ListPrice(ctx, row.VariantID, *project.Currency, s.deps.Clock())
+	if err != nil {
+		return nil, fmt.Errorf("projects: resolve a variant's list price: %w", err)
+	}
+	if price != nil {
+		pricing.ListPrice = &gen.BillingLineListPrice{Amount: price.Amount, Currency: price.Currency}
+	}
+	return pricing, nil
 }
 
 // timelineEntryResponse renders one stored entry. The payload is decoded

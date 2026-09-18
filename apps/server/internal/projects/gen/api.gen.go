@@ -19,6 +19,76 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
+// BillingLineListPrice The variant's list price in the project's currency at the moment of the read, resolved through the products catalog. Absent when the project has no currency or the variant has no price in it.
+type BillingLineListPrice struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// BillingLinePricing What this line bills by, present only when the caller may see the project's financial fields (capabilities.canSeeFinancials). Projects stores the rule and never calculates money; whoever invoices resolves the amount.
+type BillingLinePricing struct {
+	// DiscountPercent Set exactly when mode is 'discount'; greater than zero and at most 100.
+	DiscountPercent *float64 `json:"discountPercent,omitempty"`
+
+	// FixedAmount Set exactly when mode is 'fixed'; an amount in the project's currency.
+	FixedAmount *float64 `json:"fixedAmount,omitempty"`
+
+	// ListPrice Absent when the project has no currency, or the variant has no list price in it.
+	ListPrice *BillingLineListPrice `json:"listPrice,omitempty"`
+
+	// Mode 'list', 'fixed' or 'discount'.
+	Mode string `json:"mode"`
+}
+
+// BillingLineRequest A billing line as it should stand. The line's variant and pricing rule are always carried in full; active is the one field a PUT may leave out, which leaves the line as it stands.
+type BillingLineRequest struct {
+	// Active PUT only. Absent leaves the line as it stands. There is no DELETE — a line other modules may have billed against is deactivated, never removed.
+	Active *bool `json:"active,omitempty"`
+
+	// Code Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{1,10}$ and be unique within the project.
+	Code string `json:"code"`
+
+	// DiscountPercent Required and in (0, 100] when pricingMode is 'discount', absent otherwise.
+	DiscountPercent *float64 `json:"discountPercent,omitempty"`
+
+	// FixedAmount Required and greater than zero when pricingMode is 'fixed', absent otherwise. A 'fixed' line needs the project to have a currency.
+	FixedAmount *float64 `json:"fixedAmount,omitempty"`
+
+	// PricingMode 'list', 'fixed' or 'discount'.
+	PricingMode string `json:"pricingMode"`
+
+	// VariantId The product variant this line is pinned to; it must resolve through the products catalog.
+	VariantId int32 `json:"variantId"`
+}
+
+// BillingLineResponse One billing line — a product variant plus a pricing rule (D9). The variant's product name, SKU and unit are embedded so a reader needs no products permission to render the line.
+type BillingLineResponse struct {
+	Active    bool      `json:"active"`
+	Code      string    `json:"code"`
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int32     `json:"id"`
+
+	// Pricing Absent — not null — when the caller may not see the project's financial fields.
+	Pricing *BillingLinePricing `json:"pricing,omitempty"`
+
+	// ProductName Absent when the catalog no longer knows the variant.
+	ProductName *string `json:"productName,omitempty"`
+
+	// Sku Absent when the catalog no longer knows the variant.
+	Sku *string `json:"sku,omitempty"`
+
+	// TrackableCode The project's code and the line's code joined with a hyphen, as later modules quote it ('KVEM1000-PM'). It follows the project's code when that is changed.
+	TrackableCode string `json:"trackableCode"`
+
+	// Unit Absent when the catalog no longer knows the variant.
+	Unit      *string   `json:"unit,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	VariantId int32     `json:"variantId"`
+
+	// VariantMissing Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced.
+	VariantMissing bool `json:"variantMissing"`
+}
+
 // GetProjectStatsResponse How many of the projects the caller may see stand in each status, for the list page's key-figure row. Every status is always present, 0 included.
 type GetProjectStatsResponse struct {
 	Active    int32 `json:"active"`
@@ -290,6 +360,12 @@ type PostProjectsJSONRequestBody = ProjectCreateRequest
 // PutProjectsByIdJSONRequestBody defines body for PutProjectsById for application/json ContentType.
 type PutProjectsByIdJSONRequestBody = ProjectUpdateRequest
 
+// PostProjectsByIdBillingLinesJSONRequestBody defines body for PostProjectsByIdBillingLines for application/json ContentType.
+type PostProjectsByIdBillingLinesJSONRequestBody = BillingLineRequest
+
+// PutProjectsByIdBillingLinesByLineIdJSONRequestBody defines body for PutProjectsByIdBillingLinesByLineId for application/json ContentType.
+type PutProjectsByIdBillingLinesByLineIdJSONRequestBody = BillingLineRequest
+
 // PutProjectsByIdRolesByUserIdJSONRequestBody defines body for PutProjectsByIdRolesByUserId for application/json ContentType.
 type PutProjectsByIdRolesByUserIdJSONRequestBody = ProjectRoleAssignmentRequest
 
@@ -328,6 +404,15 @@ type ServerInterface interface {
 	// GetProjectsByIdAssignableUsers Search users assignable to a project
 	// (GET /api/v1/projects/{id}/assignable-users)
 	GetProjectsByIdAssignableUsers(w http.ResponseWriter, r *http.Request, id int32, params GetProjectsByIdAssignableUsersParams)
+	// GetProjectsByIdBillingLines List a project's billing lines
+	// (GET /api/v1/projects/{id}/billing-lines)
+	GetProjectsByIdBillingLines(w http.ResponseWriter, r *http.Request, id int32)
+	// PostProjectsByIdBillingLines Add a billing line to a project
+	// (POST /api/v1/projects/{id}/billing-lines)
+	PostProjectsByIdBillingLines(w http.ResponseWriter, r *http.Request, id int32)
+	// PutProjectsByIdBillingLinesByLineId Change a project's billing line
+	// (PUT /api/v1/projects/{id}/billing-lines/{lineId})
+	PutProjectsByIdBillingLinesByLineId(w http.ResponseWriter, r *http.Request, id int32, lineId int32)
 	// GetProjectsByIdRoles List a project's people
 	// (GET /api/v1/projects/{id}/roles)
 	GetProjectsByIdRoles(w http.ResponseWriter, r *http.Request, id int32)
@@ -752,6 +837,93 @@ func (siw *ServerInterfaceWrapper) GetProjectsByIdAssignableUsers(w http.Respons
 	handler.ServeHTTP(w, r)
 }
 
+// GetProjectsByIdBillingLines operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsByIdBillingLines(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsByIdBillingLines(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostProjectsByIdBillingLines operation middleware
+func (siw *ServerInterfaceWrapper) PostProjectsByIdBillingLines(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostProjectsByIdBillingLines(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutProjectsByIdBillingLinesByLineId operation middleware
+func (siw *ServerInterfaceWrapper) PutProjectsByIdBillingLinesByLineId(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "lineId" -------------
+	var lineId int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "lineId", r.PathValue("lineId"), &lineId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "lineId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutProjectsByIdBillingLinesByLineId(w, r, id, lineId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProjectsByIdRoles operation middleware
 func (siw *ServerInterfaceWrapper) GetProjectsByIdRoles(w http.ResponseWriter, r *http.Request) {
 
@@ -1055,6 +1227,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.GetProjectsById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}", wrapper.PutProjectsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/assignable-users", wrapper.GetProjectsByIdAssignableUsers)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines", wrapper.GetProjectsByIdBillingLines)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines", wrapper.PostProjectsByIdBillingLines)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines/{lineId}", wrapper.PutProjectsByIdBillingLinesByLineId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/roles", wrapper.GetProjectsByIdRoles)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/{id}/roles/{userId}", wrapper.DeleteProjectsByIdRolesByUserId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/roles/{userId}", wrapper.PutProjectsByIdRolesByUserId)
@@ -1690,6 +1865,253 @@ func (response GetProjectsByIdAssignableUsers404Response) VisitGetProjectsByIdAs
 	return nil
 }
 
+type GetProjectsByIdBillingLinesRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetProjectsByIdBillingLinesResponseObject interface {
+	VisitGetProjectsByIdBillingLinesResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsByIdBillingLines200JSONResponse []BillingLineResponse
+
+func (response GetProjectsByIdBillingLines200JSONResponse) VisitGetProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdBillingLines401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdBillingLines401JSONResponse) VisitGetProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdBillingLines403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdBillingLines403JSONResponse) VisitGetProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdBillingLines404Response struct {
+}
+
+func (response GetProjectsByIdBillingLines404Response) VisitGetProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetProjectsByIdBillingLines409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetProjectsByIdBillingLines409ApplicationProblemPlusJSONResponse) VisitGetProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdBillingLinesRequestObject struct {
+	Id   int32 `json:"id"`
+	Body *PostProjectsByIdBillingLinesJSONRequestBody
+}
+
+type PostProjectsByIdBillingLinesResponseObject interface {
+	VisitPostProjectsByIdBillingLinesResponse(w http.ResponseWriter) error
+}
+
+type PostProjectsByIdBillingLines201JSONResponse BillingLineResponse
+
+func (response PostProjectsByIdBillingLines201JSONResponse) VisitPostProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdBillingLines400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostProjectsByIdBillingLines400ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdBillingLines401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdBillingLines401JSONResponse) VisitPostProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdBillingLines403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostProjectsByIdBillingLines403JSONResponse) VisitPostProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostProjectsByIdBillingLines404Response struct {
+}
+
+func (response PostProjectsByIdBillingLines404Response) VisitPostProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostProjectsByIdBillingLines409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostProjectsByIdBillingLines409ApplicationProblemPlusJSONResponse) VisitPostProjectsByIdBillingLinesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdBillingLinesByLineIdRequestObject struct {
+	Id     int32 `json:"id"`
+	LineId int32 `json:"lineId"`
+	Body   *PutProjectsByIdBillingLinesByLineIdJSONRequestBody
+}
+
+type PutProjectsByIdBillingLinesByLineIdResponseObject interface {
+	VisitPutProjectsByIdBillingLinesByLineIdResponse(w http.ResponseWriter) error
+}
+
+type PutProjectsByIdBillingLinesByLineId200JSONResponse BillingLineResponse
+
+func (response PutProjectsByIdBillingLinesByLineId200JSONResponse) VisitPutProjectsByIdBillingLinesByLineIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdBillingLinesByLineId400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutProjectsByIdBillingLinesByLineId400ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdBillingLinesByLineIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdBillingLinesByLineId401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdBillingLinesByLineId401JSONResponse) VisitPutProjectsByIdBillingLinesByLineIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdBillingLinesByLineId403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutProjectsByIdBillingLinesByLineId403JSONResponse) VisitPutProjectsByIdBillingLinesByLineIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutProjectsByIdBillingLinesByLineId404Response struct {
+}
+
+func (response PutProjectsByIdBillingLinesByLineId404Response) VisitPutProjectsByIdBillingLinesByLineIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutProjectsByIdBillingLinesByLineId409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutProjectsByIdBillingLinesByLineId409ApplicationProblemPlusJSONResponse) VisitPutProjectsByIdBillingLinesByLineIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetProjectsByIdRolesRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -2067,6 +2489,15 @@ type StrictServerInterface interface {
 	// GetProjectsByIdAssignableUsers Search users assignable to a project
 	// (GET /api/v1/projects/{id}/assignable-users)
 	GetProjectsByIdAssignableUsers(ctx context.Context, request GetProjectsByIdAssignableUsersRequestObject) (GetProjectsByIdAssignableUsersResponseObject, error)
+	// GetProjectsByIdBillingLines List a project's billing lines
+	// (GET /api/v1/projects/{id}/billing-lines)
+	GetProjectsByIdBillingLines(ctx context.Context, request GetProjectsByIdBillingLinesRequestObject) (GetProjectsByIdBillingLinesResponseObject, error)
+	// PostProjectsByIdBillingLines Add a billing line to a project
+	// (POST /api/v1/projects/{id}/billing-lines)
+	PostProjectsByIdBillingLines(ctx context.Context, request PostProjectsByIdBillingLinesRequestObject) (PostProjectsByIdBillingLinesResponseObject, error)
+	// PutProjectsByIdBillingLinesByLineId Change a project's billing line
+	// (PUT /api/v1/projects/{id}/billing-lines/{lineId})
+	PutProjectsByIdBillingLinesByLineId(ctx context.Context, request PutProjectsByIdBillingLinesByLineIdRequestObject) (PutProjectsByIdBillingLinesByLineIdResponseObject, error)
 	// GetProjectsByIdRoles List a project's people
 	// (GET /api/v1/projects/{id}/roles)
 	GetProjectsByIdRoles(ctx context.Context, request GetProjectsByIdRolesRequestObject) (GetProjectsByIdRolesResponseObject, error)
@@ -2385,6 +2816,99 @@ func (sh *strictHandler) GetProjectsByIdAssignableUsers(w http.ResponseWriter, r
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProjectsByIdAssignableUsersResponseObject); ok {
 		if err := validResponse.VisitGetProjectsByIdAssignableUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsByIdBillingLines operation middleware
+func (sh *strictHandler) GetProjectsByIdBillingLines(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetProjectsByIdBillingLinesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsByIdBillingLines(ctx, request.(GetProjectsByIdBillingLinesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsByIdBillingLines")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsByIdBillingLinesResponseObject); ok {
+		if err := validResponse.VisitGetProjectsByIdBillingLinesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostProjectsByIdBillingLines operation middleware
+func (sh *strictHandler) PostProjectsByIdBillingLines(w http.ResponseWriter, r *http.Request, id int32) {
+	var request PostProjectsByIdBillingLinesRequestObject
+
+	request.Id = id
+
+	var body PostProjectsByIdBillingLinesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostProjectsByIdBillingLines(ctx, request.(PostProjectsByIdBillingLinesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostProjectsByIdBillingLines")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostProjectsByIdBillingLinesResponseObject); ok {
+		if err := validResponse.VisitPostProjectsByIdBillingLinesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutProjectsByIdBillingLinesByLineId operation middleware
+func (sh *strictHandler) PutProjectsByIdBillingLinesByLineId(w http.ResponseWriter, r *http.Request, id int32, lineId int32) {
+	var request PutProjectsByIdBillingLinesByLineIdRequestObject
+
+	request.Id = id
+	request.LineId = lineId
+
+	var body PutProjectsByIdBillingLinesByLineIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutProjectsByIdBillingLinesByLineId(ctx, request.(PutProjectsByIdBillingLinesByLineIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutProjectsByIdBillingLinesByLineId")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutProjectsByIdBillingLinesByLineIdResponseObject); ok {
+		if err := validResponse.VisitPutProjectsByIdBillingLinesByLineIdResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

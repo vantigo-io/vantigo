@@ -183,6 +183,24 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 		return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
 	}
 
+	// D13's other half, which only an update can break: a 'fixed' billing
+	// line is an amount denominated in the project's currency, so the
+	// currency cannot be cleared while one exists. It is checked here rather
+	// than in validateProject because a project being *created* has no lines
+	// yet, and it is checked whatever Deps.Products holds: lines stored
+	// before products was switched off are still stored, and their amounts
+	// are still in this currency (D10).
+	if parsed.Currency == nil {
+		fixedLines, err := q.CountFixedBillingLines(ctx, before.ID)
+		if err != nil {
+			return nil, fmt.Errorf("projects: count fixed billing lines: %w", err)
+		}
+		if fixedLines > 0 {
+			return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(
+				invalidProject(fieldError("currency", currencyLockedByFixedLine()))), nil
+		}
+	}
+
 	by, err := s.callerAs(ctx)
 	if err != nil {
 		return nil, err
