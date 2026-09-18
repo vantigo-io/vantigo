@@ -1,6 +1,5 @@
 import "./i18n";
 
-export * from "./api/access";
 export * from "./api/customers";
 export * from "./api/lines";
 export * from "./api/people";
@@ -14,7 +13,6 @@ export {
 export { ProjectStatusBadge, type ProjectStatusBadgeProps } from "./components/project-status-badge";
 export { projectsCatalog } from "./i18n";
 export * from "./lib/billing";
-export { holdsPermission } from "./lib/permissions";
 export * from "./lib/roles";
 export * from "./lib/status";
 export { type CodeSuggestion, useCodeSuggestion } from "./lib/use-code-suggestion";

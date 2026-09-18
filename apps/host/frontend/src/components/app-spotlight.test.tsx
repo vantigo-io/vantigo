@@ -221,7 +221,8 @@ describe("AppSpotlight navigation authorization", () => {
 
     const label = `${project.code} — ${project.name}`;
     await waitFor(() => expect(screen.getByText(label, { exact: true })).toBeInTheDocument());
-    expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.includes("search=roof"))).toBe(true);
+    // The package's own search query, asked for the five rows shown here.
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain("/api/v1/projects?search=roof&pageSize=5");
 
     fireEvent.click(screen.getByText(label, { exact: true }));
     expect(onNavigate).toHaveBeenCalledTimes(1);
