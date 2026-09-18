@@ -160,7 +160,11 @@ func TestGetProjects_Filters(t *testing.T) {
 	createProject(t, creator, map[string]any{
 		"code": "INT1000", "name": "Internt opprydding", "customerId": nil, "billingType": "non-billable",
 	})
+	// RAB1000 and SUP1000 are the pair the escaping cases below turn on:
+	// only RAB1000's name contains a literal '%', but an unescaped '50%'
+	// pattern — where the '%' is ILIKE's own wildcard — matches SUP1000 too.
 	createProject(t, creator, map[string]any{"code": "RAB1000", "name": "Rabatt 50% kampanje"})
+	createProject(t, creator, map[string]any{"code": "SUP1000", "name": "150 timer support"})
 
 	// The status filter needs a project that is not 'planned'.
 	setStatus(t, creator, kraft.Id, "active")
@@ -173,14 +177,20 @@ func TestGetProjects_Filters(t *testing.T) {
 		{"status", "status=active", []string{"KVEM1000"}},
 		{"customerId", fmt.Sprintf("customerId=%d", customerAcme), []string{"ACME1000"}},
 		{"internal true", "internal=true", []string{"INT1000"}},
-		{"internal false", "internal=false", []string{"ACME1000", "KVEM1000", "RAB1000"}},
+		{"internal false", "internal=false", []string{"ACME1000", "KVEM1000", "RAB1000", "SUP1000"}},
 		{"search by code", "search=KVEM", []string{"KVEM1000"}},
 		{"search by name", "search=" + url.QueryEscape("ombygging"), []string{"ACME1000"}},
 		{"search is case-insensitive", "search=" + url.QueryEscape("internt oppryd"), []string{"INT1000"}},
-		// A '%' in the search text is a character the caller typed, not a
-		// wildcard: without escaping this would match every project.
+		// The three escaping cases. A '%' or '_' in the search text is a
+		// character the caller typed, not a pattern, and each case is built so
+		// that the unescaped pattern answers something *different* rather than
+		// the same thing by luck:
+		//   '50%'      unescaped matches "150 timer support" as well
+		//   '%'        unescaped matches every project
+		//   'KVEM_000' unescaped matches KVEM1000, '_' standing for the '1'
 		{"search with a literal percent", "search=" + url.QueryEscape("50%"), []string{"RAB1000"}},
-		{"search with a literal underscore matches nothing", "search=" + url.QueryEscape("KVEM_1000"), nil},
+		{"search that is only a percent", "search=" + url.QueryEscape("%"), []string{"RAB1000"}},
+		{"search with a literal underscore", "search=" + url.QueryEscape("KVEM_000"), nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
