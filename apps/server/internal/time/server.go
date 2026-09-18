@@ -5,10 +5,13 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
+	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/module"
 	"github.com/vantigo-io/vantigo/server/internal/time/gen"
+	"github.com/vantigo-io/vantigo/server/internal/time/store"
 )
 
 // server implements gen.StrictServerInterface, the module's contract
@@ -69,4 +72,35 @@ func (s *server) userEntries(ctx context.Context, ids []uuid.UUID) (map[uuid.UUI
 // the way the router evaluates an operation's rule. It fails closed.
 func (s *server) has(ctx context.Context, key string) bool {
 	return contracts.HasPermission(ctx, s.deps.Access, key)
+}
+
+// lockedTxKey marks a context as belonging to a transaction that may hold row
+// or advisory locks (withLockedTx).
+type lockedTxKey struct{}
+
+// inLockedTx reports whether ctx is a withLockedTx transaction's context.
+// Nothing in the module branches on it; the tests' fake directories do, to
+// prove that no directory call is ever made while locks are held.
+func inLockedTx(ctx context.Context) bool {
+	locked, _ := ctx.Value(lockedTxKey{}).(bool)
+	return locked
+}
+
+// withLockedTx runs fn in one transaction on the module's pool — every write
+// here that takes a row or advisory lock goes through it. fn gets a context
+// marked inLockedTx, which shadows the handler's own, and its queries bound
+// to the transaction.
+//
+// The rule it carries: nothing inside fn calls another module's directory.
+// The project and user directories read through the same pool, so a
+// transaction that holds locks and then waits for a second connection can
+// starve the pool when enough of them run at once — every connection held by
+// a transaction waiting for one more. Whatever a decision inside fn needs
+// from a directory is read before the transaction (for access, the caller's
+// role cache: warmRoles), and what a response needs, after it.
+func (s *server) withLockedTx(ctx context.Context, fn func(ctx context.Context, txq *store.Queries) error) error {
+	locked := context.WithValue(ctx, lockedTxKey{}, true)
+	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		return fn(locked, store.New(tx))
+	})
 }

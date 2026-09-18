@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
 // race runs every fn at once — released together, so none has a head start —
@@ -159,5 +161,55 @@ func TestPutTimeEntriesById_RacingEditsAtOneRevision_OneConflicts(t *testing.T) 
 		if got := getEntry(t, owner, e.Id); got.Revision != 2 {
 			t.Errorf("%s: revision %d, want 2", week, got.Revision)
 		}
+	}
+}
+
+// Six batch submits at once, each by its own member, and a manager's batch
+// that names a member's entry (refused, and decided on the manager's role).
+// Every one is decided under row locks without asking the project directory
+// anything inside the transaction: the harness fails the test at cleanup if
+// a directory call was made inside one (lockedCalls), which is what would
+// starve the shared pool when enough of these ran at once.
+func TestPostTimeEntriesSubmit_ConcurrentBatches_AskNoDirectoryUnderLock(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+
+	const members = 6
+	clients := make([]*modtest.Client, members)
+	batches := make([][]int64, members)
+	for i := range members {
+		c, userID := signInAs(t, h, projectKraftVerket, roleMember)
+		h.projects.addRole(projectEuro, userID, roleMember)
+		clients[i] = c
+		batches[i] = entryIDs(
+			createEntry(t, c, nil),
+			createEntry(t, c, map[string]any{"projectId": projectEuro, "entryDate": "2026-09-15"}),
+		)
+	}
+	own := createEntry(t, manager, nil)
+
+	statuses := make([]int, members+1)
+	fns := make([]func(), 0, members+1)
+	for i := range members {
+		fns = append(fns, func() {
+			statuses[i] = clients[i].Do(http.MethodPost, submitPath, map[string]any{"ids": batches[i]}).Status
+		})
+	}
+	fns = append(fns, func() {
+		statuses[members] = manager.Do(http.MethodPost, submitPath, map[string]any{"ids": []int64{own.Id, batches[0][0]}}).Status
+	})
+	race(fns...)
+
+	for i, s := range statuses[:members] {
+		if s != http.StatusOK {
+			t.Errorf("member %d: %d, want 200", i, s)
+		}
+	}
+	if statuses[members] != http.StatusBadRequest {
+		t.Errorf("manager naming a member's entry: %d, want 400", statuses[members])
+	}
+	if n := h.Count(t, `SELECT count(*) FROM time.entries WHERE status = 'submitted'`); n != 2*members {
+		t.Errorf("submitted = %d, want %d", n, 2*members)
 	}
 }

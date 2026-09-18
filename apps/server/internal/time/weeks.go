@@ -12,7 +12,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/time/gen"
 	"github.com/vantigo-io/vantigo/server/internal/time/store"
 )
@@ -212,8 +211,7 @@ func (s *server) PostTimeWeeksByWeekStartSubmit(ctx context.Context, req gen.Pos
 
 	now := s.deps.Clock()
 	var lockedMsg string
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
+	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		drafts, err := txq.LockWeekDrafts(ctx, store.LockWeekDraftsParams{
 			UserID: c.UserID, WeekStart: pgDate(weekStart), WeekEnd: pgDate(weekEnd(weekStart)),
 		})
@@ -270,13 +268,16 @@ func (s *server) PostTimeWeeksByWeekStartSubmit(ctx context.Context, req gen.Pos
 // id on ids. An entry the caller may not see is reported exactly as an
 // unknown id is ("was not found"), so the refusal tells a stranger nothing.
 // The rows are locked in id order and judged as they stand under the lock,
-// as the week's submit judges its drafts. Submitting single entries does not
-// record the week as submitted.
+// as the week's submit judges its drafts — against roles read before the
+// transaction, so no directory is asked while rows are locked. Submitting
+// single entries does not record the week as submitted.
 func (s *server) PostTimeEntriesSubmit(ctx context.Context, req gen.PostTimeEntriesSubmitRequestObject) (gen.PostTimeEntriesSubmitResponseObject, error) {
 	var ids []int64
 	if req.Body != nil {
+		seen := make(map[int64]bool, len(req.Body.Ids))
 		for _, id := range req.Body.Ids {
-			if !slices.Contains(ids, id) {
+			if !seen[id] {
+				seen[id] = true
 				ids = append(ids, id)
 			}
 		}
@@ -292,11 +293,25 @@ func (s *server) PostTimeEntriesSubmit(ctx context.Context, req gen.PostTimeEntr
 		return nil, err
 	}
 
+	// The caller's role on every project the entries are on is read now,
+	// before any row is locked: the decision inside the transaction reads
+	// only the cache (withLockedTx).
+	before, err := q.GetEntries(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("time: read the entries: %w", err)
+	}
+	projectIDs := make([]int32, 0, len(before))
+	for _, row := range before {
+		projectIDs = append(projectIDs, row.ProjectID)
+	}
+	if err := c.warmRoles(ctx, s, projectIDs); err != nil {
+		return nil, err
+	}
+
 	now := s.deps.Clock()
 	var refusals []string
 	var submitted []store.TimeEntry
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
+	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		locked, err := txq.LockEntries(ctx, ids)
 		if err != nil {
 			return fmt.Errorf("time: lock the entries: %w", err)
@@ -306,11 +321,7 @@ func (s *server) PostTimeEntriesSubmit(ctx context.Context, req gen.PostTimeEntr
 			byID[row.ID] = row
 		}
 		for _, id := range ids {
-			msg, err := s.submitRefusal(ctx, c, id, byID)
-			if err != nil {
-				return err
-			}
-			if msg != "" {
+			if msg := c.submitRefusal(id, byID); msg != "" {
 				refusals = append(refusals, msg)
 			}
 		}
@@ -349,25 +360,29 @@ func (s *server) PostTimeEntriesSubmit(ctx context.Context, req gen.PostTimeEntr
 }
 
 // submitRefusal is why the entry id may not be submitted by c, "" when it
-// may. byID is the locked rows; an id missing from it does not exist.
-func (s *server) submitRefusal(ctx context.Context, c *caller, id int64, byID map[int64]store.TimeEntry) (string, error) {
+// may. byID is the locked rows; an id missing from it does not exist. It runs
+// inside the locked transaction, so it reads c's roles from the cache the
+// handler warmed and asks no directory: a project it finds no role for —
+// only possible for an entry moved to another project between the read and
+// the lock — counts as none, which can only turn "is not yours" into "was not
+// found", never let an entry through (submitting needs ownership, not a
+// role).
+func (c *caller) submitRefusal(id int64, byID map[int64]store.TimeEntry) string {
 	row, ok := byID[id]
 	if !ok {
-		return fmt.Sprintf("Entry %d was not found", id), nil
+		return fmt.Sprintf("Entry %d was not found", id)
 	}
-	a, err := s.entryAccess(ctx, c, row)
-	if err != nil {
-		return "", err
-	}
+	role, _ := c.cachedRole(row.ProjectID)
+	a := c.accessFor(row, role)
 	switch {
 	case !a.CanSee:
-		return fmt.Sprintf("Entry %d was not found", id), nil
+		return fmt.Sprintf("Entry %d was not found", id)
 	case !a.IsOwner:
-		return fmt.Sprintf("Entry %d is not yours", id), nil
+		return fmt.Sprintf("Entry %d is not yours", id)
 	case row.Status != statusDraft:
-		return fmt.Sprintf("Entry %d is not a draft", id), nil
+		return fmt.Sprintf("Entry %d is not a draft", id)
 	case !a.CanSubmit:
-		return fmt.Sprintf("Entry %d is dated before %s, the lock date", id, c.LockedBefore.Format(time.DateOnly)), nil
+		return fmt.Sprintf("Entry %d is dated before %s, the lock date", id, c.LockedBefore.Format(time.DateOnly))
 	}
-	return "", nil
+	return ""
 }

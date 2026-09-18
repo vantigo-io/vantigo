@@ -152,12 +152,38 @@ type entryAccess struct {
 	CanUnapprove bool
 }
 
-// entryAccess resolves c's access to entry.
+// entryAccess resolves c's access to entry, asking the project directory for
+// c's role on the entry's project unless it is cached. It must not run inside
+// a locked transaction (withLockedTx); there, warm the roles first and use
+// accessFor with cachedRole.
 func (s *server) entryAccess(ctx context.Context, c *caller, entry store.TimeEntry) (entryAccess, error) {
 	role, err := c.role(ctx, s, entry.ProjectID)
 	if err != nil {
 		return entryAccess{}, err
 	}
+	return c.accessFor(entry, role), nil
+}
+
+// warmRoles reads c's role on every one of projectIDs into the cache, so a
+// decision made later inside a locked transaction needs no directory call.
+func (c *caller) warmRoles(ctx context.Context, s *server, projectIDs []int32) error {
+	for _, id := range projectIDs {
+		if _, err := c.role(ctx, s, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// cachedRole is c's role on projectID as already read, and whether it was.
+func (c *caller) cachedRole(projectID int32) (string, bool) {
+	role, ok := c.roles[projectID]
+	return role, ok
+}
+
+// accessFor is entryAccess given c's role on the entry's project: the whole
+// decision, with nothing left to look up.
+func (c *caller) accessFor(entry store.TimeEntry, role string) entryAccess {
 	a := entryAccess{
 		IsOwner:       entry.UserID == c.UserID,
 		CanSeeProject: role != "" || c.ProjectsViewAll || c.ProjectsManageAll,
@@ -173,7 +199,7 @@ func (s *server) entryAccess(ctx context.Context, c *caller, entry store.TimeEnt
 	a.CanSubmit = a.IsOwner && open && entry.Status == statusDraft
 	a.CanApprove = a.IsApprover && open && entry.Status == statusSubmitted
 	a.CanUnapprove = (a.IsApprover || c.Manage) && entry.Status == statusApproved
-	return a, nil
+	return a
 }
 
 // lockedBefore reads the period lock (D9), nil when none is set.

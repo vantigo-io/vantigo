@@ -61,7 +61,47 @@ func newTimeHarness(t *testing.T, catalog *fakeCatalog, opts ...modtest.Option) 
 	if catalog != nil {
 		base = append(base, modtest.WithProducts(catalog))
 	}
-	return &harness{Harness: modtest.New(t, append(base, opts...)...), projects: projects}
+	h := &harness{Harness: modtest.New(t, append(base, opts...)...), projects: projects}
+	t.Cleanup(func() {
+		if calls := projects.locked.all(); len(calls) > 0 {
+			t.Errorf("project directory called inside a locked transaction: %v", calls)
+		}
+		if catalog != nil {
+			if calls := catalog.locked.all(); len(calls) > 0 {
+				t.Errorf("product catalog called inside a locked transaction: %v", calls)
+			}
+		}
+	})
+	return h
+}
+
+// lockedCalls records every directory call a fake answered from inside one of
+// the module's locked transactions (timetracking.InLockedTx). The directories
+// read through the same connection pool as the module, so a transaction
+// holding row locks while it waits for a directory's connection can starve
+// the pool under load; the rule is that none ever does, and every harness
+// checks it when its test ends (newTimeHarness). A real pool of a size small
+// enough to starve cannot be had here — modtest's pools are a fixed
+// testdb.PoolMaxConns, and the fakes use no connection at all — so the call
+// itself is what is caught.
+type lockedCalls struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+func (l *lockedCalls) note(ctx context.Context, method string) {
+	if !timetracking.InLockedTx(ctx) {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls = append(l.calls, method)
+}
+
+func (l *lockedCalls) all() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.calls)
 }
 
 // The projects the fake directory knows (design §4.2's cases):
@@ -129,6 +169,7 @@ type fakeProjects struct {
 	lines    map[int32]contracts.BillingLineEntry
 	tasks    map[int32]contracts.TaskEntry
 	roles    map[roleKey]string
+	locked   lockedCalls
 }
 
 type roleKey struct {
@@ -204,6 +245,10 @@ func newFakeProjects() *fakeProjects {
 	}
 }
 
+// noteLocked records a directory call made from inside a locked transaction
+// (see lockedCalls). f.mu is held.
+func (f *fakeProjects) noteLocked(ctx context.Context, method string) { f.locked.note(ctx, method) }
+
 // addRole gives userID role on projectID, as assigning it in projects would.
 func (f *fakeProjects) addRole(projectID int32, userID uuid.UUID, role string) {
 	f.mu.Lock()
@@ -219,9 +264,10 @@ func (f *fakeProjects) removeTask(id int32) {
 	delete(f.tasks, id)
 }
 
-func (f *fakeProjects) Project(_ context.Context, id int32) (*contracts.ProjectEntry, error) {
+func (f *fakeProjects) Project(ctx context.Context, id int32) (*contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "Project")
 	p, ok := f.projects[id]
 	if !ok {
 		return nil, nil
@@ -229,15 +275,17 @@ func (f *fakeProjects) Project(_ context.Context, id int32) (*contracts.ProjectE
 	return &p, nil
 }
 
-func (f *fakeProjects) Role(_ context.Context, projectID int32, userID uuid.UUID) (string, error) {
+func (f *fakeProjects) Role(ctx context.Context, projectID int32, userID uuid.UUID) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "Role")
 	return f.roles[roleKey{projectID, userID}], nil
 }
 
-func (f *fakeProjects) BillingLine(_ context.Context, projectID, lineID int32) (*contracts.BillingLineEntry, error) {
+func (f *fakeProjects) BillingLine(ctx context.Context, projectID, lineID int32) (*contracts.BillingLineEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "BillingLine")
 	l, ok := f.lines[lineID]
 	if !ok || l.ProjectID != projectID {
 		return nil, nil
@@ -245,9 +293,10 @@ func (f *fakeProjects) BillingLine(_ context.Context, projectID, lineID int32) (
 	return &l, nil
 }
 
-func (f *fakeProjects) ProjectsForUser(_ context.Context, userID uuid.UUID) ([]contracts.ProjectEntry, error) {
+func (f *fakeProjects) ProjectsForUser(ctx context.Context, userID uuid.UUID) ([]contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "ProjectsForUser")
 	var out []contracts.ProjectEntry
 	for key := range f.roles {
 		if key.userID == userID {
@@ -258,9 +307,10 @@ func (f *fakeProjects) ProjectsForUser(_ context.Context, userID uuid.UUID) ([]c
 	return out, nil
 }
 
-func (f *fakeProjects) Projects(_ context.Context, ids []int32) ([]contracts.ProjectEntry, error) {
+func (f *fakeProjects) Projects(ctx context.Context, ids []int32) ([]contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "Projects")
 	var out []contracts.ProjectEntry
 	for _, id := range ids {
 		if p, ok := f.projects[id]; ok {
@@ -270,9 +320,10 @@ func (f *fakeProjects) Projects(_ context.Context, ids []int32) ([]contracts.Pro
 	return out, nil
 }
 
-func (f *fakeProjects) ProjectByCode(_ context.Context, code string) (*contracts.ProjectEntry, error) {
+func (f *fakeProjects) ProjectByCode(ctx context.Context, code string) (*contracts.ProjectEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "ProjectByCode")
 	for _, p := range f.projects {
 		if p.Code == code {
 			return &p, nil
@@ -281,9 +332,10 @@ func (f *fakeProjects) ProjectByCode(_ context.Context, code string) (*contracts
 	return nil, nil
 }
 
-func (f *fakeProjects) BillingLines(_ context.Context, projectID int32) ([]contracts.BillingLineEntry, error) {
+func (f *fakeProjects) BillingLines(ctx context.Context, projectID int32) ([]contracts.BillingLineEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "BillingLines")
 	var out []contracts.BillingLineEntry
 	for _, l := range f.lines {
 		if l.ProjectID == projectID {
@@ -302,9 +354,10 @@ func (f *fakeProjects) BillingLines(_ context.Context, projectID int32) ([]contr
 	return out, nil
 }
 
-func (f *fakeProjects) Task(_ context.Context, id int32) (*contracts.TaskEntry, error) {
+func (f *fakeProjects) Task(ctx context.Context, id int32) (*contracts.TaskEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "Task")
 	task, ok := f.tasks[id]
 	if !ok {
 		return nil, nil
@@ -312,9 +365,10 @@ func (f *fakeProjects) Task(_ context.Context, id int32) (*contracts.TaskEntry, 
 	return &task, nil
 }
 
-func (f *fakeProjects) OpenTasksForUser(_ context.Context, userID uuid.UUID) ([]contracts.TaskEntry, error) {
+func (f *fakeProjects) OpenTasksForUser(ctx context.Context, userID uuid.UUID) ([]contracts.TaskEntry, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "OpenTasksForUser")
 	var out []contracts.TaskEntry
 	for _, task := range f.tasks {
 		if task.AssigneeUserID != nil && *task.AssigneeUserID == userID && task.Status != "done" {
@@ -326,9 +380,10 @@ func (f *fakeProjects) OpenTasksForUser(_ context.Context, userID uuid.UUID) ([]
 
 // CanLogTime is projects' own rule: the project is open for work and the
 // user holds the member or manager role on it.
-func (f *fakeProjects) CanLogTime(_ context.Context, projectID int32, userID uuid.UUID) (bool, error) {
+func (f *fakeProjects) CanLogTime(ctx context.Context, projectID int32, userID uuid.UUID) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.noteLocked(ctx, "CanLogTime")
 	p, ok := f.projects[projectID]
 	if !ok || !p.OpenForWork {
 		return false, nil
@@ -343,6 +398,7 @@ func (f *fakeProjects) CanLogTime(_ context.Context, projectID int32, userID uui
 // case of the rate chain.
 type fakeCatalog struct {
 	prices map[string]float64
+	locked lockedCalls
 }
 
 var _ contracts.ProductCatalog = (*fakeCatalog)(nil)
@@ -351,7 +407,8 @@ func newFakeCatalog() *fakeCatalog {
 	return &fakeCatalog{prices: map[string]float64{"NOK": 1600, "EUR": 1400}}
 }
 
-func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEntry, error) {
+func (c *fakeCatalog) Variant(ctx context.Context, id int32) (*contracts.VariantEntry, error) {
+	c.locked.note(ctx, "Variant")
 	if id != variantProjectManagerHour {
 		return nil, nil
 	}
@@ -359,6 +416,7 @@ func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEn
 }
 
 func (c *fakeCatalog) Variants(ctx context.Context, ids []int32) ([]contracts.VariantEntry, error) {
+	c.locked.note(ctx, "Variants")
 	var out []contracts.VariantEntry
 	for _, id := range ids {
 		if v, _ := c.Variant(ctx, id); v != nil {
@@ -368,7 +426,8 @@ func (c *fakeCatalog) Variants(ctx context.Context, ids []int32) ([]contracts.Va
 	return out, nil
 }
 
-func (c *fakeCatalog) ListPrice(_ context.Context, variantID int32, currency string, _ time.Time) (*contracts.Money, error) {
+func (c *fakeCatalog) ListPrice(ctx context.Context, variantID int32, currency string, _ time.Time) (*contracts.Money, error) {
+	c.locked.note(ctx, "ListPrice")
 	price, ok := c.prices[currency]
 	if variantID != variantProjectManagerHour || !ok {
 		return nil, nil

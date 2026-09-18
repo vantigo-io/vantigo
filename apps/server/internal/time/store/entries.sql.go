@@ -37,7 +37,7 @@ func (q *Queries) AcquireDayLock(ctx context.Context, arg AcquireDayLockParams) 
 
 const countEntries = `-- name: CountEntries :one
 SELECT count(*) FROM time.entries
-WHERE user_id = $1
+WHERE ($1::uuid IS NULL OR user_id = $1::uuid)
   AND ($2::boolean OR user_id = $3::uuid OR project_id = ANY($4::integer[]))
   AND ($5::date IS NULL
        OR entry_date BETWEEN $5::date AND $6::date)
@@ -46,7 +46,7 @@ WHERE user_id = $1
 `
 
 type CountEntriesParams struct {
-	UserID            uuid.UUID
+	UserID            *uuid.UUID
 	SeeAll            bool
 	CallerID          uuid.UUID
 	ManagedProjectIds []int32
@@ -58,10 +58,12 @@ type CountEntriesParams struct {
 
 // CountEntries counts what ListEntries pages through, under exactly the same
 // predicate, so the total is the number of entries the caller may see and
-// the last page is never empty. Visibility is the first predicate (the rule
-// authorize.go's entryAccess applies to one entry): everything for see_all,
-// the caller's own, and the entries on the projects the caller manages. The
-// filters are optional; week_start and week_end are a Monday and its Sunday.
+// the last page is never empty. Visibility is a predicate of its own (the
+// rule authorize.go's entryAccess applies to one entry): everything for
+// see_all, the caller's own, and the entries on the projects the caller
+// manages. The filters are optional — user_id NULL is everyone's, which the
+// handler only allows with a project filter; week_start and week_end are a
+// Monday and its Sunday.
 func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countEntries,
 		arg.UserID,
@@ -92,6 +94,60 @@ func (q *Queries) DeleteEntry(ctx context.Context, id int64) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getEntries = `-- name: GetEntries :many
+SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries WHERE id = ANY($1::bigint[])
+`
+
+// GetEntries reads the entries in ids without locking them: what a batch
+// reads before its transaction, to learn which projects it will need the
+// caller's role on. An id with no entry is simply absent from the result.
+func (q *Queries) GetEntries(ctx context.Context, ids []int64) ([]TimeEntry, error) {
+	rows, err := q.db.Query(ctx, getEntries, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimeEntry
+	for rows.Next() {
+		var i TimeEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ProjectID,
+			&i.BillingLineID,
+			&i.TaskID,
+			&i.TaskTitle,
+			&i.EntryDate,
+			&i.Hours,
+			&i.StartTime,
+			&i.EndTime,
+			&i.Note,
+			&i.Billable,
+			&i.BillRate,
+			&i.BillCurrency,
+			&i.CostRate,
+			&i.CostCurrency,
+			&i.RateSource,
+			&i.Status,
+			&i.RejectionReason,
+			&i.SubmittedAt,
+			&i.ApprovedByUserID,
+			&i.ApprovedAt,
+			&i.InvoicedAt,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getEntry = `-- name: GetEntry :one
@@ -228,7 +284,7 @@ func (q *Queries) InsertEntry(ctx context.Context, arg InsertEntryParams) (TimeE
 
 const listEntries = `-- name: ListEntries :many
 SELECT id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at FROM time.entries
-WHERE user_id = $1
+WHERE ($1::uuid IS NULL OR user_id = $1::uuid)
   AND ($2::boolean OR user_id = $3::uuid OR project_id = ANY($4::integer[]))
   AND ($5::date IS NULL
        OR entry_date BETWEEN $5::date AND $6::date)
@@ -239,7 +295,7 @@ LIMIT $10 OFFSET $9
 `
 
 type ListEntriesParams struct {
-	UserID            uuid.UUID
+	UserID            *uuid.UUID
 	SeeAll            bool
 	CallerID          uuid.UUID
 	ManagedProjectIds []int32
