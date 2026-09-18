@@ -181,7 +181,16 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
         ...(values.startDate ? { startDate: values.startDate } : {}),
         ...(values.endDate ? { endDate: values.endDate } : {}),
         ...(amount(values.budgetHours) === undefined ? {} : { budgetHours: amount(values.budgetHours) }),
-        ...(showFinancials ? financialFields(values) : {}),
+        // An update is a full replace, so amounts the form did not show must
+        // be sent back as they stand rather than left out — leaving them out
+        // clears them. Today nobody reaches that branch on an edit: managing a
+        // project implies seeing its financial fields
+        // (apps/server/internal/projects/authorize.go — `capManage` is only
+        // ever granted with `capSeeFinancials`, and `manage-all` grants both),
+        // and a response that hides them carries no `financials` to echo. The
+        // echo is here so a change to that invariant cannot quietly wipe a
+        // fixed price.
+        ...(showFinancials ? financialFields(values) : storedFinancials(project)),
       };
       return project ? updateProject(project.id, { ...input, revision: project.revision }) : createProject(input);
     },
@@ -324,6 +333,16 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
       </Stack>
     </form>
   );
+};
+
+/** The project's own amounts, unchanged: what an update carries when the form did not show them. */
+const storedFinancials = (project?: Project) => {
+  const { currency, fixedPriceAmount, budgetAmount } = project?.financials ?? {};
+  return {
+    ...(fixedPriceAmount == null ? {} : { fixedPriceAmount }),
+    ...(budgetAmount == null ? {} : { budgetAmount }),
+    ...(currency == null ? {} : { currency }),
+  };
 };
 
 /** The amount fields, present only for a caller who may see them and only where they mean something. */

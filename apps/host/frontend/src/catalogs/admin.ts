@@ -457,7 +457,7 @@ const en = {
   "admin.permission.projectsAccess": "Use Projects",
   "admin.permission.projectsAccessDescription": "Use the Projects app and see the projects you hold a role in.",
   "admin.permission.projectsCreate": "Create projects",
-  "admin.permission.projectsCreateDescription": "Create projects.",
+  "admin.permission.projectsCreateDescription": "Create projects for customers or internal work.",
   "admin.permission.projectsViewAll": "View all projects",
   "admin.permission.projectsViewAllDescription": "See every project, not only the ones you hold a role in.",
   "admin.permission.projectsManageAll": "Manage all projects",
@@ -767,12 +767,12 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.projectsAccess": "Bruk Prosjekter",
   "admin.permission.projectsAccessDescription": "Bruk Prosjekter-appen og se prosjektene du har en rolle i.",
   "admin.permission.projectsCreate": "Opprett prosjekter",
-  "admin.permission.projectsCreateDescription": "Opprett prosjekter.",
+  "admin.permission.projectsCreateDescription": "Opprett prosjekter for kunder eller internt arbeid.",
   "admin.permission.projectsViewAll": "Se alle prosjekter",
   "admin.permission.projectsViewAllDescription": "Se alle prosjekter, ikke bare dem du har en rolle i.",
   "admin.permission.projectsManageAll": "Administrer alle prosjekter",
   "admin.permission.projectsManageAllDescription":
-    "Administrer alle prosjekter, som også betyr å se dem og deres økonomiske felter.",
+    "Administrer alle prosjekter, som også betyr å se dem og de økonomiske feltene deres.",
   "admin.permission.projectsViewFinancials": "Se prosjektøkonomi",
   "admin.permission.projectsViewFinancialsDescription":
     "Se fastpriser, budsjettbeløp og linjepriser på alle prosjekter du kan se.",
