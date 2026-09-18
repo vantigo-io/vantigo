@@ -55,6 +55,12 @@ const renderModal = (state: BillingLineModalState | null, currency: string | und
   return { onClose };
 };
 
+/** The amount field, whether Mantine hung the test id on the input or its wrapper. */
+const fixedAmountInput = () => {
+  const field = screen.getByTestId("fixed-amount");
+  return (field.querySelector("input") ?? field) as HTMLElement;
+};
+
 const pickVariant = async () => {
   await userEvent.click(screen.getByRole("combobox", { name: "Product variant" }));
   await userEvent.click(await screen.findByRole("option", { name: /Project management/ }));
@@ -107,8 +113,31 @@ describe("BillingLineFormModal", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Fixed amount" }));
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
 
-    expect(await screen.findByText("A fixed line needs an amount")).toBeInTheDocument();
+    expect(await screen.findByText("A fixed line needs an amount above 0")).toBeInTheDocument();
     expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("refuses a fixed amount of zero", async () => {
+    const fetchMock = stubLines();
+    renderModal({ mode: "create" });
+
+    await pickVariant();
+    await userEvent.type(screen.getByLabelText(/line code/i), "PM");
+    await userEvent.click(screen.getByRole("radio", { name: "Fixed amount" }));
+    await userEvent.type(fixedAmountInput(), "0");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("A fixed line needs an amount above 0")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("cannot price a line at a fixed amount until the project has a currency", async () => {
+    stubLines();
+    renderWithProviders(<BillingLineFormModal projectId={7} state={{ mode: "create" }} onClose={() => {}} />);
+
+    expect(await screen.findByText("A fixed amount needs the project to have a currency")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Fixed amount" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "Discount" })).not.toBeDisabled();
   });
 
   it("edits a line, keeping its rule and offering to switch it off", async () => {

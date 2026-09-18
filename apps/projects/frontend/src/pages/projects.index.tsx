@@ -37,6 +37,7 @@ import {
 import { CustomerPicker } from "../components/customer-picker";
 import { ProjectStatusBadge } from "../components/project-status-badge";
 import "../i18n";
+import { useProjectDates } from "../lib/dates";
 import { holdsPermission } from "../lib/permissions";
 import { isProjectStatus, projectStatuses, projectStatusLabelKey } from "../lib/status";
 import { ProjectFormModal, type ProjectModalState } from "./-project-form-modal";
@@ -214,15 +215,11 @@ export const ProjectsPage = () => {
 };
 
 const ProjectRow = ({ project }: { project: ProjectSummary }) => {
-  const { t, formatters } = useI18n("projects");
+  const { t } = useI18n("projects");
+  const dates = useProjectDates();
   const Link = useShellLink();
   const to = `/projects/${project.id}`;
   const [first, ...rest] = project.managers;
-  // Plain calendar dates: formatted in UTC so a local evening does not move them a day.
-  const day = (value: string) => formatters.formatDate(value, { dateStyle: "medium", timeZone: "UTC" });
-  const start = project.startDate ? day(project.startDate) : null;
-  const end = project.endDate ? day(project.endDate) : null;
-
   return (
     <Table.Tr>
       <Table.Td>
@@ -266,9 +263,7 @@ const ProjectRow = ({ project }: { project: ProjectSummary }) => {
         )}
       </Table.Td>
       <Table.Td>
-        <Text size="sm">
-          {start || end ? `${start ?? t("notAvailable")} – ${end ?? t("notAvailable")}` : t("notAvailable")}
-        </Text>
+        <Text size="sm">{dates.range(project.startDate, project.endDate)}</Text>
       </Table.Td>
     </Table.Tr>
   );

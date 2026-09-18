@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { customerQueryOptions, customerSearchQueryOptions } from "../api/customers";
 import "../i18n";
+import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
 /** The option standing for "no customer at all" — a project the company runs for itself. */
 export type CustomerPickerValue = number | "internal" | null;
@@ -27,8 +28,6 @@ export interface CustomerPickerProps {
   size?: MantineSize;
   w?: number;
 }
-
-const SEARCH_DEBOUNCE_MS = 300;
 
 /**
  * Picks the customer a project bills to, searching the customers API as the

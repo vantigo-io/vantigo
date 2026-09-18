@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Modal, Select, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Box, Button, Card, Group, Modal, Select, Stack, Table, Text } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
@@ -17,8 +17,7 @@ import {
 import { projectQueryOptions } from "../api/projects";
 import "../i18n";
 import { isProjectRole, projectRoleLabelKey, projectRoles } from "../lib/roles";
-
-const SEARCH_DEBOUNCE_MS = 300;
+import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
 /** The role options every picker on this tab offers, in the order roles widen. */
 const useRoleOptions = () => {
@@ -33,13 +32,28 @@ const useRoleOptions = () => {
  */
 export const ProjectPeople = ({ projectId }: { projectId: number }) => {
   const { t } = useI18n("projects");
-  const { data: project } = useQuery(projectQueryOptions(projectId));
+  const project = useQuery(projectQueryOptions(projectId));
   const { data: assignments, isPending, isError, error } = useQuery(projectRolesQueryOptions(projectId));
   const [addOpen, setAddOpen] = useState(false);
 
-  const canManage = project?.capabilities.canManage ?? false;
+  // The project answers who may act here, so the tab waits for it and says so
+  // when it fails, rather than quietly rendering a read-only table.
+  if (project.isError) {
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadProject")} mt="md">
+        {project.error.message}
+      </Alert>
+    );
+  }
+  if (project.isPending)
+    return (
+      <Box mt="md">
+        <ContentSkeleton rows={4} rowHeight={48} />
+      </Box>
+    );
+
+  const canManage = project.data.capabilities.canManage;
   const people = assignments ?? [];
-  const managers = people.filter((person) => person.role === "manager");
 
   return (
     <Card withBorder padding="lg" radius="md" mt="md">
@@ -81,12 +95,6 @@ export const ProjectPeople = ({ projectId }: { projectId: number }) => {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
-        )}
-
-        {canManage && managers.length === 1 && (
-          <Text size="sm" c="dimmed">
-            {t("lastManagerWarning")}
-          </Text>
         )}
       </Stack>
 

@@ -1,10 +1,11 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Alert, Badge, Box, Button, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
 import { IconAlertCircle, IconLock, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
-import { type ReactNode, useState } from "react";
+import { ContentSkeleton, EmptyState, type LocaleFormatters, useI18n } from "@vantigo/frontend-shell";
+import { useState } from "react";
 import { type BillingLine, billingLinesQueryOptions } from "../api/lines";
 import { type Project, projectQueryOptions } from "../api/projects";
+import { Field } from "../components/field";
 import "../i18n";
 import { billingTypeLabelKey, pricingModeLabelKey } from "../lib/billing";
 import { BillingLineFormModal, type BillingLineModalState } from "./-billing-line-form-modal";
@@ -20,15 +21,24 @@ export const ProjectBilling = ({ projectId }: { projectId: number }) => {
 
   if (isError) {
     return (
-      <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadProject")}>
+      <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadProject")} mt="md">
         {error.message}
       </Alert>
     );
   }
-  if (isPending) return <ContentSkeleton rows={4} rowHeight={48} />;
+  if (isPending)
+    return (
+      <Box mt="md">
+        <ContentSkeleton rows={4} rowHeight={48} />
+      </Box>
+    );
 
   if (!project.capabilities.canSeeFinancials) {
-    return <EmptyState icon={IconLock} title={t("financialsHidden")} description={t("financialsHiddenDescription")} />;
+    return (
+      <Box mt="md">
+        <EmptyState icon={IconLock} title={t("financialsHidden")} description={t("financialsHiddenDescription")} />
+      </Box>
+    );
   }
 
   return (
@@ -71,15 +81,6 @@ const FinancialSummary = ({ project }: { project: Project }) => {
     </Card>
   );
 };
-
-const Field = ({ label, children }: { label: string; children: ReactNode }) => (
-  <Stack gap={2}>
-    <Text size="sm" c="dimmed">
-      {label}
-    </Text>
-    <Text size="sm">{children}</Text>
-  </Stack>
-);
 
 const BillingLinesCard = ({ projectId, project }: { projectId: number; project: Project }) => {
   const { t } = useI18n("projects");
@@ -189,7 +190,7 @@ const LineRow = ({
         <Text size="sm">{line.unit ?? t("notAvailable")}</Text>
       </Table.Td>
       <Table.Td>
-        <Text size="sm">{pricingRule(t, formatters.formatCurrency, line, currency)}</Text>
+        <Text size="sm">{pricingRule(t, formatters, line, currency)}</Text>
       </Table.Td>
       <Table.Td>
         <Text size="sm">
@@ -220,19 +221,23 @@ const LineRow = ({
  */
 const pricingRule = (
   t: (key: string, values?: Record<string, unknown>) => string,
-  formatCurrency: (value: number, currency: string) => string,
+  formatters: Pick<LocaleFormatters, "formatCurrency" | "formatNumber">,
   line: BillingLine,
   currency: string | undefined,
 ): string => {
   const pricing = line.pricing;
   if (!pricing) return t("notAvailable");
   if (pricing.mode === "fixed" && pricing.fixedAmount !== undefined && pricing.fixedAmount !== null) {
+    // A project without a currency cannot carry a fixed line, but a line
+    // written before one was cleared still has to render as a number.
     return t("pricingFixedValue", {
-      amount: currency ? formatCurrency(pricing.fixedAmount, currency) : String(pricing.fixedAmount),
+      amount: currency
+        ? formatters.formatCurrency(pricing.fixedAmount, currency)
+        : formatters.formatNumber(pricing.fixedAmount),
     });
   }
   if (pricing.mode === "discount" && pricing.discountPercent !== undefined && pricing.discountPercent !== null) {
-    return t("pricingDiscountValue", { percent: pricing.discountPercent });
+    return t("pricingDiscountValue", { percent: formatters.formatNumber(pricing.discountPercent) });
   }
   return t(pricingModeLabelKey(pricing.mode));
 };
