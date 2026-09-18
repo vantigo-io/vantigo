@@ -95,6 +95,11 @@ describe("ProductsPage", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Create new product");
 
+    // Creating a product is a two-step wizard: pick a type before the form
+    // (with its Cancel button) appears, so the intent-dropping test has to
+    // walk through the picker like a real user would.
+    fireEvent.click(screen.getByRole("button", { name: /Goods/ }));
+
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
