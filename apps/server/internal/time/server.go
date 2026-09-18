@@ -3,6 +3,7 @@ package timetracking
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -42,6 +43,14 @@ const unknownProject = "Unknown project"
 func callerID(ctx context.Context) uuid.UUID {
 	p, _ := contracts.PrincipalFrom(ctx)
 	return p.UserID
+}
+
+// today is the calendar day of Deps.Clock in UTC — the day "the current
+// week" is read from wherever the module needs one (the people overview, the
+// dashboard stats), as entry dates are UTC calendar days.
+func (s *server) today() time.Time {
+	now := s.deps.Clock().UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 // userEntries resolves ids through contracts.UserDirectory — the only way

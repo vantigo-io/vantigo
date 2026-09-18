@@ -427,6 +427,127 @@ components:
                 - approvedHours
                 - rejectedCount
             type: object
+        TimeProjectBilling:
+            description: The money in a project's time (D8), present only for callers who may see the project's financials — its managers, and callers with projects:view-financials or projects:manage-all.
+            properties:
+                amount:
+                    description: The submitted, approved and invoiced billable hours at the bill rate each entry snapshotted, summed in the currency. Drafts are not counted until they are submitted, rejected entries never.
+                    format: double
+                    type: number
+                currency:
+                    description: The project's currency. Absent when the project has none and its priced entries do not share one currency either.
+                    nullable: true
+                    type: string
+                unpricedHours:
+                    description: The submitted, approved and invoiced billable hours that are not in amount — no step of the rate chain resolved a bill rate for them, or they are priced in another currency.
+                    format: double
+                    type: number
+            required:
+                - amount
+                - unpricedHours
+            type: object
+        TimeProjectHours:
+            description: A project's logged hours. total, byLine and byPerson count every entry but rejected ones — the hours that stand, drafts included; byStatus lists every status, rejected included.
+            properties:
+                byLine:
+                    description: The hours per billing line, in the order of the lines' codes, then the hours on no line last (the one element without billingLineId).
+                    items:
+                        $ref: '#/components/schemas/TimeProjectLineHours'
+                    type: array
+                byPerson:
+                    description: The hours per person, by display name. Every caller who sees the summary sees everyone's hours here — an aggregate, not their entries.
+                    items:
+                        $ref: '#/components/schemas/TimeProjectPersonHours'
+                    type: array
+                byStatus:
+                    $ref: '#/components/schemas/TimeProjectHoursByStatus'
+                total:
+                    format: double
+                    type: number
+            required:
+                - total
+                - byStatus
+                - byLine
+                - byPerson
+            type: object
+        TimeProjectHoursByStatus:
+            description: A project's hours in each status; a status with nothing in it answers 0.
+            properties:
+                approved:
+                    format: double
+                    type: number
+                draft:
+                    format: double
+                    type: number
+                invoiced:
+                    format: double
+                    type: number
+                rejected:
+                    format: double
+                    type: number
+                submitted:
+                    format: double
+                    type: number
+            required:
+                - draft
+                - submitted
+                - approved
+                - rejected
+                - invoiced
+            type: object
+        TimeProjectLineHours:
+            description: The hours logged on one billing line of the project, or on none.
+            properties:
+                billingLineCode:
+                    description: The line's code; absent for the hours on no line, and for a line the project directory no longer lists.
+                    nullable: true
+                    type: string
+                billingLineId:
+                    description: Absent for the hours logged on no line.
+                    format: int32
+                    nullable: true
+                    type: integer
+                hours:
+                    format: double
+                    type: number
+                trackableCode:
+                    description: The project's code and the line's, joined with a hyphen ('KVEM1000-PM'); absent whenever billingLineCode is.
+                    nullable: true
+                    type: string
+            required:
+                - hours
+            type: object
+        TimeProjectPersonHours:
+            description: The hours one person logged on the project.
+            properties:
+                displayName:
+                    description: The person's display name; 'Unknown user' when the directory no longer knows them.
+                    type: string
+                hours:
+                    format: double
+                    type: number
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - hours
+            type: object
+        TimeProjectSummaryResponse:
+            description: A project's time at a glance, for the time panel on the project page.
+            properties:
+                billing:
+                    $ref: '#/components/schemas/TimeProjectBilling'
+                hours:
+                    $ref: '#/components/schemas/TimeProjectHours'
+                projectId:
+                    format: int32
+                    type: integer
+            required:
+                - projectId
+                - hours
+            type: object
         TimeRateRequest:
             description: A person rate card row (§4.3). At least one of billRate and costRate; the row is in effect from validFrom until the person's next row.
             properties:
@@ -529,6 +650,71 @@ components:
                     format: date
                     nullable: true
                     type: string
+            type: object
+        TimeStatsAttentionItem:
+            description: 'One thing the dashboard wants a human to look at. The shape is the dashboard''s, shared by every module''s /stats/attention. type ''weekUnsubmitted'': one of the caller''s own past weeks (before the current one) with draft entries in it; id and entityId are the week''s Monday (YYYY-MM-DD), for a link to that week in the time app, and occurredAt is the Monday after it, when the week ended. type ''approvalWaiting'': one person''s entries in one week that the caller may approve and that have waited more than seven days; id and entityId are ''<user id>/<Monday as YYYY-MM-DD>'', the approval queue''s group, and occurredAt is when the oldest of them was submitted.'
+            properties:
+                entityId:
+                    type: string
+                id:
+                    type: string
+                occurredAt:
+                    format: date-time
+                    type: string
+                title:
+                    type: string
+                type:
+                    type: string
+            required:
+                - id
+                - type
+                - title
+                - occurredAt
+                - entityId
+            type: object
+        TimeStatsDailyBucket:
+            description: One calendar day of entry dates in a time series. Days with nothing in them are absent, not zero — the dashboard's sparkline plots the points it is given.
+            properties:
+                date:
+                    format: date
+                    type: string
+                value:
+                    description: Hours.
+                    format: double
+                    type: number
+            type: object
+        TimeStatsSummaryResponse:
+            description: The dashboard's time card, in the envelope every module's /stats/summary shares. Both figures are a state now rather than a count over the period, which only moves awaitingMyApprovalDelta.
+            properties:
+                awaitingMyApproval:
+                    description: How many submitted entries the caller may approve — the approval queue's scope, counted in entries; 0 for a caller who approves nothing.
+                    format: int32
+                    type: integer
+                awaitingMyApprovalDelta:
+                    description: awaitingMyApproval against how many of the same entries were waiting when the period began — reconstructed from the entries' submission, approval and rejection times, so an entry since unapproved or edited back to draft no longer counts in it.
+                    format: int32
+                    type: integer
+                from:
+                    format: date-time
+                    type: string
+                hoursThisWeek:
+                    description: The caller's own hours dated in the current week (Monday to Sunday, dates in UTC), whatever their status apart from rejected.
+                    format: double
+                    type: number
+                hoursThisWeekDelta:
+                    description: hoursThisWeek against the same hours of the week before.
+                    format: double
+                    type: number
+                to:
+                    format: date-time
+                    type: string
+            required:
+                - from
+                - to
+                - hoursThisWeek
+                - hoursThisWeekDelta
+                - awaitingMyApproval
+                - awaitingMyApprovalDelta
             type: object
         TimeWeekDay:
             description: One day of a week row.
@@ -1105,6 +1291,42 @@ paths:
             tags:
                 - Time
             x-vantigo-access: permission:time:access+time:view-all
+    /api/v1/time/projects/{projectId}/summary:
+        get:
+            description: The project's hours per status, per billing line and per person, and — for callers who may see the project's financials (D8) — what they are worth. For any caller who sees the project (a role on it, projects:view-all or projects:manage-all).
+            operationId: getTimeProjectsByProjectIdSummary
+            parameters:
+                - in: path
+                  name: projectId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeProjectSummaryResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — the project does not exist, or the caller may not see it.
+            summary: Get a project's time summary
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
     /api/v1/time/rates:
         get:
             description: Person rate card rows, by display name and then the latest first.
@@ -1349,6 +1571,128 @@ paths:
             tags:
                 - Time
             x-vantigo-access: permission:time:access+time:manage
+    /api/v1/time/stats/attention:
+        get:
+            description: The caller's past weeks with draft entries in them, and — for approvers — the submitted entries they may approve that have waited more than seven days, per person and week.
+            operationId: getTimeStatsAttention
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeStatsAttentionItem'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get time dashboard attention items
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+    /api/v1/time/stats/summary:
+        get:
+            operationId: getTimeStatsSummary
+            parameters:
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TimeStatsSummaryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get time dashboard summary
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
+    /api/v1/time/stats/timeseries:
+        get:
+            description: The caller's own hours per entry date inside the period, rejected ones left out — every entry for metric 'hours', billable ones only for 'billableHours'.
+            operationId: getTimeStatsTimeseries
+            parameters:
+                - in: query
+                  name: metric
+                  schema:
+                    type: string
+                - in: query
+                  name: from
+                  schema:
+                    format: date-time
+                    type: string
+                - in: query
+                  name: to
+                  schema:
+                    format: date-time
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeStatsDailyBucket'
+                                type: array
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get time dashboard time series
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access
     /api/v1/time/weeks/{weekStart}:
         get:
             description: The caller's own week as timesheet rows (project, billing line, task), with the week's submission state.
