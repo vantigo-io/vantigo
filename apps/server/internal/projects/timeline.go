@@ -23,8 +23,8 @@ import (
 // first, and is visible to anyone who can see the project — the entries carry
 // no amounts (D12), so there is nothing on them to shape.
 
-// The timeline's event types. Roles and billing lines add theirs with the
-// operations that cause them (Tasks 7 and 10).
+// The timeline's event types. Billing lines add theirs with the operations
+// that cause them (Task 10).
 const (
 	eventProjectCreated  = "project-created"
 	eventCodeChanged     = "code-changed"
@@ -32,6 +32,9 @@ const (
 	eventBillingChanged  = "billing-changed"
 	eventDetailsChanged  = "details-changed"
 	eventStatusChanged   = "status-changed"
+	eventRoleAdded       = "role-added"
+	eventRoleChanged     = "role-changed"
+	eventRoleRemoved     = "role-removed"
 )
 
 // recordEvent inserts one generated timeline entry. The actor's display name
@@ -67,6 +70,29 @@ func recordProjectCreated(ctx context.Context, q *store.Queries, now time.Time, 
 func recordStatusChanged(ctx context.Context, q *store.Queries, now time.Time, projectID int32, from, to string, by actor) error {
 	payload := map[string]any{"old": from, "new": to}
 	return recordEvent(ctx, q, now, projectID, eventStatusChanged, payload, by)
+}
+
+// The three role entries. Each carries the subject's display name as well as
+// their id, for the same reason the actor's is stored rather than looked up:
+// a timeline says who was put on the project, and an account removed from
+// identity afterwards must not blank that out. The subject's name is the one
+// the directory gave at the time, or unknownUser when it gave none.
+func recordRoleAdded(ctx context.Context, q *store.Queries, now time.Time, projectID int32, subject actor, role string, by actor) error {
+	payload := map[string]any{"userId": subject.UserID, "displayName": subject.Display, "role": role}
+	return recordEvent(ctx, q, now, projectID, eventRoleAdded, payload, by)
+}
+
+func recordRoleChanged(ctx context.Context, q *store.Queries, now time.Time, projectID int32, subject actor, oldRole, newRole string, by actor) error {
+	payload := map[string]any{
+		"userId": subject.UserID, "displayName": subject.Display,
+		"oldRole": oldRole, "newRole": newRole,
+	}
+	return recordEvent(ctx, q, now, projectID, eventRoleChanged, payload, by)
+}
+
+func recordRoleRemoved(ctx context.Context, q *store.Queries, now time.Time, projectID int32, subject actor, role string, by actor) error {
+	payload := map[string]any{"userId": subject.UserID, "displayName": subject.Display, "role": role}
+	return recordEvent(ctx, q, now, projectID, eventRoleRemoved, payload, by)
 }
 
 // projectDiff is what one update actually changed, split the way the

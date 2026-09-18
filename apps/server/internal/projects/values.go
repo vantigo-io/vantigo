@@ -55,10 +55,18 @@ func validProjectStatus(status string) bool {
 
 // projectStatusList is the enumeration as a message names it:
 // "'planned', 'active', 'on-hold', 'completed' or 'cancelled'".
-func projectStatusList() string {
-	quoted := make([]string, 0, len(projectStatuses))
-	for _, s := range projectStatuses {
-		quoted = append(quoted, "'"+s+"'")
+func projectStatusList() string { return quotedList(projectStatuses) }
+
+// quotedList is how every closed enumeration in this module names itself in a
+// validation message: quoted, comma-separated, the last one joined with
+// "or". One writer, so a role's message and a status's read the same way.
+func quotedList(values []string) string {
+	quoted := make([]string, 0, len(values))
+	for _, v := range values {
+		quoted = append(quoted, "'"+v+"'")
+	}
+	if len(quoted) < 2 {
+		return strings.Join(quoted, "")
 	}
 	return strings.Join(quoted[:len(quoted)-1], ", ") + " or " + quoted[len(quoted)-1]
 }
