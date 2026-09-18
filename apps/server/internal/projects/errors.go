@@ -45,8 +45,8 @@ func fieldError(field, message string) map[string][]string {
 // client could tell the two apart and learn something about the project.
 func forbidden() apicommon.AuthErrorResponse { return apicommon.ForbiddenBody() }
 
-// revisionConflictTitle is the title of the only 409 this module answers:
-// an edit carrying a revision the project has moved past.
+// revisionConflictTitle is the title of the 409 an edit carrying a revision
+// the project has moved past answers with.
 const revisionConflictTitle = "Project revision conflict"
 
 // revisionConflict is that 409's body. It names both revisions, so a client
@@ -55,5 +55,21 @@ const revisionConflictTitle = "Project revision conflict"
 func revisionConflict(current, supplied int32) apicommon.ProblemDetails {
 	return apicommon.ProblemStatus(revisionConflictTitle,
 		fmt.Sprintf("The project has revision %d; the supplied revision was %d.", current, supplied),
+		http.StatusConflict)
+}
+
+// productsDisabledTitle is the title of the other 409, answered by every
+// billing-line operation when this installation has no products module (D10).
+// It is a conflict with the installation's state rather than a 404: the
+// project is there and the caller may see it, but there is nothing in this
+// deployment for a line to be pinned to.
+const productsDisabledTitle = "Products module not enabled"
+
+// productsDisabled is that 409's body. It is answered only after the caller's
+// access to the project has been settled, so it never tells a stranger that a
+// project exists.
+func productsDisabled() apicommon.ProblemDetails {
+	return apicommon.ProblemStatus(productsDisabledTitle,
+		"Billing lines are pinned to product variants, and the products module is not enabled in this installation.",
 		http.StatusConflict)
 }

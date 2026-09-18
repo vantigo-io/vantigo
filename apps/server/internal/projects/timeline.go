@@ -23,8 +23,7 @@ import (
 // first, and is visible to anyone who can see the project — the entries carry
 // no amounts (D12), so there is nothing on them to shape.
 
-// The timeline's event types. Billing lines add theirs with the operations
-// that cause them (Task 10).
+// The timeline's event types.
 const (
 	eventProjectCreated  = "project-created"
 	eventCodeChanged     = "code-changed"
@@ -35,6 +34,10 @@ const (
 	eventRoleAdded       = "role-added"
 	eventRoleChanged     = "role-changed"
 	eventRoleRemoved     = "role-removed"
+	eventLineAdded       = "line-added"
+	eventLineChanged     = "line-changed"
+	eventLineDeactivated = "line-deactivated"
+	eventLineReactivated = "line-reactivated"
 )
 
 // recordEvent inserts one generated timeline entry. The actor's display name
@@ -93,6 +96,105 @@ func recordRoleChanged(ctx context.Context, q *store.Queries, now time.Time, pro
 func recordRoleRemoved(ctx context.Context, q *store.Queries, now time.Time, projectID int32, subject actor, role string, by actor) error {
 	payload := map[string]any{"userId": subject.UserID, "displayName": subject.Display, "role": role}
 	return recordEvent(ctx, q, now, projectID, eventRoleRemoved, payload, by)
+}
+
+// The four billing-line entries. Each names the line by its code — the half
+// of the trackable code that does not change when the project is renamed —
+// and never an amount: a line's pricing is shaped out for a caller who may
+// not see financials (D12), and a timeline that had to be shaped per reader
+// could not be paged or exported as one thing.
+func recordLineAdded(ctx context.Context, q *store.Queries, now time.Time, projectID int32, line store.ProjectsBillingLine, by actor) error {
+	payload := map[string]any{"code": line.Code, "fields": lineFields(line)}
+	return recordEvent(ctx, q, now, projectID, eventLineAdded, payload, by)
+}
+
+// lineFields names what a new line carries, the way line-changed names what
+// moved: the variant and the rule always, and whichever amount the rule has.
+// It is the same vocabulary a reader of a later line-changed entry sees.
+func lineFields(line store.ProjectsBillingLine) []string {
+	fields := []string{"variantId", "pricingMode"}
+	if line.FixedAmount.Valid {
+		fields = append(fields, "fixedAmount")
+	}
+	if line.DiscountPercent.Valid {
+		fields = append(fields, "discountPercent")
+	}
+	return fields
+}
+
+// lineDiff is what one change to a line actually did, split the way the
+// timeline records it: the fields that moved get one entry naming them, and
+// switching the line off or on is its own event — it is the thing a reader of
+// the timeline is looking for, not a field among four others.
+type lineDiff struct {
+	Fields      []string
+	Deactivated bool
+	Reactivated bool
+}
+
+// empty reports whether the change changed nothing worth recording. A change
+// that changed nothing still happened — updated_at moves — but the timeline
+// records events, and no event occurred.
+func (d lineDiff) empty() bool {
+	return len(d.Fields) == 0 && !d.Deactivated && !d.Reactivated
+}
+
+// diffLines compares a line before and after one change. The field names are
+// the contract's camelCase ones, because the timeline is read by the frontend
+// that renders those fields, not by SQL.
+func diffLines(before, after store.ProjectsBillingLine) (lineDiff, error) {
+	d := lineDiff{
+		Deactivated: before.Active && !after.Active,
+		Reactivated: !before.Active && after.Active,
+	}
+	if before.Code != after.Code {
+		d.Fields = append(d.Fields, "code")
+	}
+	if before.VariantID != after.VariantID {
+		d.Fields = append(d.Fields, "variantId")
+	}
+	if before.PricingMode != after.PricingMode {
+		d.Fields = append(d.Fields, "pricingMode")
+	}
+	// The amounts are compared through the same conversion the response
+	// renders them with, so "changed" means what a reader of the API would
+	// call changed — 900 and 900.00 are one number, not two.
+	changed, err := numericChanged(before.FixedAmount, after.FixedAmount)
+	if err != nil {
+		return lineDiff{}, err
+	}
+	if changed {
+		d.Fields = append(d.Fields, "fixedAmount")
+	}
+	changed, err = numericChanged(before.DiscountPercent, after.DiscountPercent)
+	if err != nil {
+		return lineDiff{}, err
+	}
+	if changed {
+		d.Fields = append(d.Fields, "discountPercent")
+	}
+	return d, nil
+}
+
+// recordLineUpdated writes the entries one change to a line owes, in a fixed
+// order so a timeline built from several changes at one instant still reads
+// the same way every time. A change that only switched the line off or on
+// writes that entry alone: `active` is not one of the fields line-changed
+// names. It is called inside the change's own transaction.
+func recordLineUpdated(ctx context.Context, q *store.Queries, now time.Time, d lineDiff, projectID int32, code string, by actor) error {
+	if len(d.Fields) > 0 {
+		if err := recordEvent(ctx, q, now, projectID, eventLineChanged,
+			map[string]any{"code": code, "fields": d.Fields}, by); err != nil {
+			return err
+		}
+	}
+	switch {
+	case d.Deactivated:
+		return recordEvent(ctx, q, now, projectID, eventLineDeactivated, map[string]any{"code": code}, by)
+	case d.Reactivated:
+		return recordEvent(ctx, q, now, projectID, eventLineReactivated, map[string]any{"code": code}, by)
+	}
+	return nil
 }
 
 // projectDiff is what one update actually changed, split the way the

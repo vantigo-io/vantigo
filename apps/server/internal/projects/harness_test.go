@@ -96,26 +96,47 @@ func (fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.Conta
 	return nil, nil
 }
 
-// fakeCatalog is contracts.ProductCatalog over one service variant. This
-// task never reads it — only whether Deps.Products is set at all decides
-// billingLinesAvailable — so it exists to make "products enabled" a real
-// composition rather than a flag, and to give the billing-line task (Task
-// 10) something already wired.
+// fakeCatalog is contracts.ProductCatalog over two service variants, the two
+// a project bills hours against. It is what makes "products enabled" a real
+// composition rather than a flag: the billing lines read it for the product
+// name, SKU and unit they embed (D15) and for their list price.
+//
+// A variant it does not know is (nil, nil) and absent from Variants, never an
+// error, which is what a line whose variant products has since dropped is
+// rendered from. Its list prices are in NOK only, so a project in another
+// currency exercises the "priced variant, no price in this currency" case
+// without a second fixture.
 type fakeCatalog struct {
 	variants map[int32]contracts.VariantEntry
+	prices   map[int32]float64
 }
 
 var _ contracts.ProductCatalog = (*fakeCatalog)(nil)
 
-const variantProjectManagerHour = 2001
+const (
+	variantProjectManagerHour = 2001
+	variantDeveloperHour      = 2002
+	variantUnknown            = 2999
+	catalogCurrency           = "NOK"
+)
 
 func newFakeCatalog() *fakeCatalog {
-	return &fakeCatalog{variants: map[int32]contracts.VariantEntry{
-		variantProjectManagerHour: {
-			ID: variantProjectManagerHour, ProductID: 3001, ProductName: "Project manager hour",
-			SKU: "PM-HOUR", Unit: "hour", ProductType: "Service", ProductStatus: "Active",
+	return &fakeCatalog{
+		variants: map[int32]contracts.VariantEntry{
+			variantProjectManagerHour: {
+				ID: variantProjectManagerHour, ProductID: 3001, ProductName: "Project manager hour",
+				SKU: "PM-H", Unit: "hour", ProductType: "Service", ProductStatus: "Active",
+			},
+			variantDeveloperHour: {
+				ID: variantDeveloperHour, ProductID: 3002, ProductName: "Developer hour",
+				SKU: "DEV-H", Unit: "hour", ProductType: "Service", ProductStatus: "Active",
+			},
 		},
-	}}
+		prices: map[int32]float64{
+			variantProjectManagerHour: 1600,
+			variantDeveloperHour:      1250,
+		},
+	}
 }
 
 func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEntry, error) {
@@ -137,10 +158,11 @@ func (c *fakeCatalog) Variants(_ context.Context, ids []int32) ([]contracts.Vari
 }
 
 func (c *fakeCatalog) ListPrice(_ context.Context, variantID int32, currency string, _ time.Time) (*contracts.Money, error) {
-	if _, ok := c.variants[variantID]; !ok {
+	price, ok := c.prices[variantID]
+	if !ok || currency != catalogCurrency {
 		return nil, nil
 	}
-	return &contracts.Money{Amount: 1250, Currency: currency}, nil
+	return &contracts.Money{Amount: price, Currency: currency}, nil
 }
 
 // signIn seeds a caller holding projects:access plus whatever else the test
