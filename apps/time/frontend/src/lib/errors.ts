@@ -13,3 +13,16 @@ export const refusalMessage = (error: Error, preferredField = "hours"): string =
   }
   return error.message;
 };
+
+/**
+ * Every sentence a refusal carries about one field. An approval, a rejection
+ * and an unapproval are all or nothing, and each answers one message per
+ * offending id on `ids` — the caller is shown all of them, not just the first.
+ */
+export const refusalMessages = (error: Error, field = "ids"): string[] => {
+  if (error instanceof ApiValidationError) {
+    const messages = error.fields[field] ?? Object.values(error.fields).flat();
+    if (messages.length > 0) return messages;
+  }
+  return [error.message];
+};

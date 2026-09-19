@@ -211,6 +211,31 @@ describe("DayPage", () => {
     expect(screen.queryByRole("button", { name: "Edit the entry" })).not.toBeInTheDocument();
   });
 
+  it("withdraws an approval from the entry that carries the capability", async () => {
+    const approved = week([
+      weekRow(pmRow, [
+        entry({
+          id: 603,
+          entryDate: DAY,
+          hours: 3,
+          note: "Approved already",
+          status: "approved",
+          capabilities: { canEdit: false, canSubmit: false, canApprove: false, canUnapprove: true },
+        }),
+      ]),
+    ]);
+    const fetchMock = stubTimeApi({ week: approved });
+    renderRoute(`/time/day?date=${DAY}`);
+
+    const card = (await screen.findByText("Approved already")).closest("[data-entry]") as HTMLElement;
+    await userEvent.click(within(card).getByRole("button", { name: "Withdraw the approval" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({ url: "/api/v1/time/entries/unapprove", body: { ids: [603] } }),
+    );
+    expect(await screen.findByText("Approval withdrawn")).toBeInTheDocument();
+  });
+
   it("moves between days through the URL", async () => {
     stubTimeApi({ week: dayWeek() });
     const { router } = renderRoute(`/time/day?date=${DAY}`);
