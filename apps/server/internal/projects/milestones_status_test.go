@@ -679,3 +679,69 @@ func TestPostProjectsMilestonesByMilestoneIdStatus_ALongReferenceOnAnotherMove_S
 		t.Errorf("message = %q, want it to say the field is not allowed on this move", msgs[0])
 	}
 }
+
+// The precedence this branch ruled for the project's own update, applied to
+// the milestone's: a stale revision is answered 409 before any refusal about
+// the project, and the read-only rule before the project-dependent
+// validation. A caller two states behind must be told to re-read, not sent
+// off to change the project's fixed price for a milestone they may not even
+// edit.
+func TestPutProjectsMilestonesByMilestoneId_StaleRevisionAndAProjectGuard_Returns409NotThe400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSPREC1", 400000)
+	stale := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+
+	// Somebody else cancels it and takes the fixed price away — both allowed,
+	// because the guards exempt a cancelled milestone.
+	movedMilestone(t, c, stale, milestoneCancelled, nil)
+	putProject(t, c, project, map[string]any{"billingType": "time-and-materials", "fixedPriceAmount": nil})
+
+	// The stale form, still carrying revision 1 and still a percent.
+	r := putMilestone(t, c, stale, map[string]any{"name": "Endret"})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409", r.Status, r.Body)
+	}
+	if strings.Contains(string(r.Body), "fixed price") {
+		t.Errorf("body %s tells the caller to change the project, for a stale edit", r.Body)
+	}
+
+	// Re-read and try again: now the answer is the read-only rule, still not
+	// the project's.
+	fresh := getMilestone(t, c, stale.Id)
+	again := putMilestone(t, c, fresh, map[string]any{"name": "Endret"})
+	if again.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", again.Status, again.Body)
+	}
+	var problem validationProblemJSON
+	again.JSON(&problem)
+	if len(problem.Errors["status"]) == 0 {
+		t.Fatalf("errors = %v, want the read-only message on 'status'", problem.Errors)
+	}
+	if len(problem.Errors["percent"]) > 0 {
+		t.Errorf("errors = %v, want nothing about the project's fixed price", problem.Errors)
+	}
+}
+
+// The undo-conversion stamps the currency too: the amount it carries forward
+// is the one that was invoiced, and it has to say what that was in.
+func TestPostProjectsMilestonesByMilestoneIdStatus_Undo_StampsTheConvertedAmountsCurrency(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSCUR4", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	m = movedMilestone(t, c, m, milestoneReady, nil)
+	m = movedMilestone(t, c, m, milestoneInvoiced, nil)
+	putProject(t, c, project, map[string]any{"billingType": "time-and-materials", "fixedPriceAmount": nil})
+
+	undone := movedMilestone(t, c, m, milestoneReady, nil)
+	if undone.Currency == nil || *undone.Currency != "NOK" {
+		t.Errorf("Currency = %v, want the NOK the invoice was raised in", undone.Currency)
+	}
+	if stored := modtest.One[string](t, h,
+		`SELECT amount_currency FROM projects.billing_milestones WHERE id = $1`, m.Id); stored != "NOK" {
+		t.Errorf("stored amount_currency = %q, want NOK", stored)
+	}
+}

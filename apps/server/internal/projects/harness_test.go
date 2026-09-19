@@ -120,6 +120,12 @@ func (fakeDirectory) ContactsByEmail(context.Context, string) ([]contracts.Conta
 type fakeCatalog struct {
 	variants map[int32]contracts.VariantEntry
 	prices   map[int32]float64
+
+	// variantErr is what Variant answers instead of looking anything up: a
+	// degraded products module, which is a different thing from a variant it
+	// does not know (nil, nil) and has to be handled differently — a line
+	// whose variant is unchanged must stay editable either way.
+	variantErr error
 }
 
 var _ contracts.ProductCatalog = (*fakeCatalog)(nil)
@@ -159,7 +165,15 @@ func (c *fakeCatalog) forget(id int32) {
 	delete(c.prices, id)
 }
 
+// fail makes every later Variant lookup answer err, the way a saturated pool
+// or a transient failure in products looks from here. Like forget, it is not
+// concurrency-safe, so a test that calls it drives its own harness.
+func (c *fakeCatalog) fail(err error) { c.variantErr = err }
+
 func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEntry, error) {
+	if c.variantErr != nil {
+		return nil, c.variantErr
+	}
 	v, ok := c.variants[id]
 	if !ok {
 		return nil, nil
@@ -230,6 +244,16 @@ func addRole(t *testing.T, h *modtest.Harness, projectID int32, userID uuid.UUID
 // assignment one.
 var milestoneNumericColumns = map[string]bool{"amount": true, "percent": true, "invoiced_amount": true}
 
+// projectCurrency is the currency one project carries right now, "" for none.
+// insertMilestone needs it because a flat amount remembers what it was
+// entered in (design §3.2), and a row inserted behind the API has to carry
+// the same thing the API would have stamped on it.
+func projectCurrency(t *testing.T, h *modtest.Harness, projectID int32) string {
+	t.Helper()
+	return modtest.One[string](t, h,
+		`SELECT coalesce(currency, '') FROM projects.projects WHERE id = $1`, projectID)
+}
+
 // insertMilestone inserts one projects.billing_milestones row directly, at
 // the SQL level: milestones.go, the CRUD that would otherwise create one, is
 // Task 2's, and the guards Task 1 adds (design §3.3's currency guard extended
@@ -262,9 +286,17 @@ func insertMilestone(t *testing.T, h *modtest.Harness, projectID int32, override
 		"created_at":         now,
 		"updated_at":         now,
 	}
+	// A flat amount carries the currency it was entered in, exactly as the API
+	// stamps it (design §3.2). The project's own currency is that currency, so
+	// the default follows it rather than being another thing to remember;
+	// a test that wants a different one names amount_currency itself.
+	if currency := projectCurrency(t, h, projectID); currency != "" {
+		row["amount_currency"] = currency
+	}
 	if v, ok := overrides["percent"]; ok && v != nil {
 		if _, keepingAmount := overrides["amount"]; !keepingAmount {
 			delete(row, "amount")
+			delete(row, "amount_currency")
 		}
 	}
 	for col, v := range overrides {
@@ -658,15 +690,17 @@ type milestonePlanJSON struct {
 	Totals     milestoneTotalsJSON `json:"totals"`
 }
 
-// milestoneTotalsJSON decodes BillingMilestonePlanTotals. The three optional
-// numbers exist only against a fixed price, and unplanned and overPlanned are
-// two sides of one comparison, so never both.
+// milestoneTotalsJSON decodes BillingMilestonePlanTotals. There is no
+// cancelled sum: a cancelled milestone bills nothing and may be denominated
+// in a currency the project has since moved off, so it is left out of the
+// plan's arithmetic entirely. The three optional numbers exist only against a
+// fixed price, and unplanned and overPlanned are two sides of one comparison,
+// so never both.
 type milestoneTotalsJSON struct {
 	Currency    *string  `json:"currency"`
 	Planned     float64  `json:"planned"`
 	Ready       float64  `json:"ready"`
 	Invoiced    float64  `json:"invoiced"`
-	Cancelled   float64  `json:"cancelled"`
 	FixedPrice  *float64 `json:"fixedPrice"`
 	Unplanned   *float64 `json:"unplanned"`
 	OverPlanned *float64 `json:"overPlanned"`

@@ -75,7 +75,15 @@ func (s *server) authorize(ctx context.Context, q *store.Queries, projectID int3
 // rights alone: milestoneMoves carries that, not these.
 func (a access) canSeeMilestones() bool { return a.CanSeeFinancials }
 
-func (a access) canManageMilestones() bool { return a.CanManage }
+// canManageMilestones asks for financial rights as well as management, even
+// though every role and every global permission that grants the second
+// already grants the first (roleCapabilities, globalAccess). The milestone
+// write operations gate on this alone, and their 200/201 bodies carry the
+// plan's money — so a future role granting management without financials
+// would leak amounts through the writes while the reads still answered 403.
+// Stating the rule here rather than inheriting it means such a role answers
+// 403 instead; authorize_internal_test.go pins both halves.
+func (a access) canManageMilestones() bool { return a.CanManage && a.CanSeeFinancials }
 
 // widenBy adds what role grants to a and records the role on it. It is a
 // widening only: a capability a global permission already granted is never

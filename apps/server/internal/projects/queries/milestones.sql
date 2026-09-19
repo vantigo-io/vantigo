@@ -101,12 +101,15 @@ WHERE m.id = v.id AND m.position <> v.ord::integer;
 -- same instant on creation, supplied by the caller from Deps.Clock(); status
 -- and revision take the column defaults ('planned', 1), because a milestone
 -- is always created planned and never carries a revision yet; position is the
--- number computed under the project's ordering lock.
+-- number computed under the project's own lock. amount_currency is the locked
+-- project's currency when the milestone carries a flat amount and NULL when
+-- it carries a percent, so a flat amount always says what it is denominated
+-- in (design §3.2).
 INSERT INTO projects.billing_milestones (
-    project_id, name, description, planned_date, amount, percent, position,
+    project_id, name, description, planned_date, amount, amount_currency, percent, position,
     created_by_user_id, created_at, updated_at
 ) VALUES (
-    @project_id, @name, @description, @planned_date, @amount, @percent, @position,
+    @project_id, @name, @description, @planned_date, @amount, @amount_currency, @percent, @position,
     @created_by_user_id, @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
@@ -124,6 +127,7 @@ UPDATE projects.billing_milestones SET
     description = @description,
     planned_date = @planned_date,
     amount = @amount,
+    amount_currency = @amount_currency,
     percent = @percent,
     revision = revision + 1,
     updated_at = @now::timestamptz
@@ -142,14 +146,16 @@ RETURNING *;
 -- milestone that came back to 'planned' from one that was never anything
 -- else, and only the second may be deleted.
 --
--- amount and percent are written too, and are carried over unchanged by every
--- move but one: undoing the invoicing of a percent milestone whose project no
--- longer has a fixed price turns it into an amount milestone carrying what
--- was actually billed, since design §3.2's effective amount would otherwise
+-- amount, amount_currency and percent are written too, and are carried over
+-- unchanged by every move but one: undoing the invoicing of a percent
+-- milestone whose project no longer has a fixed price turns it into an amount
+-- milestone carrying what was actually billed, denominated in the locked
+-- project's currency, since design §3.2's effective amount would otherwise
 -- have nothing left to resolve from.
 UPDATE projects.billing_milestones SET
     status = @status,
     amount = @amount,
+    amount_currency = @amount_currency,
     percent = @percent,
     ready_at = @ready_at,
     ready_by_user_id = @ready_by_user_id,

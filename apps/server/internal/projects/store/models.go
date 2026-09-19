@@ -33,6 +33,7 @@ type ProjectsBillingMilestone struct {
 	Description      *string
 	PlannedDate      pgtype.Date
 	Amount           pgtype.Numeric
+	AmountCurrency   *string
 	Percent          pgtype.Numeric
 	Status           string
 	Position         int32

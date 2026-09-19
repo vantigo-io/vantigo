@@ -1412,6 +1412,22 @@ func TestProjectsMilestones_AppliesAndIsIdempotent(t *testing.T) {
 			t.Errorf("projects.billing_lines has no %s column", col)
 		}
 	}
+
+	// A flat amount remembers the currency it was entered in (design §3.2): a
+	// cancelled milestone is exempt from the project's currency guard and can
+	// outlive a currency change, so the column is what keeps its number
+	// meaning what it meant. char(3), like the project's own currency.
+	var dataType, maxLength string
+	if err := pool.QueryRow(ctx, `
+		SELECT data_type, coalesce(character_maximum_length::text, '')
+		FROM information_schema.columns
+		WHERE table_schema = 'projects' AND table_name = 'billing_milestones'
+		  AND column_name = 'amount_currency'`).Scan(&dataType, &maxLength); err != nil {
+		t.Fatalf("check billing_milestones.amount_currency: %v", err)
+	}
+	if dataType != "character" || maxLength != "3" {
+		t.Errorf("amount_currency is %s(%s), want character(3)", dataType, maxLength)
+	}
 }
 
 // isUniqueViolation reports whether err is Postgres SQL state 23505

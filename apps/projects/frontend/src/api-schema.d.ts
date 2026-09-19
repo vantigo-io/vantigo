@@ -562,9 +562,11 @@ export interface components {
             canDelete: boolean;
             /** @description Whether the milestone's name, date and amount may be changed. An invoiced or a cancelled milestone is read-only until it is moved back. */
             canEdit: boolean;
+            /** @description Whether the milestone may be marked invoiced, which freezes its effective amount. This is one of the two flags that does not mean "the caller manages the project" — financial rights alone are enough, because whoever may see the money may say it was billed. */
             canMarkInvoiced: boolean;
             /** @description Whether a milestone that is ready may be put back to planned. */
             canMarkPlanned: boolean;
+            /** @description Whether the milestone may be marked ready to invoice. The project's manager, and only while the project can still price it. */
             canMarkReady: boolean;
             /** @description Whether a cancelled milestone may be put back to planned. */
             canReopen: boolean;
@@ -583,14 +585,9 @@ export interface components {
             milestones: components["schemas"]["BillingMilestoneResponse"][];
             totals: components["schemas"]["BillingMilestonePlanTotals"];
         };
-        /** @description What a project's milestones add up to, one sum of effective amounts per status. Totals never block a save; they are what the plan is read against. */
+        /** @description What a project's milestones add up to, one sum of effective amounts per open status. There is no cancelled sum — a cancelled milestone bills nothing and may still be denominated in a currency the project has moved off, so it is left out of the plan's arithmetic entirely. Totals never block a save; they are what the plan is read against. */
         BillingMilestonePlanTotals: {
-            /**
-             * Format: double
-             * @description Cancelled milestones bill nothing, so this sum counts against neither the fixed price nor anything else. It is reported so the plan can show what was dropped.
-             */
-            cancelled: number;
-            /** @description The project's currency, which every amount here is in. Absent when the project has none — which is also when it can have no milestones. */
+            /** @description The project's current currency, which every amount in these totals is in. Absent when the project has none — which a cancelled milestone can outlive, so it is not the same as "the plan is empty". */
             currency?: string | null;
             /**
              * Format: double
@@ -621,7 +618,7 @@ export interface components {
         BillingMilestonePositionRequest: {
             /**
              * Format: int32
-             * @description The 1-based place in the plan. A position past the end means last.
+             * @description The 1-based place in the plan, in the same numbering BillingMilestoneResponse.position reports — not an index into the listing, which sorts cancelled milestones last. A position past the end means last.
              */
             position: number;
             /**
@@ -662,12 +659,12 @@ export interface components {
             capabilities: components["schemas"]["BillingMilestoneCapabilities"];
             /** Format: date-time */
             createdAt: string;
-            /** @description The project's currency, which every amount on the milestone is in. Absent only when the project no longer has one, which only a cancelled milestone can outlive — the currency cannot be cleared while any milestone that still bills something exists. */
+            /** @description What this milestone's amounts are denominated in. A milestone with a flat amount carries the currency it was entered in and keeps it — a cancelled one can outlive a change to the project's, and its number still means what it meant. A milestone with a percent reports the project's current currency, because it resolves against a fixed price that is always in it, and is absent only when the project has no currency at all. */
             currency?: string | null;
             description?: string | null;
             /**
              * Format: double
-             * @description What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not. Absent in exactly one case, and never zero instead of it — a cancelled milestone priced as a percent of a fixed price the project has since dropped, which has no amount to report; every other milestone has one.
+             * @description What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not. Absent, and never zero instead of it, when the milestone cannot be priced at all — normally a cancelled milestone priced as a percent of a fixed price the project has since dropped, and such a milestone is left out of the totals too.
              */
             effectiveAmount?: number | null;
             /** Format: int32 */
@@ -695,7 +692,7 @@ export interface components {
             plannedDate?: string | null;
             /**
              * Format: int32
-             * @description The milestone's manual place in the project's plan, 1-based and without gaps.
+             * @description The milestone's own place in the project's plan — the stored 1..n numbering across all of the project's milestones, without gaps. It is not an index into the returned array, which lists cancelled milestones last whatever number they hold, so a cancelled milestone with an early position appears at the end with that early number. Send this field's value, never an array index, when moving a milestone.
              */
             position: number;
             /** Format: int32 */
@@ -1706,7 +1703,7 @@ export interface operations {
                     "application/json": components["schemas"]["BillingMilestoneResponse"];
                 };
             };
-            /** @description Bad Request — the status is not one of the four, the move is not one the flow allows, the project can no longer denominate or price the milestone the move would revive, or an invoice reference or date was sent on a move other than to 'invoiced'. */
+            /** @description Bad Request — the status is not one of the four, the move is not one the flow allows, the project can no longer denominate or price the milestone the move would revive (including a flat amount entered in a currency the project has since moved off, which cannot be reopened at all), or an invoice reference or date was sent on a move other than to 'invoiced'. */
             400: {
                 headers: {
                     [name: string]: unknown;

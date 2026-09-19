@@ -37,11 +37,6 @@ var milestoneStatuses = []string{
 	milestoneStatusPlanned, milestoneStatusReady, milestoneStatusInvoiced, milestoneStatusCancelled,
 }
 
-// maxMilestoneAmount is what numeric(12,2) holds: ten digits and two
-// decimals. A larger number would be refused by Postgres as a 22003 the
-// caller could make nothing of, so it is a field error instead.
-const maxMilestoneAmount = 9999999999.99
-
 // milestoneRight is who may make one move (§3.2's access column). Marking a
 // milestone invoiced and undoing it are the only two writes a caller who is
 // not the project's manager may make: whoever may see the money may say it
@@ -156,6 +151,17 @@ func milestoneMoveNeedsFixedPrice(to string) string {
 	return fmt.Sprintf("A milestone priced as a percent cannot become '%s' while the project has no fixed price to be a share of; set one first, or leave the milestone cancelled", to)
 }
 
+// milestoneMoveWrongCurrency is the refusal for a flat amount entered in a
+// currency the project has since moved off. Only a cancelled milestone can be
+// in that position — the currency guard (design §3.3) exempts it and nothing
+// else — and bringing it back would either report the old number as the new
+// currency or silently convert it, both of which are lies. The honest answer
+// is that this milestone belongs to the project's past.
+func milestoneMoveWrongCurrency(amountCurrency, projectCurrency string) string {
+	return fmt.Sprintf("This milestone's amount is in %s and the project is now in %s; a milestone cannot be brought back into a different currency, so add a new one instead",
+		amountCurrency, projectCurrency)
+}
+
 // milestoneMoveRefusal asks design §3.3's two rules of one move, against the
 // project row the transaction holds. It answers the message to refuse with
 // ("" when the move may proceed) and whether the move must first convert the
@@ -177,6 +183,13 @@ func milestoneMoveRefusal(m store.ProjectsBillingMilestone, project store.Projec
 	}
 	if project.Currency == nil {
 		return milestoneMoveNeedsCurrency(to), false
+	}
+	// A flat amount carries the currency it was entered in, and a cancelled
+	// milestone can outlive a change to the project's (design §3.2). Reopening
+	// one would put a number denominated in the old currency back into a plan
+	// counted in the new one.
+	if m.AmountCurrency != nil && *m.AmountCurrency != *project.Currency {
+		return milestoneMoveWrongCurrency(*m.AmountCurrency, *project.Currency), false
 	}
 	if !m.Percent.Valid || project.FixedPriceAmount.Valid {
 		return "", false
@@ -243,15 +256,20 @@ func validateMilestoneDescription(raw *string) (*string, string) {
 }
 
 // validateMilestoneAmount is the flat amount's own rule, checked only when
-// one was sent: more than nothing, and inside what the column can hold.
+// one was sent: more than nothing, inside what numeric(12,2) can hold, and no
+// more precise than that column keeps — a third decimal would be rounded away
+// silently, and a milestone priced at something the caller did not type is
+// worse than a refusal (the same argument validateMilestonePercent makes).
 func validateMilestoneAmount(amount *float64) string {
 	switch {
 	case amount == nil:
 		return ""
 	case *amount <= 0:
 		return "A milestone amount must be greater than zero"
-	case *amount > maxMilestoneAmount:
-		return fmt.Sprintf("A milestone amount cannot be greater than %.2f", maxMilestoneAmount)
+	case *amount > maxAmount12:
+		return fmt.Sprintf("A milestone amount cannot be greater than %.2f", maxAmount12)
+	case decimalPlaces(*amount) > 2:
+		return "A milestone amount cannot have more than two decimals"
 	default:
 		return ""
 	}
@@ -343,6 +361,14 @@ type parsedMilestone struct {
 	PlannedDate pgtype.Date
 	Amount      pgtype.Numeric
 	Percent     pgtype.Numeric
+
+	// AmountCurrency is the project's currency when the milestone carries a
+	// flat amount, and nil when it carries a percent — set exactly when
+	// Amount is, so a stored number always says what it is denominated in
+	// (design §3.2). It is taken from the project the body was validated
+	// against, which on every write is the row that write's own transaction
+	// locked.
+	AmountCurrency *string
 }
 
 // validateMilestone runs every §3.2 content rule over a create body and
@@ -401,12 +427,17 @@ func validateMilestone(body gen.BillingMilestoneRequest, project store.ProjectsP
 	if err != nil {
 		return parsedMilestone{}, nil, err
 	}
+	var amountCurrency *string
+	if body.Amount != nil {
+		amountCurrency = project.Currency
+	}
 	return parsedMilestone{
-		Name:        name,
-		Description: description,
-		PlannedDate: dateToPgtype(body.PlannedDate),
-		Amount:      amount,
-		Percent:     percent,
+		Name:           name,
+		Description:    description,
+		PlannedDate:    dateToPgtype(body.PlannedDate),
+		Amount:         amount,
+		Percent:        percent,
+		AmountCurrency: amountCurrency,
 	}, nil, nil
 }
 
@@ -553,9 +584,15 @@ func milestoneCapabilities(m store.ProjectsBillingMilestone, project store.Proje
 // in float64 reports 0.10 + 0.20 as 0.30000000000000004, and these four
 // figures are the Economy tab's headline numbers.
 //
-// A milestone with no resolvable amount (a cancelled percent one on a project
-// that has since dropped its fixed price) contributes nothing, which is what
-// it is worth.
+// Cancelled milestones have no total of their own. They bill nothing, and —
+// being exempt from the project's currency guard — a cancelled flat amount
+// may be denominated in a currency the project has since moved off, so
+// summing it would mix two currencies into one figure. Every milestone that
+// *is* summed is in the project's current currency, because the guard will
+// not let the currency move while one exists.
+//
+// A milestone with no resolvable amount contributes nothing, which is what it
+// is worth.
 func milestoneTotals(project store.ProjectsProject, amounts map[string]*big.Rat) (gen.BillingMilestonePlanTotals, error) {
 	sum := func(status string) float64 {
 		if r, ok := amounts[status]; ok {
@@ -564,11 +601,10 @@ func milestoneTotals(project store.ProjectsProject, amounts map[string]*big.Rat)
 		return 0
 	}
 	totals := gen.BillingMilestonePlanTotals{
-		Currency:  project.Currency,
-		Planned:   sum(milestoneStatusPlanned),
-		Ready:     sum(milestoneStatusReady),
-		Invoiced:  sum(milestoneStatusInvoiced),
-		Cancelled: sum(milestoneStatusCancelled),
+		Currency: project.Currency,
+		Planned:  sum(milestoneStatusPlanned),
+		Ready:    sum(milestoneStatusReady),
+		Invoiced: sum(milestoneStatusInvoiced),
 	}
 	fixedPrice, err := floatPtrFromNumeric(project.FixedPriceAmount)
 	if err != nil {

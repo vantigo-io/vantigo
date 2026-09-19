@@ -1,11 +1,14 @@
 package projects_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
 
 // What milestones leave to the database rather than to a read-then-write
@@ -152,5 +155,51 @@ func TestPostProjectsByIdMilestones_RacingAClearOfTheCurrency_NeverLeavesOneWith
 			WHERE m.project_id = $1 AND p.currency IS NULL`, project.Id); n != 0 {
 			t.Fatalf("round %d: %d milestone(s) on a project with no currency", i, n)
 		}
+	}
+}
+
+// LockProject's mode, pinned rather than assumed. Every guarded writer in
+// this module holds the project's row for the length of its transaction, and
+// Postgres takes `FOR KEY SHARE` on that same row for *every* insert that
+// references it — a task, a role, a comment, a billing line, a milestone, a
+// timeline entry. `FOR UPDATE` is the one row-lock mode that conflicts with
+// `FOR KEY SHARE`, so it would make an unrelated task creation queue behind
+// any milestone or line write; `FOR NO KEY UPDATE` does not, while still
+// conflicting with itself and with the project UPDATE's own lock, so nothing
+// the guards rely on is weaker.
+//
+// The test takes the module's own LockProject in one transaction and then,
+// from a second connection, attempts both of those things without waiting:
+// the key-share an FK check would take must succeed, and a second LockProject
+// must not.
+func TestLockProject_AdmitsForeignKeyChecksButNotASecondGuardedWriter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, c, "MSLOCK01")
+
+	ctx := context.Background()
+	tx, err := h.Pool().Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := store.New(tx).LockProject(ctx, project.Id); err != nil {
+		t.Fatalf("LockProject: %v", err)
+	}
+
+	// What an insert referencing the project takes. NOWAIT turns "would have
+	// waited" into an error, so this never hangs the suite.
+	probe, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := h.Pool().Exec(probe,
+		`SELECT 1 FROM projects.projects WHERE id = $1 FOR KEY SHARE NOWAIT`, project.Id); err != nil {
+		t.Errorf("a foreign-key check waits behind the project's lock: %v", err)
+	}
+
+	// And the mutual exclusion the guards depend on is still there.
+	if _, err := h.Pool().Exec(probe,
+		`SELECT 1 FROM projects.projects WHERE id = $1 FOR NO KEY UPDATE NOWAIT`, project.Id); err == nil {
+		t.Error("a second guarded writer took the project's lock while it was held")
 	}
 }

@@ -61,7 +61,7 @@ func (q *Queries) DeleteMilestone(ctx context.Context, id int32) (int64, error) 
 }
 
 const getMilestone = `-- name: GetMilestone :one
-SELECT id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1
 `
 
 // GetMilestone fetches one milestone by id. It is the read that resolves
@@ -79,6 +79,7 @@ func (q *Queries) GetMilestone(ctx context.Context, id int32) (ProjectsBillingMi
 		&i.Description,
 		&i.PlannedDate,
 		&i.Amount,
+		&i.AmountCurrency,
 		&i.Percent,
 		&i.Status,
 		&i.Position,
@@ -100,13 +101,13 @@ func (q *Queries) GetMilestone(ctx context.Context, id int32) (ProjectsBillingMi
 
 const insertMilestone = `-- name: InsertMilestone :one
 INSERT INTO projects.billing_milestones (
-    project_id, name, description, planned_date, amount, percent, position,
+    project_id, name, description, planned_date, amount, amount_currency, percent, position,
     created_by_user_id, created_at, updated_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9::timestamptz, $9::timestamptz
+    $1, $2, $3, $4, $5, $6, $7, $8,
+    $9, $10::timestamptz, $10::timestamptz
 )
-RETURNING id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
 `
 
 type InsertMilestoneParams struct {
@@ -115,6 +116,7 @@ type InsertMilestoneParams struct {
 	Description     *string
 	PlannedDate     pgtype.Date
 	Amount          pgtype.Numeric
+	AmountCurrency  *string
 	Percent         pgtype.Numeric
 	Position        int32
 	CreatedByUserID uuid.UUID
@@ -125,7 +127,10 @@ type InsertMilestoneParams struct {
 // same instant on creation, supplied by the caller from Deps.Clock(); status
 // and revision take the column defaults ('planned', 1), because a milestone
 // is always created planned and never carries a revision yet; position is the
-// number computed under the project's ordering lock.
+// number computed under the project's own lock. amount_currency is the locked
+// project's currency when the milestone carries a flat amount and NULL when
+// it carries a percent, so a flat amount always says what it is denominated
+// in (design §3.2).
 func (q *Queries) InsertMilestone(ctx context.Context, arg InsertMilestoneParams) (ProjectsBillingMilestone, error) {
 	row := q.db.QueryRow(ctx, insertMilestone,
 		arg.ProjectID,
@@ -133,6 +138,7 @@ func (q *Queries) InsertMilestone(ctx context.Context, arg InsertMilestoneParams
 		arg.Description,
 		arg.PlannedDate,
 		arg.Amount,
+		arg.AmountCurrency,
 		arg.Percent,
 		arg.Position,
 		arg.CreatedByUserID,
@@ -146,6 +152,7 @@ func (q *Queries) InsertMilestone(ctx context.Context, arg InsertMilestoneParams
 		&i.Description,
 		&i.PlannedDate,
 		&i.Amount,
+		&i.AmountCurrency,
 		&i.Percent,
 		&i.Status,
 		&i.Position,
@@ -200,7 +207,7 @@ func (q *Queries) ListOpenPercentMilestoneNames(ctx context.Context, projectID i
 }
 
 const listProjectMilestones = `-- name: ListProjectMilestones :many
-SELECT id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones
 WHERE project_id = $1
 ORDER BY (status = 'cancelled'), position, id
 `
@@ -226,6 +233,7 @@ func (q *Queries) ListProjectMilestones(ctx context.Context, projectID int32) ([
 			&i.Description,
 			&i.PlannedDate,
 			&i.Amount,
+			&i.AmountCurrency,
 			&i.Percent,
 			&i.Status,
 			&i.Position,
@@ -253,7 +261,7 @@ func (q *Queries) ListProjectMilestones(ctx context.Context, projectID int32) ([
 }
 
 const lockMilestone = `-- name: LockMilestone :one
-SELECT id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1 FOR UPDATE
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1 FOR UPDATE
 `
 
 // LockMilestone is GetMilestone with the row held for the rest of the
@@ -274,6 +282,7 @@ func (q *Queries) LockMilestone(ctx context.Context, id int32) (ProjectsBillingM
 		&i.Description,
 		&i.PlannedDate,
 		&i.Amount,
+		&i.AmountCurrency,
 		&i.Percent,
 		&i.Status,
 		&i.Position,
@@ -373,21 +382,23 @@ UPDATE projects.billing_milestones SET
     description = $2,
     planned_date = $3,
     amount = $4,
-    percent = $5,
+    amount_currency = $5,
+    percent = $6,
     revision = revision + 1,
-    updated_at = $6::timestamptz
-WHERE id = $7
-RETURNING id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+    updated_at = $7::timestamptz
+WHERE id = $8
+RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
 `
 
 type UpdateMilestoneParams struct {
-	Name        string
-	Description *string
-	PlannedDate pgtype.Date
-	Amount      pgtype.Numeric
-	Percent     pgtype.Numeric
-	Now         time.Time
-	ID          int32
+	Name           string
+	Description    *string
+	PlannedDate    pgtype.Date
+	Amount         pgtype.Numeric
+	AmountCurrency *string
+	Percent        pgtype.Numeric
+	Now            time.Time
+	ID             int32
 }
 
 // UpdateMilestone applies one content edit. It carries no revision predicate:
@@ -403,6 +414,7 @@ func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams
 		arg.Description,
 		arg.PlannedDate,
 		arg.Amount,
+		arg.AmountCurrency,
 		arg.Percent,
 		arg.Now,
 		arg.ID,
@@ -415,6 +427,7 @@ func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams
 		&i.Description,
 		&i.PlannedDate,
 		&i.Amount,
+		&i.AmountCurrency,
 		&i.Percent,
 		&i.Status,
 		&i.Position,
@@ -438,24 +451,26 @@ const updateMilestoneStatus = `-- name: UpdateMilestoneStatus :one
 UPDATE projects.billing_milestones SET
     status = $1,
     amount = $2,
-    percent = $3,
-    ready_at = $4,
-    ready_by_user_id = $5,
-    invoiced_at = $6,
-    invoiced_by_user_id = $7,
-    invoice_reference = $8,
-    invoice_date = $9,
-    invoiced_amount = $10,
+    amount_currency = $3,
+    percent = $4,
+    ready_at = $5,
+    ready_by_user_id = $6,
+    invoiced_at = $7,
+    invoiced_by_user_id = $8,
+    invoice_reference = $9,
+    invoice_date = $10,
+    invoiced_amount = $11,
     ever_moved = true,
     revision = revision + 1,
-    updated_at = $11::timestamptz
-WHERE id = $12
-RETURNING id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+    updated_at = $12::timestamptz
+WHERE id = $13
+RETURNING id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
 `
 
 type UpdateMilestoneStatusParams struct {
 	Status           string
 	Amount           pgtype.Numeric
+	AmountCurrency   *string
 	Percent          pgtype.Numeric
 	ReadyAt          *time.Time
 	ReadyByUserID    *uuid.UUID
@@ -479,15 +494,17 @@ type UpdateMilestoneStatusParams struct {
 // milestone that came back to 'planned' from one that was never anything
 // else, and only the second may be deleted.
 //
-// amount and percent are written too, and are carried over unchanged by every
-// move but one: undoing the invoicing of a percent milestone whose project no
-// longer has a fixed price turns it into an amount milestone carrying what
-// was actually billed, since design §3.2's effective amount would otherwise
+// amount, amount_currency and percent are written too, and are carried over
+// unchanged by every move but one: undoing the invoicing of a percent
+// milestone whose project no longer has a fixed price turns it into an amount
+// milestone carrying what was actually billed, denominated in the locked
+// project's currency, since design §3.2's effective amount would otherwise
 // have nothing left to resolve from.
 func (q *Queries) UpdateMilestoneStatus(ctx context.Context, arg UpdateMilestoneStatusParams) (ProjectsBillingMilestone, error) {
 	row := q.db.QueryRow(ctx, updateMilestoneStatus,
 		arg.Status,
 		arg.Amount,
+		arg.AmountCurrency,
 		arg.Percent,
 		arg.ReadyAt,
 		arg.ReadyByUserID,
@@ -507,6 +524,7 @@ func (q *Queries) UpdateMilestoneStatus(ctx context.Context, arg UpdateMilestone
 		&i.Description,
 		&i.PlannedDate,
 		&i.Amount,
+		&i.AmountCurrency,
 		&i.Percent,
 		&i.Status,
 		&i.Position,

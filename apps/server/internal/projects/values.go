@@ -238,6 +238,8 @@ func validateFixedPriceAmount(billingType string, amount *float64) string {
 			return fmt.Sprintf("A '%s' project must have a fixed price amount", billingFixedPrice)
 		case *amount <= 0:
 			return "A fixed price amount must be greater than zero"
+		case *amount > maxAmount12:
+			return fmt.Sprintf("A fixed price amount cannot be greater than %.2f", maxAmount12)
 		default:
 			return ""
 		}
@@ -248,14 +250,31 @@ func validateFixedPriceAmount(billingType string, amount *float64) string {
 	return ""
 }
 
-// validatePositiveAmount is the shared rule for the two optional budgets:
-// set or absent, never zero or negative. label names the quantity in the
-// message ("Budget hours", "A budget amount").
-func validatePositiveAmount(label string, v *float64) string {
-	if v == nil || *v > 0 {
+// The two widths every decimal column in this module has: numeric(12,2) for
+// money and numeric(10,2) for hours. A number past its column is refused in
+// Go rather than left to Postgres, which raises a 22003 the handler can only
+// turn into a 500 — a caller who typed too many digits should be told so.
+const (
+	maxAmount12 = 9999999999.99 // numeric(12,2)
+	maxHours10  = 99999999.99   // numeric(10,2)
+)
+
+// validatePositiveAmount is the shared rule for every optional amount and
+// every optional hour count: set or absent, never zero or negative, and
+// never wider than the column that has to hold it. label names the quantity
+// in the message ("Budget hours", "A budget amount"); max is the column's
+// own ceiling (maxAmount12 or maxHours10).
+func validatePositiveAmount(label string, v *float64, max float64) string {
+	switch {
+	case v == nil:
+		return ""
+	case *v <= 0:
+		return label + " must be greater than zero"
+	case *v > max:
+		return fmt.Sprintf("%s cannot be greater than %.2f", label, max)
+	default:
 		return ""
 	}
-	return label + " must be greater than zero"
 }
 
 // validateDateOrder is design §4.1's date rule: a project cannot end before
@@ -336,9 +355,9 @@ func (s *server) validateProject(ctx context.Context, body gen.ProjectCreateRequ
 		add("fixedPriceAmount", validateFixedPriceAmount(billingType, body.FixedPriceAmount))
 	}
 
-	add("budgetHours", validatePositiveAmount("Budget hours", body.BudgetHours))
-	add("budgetAmount", validatePositiveAmount("A budget amount", body.BudgetAmount))
-	add("defaultBillRate", validatePositiveAmount("A default bill rate", body.DefaultBillRate))
+	add("budgetHours", validatePositiveAmount("Budget hours", body.BudgetHours, maxHours10))
+	add("budgetAmount", validatePositiveAmount("A budget amount", body.BudgetAmount, maxAmount12))
+	add("defaultBillRate", validatePositiveAmount("A default bill rate", body.DefaultBillRate, maxAmount12))
 
 	currency, msg := validateCurrency(body.Currency)
 	add("currency", msg)

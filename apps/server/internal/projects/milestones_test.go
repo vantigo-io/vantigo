@@ -233,6 +233,7 @@ func TestPostProjectsByIdMilestones_InvalidBody_Returns400OnTheField(t *testing.
 		{"an amount of zero", map[string]any{"amount": 0}, "amount"},
 		{"a negative amount", map[string]any{"amount": -1}, "amount"},
 		{"an amount past the column", map[string]any{"amount": 10000000000.00}, "amount"},
+		{"an amount with three decimals", map[string]any{"amount": 100.005}, "amount"},
 		{"a percent of zero", map[string]any{"amount": nil, "percent": 0}, "percent"},
 		{"a percent past a hundred", map[string]any{"amount": nil, "percent": 100.01}, "percent"},
 		{"a percent with three decimals", map[string]any{"amount": nil, "percent": 33.333}, "percent"},
@@ -278,9 +279,6 @@ func TestGetProjectsByIdMilestones_Plan_TotalsPerStatusAndWhatIsUnplanned(t *tes
 	}
 	if plan.Totals.Planned != 100000 || plan.Totals.Ready != 200000 || plan.Totals.Invoiced != 300000 {
 		t.Errorf("Totals = %+v, want 100000 / 200000 / 300000", plan.Totals)
-	}
-	if plan.Totals.Cancelled != 0 {
-		t.Errorf("Totals.Cancelled = %v, want 0", plan.Totals.Cancelled)
 	}
 	if plan.Totals.FixedPrice == nil || *plan.Totals.FixedPrice != 1000000 {
 		t.Errorf("Totals.FixedPrice = %v, want 1000000", plan.Totals.FixedPrice)
@@ -352,8 +350,15 @@ func TestGetProjectsByIdMilestones_Cancelled_SortsLastAndCountsAgainstNothing(t 
 	if got := milestonePositions(plan); !equalInt32s(got, []int32{2, 1}) {
 		t.Errorf("positions = %v, want the stored numbers, only the order moved", got)
 	}
-	if plan.Totals.Cancelled != 10000 || plan.Totals.Planned != 20000 {
-		t.Errorf("Totals = %+v, want cancelled 10000 and planned 20000", plan.Totals)
+	if plan.Totals.Planned != 20000 {
+		t.Errorf("Totals = %+v, want planned 20000 and the cancelled one counted nowhere", plan.Totals)
+	}
+	var raw struct {
+		Totals map[string]any `json:"totals"`
+	}
+	readMilestones(t, c, project.Id).JSON(&raw)
+	if _, present := raw.Totals["cancelled"]; present {
+		t.Errorf("totals = %v, carry a cancelled sum the plan no longer reports", raw.Totals)
 	}
 	if plan.Totals.Unplanned == nil || *plan.Totals.Unplanned != 80000 {
 		t.Errorf("Totals.Unplanned = %v, want 80000 — the cancelled milestone counts against nothing", plan.Totals.Unplanned)
@@ -389,11 +394,11 @@ func TestGetProjectsByIdMilestones_PercentFollowsTheFixedPrice_AnInvoicedOneDoes
 	}
 }
 
-// The one case a milestone has no currency to report: Task 1's guard counts
-// only milestones that still bill something, so a project whose whole plan
-// was cancelled may clear its currency — and the cancelled milestones survive
-// it. They are history at that point, which is why the field is absent rather
-// than the request being refused.
+// Task 1's guard counts only milestones that still bill something, so a
+// project whose whole plan was cancelled may clear its currency — and the
+// cancelled milestones survive it. A flat amount keeps saying what it was
+// entered in; it is the *plan's* currency that goes, because there is no
+// longer a project currency for the totals to be in.
 func TestGetProjectsByIdMilestones_CancelledMilestone_OutlivesTheProjectsCurrency(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -408,11 +413,14 @@ func TestGetProjectsByIdMilestones_CancelledMilestone_OutlivesTheProjectsCurrenc
 	if len(plan.Milestones) != 1 {
 		t.Fatalf("milestones = %v, want the cancelled one still listed", milestoneNames(plan))
 	}
-	if plan.Milestones[0].Currency != nil {
-		t.Errorf("Currency = %v, want absent once the project has none", plan.Milestones[0].Currency)
+	if got := plan.Milestones[0].Currency; got == nil || *got != "NOK" {
+		t.Errorf("Currency = %v, want the NOK its amount was entered in", got)
 	}
-	if plan.Totals.Cancelled != 100000 {
-		t.Errorf("Totals.Cancelled = %v, want the amount it still carries", plan.Totals.Cancelled)
+	if plan.Totals.Currency != nil {
+		t.Errorf("Totals.Currency = %v, want absent once the project has none", plan.Totals.Currency)
+	}
+	if plan.Totals.Planned != 0 || plan.Totals.Ready != 0 || plan.Totals.Invoiced != 0 {
+		t.Errorf("Totals = %+v, want a cancelled milestone counted nowhere", plan.Totals)
 	}
 }
 
@@ -859,7 +867,7 @@ func TestGetProjectsByIdMilestones_EmptyPlan_IsAnEmptyListAndZeroes(t *testing.T
 		t.Errorf("milestones = %v, want an empty array", raw["milestones"])
 	}
 	plan := getMilestones(t, c, project.Id)
-	if plan.Totals.Planned != 0 || plan.Totals.Ready != 0 || plan.Totals.Invoiced != 0 || plan.Totals.Cancelled != 0 {
+	if plan.Totals.Planned != 0 || plan.Totals.Ready != 0 || plan.Totals.Invoiced != 0 {
 		t.Errorf("Totals = %+v, want zeroes", plan.Totals)
 	}
 	if plan.Totals.Currency != nil {
@@ -891,8 +899,8 @@ func TestGetProjectsByIdMilestones_CancelledPercentWithNoFixedPrice_OmitsTheEffe
 	if plan.Milestones[0].EffectiveAmount != nil {
 		t.Errorf("EffectiveAmount = %v, want it absent rather than zero", *plan.Milestones[0].EffectiveAmount)
 	}
-	if plan.Totals.Cancelled != 0 {
-		t.Errorf("Totals.Cancelled = %v, want 0 — there is no amount to count", plan.Totals.Cancelled)
+	if plan.Totals.Planned != 0 || plan.Totals.Ready != 0 || plan.Totals.Invoiced != 0 {
+		t.Errorf("Totals = %+v, want the unpriceable row counted nowhere", plan.Totals)
 	}
 	// The raw JSON, because a nil pointer cannot tell an absent key from a
 	// null one and the contract says absent.
@@ -1012,4 +1020,146 @@ func TestPutProjectsMilestonesByMilestoneIdPosition_WritesNoTimelineEntry(t *tes
 	if got := eventTypes(t, h, project.Id); len(got) != len(before) {
 		t.Errorf("timeline = %v, want a reorder to write nothing", got)
 	}
+}
+
+// A flat amount remembers the currency it was entered in (design §3.2). This
+// is the one path where money could otherwise change meaning without anybody
+// saying so: a cancelled milestone is exempt from the project's currency
+// guard, so the project may move from NOK to EUR underneath it, and a
+// milestone that answered "the project's currency" would then report a NOK
+// number as EUR — roughly ten times its real value on the Economy tab.
+func TestGetProjectsByIdMilestones_AmountKeepsTheCurrencyItWasEnteredIn(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, c, "MSCUR1")
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Oppstart", "amount": 100000})
+	if m.Currency == nil || *m.Currency != "NOK" {
+		t.Fatalf("Currency = %v, want NOK as entered", m.Currency)
+	}
+	movedMilestone(t, c, m, milestoneCancelled, nil)
+
+	project = putProject(t, c, project, map[string]any{"currency": "EUR"})
+
+	after := getMilestone(t, c, m.Id)
+	if after.Currency == nil || *after.Currency != "NOK" {
+		t.Errorf("Currency = %v, want the NOK it was entered in, not the project's new EUR", after.Currency)
+	}
+	if got := effectiveAmount(t, after); got != 100000 {
+		t.Errorf("EffectiveAmount = %v, want the number unchanged", got)
+	}
+	if stored := modtest.One[string](t, h,
+		`SELECT amount_currency FROM projects.billing_milestones WHERE id = $1`, m.Id); stored != "NOK" {
+		t.Errorf("stored amount_currency = %q, want NOK", stored)
+	}
+
+	// And it cannot be brought back to life as the same number in EUR.
+	r := moveMilestoneStatus(t, c, after, milestonePlanned, nil)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("reopen: status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	msgs := problem.Errors["status"]
+	if len(msgs) == 0 {
+		t.Fatalf("errors = %v, want a message on 'status'", problem.Errors)
+	}
+	if !strings.Contains(msgs[0], "NOK") || !strings.Contains(msgs[0], "EUR") {
+		t.Errorf("message = %q, want it to name both currencies", msgs[0])
+	}
+	if after.Capabilities.CanReopen {
+		t.Errorf("capabilities = %+v, want canReopen false", after.Capabilities)
+	}
+}
+
+// The other side of the same change: a percent milestone owns no amount, so
+// it has nothing to remember. It resolves against the project's fixed price,
+// which is always in the project's current currency, and reopens normally.
+func TestGetProjectsByIdMilestones_CancelledPercent_ReopensAfterACurrencyChange(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSCUR2", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	m = movedMilestone(t, c, m, milestoneCancelled, nil)
+
+	project = putProject(t, c, project, map[string]any{"currency": "EUR", "fixedPriceAmount": 200000})
+
+	m = getMilestone(t, c, m.Id)
+	if m.Currency == nil || *m.Currency != "EUR" {
+		t.Errorf("Currency = %v, want the project's current EUR", m.Currency)
+	}
+	if !m.Capabilities.CanReopen {
+		t.Errorf("capabilities = %+v, want canReopen true", m.Capabilities)
+	}
+	reopened := movedMilestone(t, c, m, milestonePlanned, nil)
+	if got := effectiveAmount(t, reopened); got != 50000 {
+		t.Errorf("EffectiveAmount = %v, want 25 %% of the new 200000", got)
+	}
+	if stored := modtest.One[string](t, h,
+		`SELECT coalesce(amount_currency, 'null') FROM projects.billing_milestones WHERE id = $1`, m.Id); stored != "null" {
+		t.Errorf("stored amount_currency = %q, want NULL on a percent milestone", stored)
+	}
+}
+
+// Switching a milestone between the two pricings moves the stamp with it: an
+// amount gains the project's currency, a percent has none.
+func TestPutProjectsMilestonesByMilestoneId_SwitchingPricing_MovesTheAmountCurrency(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSCUR3", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Oppstart", "amount": 100000})
+
+	toPercent := changeMilestone(t, c, m, map[string]any{"amount": nil, "percent": 25})
+	if stored := modtest.One[string](t, h,
+		`SELECT coalesce(amount_currency, 'null') FROM projects.billing_milestones WHERE id = $1`, m.Id); stored != "null" {
+		t.Errorf("stored amount_currency = %q, want it cleared with the amount", stored)
+	}
+	backToAmount := changeMilestone(t, c, toPercent, map[string]any{"amount": 50000, "percent": nil})
+	if backToAmount.Currency == nil || *backToAmount.Currency != "NOK" {
+		t.Errorf("Currency = %v, want NOK stamped again", backToAmount.Currency)
+	}
+}
+
+// The degrade ruling: one row nobody can price must not take the whole plan
+// down. Such a row cannot be produced through the API — the status flow
+// refuses every move that would make one, and the project's guards refuse
+// every change that would strand one — so it is inserted directly, the way a
+// migration or a hand-edit could leave one behind.
+func TestGetProjectsByIdMilestones_AnUnpriceableRow_DegradesRatherThanFailing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, c, "MSDEG1")
+	good := createMilestone(t, c, project.Id, map[string]any{"name": "Grei", "amount": 1000})
+	// A planned percent milestone on a project with no fixed price at all.
+	broken := insertMilestone(t, h, project.Id, map[string]any{
+		"name": "Uprisbar", "percent": 25.00, "position": int32(2),
+	})
+
+	plan := getMilestones(t, c, project.Id)
+	if len(plan.Milestones) != 2 {
+		t.Fatalf("milestones = %v, want both rows listed", milestoneNames(plan))
+	}
+	byName := map[string]milestoneJSON{}
+	for _, m := range plan.Milestones {
+		byName[m.Name] = m
+	}
+	if byName["Uprisbar"].EffectiveAmount != nil {
+		t.Errorf("EffectiveAmount = %v, want it absent on the row nobody can price", *byName["Uprisbar"].EffectiveAmount)
+	}
+	if got := effectiveAmount(t, byName["Grei"]); got != 1000 {
+		t.Errorf("the priceable row = %v, want 1000 — one bad row must not affect it", got)
+	}
+	if plan.Totals.Planned != 1000 {
+		t.Errorf("Totals.Planned = %v, want only the row that has an amount", plan.Totals.Planned)
+	}
+
+	// The single read degrades the same way rather than answering 500.
+	one := getMilestone(t, c, broken)
+	if one.EffectiveAmount != nil {
+		t.Errorf("single read EffectiveAmount = %v, want it absent", *one.EffectiveAmount)
+	}
+	_ = good
 }

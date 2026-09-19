@@ -62,19 +62,24 @@ WHERE projects.visible(p.id, sqlc.arg(user_id), sqlc.arg(see_all)::boolean)
                                    OR p.name ILIKE '%' || sqlc.arg(search) || '%' ESCAPE '\');
 
 -- name: LockProject :one
--- LockProject is a project row, locked FOR UPDATE for the rest of the
--- transaction (design §3.3). Every writer that decides something from the
--- project's currency, fixed price or billing type — the project's own
--- update, and a billing line's create or change, since a 'fixed' amount and
--- a budget amount are both denominated in that currency (Task 2's
--- milestones will be a third) — takes this lock as its *first* statement and
--- decides against the row it reads back here, never against a row read
--- before the transaction opened. FOR UPDATE rather than FOR SHARE: this
--- transaction may itself be the one changing those columns, and every one of
--- these writers takes the same lock in the same mode, so there is no lock
--- upgrade and nothing to deadlock against — only a plain queue on a write
--- that is rare to begin with.
-SELECT * FROM projects.projects WHERE id = @id FOR UPDATE;
+-- LockProject is a project row, locked for the rest of the transaction
+-- (design §3.3). Every writer that decides something from the project's
+-- currency, fixed price or billing type — the project's own update, a
+-- billing line's create or change, and every billing milestone write, since
+-- a 'fixed' amount, a budget amount and a milestone are all denominated in
+-- that currency — takes this lock as its *first* statement and decides
+-- against the row it reads back here, never against a row read before the
+-- transaction opened.
+--
+-- FOR NO KEY UPDATE, not FOR UPDATE: it conflicts with itself and with the
+-- project UPDATE's own row lock, so every one of those writers still
+-- serialises against every other and no guarantee is weaker — but it does
+-- not conflict with the FOR KEY SHARE that Postgres takes on this row for
+-- every insert that references it. FOR UPDATE would have made an unrelated
+-- task, role, comment, line or timeline insert on the same project wait
+-- behind a guarded write. Nothing here ever changes the project's key, which
+-- is what makes the weaker mode correct rather than merely cheaper.
+SELECT * FROM projects.projects WHERE id = @id FOR NO KEY UPDATE;
 
 -- name: UpdateProject :one
 -- UpdateProject applies one edit, guarded by the revision the caller read

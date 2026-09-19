@@ -20,7 +20,7 @@ describe("milestonePlanQueryOptions", () => {
   it("reads the project's invoice plan under the milestones key", async () => {
     const plan = {
       milestones: [{ id: 1, name: "Kick-off" }],
-      totals: { planned: 1, ready: 0, invoiced: 0, cancelled: 0 },
+      totals: { planned: 1, ready: 0, invoiced: 0 },
     };
     const fetchMock = stubFetch(() => Promise.resolve(jsonResponse(200, plan)));
 

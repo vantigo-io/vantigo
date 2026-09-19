@@ -6,9 +6,20 @@
 -- project is never actually deleted, so nothing here has to decide what
 -- happens when one is.
 --
+-- A flat amount remembers the currency it was entered in. The project's own
+-- currency cannot change while a milestone that still bills something exists
+-- (design §3.3's guard), but a *cancelled* milestone is exempt from that
+-- guard and can therefore outlive a currency change — so the amount has to
+-- carry its own, or a cancelled NOK milestone would silently start reading
+-- as the same number in EUR. It is set exactly when `amount` is, and cleared
+-- when a milestone becomes a percent one; a percent milestone has no amount
+-- of its own and resolves against the project's current fixed price, which
+-- is always in the project's current currency.
+--
 -- No CHECK constraints (house style, see 00009): "exactly one of amount or
--- percent", "percent only while the project has a fixed price", the status
--- moves and everything else in design §3.2 are Go's rules, not the schema's.
+-- percent", "amount_currency set iff amount is", "percent only while the
+-- project has a fixed price", the status moves and everything else in design
+-- §3.2 are Go's rules, not the schema's.
 CREATE TABLE projects.billing_milestones (
     id                  integer GENERATED ALWAYS AS IDENTITY (START WITH 1001) PRIMARY KEY,
     project_id          integer      NOT NULL REFERENCES projects.projects (id),
@@ -16,6 +27,7 @@ CREATE TABLE projects.billing_milestones (
     description         varchar(2000),
     planned_date        date,
     amount              numeric(12,2),
+    amount_currency     char(3),
     percent             numeric(5,2),
     status              varchar(20)  NOT NULL DEFAULT 'planned',
     position            integer      NOT NULL,
