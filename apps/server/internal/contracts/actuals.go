@@ -30,8 +30,13 @@ const MaxActualsRequests = 2000
 // request time — so ActualsRequest carries the currency in. An amount counts
 // only when the logged work's own currency equals the requested one;
 // anything logged in another currency contributes its hours and no amount,
-// because adding two currencies would produce a number in neither. With no
-// currency requested no amounts are summed at all.
+// because adding two currencies would produce a number in neither.
+//
+// With no currency requested no amounts are reported at all — every bucket's
+// BillAmount and CostAmount is "0.00", and the hours are all unpriced and
+// uncosted. A provider must not infer a currency from what happens to be
+// logged: a project that carries no amounts has none, and a figure the
+// caller never asked for is a figure nobody can label.
 //
 // A provider fails rather than under-reports: an error means "the figures
 // could not be read", never "there are none". A project with nothing logged
@@ -45,7 +50,9 @@ type ProjectActuals interface {
 	// project id: every requested project is in the result, zero-valued when
 	// it has nothing logged. Different projects may be asked in different
 	// currencies in one call. No requests answers an empty map; more than
-	// MaxActualsRequests is an error.
+	// MaxActualsRequests is an error, and so is naming one project twice —
+	// one project has one answer, and two requests for it are the caller's
+	// bug however they agree.
 	ActualsForProjects(ctx context.Context, reqs []ActualsRequest) (map[int32]ActualsTotals, error)
 }
 
@@ -61,6 +68,11 @@ type ActualsRequest struct {
 // exact; the amounts are decimal text, so no float ever rounds money on its
 // way between modules, and they hold only what was logged in the requested
 // currency.
+//
+// Each bucket is rounded once, on its own, after everything in it has been
+// added up exactly. Two buckets, or two lines, therefore need not add up to
+// the cent: a consumer must take a project's figure from the project's own
+// totals and never by adding up its lines or its buckets.
 type ActualsBucket struct {
 	// HoursHundredths is hundredths of an hour: 1.25 h is 125. Exact.
 	HoursHundredths int64
@@ -87,11 +99,30 @@ type ActualsTotals struct {
 	// Draft is work nobody has been asked to accept yet: drafts, and work
 	// sent back to its owner.
 	Draft ActualsBucket
-	// UnpricedHoursHundredths is the hours, across all three buckets, whose
-	// bill amount is not in BillAmount: work logged without a bill rate, and
-	// work whose bill rate is in a currency other than the requested one.
-	// With no currency requested only work without a rate is unpriced.
+	// UnpricedHoursHundredths is the *billable* hours, across all three
+	// buckets, whose bill amount is not in BillAmount: billable work logged
+	// without a bill rate, and billable work whose bill rate is in a
+	// currency other than the requested one. With no currency requested only
+	// billable work without a rate is unpriced.
+	//
+	// Non-billable work is never unpriced — it was never meant to carry a
+	// price, and counting it here would send someone looking for a missing
+	// rate that does not exist. NonBillableHoursHundredths is where those
+	// hours are reported. A provider must report the same figure the module
+	// that owns the hours reports on its own surfaces.
 	UnpricedHoursHundredths int64
+	// UncostedHoursHundredths is the hours, across all three buckets and
+	// billable or not, whose cost is not in CostAmount: work logged without
+	// a cost rate, and work whose cost is in a currency other than the
+	// requested one. With no currency requested only work without a cost
+	// rate is uncosted.
+	//
+	// Unlike unpriced hours this covers non-billable work too: work nobody
+	// is billed for still costs the company. A consumer showing cost or
+	// margin must surface this — a margin computed from CostAmount alone is
+	// overstated by exactly the cost of these hours, and cost sits behind a
+	// sensitive permission precisely because people decide things on it.
+	UncostedHoursHundredths int64
 	// BillableHoursHundredths and NonBillableHoursHundredths split the
 	// hours of all three buckets by whether the work is billable at all.
 	// Together they are the three buckets' hours.
@@ -106,11 +137,16 @@ type ActualsTotals struct {
 // billing line.
 type ProjectActualsEntry struct {
 	Totals ActualsTotals
-	// Lines is one entry per billing line anything was logged on, by line id
-	// ascending, and last — when there is any — the work logged on no line
-	// at all (BillingLineID nil). A line with nothing logged on it is absent
-	// rather than zero: the provider knows only what was logged, never which
-	// lines exist.
+	// Lines is one entry per billing line anything was logged on, by billing
+	// line id ascending, and last — when there is any — the work logged on
+	// no line at all (BillingLineID nil). A line with nothing logged on it
+	// is absent rather than zero: the provider knows only what was logged,
+	// never which lines exist, and it cannot order them by anything it does
+	// not know, a line's code included. A consumer wanting every line, in
+	// code order, merges this against its own list of lines.
+	//
+	// Adding the lines up does not reliably give Totals: each is rounded on
+	// its own (see ActualsBucket). Totals is the project's figure.
 	Lines []LineActuals
 }
 

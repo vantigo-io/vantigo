@@ -24,8 +24,9 @@ SELECT project_id,
        cost_currency,
        SUM(hours * 100)::bigint AS hours_hundredths,
        COALESCE(SUM(hours * 100) FILTER (WHERE billable), 0)::bigint AS billable_hours_hundredths,
-       COALESCE(SUM(hours * 100) FILTER (WHERE bill_rate IS NOT NULL), 0)::bigint AS priced_hours_hundredths,
-       COALESCE(SUM(hours * bill_rate), 0)::text AS bill_amount,
+       COALESCE(SUM(hours * 100) FILTER (WHERE billable AND bill_rate IS NOT NULL), 0)::bigint AS priced_hours_hundredths,
+       COALESCE(SUM(hours * 100) FILTER (WHERE cost_rate IS NOT NULL), 0)::bigint AS costed_hours_hundredths,
+       COALESCE(SUM(hours * bill_rate) FILTER (WHERE billable), 0)::text AS bill_amount,
        COALESCE(SUM(hours * cost_rate), 0)::text AS cost_amount,
        MAX(entry_date)::date AS last_entry_date
 FROM time.entries
@@ -50,6 +51,7 @@ type ProjectActualGroupsRow struct {
 	HoursHundredths         int64
 	BillableHoursHundredths int64
 	PricedHoursHundredths   int64
+	CostedHoursHundredths   int64
 	BillAmount              string
 	CostAmount              string
 	LastEntryDate           pgtype.Date
@@ -71,6 +73,19 @@ type ProjectActualGroupsRow struct {
 // unrounded numeric sums as text — rounding the grand total once is not the
 // same number as rounding every group and adding those, so the rounding is
 // Go's, after the groups are added.
+//
+// bill_amount and priced_hours_hundredths are both qualified with billable,
+// the way ProjectBillingTotals restricts its whole query: only billable hours
+// can be priced, so only billable hours can be unpriced, and the project
+// summary and the economy view report the same figures. The rate chain never
+// prices a non-billable entry (rates.go's early return), so today the filter
+// changes nothing — it is here so that a row that somehow carries both would
+// be left out of the amount as well as out of the split, rather than showing
+// up as money belonging to hours that are counted in neither.
+//
+// costed_hours_hundredths and cost_amount are not qualified: non-billable
+// work still costs the company, and leaving its cost out would make those
+// hours look uncosted.
 func (q *Queries) ProjectActualGroups(ctx context.Context, projectIds []int32) ([]ProjectActualGroupsRow, error) {
 	rows, err := q.db.Query(ctx, projectActualGroups, projectIds)
 	if err != nil {
@@ -89,6 +104,7 @@ func (q *Queries) ProjectActualGroups(ctx context.Context, projectIds []int32) (
 			&i.HoursHundredths,
 			&i.BillableHoursHundredths,
 			&i.PricedHoursHundredths,
+			&i.CostedHoursHundredths,
 			&i.BillAmount,
 			&i.CostAmount,
 			&i.LastEntryDate,
