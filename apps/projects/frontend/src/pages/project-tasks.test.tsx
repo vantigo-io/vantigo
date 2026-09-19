@@ -152,6 +152,20 @@ describe("ProjectTasks", () => {
     expect(await screen.findByRole("dialog", { name: "Task" })).toBeInTheDocument();
   });
 
+  // A board is a list of buttons with the same job, so each card's menu is
+  // named after its own task rather than after all of them.
+  it("names each card's menu after the task it belongs to", async () => {
+    stubTasks(true);
+    renderWithProviders(<ProjectTasks projectId={7} />);
+
+    await screen.findByTestId("task-group-todo");
+    await userEvent.click(screen.getByRole("radio", { name: "Board" }));
+
+    expect(await screen.findByRole("button", { name: "Actions for Write the docs" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actions for Ship the release" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Task actions" })).not.toBeInTheDocument();
+  });
+
   it("moves a card to another status from the card's menu", async () => {
     const fetchMock = stubTasks(true);
     renderWithProviders(<ProjectTasks projectId={7} />);
@@ -163,7 +177,7 @@ describe("ProjectTasks", () => {
     // Initials are all the card has room for, so the avatar has to say who
     // they belong to for anyone not reading them off the screen.
     expect(within(card).getByLabelText("Ada Lovelace")).toHaveTextContent("AL");
-    await userEvent.click(within(card).getByRole("button", { name: "Task actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Write the docs" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Move to In progress" }));
 
     await waitFor(() => {
@@ -201,7 +215,7 @@ describe("ProjectTasks", () => {
 
     await userEvent.click(screen.getByRole("radio", { name: "Board" }));
     const card = await screen.findByTestId("task-card-1");
-    expect(within(card).queryByRole("button", { name: "Task actions" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /^Actions for/ })).not.toBeInTheDocument();
   });
 
   it("reports a tree it could not read", async () => {

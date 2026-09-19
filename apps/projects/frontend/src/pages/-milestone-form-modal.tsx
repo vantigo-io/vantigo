@@ -55,7 +55,9 @@ export const MilestoneFormModal = ({ state, ...rest }: MilestoneFormModalProps) 
       title={state?.mode === "edit" ? t("editMilestoneTitle") : t("createMilestoneTitle")}
       centered
     >
-      {state && <MilestoneForm state={state} {...rest} />}
+      {/* The key resets the form on its own, rather than leaving that to the
+          modal happening to unmount between two opens. */}
+      {state && <MilestoneForm key={state.mode === "edit" ? state.milestone.id : "create"} state={state} {...rest} />}
     </Modal>
   );
 };
@@ -94,9 +96,10 @@ const MilestoneForm = ({
       amount: (value, values) => {
         if (values.pricedBy !== "amount") return null;
         const entered = numeric(value);
-        return entered === undefined || entered <= 0 || entered > MILESTONE_AMOUNT_MAX
-          ? t("milestoneAmountRequired")
-          : null;
+        if (entered === undefined || entered <= 0) return t("milestoneAmountRequired");
+        // The ceiling is its own answer: telling somebody who typed
+        // 99 999 999 999 that their amount is not above zero explains nothing.
+        return entered > MILESTONE_AMOUNT_MAX ? t("milestoneAmountTooLarge") : null;
       },
       percent: (value, values) => {
         if (values.pricedBy !== "percent") return null;

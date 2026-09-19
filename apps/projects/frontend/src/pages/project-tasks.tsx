@@ -401,7 +401,9 @@ const TaskCard = ({
             <Box onClick={(event) => event.stopPropagation()}>
               <Menu position="bottom-end" withinPortal>
                 <Menu.Target>
-                  <ActionIcon variant="subtle" size="sm" aria-label={t("taskActions")}>
+                  {/* Named after its own card: a board is a column of buttons
+                      with the same job, told apart only by their task. */}
+                  <ActionIcon variant="subtle" size="sm" aria-label={t("taskActionsFor", { title: task.title })}>
                     <IconDots size={16} />
                   </ActionIcon>
                 </Menu.Target>

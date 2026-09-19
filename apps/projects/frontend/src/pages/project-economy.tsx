@@ -11,7 +11,6 @@ import {
   Stack,
   Table,
   Text,
-  Tooltip,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
@@ -365,19 +364,25 @@ const MilestoneRow = ({
   return (
     <Table.Tr>
       <Table.Td>
-        <Group gap="xs" wrap="nowrap">
-          <Tooltip label={milestone.description} disabled={!milestone.description} multiline maw={320} withinPortal>
-            <Text
-              size="sm"
-              fw={500}
-              data-testid="milestone-name"
-              td={cancelled ? "line-through" : undefined}
-              c={cancelled ? "dimmed" : undefined}
-            >
-              {milestone.name}
+        {/* The description is written out rather than hidden in a tooltip: a
+            viewer with financial rights may not edit a milestone, so the row
+            is the only place they would ever read what it is for. */}
+        <Stack gap={2}>
+          <Text
+            size="sm"
+            fw={500}
+            data-testid="milestone-name"
+            td={cancelled ? "line-through" : undefined}
+            c={cancelled ? "dimmed" : undefined}
+          >
+            {milestone.name}
+          </Text>
+          {milestone.description && (
+            <Text size="xs" c="dimmed" lineClamp={2} maw={360}>
+              {milestone.description}
             </Text>
-          </Tooltip>
-        </Group>
+          )}
+        </Stack>
       </Table.Td>
       <Table.Td>
         <Group gap="xs" wrap="nowrap">
@@ -401,7 +406,13 @@ const MilestoneRow = ({
         {items.length > 0 && (
           <Menu position="bottom-end" withinPortal>
             <Menu.Target>
-              <ActionIcon variant="subtle" aria-label={t("milestoneActions")} loading={actions.isPending}>
+              {/* Named after its own row: a reader listing the page's buttons
+                  gets one per milestone, not six of the same. */}
+              <ActionIcon
+                variant="subtle"
+                aria-label={t("milestoneActionsFor", { name: milestone.name })}
+                loading={actions.isPending}
+              >
                 <IconDots size={16} />
               </ActionIcon>
             </Menu.Target>
