@@ -53,6 +53,18 @@ components:
                 - hours
                 - entries
             type: object
+        TimeAssignableUser:
+            description: One active user, named for a rate card's picker.
+            properties:
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+            type: object
         TimeEntryApproveRequest:
             description: The entries to approve, each submitted, on a project the caller approves for (its manager, or time:approve), and not dated before the lock date unless the caller holds time:manage. All or nothing — one entry that may not be approved refuses the whole request and changes nothing.
             properties:
@@ -1398,6 +1410,41 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Add a person rate
+            tags:
+                - Time
+            x-vantigo-access: permission:time:access+time:manage
+    /api/v1/time/rates/assignable-users:
+        get:
+            description: Any active user a rate card could be added for, including one with no logged hours yet. Matches display name, case-insensitively; absent or empty answers the first page.
+            operationId: getTimeRatesAssignableUsers
+            parameters:
+                - description: Matches the user's display name, case-insensitively. Absent or empty answers the first active users.
+                  in: query
+                  name: search
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/TimeAssignableUser'
+                                type: array
+                    description: OK — at most 20 active users, in the order the directory returns them.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Search users for a rate card
             tags:
                 - Time
             x-vantigo-access: permission:time:access+time:manage

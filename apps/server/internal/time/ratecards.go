@@ -33,6 +33,11 @@ import (
 // day; a create or an update it refuses is the validFrom field error.
 const personRateDayIndex = "ux_person_rates_user_id_valid_from"
 
+// assignableUserLimit is how many candidates the rate card's assignable-user
+// search answers: a picker's first page, not a report, same as projects'
+// (people.go's assignableUserLimit).
+const assignableUserLimit = 20
+
 // currencyPattern is an ISO 4217 alphabetic code's shape, as projects checks
 // a project's currency; the set of codes itself is not enforced.
 var currencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -294,6 +299,30 @@ func (s *server) PutTimeRatesById(ctx context.Context, req gen.PutTimeRatesByIdR
 		return nil, err
 	}
 	return gen.PutTimeRatesById200JSONResponse(out[0]), nil
+}
+
+// GetTimeRatesAssignableUsers Search users for a rate card
+// (GET /api/v1/time/rates/assignable-users)
+//
+// Any active user, not only one who has already logged time or holds a rate
+// row: a new hire needs a card before they have either. There is no
+// "already has a rate" filter to apply — unlike projects' assignable-user
+// search, which drops a project's own members — so this is a direct
+// pass-through to the directory's search, clamped to the picker's page.
+func (s *server) GetTimeRatesAssignableUsers(ctx context.Context, req gen.GetTimeRatesAssignableUsersRequestObject) (gen.GetTimeRatesAssignableUsersResponseObject, error) {
+	search := ""
+	if req.Params.Search != nil {
+		search = strings.TrimSpace(*req.Params.Search)
+	}
+	found, err := s.deps.Users.SearchUsers(ctx, search, assignableUserLimit)
+	if err != nil {
+		return nil, fmt.Errorf("time: search assignable users: %w", err)
+	}
+	data := make([]gen.TimeAssignableUser, 0, len(found))
+	for _, e := range found {
+		data = append(data, gen.TimeAssignableUser{UserId: e.ID, DisplayName: e.DisplayName})
+	}
+	return gen.GetTimeRatesAssignableUsers200JSONResponse(data), nil
 }
 
 // DeleteTimeRatesById Delete a person rate

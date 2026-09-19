@@ -47,6 +47,12 @@ type TimeApprovalGroup struct {
 	WeekStart openapi_types.Date `json:"weekStart"`
 }
 
+// TimeAssignableUser One active user, named for a rate card's picker.
+type TimeAssignableUser struct {
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
 // TimeEntryApproveRequest The entries to approve, each submitted, on a project the caller approves for (its manager, or time:approve), and not dated before the lock date unless the caller holds time:manage. All or nothing — one entry that may not be approved refuses the whole request and changes nothing.
 type TimeEntryApproveRequest struct {
 	Ids []int64 `json:"ids"`
@@ -493,6 +499,12 @@ type GetTimeRatesParams struct {
 	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
 }
 
+// GetTimeRatesAssignableUsersParams defines parameters for GetTimeRatesAssignableUsers.
+type GetTimeRatesAssignableUsersParams struct {
+	// Search Matches the user's display name, case-insensitively. Absent or empty answers the first active users.
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+}
+
 // GetTimeStatsSummaryParams defines parameters for GetTimeStatsSummary.
 type GetTimeStatsSummaryParams struct {
 	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
@@ -577,6 +589,9 @@ type ServerInterface interface {
 	// PostTimeRates Add a person rate
 	// (POST /api/v1/time/rates)
 	PostTimeRates(w http.ResponseWriter, r *http.Request)
+	// GetTimeRatesAssignableUsers Search users for a rate card
+	// (GET /api/v1/time/rates/assignable-users)
+	GetTimeRatesAssignableUsers(w http.ResponseWriter, r *http.Request, params GetTimeRatesAssignableUsersParams)
 	// GetTimeRatesUsersByUserId Get a person's rates
 	// (GET /api/v1/time/rates/users/{userId})
 	GetTimeRatesUsersByUserId(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID)
@@ -1016,6 +1031,39 @@ func (siw *ServerInterfaceWrapper) PostTimeRates(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetTimeRatesAssignableUsers operation middleware
+func (siw *ServerInterfaceWrapper) GetTimeRatesAssignableUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTimeRatesAssignableUsersParams
+
+	// ------------- Optional query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTimeRatesAssignableUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTimeRatesUsersByUserId operation middleware
 func (siw *ServerInterfaceWrapper) GetTimeRatesUsersByUserId(w http.ResponseWriter, r *http.Request) {
 
@@ -1427,6 +1475,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/time/projects/{projectId}/summary", wrapper.GetTimeProjectsByProjectIdSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/time/rates", wrapper.GetTimeRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/time/rates", wrapper.PostTimeRates)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/time/rates/assignable-users", wrapper.GetTimeRatesAssignableUsers)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/time/rates/users/{userId}", wrapper.GetTimeRatesUsersByUserId)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/time/rates/{id}", wrapper.DeleteTimeRatesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/time/rates/{id}", wrapper.PutTimeRatesById)
@@ -2322,6 +2371,56 @@ func (response PostTimeRates403JSONResponse) VisitPostTimeRatesResponse(w http.R
 	return err
 }
 
+type GetTimeRatesAssignableUsersRequestObject struct {
+	Params GetTimeRatesAssignableUsersParams
+}
+
+type GetTimeRatesAssignableUsersResponseObject interface {
+	VisitGetTimeRatesAssignableUsersResponse(w http.ResponseWriter) error
+}
+
+type GetTimeRatesAssignableUsers200JSONResponse []TimeAssignableUser
+
+func (response GetTimeRatesAssignableUsers200JSONResponse) VisitGetTimeRatesAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeRatesAssignableUsers401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetTimeRatesAssignableUsers401JSONResponse) VisitGetTimeRatesAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTimeRatesAssignableUsers403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetTimeRatesAssignableUsers403JSONResponse) VisitGetTimeRatesAssignableUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTimeRatesUsersByUserIdRequestObject struct {
 	UserId openapi_types.UUID `json:"userId"`
 }
@@ -2945,6 +3044,9 @@ type StrictServerInterface interface {
 	// PostTimeRates Add a person rate
 	// (POST /api/v1/time/rates)
 	PostTimeRates(ctx context.Context, request PostTimeRatesRequestObject) (PostTimeRatesResponseObject, error)
+	// GetTimeRatesAssignableUsers Search users for a rate card
+	// (GET /api/v1/time/rates/assignable-users)
+	GetTimeRatesAssignableUsers(ctx context.Context, request GetTimeRatesAssignableUsersRequestObject) (GetTimeRatesAssignableUsersResponseObject, error)
 	// GetTimeRatesUsersByUserId Get a person's rates
 	// (GET /api/v1/time/rates/users/{userId})
 	GetTimeRatesUsersByUserId(ctx context.Context, request GetTimeRatesUsersByUserIdRequestObject) (GetTimeRatesUsersByUserIdResponseObject, error)
@@ -3410,6 +3512,32 @@ func (sh *strictHandler) PostTimeRates(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PostTimeRatesResponseObject); ok {
 		if err := validResponse.VisitPostTimeRatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTimeRatesAssignableUsers operation middleware
+func (sh *strictHandler) GetTimeRatesAssignableUsers(w http.ResponseWriter, r *http.Request, params GetTimeRatesAssignableUsersParams) {
+	var request GetTimeRatesAssignableUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTimeRatesAssignableUsers(ctx, request.(GetTimeRatesAssignableUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTimeRatesAssignableUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTimeRatesAssignableUsersResponseObject); ok {
+		if err := validResponse.VisitGetTimeRatesAssignableUsersResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
