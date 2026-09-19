@@ -8,6 +8,13 @@ export const TASK_DESCRIPTION_MAX = 4000;
 export const CHECKLIST_TEXT_MAX = 500;
 export const COMMENT_BODY_MAX = 4000;
 
+/** How much of a free-text field an accessible name quotes before an item's own text runs on too long. */
+const LABEL_EXCERPT_MAX = 60;
+
+/** A row's own text, cut to a sensible length for naming its button — the text itself, not a summary of it. */
+export const excerptForLabel = (text: string, max = LABEL_EXCERPT_MAX): string =>
+  text.length > max ? `${text.slice(0, max)}…` : text;
+
 /** A task's status, in the order work moves through it — the order every board column and grouped list uses. */
 export const taskStatuses = ["todo", "in-progress", "done"] as const;
 

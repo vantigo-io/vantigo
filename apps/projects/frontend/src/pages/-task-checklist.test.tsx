@@ -91,12 +91,28 @@ describe("TaskChecklist", () => {
     renderWithProviders(<TaskChecklist taskId={12} canContribute />);
 
     await screen.findByRole("checkbox", { name: "Outline the pages" });
-    await userEvent.click(screen.getAllByRole("button", { name: "Delete the item" })[0]);
+    await userEvent.click(screen.getByRole("button", { name: "Delete Outline the pages" }));
 
     await waitFor(() => {
       const [url] = fetchMock.actualCalls.find(([, request]) => request?.method === "DELETE") ?? [];
       expect(String(url)).toBe("/api/v1/projects/tasks/12/checklist/5");
     });
+  });
+
+  // Every item's delete button used to share the one name "Delete the item",
+  // which is unusable from a screen reader's list of buttons — this pins that
+  // each is named after its own item, cut short before it runs on too long.
+  it("names each item's delete button after its own text, cutting off a very long one", async () => {
+    const long = "x".repeat(80);
+    stubChecklist([
+      { id: 5, text: "Outline the pages", done: false, position: 1 },
+      { id: 6, text: long, done: false, position: 2 },
+    ]);
+    renderWithProviders(<TaskChecklist taskId={12} canContribute />);
+
+    expect(await screen.findByRole("button", { name: "Delete Outline the pages" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Delete ${long.slice(0, 60)}…` })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete the item" })).not.toBeInTheDocument();
   });
 
   it("shows a viewer the items without a way to change them", async () => {
@@ -105,7 +121,7 @@ describe("TaskChecklist", () => {
 
     expect(await screen.findByRole("checkbox", { name: "Outline the pages" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Add item" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete the item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Delete /i })).not.toBeInTheDocument();
   });
 
   it("says when there is nothing on the checklist", async () => {
