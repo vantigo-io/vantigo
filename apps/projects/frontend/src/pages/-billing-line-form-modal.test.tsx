@@ -61,6 +61,12 @@ const fixedAmountInput = () => {
   return (field.querySelector("input") ?? field) as HTMLElement;
 };
 
+/** A budget field, whether Mantine hung the test id on the input or its wrapper. */
+const budgetInput = (testId: string) => {
+  const field = screen.getByTestId(testId);
+  return (field.querySelector("input") ?? field) as HTMLElement;
+};
+
 const pickVariant = async () => {
   await userEvent.click(screen.getByRole("combobox", { name: "Product variant" }));
   await userEvent.click(await screen.findByRole("option", { name: /Project management/ }));
@@ -160,6 +166,57 @@ describe("BillingLineFormModal", () => {
       discountPercent: 10,
       active: false,
     });
+  });
+
+  it("carries the line's planning budget in hours and in money", async () => {
+    const fetchMock = stubLines();
+    renderModal({ mode: "create" });
+
+    await pickVariant();
+    await userEvent.type(screen.getByLabelText(/line code/i), "PM");
+    await userEvent.type(budgetInput("line-budget-hours"), "120");
+    await userEvent.type(budgetInput("line-budget-amount"), "96000");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(true));
+    const [, init] = fetchMock.actualCalls.find(([, request]) => request?.method === "POST") ?? [];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      code: "PM",
+      variantId: 31,
+      pricingMode: "list",
+      budgetHours: 120,
+      budgetAmount: 96000,
+    });
+  });
+
+  it("offers no budget amount until the project has a currency, but still asks for hours", async () => {
+    stubLines();
+    renderWithProviders(<BillingLineFormModal projectId={7} state={{ mode: "create" }} onClose={() => {}} />);
+
+    expect(await screen.findByTestId("line-budget-hours")).toBeInTheDocument();
+    expect(screen.queryByTestId("line-budget-amount")).not.toBeInTheDocument();
+  });
+
+  it("refuses a budget that is not above zero", async () => {
+    const fetchMock = stubLines();
+    renderModal({ mode: "create" });
+
+    await pickVariant();
+    await userEvent.type(screen.getByLabelText(/line code/i), "PM");
+    await userEvent.type(budgetInput("line-budget-hours"), "0");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("A budget in hours must be above 0")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("seeds the budget a line already carries, hours beside the amount inside its pricing", async () => {
+    stubLines();
+    renderModal({ mode: "edit", line: { ...line, budgetHours: 120, pricing: { mode: "list", budgetAmount: 96000 } } });
+
+    await screen.findByRole("dialog", { name: "Edit billing line" });
+    expect(budgetInput("line-budget-hours")).toHaveValue("120");
+    expect(budgetInput("line-budget-amount")).toHaveValue("96000");
   });
 
   it("reports a server field error on the line code", async () => {

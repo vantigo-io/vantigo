@@ -128,6 +128,7 @@ const BillingLinesCard = ({ projectId, project }: { projectId: number; project: 
                   <Table.Th>{t("unit")}</Table.Th>
                   <Table.Th>{t("pricingMode")}</Table.Th>
                   <Table.Th>{t("listPrice")}</Table.Th>
+                  <Table.Th>{t("budget")}</Table.Th>
                   <Table.Th>{t("status")}</Table.Th>
                   {canManage && <Table.Th>{t("actions")}</Table.Th>}
                 </Table.Tr>
@@ -201,6 +202,9 @@ const LineRow = ({
         </Text>
       </Table.Td>
       <Table.Td>
+        <Text size="sm">{lineBudget(t, formatters, line, currency)}</Text>
+      </Table.Td>
+      <Table.Td>
         <Badge variant="light" color={line.active ? "teal" : "gray"}>
           {line.active ? t("active") : t("inactive")}
         </Badge>
@@ -214,6 +218,29 @@ const LineRow = ({
       )}
     </Table.Tr>
   );
+};
+
+/**
+ * What the line is planned to cost, in whichever halves are set: "120 h ·
+ * 96 000 kr", one of the two alone, or the catalog's dash for neither. The
+ * hours budget travels with the line; the money one is inside its pricing,
+ * which a caller who may not see amounts is not given at all.
+ */
+const lineBudget = (
+  t: (key: string, values?: Record<string, unknown>) => string,
+  formatters: Pick<LocaleFormatters, "formatCurrency" | "formatNumber">,
+  line: BillingLine,
+  currency: string | undefined,
+): string => {
+  const parts: string[] = [];
+  if (line.budgetHours !== undefined && line.budgetHours !== null) {
+    parts.push(t("hours", { hours: formatters.formatNumber(line.budgetHours) }));
+  }
+  const budgetAmount = line.pricing?.budgetAmount;
+  if (budgetAmount !== undefined && budgetAmount !== null) {
+    parts.push(currency ? formatters.formatCurrency(budgetAmount, currency) : formatters.formatNumber(budgetAmount));
+  }
+  return parts.length > 0 ? parts.join(" · ") : t("notAvailable");
 };
 
 /**

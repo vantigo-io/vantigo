@@ -88,6 +88,59 @@ describe("ProjectTimeline", () => {
     expect(await screen.findByText("Alan Turing changed from Member to Manager.")).toBeInTheDocument();
   });
 
+  it("reads each milestone event as the sentence it stands for", async () => {
+    stubTimeline([
+      entry({ id: 10, eventType: "milestone-added", payload: { milestoneId: 1, name: "Kick-off" } }),
+      entry({ id: 11, eventType: "milestone-removed", payload: { milestoneId: 1, name: "Kick-off" } }),
+      entry({ id: 12, eventType: "milestone-ready", payload: { milestoneId: 2, name: "Launch" } }),
+      entry({ id: 13, eventType: "milestone-planned", payload: { milestoneId: 2, name: "Launch" } }),
+      entry({ id: 14, eventType: "milestone-invoiced", payload: { milestoneId: 2, name: "Launch" } }),
+      entry({ id: 15, eventType: "milestone-cancelled", payload: { milestoneId: 3, name: "Handover" } }),
+      entry({ id: 16, eventType: "milestone-reopened", payload: { milestoneId: 3, name: "Handover" } }),
+    ]);
+    renderWithProviders(<ProjectTimeline projectId={7} />);
+
+    expect(await screen.findByText("Billing milestone Kick-off was added.")).toBeInTheDocument();
+    expect(screen.getByText("Billing milestone Kick-off was deleted.")).toBeInTheDocument();
+    expect(screen.getByText("Billing milestone Launch is ready to invoice.")).toBeInTheDocument();
+    expect(screen.getByText("Billing milestone Launch went back to planned.")).toBeInTheDocument();
+    expect(screen.getByText("Billing milestone Launch was marked invoiced.")).toBeInTheDocument();
+    expect(screen.getByText("Billing milestone Handover was cancelled.")).toBeInTheDocument();
+    expect(screen.getByText("Billing milestone Handover was reopened.")).toBeInTheDocument();
+  });
+
+  it("names the milestone fields an edit moved, in the reader's own words", async () => {
+    stubTimeline([
+      entry({
+        id: 17,
+        eventType: "milestone-changed",
+        payload: { milestoneId: 1, name: "Kick-off", fields: ["plannedDate", "amount", "percent"] },
+      }),
+    ]);
+    renderWithProviders(<ProjectTimeline projectId={7} />);
+
+    expect(
+      await screen.findByText("Billing milestone Kick-off changed: Planned date, Amount, Percent."),
+    ).toBeInTheDocument();
+  });
+
+  it("says when undoing an invoicing turned a share into a flat amount", async () => {
+    stubTimeline([
+      entry({ id: 18, eventType: "milestone-invoice-undone", payload: { milestoneId: 1, name: "Kick-off" } }),
+      entry({
+        id: 19,
+        eventType: "milestone-invoice-undone",
+        payload: { milestoneId: 2, name: "Launch", convertedToAmount: true },
+      }),
+    ]);
+    renderWithProviders(<ProjectTimeline projectId={7} />);
+
+    expect(await screen.findByText("The invoicing of billing milestone Kick-off was undone.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The invoicing of billing milestone Launch was undone, and it now carries a flat amount."),
+    ).toBeInTheDocument();
+  });
+
   it("falls back to the raw event type it does not know", async () => {
     stubTimeline([entry({ id: 4, eventType: "something-new", payload: {} })]);
     renderWithProviders(<ProjectTimeline projectId={7} />);

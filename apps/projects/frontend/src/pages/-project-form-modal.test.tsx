@@ -226,6 +226,30 @@ describe("ProjectFormModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // The guard that refuses to drop a fixed price while milestones are a share
+  // of it answers on `billingType`, which is a segmented control rather than
+  // an input Mantine would hang the message on by itself.
+  it("shows the fixed-price guard's refusal under the billing type", async () => {
+    stubProjectsApi(() =>
+      jsonResponse(400, {
+        title: "Invalid project",
+        errors: {
+          billingType: ["A project with billing milestones priced as a share of the fixed price must keep one"],
+        },
+      }),
+    );
+    const { onClose } = renderModal({ mode: "edit", project });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Save changes" }));
+
+    const message = await screen.findByText(
+      "A project with billing milestones priced as a share of the fixed price must keep one",
+    );
+    expect(message).toBeInTheDocument();
+    expect(message.parentElement).toBe(screen.getByRole("radiogroup", { name: "Billing type" }).parentElement);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("asks before changing the code of an existing project, and cancelling does not save", async () => {
     const fetchMock = stubProjectsApi();
     const { onClose } = renderModal({ mode: "edit", project });
