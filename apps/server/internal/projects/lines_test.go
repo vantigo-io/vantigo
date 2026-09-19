@@ -1064,6 +1064,47 @@ func TestBillingLines_BudgetsPastTheirColumns_Return400OnTheField(t *testing.T) 
 	}
 }
 
+// A line's amounts carry the project's own two-decimal rule, for the project's
+// own reason: every decimal column here is scale 2, so a third decimal is a
+// digit the database would round away without saying so. discountPercent is
+// numeric(5,2) like a milestone's percent and is bound by the same rule.
+func TestBillingLines_AmountsWithAThirdDecimal_Return400OnTheField(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LDEC1000", "currency": "NOK"})
+
+	for _, tc := range []struct {
+		name      string
+		overrides map[string]any
+		field     string
+	}{
+		{"a fixed amount", map[string]any{"code": "D1", "pricingMode": "fixed", "fixedAmount": 1450.505}, "fixedAmount"},
+		{"a discount percent", map[string]any{"code": "D2", "pricingMode": "discount", "discountPercent": 12.505}, "discountPercent"},
+		{"a budget amount", map[string]any{"code": "D3", "budgetAmount": 5000.125}, "budgetAmount"},
+		{"budget hours", map[string]any{"code": "D4", "budgetHours": 40.125}, "budgetHours"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := postLine(t, c, project.Id, tc.overrides)
+			if r.Status != http.StatusBadRequest {
+				t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+			}
+			var problem validationProblemJSON
+			r.JSON(&problem)
+			if len(problem.Errors[tc.field]) == 0 {
+				t.Errorf("errors = %v, want a message on %q", problem.Errors, tc.field)
+			}
+		})
+	}
+
+	// Two decimals are the column's own scale and stay accepted: the rule is
+	// about precision the column cannot keep, not about cents.
+	line := createLine(t, c, project.Id, map[string]any{"code": "D5", "budgetHours": 40.25, "budgetAmount": 5000.12})
+	if line.BudgetHours == nil || *line.BudgetHours != 40.25 {
+		t.Errorf("BudgetHours = %v, want 40.25 kept", line.BudgetHours)
+	}
+}
+
 // The other half of eb894d4's prefetch: asking the catalog before the
 // transaction must not make its *error* fatal to a change that never needed
 // the answer. Keeping the variant a line is already pinned to is always

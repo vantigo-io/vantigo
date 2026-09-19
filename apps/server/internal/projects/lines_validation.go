@@ -89,6 +89,8 @@ func validateFixedAmount(mode string, amount *float64) string {
 			return "A fixed amount must be greater than zero"
 		case *amount > maxAmount12:
 			return fmt.Sprintf("A fixed amount cannot be greater than %.2f", maxAmount12)
+		case decimalPlaces(*amount) > 2:
+			return "A fixed amount cannot have more than two decimals"
 		default:
 			return ""
 		}
@@ -100,7 +102,9 @@ func validateFixedAmount(mode string, amount *float64) string {
 }
 
 // validateDiscountPercent is the discount rule, the same way round: a
-// percentage off the list price is more than nothing and at most everything.
+// percentage off the list price is more than nothing and at most everything,
+// with no more precision than the numeric(5,2) column keeps — the same rule,
+// and the same column, a milestone's percent carries.
 func validateDiscountPercent(mode string, percent *float64) string {
 	if mode == pricingDiscount {
 		switch {
@@ -108,6 +112,8 @@ func validateDiscountPercent(mode string, percent *float64) string {
 			return fmt.Sprintf("A '%s' line must have a discount percent", pricingDiscount)
 		case *percent <= 0 || *percent > 100:
 			return "A discount percent must be greater than zero and at most 100"
+		case decimalPlaces(*percent) > 2:
+			return "A discount percent cannot have more than two decimals"
 		default:
 			return ""
 		}

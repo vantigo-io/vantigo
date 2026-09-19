@@ -48,19 +48,19 @@ type BillingLineRequest struct {
 	// Active PUT only. Absent leaves the line as it stands. There is no DELETE — a line other modules may have billed against is deactivated, never removed.
 	Active *bool `json:"active,omitempty"`
 
-	// BudgetAmount Optional planning budget in the project's currency; greater than zero when set, and requires the project to have a currency.
+	// BudgetAmount Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires the project to have a currency.
 	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
 
-	// BudgetHours Optional planning budget in hours; greater than zero when set.
+	// BudgetHours Optional planning budget in hours; greater than zero when set, at most two decimals.
 	BudgetHours *float64 `json:"budgetHours,omitempty"`
 
 	// Code Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{1,10}$ and be unique within the project.
 	Code string `json:"code"`
 
-	// DiscountPercent Required and in (0, 100] when pricingMode is 'discount', absent otherwise.
+	// DiscountPercent Required and in (0, 100] when pricingMode is 'discount', absent otherwise. At most two decimals.
 	DiscountPercent *float64 `json:"discountPercent,omitempty"`
 
-	// FixedAmount Required and greater than zero when pricingMode is 'fixed', absent otherwise. A 'fixed' line needs the project to have a currency.
+	// FixedAmount Required and greater than zero when pricingMode is 'fixed', absent otherwise, and at most two decimals. A 'fixed' line needs the project to have a currency.
 	FixedAmount *float64 `json:"fixedAmount,omitempty"`
 
 	// PricingMode 'list', 'fixed' or 'discount'.
@@ -410,9 +410,13 @@ type ProjectCodeSuggestionResponse struct {
 // ProjectCreateRequest defines model for ProjectCreateRequest.
 type ProjectCreateRequest struct {
 	// BillingType 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'.
-	BillingType  string   `json:"billingType"`
+	BillingType string `json:"billingType"`
+
+	// BudgetAmount Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires a currency.
 	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
-	BudgetHours  *float64 `json:"budgetHours,omitempty"`
+
+	// BudgetHours Optional planning budget in hours; greater than zero when set, at most two decimals.
+	BudgetHours *float64 `json:"budgetHours,omitempty"`
 
 	// Code Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{2,20}$ and be unique.
 	Code string `json:"code"`
@@ -423,12 +427,12 @@ type ProjectCreateRequest struct {
 	// CustomerId The customer this project bills to. Absent means an internal project.
 	CustomerId *int32 `json:"customerId,omitempty"`
 
-	// DefaultBillRate The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+	// DefaultBillRate The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set and at most two decimals; requires currency, since it is an amount.
 	DefaultBillRate *float64            `json:"defaultBillRate,omitempty"`
 	Description     *string             `json:"description,omitempty"`
 	EndDate         *openapi_types.Date `json:"endDate,omitempty"`
 
-	// FixedPriceAmount Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+	// FixedPriceAmount Required and greater than zero when billingType is 'fixed-price', absent otherwise. At most two decimals — every decimal column here is scale 2, so a third would be rounded away silently.
 	FixedPriceAmount *float64            `json:"fixedPriceAmount,omitempty"`
 	Name             string              `json:"name"`
 	StartDate        *openapi_types.Date `json:"startDate,omitempty"`
@@ -836,9 +840,13 @@ type ProjectSummaryResponse struct {
 // ProjectUpdateRequest Every field of the project as it should stand after the update, carrying the revision it was read at. A revision that has moved on answers 409.
 type ProjectUpdateRequest struct {
 	// BillingType 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'.
-	BillingType  string   `json:"billingType"`
+	BillingType string `json:"billingType"`
+
+	// BudgetAmount Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires a currency.
 	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
-	BudgetHours  *float64 `json:"budgetHours,omitempty"`
+
+	// BudgetHours Optional planning budget in hours; greater than zero when set, at most two decimals.
+	BudgetHours *float64 `json:"budgetHours,omitempty"`
 
 	// Code Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{2,20}$ and be unique.
 	Code string `json:"code"`
@@ -849,12 +857,12 @@ type ProjectUpdateRequest struct {
 	// CustomerId The customer this project bills to. Absent means an internal project.
 	CustomerId *int32 `json:"customerId,omitempty"`
 
-	// DefaultBillRate The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+	// DefaultBillRate The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set and at most two decimals; requires currency, since it is an amount.
 	DefaultBillRate *float64            `json:"defaultBillRate,omitempty"`
 	Description     *string             `json:"description,omitempty"`
 	EndDate         *openapi_types.Date `json:"endDate,omitempty"`
 
-	// FixedPriceAmount Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+	// FixedPriceAmount Required and greater than zero when billingType is 'fixed-price', absent otherwise. At most two decimals — every decimal column here is scale 2, so a third would be rounded away silently.
 	FixedPriceAmount *float64 `json:"fixedPriceAmount,omitempty"`
 	Name             string   `json:"name"`
 

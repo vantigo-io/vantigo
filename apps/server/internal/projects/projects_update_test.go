@@ -723,3 +723,77 @@ func TestPostProjects_AmountsPastTheirColumns_Return400OnTheField(t *testing.T) 
 		})
 	}
 }
+
+// Every decimal column this module has is scale 2, so a third decimal is a
+// digit the database would silently round away — and a project priced at
+// something the caller did not type is worse than a refusal. A milestone's
+// amount and percent have refused it from the start; the project's own
+// amounts used to round instead, which is the hole this closes. Two decimals
+// are still fine, and so is a whole number: the rule is about precision the
+// column cannot keep, not about how the caller wrote it.
+func TestPostProjects_AmountsWithAThirdDecimal_Return400OnTheField(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+
+	for _, tc := range []struct {
+		name      string
+		overrides map[string]any
+		field     string
+	}{
+		{"a fixed price", map[string]any{
+			"code": "DEC2000", "billingType": "fixed-price",
+			"fixedPriceAmount": 1000.005, "currency": "NOK",
+		}, "fixedPriceAmount"},
+		{"a budget amount", map[string]any{
+			"code": "DEC2001", "budgetAmount": 300000.125, "currency": "NOK",
+		}, "budgetAmount"},
+		{"budget hours", map[string]any{
+			"code": "DEC2002", "budgetHours": 120.125,
+		}, "budgetHours"},
+		{"a default bill rate", map[string]any{
+			"code": "DEC2003", "defaultBillRate": 1250.005, "currency": "NOK",
+		}, "defaultBillRate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := c.Do(http.MethodPost, "/api/v1/projects", createBody(tc.overrides))
+			if r.Status != http.StatusBadRequest {
+				t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+			}
+			var problem validationProblemJSON
+			r.JSON(&problem)
+			if len(problem.Errors[tc.field]) == 0 {
+				t.Errorf("errors = %v, want a message on %q", problem.Errors, tc.field)
+			}
+		})
+	}
+
+	// Two decimals are the column's own scale and must still pass, or the rule
+	// would be refusing money rather than precision.
+	kept := createProject(t, c, map[string]any{
+		"code": "DEC2004", "currency": "NOK", "budgetAmount": 300000.12, "budgetHours": 120.25,
+	})
+	if kept.BudgetHours == nil || *kept.BudgetHours != 120.25 {
+		t.Errorf("BudgetHours = %v, want 120.25 kept", kept.BudgetHours)
+	}
+}
+
+// The same rule on the update, because one validator serves both paths
+// (projectFromUpdate): a field the create refuses must not be storable by
+// saving the project again.
+func TestPutProjectsById_AnAmountWithAThirdDecimal_Returns400OnTheField(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "DEC2100", "currency": "NOK"})
+
+	r := updateProject(t, c, project, map[string]any{"budgetAmount": 300000.125})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["budgetAmount"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'budgetAmount'", problem.Errors)
+	}
+}

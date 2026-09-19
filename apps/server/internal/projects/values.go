@@ -240,6 +240,8 @@ func validateFixedPriceAmount(billingType string, amount *float64) string {
 			return "A fixed price amount must be greater than zero"
 		case *amount > maxAmount12:
 			return fmt.Sprintf("A fixed price amount cannot be greater than %.2f", maxAmount12)
+		case decimalPlaces(*amount) > 2:
+			return "A fixed price amount cannot have more than two decimals"
 		default:
 			return ""
 		}
@@ -254,16 +256,26 @@ func validateFixedPriceAmount(billingType string, amount *float64) string {
 // money and numeric(10,2) for hours. A number past its column is refused in
 // Go rather than left to Postgres, which raises a 22003 the handler can only
 // turn into a 500 — a caller who typed too many digits should be told so.
+//
+// Both scales are 2, and so is every other decimal column here (a milestone's
+// percent and a line's discount are numeric(5,2)), which is why the precision
+// rule below needs no parameter: two decimals is the whole module's answer.
 const (
 	maxAmount12 = 9999999999.99 // numeric(12,2)
 	maxHours10  = 99999999.99   // numeric(10,2)
 )
 
 // validatePositiveAmount is the shared rule for every optional amount and
-// every optional hour count: set or absent, never zero or negative, and
-// never wider than the column that has to hold it. label names the quantity
-// in the message ("Budget hours", "A budget amount"); max is the column's
-// own ceiling (maxAmount12 or maxHours10).
+// every optional hour count: set or absent, never zero or negative, never
+// wider than the column that has to hold it and never more precise than that
+// column keeps. label names the quantity in the message ("Budget hours", "A
+// budget amount"); max is the column's own ceiling (maxAmount12 or
+// maxHours10).
+//
+// The precision half is the same rule, and the same argument, a milestone's
+// amount has always made (validateMilestoneAmount): the column is scale 2, so
+// a third decimal is silently rounded away, and a project budgeted at
+// something the caller did not type is worse than a refusal.
 func validatePositiveAmount(label string, v *float64, max float64) string {
 	switch {
 	case v == nil:
@@ -272,6 +284,8 @@ func validatePositiveAmount(label string, v *float64, max float64) string {
 		return label + " must be greater than zero"
 	case *v > max:
 		return fmt.Sprintf("%s cannot be greater than %.2f", label, max)
+	case decimalPlaces(*v) > 2:
+		return label + " cannot have more than two decimals"
 	default:
 		return ""
 	}
