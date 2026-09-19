@@ -106,6 +106,18 @@ describe("MilestoneFormModal", () => {
     expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
+  it("names the ceiling an amount is over, rather than calling it zero", async () => {
+    const fetchMock = stubSave(() => jsonResponse(201, milestone));
+    renderModal({ mode: "create" }, { fixedPrice: 1000000 });
+
+    await userEvent.type(await screen.findByLabelText(/^Name/), "Kick-off");
+    await userEvent.type(numberInput("milestone-amount"), "99999999999");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    expect(await screen.findByText("A milestone amount is at most 9 999 999 999.99")).toBeInTheDocument();
+    expect(fetchMock.actualCalls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
   it("edits a milestone as a full replace carrying the revision it was read at", async () => {
     const fetchMock = stubSave(() => jsonResponse(200, milestone));
     renderModal({ mode: "edit", milestone }, { fixedPrice: 1000000 });

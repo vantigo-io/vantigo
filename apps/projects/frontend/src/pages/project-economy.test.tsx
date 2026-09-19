@@ -84,6 +84,9 @@ const stubEconomy = (row: Project, body: BillingMilestonePlan | null = plan([mil
   stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, row));
+    if (url.pathname === "/api/v1/customers") {
+      return Promise.resolve(jsonResponse(200, { data: [], pagination: { page: 1, pageSize: 20 } }));
+    }
     if (url.pathname === "/api/v1/projects/7/milestones" && !init?.method) {
       return Promise.resolve(status === 200 ? jsonResponse(200, body) : jsonResponse(status, { title: "Nope" }));
     }
@@ -118,6 +121,41 @@ describe("ProjectEconomy", () => {
       await screen.findByText("Billing milestones are billed in the project's currency. Give the project one first."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add milestone" })).not.toBeInTheDocument();
+  });
+
+  // Every row's menu holds a different set of writes, so a reader listing the
+  // page's buttons has to be able to tell them apart without the table around
+  // them.
+  it("names each row's menu after the milestone it belongs to", async () => {
+    stubEconomy(
+      project(),
+      plan([milestone({ id: 1, name: "Kick-off" }), milestone({ id: 2, name: "Launch", position: 2 })]),
+    );
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByRole("button", { name: "Actions for Kick-off" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actions for Launch" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Milestone actions" })).not.toBeInTheDocument();
+  });
+
+  // A viewer with financial rights may not edit anything, so the row is the
+  // only place they ever see what a milestone is for: it has to be in the
+  // page, not behind a pointer.
+  it("writes a milestone's description under its name", async () => {
+    stubEconomy(project(), plan([milestone({ description: "Signed contract and the kick-off workshop" })]));
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const row = await rowFor("Kick-off");
+    expect(within(row).getByText("Signed contract and the kick-off workshop")).toBeInTheDocument();
+  });
+
+  it("opens the project form from the note about the missing currency", async () => {
+    stubEconomy(project({ financials: { fixedPriceAmount: 1000000 } }), plan([], { currency: undefined, planned: 0 }));
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Edit the project" }));
+
+    expect(await screen.findByRole("dialog", { name: "Edit project" })).toBeInTheDocument();
   });
 
   it("sums the plan into the three headline figures", async () => {
@@ -263,7 +301,7 @@ describe("ProjectEconomy", () => {
 
     await screen.findByText("Kick-off");
     expect(screen.queryByRole("button", { name: "Add milestone" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Milestone actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
 
     expect(await screen.findByRole("menuitem", { name: "Mark as invoiced" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Edit" })).not.toBeInTheDocument();
@@ -276,7 +314,7 @@ describe("ProjectEconomy", () => {
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
     await screen.findByText("Kick-off");
-    await userEvent.click(screen.getByRole("button", { name: "Milestone actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
 
     expect(await screen.findByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Mark as ready to invoice" })).toBeInTheDocument();
@@ -299,8 +337,8 @@ describe("ProjectEconomy", () => {
     );
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
-    const launch = await rowFor("Launch");
-    await userEvent.click(within(launch).getByRole("button", { name: "Milestone actions" }));
+    await rowFor("Launch");
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Launch" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Move up" }));
 
     await waitFor(() =>
@@ -311,8 +349,7 @@ describe("ProjectEconomy", () => {
       }),
     );
 
-    const kickoff = await rowFor("Kick-off");
-    await userEvent.click(within(kickoff).getByRole("button", { name: "Milestone actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Move down" }));
 
     await waitFor(() =>
@@ -346,15 +383,14 @@ describe("ProjectEconomy", () => {
     );
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
-    const only = await rowFor("Kick-off");
-    await userEvent.click(within(only).getByRole("button", { name: "Milestone actions" }));
+    await rowFor("Kick-off");
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
     expect(await screen.findByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Move up" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Move down" })).not.toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
 
-    const cancelled = screen.getByText("Handover").closest("tr") as HTMLElement;
-    await userEvent.click(within(cancelled).getByRole("button", { name: "Milestone actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Handover" }));
     expect(await screen.findByRole("menuitem", { name: "Reopen the milestone" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Move up" })).not.toBeInTheDocument();
   });
@@ -364,7 +400,7 @@ describe("ProjectEconomy", () => {
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
     await screen.findByText("Kick-off");
-    await userEvent.click(screen.getByRole("button", { name: "Milestone actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Mark as ready to invoice" }));
 
     await waitFor(() =>
@@ -396,7 +432,7 @@ describe("ProjectEconomy", () => {
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
     await screen.findByText("Kick-off");
-    await userEvent.click(screen.getByRole("button", { name: "Milestone actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Mark as ready to invoice" }));
 
     expect(
@@ -424,7 +460,7 @@ describe("ProjectEconomy", () => {
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
     await screen.findByText("Kick-off");
-    await userEvent.click(screen.getByRole("button", { name: "Milestone actions" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Kick-off" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Mark as ready to invoice" }));
 
     expect(
