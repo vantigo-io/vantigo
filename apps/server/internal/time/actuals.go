@@ -84,8 +84,11 @@ func (a *actuals) Actuals(ctx context.Context, req contracts.ActualsRequest) (co
 		}
 	}
 
-	// Lines by id, and the hours logged on no line last — the order the
-	// project summary lists them in too (stats.go's lineHours).
+	// Lines by billing line id, and the hours logged on no line last. Not
+	// the project summary's order (stats.go's lineHours sorts by the line's
+	// code): a code lives in the project directory, and this provider asks
+	// it nothing. A consumer wanting code order merges against its own
+	// lines and sorts there.
 	slices.Sort(lineIDs)
 	entry := contracts.ProjectActualsEntry{Totals: project.totals()}
 	for _, id := range lineIDs {
@@ -109,18 +112,20 @@ func (a *actuals) ActualsForProjects(ctx context.Context, reqs []contracts.Actua
 			len(reqs), contracts.MaxActualsRequests)
 	}
 
-	// A project named more than once takes the last request's currency:
-	// asking for one project in two currencies has one answer at most, and
-	// the caller's last word is it.
+	// One project has one answer, so naming it twice is the caller's bug
+	// however the two requests agree: answering the first, the last or a
+	// merge of them would each be defensible, which is reason enough to
+	// answer none of them.
 	currencies := make(map[int32]*string, len(reqs))
 	ids := make([]int32, 0, len(reqs))
 	sums := make(map[int32]*actualsSum, len(reqs))
 	for _, req := range reqs {
-		if _, seen := currencies[req.ProjectID]; !seen {
-			ids = append(ids, req.ProjectID)
-			sums[req.ProjectID] = &actualsSum{}
+		if _, seen := currencies[req.ProjectID]; seen {
+			return nil, fmt.Errorf("time: project %d asked for twice in one batch", req.ProjectID)
 		}
 		currencies[req.ProjectID] = req.Currency
+		ids = append(ids, req.ProjectID)
+		sums[req.ProjectID] = &actualsSum{}
 	}
 
 	rows, err := a.q.ProjectActualGroups(ctx, ids)
@@ -150,6 +155,7 @@ func (a *actuals) ActualsForProjects(ctx context.Context, reqs []contracts.Actua
 type actualsSum struct {
 	approved, submitted, draft bucketSum
 	unpricedHundredths         int64
+	uncostedHundredths         int64
 	billableHundredths         int64
 	nonBillableHundredths      int64
 	last                       time.Time
@@ -167,7 +173,13 @@ type bucketSum struct {
 // another currency are unpriced instead — adding two currencies would be a
 // number in neither (the rule projectBilling already applies to the project
 // summary). With no currency asked for, no amount is summed and only hours
-// with no bill rate at all are unpriced.
+// with no rate at all are unpriced or uncosted.
+//
+// Unpriced is about billable hours alone, as the query's priced column is:
+// non-billable work was never meant to carry a price, and calling its hours
+// unpriced would send somebody hunting for a rate that should not exist.
+// Uncosted is about every hour, billable or not: work nobody is billed for
+// still costs the company.
 func (s *actualsSum) add(row store.ProjectActualGroupsRow, want *string) error {
 	bucket := &s.draft
 	switch row.Bucket {
@@ -180,31 +192,40 @@ func (s *actualsSum) add(row store.ProjectActualGroupsRow, want *string) error {
 
 	s.billableHundredths += row.BillableHoursHundredths
 	s.nonBillableHundredths += row.HoursHundredths - row.BillableHoursHundredths
-	s.unpricedHundredths += row.HoursHundredths - row.PricedHoursHundredths
+	s.unpricedHundredths += row.BillableHoursHundredths - row.PricedHoursHundredths
+	s.uncostedHundredths += row.HoursHundredths - row.CostedHoursHundredths
 
-	if want != nil {
-		if row.BillCurrency != nil && *row.BillCurrency == *want {
-			amount, err := exactAmount(row.BillAmount)
-			if err != nil {
-				return err
-			}
-			bucket.bill.Add(&bucket.bill, amount)
-		} else {
-			s.unpricedHundredths += row.PricedHoursHundredths
-		}
-		if row.CostCurrency != nil && *row.CostCurrency == *want {
-			amount, err := exactAmount(row.CostAmount)
-			if err != nil {
-				return err
-			}
-			bucket.cost.Add(&bucket.cost, amount)
-		}
+	s.noteDate(row)
+
+	if want == nil {
+		return nil
 	}
+	if row.BillCurrency != nil && *row.BillCurrency == *want {
+		amount, err := exactAmount(row.BillAmount)
+		if err != nil {
+			return err
+		}
+		bucket.bill.Add(&bucket.bill, amount)
+	} else {
+		s.unpricedHundredths += row.PricedHoursHundredths
+	}
+	if row.CostCurrency != nil && *row.CostCurrency == *want {
+		amount, err := exactAmount(row.CostAmount)
+		if err != nil {
+			return err
+		}
+		bucket.cost.Add(&bucket.cost, amount)
+	} else {
+		s.uncostedHundredths += row.CostedHoursHundredths
+	}
+	return nil
+}
 
+// noteDate keeps the latest date any group in the sum carries.
+func (s *actualsSum) noteDate(row store.ProjectActualGroupsRow) {
 	if row.LastEntryDate.Valid && row.LastEntryDate.Time.After(s.last) {
 		s.last = row.LastEntryDate.Time
 	}
-	return nil
 }
 
 // totals is the finished shape: each bucket's amounts rounded once, and the
@@ -215,6 +236,7 @@ func (s *actualsSum) totals() contracts.ActualsTotals {
 		Submitted:                  s.submitted.bucket(),
 		Draft:                      s.draft.bucket(),
 		UnpricedHoursHundredths:    s.unpricedHundredths,
+		UncostedHoursHundredths:    s.uncostedHundredths,
 		BillableHoursHundredths:    s.billableHundredths,
 		NonBillableHoursHundredths: s.nonBillableHundredths,
 	}
