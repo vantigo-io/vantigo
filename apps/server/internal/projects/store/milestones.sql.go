@@ -13,29 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const acquireMilestoneOrderLock = `-- name: AcquireMilestoneOrderLock :exec
-SELECT pg_advisory_xact_lock($1::integer, $2::integer)
-`
-
-type AcquireMilestoneOrderLockParams struct {
-	LockClass int32
-	ProjectID int32
-}
-
-// AcquireMilestoneOrderLock is the serialisation point of every write that
-// decides a position inside one project: a create appending after the last
-// milestone, a move renumbering the plan, and a delete closing the gap it
-// leaves. A row lock cannot cover a create — the number two concurrent
-// creates race for is the gap after the last row, and a gap has no row to
-// lock — so the lock is taken on the project instead, for the rest of the
-// transaction. It is a two-argument advisory lock in class 10 (tasks use 9),
-// which is a lock space of its own: it can never collide with identity's
-// single-argument ones, and it never substitutes for the project's row lock.
-func (q *Queries) AcquireMilestoneOrderLock(ctx context.Context, arg AcquireMilestoneOrderLockParams) error {
-	_, err := q.db.Exec(ctx, acquireMilestoneOrderLock, arg.LockClass, arg.ProjectID)
-	return err
-}
-
 const countNonCancelledMilestones = `-- name: CountNonCancelledMilestones :one
 
 SELECT count(*) FROM projects.billing_milestones
@@ -49,8 +26,8 @@ WHERE project_id = $1 AND status <> 'cancelled'
 // queries/projects.sql), because what a milestone may be — it needs a
 // currency, and a percent one needs a fixed price — is decided from the
 // project, and only one lock held by every such writer serialises them.
-// Ordering is a third lock again (AcquireMilestoneOrderLock), taken last and
-// only by the writes that decide a position.
+// That one lock is also what orders the writes that decide a position, so
+// milestones need no ordering lock of their own the way tasks do.
 //
 // The file opens with the two reads the project's own guards need, which came
 // before there was any milestone operation to create rows through.
@@ -322,7 +299,12 @@ WHERE project_id = $1
 `
 
 // MaxMilestonePosition is the number a create appends after, 0 for the first
-// milestone of a project.
+// milestone of a project. Two creates racing for that number are serialised
+// by the project's own row lock, which every milestone write already holds by
+// the time it gets here: unlike tasks — whose writes take no project lock and
+// so need an advisory one of their own (AcquireTaskOrderLock, class 9) — a
+// milestone write cannot reach this read without LockProject, so a second
+// advisory lock would only be a second name for the same queue.
 func (q *Queries) MaxMilestonePosition(ctx context.Context, projectID int32) (int32, error) {
 	row := q.db.QueryRow(ctx, maxMilestonePosition, projectID)
 	var column_1 int32
@@ -455,22 +437,26 @@ func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams
 const updateMilestoneStatus = `-- name: UpdateMilestoneStatus :one
 UPDATE projects.billing_milestones SET
     status = $1,
-    ready_at = $2,
-    ready_by_user_id = $3,
-    invoiced_at = $4,
-    invoiced_by_user_id = $5,
-    invoice_reference = $6,
-    invoice_date = $7,
-    invoiced_amount = $8,
+    amount = $2,
+    percent = $3,
+    ready_at = $4,
+    ready_by_user_id = $5,
+    invoiced_at = $6,
+    invoiced_by_user_id = $7,
+    invoice_reference = $8,
+    invoice_date = $9,
+    invoiced_amount = $10,
     ever_moved = true,
     revision = revision + 1,
-    updated_at = $9::timestamptz
-WHERE id = $10
+    updated_at = $11::timestamptz
+WHERE id = $12
 RETURNING id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
 `
 
 type UpdateMilestoneStatusParams struct {
 	Status           string
+	Amount           pgtype.Numeric
+	Percent          pgtype.Numeric
 	ReadyAt          *time.Time
 	ReadyByUserID    *uuid.UUID
 	InvoicedAt       *time.Time
@@ -492,9 +478,17 @@ type UpdateMilestoneStatusParams struct {
 // ever_moved is set by every move and never unset: it is what tells a
 // milestone that came back to 'planned' from one that was never anything
 // else, and only the second may be deleted.
+//
+// amount and percent are written too, and are carried over unchanged by every
+// move but one: undoing the invoicing of a percent milestone whose project no
+// longer has a fixed price turns it into an amount milestone carrying what
+// was actually billed, since design §3.2's effective amount would otherwise
+// have nothing left to resolve from.
 func (q *Queries) UpdateMilestoneStatus(ctx context.Context, arg UpdateMilestoneStatusParams) (ProjectsBillingMilestone, error) {
 	row := q.db.QueryRow(ctx, updateMilestoneStatus,
 		arg.Status,
+		arg.Amount,
+		arg.Percent,
 		arg.ReadyAt,
 		arg.ReadyByUserID,
 		arg.InvoicedAt,

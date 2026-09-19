@@ -667,9 +667,9 @@ export interface components {
             description?: string | null;
             /**
              * Format: double
-             * @description What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not.
+             * @description What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not. Absent in exactly one case, and never zero instead of it — a cancelled milestone priced as a percent of a fixed price the project has since dropped, which has no amount to report; every other milestone has one.
              */
-            effectiveAmount: number;
+            effectiveAmount?: number | null;
             /** Format: int32 */
             id: number;
             /**
@@ -714,7 +714,7 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description One move through the milestone's status flow — planned to ready to invoiced, cancelled from either open status and reopened from cancelled, and the invoicing undone back to ready. Any other pair is refused by naming both statuses. */
+        /** @description One move through the milestone's status flow — planned to ready to invoiced, cancelled from either open status and reopened from cancelled, and the invoicing undone back to ready. Any other pair is refused by naming both statuses. A move whose target is not 'cancelled' also re-asks the project's own rules, so reopening or marking ready is refused while the project has no currency, or while a milestone priced as a percent has no fixed price to be a share of. Undoing an invoicing is the one exception and is never refused — crediting an invoice is a real event — but if the fixed price is gone the milestone is converted to an amount milestone carrying the amount that was frozen when it was invoiced, with percent cleared; the timeline entry records that it was converted. */
         BillingMilestoneStatusRequest: {
             /**
              * Format: date
@@ -1706,7 +1706,7 @@ export interface operations {
                     "application/json": components["schemas"]["BillingMilestoneResponse"];
                 };
             };
-            /** @description Bad Request — the status is not one of the four, the move is not one the flow allows, or an invoice reference or date was sent on a move other than to 'invoiced'. */
+            /** @description Bad Request — the status is not one of the four, the move is not one the flow allows, the project can no longer denominate or price the milestone the move would revive, or an invoice reference or date was sent on a move other than to 'invoiced'. */
             400: {
                 headers: {
                     [name: string]: unknown;

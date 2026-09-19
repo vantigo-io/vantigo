@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ const (
 	eventLineReactivated = "line-reactivated"
 
 	eventMilestoneAdded         = "milestone-added"
+	eventMilestoneChanged       = "milestone-changed"
 	eventMilestoneRemoved       = "milestone-removed"
 	eventMilestoneReady         = "milestone-ready"
 	eventMilestonePlanned       = "milestone-planned"
@@ -237,8 +239,59 @@ func recordLineUpdated(ctx context.Context, q *store.Queries, now time.Time, d l
 // timeline payload here stores what it saw: a milestone renamed or deleted
 // afterwards must not rewrite what the history says happened.
 func recordMilestoneEvent(ctx context.Context, q *store.Queries, now time.Time, eventType string, m store.ProjectsBillingMilestone, by actor) error {
+	return recordMilestoneEventWith(ctx, q, now, eventType, m, nil, by)
+}
+
+// recordMilestoneEventWith is recordMilestoneEvent for the two entries that
+// say something more than "this happened to this milestone": the fields a
+// content edit moved, and the flag an invoice-undo sets when it had to turn a
+// percent milestone into an amount one. Everything extra is a name or a flag,
+// never a value, for the same reason the base payload is.
+func recordMilestoneEventWith(ctx context.Context, q *store.Queries, now time.Time, eventType string, m store.ProjectsBillingMilestone, extra map[string]any, by actor) error {
 	payload := map[string]any{"milestoneId": m.ID, "name": m.Name}
+	maps.Copy(payload, extra)
 	return recordEvent(ctx, q, now, m.ProjectID, eventType, payload, by)
+}
+
+// milestoneFields names what one content edit actually moved, in the
+// contract's camelCase, the way a billing line's line-changed entry names its
+// own fields — and never a value: a milestone is financial data a member may
+// not see (D12), while the timeline is read by everyone who can see the
+// project. An empty answer means nothing moved, and nothing is recorded.
+//
+// Position and status are deliberately not among them: neither is part of an
+// edit (position is the move's, status is the status operation's), and the
+// status flow writes its own entries.
+func milestoneFields(before, after store.ProjectsBillingMilestone) ([]string, error) {
+	var fields []string
+	if before.Name != after.Name {
+		fields = append(fields, "name")
+	}
+	if !equalStringPtr(before.Description, after.Description) {
+		fields = append(fields, "description")
+	}
+	if !equalDate(before.PlannedDate, after.PlannedDate) {
+		fields = append(fields, "plannedDate")
+	}
+	// The amounts are compared through the same conversion the response
+	// renders them with, so "changed" means what a reader of the API would
+	// call changed — 1000 and 1000.00 are one number, not two.
+	for _, pair := range []struct {
+		name          string
+		before, after pgtype.Numeric
+	}{
+		{"amount", before.Amount, after.Amount},
+		{"percent", before.Percent, after.Percent},
+	} {
+		changed, err := numericChanged(pair.before, pair.after)
+		if err != nil {
+			return nil, err
+		}
+		if changed {
+			fields = append(fields, pair.name)
+		}
+	}
+	return fields, nil
 }
 
 // projectDiff is what one update actually changed, split the way the

@@ -612,7 +612,7 @@ type milestoneJSON struct {
 	PlannedDate      *string                   `json:"plannedDate"`
 	Amount           *float64                  `json:"amount"`
 	Percent          *float64                  `json:"percent"`
-	EffectiveAmount  float64                   `json:"effectiveAmount"`
+	EffectiveAmount  *float64                  `json:"effectiveAmount"`
 	Currency         *string                   `json:"currency"`
 	Status           string                    `json:"status"`
 	Position         int32                     `json:"position"`
@@ -670,6 +670,18 @@ type milestoneTotalsJSON struct {
 	FixedPrice  *float64 `json:"fixedPrice"`
 	Unplanned   *float64 `json:"unplanned"`
 	OverPlanned *float64 `json:"overPlanned"`
+}
+
+// effectiveAmount is a milestone's effectiveAmount for a test that expects
+// there to be one. The field is optional in the contract — absent for a
+// cancelled milestone whose percent the project can no longer price — so
+// every other assertion has to say which case it is asserting.
+func effectiveAmount(t *testing.T, m milestoneJSON) float64 {
+	t.Helper()
+	if m.EffectiveAmount == nil {
+		t.Fatalf("milestone %q has no effectiveAmount", m.Name)
+	}
+	return *m.EffectiveAmount
 }
 
 // milestoneNames and milestonePositions are the two orderings a plan test

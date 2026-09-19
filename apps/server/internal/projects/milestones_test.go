@@ -82,8 +82,8 @@ func TestPostProjectsByIdMilestones_CreatesAnAmountMilestoneAppendedLast(t *test
 	if first.Percent != nil {
 		t.Errorf("Percent = %v, want absent on an amount milestone", first.Percent)
 	}
-	if first.EffectiveAmount != 100000 {
-		t.Errorf("EffectiveAmount = %v, want the amount as entered", first.EffectiveAmount)
+	if got := effectiveAmount(t, first); got != 100000 {
+		t.Errorf("EffectiveAmount = %v, want the amount as entered", got)
 	}
 	if first.Currency == nil || *first.Currency != "NOK" {
 		t.Errorf("Currency = %v, want the project's", first.Currency)
@@ -166,8 +166,8 @@ func TestPostProjectsByIdMilestones_PercentOfTheFixedPrice_ResolvesExactly(t *te
 			if created.Percent == nil || *created.Percent != tc.percent {
 				t.Errorf("Percent = %v, want %v", created.Percent, tc.percent)
 			}
-			if created.EffectiveAmount != tc.want {
-				t.Errorf("EffectiveAmount = %v, want %v", created.EffectiveAmount, tc.want)
+			if got := effectiveAmount(t, created); got != tc.want {
+				t.Errorf("EffectiveAmount = %v, want %v", got, tc.want)
 			}
 		})
 	}
@@ -381,10 +381,10 @@ func TestGetProjectsByIdMilestones_PercentFollowsTheFixedPrice_AnInvoicedOneDoes
 	for _, m := range plan.Milestones {
 		byName[m.Name] = m
 	}
-	if got := byName["Åpen"].EffectiveAmount; got != 50000 {
+	if got := effectiveAmount(t, byName["Åpen"]); got != 50000 {
 		t.Errorf("the open milestone's effective amount = %v, want 50000 — it follows the new price", got)
 	}
-	if got := byName["Fakturert"].EffectiveAmount; got != 25000 {
+	if got := effectiveAmount(t, byName["Fakturert"]); got != 25000 {
 		t.Errorf("the invoiced milestone's effective amount = %v, want the frozen 25000", got)
 	}
 }
@@ -459,8 +459,8 @@ func TestPutProjectsMilestonesByMilestoneId_ReplacesTheContentAndBumpsTheRevisio
 	if changed.Percent == nil || *changed.Percent != 25 {
 		t.Errorf("Percent = %v, want 25", changed.Percent)
 	}
-	if changed.EffectiveAmount != 100000 {
-		t.Errorf("EffectiveAmount = %v, want 25 %% of 400000", changed.EffectiveAmount)
+	if got := effectiveAmount(t, changed); got != 100000 {
+		t.Errorf("EffectiveAmount = %v, want 25 %% of 400000", got)
 	}
 	if changed.Description != nil || changed.PlannedDate != nil {
 		t.Errorf("milestone = %+v, want the omitted fields cleared", changed)
@@ -864,5 +864,152 @@ func TestGetProjectsByIdMilestones_EmptyPlan_IsAnEmptyListAndZeroes(t *testing.T
 	}
 	if plan.Totals.Currency != nil {
 		t.Errorf("Totals.Currency = %v, want absent on a project with no currency", plan.Totals.Currency)
+	}
+}
+
+// The one milestone whose effective amount cannot be worked out: a cancelled
+// percent milestone on a project that has since left fixed-price billing.
+// Task 1's guard lets the project do that — a cancelled milestone bills
+// nothing — so the plan has to render it, and the honest answer is that there
+// is no amount rather than 0.00, which would read as a milestone somebody
+// planned at nothing.
+func TestGetProjectsByIdMilestones_CancelledPercentWithNoFixedPrice_OmitsTheEffectiveAmount(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSEFF1", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	movedMilestone(t, c, m, milestoneCancelled, nil)
+	project = putProject(t, c, project, map[string]any{
+		"billingType": "time-and-materials", "fixedPriceAmount": nil,
+	})
+
+	plan := getMilestones(t, c, project.Id)
+	if len(plan.Milestones) != 1 {
+		t.Fatalf("milestones = %v, want the cancelled one still listed", milestoneNames(plan))
+	}
+	if plan.Milestones[0].EffectiveAmount != nil {
+		t.Errorf("EffectiveAmount = %v, want it absent rather than zero", *plan.Milestones[0].EffectiveAmount)
+	}
+	if plan.Totals.Cancelled != 0 {
+		t.Errorf("Totals.Cancelled = %v, want 0 — there is no amount to count", plan.Totals.Cancelled)
+	}
+	// The raw JSON, because a nil pointer cannot tell an absent key from a
+	// null one and the contract says absent.
+	r := readMilestones(t, c, project.Id)
+	var raw struct {
+		Milestones []map[string]any `json:"milestones"`
+	}
+	if err := json.Unmarshal(r.Body, &raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, present := raw.Milestones[0]["effectiveAmount"]; present {
+		t.Errorf("milestone = %v, want no effectiveAmount key at all", raw.Milestones[0])
+	}
+}
+
+// The plan's four sums are money, so they are added in exact decimal like
+// every other amount in this module: 0.10 + 0.20 is 0.30, not
+// 0.30000000000000004, and three thirds of a krone add back up to it.
+func TestGetProjectsByIdMilestones_Totals_AreExactToTheCent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+
+	t.Run("two amounts whose float sum is not their decimal sum", func(t *testing.T) {
+		project := amountProject(t, c, "MSCENT1")
+		createMilestone(t, c, project.Id, map[string]any{"name": "En", "amount": 0.10})
+		createMilestone(t, c, project.Id, map[string]any{"name": "To", "amount": 0.20})
+
+		plan := getMilestones(t, c, project.Id)
+		if plan.Totals.Planned != 0.30 {
+			t.Errorf("Totals.Planned = %v, want exactly 0.3", plan.Totals.Planned)
+		}
+		if raw := readMilestones(t, c, project.Id); strings.Contains(string(raw.Body), "0.30000000000000004") {
+			t.Errorf("body %s carries a binary artefact", raw.Body)
+		}
+	})
+
+	t.Run("three shares that add back up to the whole", func(t *testing.T) {
+		project := amountProject(t, c, "MSCENT2")
+		createMilestone(t, c, project.Id, map[string]any{"name": "En", "amount": 33.33})
+		createMilestone(t, c, project.Id, map[string]any{"name": "To", "amount": 33.33})
+		createMilestone(t, c, project.Id, map[string]any{"name": "Tre", "amount": 33.34})
+
+		if got := getMilestones(t, c, project.Id).Totals.Planned; got != 100.00 {
+			t.Errorf("Totals.Planned = %v, want exactly 100", got)
+		}
+	})
+}
+
+// A content edit writes its own timeline entry, the way a billing line's does:
+// the milestone by name and id, the fields that actually moved by name, and
+// never a value — the timeline is read by anyone who can see the project,
+// including a member who may not see its money (D12).
+func TestPutProjectsMilestonesByMilestoneId_RecordsWhichFieldsChanged(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSCHG1", 400000)
+	created := createMilestone(t, c, project.Id, map[string]any{
+		"name": "Oppstart", "amount": 100000, "plannedDate": "2026-11-01",
+	})
+
+	changeMilestone(t, c, created, map[string]any{
+		"name": "Oppstart, revidert", "amount": nil, "percent": 25,
+	})
+
+	if got := eventTypes(t, h, project.Id); got[len(got)-1] != "milestone-changed" {
+		t.Fatalf("timeline = %v, want it to end with milestone-changed", got)
+	}
+	payload := lastPayloadText(t, h, project.Id, "milestone-changed")
+	for _, want := range []string{"Oppstart, revidert", "name", "amount", "percent"} {
+		if !strings.Contains(payload, want) {
+			t.Errorf("payload %s does not name %q", payload, want)
+		}
+	}
+	if strings.Contains(payload, "plannedDate") {
+		t.Errorf("payload %s names a field that did not move", payload)
+	}
+	if strings.Contains(payload, "100000") || strings.Contains(payload, "25") {
+		t.Errorf("payload %s carries a value", payload)
+	}
+}
+
+// An edit that changed nothing still happened — updated_at and the revision
+// both move — but the timeline records events, and no event occurred. It is
+// the rule a billing line's change already follows.
+func TestPutProjectsMilestonesByMilestoneId_NothingChanged_WritesNoEntry(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, c, "MSCHG2")
+	created := createMilestone(t, c, project.Id, map[string]any{"name": "Oppstart"})
+	before := eventTypes(t, h, project.Id)
+
+	changeMilestone(t, c, created, nil)
+
+	if got := eventTypes(t, h, project.Id); len(got) != len(before) {
+		t.Errorf("timeline = %v, want nothing written for an edit that changed nothing", got)
+	}
+}
+
+// A reorder writes nothing either: where a milestone sits is not an event on
+// the project's history, and the eight status entries plus milestone-changed
+// are the whole vocabulary.
+func TestPutProjectsMilestonesByMilestoneIdPosition_WritesNoTimelineEntry(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, c, "MSCHG3")
+	first := createMilestone(t, c, project.Id, map[string]any{"name": "En"})
+	createMilestone(t, c, project.Id, map[string]any{"name": "To"})
+	before := eventTypes(t, h, project.Id)
+
+	if r := moveMilestone(t, c, first, 2); r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	if got := eventTypes(t, h, project.Id); len(got) != len(before) {
+		t.Errorf("timeline = %v, want a reorder to write nothing", got)
 	}
 }
