@@ -267,10 +267,13 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
     // the two milestone types carry `<projectId>/<milestoneId>`, which is the
     // milestone's own id, not a URL — encoding the pair whole (as the bare
     // project case below does) would turn the slash into %2F and break the
-    // link, so the project id is taken as the part before it.
+    // link, so the project id is taken as the part before it. A malformed id
+    // (empty, or with no project part) must not reach the router as
+    // `/projects//economy`; the app's own list is the safest fallback for
+    // anything this build cannot address precisely.
     if (projectEconomyAttentionTypes.includes(item.type)) {
-      const projectId = item.entityId.split("/")[0] ?? item.entityId;
-      return `/projects/${encodeURIComponent(projectId)}/economy`;
+      const projectId = item.entityId.split("/")[0];
+      return projectId ? `/projects/${encodeURIComponent(projectId)}/economy` : "/projects";
     }
     return `/projects/${encodeURIComponent(item.entityId)}`;
   }
@@ -345,6 +348,18 @@ export const readyMilestonesHint = (
   count: number | undefined,
   t: (key: string, values?: Record<string, unknown>) => string,
 ): string | undefined => (count ? t("dashboard.readyMilestonesHint", { count }) : undefined);
+
+/**
+ * The Projects card's hint, in full: the ready-milestones hint when there is
+ * something ready — the more actionable of the two figures — and otherwise
+ * exactly the "N new projects" hint the card showed before this feature, so
+ * the card never goes from always saying something to saying nothing.
+ */
+export const projectsCardHint = (
+  readyMilestones: number | undefined,
+  newProjects: number | undefined,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string => readyMilestonesHint(readyMilestones, t) ?? t("dashboard.newProjectsHint", { count: newProjects ?? 0 });
 
 /**
  * The Time card's "N waiting for your approval" hint, or nothing when there
@@ -764,10 +779,10 @@ const DashboardPage = () => {
                 key={module.module}
                 label={t("dashboard.activeProjects")}
                 value={projectsSummary.data?.activeProjects ?? "—"}
-                // The second figure is the one worth acting on, so — as with
-                // Time's approval count — it is the hint, and only while there
-                // is something in it to act on.
-                hint={readyMilestonesHint(projectsSummary.data?.readyMilestones, t)}
+                // Ready milestones are the more actionable figure, so they
+                // take the hint when there are any; otherwise the card falls
+                // back to the "N new projects" hint it always showed.
+                hint={projectsCardHint(projectsSummary.data?.readyMilestones, projectsSummary.data?.newProjects, t)}
                 delta={
                   projectsSummary.data
                     ? {

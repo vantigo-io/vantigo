@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { adminCatalog, hostPermissionTranslationKeys } from "./admin";
 
-// The Go module declares the projects permissions the host must be able to
-// name; nothing else pins that the admin catalog kept up as they grew from
-// five to six with projects:view-costs, so this is that guard. Extend the
-// list here rather than adding a second test if a future permission arrives.
+// This is not a link to the server: the projects module's permission catalog
+// is declared in apps/server/internal/projects/module.go (`var permissions`),
+// which the host cannot read from a unit test, so this list is hand-kept in
+// step with it rather than derived. A seventh permission there passes this
+// test silently until somebody extends the list below — extend it here
+// rather than adding a second test when that happens. (A live parity check
+// would need to call `GET /authorization/permissions` at runtime, which is a
+// different, and slower, kind of test than this one.)
 const projectsPermissionKeys = [
   "projects:access",
   "projects:create",
@@ -15,7 +19,7 @@ const projectsPermissionKeys = [
 ] as const;
 
 describe("the admin permission catalog", () => {
-  it("has a display name and a description, in English and Norwegian, for every projects permission", () => {
+  it("has a display name and a description, in English and Norwegian, for these six projects permissions", () => {
     for (const key of projectsPermissionKeys) {
       const translation = hostPermissionTranslationKeys[key as keyof typeof hostPermissionTranslationKeys];
       expect(translation, `no catalog entry for ${key}`).toBeDefined();
