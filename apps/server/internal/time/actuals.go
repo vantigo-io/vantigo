@@ -228,13 +228,20 @@ func (s *actualsSum) noteDate(row store.ProjectActualGroupsRow) {
 	}
 }
 
-// totals is the finished shape: each bucket's amounts rounded once, and the
-// last entry date as the contract's YYYY-MM-DD.
+// totals is the finished shape: each bucket's amounts rounded once, the whole
+// rounded once on its own, and the last entry date as the contract's
+// YYYY-MM-DD.
+//
+// Total is built from the three buckets' *unrounded* sums rather than from the
+// three figures just published, which is the whole reason the contract carries
+// it: three buckets worth 0.005 each publish "0.01" apiece while the work is
+// worth 0.02 altogether, and a consumer adding them would report 0.03.
 func (s *actualsSum) totals() contracts.ActualsTotals {
 	totals := contracts.ActualsTotals{
 		Approved:                   s.approved.bucket(),
 		Submitted:                  s.submitted.bucket(),
 		Draft:                      s.draft.bucket(),
+		Total:                      s.total(),
 		UnpricedHoursHundredths:    s.unpricedHundredths,
 		UncostedHoursHundredths:    s.uncostedHundredths,
 		BillableHoursHundredths:    s.billableHundredths,
@@ -245,6 +252,19 @@ func (s *actualsSum) totals() contracts.ActualsTotals {
 		totals.LastEntryDate = &date
 	}
 	return totals
+}
+
+// total is the three buckets as one unrounded sum, so the contract's Total is
+// rounded exactly once — from everything that went into the subject, not from
+// three figures that have each already been rounded.
+func (s *actualsSum) total() contracts.ActualsBucket {
+	var whole bucketSum
+	for _, bucket := range []*bucketSum{&s.approved, &s.submitted, &s.draft} {
+		whole.hundredths += bucket.hundredths
+		whole.bill.Add(&whole.bill, &bucket.bill)
+		whole.cost.Add(&whole.cost, &bucket.cost)
+	}
+	return whole.bucket()
 }
 
 // bucket renders one bucket for the contract.
