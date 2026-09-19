@@ -116,6 +116,22 @@ directions are resolved by `Compose` before any module mounts, so there is no ru
 call in either direction that could cycle — `internal/projects` still imports no
 other module (depguard) and no SQL of either module crosses into the other's schema.
 
+A consumed contract can also narrow **who** may reach the data it exposes, not only
+which module can. Projects' economy reads (`GET /{id}/economy`, the portfolio, the
+dashboard's budget alerts) sit behind Projects' own `projects:access` and, for
+amounts, its own financial-rights rule — never behind `time:access` — because the
+contract hands the caller's currency and rights decision to Time and gets back only
+what those already allow: **aggregate hours and amounts per project and per billing
+line, never per person or per entry.** That is deliberately less than Time's own
+project summary already gives a project member (which is per-status, per-line
+**and** per-person), so a caller who could never open Time tracking at all still
+gets a strict subset of it through Projects. Cost and margin sit behind a second,
+Projects-owned gate on top of that (`projects:view-costs`, sensitive, granted to no
+default role) — a permission the consuming module defines and enforces itself,
+which a provider contract cannot see or grant on its behalf. See
+[`docs/projects.md`](projects.md#project-economy) for what each shaping level
+returns.
+
 Time is the first module to consume three contracts and provide one:
 `contracts.ProjectDirectory` (required — hence the config check),
 `contracts.UserDirectory` (always there, for names and for the rate card's user
