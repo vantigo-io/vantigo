@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/vantigo-io/vantigo/server/internal/db"
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
 	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
@@ -206,13 +205,8 @@ func (s *server) PostProjectsByIdMilestones(ctx context.Context, req gen.PostPro
 	now := s.deps.Clock()
 	var locked store.ProjectsProject
 	var created store.ProjectsBillingMilestone
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		var err error
-		locked, err = lockProject(ctx, txq, project.ID)
-		if err != nil {
-			return err
-		}
+	err = s.withProjectLock(ctx, project.ID, func(ctx context.Context, txq *store.Queries, row store.ProjectsProject) error {
+		locked = row
 		// Re-asked against the locked row, and it is that row's currency the
 		// new milestone's amount is stamped with.
 		parsed, err := revalidateMilestone(body, locked)
@@ -255,22 +249,6 @@ func (s *server) PostProjectsByIdMilestones(ctx context.Context, req gen.PostPro
 		return nil, err
 	}
 	return gen.PostProjectsByIdMilestones201JSONResponse(resp), nil
-}
-
-// lockProject takes the project's row lock — the first statement of every
-// milestone write, whether or not that write reads anything off the project —
-// and answers the row it returns, which is the only row any of them then
-// decides against. A project that vanished under it maps to the handler's own
-// 404.
-func lockProject(ctx context.Context, txq *store.Queries, projectID int32) (store.ProjectsProject, error) {
-	locked, err := txq.LockProject(ctx, projectID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return store.ProjectsProject{}, errProjectVanished
-	}
-	if err != nil {
-		return store.ProjectsProject{}, fmt.Errorf("projects: lock project: %w", err)
-	}
-	return locked, nil
 }
 
 // revalidateMilestone re-asks the body's project-dependent rules against the
@@ -369,17 +347,12 @@ func (s *server) PutProjectsMilestonesByMilestoneId(ctx context.Context, req gen
 	now := s.deps.Clock()
 	var locked store.ProjectsProject
 	var changed store.ProjectsBillingMilestone
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		var err error
-		// Locks in the fixed order — project, then milestone — but decisions
-		// in the caller's: a stale revision and a read-only milestone are
-		// both about the resource being addressed, and only once those pass
-		// is it worth telling the caller anything about the project.
-		locked, err = lockProject(ctx, txq, scope.Project.ID)
-		if err != nil {
-			return err
-		}
+	// Locks in the fixed order — project, then milestone — but decisions in
+	// the caller's: a stale revision and a read-only milestone are both about
+	// the resource being addressed, and only once those pass is it worth
+	// telling the caller anything about the project.
+	err = s.withProjectLock(ctx, scope.Project.ID, func(ctx context.Context, txq *store.Queries, row store.ProjectsProject) error {
+		locked = row
 		before, err := txq.LockMilestone(ctx, scope.Milestone.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errMilestoneGone
@@ -474,11 +447,7 @@ func (s *server) DeleteProjectsMilestonesByMilestoneId(ctx context.Context, req 
 
 	now := s.deps.Clock()
 	deleted := false
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		if _, err := lockProject(ctx, txq, scope.Project.ID); err != nil {
-			return err
-		}
+	err = s.withProjectLock(ctx, scope.Project.ID, func(ctx context.Context, txq *store.Queries, _ store.ProjectsProject) error {
 		milestone, err := txq.LockMilestone(ctx, scope.Milestone.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
@@ -565,13 +534,8 @@ func (s *server) PutProjectsMilestonesByMilestoneIdPosition(ctx context.Context,
 
 	now := s.deps.Clock()
 	var locked store.ProjectsProject
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		var err error
-		locked, err = lockProject(ctx, txq, scope.Project.ID)
-		if err != nil {
-			return err
-		}
+	err = s.withProjectLock(ctx, scope.Project.ID, func(ctx context.Context, txq *store.Queries, row store.ProjectsProject) error {
+		locked = row
 		milestone, err := txq.LockMilestone(ctx, scope.Milestone.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errMilestoneGone
@@ -675,13 +639,8 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 	now := s.deps.Clock()
 	var locked store.ProjectsProject
 	var moved store.ProjectsBillingMilestone
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-		var err error
-		locked, err = lockProject(ctx, txq, scope.Project.ID)
-		if err != nil {
-			return err
-		}
+	err = s.withProjectLock(ctx, scope.Project.ID, func(ctx context.Context, txq *store.Queries, row store.ProjectsProject) error {
+		locked = row
 		before, err := txq.LockMilestone(ctx, scope.Milestone.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errMilestoneGone

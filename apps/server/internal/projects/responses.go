@@ -175,7 +175,7 @@ func (s *server) billingLineResponses(ctx context.Context, project store.Project
 	outage := &catalogOutage{}
 	variants := make(map[int32]contracts.VariantEntry, len(ids))
 	if len(ids) > 0 {
-		found, err := s.deps.Products.Variants(ctx, ids)
+		found, err := s.productsVariants(ctx, ids)
 		if err != nil {
 			outage.note(fmt.Errorf("projects: resolve the lines' variants: %w", err))
 		}
@@ -297,7 +297,7 @@ func (s *server) linePricing(ctx context.Context, project store.ProjectsProject,
 	if project.Currency == nil {
 		return pricing, true, nil
 	}
-	price, err := s.deps.Products.ListPrice(ctx, row.VariantID, *project.Currency, s.deps.Clock())
+	price, err := s.productsListPrice(ctx, row.VariantID, *project.Currency, s.deps.Clock())
 	if err != nil {
 		outage.note(fmt.Errorf("projects: resolve a variant's list price: %w", err))
 		return pricing, false, nil
@@ -809,7 +809,7 @@ func (s *server) customerName(ctx context.Context, customerID *int32) (*string, 
 	if customerID == nil {
 		return nil, nil
 	}
-	customer, err := s.deps.Directory.Customer(ctx, *customerID)
+	customer, err := s.directoryCustomer(ctx, *customerID)
 	if err != nil {
 		return nil, fmt.Errorf("projects: look up customer: %w", err)
 	}

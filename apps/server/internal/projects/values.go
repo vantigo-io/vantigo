@@ -351,7 +351,7 @@ func (s *server) validateProject(ctx context.Context, body gen.ProjectCreateRequ
 	// the relationship that started it (§4.1).
 	var customerName *string
 	if body.CustomerId != nil {
-		customer, err := s.deps.Directory.Customer(ctx, *body.CustomerId)
+		customer, err := s.directoryCustomer(ctx, *body.CustomerId)
 		if err != nil {
 			return parsedProject{}, nil, fmt.Errorf("projects: look up customer: %w", err)
 		}

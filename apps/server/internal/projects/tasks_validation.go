@@ -256,7 +256,7 @@ func (s *server) validateTask(ctx context.Context, body gen.TaskRequest, assigne
 	// The assignee the task already carries is a stored fact, not a choice this
 	// body is making, so it is never re-validated — and never even looked up.
 	if id := body.AssigneeUserId; id != nil && (assigned == nil || *assigned != *id) {
-		entry, err := s.deps.Users.User(ctx, *id)
+		entry, err := s.usersUser(ctx, *id)
 		if err != nil {
 			return parsedTask{}, nil, fmt.Errorf("projects: resolve the task's assignee: %w", err)
 		}

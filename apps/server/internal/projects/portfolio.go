@@ -221,7 +221,7 @@ func (s *server) portfolioActuals(ctx context.Context, projects []store.Projects
 		seen[project.ID] = true
 		reqs = append(reqs, contracts.ActualsRequest{ProjectID: project.ID, Currency: project.Currency})
 	}
-	totals, err := s.deps.Actuals.ActualsForProjects(ctx, reqs)
+	totals, err := s.actualsForProjects(ctx, reqs)
 	if err != nil {
 		return nil, fmt.Errorf("projects: read what has been logged on the portfolio's projects: %w", err)
 	}

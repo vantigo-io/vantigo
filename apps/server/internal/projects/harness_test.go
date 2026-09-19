@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -70,6 +71,13 @@ func newHarnessWithActuals(t *testing.T, actuals *fakeActuals, opts ...modtest.O
 // catalog is the only thing they differ in, nil for "products disabled", so
 // it is the only thing any of them says. A second copy of the option list
 // would drift the moment this module grows another dependency.
+//
+// Every harness also carries the module's locking guarantee out of its test:
+// nothing this module asks of another module is asked while one of its
+// transactions holds the project's row lock (docs/projects.md's "Locking").
+// The check is the whole suite's, not one path's — whichever write a future
+// change introduces it on, the call is reported and the test that made it
+// fails.
 func newProjectsHarness(t *testing.T, catalog *fakeCatalog, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
 	base := []modtest.Option{
@@ -80,7 +88,64 @@ func newProjectsHarness(t *testing.T, catalog *fakeCatalog, opts ...modtest.Opti
 	if catalog != nil {
 		base = append(base, modtest.WithProducts(catalog))
 	}
-	return modtest.New(t, append(base, opts...)...)
+	before := lockedContractCalls.count()
+	h := modtest.New(t, append(base, opts...)...)
+	t.Cleanup(func() {
+		if calls := lockedContractCalls.since(before); len(calls) > 0 {
+			t.Errorf("a cross-module call was made while this module held a project's row lock:\n%s",
+				strings.Join(calls, "\n"))
+		}
+	})
+	return h
+}
+
+// lockedContractCalls is every cross-module call the module made from inside a
+// transaction that holds the project's row lock (projects.InLockedTx). The
+// directories read through the same connection pool as the module, so a
+// transaction holding row locks while it waits for one of them can starve the
+// pool under load; the rule is that none ever does, and every harness checks
+// it when its test ends. A real pool small enough to starve cannot be had here
+// — modtest's pools are a fixed testdb.PoolMaxConns, and the fakes use no
+// connection at all — so the call itself is what is caught.
+//
+// It is one recorder for the package rather than one per harness because the
+// hook it is installed as is a package-level one (TestMain), and the module's
+// own call sites carry no harness with them. Each harness therefore checks
+// only what was recorded while it existed, and the stack trace beside each
+// call names the path that actually made it — which is what attributes a
+// violation when parallel tests overlap.
+var lockedContractCalls = &lockedCalls{}
+
+type lockedCalls struct {
+	mu    sync.Mutex
+	calls []string
+}
+
+// note is the hook itself. A call from outside any locked transaction — which
+// is every call the module is supposed to make — costs one context lookup and
+// nothing else.
+func (l *lockedCalls) note(ctx context.Context, method string) {
+	if !projects.InLockedTx(ctx) {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls = append(l.calls, method+"\n"+string(debug.Stack()))
+}
+
+func (l *lockedCalls) count() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.calls)
+}
+
+func (l *lockedCalls) since(n int) []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if n >= len(l.calls) {
+		return nil
+	}
+	return slices.Clone(l.calls[n:])
 }
 
 // The customers the fake directory knows. 1003 is archived, which resolves
