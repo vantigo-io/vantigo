@@ -154,6 +154,9 @@ pass "communications demands authentication"
 [ "$(status "$base/api/v1/projects")" = 401 ] || fail "projects is not 401 without a session"
 pass "projects demands authentication"
 
+[ "$(status "$base/api/v1/time/entries")" = 401 ] || fail "time entries is not 401 without a session"
+pass "time demands authentication"
+
 docker exec "$APP" /app/vantigo healthcheck || fail "the healthcheck command failed inside the container"
 health=""
 for _ in $(seq 1 30); do
