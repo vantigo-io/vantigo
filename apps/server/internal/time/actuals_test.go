@@ -3,6 +3,7 @@ package timetracking_test
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -313,15 +314,171 @@ func TestActualsWithoutACurrencySumsNoAmounts(t *testing.T) {
 
 	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "2.00", billable: true,
 		billRate: "900.00", billCurrency: "NOK", costRate: "400.00", costCurrency: "NOK", status: "approved"})
-	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "1.00", billable: false, status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "1.00", billable: true, status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "0.50", billable: false, status: "approved"})
 
 	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket})
 	if err != nil {
 		t.Fatalf("actuals: %v", err)
 	}
-	wantBucket(t, "approved", got.Totals.Approved, 300, "0.00", "0.00")
+	wantBucket(t, "approved", got.Totals.Approved, 350, "0.00", "0.00")
 	if got.Totals.UnpricedHoursHundredths != 100 {
-		t.Errorf("unpriced = %d hundredths, want 100: only the hours without a rate", got.Totals.UnpricedHoursHundredths)
+		t.Errorf("unpriced = %d hundredths, want 100: the billable hour without a rate, and no inference of a currency from what happens to be logged",
+			got.Totals.UnpricedHoursHundredths)
+	}
+	if got.Totals.UncostedHoursHundredths != 150 {
+		t.Errorf("uncosted = %d hundredths, want 150: the hours without a cost rate, billable or not",
+			got.Totals.UncostedHoursHundredths)
+	}
+}
+
+// Non-billable hours are never unpriced (review I1): they were never meant to
+// carry a price, and calling them unpriced sends someone hunting for a rate
+// that should not exist. They are reported as non-billable instead.
+func TestActualsDoesNotCallNonBillableHoursUnpriced(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "10.00", billable: true,
+		billRate: "900.00", billCurrency: "NOK", status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "5.00", billable: false, status: "approved"})
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	wantBucket(t, "approved", got.Totals.Approved, 1500, "9000.00", "0.00")
+	if got.Totals.UnpricedHoursHundredths != 0 {
+		t.Errorf("unpriced = %d hundredths, want 0: every billable hour is priced and the rest is not billable",
+			got.Totals.UnpricedHoursHundredths)
+	}
+	if got.Totals.NonBillableHoursHundredths != 500 {
+		t.Errorf("non-billable = %d hundredths, want 500", got.Totals.NonBillableHoursHundredths)
+	}
+}
+
+// A non-billable entry that somehow carries a bill rate is left out of the
+// bill amount and out of the priced/unpriced split alike — the same hours
+// either way, and the same set the project summary bills on. Nothing writes
+// this row today (the rate chain never prices non-billable work), which is
+// why it is seeded straight into the table.
+func TestActualsIgnoresARateOnNonBillableWork(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	client, user := signInAs(t, h, projectKraftVerket, roleManager)
+	p := actualsProvider(t, h)
+
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "10.00", billable: true,
+		billRate: "900.00", billCurrency: "NOK", status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "5.00", billable: false,
+		billRate: "900.00", billCurrency: "NOK", status: "approved"})
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	wantBucket(t, "approved", got.Totals.Approved, 1500, "9000.00", "0.00")
+	if got.Totals.UnpricedHoursHundredths != 0 {
+		t.Errorf("unpriced = %d hundredths, want 0: the non-billable hours are neither priced nor unpriced",
+			got.Totals.UnpricedHoursHundredths)
+	}
+
+	summary, _ := readProjectSummary(t, client, projectKraftVerket)
+	if summary.Billing == nil {
+		t.Fatal("billing absent from the summary, want it for the project's manager")
+	}
+	if summary.Billing.Amount != 9000 {
+		t.Errorf("the project summary bills %v, the actuals say 9000.00: the two surfaces must agree", summary.Billing.Amount)
+	}
+}
+
+// The figure is the one Time already reports on its own project summary:
+// two surfaces saying different numbers of unpriced hours for the same
+// project on the same day is a bug report waiting to happen (review I1).
+func TestActualsUnpricedHoursAgreeWithTheProjectSummary(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	client, user := signInAs(t, h, projectKraftVerket, roleManager)
+	p := actualsProvider(t, h)
+
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "10.00", billable: true,
+		billRate: "900.00", billCurrency: "NOK", status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "5.00", billable: false, status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "3.00", billable: true, status: "submitted"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "2.00", billable: true,
+		billRate: "100.00", billCurrency: "SEK", status: "approved"})
+
+	summary, _ := readProjectSummary(t, client, projectKraftVerket)
+	if summary.Billing == nil {
+		t.Fatal("billing absent from the summary, want it for the project's manager")
+	}
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	if got.Totals.UnpricedHoursHundredths != 500 {
+		t.Errorf("unpriced = %d hundredths, want 500: three hours without a rate and two priced in SEK",
+			got.Totals.UnpricedHoursHundredths)
+	}
+	summaryHundredths := int64(math.Round(summary.Billing.UnpricedHours * 100))
+	if got.Totals.UnpricedHoursHundredths != summaryHundredths {
+		t.Errorf("unpriced = %d hundredths, the project summary says %d (%v hours): the two surfaces must agree",
+			got.Totals.UnpricedHoursHundredths, summaryHundredths, summary.Billing.UnpricedHours)
+	}
+}
+
+// Work costed in another currency is not in CostAmount, and the hours say so
+// (review I2): a person on a EUR rate card working on a NOK project bills in
+// NOK and costs in EUR, and a margin taken from the cost alone would make the
+// project look better than it is.
+func TestActualsUncostedHoursCountWorkCostedInAnotherCurrency(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "2.00", billable: true,
+		billRate: "900.00", billCurrency: "NOK", costRate: "50.00", costCurrency: "EUR", status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "1.00", billable: true,
+		billRate: "900.00", billCurrency: "NOK", costRate: "400.00", costCurrency: "NOK", status: "approved"})
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	wantBucket(t, "approved", got.Totals.Approved, 300, "2700.00", "400.00")
+	if got.Totals.UncostedHoursHundredths != 200 {
+		t.Errorf("uncosted = %d hundredths, want 200: the hours whose cost is in EUR are not in the cost amount",
+			got.Totals.UncostedHoursHundredths)
+	}
+}
+
+// Hours with no cost rate at all are uncosted too, non-billable ones
+// included: work nobody is billed for still costs the company.
+func TestActualsUncostedHoursCountWorkWithoutACostRate(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "2.00", billable: true,
+		billRate: "900.00", billCurrency: "NOK", costRate: "400.00", costCurrency: "NOK", status: "approved"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "1.00", billable: true,
+		billRate: "900.00", billCurrency: "NOK", status: "submitted"})
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "4.00", billable: false, status: "draft"})
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	if got.Totals.UncostedHoursHundredths != 500 {
+		t.Errorf("uncosted = %d hundredths, want 500: every bucket, billable or not", got.Totals.UncostedHoursHundredths)
+	}
+	if got.Totals.UnpricedHoursHundredths != 0 {
+		t.Errorf("unpriced = %d hundredths, want 0: the only unbilled hours are the non-billable ones",
+			got.Totals.UnpricedHoursHundredths)
 	}
 }
 
@@ -346,6 +503,10 @@ func TestActualsFoldsTheCostCurrencyOnItsOwn(t *testing.T) {
 	wantBucket(t, "approved", got.Totals.Approved, 300, "2700.00", "400.00")
 	if got.Totals.UnpricedHoursHundredths != 0 {
 		t.Errorf("unpriced = %d hundredths, want 0: unpriced is about the bill rate, not the cost", got.Totals.UnpricedHoursHundredths)
+	}
+	if got.Totals.UncostedHoursHundredths != 200 {
+		t.Errorf("uncosted = %d hundredths, want 200: the EUR-costed hours are not in the cost amount",
+			got.Totals.UncostedHoursHundredths)
 	}
 }
 
@@ -534,6 +695,25 @@ func TestActualsForProjectsRefusesTooLargeABatch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), fmt.Sprint(contracts.MaxActualsRequests)) {
 		t.Errorf("error %q does not name the cap %d", err, contracts.MaxActualsRequests)
+	}
+}
+
+// One project named twice in one batch is refused: it has one answer, and
+// two requests for it are the caller's bug however they agree (review M2).
+func TestActualsForProjectsRefusesADuplicateProject(t *testing.T) {
+	t.Parallel()
+	p := timetracking.Module().Actuals(module.Deps{})
+
+	_, err := p.ActualsForProjects(t.Context(), []contracts.ActualsRequest{
+		{ProjectID: projectKraftVerket, Currency: ptr("NOK")},
+		{ProjectID: projectEuro, Currency: ptr("EUR")},
+		{ProjectID: projectKraftVerket, Currency: ptr("EUR")},
+	})
+	if err == nil {
+		t.Fatal("actuals for projects: want an error when one project is named twice")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprint(projectKraftVerket)) {
+		t.Errorf("error %q does not name the repeated project %d", err, projectKraftVerket)
 	}
 }
 

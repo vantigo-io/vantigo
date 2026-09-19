@@ -24,9 +24,9 @@ import (
 // two modules both declare, a component two modules declare differently
 // under the same name, two modules both declaring a customer directory, a
 // user directory, a product catalog, a project directory or project actuals
-// (naming both), or a nil Deps.Config: enablement (which modules MODULES turns on) is
-// meaningless without one, and every real caller already loads one before
-// composing.
+// (naming both), or a nil Deps.Config: enablement (which modules MODULES
+// turns on) is meaningless without one, and every real caller already loads
+// one before composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	if deps.Config == nil {
 		return nil, fmt.Errorf("module: Compose requires a non-nil Deps.Config to know which modules MODULES enables")
@@ -63,18 +63,17 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 	// project directory and project actuals are the sanctioned cross-module
 	// reads (contracts.CustomerDirectory, UserDirectory, ProductCatalog,
 	// ProjectDirectory, ProjectActuals): at most one enabled module may
-	// declare each. Each
-	// is resolved here, in this order, before any Mount runs, so its result
-	// can be copied onto every module's Deps below — including its own
-	// provider's, which may need it too — and so a later slot's provider
-	// func may use an earlier one already set on deps (Projects, say, may
-	// read deps.Directory). Each provider func runs on deps as Compose
-	// itself received it plus whatever earlier slot just set, deliberately
-	// narrower than the per-module copy Mount gets (no Doc, no per-module
-	// Catalog reference beyond what is already built here): building a
-	// directory is a data-layer concern (Pool, Config, Clock, Secrets,
-	// ...), not a contract one, and no module's own Doc is loaded yet at
-	// this point regardless.
+	// declare each. Each is resolved here, in this order, before any Mount
+	// runs, so its result can be copied onto every module's Deps below —
+	// including its own provider's, which may need it too — and so a later
+	// slot's provider func may use an earlier one already set on deps
+	// (Projects, say, may read deps.Directory). Each provider func runs on
+	// deps as Compose itself received it plus whatever earlier slot just
+	// set, deliberately narrower than the per-module copy Mount gets (no
+	// Doc, no per-module Catalog reference beyond what is already built
+	// here): building a directory is a data-layer concern (Pool, Config,
+	// Clock, Secrets, ...), not a contract one, and no module's own Doc is
+	// loaded yet at this point regardless.
 	directoryProvider, err := soleProvider(mods, "a customer directory", func(m Module) bool { return m.Directory != nil })
 	if err != nil {
 		return nil, err
