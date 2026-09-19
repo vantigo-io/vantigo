@@ -24,5 +24,7 @@ export default defineConfig({
   },
   server: { port: 10011, proxy: { "/api": { target: apiTarget, changeOrigin: true, secure: false } } },
   build: { outDir: "dist", emptyOutDir: true },
-  test: { environment: "jsdom", setupFiles: ["src/test/setup.ts"], globals: false },
+  // testTimeout: Vitest's five-second default has flaked on slow, loaded CI
+  // runners. The limit exists to catch a hang, not to race the runner.
+  test: { environment: "jsdom", setupFiles: ["src/test/setup.ts"], globals: false, testTimeout: 15_000 },
 });
