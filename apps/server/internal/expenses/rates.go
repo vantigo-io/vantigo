@@ -198,19 +198,34 @@ func parseRate(kind string, validFrom openapi_types.Date, value float64, rawCurr
 }
 
 // listRates is every rate as the contract answers it: flat, by kind and then
-// the latest first, because the client groups it.
-func (s *server) listRates(ctx context.Context) ([]gen.ExpensesRateResponse, error) {
+// the latest first, because the client groups it. withCustomerPrice keeps the
+// mileage_customer rows in; a caller without expenses:manage reads the list
+// without them.
+func (s *server) listRates(ctx context.Context, withCustomerPrice bool) ([]gen.ExpensesRateResponse, error) {
 	rows, err := store.New(s.deps.Pool).ListRates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("expenses: list the rates: %w", err)
+	}
+	if !withCustomerPrice {
+		rows = slices.DeleteFunc(rows, func(row store.ExpensesRate) bool {
+			return row.Kind == rateKindMileageCustomer
+		})
 	}
 	return rateResponses(rows)
 }
 
 // GetExpensesRates List the expense rates
 // (GET /api/v1/expenses/rates)
+//
+// Readable by everyone with expenses:access: what a kilometre is reimbursed at
+// is what the person driving it is being paid, and their own expense form
+// previews a mileage line with it before they save. The one kind an employee
+// does not read is mileage_customer — what the company charges its customer
+// per kilometre is a commercial price, and nothing in an employee's form shows
+// it. Writing rates stays expenses:manage's, which the contract's access rule
+// enforces on every other operation here.
 func (s *server) GetExpensesRates(ctx context.Context, _ gen.GetExpensesRatesRequestObject) (gen.GetExpensesRatesResponseObject, error) {
-	out, err := s.listRates(ctx)
+	out, err := s.listRates(ctx, s.has(ctx, "expenses:manage"))
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +395,9 @@ func (s *server) PostExpensesRatesReset(ctx context.Context, req gen.PostExpense
 		return nil, err
 	}
 
-	out, err := s.listRates(ctx)
+	// Reset is expenses:manage's alone, so the list it answers with is the
+	// administrator's own: every kind, the customer price included.
+	out, err := s.listRates(ctx, true)
 	if err != nil {
 		return nil, err
 	}

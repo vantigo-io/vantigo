@@ -289,13 +289,12 @@ func TestExpensesRatesReset_RefusesAKindNobodyKnows(t *testing.T) {
 	}
 }
 
-func TestExpensesRates_AreAnAdministratorsToReadAndChange(t *testing.T) {
+func TestExpensesRates_AreAnAdministratorsToChange(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	employee, _ := signIn(t, h)
 
 	for _, tc := range []struct{ method, path string }{
-		{http.MethodGet, ratesPath},
 		{http.MethodPost, ratesPath},
 		{http.MethodPost, ratesResetPath},
 		{http.MethodPut, ratePath(1001)},
@@ -304,5 +303,38 @@ func TestExpensesRates_AreAnAdministratorsToReadAndChange(t *testing.T) {
 		if r := employee.Do(tc.method, tc.path, nil); r.Status != http.StatusForbidden {
 			t.Errorf("%s %s as an employee: status %d body %s, want 403", tc.method, tc.path, r.Status, r.Body)
 		}
+	}
+}
+
+// Everyone with expenses:access reads the rates their own expense form
+// previews a mileage line with — what the kilometres will be reimbursed at is
+// not a secret from the person driving them. The one kind held back is
+// mileage_customer: what the company charges its customer per kilometre is a
+// commercial price, and an employee's form never shows it.
+func TestExpensesRates_AreReadableByEveryAccessHolderExceptTheCustomerPrice(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+	employee, _ := signIn(t, h)
+
+	createRate(t, admin, map[string]any{"kind": "mileage_customer", "validFrom": "2026-01-01", "value": 7.5})
+
+	forAdmin := listRates(t, admin)
+	if got := ratesOfKind(forAdmin, "mileage_customer"); len(got) != 1 {
+		t.Fatalf("mileage_customer for expenses:manage = %+v, want the row", got)
+	}
+
+	forEmployee := listRates(t, employee)
+	if got := ratesOfKind(forEmployee, "mileage_customer"); len(got) != 0 {
+		t.Errorf("mileage_customer for an employee = %+v, want it held back — it is the company's price to its customer", got)
+	}
+	for _, kind := range []string{"mileage", "mileage_passenger"} {
+		got := ratesOfKind(forEmployee, kind)
+		if len(got) != 1 {
+			t.Errorf("%s for an employee = %+v, want the row their form previews with", kind, got)
+		}
+	}
+	if len(forEmployee) != len(forAdmin)-1 {
+		t.Errorf("an employee read %d rates and an administrator %d, want every kind but the one", len(forEmployee), len(forAdmin))
 	}
 }
