@@ -37,6 +37,8 @@ interface BillingLineFormValues {
   pricingMode: PricingMode;
   fixedAmount: number | string;
   discountPercent: number | string;
+  budgetHours: number | string;
+  budgetAmount: number | string;
   active: boolean;
 }
 
@@ -94,6 +96,10 @@ const BillingLineForm = ({
       pricingMode: line?.pricing?.mode ?? "list",
       fixedAmount: line?.pricing?.fixedAmount ?? "",
       discountPercent: line?.pricing?.discountPercent ?? "",
+      // The hours budget is planning data carried on the line itself; the
+      // money one is financial and lives inside the pricing block.
+      budgetHours: line?.budgetHours ?? "",
+      budgetAmount: line?.pricing?.budgetAmount ?? "",
       active: line?.active ?? true,
     },
     validate: {
@@ -116,6 +122,18 @@ const BillingLineForm = ({
         const percent = amount(value);
         return percent === undefined || percent <= 0 || percent > 100 ? t("discountPercentRequired") : null;
       },
+      // Both budgets are optional; set, they are greater than zero, and the
+      // money one needs the project to have a currency (D13).
+      budgetHours: (value) => {
+        const budget = amount(value);
+        return budget !== undefined && budget <= 0 ? t("budgetHoursMustBePositive") : null;
+      },
+      budgetAmount: (value) => {
+        const budget = amount(value);
+        if (budget === undefined) return null;
+        if (!currency) return t("budgetNeedsCurrency");
+        return budget <= 0 ? t("budgetAmountMustBePositive") : null;
+      },
     },
   });
 
@@ -127,6 +145,8 @@ const BillingLineForm = ({
         pricingMode: values.pricingMode,
         ...(values.pricingMode === "fixed" ? { fixedAmount: amount(values.fixedAmount) } : {}),
         ...(values.pricingMode === "discount" ? { discountPercent: amount(values.discountPercent) } : {}),
+        ...(amount(values.budgetHours) === undefined ? {} : { budgetHours: amount(values.budgetHours) }),
+        ...(amount(values.budgetAmount) === undefined ? {} : { budgetAmount: amount(values.budgetAmount) }),
         // `active` is the one field a PUT may leave out; creating never sends it.
         ...(line ? { active: values.active } : {}),
       };
@@ -208,6 +228,28 @@ const BillingLineForm = ({
             {...form.getInputProps("discountPercent")}
           />
         )}
+        <Group grow align="start">
+          <NumberInput
+            data-testid="line-budget-hours"
+            label={t("budgetHours")}
+            min={0}
+            decimalScale={2}
+            {...form.getInputProps("budgetHours")}
+          />
+          {/* A budget in money needs something to be denominated in, and a
+              caller who may not see the project's amounts is given no
+              currency either. */}
+          {currency && (
+            <NumberInput
+              data-testid="line-budget-amount"
+              label={t("budgetAmount")}
+              description={currency}
+              min={0}
+              decimalScale={2}
+              {...form.getInputProps("budgetAmount")}
+            />
+          )}
+        </Group>
         {line && (
           <Switch
             label={t("active")}

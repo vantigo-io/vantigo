@@ -47,6 +47,9 @@ const fieldKeys: Record<string, string> = {
   pricingMode: "pricingMode",
   fixedAmount: "fixedAmount",
   discountPercent: "discountPercent",
+  plannedDate: "plannedDate",
+  amount: "amount",
+  percent: "percent",
 };
 
 const fieldList = (t: Translate, value: unknown): string =>
@@ -96,6 +99,30 @@ const describeEntry = (t: Translate, entry: TimelineEntry): string => {
       return t("timelineLineDeactivated", { code: text(payload.code) });
     case "line-reactivated":
       return t("timelineLineReactivated", { code: text(payload.code) });
+    // The milestone events carry the milestone's id and name and never an
+    // amount, so the timeline stays the same for every reader (D12).
+    case "milestone-added":
+      return t("timelineMilestoneAdded", { name: text(payload.name) });
+    case "milestone-removed":
+      return t("timelineMilestoneRemoved", { name: text(payload.name) });
+    case "milestone-changed":
+      return t("timelineMilestoneChanged", { name: text(payload.name), fields: fieldList(t, payload.fields) });
+    case "milestone-ready":
+      return t("timelineMilestoneReady", { name: text(payload.name) });
+    case "milestone-planned":
+      return t("timelineMilestonePlanned", { name: text(payload.name) });
+    case "milestone-invoiced":
+      return t("timelineMilestoneInvoiced", { name: text(payload.name) });
+    // Undoing an invoicing converts a share into a flat amount when the
+    // project's fixed price has gone since; the payload says so with a flag.
+    case "milestone-invoice-undone":
+      return payload.convertedToAmount === true
+        ? t("timelineMilestoneInvoiceUndoneConverted", { name: text(payload.name) })
+        : t("timelineMilestoneInvoiceUndone", { name: text(payload.name) });
+    case "milestone-cancelled":
+      return t("timelineMilestoneCancelled", { name: text(payload.name) });
+    case "milestone-reopened":
+      return t("timelineMilestoneReopened", { name: text(payload.name) });
     default:
       return entry.eventType;
   }

@@ -149,6 +149,23 @@ describe("ProjectBilling", () => {
     expect(within(discount).getByText("Inactive")).toBeInTheDocument();
   });
 
+  it("shows a line's planning budget, and whichever half of it is set", async () => {
+    stubBilling(project(), [
+      line({ budgetHours: 120, pricing: { mode: "list", budgetAmount: 96000 } }),
+      line({ id: 2, code: "DEV", trackableCode: "KVEWEBS-DEV", budgetHours: 40, pricing: { mode: "list" } }),
+      line({ id: 3, code: "QA", trackableCode: "KVEWEBS-QA", pricing: { mode: "list" } }),
+    ]);
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    const both = (await screen.findByText("KVEWEBS-PM")).closest("tr") as HTMLElement;
+    expect(both).toHaveTextContent(`120 h · ${money(96000)}`);
+    const hoursOnly = screen.getByText("KVEWEBS-DEV").closest("tr") as HTMLElement;
+    expect(hoursOnly).toHaveTextContent("40 h");
+    expect(hoursOnly).not.toHaveTextContent("·");
+    const neither = screen.getByText("KVEWEBS-QA").closest("tr") as HTMLElement;
+    expect(within(neither).getAllByText("—").length).toBeGreaterThan(0);
+  });
+
   it("names a variant the catalog has forgotten", async () => {
     stubBilling(project(), [line({ variantMissing: true, productName: null, sku: null, unit: null })]);
     renderWithProviders(<ProjectBilling projectId={7} />);
