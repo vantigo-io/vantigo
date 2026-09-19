@@ -34,6 +34,7 @@ type lineJSON struct {
 	Unit           *string      `json:"unit"`
 	VariantMissing bool         `json:"variantMissing"`
 	Active         bool         `json:"active"`
+	BudgetHours    *float64     `json:"budgetHours"`
 	CreatedAt      time.Time    `json:"createdAt"`
 	UpdatedAt      time.Time    `json:"updatedAt"`
 	Pricing        *pricingJSON `json:"pricing"`
@@ -43,6 +44,7 @@ type pricingJSON struct {
 	Mode            string     `json:"mode"`
 	FixedAmount     *float64   `json:"fixedAmount"`
 	DiscountPercent *float64   `json:"discountPercent"`
+	BudgetAmount    *float64   `json:"budgetAmount"`
 	ListPrice       *moneyJSON `json:"listPrice"`
 }
 
@@ -265,6 +267,11 @@ func TestPostProjectsByIdBillingLines_InvalidBody_Returns400OnTheField(t *testin
 		{"discount line with a fixed amount", map[string]any{"pricingMode": "discount", "discountPercent": 10, "fixedAmount": 900}, false, "fixedAmount"},
 		{"list line with a fixed amount", map[string]any{"fixedAmount": 900}, false, "fixedAmount"},
 		{"list line with a discount percent", map[string]any{"discountPercent": 10}, false, "discountPercent"},
+		{"budget hours of zero", map[string]any{"budgetHours": 0}, false, "budgetHours"},
+		{"negative budget hours", map[string]any{"budgetHours": -8}, false, "budgetHours"},
+		{"budget amount of zero", map[string]any{"budgetAmount": 0}, false, "budgetAmount"},
+		{"negative budget amount", map[string]any{"budgetAmount": -900}, false, "budgetAmount"},
+		{"budget amount on a project with no currency", map[string]any{"budgetAmount": 900}, true, "budgetAmount"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -412,7 +419,9 @@ func TestGetProjectsByIdBillingLines_Member_SeesNoPricingKey(t *testing.T) {
 	h := newHarness(t)
 	c, _ := signIn(t, h, "projects:create")
 	project := createProject(t, c, map[string]any{"code": "LMEM1000", "currency": "NOK"})
-	createLine(t, c, project.Id, map[string]any{"pricingMode": "fixed", "fixedAmount": 900})
+	createLine(t, c, project.Id, map[string]any{
+		"pricingMode": "fixed", "fixedAmount": 900, "budgetHours": 40, "budgetAmount": 5000,
+	})
 	member, memberID := signIn(t, h)
 	addRole(t, h, project.Id, memberID, "member")
 
@@ -432,6 +441,100 @@ func TestGetProjectsByIdBillingLines_Member_SeesNoPricingKey(t *testing.T) {
 	}
 	if raw[0]["productName"] != "Project manager hour" {
 		t.Errorf("body %s, want the variant details a member may read (D15)", r.Body)
+	}
+	// budgetHours is planning data, outside the financial shaping: a member
+	// sees it even though budgetAmount (inside the absent pricing block) is
+	// not theirs to see.
+	if raw[0]["budgetHours"] != 40.0 {
+		t.Errorf("budgetHours = %v, want 40 visible to a member", raw[0]["budgetHours"])
+	}
+}
+
+// The line budgets (design §3.1): budgetHours is planning data returned
+// alongside every other field a caller who sees the project sees; budgetAmount
+// is an amount, so it rides inside the line's existing financial shaping.
+// Omitting them on a later PUT clears them, the same full-replace semantics
+// every other optional line field already has.
+func TestBillingLines_Budgets_StoredReturnedAndCleared(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LBUD1000", "currency": "NOK"})
+
+	line := createLine(t, c, project.Id, map[string]any{"budgetHours": 40, "budgetAmount": 5000})
+	if line.BudgetHours == nil || *line.BudgetHours != 40 {
+		t.Errorf("BudgetHours = %v, want 40", line.BudgetHours)
+	}
+	if line.Pricing == nil || line.Pricing.BudgetAmount == nil || *line.Pricing.BudgetAmount != 5000 {
+		t.Errorf("Pricing = %+v, want a budgetAmount of 5000", line.Pricing)
+	}
+
+	reread := listLines(t, c, project.Id)
+	if len(reread) != 1 || reread[0].BudgetHours == nil || *reread[0].BudgetHours != 40 {
+		t.Errorf("re-read = %+v, want the stored budgetHours", reread)
+	}
+
+	cleared := changeLine(t, c, project.Id, line.Id, lineBody(nil))
+	if cleared.BudgetHours != nil {
+		t.Errorf("BudgetHours = %v, want cleared by a body that omits it", cleared.BudgetHours)
+	}
+	if cleared.Pricing == nil || cleared.Pricing.BudgetAmount != nil {
+		t.Errorf("Pricing = %+v, want budgetAmount cleared", cleared.Pricing)
+	}
+}
+
+// D13's guard extended past a 'fixed' line (design §3.3): a milestone that is
+// not cancelled also denominates an amount in the project's currency, so the
+// currency cannot be cleared while one exists — but a cancelled milestone
+// bills nothing and does not lock it. milestones.go is Task 2's; the row is
+// inserted directly (insertMilestone, harness_test.go).
+func TestPutProjectsById_ClearingTheCurrencyWithAMilestone_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "MCUR1000", "currency": "NOK"})
+	insertMilestone(t, h, project.Id, nil)
+
+	r := updateProject(t, c, project, map[string]any{"currency": nil})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["currency"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'currency'", problem.Errors)
+	}
+}
+
+func TestPutProjectsById_ClearingTheCurrencyWithOnlyACancelledMilestone_IsAllowed(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "MCUR1001", "currency": "NOK"})
+	insertMilestone(t, h, project.Id, map[string]any{"status": "cancelled"})
+
+	if cleared := putProject(t, c, project, map[string]any{"currency": nil}); cleared.Financials == nil || cleared.Financials.Currency != nil {
+		t.Errorf("Financials = %+v, want the currency cleared with only a cancelled milestone", cleared.Financials)
+	}
+}
+
+// D13's guard, its other new trigger: a line's own budget amount is an
+// amount in the project's currency exactly as a 'fixed' line's price is.
+func TestPutProjectsById_ClearingTheCurrencyWithABudgetedLine_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "BCUR1000", "currency": "NOK"})
+	createLine(t, c, project.Id, map[string]any{"budgetAmount": 5000})
+
+	r := updateProject(t, c, project, map[string]any{"currency": nil})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["currency"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'currency'", problem.Errors)
 	}
 }
 

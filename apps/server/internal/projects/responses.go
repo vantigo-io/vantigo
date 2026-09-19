@@ -162,14 +162,22 @@ func (s *server) billingLineResponseFor(ctx context.Context, project store.Proje
 // billingLineResponse projects one line for one caller. pricing is set
 // exactly when the caller may see the project's money (D12) — the same
 // shaping the project's own financials get, for the same reason: the rates a
-// project bills at are not a member's business.
+// project bills at are not a member's business. budgetHours sits outside
+// that shaping, like the project's own budgetHours: it is planning data,
+// visible with the line regardless of financial rights. budgetAmount is the
+// opposite — an amount, so it rides inside pricing with the rest of them.
 func (s *server) billingLineResponse(ctx context.Context, project store.ProjectsProject, a access, row store.ProjectsBillingLine, variants map[int32]contracts.VariantEntry) (gen.BillingLineResponse, error) {
+	budgetHours, err := floatPtrFromNumeric(row.BudgetHours)
+	if err != nil {
+		return gen.BillingLineResponse{}, err
+	}
 	resp := gen.BillingLineResponse{
 		Id:            row.ID,
 		Code:          row.Code,
 		TrackableCode: trackableCode(project.Code, row.Code),
 		VariantId:     row.VariantID,
 		Active:        row.Active,
+		BudgetHours:   budgetHours,
 		CreatedAt:     row.CreatedAt,
 		UpdatedAt:     row.UpdatedAt,
 	}
@@ -209,10 +217,15 @@ func (s *server) linePricing(ctx context.Context, project store.ProjectsProject,
 	if err != nil {
 		return nil, err
 	}
+	budgetAmount, err := floatPtrFromNumeric(row.BudgetAmount)
+	if err != nil {
+		return nil, err
+	}
 	pricing := &gen.BillingLinePricing{
 		Mode:            row.PricingMode,
 		FixedAmount:     fixedAmount,
 		DiscountPercent: discountPercent,
+		BudgetAmount:    budgetAmount,
 	}
 	if project.Currency == nil {
 		return pricing, nil

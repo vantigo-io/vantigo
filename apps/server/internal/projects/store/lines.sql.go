@@ -12,6 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countBudgetedBillingLines = `-- name: CountBudgetedBillingLines :one
+SELECT count(*) FROM projects.billing_lines
+WHERE project_id = $1 AND budget_amount IS NOT NULL
+`
+
+// CountBudgetedBillingLines is D13's guard again, its other trigger (design
+// §3.3): a line's budget_amount is also an amount in the project's currency,
+// so the currency cannot be cleared or changed while one is set, exactly as
+// for a 'fixed' line's own amount. Deactivated lines count too, for the same
+// reason CountFixedBillingLines counts them.
+func (q *Queries) CountBudgetedBillingLines(ctx context.Context, projectID int32) (int64, error) {
+	row := q.db.QueryRow(ctx, countBudgetedBillingLines, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countFixedBillingLines = `-- name: CountFixedBillingLines :one
 SELECT count(*) FROM projects.billing_lines
 WHERE project_id = $1 AND pricing_mode = 'fixed'
@@ -34,12 +51,12 @@ func (q *Queries) CountFixedBillingLines(ctx context.Context, projectID int32) (
 const insertBillingLine = `-- name: InsertBillingLine :one
 INSERT INTO projects.billing_lines (
     project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent,
-    created_at, updated_at
+    budget_hours, budget_amount, created_at, updated_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
-    $7::timestamptz, $7::timestamptz
+    $7, $8, $9::timestamptz, $9::timestamptz
 )
-RETURNING id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at
+RETURNING id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at, budget_hours, budget_amount
 `
 
 type InsertBillingLineParams struct {
@@ -49,6 +66,8 @@ type InsertBillingLineParams struct {
 	PricingMode     string
 	FixedAmount     pgtype.Numeric
 	DiscountPercent pgtype.Numeric
+	BudgetHours     pgtype.Numeric
+	BudgetAmount    pgtype.Numeric
 	Now             time.Time
 }
 
@@ -66,6 +85,8 @@ func (q *Queries) InsertBillingLine(ctx context.Context, arg InsertBillingLinePa
 		arg.PricingMode,
 		arg.FixedAmount,
 		arg.DiscountPercent,
+		arg.BudgetHours,
+		arg.BudgetAmount,
 		arg.Now,
 	)
 	var i ProjectsBillingLine
@@ -80,12 +101,14 @@ func (q *Queries) InsertBillingLine(ctx context.Context, arg InsertBillingLinePa
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BudgetHours,
+		&i.BudgetAmount,
 	)
 	return i, err
 }
 
 const listBillingLines = `-- name: ListBillingLines :many
-SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at FROM projects.billing_lines
+SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at, budget_hours, budget_amount FROM projects.billing_lines
 WHERE project_id = $1
 ORDER BY code, id
 `
@@ -115,6 +138,8 @@ func (q *Queries) ListBillingLines(ctx context.Context, projectID int32) ([]Proj
 			&i.Active,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.BudgetHours,
+			&i.BudgetAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -127,7 +152,7 @@ func (q *Queries) ListBillingLines(ctx context.Context, projectID int32) ([]Proj
 }
 
 const lockBillingLine = `-- name: LockBillingLine :one
-SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at FROM projects.billing_lines
+SELECT id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at, budget_hours, budget_amount FROM projects.billing_lines
 WHERE id = $1 AND project_id = $2
 FOR UPDATE
 `
@@ -159,6 +184,8 @@ func (q *Queries) LockBillingLine(ctx context.Context, arg LockBillingLineParams
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BudgetHours,
+		&i.BudgetAmount,
 	)
 	return i, err
 }
@@ -170,10 +197,12 @@ UPDATE projects.billing_lines SET
     pricing_mode = $3,
     fixed_amount = $4,
     discount_percent = $5,
-    active = coalesce($6::boolean, active),
-    updated_at = $7::timestamptz
-WHERE id = $8 AND project_id = $9
-RETURNING id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at
+    budget_hours = $6,
+    budget_amount = $7,
+    active = coalesce($8::boolean, active),
+    updated_at = $9::timestamptz
+WHERE id = $10 AND project_id = $11
+RETURNING id, project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent, active, created_at, updated_at, budget_hours, budget_amount
 `
 
 type UpdateBillingLineParams struct {
@@ -182,6 +211,8 @@ type UpdateBillingLineParams struct {
 	PricingMode     string
 	FixedAmount     pgtype.Numeric
 	DiscountPercent pgtype.Numeric
+	BudgetHours     pgtype.Numeric
+	BudgetAmount    pgtype.Numeric
 	Active          *bool
 	Now             time.Time
 	ID              int32
@@ -200,6 +231,8 @@ func (q *Queries) UpdateBillingLine(ctx context.Context, arg UpdateBillingLinePa
 		arg.PricingMode,
 		arg.FixedAmount,
 		arg.DiscountPercent,
+		arg.BudgetHours,
+		arg.BudgetAmount,
 		arg.Active,
 		arg.Now,
 		arg.ID,
@@ -217,6 +250,8 @@ func (q *Queries) UpdateBillingLine(ctx context.Context, arg UpdateBillingLinePa
 		&i.Active,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.BudgetHours,
+		&i.BudgetAmount,
 	)
 	return i, err
 }

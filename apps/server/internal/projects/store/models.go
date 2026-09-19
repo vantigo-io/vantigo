@@ -22,6 +22,32 @@ type ProjectsBillingLine struct {
 	Active          bool
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	BudgetHours     pgtype.Numeric
+	BudgetAmount    pgtype.Numeric
+}
+
+type ProjectsBillingMilestone struct {
+	ID               int32
+	ProjectID        int32
+	Name             string
+	Description      *string
+	PlannedDate      pgtype.Date
+	Amount           pgtype.Numeric
+	Percent          pgtype.Numeric
+	Status           string
+	Position         int32
+	ReadyAt          *time.Time
+	ReadyByUserID    *uuid.UUID
+	InvoicedAt       *time.Time
+	InvoicedByUserID *uuid.UUID
+	InvoiceReference *string
+	InvoiceDate      pgtype.Date
+	InvoicedAmount   pgtype.Numeric
+	EverMoved        bool
+	Revision         int32
+	CreatedByUserID  uuid.UUID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type ProjectsCounter struct {

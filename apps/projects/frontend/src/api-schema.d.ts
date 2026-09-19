@@ -401,6 +401,11 @@ export interface components {
         BillingLinePricing: {
             /**
              * Format: double
+             * @description The line's planning budget, in the project's currency. Financial data, alongside the rest of this block (unlike budgetHours, which every reader of the line sees); greater than zero when set.
+             */
+            budgetAmount?: number | null;
+            /**
+             * Format: double
              * @description Set exactly when mode is 'discount'; greater than zero and at most 100.
              */
             discountPercent?: number | null;
@@ -418,6 +423,16 @@ export interface components {
         BillingLineRequest: {
             /** @description PUT only. Absent leaves the line as it stands. There is no DELETE — a line other modules may have billed against is deactivated, never removed. */
             active?: boolean | null;
+            /**
+             * Format: double
+             * @description Optional planning budget in the project's currency; greater than zero when set, and requires the project to have a currency.
+             */
+            budgetAmount?: number | null;
+            /**
+             * Format: double
+             * @description Optional planning budget in hours; greater than zero when set.
+             */
+            budgetHours?: number | null;
             /** @description Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{1,10}$ and be unique within the project. */
             code: string;
             /**
@@ -441,6 +456,11 @@ export interface components {
         /** @description One billing line — a product variant plus a pricing rule (D9). The variant's product name, SKU and unit are embedded so a reader needs no products permission to render the line. */
         BillingLineResponse: {
             active: boolean;
+            /**
+             * Format: double
+             * @description The line's planning budget in hours. Planning data, visible with the line regardless of financial rights — unlike budgetAmount, which is inside pricing.
+             */
+            budgetHours?: number | null;
             code: string;
             /** Format: date-time */
             createdAt: string;

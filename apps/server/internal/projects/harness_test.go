@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -219,6 +221,75 @@ func addRole(t *testing.T, h *modtest.Harness, projectID int32, userID uuid.UUID
 	t.Helper()
 	h.Exec(t, `INSERT INTO projects.project_roles (project_id, user_id, role, created_at) VALUES ($1, $2, $3, now())`,
 		projectID, userID, role)
+}
+
+// milestoneNumericColumns is the subset of insertMilestone's columns that
+// are numeric, cast explicitly in the built INSERT: a raw Go float64 or int
+// argument otherwise arrives typed float8/int4 over the wire, and Postgres
+// only casts that to a numeric(_,_) column on an explicit cast, not an
+// assignment one.
+var milestoneNumericColumns = map[string]bool{"amount": true, "percent": true, "invoiced_amount": true}
+
+// insertMilestone inserts one projects.billing_milestones row directly, at
+// the SQL level: milestones.go, the CRUD that would otherwise create one, is
+// Task 2's, and the guards Task 1 adds (design §3.3's currency guard extended
+// to milestones, and the fixed-price guard) need real milestone rows to
+// decide against before that API exists. Task 2 reuses it for the same
+// reason billing lines' own tests keep insertLineRow around after the POST
+// exists: the two rows that operation cannot produce.
+//
+// overrides is a column name to value map, layered over a valid minimal
+// default (one open, amount-priced, 'planned' milestone at position 1); a nil
+// value in overrides removes that column from the insert, leaving the
+// column's own default (or SQL NULL) to stand. Setting "percent" without
+// also setting "amount" drops the default amount, since a real milestone
+// never carries both (design §3.2) — the DB itself does not enforce that;
+// only Go's rules do (there are no CHECK constraints here, house style).
+func insertMilestone(t *testing.T, h *modtest.Harness, projectID int32, overrides map[string]any) int32 {
+	t.Helper()
+	now := time.Now().UTC()
+	row := map[string]any{
+		"project_id":         projectID,
+		"name":               "Milestone",
+		"amount":             1000.00,
+		"status":             "planned",
+		"position":           int32(1),
+		"created_by_user_id": uuid.New(),
+		"created_at":         now,
+		"updated_at":         now,
+	}
+	if _, settingPercent := overrides["percent"]; settingPercent {
+		if _, keepingAmount := overrides["amount"]; !keepingAmount {
+			delete(row, "amount")
+		}
+	}
+	for col, v := range overrides {
+		if v == nil {
+			delete(row, col)
+			continue
+		}
+		row[col] = v
+	}
+
+	cols := make([]string, 0, len(row))
+	for col := range row {
+		cols = append(cols, col)
+	}
+	sort.Strings(cols)
+
+	placeholders := make([]string, len(cols))
+	args := make([]any, len(cols))
+	for i, col := range cols {
+		placeholder := fmt.Sprintf("$%d", i+1)
+		if milestoneNumericColumns[col] {
+			placeholder += "::numeric"
+		}
+		placeholders[i] = placeholder
+		args[i] = row[col]
+	}
+	query := fmt.Sprintf("INSERT INTO projects.billing_milestones (%s) VALUES (%s) RETURNING id",
+		strings.Join(cols, ", "), strings.Join(placeholders, ", "))
+	return modtest.One[int32](t, h, query, args...)
 }
 
 // createProject creates a project with createBody(overrides) and fails the

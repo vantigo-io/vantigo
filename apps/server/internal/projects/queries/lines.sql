@@ -17,10 +17,10 @@ ORDER BY code, id;
 -- project's own code is kept unique.
 INSERT INTO projects.billing_lines (
     project_id, code, variant_id, pricing_mode, fixed_amount, discount_percent,
-    created_at, updated_at
+    budget_hours, budget_amount, created_at, updated_at
 ) VALUES (
     @project_id, @code, @variant_id, @pricing_mode, @fixed_amount, @discount_percent,
-    @now::timestamptz, @now::timestamptz
+    @budget_hours, @budget_amount, @now::timestamptz, @now::timestamptz
 )
 RETURNING *;
 
@@ -49,6 +49,8 @@ UPDATE projects.billing_lines SET
     pricing_mode = @pricing_mode,
     fixed_amount = @fixed_amount,
     discount_percent = @discount_percent,
+    budget_hours = @budget_hours,
+    budget_amount = @budget_amount,
     active = coalesce(sqlc.narg(active)::boolean, active),
     updated_at = @now::timestamptz
 WHERE id = @id AND project_id = @project_id
@@ -64,3 +66,12 @@ RETURNING *;
 -- string the contract's pricingMode enumeration writes.
 SELECT count(*) FROM projects.billing_lines
 WHERE project_id = @project_id AND pricing_mode = 'fixed';
+
+-- name: CountBudgetedBillingLines :one
+-- CountBudgetedBillingLines is D13's guard again, its other trigger (design
+-- §3.3): a line's budget_amount is also an amount in the project's currency,
+-- so the currency cannot be cleared or changed while one is set, exactly as
+-- for a 'fixed' line's own amount. Deactivated lines count too, for the same
+-- reason CountFixedBillingLines counts them.
+SELECT count(*) FROM projects.billing_lines
+WHERE project_id = @project_id AND budget_amount IS NOT NULL;
