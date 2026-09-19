@@ -667,17 +667,21 @@ describe("ProjectEconomy — the budget half", () => {
     expect(within(headline).getByText("Fixed price amount").parentElement).toHaveTextContent(money(1000000));
   });
 
-  it("says a fixed-price basis and an hours basis in their own words", async () => {
+  it("says a fixed-price basis in its own words", async () => {
     stubEconomy(project(), plan([milestone()]), 200, {
       economy: economy({ budgetUsed: { basis: "fixedPrice", percent: 36, approvedPercent: 24 } }),
     });
     renderWithProviders(<ProjectEconomy projectId={7} />);
-    expect(await screen.findByText("36 % of the fixed price")).toBeInTheDocument();
 
+    expect(await screen.findByText("36 % of the fixed price")).toBeInTheDocument();
+  });
+
+  it("says an hours basis in its own words", async () => {
     stubEconomy(project(), plan([milestone()]), 200, {
       economy: economy({ budgetUsed: { basis: "hours", percent: 78, approvedPercent: 52.5 } }),
     });
     renderWithProviders(<ProjectEconomy projectId={7} />);
+
     expect(await screen.findByText("78 % of 400 hours")).toBeInTheDocument();
   });
 
@@ -692,6 +696,21 @@ describe("ProjectEconomy — the budget half", () => {
     const headline = await screen.findByTestId("budget-headline");
     expect(headline).toHaveTextContent("No budget set");
     expect(headline).not.toHaveTextContent("0 %");
+  });
+
+  // Spec §8's rule is not the line table's alone: a project bar with nothing to
+  // measure against is full width whatever was logged, right under a headline
+  // saying there is no budget.
+  it("draws no bar on the project either when there is no budget to measure against", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ budgetUsed: undefined, budget: {}, actuals: work(20, 10, 5), lines: [] }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const card = await screen.findByTestId("project-budget");
+    expect(within(card).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(card).getByTestId("logged-split")).toHaveTextContent("20 h approved · 10 h submitted · 5 h draft");
+    expect(screen.getByTestId("budget-headline")).toHaveTextContent("No budget set");
   });
 
   // 100.04 % arrives as percent 100 with overBudget true: the badge follows the
@@ -810,13 +829,16 @@ describe("ProjectEconomy — the budget half", () => {
     expect(headline).not.toHaveTextContent("No budget set");
   });
 
-  it("names the budget the server would have measured against, in its own order", async () => {
+  it("names an hours budget when that is all the project has", async () => {
     stubEconomy(project(), plan([milestone()]), 200, {
       economy: economy({ timeTracking: false, actuals: undefined, budgetUsed: undefined, budget: { hours: 400 } }),
     });
     renderWithProviders(<ProjectEconomy projectId={7} />);
-    expect(await screen.findByText("400 h budgeted")).toBeInTheDocument();
 
+    expect(await screen.findByText("400 h budgeted")).toBeInTheDocument();
+  });
+
+  it("names the fixed price when there is no budget amount", async () => {
     stubEconomy(project(), plan([milestone()]), 200, {
       economy: economy({
         timeTracking: false,
@@ -826,7 +848,25 @@ describe("ProjectEconomy — the budget half", () => {
       }),
     });
     renderWithProviders(<ProjectEconomy projectId={7} />);
+
     expect(await screen.findByText(`Fixed price ${money(1000000)}`)).toBeInTheDocument();
+  });
+
+  // The order is the server's: budget amount, then fixed price, then hours.
+  it("puts the fixed price ahead of the hours budget", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        timeTracking: false,
+        actuals: undefined,
+        budgetUsed: undefined,
+        budget: { fixedPrice: 1000000, hours: 400 },
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const headline = await screen.findByTestId("budget-headline");
+    expect(within(headline).getByText("Budget used").parentElement).toHaveTextContent(`Fixed price ${money(1000000)}`);
+    expect(within(headline).getByText("Budget used").parentElement).not.toHaveTextContent("400 h budgeted");
   });
 
   it("says nothing is budgeted only when nothing is", async () => {
