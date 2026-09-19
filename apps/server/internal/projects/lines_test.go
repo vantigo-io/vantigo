@@ -1229,6 +1229,107 @@ func TestGetProjectsByIdBillingLines_CatalogDownWhileRendering_Returns200Without
 	}
 }
 
+// catalogUnavailable means "at least one catalog-derived field on this line is
+// missing because the catalog could not be read" — not "every one of them is".
+// The names come from one Variants call for the whole list and the list price
+// from a ListPrice call per line, the two fail independently, and whatever
+// answered is still returned. This table is the four combinations that can
+// occur; variantMissing is the field the distinction matters most for, because
+// a client renders a badge off it and must be able to trust it whenever it is
+// true.
+func TestGetProjectsByIdBillingLines_PartialCatalogOutage_ReportsWhatIsActuallyMissing(t *testing.T) {
+	t.Parallel()
+	down := errors.New("products: the catalog is unavailable")
+
+	for _, tc := range []struct {
+		name string
+		// degrade puts the catalog in the state the case is about; forget
+		// drops the line's variant first when the case needs a missing one.
+		forget             bool
+		degrade            func(*fakeCatalog)
+		wantNames          bool
+		wantListPrice      bool
+		wantCatalogDown    bool
+		wantVariantMissing bool
+	}{
+		{
+			name:          "a healthy catalog answers everything",
+			degrade:       func(*fakeCatalog) {},
+			wantNames:     true,
+			wantListPrice: true,
+		},
+		{
+			name:            "only the list price is unreadable",
+			degrade:         func(c *fakeCatalog) { c.failListPrice(down) },
+			wantNames:       true,
+			wantCatalogDown: true,
+		},
+		{
+			name:            "only the names are unreadable",
+			degrade:         func(c *fakeCatalog) { c.failVariants(down) },
+			wantListPrice:   true,
+			wantCatalogDown: true,
+		},
+		{
+			name:            "neither answers",
+			degrade:         func(c *fakeCatalog) { c.fail(down) },
+			wantCatalogDown: true,
+		},
+		{
+			// The one case where variantMissing may be true: the names lookup
+			// succeeded and said the catalog does not know this variant. It is
+			// an answer, so it is reported, flag or no flag.
+			name:               "a variant the healthy catalog no longer knows",
+			forget:             true,
+			degrade:            func(*fakeCatalog) {},
+			wantVariantMissing: true,
+		},
+		{
+			// …and it stays true when a *different* call fails around it: the
+			// names lookup still answered, so the badge is still trustworthy.
+			name:               "a missing variant while the list price is unreadable",
+			forget:             true,
+			degrade:            func(c *fakeCatalog) { c.failListPrice(down) },
+			wantCatalogDown:    true,
+			wantVariantMissing: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			catalog := newFakeCatalog()
+			h := newHarnessWithCatalog(t, catalog)
+			c, _ := signIn(t, h, "projects:create")
+			project := createProject(t, c, map[string]any{"code": "PARTIAL1000", "currency": "NOK"})
+			createLine(t, c, project.Id, nil)
+
+			if tc.forget {
+				catalog.forget(variantProjectManagerHour)
+			}
+			tc.degrade(catalog)
+
+			line := listLines(t, c, project.Id)[0]
+			if got := line.ProductName != nil; got != tc.wantNames {
+				t.Errorf("ProductName present = %v, want %v (line = %+v)", got, tc.wantNames, line)
+			}
+			if (line.Sku != nil) != tc.wantNames || (line.Unit != nil) != tc.wantNames {
+				t.Errorf("Sku/Unit presence = %v/%v, want both %v", line.Sku != nil, line.Unit != nil, tc.wantNames)
+			}
+			if line.Pricing == nil {
+				t.Fatalf("Pricing = nil, want the stored rule regardless of the catalog")
+			}
+			if got := line.Pricing.ListPrice != nil; got != tc.wantListPrice {
+				t.Errorf("ListPrice present = %v, want %v", got, tc.wantListPrice)
+			}
+			if line.CatalogUnavailable != tc.wantCatalogDown {
+				t.Errorf("CatalogUnavailable = %v, want %v", line.CatalogUnavailable, tc.wantCatalogDown)
+			}
+			if line.VariantMissing != tc.wantVariantMissing {
+				t.Errorf("VariantMissing = %v, want %v", line.VariantMissing, tc.wantVariantMissing)
+			}
+		})
+	}
+}
+
 // The other side of the ruling, and the one that must not move: a catalog
 // error while *validating* a variant the request is actually moving the line
 // to stays a 5xx. The write turns on an answer nobody gave, so it must not

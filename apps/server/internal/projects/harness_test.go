@@ -205,14 +205,22 @@ type fakeCatalog struct {
 	variants map[int32]contracts.VariantEntry
 	prices   map[int32]float64
 
-	// catalogErr is what every lookup answers instead of looking anything up:
-	// a degraded products module, which is a different thing from a variant it
-	// does not know (nil, nil) and has to be handled differently — a line
-	// whose variant is unchanged must stay editable either way, and a line
-	// being *rendered* must come back without the catalog's fields rather than
-	// not at all. It covers all three methods because a products module that
-	// cannot answer one of them cannot answer the others either.
-	catalogErr error
+	// variantErr, variantsErr and listPriceErr are what each lookup answers
+	// instead of looking anything up: a degraded products module, which is a
+	// different thing from a variant it does not know (nil, nil) and has to be
+	// handled differently — a line whose variant is unchanged must stay
+	// editable either way, and a line being *rendered* must come back without
+	// the fields that particular call would have supplied rather than not at
+	// all.
+	//
+	// They are per method because the response's two catalog-derived parts
+	// fail independently and the contract promises exactly that: names come
+	// from Variants, the list price from ListPrice, and a line keeps whichever
+	// of them answered. fail() sets all three at once for a test whose subject
+	// is simply "products is down".
+	variantErr   error
+	variantsErr  error
+	listPriceErr error
 }
 
 var _ contracts.ProductCatalog = (*fakeCatalog)(nil)
@@ -253,14 +261,25 @@ func (c *fakeCatalog) forget(id int32) {
 }
 
 // fail makes every later lookup — Variant, Variants and ListPrice alike —
-// answer err, the way a saturated pool or a transient failure in products
-// looks from here. Like forget, it is not concurrency-safe, so a test that
-// calls it drives its own harness.
-func (c *fakeCatalog) fail(err error) { c.catalogErr = err }
+// answer err, the way a products module that is wholly down looks from here.
+// failVariant, failVariants and failListPrice degrade one method at a time,
+// which is what a test of a *partial* outage needs: the response's names and
+// its list price come from different calls and a line keeps whichever of them
+// answered. Like forget, none of them is concurrency-safe, so a test that
+// calls one drives its own harness.
+func (c *fakeCatalog) fail(err error) {
+	c.failVariant(err)
+	c.failVariants(err)
+	c.failListPrice(err)
+}
+
+func (c *fakeCatalog) failVariant(err error)   { c.variantErr = err }
+func (c *fakeCatalog) failVariants(err error)  { c.variantsErr = err }
+func (c *fakeCatalog) failListPrice(err error) { c.listPriceErr = err }
 
 func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEntry, error) {
-	if c.catalogErr != nil {
-		return nil, c.catalogErr
+	if c.variantErr != nil {
+		return nil, c.variantErr
 	}
 	v, ok := c.variants[id]
 	if !ok {
@@ -270,8 +289,8 @@ func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEn
 }
 
 func (c *fakeCatalog) Variants(_ context.Context, ids []int32) ([]contracts.VariantEntry, error) {
-	if c.catalogErr != nil {
-		return nil, c.catalogErr
+	if c.variantsErr != nil {
+		return nil, c.variantsErr
 	}
 	out := make([]contracts.VariantEntry, 0, len(ids))
 	for _, id := range ids {
@@ -283,8 +302,8 @@ func (c *fakeCatalog) Variants(_ context.Context, ids []int32) ([]contracts.Vari
 }
 
 func (c *fakeCatalog) ListPrice(_ context.Context, variantID int32, currency string, _ time.Time) (*contracts.Money, error) {
-	if c.catalogErr != nil {
-		return nil, c.catalogErr
+	if c.listPriceErr != nil {
+		return nil, c.listPriceErr
 	}
 	price, ok := c.prices[variantID]
 	if !ok || currency != catalogCurrency {

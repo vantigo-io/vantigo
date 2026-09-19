@@ -260,15 +260,38 @@ refused.
 **A catalog that *errors* never fails a line's rendering.** "The catalog could not be
 read" and "the catalog no longer knows this variant" are different answers, and only
 the second is an answer at all. When a catalog call made while building a response
-fails, the affected lines come back with `catalogUnavailable: true` and without the
-fields the catalog supplies — `productName`, `sku`, `unit` and `pricing.listPrice` —
-while everything the line itself stores (code, `variantId`, `active`, budgets and the
-pricing rule) is unaffected; `variantMissing` is then `false`, because nothing was
-asked, and one warning is logged for the whole request rather than one per line. This
-holds for the list read and for the line a create or a change answers with. It closes
-a real hole: deactivating a line while products was degraded used to be *written*,
-committed, and then answered 500 by the renderer, so the client retried a change that
-had already been made and got a 409 for it.
+fails, the affected lines come back with `catalogUnavailable: true` — and with
+everything the catalog *did* supply still in place. Whatever the line itself stores
+(code, `variantId`, `active`, budgets and the pricing rule) is unaffected either way,
+and one warning is logged for the whole request rather than one per line. This holds
+for the list read and for the line a create or a change answers with. It closes a real
+hole: deactivating a line while products was degraded used to be *written*, committed,
+and then answered 500 by the renderer, so the client retried a change that had already
+been made and got a 409 for it.
+
+`catalogUnavailable` means **"at least one catalog-derived field on this line is
+missing because the catalog could not be read"** — not "none of them is here". The two
+catalog-derived parts of a line are resolved by different calls and fail
+independently: the names (`productName`, `sku`, `unit`) come from one lookup for the
+whole list, and `pricing.listPrice` from one per line. So:
+
+| names | list price | result |
+|---|---|---|
+| ok | ok | `catalogUnavailable: false`; `variantMissing` is whatever the catalog said |
+| ok | failed | flag `true`, **names still present**, only `listPrice` absent; `variantMissing` still trustworthy and may be `true` |
+| failed | either | flag `true`, names absent, `variantMissing: false` |
+
+`variantMissing` is `true` **only** when the names lookup itself succeeded and
+answered that the variant is gone. It is therefore reliable whenever it is true — it
+is never a guess — and it may legitimately coexist with `catalogUnavailable`. When the
+names lookup is the thing that failed, `variantMissing` is `false`, because nobody was
+asked. A caller with no financial rights, or a project with no currency, is never
+asked for a list price at all, so for them the flag can only ever come from the names.
+
+A client therefore shows the product name whenever `productName` is present, falls
+back to "product details unavailable" only when `catalogUnavailable` is true *and*
+`productName` is absent, and shows the variant-missing badge whenever `variantMissing`
+is true.
 
 The rule stops at rendering. A catalog error while **validating** a variant the
 request is actually moving the line to is still a 5xx: degrading an answer is honest,
