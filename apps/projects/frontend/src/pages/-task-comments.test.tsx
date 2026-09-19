@@ -10,6 +10,10 @@ import { TaskComments } from "./-task-comments";
 const jsonResponse = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+/** The same date/time formatting the row uses, so an assertion does not hard-code a locale's rendering. */
+const when = (iso: string) =>
+  new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+
 const ADA = "11111111-1111-1111-1111-111111111111";
 const ALAN = "22222222-2222-2222-2222-222222222222";
 
@@ -120,10 +124,11 @@ describe("TaskComments", () => {
 
   it("lets the author rewrite their own comment", async () => {
     const { fetchMock } = renderComments();
+    const name = `Edit Ada Lovelace's comment from ${when(first.createdAt)}`;
 
     await screen.findByText("Looks good to me");
-    await userEvent.click(screen.getByRole("button", { name: "Edit the comment" }));
-    const draft = screen.getByRole("textbox", { name: "Edit the comment" });
+    await userEvent.click(screen.getByRole("button", { name }));
+    const draft = screen.getByRole("textbox", { name });
     await userEvent.clear(draft);
     await userEvent.type(draft, "Looks better");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -139,7 +144,9 @@ describe("TaskComments", () => {
     const { fetchMock } = renderComments();
 
     await screen.findByText("Looks good to me");
-    await userEvent.click(screen.getByRole("button", { name: "Delete the comment" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: `Delete Ada Lovelace's comment from ${when(first.createdAt)}` }),
+    );
 
     const confirm = await screen.findByRole("dialog", { name: "Delete this comment?" });
     await userEvent.click(within(confirm).getByRole("button", { name: "Delete the comment" }));
@@ -151,22 +158,25 @@ describe("TaskComments", () => {
   });
 
   it("offers editing and deleting only to the author, and deleting to a manager", async () => {
+    const editName = `Edit Ada Lovelace's comment from ${when(first.createdAt)}`;
+    const deleteName = `Delete Ada Lovelace's comment from ${when(first.createdAt)}`;
+
     const own = renderComments();
     await screen.findByText("Looks good to me");
-    expect(screen.getByRole("button", { name: "Edit the comment" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete the comment" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: editName })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: deleteName })).toBeInTheDocument();
     own.unmount();
 
     const other = renderComments({ currentUserId: ALAN });
     await screen.findByText("Looks good to me");
-    expect(screen.queryByRole("button", { name: "Edit the comment" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Delete the comment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: editName })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: deleteName })).not.toBeInTheDocument();
     other.unmount();
 
     renderComments({ currentUserId: ALAN, canManage: true });
     await screen.findByText("Looks good to me");
-    expect(screen.queryByRole("button", { name: "Edit the comment" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete the comment" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: editName })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: deleteName })).toBeInTheDocument();
   });
 
   it("shows a viewer the conversation without a composer", async () => {
@@ -174,7 +184,42 @@ describe("TaskComments", () => {
 
     expect(await screen.findByText("Looks good to me")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Post comment" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit the comment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Edit /i })).not.toBeInTheDocument();
+  });
+
+  // Two comments from the same author used to share one "Edit the comment" /
+  // "Delete the comment" name apiece; naming each after who wrote it is not
+  // enough on its own, so the row also carries when it was posted.
+  it("names two comments from the same author differently, by when each was posted", async () => {
+    const earlier = { ...first, id: 9, createdAt: "2026-01-03T09:00:00Z" };
+    const later = { ...first, id: 10, createdAt: "2026-01-03T15:30:00Z" };
+    stubFetch((input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/v1/projects/tasks/12/comments") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            data: [earlier, later],
+            pagination: {
+              page: 1,
+              pageSize: 20,
+              totalCount: 2,
+              totalPages: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+            },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderWithProviders(<TaskComments taskId={12} canContribute canManage={false} currentUserId={ADA} />);
+
+    expect(
+      await screen.findByRole("button", { name: `Edit Ada Lovelace's comment from ${when(earlier.createdAt)}` }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: `Edit Ada Lovelace's comment from ${when(later.createdAt)}` }),
+    ).toBeInTheDocument();
   });
 
   it("says when nobody has commented, and reports comments it could not read", async () => {

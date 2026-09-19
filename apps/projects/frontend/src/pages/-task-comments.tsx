@@ -165,6 +165,9 @@ const CommentRow = ({
 
   const trimmed = (draft ?? "").trim();
   const tooLong = trimmed.length > COMMENT_BODY_MAX;
+  const when = formatters.formatDate(comment.createdAt, { dateStyle: "medium", timeStyle: "short" });
+  const editLabel = t("editCommentFor", { author: comment.author.displayName, when });
+  const deleteLabel = t("deleteCommentFor", { author: comment.author.displayName, when });
 
   return (
     <Stack gap={4}>
@@ -179,7 +182,7 @@ const CommentRow = ({
             </Badge>
           )}
           <Text size="xs" c="dimmed">
-            {formatters.formatDate(comment.createdAt, { dateStyle: "medium", timeStyle: "short" })}
+            {when}
           </Text>
           {comment.editedAt && (
             <Text size="xs" c="dimmed">
@@ -187,14 +190,17 @@ const CommentRow = ({
             </Text>
           )}
         </Group>
+        {/* Named after who wrote it and when: two comments by the same author
+            used to share one "Edit"/"Delete the comment" name apiece, which a
+            screen reader's list of buttons could not tell apart. */}
         <Group gap={4} wrap="nowrap">
           {canEdit && draft === null && (
-            <ActionIcon variant="subtle" aria-label={t("editTheComment")} onClick={() => setDraft(comment.body)}>
+            <ActionIcon variant="subtle" aria-label={editLabel} onClick={() => setDraft(comment.body)}>
               <IconPencil size={14} />
             </ActionIcon>
           )}
           {canDelete && (
-            <ActionIcon variant="subtle" color="red" aria-label={t("deleteTheComment")} onClick={confirmRemove}>
+            <ActionIcon variant="subtle" color="red" aria-label={deleteLabel} onClick={confirmRemove}>
               <IconTrash size={14} />
             </ActionIcon>
           )}
@@ -207,7 +213,7 @@ const CommentRow = ({
       ) : (
         <Stack gap="xs">
           <Textarea
-            aria-label={t("editTheComment")}
+            aria-label={editLabel}
             rows={3}
             value={draft}
             error={tooLong ? t("commentTooLong") : undefined}

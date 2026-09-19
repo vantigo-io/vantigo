@@ -6,7 +6,7 @@ import { ContentSkeleton, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { addChecklistItem, checklistQueryOptions, deleteChecklistItem, updateChecklistItem } from "../api/tasks";
 import "../i18n";
-import { CHECKLIST_TEXT_MAX } from "../lib/tasks";
+import { CHECKLIST_TEXT_MAX, excerptForLabel } from "../lib/tasks";
 
 export interface TaskChecklistProps {
   taskId: number;
@@ -77,10 +77,13 @@ export const TaskChecklist = ({ taskId, canContribute }: TaskChecklistProps) => 
             }}
           />
           {canContribute && (
+            // Named after its own item: a screen reader's list of buttons on a
+            // checklist of more than one item gets one name per item, not many
+            // that all read "Delete the item".
             <ActionIcon
               variant="subtle"
               color="red"
-              aria-label={t("deleteChecklistItem")}
+              aria-label={t("deleteChecklistItemFor", { text: excerptForLabel(item.text) })}
               onClick={() => change.mutate(() => deleteChecklistItem(taskId, item.id))}
             >
               <IconTrash size={16} />
