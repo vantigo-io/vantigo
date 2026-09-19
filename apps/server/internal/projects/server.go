@@ -100,6 +100,21 @@ func inLockedTx(ctx context.Context) bool {
 	return locked
 }
 
+// lockProject takes the project's row lock and answers the row it returns,
+// which is the only row a guarded write then decides against. A project that
+// vanished under it maps to errProjectVanished. It is withProjectLock's first
+// statement and has no other caller.
+func lockProject(ctx context.Context, txq *store.Queries, projectID int32) (store.ProjectsProject, error) {
+	locked, err := txq.LockProject(ctx, projectID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.ProjectsProject{}, errProjectVanished
+	}
+	if err != nil {
+		return store.ProjectsProject{}, fmt.Errorf("projects: lock project: %w", err)
+	}
+	return locked, nil
+}
+
 // withProjectLock runs fn in one transaction whose first statement takes the
 // project's row lock — every guarded write in this module goes through it
 // (design §3.3, docs/projects.md's "Locking"): the project's own update, a
@@ -115,21 +130,6 @@ func inLockedTx(ctx context.Context) bool {
 // (the catalog's answer about a variant, the caller's own name), and whatever
 // the response needs is read after it. See contracts.go for why, and for the
 // check that keeps it true.
-// lockProject takes the project's row lock and answers the row it returns,
-// which is the only row a guarded write then decides against. A project that
-// vanished under it maps to the handler's own 404. It is withProjectLock's
-// first statement and has no other caller.
-func lockProject(ctx context.Context, txq *store.Queries, projectID int32) (store.ProjectsProject, error) {
-	locked, err := txq.LockProject(ctx, projectID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return store.ProjectsProject{}, errProjectVanished
-	}
-	if err != nil {
-		return store.ProjectsProject{}, fmt.Errorf("projects: lock project: %w", err)
-	}
-	return locked, nil
-}
-
 func (s *server) withProjectLock(ctx context.Context, projectID int32, fn func(ctx context.Context, txq *store.Queries, locked store.ProjectsProject) error) error {
 	locked := context.WithValue(ctx, lockedTxKey{}, true)
 	return db.WithTx(locked, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {

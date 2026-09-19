@@ -120,10 +120,11 @@ func trackableCode(projectCode, lineCode string) string {
 
 // catalogOutage is one request's failure to read the product catalog while
 // rendering billing lines. A catalog that cannot answer never fails the
-// request (the ruling behind `catalogUnavailable`): the lines it could not
-// supply fields for come back without them and say so, and the outage itself
-// is logged once for the request rather than once per line, because a log
-// filled with a line per row buries the very thing it is reporting.
+// request (the ruling behind `catalogUnavailable`): whatever it *did* supply
+// is still returned, whatever it could not is left out, the lines missing
+// something say so, and the outage itself is logged once for the request
+// rather than once per line, because a log filled with a line per row buries
+// the very thing it is reporting.
 //
 // It deliberately only covers *rendering*. A catalog error while deciding
 // whether a variant a write is moving a line to exists is still fatal to that
@@ -160,9 +161,13 @@ func (o *catalogOutage) warn(ctx context.Context, logger *slog.Logger, projectID
 // Deps.Products is never nil here: the handlers answer 409 first (D10).
 //
 // A catalog that *errors* is a different thing from one that answers "I do
-// not know this variant", and is not this read's failure: the lines come back
-// without the fields it would have supplied, flagged catalogUnavailable, and
-// the outage is logged once. Nothing about the lines themselves depends on it.
+// not know this variant", and is not this read's failure: a line comes back
+// without the fields that particular failure cost it, flagged
+// catalogUnavailable, and keeps every field the catalog did supply. The two
+// calls fail independently — this one, for the whole list's names, and
+// ListPrice, per line — so the flag says "something on this line is missing
+// because the catalog could not be read", never "nothing from the catalog is
+// here". The outage is logged once for the request.
 func (s *server) billingLineResponses(ctx context.Context, project store.ProjectsProject, a access, rows []store.ProjectsBillingLine) ([]gen.BillingLineResponse, error) {
 	ids := make([]int32, 0, len(rows))
 	seen := make(map[int32]bool, len(rows))
@@ -173,6 +178,11 @@ func (s *server) billingLineResponses(ctx context.Context, project store.Project
 		}
 	}
 	outage := &catalogOutage{}
+	// Deferred rather than run at the end: a line that fails to render for a
+	// reason of its own (a stored decimal Go cannot read) returns early, and an
+	// outage that preceded it must still be reported rather than swallowed
+	// along with the 500.
+	defer outage.warn(ctx, s.deps.Logger, project.ID)
 	variants := make(map[int32]contracts.VariantEntry, len(ids))
 	if len(ids) > 0 {
 		found, err := s.productsVariants(ctx, ids)
@@ -197,7 +207,6 @@ func (s *server) billingLineResponses(ctx context.Context, project store.Project
 		}
 		data = append(data, line)
 	}
-	outage.warn(ctx, s.deps.Logger, project.ID)
 	return data, nil
 }
 
@@ -220,9 +229,29 @@ func (s *server) billingLineResponseFor(ctx context.Context, project store.Proje
 // visible with the line regardless of financial rights. budgetAmount is the
 // opposite — an amount, so it rides inside pricing with the rest of them.
 //
-// namesUnavailable says the catalog could not be asked for this list's variant
-// names at all, which is why variantMissing is then left false: "gone from the
-// catalog" is an answer the catalog gave, and there was none.
+// The two catalog-derived parts of a line fail separately, so the line reports
+// them separately and keeps whatever survived:
+//
+//   - namesUnavailable says the one Variants call for the whole list failed, so
+//     this line has no product name, SKU or unit — and variantMissing is left
+//     false, because "gone from the catalog" is an answer the catalog gave and
+//     there was none.
+//   - a failed ListPrice costs this line its pricing.listPrice and nothing
+//     else. The names it already has stay, variantMissing keeps whatever the
+//     names lookup actually established, and the rest of pricing is read off
+//     the row.
+//
+// catalogUnavailable is the union: at least one catalog-derived field on this
+// line is missing because the catalog could not be read. The combinations that
+// can occur are therefore
+//
+//	names ok, price ok          → flag false; variantMissing is the truth
+//	names ok, price failed      → flag true, names present; variantMissing is
+//	                              still the truth and may be true
+//	names failed (price either) → flag true, names absent, variantMissing false
+//
+// and, for a caller without financial rights or a project with no currency, no
+// list price is asked for at all, so the flag can only ever come from the names.
 func (s *server) billingLineResponse(ctx context.Context, project store.ProjectsProject, a access, row store.ProjectsBillingLine, variants map[int32]contracts.VariantEntry, namesUnavailable bool, outage *catalogOutage) (gen.BillingLineResponse, error) {
 	budgetHours, err := floatPtrFromNumeric(row.BudgetHours)
 	if err != nil {

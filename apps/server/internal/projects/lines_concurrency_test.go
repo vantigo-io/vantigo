@@ -156,6 +156,11 @@ func (c *lockProbeCatalog) probe(method string) {
 func TestPutProjectsByIdBillingLines_VariantLookup_NeverRunsWhileTheProjectIsLocked(t *testing.T) {
 	t.Parallel()
 	catalog := &lockProbeCatalog{fakeCatalog: newFakeCatalog()}
+	// Deliberately modtest.New rather than newProjectsHarness: this test *is*
+	// the probe, and it needs a catalog of its own wrapping the fake. It is
+	// therefore the one harness in the package without the suite-wide
+	// contract-call check — which is exactly the check this test duplicates
+	// from the other side, against Postgres rather than against a context mark.
 	h := modtest.New(t,
 		modtest.WithRecorder(recorder),
 		modtest.WithModule(projects.Module()),

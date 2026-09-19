@@ -36,7 +36,7 @@ type BillingLinePricing struct {
 	// FixedAmount Set exactly when mode is 'fixed'; an amount in the project's currency.
 	FixedAmount *float64 `json:"fixedAmount,omitempty"`
 
-	// ListPrice Absent when the project has no currency, the variant has no list price in it, or the catalog could not be read (the line's catalogUnavailable is then true).
+	// ListPrice Absent when the project has no currency, the variant has no list price in it, or the list price could not be read — only in that last case is the line's catalogUnavailable true. The rest of pricing is read off the stored line and is present regardless.
 	ListPrice *BillingLineListPrice `json:"listPrice,omitempty"`
 
 	// Mode 'list', 'fixed' or 'discount'.
@@ -77,7 +77,7 @@ type BillingLineResponse struct {
 	// BudgetHours The line's planning budget in hours. Planning data, visible with the line regardless of financial rights — unlike budgetAmount, which is inside pricing.
 	BudgetHours *float64 `json:"budgetHours,omitempty"`
 
-	// CatalogUnavailable Whether the products catalog could not be read while this line was rendered. A read never fails on it — the line comes back without the fields the catalog would have supplied (productName, sku, unit and pricing.listPrice), and everything the line itself stores (code, variantId, active, budgets and the pricing rule) is unaffected. variantMissing says nothing while this is true.
+	// CatalogUnavailable Whether at least one catalog-derived field on this line is missing because the products catalog could not be read. A read never fails on it, and whatever the catalog did supply is still here — the names (productName, sku, unit) and the list price are resolved by separate calls and fail independently, so this being true does not say which of them is gone, only that something is. Everything the line itself stores (code, variantId, active, budgets and the pricing rule) is unaffected either way. A client shows what is present and falls back only for what is absent.
 	CatalogUnavailable bool      `json:"catalogUnavailable"`
 	Code               string    `json:"code"`
 	CreatedAt          time.Time `json:"createdAt"`
@@ -86,21 +86,21 @@ type BillingLineResponse struct {
 	// Pricing Absent — not null — when the caller may not see the project's financial fields.
 	Pricing *BillingLinePricing `json:"pricing,omitempty"`
 
-	// ProductName Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
+	// ProductName Absent when the catalog no longer knows the variant (variantMissing), or when the names could not be read at all — in which case catalogUnavailable is true and variantMissing is false. Present whenever the names were resolved, catalogUnavailable or not.
 	ProductName *string `json:"productName,omitempty"`
 
-	// Sku Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
+	// Sku Absent when the catalog no longer knows the variant (variantMissing), or when the names could not be read at all — in which case catalogUnavailable is true and variantMissing is false. Present whenever the names were resolved, catalogUnavailable or not.
 	Sku *string `json:"sku,omitempty"`
 
 	// TrackableCode The project's code and the line's code joined with a hyphen, as later modules quote it ('KVEM1000-PM'). It follows the project's code when that is changed.
 	TrackableCode string `json:"trackableCode"`
 
-	// Unit Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
+	// Unit Absent when the catalog no longer knows the variant (variantMissing), or when the names could not be read at all — in which case catalogUnavailable is true and variantMissing is false. Present whenever the names were resolved, catalogUnavailable or not.
 	Unit      *string   `json:"unit,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	VariantId int32     `json:"variantId"`
 
-	// VariantMissing Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. Always false when catalogUnavailable is true — the catalog was never asked, so whether it still knows the variant is unknown rather than answered.
+	// VariantMissing Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. True only when the names lookup actually succeeded and answered that the variant is gone, so it can be trusted whenever it is true — it is never a guess. It can therefore coexist with catalogUnavailable (the names answered, some other catalog call did not), and it is false when the names themselves could not be read.
 	VariantMissing bool `json:"variantMissing"`
 }
 
