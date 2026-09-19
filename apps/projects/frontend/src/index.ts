@@ -15,6 +15,7 @@ export {
   CustomerProjectsPanel,
   type CustomerProjectsPanelProps,
 } from "./components/customer-projects-panel";
+export { LoggedSplit, type LoggedSplitProps } from "./components/logged-split";
 export { ProjectStatusBadge, type ProjectStatusBadgeProps } from "./components/project-status-badge";
 export { TaskStatusBadge, type TaskStatusBadgeProps } from "./components/task-status-badge";
 export { projectsCatalog } from "./i18n";

@@ -119,7 +119,36 @@ describe("EconomyPortfolio", () => {
     expect(projectRow).toHaveTextContent("102 h");
     expect(projectRow).toHaveTextContent("Launch");
     expect(projectRow).toHaveTextContent("Jun 30, 2026");
+    // What the next milestone is worth is the reason to look at the column.
+    expect(projectRow).toHaveTextContent(money(300000));
     expect(projectRow).toHaveTextContent(money(200000));
+  });
+
+  // Every surface shows the three buckets (E2), bar or no bar.
+  it("says what has been logged in words when there is no budget to measure against", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        portfolio([
+          row({
+            budgetUsed: undefined,
+            actuals: {
+              approved: { hours: 20, amount: 24000 },
+              submitted: { hours: 10, amount: 12000 },
+              draft: { hours: 5, amount: 0 },
+              totalHours: 35,
+              totalAmount: 36000,
+            },
+          }),
+        ]),
+      ),
+    );
+    renderPage();
+
+    const projectRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
+    expect(within(projectRow).queryByTestId("budget-bar")).not.toBeInTheDocument();
+    expect(projectRow).toHaveTextContent("20 h approved · 10 h submitted · 5 h draft");
+    expect(projectRow).toHaveTextContent("—");
   });
 
   // The totals are over the whole filtered set, and two currencies never add
@@ -170,7 +199,7 @@ describe("EconomyPortfolio", () => {
     const { router } = renderPage("/projects/economy?page=3");
 
     await screen.findByRole("link", { name: "KVEWEBS" });
-    await userEvent.click(screen.getByLabelText("Over budget"));
+    await userEvent.click(screen.getByLabelText("Only over budget"));
 
     await waitFor(() => expect(router.state.location.search).toMatchObject({ overBudget: true, page: 1 }));
   });
@@ -248,6 +277,8 @@ describe("EconomyPortfolio", () => {
     renderPage();
 
     expect(await screen.findByText("Projects whose financials you can see appear here.")).toBeInTheDocument();
+    // Eight empty column headers above an empty state say nothing.
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
   // Too many matching projects for one answer comes back as a 400 naming the
