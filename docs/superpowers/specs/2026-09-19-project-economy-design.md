@@ -201,6 +201,8 @@ type ActualsBucket struct {
 type ActualsTotals struct {
     Approved, Submitted, Draft ActualsBucket
     UnpricedHoursHundredths    int64   // no bill rate, or a rate in another currency
+    BillableHoursHundredths    int64
+    NonBillableHoursHundredths int64
     LastEntryDate              *string // YYYY-MM-DD
 }
 
