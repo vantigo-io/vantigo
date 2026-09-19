@@ -7,6 +7,7 @@ import "@vantigo/customers-ui/i18n";
 import "@vantigo/energy-ui/i18n";
 import "@vantigo/products-ui/i18n";
 import "@vantigo/projects-ui/i18n";
+import "@vantigo/time-ui/i18n";
 import { adminCatalog } from "./catalogs/admin";
 import { authCatalog } from "./catalogs/auth";
 import { commonCatalog } from "./catalogs/common";

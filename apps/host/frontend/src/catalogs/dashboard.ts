@@ -12,6 +12,8 @@ const en = {
   "dashboard.energy": "Energy",
   "dashboard.projects": "Projects",
   "dashboard.manageProjects": "Manage projects, people and billing.",
+  "dashboard.time": "Time",
+  "dashboard.manageTime": "Log hours, submit weeks and approve them.",
   "dashboard.manageEnergy": "Manage metering points and meters.",
   "dashboard.open": "Open",
   "dashboard.greeting": "Welcome back, {{name}}",
@@ -33,6 +35,11 @@ const en = {
   "dashboard.activeProjects": "Active projects",
   "dashboard.newProjects": "New projects",
   "dashboard.newProjectsHint": "{{count}} new in this period",
+  "dashboard.hoursThisWeek": "Hours this week",
+  "dashboard.hoursLogged": "Hours logged",
+  "dashboard.awaitingApprovalHint": "{{count}} waiting for your approval",
+  "dashboard.timeWeekUnsubmitted": "Your week of {{date}} is not submitted",
+  "dashboard.timeApprovalWaiting": "Hours from the week of {{date}} are waiting for your approval",
   "dashboard.consumption": "Consumption",
   "dashboard.energyKpiHint": "Energy used in this period",
   "dashboard.vsPrevious": "vs previous period",
@@ -66,6 +73,7 @@ const en = {
   "dashboard.addProduct": "Add product",
   "dashboard.createProject": "Create project",
   "dashboard.createTask": "Create task",
+  "dashboard.logTime": "Log time",
 };
 
 const nb: { [Key in keyof typeof en]: string } = {
@@ -80,6 +88,8 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.energy": "Energi",
   "dashboard.projects": "Prosjekter",
   "dashboard.manageProjects": "Administrer prosjekter, personer og fakturering.",
+  "dashboard.time": "Timer",
+  "dashboard.manageTime": "Før timer, lever uker og godkjenn dem.",
   "dashboard.manageEnergy": "Administrer målepunkter og målere.",
   "dashboard.open": "Åpne",
   "dashboard.greeting": "Velkommen tilbake, {{name}}",
@@ -101,6 +111,11 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.activeProjects": "Aktive prosjekter",
   "dashboard.newProjects": "Nye prosjekter",
   "dashboard.newProjectsHint": "{{count}} nye i denne perioden",
+  "dashboard.hoursThisWeek": "Timer denne uken",
+  "dashboard.hoursLogged": "Førte timer",
+  "dashboard.awaitingApprovalHint": "{{count}} venter på din godkjenning",
+  "dashboard.timeWeekUnsubmitted": "Uken din fra {{date}} er ikke levert",
+  "dashboard.timeApprovalWaiting": "Timer fra uken som starter {{date}} venter på din godkjenning",
   "dashboard.consumption": "Forbruk",
   "dashboard.energyKpiHint": "Energi brukt i denne perioden",
   "dashboard.vsPrevious": "mot forrige periode",
@@ -134,6 +149,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "dashboard.addProduct": "Legg til produkt",
   "dashboard.createProject": "Opprett prosjekt",
   "dashboard.createTask": "Opprett oppgave",
+  "dashboard.logTime": "Før timer",
 };
 
 export const dashboardCatalog = { en, nb } as const satisfies CatalogResources;

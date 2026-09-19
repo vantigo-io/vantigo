@@ -5,6 +5,7 @@ import {
   IconBolt,
   IconBriefcase,
   IconBuilding,
+  IconClock,
   IconListCheck,
   IconMail,
   IconPackage,
@@ -106,6 +107,10 @@ export const AppSpotlight = ({
             search: { create: true },
           },
         ]
+      : []),
+    // No week in the search, so the action always lands on the current one.
+    ...(enabledModules?.includes("time") && hasPermissions(permissions, ["time:access"])
+      ? [{ label: t("dashboard.logTime"), icon: IconClock, path: "/time", search: undefined }]
       : []),
   ];
 

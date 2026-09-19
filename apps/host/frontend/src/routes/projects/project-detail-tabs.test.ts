@@ -12,7 +12,22 @@ const canSeeEverything = { canManage: true, canContribute: true, canSeeFinancial
 
 describe("project detail tab visibility", () => {
   it("shows every tab to a caller who may see the project's financial fields", () => {
-    expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual(["overview", "tasks", "people", "billing"]);
+    expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual(["overview", "tasks", "people", "billing", "time"]);
+  });
+
+  // The Time tab belongs to another module, so it carries both gates the
+  // project's own tabs do without: the installation has to have mounted time,
+  // and the caller has to hold time:access. The panel then asks the time API
+  // for this project, which answers 404 to anyone who may not see it.
+  it("shows the time tab only when the module is on and the caller holds time:access", () => {
+    expect(values(moduleKeys, ["projects:access", "time:access"], canSeeEverything)).toContain("time");
+    expect(values(moduleKeys, ["projects:access"], canSeeEverything)).not.toContain("time");
+    expect(values(["projects"], ["*"], canSeeEverything)).not.toContain("time");
+    expect(values(undefined, ["*"], canSeeEverything)).not.toContain("time");
+  });
+
+  it("puts the time tab after billing, where the project's own views end", () => {
+    expect(values(moduleKeys, ["*"], canSeeEverything).at(-1)).toBe("time");
   });
 
   // Tasks follow the project's own roles — there is no task permission and no
@@ -36,11 +51,12 @@ describe("project detail tab visibility", () => {
       "overview",
       "tasks",
       "people",
+      "time",
     ]);
   });
 
   it("hides the billing tab while the project is still loading", () => {
-    expect(values(moduleKeys, ["*"], undefined)).toEqual(["overview", "tasks", "people"]);
+    expect(values(moduleKeys, ["*"], undefined)).toEqual(["overview", "tasks", "people", "time"]);
   });
 
   // The app's own tabs carry no module or permission gate: the

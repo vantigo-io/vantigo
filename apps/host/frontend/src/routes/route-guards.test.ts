@@ -11,6 +11,11 @@ import { Route as ProjectTasksRoute } from "./projects/$projectId.tasks";
 import { Route as ProjectsIndexRoute } from "./projects/index";
 import { Route as MyTasksRoute } from "./projects/my-tasks";
 import { Route as SettingsIndexRoute } from "./settings/index";
+import { Route as TimeApprovalsRoute } from "./time/approvals";
+import { Route as TimeDayRoute } from "./time/day";
+import { Route as TimeIndexRoute } from "./time/index";
+import { Route as TimePeopleRoute } from "./time/people";
+import { Route as TimeSettingsRoute } from "./time/settings";
 import { Route as WorkspaceRoute } from "./workspace";
 import { Route as WorkspaceIndexRoute } from "./workspace/index";
 import { Route as WorkspaceInvitationsRoute } from "./workspace/invitations";
@@ -324,6 +329,55 @@ describe("the project tasks tab's search params", () => {
       expect(validate({ task }).task).toBeUndefined();
     }
     expect(validate({}).task).toBeUndefined();
+  });
+});
+
+// The Time app's pages read their whole state from the URL, so a pasted or
+// hand-edited link must degrade to the page's own default rather than reach
+// the API as `weekStart=NaN` or a week that is not a Monday. The package
+// normalises a date to its Monday itself; the host's job is only to refuse
+// anything that is not a calendar date.
+describe("the time routes' search params", () => {
+  const validatorFor = (route: { options: { validateSearch?: unknown } }) =>
+    route.options.validateSearch as (search: Record<string, unknown>) => Record<string, unknown>;
+
+  it.each([
+    ["my week", TimeIndexRoute, "week"],
+    ["the day view", TimeDayRoute, "date"],
+  ])("keeps a calendar date in %s's URL and drops anything else", (_name, route, key) => {
+    const validate = validatorFor(route);
+    expect(validate({ [key]: "2026-09-14" })).toEqual({ [key]: "2026-09-14" });
+    // A Sunday, a Thursday: the page picks the week, so any real date is kept.
+    expect(validate({ [key]: "2026-09-20" })).toEqual({ [key]: "2026-09-20" });
+    for (const value of ["2026-02-30", "2026-9-14", "not-a-date", "", 20260914, null, true]) {
+      expect(validate({ [key]: value })).toEqual({ [key]: undefined });
+    }
+    expect(validate({})).toEqual({ [key]: undefined });
+  });
+
+  it("keeps the approval queue's page as a positive whole number", () => {
+    const validate = validatorFor(TimeApprovalsRoute);
+    expect(validate({ page: "3" })).toEqual({ page: 3 });
+    expect(validate({ page: 3 })).toEqual({ page: 3 });
+    for (const page of ["0", "-1", "1.5", "abc", ""]) expect(validate({ page })).toEqual({ page: undefined });
+    expect(validate({})).toEqual({ page: undefined });
+  });
+
+  // The API refuses a window outside 1–12, so a link carrying 50 has to arrive
+  // as "no window at all" and let the page fall back to its default of four.
+  it("keeps the people overview's window inside the one to twelve weeks the API takes", () => {
+    const validate = validatorFor(TimePeopleRoute);
+    expect(validate({ weeks: "8" })).toEqual({ weeks: 8 });
+    expect(validate({ weeks: 1 })).toEqual({ weeks: 1 });
+    expect(validate({ weeks: 12 })).toEqual({ weeks: 12 });
+    for (const weeks of ["0", "13", "50", "-4", "2.5", "many", ""]) {
+      expect(validate({ weeks })).toEqual({ weeks: undefined });
+    }
+    expect(validate({})).toEqual({ weeks: undefined });
+  });
+
+  it("gives the settings page no search params of its own", () => {
+    expect(TimeSettingsRoute.options.validateSearch).toBeUndefined();
   });
 });
 

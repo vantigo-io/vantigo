@@ -12,7 +12,7 @@ import {
   switcherTiles,
 } from "./apps";
 
-const allModules = ["communications", "customers", "energy", "products", "projects"] as const;
+const allModules = ["communications", "customers", "energy", "products", "projects", "time"] as const;
 
 describe("the app registry", () => {
   it("lists Home first, without a module, and every module app once", () => {
@@ -22,6 +22,7 @@ describe("the app registry", () => {
       "home",
       "customers",
       "projects",
+      "time",
       "communications",
       "products",
       "energy",
@@ -47,6 +48,10 @@ describe("the app registry", () => {
       "/customers/contacts",
       "/projects",
       "/projects/my-tasks",
+      "/time",
+      "/time/approvals",
+      "/time/people",
+      "/time/settings",
       "/communications/inbox",
       "/communications/channels",
       "/communications/suppressions",
@@ -96,6 +101,48 @@ describe("the app registry", () => {
     expect(keys(["projects:access"], ["customers"])).toContainEqual(["projects", false]);
   });
 
+  // Time is four destinations behind four different permissions, so the tile
+  // is as visible as the least of them: anyone who may log an hour gets it,
+  // and the sidebar then shows only the pages that caller may open. Approvals
+  // is the interesting one — the sidebar entry is for the dedicated approvers,
+  // while a project manager reaches the same queue from the dashboard (see the
+  // guard's rule below).
+  it("gives Time four destinations, each behind its own permission", () => {
+    const time = appForKey("time");
+    expect(time).toMatchObject({ module: "time", label: "navigation.time", home: "/time" });
+    expect(time.requiredPermissions).toEqual(["time:access", "time:approve", "time:view-all", "time:manage"]);
+    const items = time.navSections.flatMap((section) => section.items);
+    expect(items.map((item) => [item.label, item.to, item.requiredPermissions, item.searchStrategy])).toEqual([
+      ["navigation.myWeek", "/time", ["time:access"], "time-week"],
+      ["navigation.approvals", "/time/approvals", ["time:approve"], undefined],
+      ["navigation.people", "/time/people", ["time:view-all"], undefined],
+      ["navigation.timeSettings", "/time/settings", ["time:manage"], undefined],
+    ]);
+  });
+
+  it("shows the Time tile for time:access, hides it without, and mutes it when the module is off", () => {
+    const keys = (permissions: string[], enabled: readonly (typeof allModules)[number][]) =>
+      switcherTiles(permissions, enabled, undefined).map((tile) => [tile.app.key, tile.enabled]);
+    expect(keys(["time:access"], allModules)).toContainEqual(["time", true]);
+    expect(keys(["customers:view"], allModules).map(([key]) => key)).not.toContain("time");
+    expect(keys(["time:access"], ["customers"])).toContainEqual(["time", false]);
+  });
+
+  it("shows a time:access holder My week alone, and each further page with its permission", () => {
+    const paths = (permissions: string[]) =>
+      appNavSections(appForKey("time"), allModules, {
+        permissions,
+        isOwner: false,
+        canManageAuthorization: false,
+        enabledModules: allModules,
+      }).flatMap((section) => section.items.map((item) => item.to));
+    expect(paths(["time:access"])).toEqual(["/time"]);
+    expect(paths(["time:access", "time:approve"])).toEqual(["/time", "/time/approvals"]);
+    expect(paths(["time:access", "time:view-all"])).toEqual(["/time", "/time/people"]);
+    expect(paths(["time:access", "time:manage"])).toEqual(["/time", "/time/settings"]);
+    expect(paths(["*"])).toEqual(["/time", "/time/approvals", "/time/people", "/time/settings"]);
+  });
+
   it("treats Home as always enabled and module apps as enabled when their module is", () => {
     expect(isAppEnabled(appForKey("home"), [])).toBe(true);
     expect(isAppEnabled(appForKey("energy"), ["customers"])).toBe(false);
@@ -113,6 +160,7 @@ describe("the administration areas", () => {
       "home",
       "customers",
       "projects",
+      "time",
       "communications",
       "products",
       "energy",
@@ -201,6 +249,7 @@ describe("switcherTiles", () => {
       ["home", true],
       ["customers", true],
       ["projects", false],
+      ["time", false],
       ["communications", false],
       ["products", false],
       ["energy", false],

@@ -1,6 +1,6 @@
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../i18n";
 import { ModuleAccessGuard } from "./module-access-guard";
@@ -92,6 +92,51 @@ describe("ModuleAccessGuard", () => {
     renderGuard();
 
     expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
+  const renderGuardFor = (pathname: string, permissions: string[]) => {
+    routerState.pathname = pathname;
+    vi.mocked(useQuery).mockImplementation((options) =>
+      options.queryKey[0] === "authorization"
+        ? ({ data: { permissions }, isPending: false } as never)
+        : ({ data: { user: { roles: [] } } } as never),
+    );
+    renderGuard();
+  };
+
+  // Time's pages sit behind four different permissions, so the rules derived
+  // from the registry differ per prefix rather than covering the whole app.
+  it.each([
+    ["/time", ["time:access"]],
+    ["/time/day", ["time:access"]],
+    ["/time/people", ["time:view-all"]],
+    ["/time/settings", ["time:manage"]],
+  ])("guards %s behind %s", (pathname, permissions) => {
+    renderGuardFor(pathname, []);
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
+
+    cleanup();
+    renderGuardFor(pathname, permissions);
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+  });
+
+  // The approval queue is the one page whose sidebar entry and whose guard
+  // disagree on purpose: the entry is offered to `time:approve` holders, but a
+  // project manager approves through their role and reaches the queue from the
+  // dashboard's attention list or by pasting the URL. The backend answers 403
+  // to a caller who approves nothing, so the guard only has to let the app's
+  // own permission through.
+  it("lets a time:access holder open the approval queue, which their role may fill", () => {
+    renderGuardFor("/time/approvals", ["time:access"]);
+
+    expect(screen.getByText("Allowed content")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Access denied" })).not.toBeInTheDocument();
+  });
+
+  it("still refuses the approval queue to a caller outside the Time app", () => {
+    renderGuardFor("/time/approvals", ["projects:access"]);
+
+    expect(screen.getByRole("heading", { name: "Access denied" })).toBeInTheDocument();
   });
 
   // The `!rule` fall-through is what keeps the guard's now-global root mount

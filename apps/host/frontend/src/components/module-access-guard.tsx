@@ -15,12 +15,20 @@ interface ModuleAccessRule {
 }
 
 // The app registry is the single source of truth for which destinations
-// belong to which module and which permissions they require.
+// belong to which module and which permissions they require. A destination
+// whose URL is reachable by more callers than its sidebar entry is offered to
+// says so with `guardPermissions`, and that is what the rule uses.
 const rules: ModuleAccessRule[] = allNavSections
   .flatMap((section) => section.items)
   .flatMap((item) =>
     item.module
-      ? [{ prefix: item.to, module: item.module, requiredPermissions: item.requiredPermissions }]
+      ? [
+          {
+            prefix: item.to,
+            module: item.module,
+            requiredPermissions: item.guardPermissions ?? item.requiredPermissions,
+          },
+        ]
       : ([] as ModuleAccessRule[]),
   )
   .sort((a, b) => b.prefix.length - a.prefix.length);

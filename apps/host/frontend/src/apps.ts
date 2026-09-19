@@ -1,8 +1,11 @@
 import {
   IconAddressBook,
+  IconAdjustments,
   IconBolt,
   IconBriefcase,
   IconCategory,
+  IconChecklist,
+  IconClock,
   IconInbox,
   IconLayoutDashboard,
   IconListCheck,
@@ -125,6 +128,39 @@ export const apps: readonly AppDefinition[] = [
       to: "/projects/my-tasks",
       icon: IconListCheck,
       requiredPermissions: ["projects:access"],
+    },
+  ]),
+  moduleApp("time", "navigation.time", IconClock, "/time", [
+    {
+      label: "navigation.myWeek",
+      to: "/time",
+      icon: IconClock,
+      requiredPermissions: ["time:access"],
+      searchStrategy: "time-week",
+    },
+    {
+      // The queue is offered in the sidebar to the approvers a permission
+      // names, but a project manager approves their own project's hours
+      // through their role alone. They reach the same page from the
+      // dashboard's attention list, so the guard asks only for the app —
+      // the backend answers 403 to a caller who approves nothing.
+      label: "navigation.approvals",
+      to: "/time/approvals",
+      icon: IconChecklist,
+      requiredPermissions: ["time:approve"],
+      guardPermissions: ["time:access"],
+    },
+    {
+      label: "navigation.people",
+      to: "/time/people",
+      icon: IconUsers,
+      requiredPermissions: ["time:view-all"],
+    },
+    {
+      label: "navigation.timeSettings",
+      to: "/time/settings",
+      icon: IconAdjustments,
+      requiredPermissions: ["time:manage"],
     },
   ]),
   moduleApp("communications", "navigation.communications", IconInbox, "/communications", [
