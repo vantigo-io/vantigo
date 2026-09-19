@@ -259,7 +259,11 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
   if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
   if (item.module === "projects") return `/projects/${encodeURIComponent(item.entityId)}`;
   if (item.module === "time") {
-    return item.type === "weekUnsubmitted" ? `/time?week=${encodeURIComponent(item.entityId)}` : "/time/approvals";
+    if (item.type === "weekUnsubmitted") return `/time?week=${encodeURIComponent(item.entityId)}`;
+    if (item.type === "approvalWaiting") return "/time/approvals";
+    // A type this build does not know: the app's home is the one page that is
+    // right for any of them, and is certainly not the approval queue.
+    return "/time";
   }
   return "/communications/inbox";
 };
@@ -279,6 +283,25 @@ export const attentionTitleKey = (item: { module: ModuleKey; type: string }) => 
 
 /** The Monday a time item is about: alone in the id, or after the user id. */
 export const attentionWeek = (entityId: string) => entityId.slice(entityId.indexOf("/") + 1);
+
+/**
+ * What an attention item is called: the module's own title, or — for time,
+ * whose titles the server builds from data and therefore in English — the
+ * catalog's, naming the week the item is about.
+ *
+ * The week is a plain calendar date, so it is formatted **in UTC**: west of
+ * Greenwich a local rendering of `2026-08-31T00:00Z` is the 30th, and the
+ * title would then name a different week from the one the link opens.
+ */
+export const attentionTitle = (
+  item: { module: ModuleKey; type: string; entityId: string; title: string },
+  t: (key: string, values?: Record<string, unknown>) => string,
+  formatDate: (value: string, options: Intl.DateTimeFormatOptions) => string,
+) => {
+  const key = attentionTitleKey(item);
+  if (!key) return item.title;
+  return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
+};
 
 const deltaPercent = (current: number, absoluteDelta: number) => {
   const previous = current - absoluteDelta;
@@ -898,10 +921,7 @@ const DashboardPage = () => {
                       : IconAlertCircle;
                 // Every other module writes its own title; time's is named
                 // here instead, so it arrives in the reader's language.
-                const titleKey = attentionTitleKey(item);
-                const title = titleKey
-                  ? t(titleKey, { date: formatters.formatDate(attentionWeek(item.entityId), { dateStyle: "medium" }) })
-                  : item.title;
+                const title = attentionTitle(item, t, formatters.formatDate);
                 return (
                   <Anchor
                     key={`${item.module}-${item.id}`}

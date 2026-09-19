@@ -26,6 +26,16 @@ const asCount = (value: unknown): number | undefined => {
 };
 
 /**
+ * The people overview's window, the way the host route validates it: the API
+ * takes one to twelve weeks, so anything else is no window at all and the page
+ * falls back to its own default.
+ */
+const asWeekWindow = (value: unknown): number | undefined => {
+  const weeks = asCount(value);
+  return weeks !== undefined && weeks <= 12 ? weeks : undefined;
+};
+
+/**
  * Stands in for the host routes the package's pages are mounted by (Task 7):
  * the same paths and the same `validateSearch`, so a page test drives a real
  * router and reads the URL back instead of mocking navigation. A fresh tree
@@ -62,7 +72,7 @@ export const makeRouteTree = () => {
       getParentRoute: () => rootRoute,
       path: "/time/people",
       component: PeoplePage,
-      validateSearch: (search: Record<string, unknown>): PeopleSearch => ({ weeks: asCount(search.weeks) }),
+      validateSearch: (search: Record<string, unknown>): PeopleSearch => ({ weeks: asWeekWindow(search.weeks) }),
     }),
     createRoute({ getParentRoute: () => rootRoute, path: "/time/settings", component: SettingsPage }),
   ]);

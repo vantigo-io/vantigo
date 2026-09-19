@@ -1,6 +1,6 @@
 import { i18n } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
-import { attentionHref, attentionTitleKey, attentionWeek } from "./dashboard";
+import { attentionHref, attentionTitle, attentionTitleKey, attentionWeek } from "./dashboard";
 import "../i18n";
 
 /**
@@ -49,9 +49,45 @@ describe("the dashboard's attention links", () => {
     expect(attentionTitleKey({ module: "projects", type: "projectOverdue" })).toBeUndefined();
   });
 
+  // A type this build has never heard of must not be filed under the queue
+  // just because it came from time: the app's home fits any of them.
+  it("sends an unknown time item to the app rather than to the approval queue", () => {
+    expect(attentionHref({ module: "time", type: "somethingNew", entityId: "2026-08-31" })).toBe("/time");
+  });
+
   it("reads the week out of either entity id shape", () => {
     expect(attentionWeek("2026-08-31")).toBe("2026-08-31");
     expect(attentionWeek("3f1b0c2e-0000-4000-8000-000000000001/2026-09-07")).toBe("2026-09-07");
+  });
+
+  /**
+   * A week start is a plain calendar date, and `formatters.formatDate` renders
+   * it in whatever zone the reader's browser is in. This stands in for a
+   * reader west of Greenwich: the zone the title is asked for wins unless the
+   * caller names one, so a title formatted without `timeZone: "UTC"` would say
+   * 30 August while the link opened the week of the 31st.
+   */
+  const formatInLosAngeles = (value: string, options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("en-GB", { timeZone: "America/Los_Angeles", ...options }).format(new Date(value));
+
+  it("names the same week the link opens, whichever side of Greenwich the reader is on", () => {
+    const item = {
+      module: "time" as const,
+      type: "weekUnsubmitted",
+      entityId: "2026-08-31",
+      title: "Your week of 2026-08-31 is not submitted",
+    };
+
+    const title = attentionTitle(item, (key, values) => `${key}:${values?.date}`, formatInLosAngeles);
+
+    expect(title).toBe("dashboard.timeWeekUnsubmitted:31 Aug 2026");
+    expect(title).not.toContain("30 Aug");
+  });
+
+  it("leaves every other module's title exactly as the server wrote it", () => {
+    const item = { module: "projects" as const, type: "projectOverdue", entityId: "31", title: "ACME1000 is overdue" };
+
+    expect(attentionTitle(item, () => "never", formatInLosAngeles)).toBe("ACME1000 is overdue");
   });
 
   it("has both titles in English and Norwegian", () => {

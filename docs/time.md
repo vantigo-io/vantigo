@@ -66,8 +66,12 @@ The bill rate, when the entry is billable:
    percentage with **exact decimal arithmetic** — the price and the percentage are
    read as decimals, multiplied as rationals and rounded once, half away from zero,
    to cents. 101.10 less 15 % is 85.94, where float arithmetic gives 85.93.
-2. **The project's `defaultBillRate`.**
-3. **The person's rate card** effective on the entry date.
+2. **The project's `defaultBillRate`**, when the project has a currency to quote it
+   in.
+3. **The person's rate card** effective on the entry date — but **only when its
+   currency is one the project bills in**: the project has no currency of its own, or
+   it is the card's. A card quoted in SEK is no use to a project billed in NOK, and
+   nothing here converts, so the chain ends at step 4 instead.
 4. **None.** No rate is not an error; the entry is stored with `rateSource: "none"`
    and the hours simply have no amount.
 
@@ -82,10 +86,17 @@ its cost.
 
 **Currency is never converted.** A bill rate from a line or the project carries the
 **project's** currency; a bill rate from a rate card carries the **card's**, as does
-every cost rate. A project with no currency cannot take a line- or project-sourced
-rate at all. Where two currencies would have to be added together — the project
-summary's billed amount — the hours are reported as *unpriced* instead of summed into
-a number in neither currency.
+every cost rate. Three consequences follow, and all three are the same rule:
+
+- A project with **no currency** takes no line- or project-sourced bill rate at all.
+- A rate card whose currency is **not the project's** gives no bill rate either — the
+  chain ends at `none` rather than quoting an amount in a currency nobody bills in.
+  (A project with no currency accepts the card's, because there is nothing to
+  disagree with.) The **cost** rate is never held back this way: cost is the company's
+  own number, in the card's currency, whatever the project bills in.
+- Where two currencies would have to be added together — the project summary's billed
+  amount — the hours are reported as *unpriced* instead of summed into a number in
+  neither currency.
 
 `rateSource` is one of `line`, `project`, `person` or `none`, and it is part of the
 entry's response so the UI can say where an amount came from.
@@ -208,6 +219,7 @@ session cookie, and every one requires `time:access` on top of what the table sa
 | Endpoint | Access |
 | --- | --- |
 | `GET /time/entries` (`userId`, `weekStart`, `projectId`, `status`, paging) | Own entries; a manager also sees their projects'; view-all/approve/manage see everyone's |
+| `GET /time/entries/{id}` | The owner, the project's manager, or view-all/approve/manage; a bare 404 otherwise |
 | `POST /time/entries`, `PUT /time/entries/{id}`, `DELETE /time/entries/{id}` | Create where you may log time; edit and delete your own, in `draft`/`rejected`, not past the lock |
 | `POST /time/entries/submit` | Your own drafts |
 | `POST /time/entries/approve`, `/reject`, `/unapprove` | Approver (project manager or `time:approve`); unapprove also `time:manage` |
