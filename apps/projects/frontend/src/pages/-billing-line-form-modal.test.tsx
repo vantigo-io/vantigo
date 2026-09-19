@@ -26,6 +26,7 @@ const line: BillingLine = {
   trackableCode: "KVEWEBS-PM",
   variantId: 31,
   variantMissing: false,
+  catalogUnavailable: false,
   productName: "Project management",
   sku: "PM-H",
   unit: "hour",

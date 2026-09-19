@@ -47,6 +47,7 @@ const line = (overrides: Partial<BillingLine> = {}): BillingLine => ({
   trackableCode: "KVEWEBS-PM",
   variantId: 31,
   variantMissing: false,
+  catalogUnavailable: false,
   productName: "Project manager hour",
   sku: "PM-H",
   unit: "hour",

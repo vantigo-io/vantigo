@@ -115,6 +115,21 @@ func (c *lockProbeCatalog) Variant(ctx context.Context, id int32) (*contracts.Va
 	return c.fakeCatalog.Variant(ctx, id)
 }
 
+// Variants and ListPrice are probed for the same reason Variant is: they are
+// the two the *response* is rendered from (responses.go), and a renderer that
+// drifted inside a transaction would stall every other writer of the project
+// just as surely as a validator that did. Every method of the contract this
+// module calls is covered, so the probe cannot be outgrown by a new call site.
+func (c *lockProbeCatalog) Variants(ctx context.Context, ids []int32) ([]contracts.VariantEntry, error) {
+	c.probe("Variants")
+	return c.fakeCatalog.Variants(ctx, ids)
+}
+
+func (c *lockProbeCatalog) ListPrice(ctx context.Context, variantID int32, currency string, at time.Time) (*contracts.Money, error) {
+	c.probe("ListPrice")
+	return c.fakeCatalog.ListPrice(ctx, variantID, currency, at)
+}
+
 // probe is not safe for concurrent use — this file's other test races
 // requests, but the one below that uses lockProbeCatalog does not, so a
 // plain slice is enough.
@@ -130,13 +145,14 @@ func (c *lockProbeCatalog) probe(method string) {
 }
 
 // TestPutProjectsByIdBillingLines_VariantLookup_NeverRunsWhileTheProjectIsLocked
-// pins this round's fix: the catalog must never be asked about a variant
-// while this module holds the project's row lock. Moving a line to a
-// different variant is the one path that asks the catalog at all on a
-// change (D9's variant rule) — before the fix,
-// PutProjectsByIdBillingLinesByLineId asked it from inside the transaction
-// that holds LockProject (and LockBillingLine); the probe would have found
-// the row locked and recorded the failure.
+// pins this round's fix: the catalog must never be asked anything while this
+// module holds the project's row lock. Moving a line to a different variant
+// asks it three times over — once to validate the variant (D9's rule) and
+// twice to render the answer (the variants' names, the new variant's list
+// price) — and the probe covers all three. Before the fix,
+// PutProjectsByIdBillingLinesByLineId asked about the variant from inside the
+// transaction that holds LockProject (and LockBillingLine); the probe would
+// have found the row locked and recorded the failure.
 func TestPutProjectsByIdBillingLines_VariantLookup_NeverRunsWhileTheProjectIsLocked(t *testing.T) {
 	t.Parallel()
 	catalog := &lockProbeCatalog{fakeCatalog: newFakeCatalog()}
@@ -149,7 +165,10 @@ func TestPutProjectsByIdBillingLines_VariantLookup_NeverRunsWhileTheProjectIsLoc
 	catalog.pool = h.Pool()
 
 	c, _ := signIn(t, h, "projects:create")
-	project := createProject(t, c, map[string]any{"code": "LOCKPROBE1000"})
+	// A currency, so rendering the line actually asks for a list price: with
+	// none, linePricing answers before the catalog is reached and ListPrice
+	// would never be probed at all.
+	project := createProject(t, c, map[string]any{"code": "LOCKPROBE1000", "currency": "NOK"})
 	catalog.projectID = project.Id
 	line := createLine(t, c, project.Id, nil)
 

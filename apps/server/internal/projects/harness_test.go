@@ -140,11 +140,14 @@ type fakeCatalog struct {
 	variants map[int32]contracts.VariantEntry
 	prices   map[int32]float64
 
-	// variantErr is what Variant answers instead of looking anything up: a
-	// degraded products module, which is a different thing from a variant it
+	// catalogErr is what every lookup answers instead of looking anything up:
+	// a degraded products module, which is a different thing from a variant it
 	// does not know (nil, nil) and has to be handled differently — a line
-	// whose variant is unchanged must stay editable either way.
-	variantErr error
+	// whose variant is unchanged must stay editable either way, and a line
+	// being *rendered* must come back without the catalog's fields rather than
+	// not at all. It covers all three methods because a products module that
+	// cannot answer one of them cannot answer the others either.
+	catalogErr error
 }
 
 var _ contracts.ProductCatalog = (*fakeCatalog)(nil)
@@ -184,14 +187,15 @@ func (c *fakeCatalog) forget(id int32) {
 	delete(c.prices, id)
 }
 
-// fail makes every later Variant lookup answer err, the way a saturated pool
-// or a transient failure in products looks from here. Like forget, it is not
-// concurrency-safe, so a test that calls it drives its own harness.
-func (c *fakeCatalog) fail(err error) { c.variantErr = err }
+// fail makes every later lookup — Variant, Variants and ListPrice alike —
+// answer err, the way a saturated pool or a transient failure in products
+// looks from here. Like forget, it is not concurrency-safe, so a test that
+// calls it drives its own harness.
+func (c *fakeCatalog) fail(err error) { c.catalogErr = err }
 
 func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEntry, error) {
-	if c.variantErr != nil {
-		return nil, c.variantErr
+	if c.catalogErr != nil {
+		return nil, c.catalogErr
 	}
 	v, ok := c.variants[id]
 	if !ok {
@@ -201,6 +205,9 @@ func (c *fakeCatalog) Variant(_ context.Context, id int32) (*contracts.VariantEn
 }
 
 func (c *fakeCatalog) Variants(_ context.Context, ids []int32) ([]contracts.VariantEntry, error) {
+	if c.catalogErr != nil {
+		return nil, c.catalogErr
+	}
 	out := make([]contracts.VariantEntry, 0, len(ids))
 	for _, id := range ids {
 		if v, ok := c.variants[id]; ok {
@@ -211,6 +218,9 @@ func (c *fakeCatalog) Variants(_ context.Context, ids []int32) ([]contracts.Vari
 }
 
 func (c *fakeCatalog) ListPrice(_ context.Context, variantID int32, currency string, _ time.Time) (*contracts.Money, error) {
+	if c.catalogErr != nil {
+		return nil, c.catalogErr
+	}
 	price, ok := c.prices[variantID]
 	if !ok || currency != catalogCurrency {
 		return nil, nil

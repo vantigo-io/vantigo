@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"time"
 
@@ -117,11 +118,51 @@ func trackableCode(projectCode, lineCode string) string {
 	return projectCode + "-" + lineCode
 }
 
+// catalogOutage is one request's failure to read the product catalog while
+// rendering billing lines. A catalog that cannot answer never fails the
+// request (the ruling behind `catalogUnavailable`): the lines it could not
+// supply fields for come back without them and say so, and the outage itself
+// is logged once for the request rather than once per line, because a log
+// filled with a line per row buries the very thing it is reporting.
+//
+// It deliberately only covers *rendering*. A catalog error while deciding
+// whether a variant a write is moving a line to exists is still fatal to that
+// write (variantExists, lines.go): degrading an answer is honest, degrading a
+// decision is not.
+type catalogOutage struct{ err error }
+
+// note records a failed catalog call. The first error is the one kept: they
+// are all the same outage, and one of them is enough to name it.
+func (o *catalogOutage) note(err error) {
+	if o.err == nil {
+		o.err = err
+	}
+}
+
+// down reports whether anything this request asked the catalog went
+// unanswered.
+func (o *catalogOutage) down() bool { return o.err != nil }
+
+// warn logs the request's one warning, and nothing at all when the catalog
+// answered everything.
+func (o *catalogOutage) warn(ctx context.Context, logger *slog.Logger, projectID int32) {
+	if !o.down() {
+		return
+	}
+	logger.WarnContext(ctx, "projects: the product catalog could not be read; billing lines are rendered without it",
+		"project_id", projectID, "error", o.err.Error())
+}
+
 // billingLineResponses renders a project's lines for one caller. The variant
 // details every line embeds (D15) are resolved in one catalog call for the
 // whole list rather than one per line; a variant the catalog no longer knows
 // is simply absent from its answer, which is what variantMissing reports.
 // Deps.Products is never nil here: the handlers answer 409 first (D10).
+//
+// A catalog that *errors* is a different thing from one that answers "I do
+// not know this variant", and is not this read's failure: the lines come back
+// without the fields it would have supplied, flagged catalogUnavailable, and
+// the outage is logged once. Nothing about the lines themselves depends on it.
 func (s *server) billingLineResponses(ctx context.Context, project store.ProjectsProject, a access, rows []store.ProjectsBillingLine) ([]gen.BillingLineResponse, error) {
 	ids := make([]int32, 0, len(rows))
 	seen := make(map[int32]bool, len(rows))
@@ -131,25 +172,32 @@ func (s *server) billingLineResponses(ctx context.Context, project store.Project
 			ids = append(ids, row.VariantID)
 		}
 	}
+	outage := &catalogOutage{}
 	variants := make(map[int32]contracts.VariantEntry, len(ids))
 	if len(ids) > 0 {
 		found, err := s.deps.Products.Variants(ctx, ids)
 		if err != nil {
-			return nil, fmt.Errorf("projects: resolve the lines' variants: %w", err)
+			outage.note(fmt.Errorf("projects: resolve the lines' variants: %w", err))
 		}
 		for _, v := range found {
 			variants[v.ID] = v
 		}
 	}
+	// Whether the *names* could be read is decided once, for the whole list,
+	// before any line is rendered: one failed Variants call is every line's
+	// missing name, and a line must not be told its variant is gone because
+	// nobody was there to say otherwise.
+	namesUnavailable := outage.down()
 
 	data := make([]gen.BillingLineResponse, 0, len(rows))
 	for _, row := range rows {
-		line, err := s.billingLineResponse(ctx, project, a, row, variants)
+		line, err := s.billingLineResponse(ctx, project, a, row, variants, namesUnavailable, outage)
 		if err != nil {
 			return nil, err
 		}
 		data = append(data, line)
 	}
+	outage.warn(ctx, s.deps.Logger, project.ID)
 	return data, nil
 }
 
@@ -171,20 +219,25 @@ func (s *server) billingLineResponseFor(ctx context.Context, project store.Proje
 // that shaping, like the project's own budgetHours: it is planning data,
 // visible with the line regardless of financial rights. budgetAmount is the
 // opposite — an amount, so it rides inside pricing with the rest of them.
-func (s *server) billingLineResponse(ctx context.Context, project store.ProjectsProject, a access, row store.ProjectsBillingLine, variants map[int32]contracts.VariantEntry) (gen.BillingLineResponse, error) {
+//
+// namesUnavailable says the catalog could not be asked for this list's variant
+// names at all, which is why variantMissing is then left false: "gone from the
+// catalog" is an answer the catalog gave, and there was none.
+func (s *server) billingLineResponse(ctx context.Context, project store.ProjectsProject, a access, row store.ProjectsBillingLine, variants map[int32]contracts.VariantEntry, namesUnavailable bool, outage *catalogOutage) (gen.BillingLineResponse, error) {
 	budgetHours, err := floatPtrFromNumeric(row.BudgetHours)
 	if err != nil {
 		return gen.BillingLineResponse{}, err
 	}
 	resp := gen.BillingLineResponse{
-		Id:            row.ID,
-		Code:          row.Code,
-		TrackableCode: trackableCode(project.Code, row.Code),
-		VariantId:     row.VariantID,
-		Active:        row.Active,
-		BudgetHours:   budgetHours,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
+		Id:                 row.ID,
+		Code:               row.Code,
+		TrackableCode:      trackableCode(project.Code, row.Code),
+		VariantId:          row.VariantID,
+		Active:             row.Active,
+		BudgetHours:        budgetHours,
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
+		CatalogUnavailable: namesUnavailable,
 	}
 	// A line whose variant products has since dropped keeps resolving, so
 	// that work already billed against it stays readable; it says its variant
@@ -193,15 +246,18 @@ func (s *server) billingLineResponse(ctx context.Context, project store.Projects
 		resp.ProductName = &variant.ProductName
 		resp.Sku = &variant.SKU
 		resp.Unit = &variant.Unit
-	} else {
+	} else if !namesUnavailable {
 		resp.VariantMissing = true
 	}
 	if a.CanSeeFinancials {
-		pricing, err := s.linePricing(ctx, project, row)
+		pricing, priced, err := s.linePricing(ctx, project, row, outage)
 		if err != nil {
 			return gen.BillingLineResponse{}, err
 		}
 		resp.Pricing = pricing
+		if !priced {
+			resp.CatalogUnavailable = true
+		}
 	}
 	return resp, nil
 }
@@ -213,18 +269,24 @@ func (s *server) billingLineResponse(ctx context.Context, project store.Projects
 // project has no currency (D13) or the variant has no price in it. Projects
 // never applies the rule to the price: that is the invoice's arithmetic, not
 // this module's.
-func (s *server) linePricing(ctx context.Context, project store.ProjectsProject, row store.ProjectsBillingLine) (*gen.BillingLinePricing, error) {
+//
+// The second return says whether the list price was actually resolved: false
+// only when the catalog could not answer, which is the line's own
+// catalogUnavailable and never the request's failure. The stored rule —
+// mode, fixed amount, discount, budget — is read off the row and owes the
+// catalog nothing, so it comes back either way.
+func (s *server) linePricing(ctx context.Context, project store.ProjectsProject, row store.ProjectsBillingLine, outage *catalogOutage) (*gen.BillingLinePricing, bool, error) {
 	fixedAmount, err := floatPtrFromNumeric(row.FixedAmount)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	discountPercent, err := floatPtrFromNumeric(row.DiscountPercent)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	budgetAmount, err := floatPtrFromNumeric(row.BudgetAmount)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	pricing := &gen.BillingLinePricing{
 		Mode:            row.PricingMode,
@@ -233,16 +295,17 @@ func (s *server) linePricing(ctx context.Context, project store.ProjectsProject,
 		BudgetAmount:    budgetAmount,
 	}
 	if project.Currency == nil {
-		return pricing, nil
+		return pricing, true, nil
 	}
 	price, err := s.deps.Products.ListPrice(ctx, row.VariantID, *project.Currency, s.deps.Clock())
 	if err != nil {
-		return nil, fmt.Errorf("projects: resolve a variant's list price: %w", err)
+		outage.note(fmt.Errorf("projects: resolve a variant's list price: %w", err))
+		return pricing, false, nil
 	}
 	if price != nil {
 		pricing.ListPrice = &gen.BillingLineListPrice{Amount: price.Amount, Currency: price.Currency}
 	}
-	return pricing, nil
+	return pricing, true, nil
 }
 
 // milestonePlanResponse is a project's whole invoice plan for one caller: the

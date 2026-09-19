@@ -257,6 +257,25 @@ is already pinned to is not asking for that variant to exist today, so a manager
 still deactivate or otherwise edit it. Moving a line to a variant nobody has is
 refused.
 
+**A catalog that *errors* never fails a line's rendering.** "The catalog could not be
+read" and "the catalog no longer knows this variant" are different answers, and only
+the second is an answer at all. When a catalog call made while building a response
+fails, the affected lines come back with `catalogUnavailable: true` and without the
+fields the catalog supplies — `productName`, `sku`, `unit` and `pricing.listPrice` —
+while everything the line itself stores (code, `variantId`, `active`, budgets and the
+pricing rule) is unaffected; `variantMissing` is then `false`, because nothing was
+asked, and one warning is logged for the whole request rather than one per line. This
+holds for the list read and for the line a create or a change answers with. It closes
+a real hole: deactivating a line while products was degraded used to be *written*,
+committed, and then answered 500 by the renderer, so the client retried a change that
+had already been made and got a 409 for it.
+
+The rule stops at rendering. A catalog error while **validating** a variant the
+request is actually moving the line to is still a 5xx: degrading an answer is honest,
+degrading a decision is not, and a write must not proceed on a question nobody
+answered. Products being *absent* (the module disabled, `Deps.Products` nil) is
+unchanged and unrelated — that is still a 409 on every billing-line operation.
+
 **Products is an optional dependency; Customers is a required one.** When the
 `products` module is not enabled, `Deps.Products` is nil and:
 

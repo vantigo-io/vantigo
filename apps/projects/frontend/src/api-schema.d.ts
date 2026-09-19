@@ -525,7 +525,7 @@ export interface components {
              * @description Set exactly when mode is 'fixed'; an amount in the project's currency.
              */
             fixedAmount?: number | null;
-            /** @description Absent when the project has no currency, or the variant has no list price in it. */
+            /** @description Absent when the project has no currency, the variant has no list price in it, or the catalog could not be read (the line's catalogUnavailable is then true). */
             listPrice?: components["schemas"]["BillingLineListPrice"];
             /** @description 'list', 'fixed' or 'discount'. */
             mode: string;
@@ -572,6 +572,8 @@ export interface components {
              * @description The line's planning budget in hours. Planning data, visible with the line regardless of financial rights — unlike budgetAmount, which is inside pricing.
              */
             budgetHours?: number | null;
+            /** @description Whether the products catalog could not be read while this line was rendered. A read never fails on it — the line comes back without the fields the catalog would have supplied (productName, sku, unit and pricing.listPrice), and everything the line itself stores (code, variantId, active, budgets and the pricing rule) is unaffected. variantMissing says nothing while this is true. */
+            catalogUnavailable: boolean;
             code: string;
             /** Format: date-time */
             createdAt: string;
@@ -579,19 +581,19 @@ export interface components {
             id: number;
             /** @description Absent — not null — when the caller may not see the project's financial fields. */
             pricing?: components["schemas"]["BillingLinePricing"];
-            /** @description Absent when the catalog no longer knows the variant. */
+            /** @description Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable). */
             productName?: string | null;
-            /** @description Absent when the catalog no longer knows the variant. */
+            /** @description Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable). */
             sku?: string | null;
             /** @description The project's code and the line's code joined with a hyphen, as later modules quote it ('KVEM1000-PM'). It follows the project's code when that is changed. */
             trackableCode: string;
-            /** @description Absent when the catalog no longer knows the variant. */
+            /** @description Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable). */
             unit?: string | null;
             /** Format: date-time */
             updatedAt: string;
             /** Format: int32 */
             variantId: number;
-            /** @description Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. */
+            /** @description Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. Always false when catalogUnavailable is true — the catalog was never asked, so whether it still knows the variant is unknown rather than answered. */
             variantMissing: boolean;
         };
         /** @description What the calling user may do with this milestone right now, so the frontend never re-derives the status flow. Marking invoiced and undoing it need financial rights on the project; everything else is the project's manager. */
@@ -2387,7 +2389,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK — every line of the project, deactivated ones included, by code. Pricing is shaped out for a caller who may not see financials. */
+            /** @description OK — every line of the project, deactivated ones included, by code. Pricing is shaped out for a caller who may not see financials. A products catalog that cannot be read does not fail the read — the affected lines come back with catalogUnavailable true and without the fields the catalog supplies. */
             200: {
                 headers: {
                     [name: string]: unknown;
