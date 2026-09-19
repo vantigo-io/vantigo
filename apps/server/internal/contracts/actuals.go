@@ -111,6 +111,10 @@ type ActualsTotals struct {
 	// It exists because the rounding rule makes that difference unavoidable
 	// and the sum of three rounded figures is the wrong one: a total, a
 	// margin and a budget percentage must all be computed from here.
+	//
+	// Every provider fills it. A consumer may refuse totals whose Total hours
+	// are not exactly its three buckets' hours — that is a provider that
+	// forgot the field, not a project with nothing logged.
 	Total ActualsBucket
 	// UnpricedHoursHundredths is the *billable* hours, across all three
 	// buckets, whose bill amount is not in BillAmount: billable work logged
