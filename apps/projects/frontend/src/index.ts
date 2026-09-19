@@ -1,6 +1,7 @@
 import "./i18n";
 
 export * from "./api/customers";
+export * from "./api/economy";
 export * from "./api/lines";
 export * from "./api/milestones";
 export * from "./api/people";
@@ -8,6 +9,7 @@ export * from "./api/products";
 export * from "./api/projects";
 export * from "./api/tasks";
 export { AssigneePicker, type AssigneePickerProps } from "./components/assignee-picker";
+export { BudgetBar, type BudgetBarProps } from "./components/budget-bar";
 export { CustomerPicker, type CustomerPickerProps, type CustomerPickerValue } from "./components/customer-picker";
 export {
   CustomerProjectsPanel,
@@ -17,6 +19,7 @@ export { ProjectStatusBadge, type ProjectStatusBadgeProps } from "./components/p
 export { TaskStatusBadge, type TaskStatusBadgeProps } from "./components/task-status-badge";
 export { projectsCatalog } from "./i18n";
 export * from "./lib/billing";
+export * from "./lib/economy";
 export * from "./lib/milestones";
 export * from "./lib/roles";
 export * from "./lib/status";
@@ -39,6 +42,7 @@ export { ProjectTimeline } from "./pages/-project-timeline";
 export { TaskDrawer, type TaskDrawerProps } from "./pages/-task-drawer";
 export { TaskFormModal, type TaskFormModalProps, type TaskModalState } from "./pages/-task-form-modal";
 export { MyTasksPage } from "./pages/my-tasks";
+export { EconomyPortfolio } from "./pages/portfolio";
 export { ProjectBilling } from "./pages/project-billing";
 export { ProjectEconomy } from "./pages/project-economy";
 export { ProjectPeople } from "./pages/project-people";
