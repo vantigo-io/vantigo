@@ -13,6 +13,7 @@ import {
   IconMailOff,
   IconPackage,
   IconReceiptTax,
+  IconReportMoney,
   IconShieldCheck,
   IconShieldLock,
   IconUser,
@@ -127,6 +128,18 @@ export const apps: readonly AppDefinition[] = [
       label: "navigation.myTasks",
       to: "/projects/my-tasks",
       icon: IconListCheck,
+      requiredPermissions: ["projects:access"],
+    },
+    {
+      // The portfolio's rows are decided by the API on financial rights (a
+      // project's own manager, projects:view-financials, or manage-all), which
+      // is not one permission the sidebar can name — a plain project manager
+      // holds none of the global ones and still has rows here. So the entry is
+      // offered on projects:access, the app's own permission, and the page's
+      // own empty state covers a caller with nothing to see.
+      label: "navigation.projectsEconomy",
+      to: "/projects/economy",
+      icon: IconReportMoney,
       requiredPermissions: ["projects:access"],
     },
   ]),

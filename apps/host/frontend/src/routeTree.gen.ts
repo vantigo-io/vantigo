@@ -42,6 +42,7 @@ import { Route as ProductsCategoriesRouteImport } from './routes/products/catego
 import { Route as ProductsTaxCategoriesRouteImport } from './routes/products/tax-categories'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
+import { Route as ProjectsEconomyRouteImport } from './routes/projects/economy'
 import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
@@ -236,6 +237,11 @@ const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
   path: '/$projectId',
   getParentRoute: () => ProjectsRoute,
 } as any)
+const ProjectsEconomyRoute = ProjectsEconomyRouteImport.update({
+  id: '/economy',
+  path: '/economy',
+  getParentRoute: () => ProjectsRoute,
+} as any)
 const ProjectsMyTasksRoute = ProjectsMyTasksRouteImport.update({
   id: '/my-tasks',
   path: '/my-tasks',
@@ -408,6 +414,7 @@ export interface FileRoutesByFullPath {
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -459,6 +466,7 @@ export interface FileRoutesByTo {
   '/products/$productId': typeof ProductsProductIdRoute
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
+  '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -522,6 +530,7 @@ export interface FileRoutesById {
   '/products/categories': typeof ProductsCategoriesRoute
   '/products/tax-categories': typeof ProductsTaxCategoriesRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
+  '/projects/economy': typeof ProjectsEconomyRoute
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
@@ -586,6 +595,7 @@ export interface FileRouteTypes {
     | '/products/categories'
     | '/products/tax-categories'
     | '/projects/$projectId'
+    | '/projects/economy'
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
@@ -637,6 +647,7 @@ export interface FileRouteTypes {
     | '/products/$productId'
     | '/products/categories'
     | '/products/tax-categories'
+    | '/projects/economy'
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
@@ -699,6 +710,7 @@ export interface FileRouteTypes {
     | '/products/categories'
     | '/products/tax-categories'
     | '/projects/$projectId'
+    | '/projects/economy'
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
@@ -987,6 +999,13 @@ declare module '@tanstack/react-router' {
       path: '/$projectId'
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof ProjectsProjectIdRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
+    '/projects/economy': {
+      id: '/projects/economy'
+      path: '/economy'
+      fullPath: '/projects/economy'
+      preLoaderRoute: typeof ProjectsEconomyRouteImport
       parentRoute: typeof ProjectsRoute
     }
     '/projects/my-tasks': {
@@ -1299,12 +1318,14 @@ const ProjectsProjectIdRouteWithChildren =
 
 interface ProjectsRouteChildren {
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRouteWithChildren
+  ProjectsEconomyRoute: typeof ProjectsEconomyRoute
   ProjectsMyTasksRoute: typeof ProjectsMyTasksRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
 
 const ProjectsRouteChildren: ProjectsRouteChildren = {
   ProjectsProjectIdRoute: ProjectsProjectIdRouteWithChildren,
+  ProjectsEconomyRoute: ProjectsEconomyRoute,
   ProjectsMyTasksRoute: ProjectsMyTasksRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
 }
