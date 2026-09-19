@@ -256,6 +256,24 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 		return gen.PutProjectsByIdBillingLinesByLineId400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
 	}
 
+	// D9's variant rule is asked here, unconditionally, before any lock is
+	// taken — never from inside the transaction below. The catalog is an
+	// in-process call into another module (contracts.ProductCatalog); a
+	// transaction that holds LockProject (and, below, LockBillingLine) must
+	// never wait on it, or a slow or blocked catalog call would stall every
+	// other writer of this project, not just this line. Whether the answer
+	// is even relevant is a separate question — the request may not be
+	// moving the line to a different variant at all, and keeping the
+	// variant a line is already pinned to is always allowed regardless of
+	// what the catalog says today — and that question can only be decided
+	// from the row LockBillingLine returns, so it is decided there, not
+	// here; this is only the read, done early enough not to matter to the
+	// lock's holder.
+	requestedVariantExists, err := s.variantExists(ctx, parsed.VariantID)
+	if err != nil {
+		return nil, err
+	}
+
 	by, err := s.callerAs(ctx)
 	if err != nil {
 		return nil, err
@@ -294,26 +312,18 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 		if err != nil {
 			return fmt.Errorf("projects: lock billing line: %w", err)
 		}
-		// D9's variant rule, decided from the row this transaction holds
-		// rather than from a read taken before it. Keeping the variant a line
-		// is already pinned to is always allowed — products may have dropped
-		// it since, and a line whose product is gone must stay editable, not
-		// least to be deactivated — but whether this request is keeping it is
-		// exactly the question another manager's change can move underneath.
-		// Deciding it from an earlier read would let a variant nobody has
-		// reach the table between the two.
-		//
-		// The catalog is an in-process read over another module's own pool
-		// (contracts.ProductCatalog), so asking it here costs this
-		// transaction one short read and no lock of its own.
-		if before.VariantID != parsed.VariantID {
-			exists, err := s.variantExists(ctx, parsed.VariantID)
-			if err != nil {
-				return err
-			}
-			if !exists {
-				return errVariantNotFound
-			}
+		// D9's variant rule. Whether it applies at all — whether this
+		// request is actually moving the line to a different variant — is
+		// decided from the row this transaction holds rather than from a
+		// read taken before it: keeping the variant a line is already
+		// pinned to is always allowed (products may have dropped it since,
+		// and a line whose product is gone must stay editable, not least to
+		// be deactivated), and only the locked row can say whether that is
+		// what this request does. The catalog was already asked, above,
+		// before this transaction opened; requestedVariantExists is simply
+		// set aside, never re-asked, when the variant turns out unchanged.
+		if before.VariantID != parsed.VariantID && !requestedVariantExists {
+			return errVariantNotFound
 		}
 		changed, err = txq.UpdateBillingLine(ctx, store.UpdateBillingLineParams{
 			ID:              req.LineId,

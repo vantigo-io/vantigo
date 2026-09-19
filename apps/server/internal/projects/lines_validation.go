@@ -150,9 +150,14 @@ func variantNotFound(variantID int32) string {
 
 // variantExists asks the catalog whether products still knows a variant. It
 // is the one line rule that is not a property of the body alone, which is why
-// it is not part of validateLine: a create always asks it, while a change
-// asks it only when it is actually moving the line to another variant — and
-// only the locked row can say whether it is (lines.go).
+// it is not part of validateLine — and, for the same reason, it is never
+// asked from inside a transaction that holds a lock: a create always asks it
+// before opening one, and a change asks it just as unconditionally, before
+// opening its own, even though the answer only ever matters when the request
+// is actually moving the line to a different variant — which only the locked
+// row can say (lines.go). Asking unconditionally, before any lock is taken,
+// is the price of never letting a slow or blocked call into another module
+// stall every other writer of the project behind that lock.
 func (s *server) variantExists(ctx context.Context, variantID int32) (bool, error) {
 	variant, err := s.deps.Products.Variant(ctx, variantID)
 	if err != nil {

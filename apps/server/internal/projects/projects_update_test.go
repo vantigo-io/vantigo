@@ -238,6 +238,44 @@ func TestPutProjectsById_StaleRevision_Returns409(t *testing.T) {
 	}
 }
 
+// A request that is both stale and would trip a design §3.3 guard against
+// the row as it now stands is told about the stale revision, not the guard:
+// the caller's view of the project is already out of date, so re-validating
+// their body against state they have not seen yet would answer a question
+// they were not in a position to ask correctly. LockProject is taken before
+// either guard runs (projects.go), which is what makes this the order
+// rather than an accident of which check happens to run first.
+func TestPutProjectsById_StaleRevisionAndCurrencyGuard_Returns409NotTheGuard400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "STALEGUARD1000", "currency": "NOK"})
+
+	// An intervening commit bumps the revision past what `project` still
+	// carries, and adds the milestone the guard would refuse clearing the
+	// currency over.
+	putProject(t, c, project, map[string]any{"name": "Endret"})
+	insertMilestone(t, h, project.Id, nil)
+
+	// This request carries the stale revision and clears the currency —
+	// which would trip the guard against the project as it stands now.
+	r := updateProject(t, c, project, map[string]any{"currency": nil})
+	if r.Status != http.StatusConflict {
+		t.Fatalf("status %d body %s, want 409 (the stale revision), not the guard's 400", r.Status, r.Body)
+	}
+	var problem problemJSON
+	r.JSON(&problem)
+	if problem.Title != "Project revision conflict" {
+		t.Errorf("Title = %q, want %q", problem.Title, "Project revision conflict")
+	}
+
+	// The refused request changed nothing: the currency is still set.
+	currency := modtest.One[*string](t, h, `SELECT currency FROM projects.projects WHERE id = $1`, project.Id)
+	if currency == nil || *currency != "NOK" {
+		t.Errorf("currency = %v, want the refused update to have left it 'NOK'", currency)
+	}
+}
+
 // D1: the code is a label, editable at any time, and the change is recorded
 // so an old code on a printed timesheet can still be traced.
 func TestPutProjectsById_CodeChange_WritesCodeChangedWithBothCodes(t *testing.T) {

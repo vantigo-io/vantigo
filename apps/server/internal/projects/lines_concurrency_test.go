@@ -1,11 +1,17 @@
 package projects_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
+	"github.com/vantigo-io/vantigo/server/internal/projects"
 )
 
 // This file pins design §3.3's currency guard against the write it is most
@@ -71,5 +77,85 @@ func TestPostProjectsByIdBillingLines_RacingAClearOfTheCurrency_NeverLeavesABudg
 			  AND (bl.budget_amount IS NOT NULL OR bl.fixed_amount IS NOT NULL)`, project.Id); n != 0 {
 			t.Fatalf("round %d: %d billing line(s) with an amount on a project with no currency", i, n)
 		}
+	}
+}
+
+// lockProbeCatalog wraps fakeCatalog and, on every Variant lookup, checks
+// whether the named project's row is locked right now by attempting
+// `SELECT ... FOR UPDATE NOWAIT` over the harness's own pool — the identical
+// *pgxpool.Pool the module's own transactions run on (modtest.Harness.Pool
+// is what Compose wires into Deps.Pool). NOWAIT never waits: run outside any
+// transaction of its own, it is a single autocommitted statement, so it
+// either takes the row's lock and releases it immediately, or fails at once
+// with 55P03 if some other session — this module's own LockProject — already
+// holds it. A failure recorded here is exactly the bug fixed in this round:
+// a cross-module call must never run while this module holds the project's
+// row lock.
+//
+// This is a narrower, single-file stand-in for the time module's
+// harness-wide context-marking (server.go's withLockedTx/inLockedTx, proven
+// in time/harness_test.go's newTimeHarness cleanup): that mechanism marks
+// every locked transaction's context and has the harness's fake directories
+// check it on every call, catching this class of bug for the whole module
+// regardless of which write path it is introduced on. Doing the same here
+// would mean changing harness_test.go's shared fakeCatalog and every
+// harness constructor it feeds — worthwhile, but out of this fix's file
+// list (lines.go / lines_validation.go / their tests / projects_update_test.go).
+// This probe pins the one path this round actually touched instead.
+type lockProbeCatalog struct {
+	*fakeCatalog
+	pool      *pgxpool.Pool
+	projectID int32
+
+	calledWhileLocked []string
+}
+
+func (c *lockProbeCatalog) Variant(ctx context.Context, id int32) (*contracts.VariantEntry, error) {
+	c.probe("Variant")
+	return c.fakeCatalog.Variant(ctx, id)
+}
+
+// probe is not safe for concurrent use — this file's other test races
+// requests, but the one below that uses lockProbeCatalog does not, so a
+// plain slice is enough.
+func (c *lockProbeCatalog) probe(method string) {
+	if c.pool == nil || c.projectID == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := c.pool.Exec(ctx, `SELECT 1 FROM projects.projects WHERE id = $1 FOR UPDATE NOWAIT`, c.projectID); err != nil {
+		c.calledWhileLocked = append(c.calledWhileLocked, method)
+	}
+}
+
+// TestPutProjectsByIdBillingLines_VariantLookup_NeverRunsWhileTheProjectIsLocked
+// pins this round's fix: the catalog must never be asked about a variant
+// while this module holds the project's row lock. Moving a line to a
+// different variant is the one path that asks the catalog at all on a
+// change (D9's variant rule) — before the fix,
+// PutProjectsByIdBillingLinesByLineId asked it from inside the transaction
+// that holds LockProject (and LockBillingLine); the probe would have found
+// the row locked and recorded the failure.
+func TestPutProjectsByIdBillingLines_VariantLookup_NeverRunsWhileTheProjectIsLocked(t *testing.T) {
+	t.Parallel()
+	catalog := &lockProbeCatalog{fakeCatalog: newFakeCatalog()}
+	h := modtest.New(t,
+		modtest.WithRecorder(recorder),
+		modtest.WithModule(projects.Module()),
+		modtest.WithDirectory(fakeDirectory{}),
+		modtest.WithProducts(catalog),
+	)
+	catalog.pool = h.Pool()
+
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LOCKPROBE1000"})
+	catalog.projectID = project.Id
+	line := createLine(t, c, project.Id, nil)
+
+	changeLine(t, c, project.Id, line.Id, lineBody(map[string]any{"variantId": variantDeveloperHour}))
+
+	if calls := catalog.calledWhileLocked; len(calls) > 0 {
+		t.Errorf("catalog called while the project's row lock was held: %v", calls)
 	}
 }
