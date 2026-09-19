@@ -135,7 +135,7 @@ project's code uses it too.
 
 ## Roles and permissions
 
-Five permission keys, all delegable, in the category **Projects**:
+Six permission keys, all delegable, in the category **Projects**:
 
 | Key | Meaning | Sensitive |
 | --- | --- | --- |
@@ -144,6 +144,16 @@ Five permission keys, all delegable, in the category **Projects**:
 | `projects:view-all` | See every project, not only the ones you hold a role in. | no |
 | `projects:manage-all` | Manage every project, which also means seeing it and its financial fields. | yes |
 | `projects:view-financials` | See fixed prices, budget amounts and line pricing on every project you can see. | yes |
+| `projects:view-costs` | See what the work costs the company and the margin, on projects whose financials you can see. On a small project this can reveal a person's cost rate. | yes |
+
+`projects:view-costs` is in **no default role** — the three built-in roles are seeded
+with no permission keys at all (migration `00002_identity_baseline.sql`), which is
+what every new permission starts as without needing an opt-out. It widens nothing on
+its own: holding it adds the cost and margin block only to a project whose money the
+caller can already see through some other right, and it is deliberately **not**
+implied by `projects:manage-all` or by being a project's manager — seeing what the
+company pays its people is not part of running a project. See
+[Project economy](#project-economy).
 
 `projects:access` is the baseline that gates the app: project roles are per project,
 but the switcher tile, the sidebar and the permission guard work on global
@@ -427,6 +437,197 @@ read by everyone who can see the project, financial rights or not.
 The seven milestone operations are in the [API](#api) table below, alongside the
 rest of the module's endpoints.
 
+## Project economy
+
+The Economy tab's second half: a project's budget against what has actually been
+logged on it, an across-project portfolio for whoever is responsible for several,
+and dashboard signals for both. Projects owns this view
+end to end; the hours themselves come from Time tracking through one optional
+contract — see [The optional actuals dependency](#the-optional-actuals-dependency)
+below. **Reads take no lock at all**: `GET /{id}/economy`, the portfolio and the
+dashboard's budget alerts call the actuals contract exactly once per request,
+outside any transaction, so nothing another writer wants is ever held while another
+module's pool is waited on.
+
+### Budget used
+
+One definition, used by the project's own economy, by the portfolio's rows and by
+the dashboard's budget alerts alike, so no surface of this feature can disagree with
+another about how much of a budget has been used:
+
+1. The project's **budget amount**, if a caller who may see amounts is asking and it
+   is set.
+2. Else the project's **fixed price**, on a fixed-price project, same condition.
+3. Else the project's **budget hours** — the one basis a caller without financial
+   rights on the project ever gets, and the one every caller gets when nothing above
+   applies.
+
+An amount basis compares the three buckets' bill amount against it; the hours basis
+compares their hours. **No basis at all** (nothing is set, or the caller may not see
+amounts and the project has no budget hours either) means `budgetUsed` is **absent**
+— not a percentage of 0 — and such projects sort last wherever the portfolio orders
+by it.
+
+The ratio used ÷ basis is kept and compared **exactly** (`math/big.Rat`, never a
+float), and `overBudget` is decided on that exact ratio (`> 1`) — a project at
+100.04 % is over budget even though its printed percentage rounds to 100.0. The
+printed `percent` and `approvedPercent` (the approved bucket alone against the same
+basis) are the same ratio rounded **half up to one decimal**, for display only; a
+comparison must never be made against them. The dashboard's own thresholds —
+**warning** at `80 % ≤ ratio ≤ 100 %`, **exceeded** past `100 %` — are decided the
+same exact way, so a project sitting on precisely 100 % is a warning, not an
+exceedance, whatever its rounded percentage happens to print.
+
+### The three buckets, unpriced hours and uncosted hours
+
+Every actual is the same three buckets Time tracking's own entry statuses fold into
+(`approved` — approved and invoiced entries, `submitted`, `draft` — draft and
+rejected entries; see [Time's state machine](time.md#the-state-machine)), with
+figures that span all three:
+
+- **`unpricedHours`** — hours with no bill rate, or a rate in a currency other than
+  the project's; they count in hours and in no amount. It is the same figure
+  Time tracking's own project summary reports.
+- **`uncostedHours`** (inside the `cost` block only) — hours, billable or not, whose
+  cost is not counted: no cost rate, or a cost rate in another currency. `margin` is
+  short by exactly what these hours would have cost, which is why the block always
+  states how many there are rather than presenting a margin as complete.
+
+### Per-line rows
+
+`lines` carries one row per billing line the project has, **inactive lines
+included**, in the same order the Billing tab lists them — a line switched off last
+month still has hours that were measured against its budget. A line nothing has been
+logged against still gets a row, all zeroes: the provider only knows what was
+logged, the project knows which lines exist. One further row, without a
+`billingLineId`, appears **only when something was actually logged without a
+line** — an empty one would read as a line somebody created. Work the provider
+attributes to a billing line id this project does not have (which should never
+happen) folds into that same no-line row rather than being dropped, because an hour
+somebody logged must appear somewhere.
+
+### Shaping — who sees what
+
+| | Hours | Amounts (budget, bucket, line, milestone totals, currency) | Cost and margin |
+| --- | --- | --- | --- |
+| Anyone who sees the project | ✓ | – | – |
+| Financial rights on the project (manager, `manage-all`, or `view-financials` on a project they can see) | ✓ | ✓ | – |
+| The above **and** `projects:view-costs` | ✓ | ✓ | ✓ |
+
+The `cost` block additionally needs the project to carry a **currency** and
+`timeTracking` to be on — a cost in no currency is a number nobody can read.
+`ProjectCapabilities.canSeeCosts` answers the permission half alone; a surface should
+*offer* the cost view from that flag and *draw* it from the `cost` block itself, since
+the block is also absent without a currency or without time tracking even when the
+flag is true. Nothing a caller may not see is ever `null` or `0` — it is absent, the
+module's rule everywhere else. An outsider gets the same bare **404** as everywhere
+else in this module, and there is no dedicated 403: a caller who may see the project
+but not its money is shown the hours-only half rather than refused.
+
+### Without Time tracking
+
+When `time` is not enabled, `Deps.Actuals` is nil and `timeTracking` is `false`:
+the budget, the per-line budgets, the task estimate total and the milestone totals
+are all still there, but there is nothing to compare them with — no `actuals` on the
+project or on any line, no `budgetUsed`, no `cost`, and no `usedPercent` or
+`remainingHours` on a line. This is a different answer from "nothing has been
+logged": a project this installation cannot see the hours of and a project nobody
+has touched are not the same claim, so the response never fakes the second to avoid
+admitting the first.
+
+### When the provider fails
+
+A failing call into Time tracking's actuals contract is a wrong answer waiting to
+happen — a budget compared against zeroes — so it is a **500 problem, never zeroes**,
+everywhere except one place: `GET /stats/attention`. There, the two budget alert
+types are dropped and a warning is logged (`projects: the dashboard's budget alerts
+were left out`), while the other three kinds of attention item — the overdue-project,
+`milestoneReady` and `milestoneOverdue` items, none of which need the provider — are
+still returned. That endpoint is one of six the dashboard merges into one list, and
+emptying the whole thing over one degraded module would hide everything else worth
+looking at; nowhere else in this feature does that trade-off apply, because a
+comparison is the very thing being asked for. `GET /stats/summary`'s `readyMilestones`
+never touches the provider at all — it is a plain count of `ready` milestones, no
+comparison involved.
+
+### The portfolio
+
+`GET /api/v1/projects/economy` (`projects:access`) lists **every project whose
+money the caller has financial rights on** — the project's manager, `manage-all`, or
+`view-financials` on a project they can see — and nothing else: a caller who may not
+see a project's money gets no row for it at all, not a shaped-down one. There is no
+`cost` in a portfolio row; that block stays behind `projects:view-costs` on the
+per-project read.
+
+- **Filters**: `status` (defaults to `active` when omitted **or empty** — unlike
+  `GET /projects`, where an empty value filters nothing at all, so a shared status
+  control has to send `status=all` explicitly to clear this one), `customerId`,
+  `search` (project code or name, case-insensitive), `overBudget=true` and
+  `hasReady=true` (both "keep only"; `false` and absent mean the same thing).
+- **Sorts**: `budgetUsed` (default, most-used first on the exact ratio, no-basis rows
+  last), `readyAmount` (**by currency code first, then the largest amount** —
+  amounts in different currencies are not comparable, so a mixed portfolio is
+  grouped by currency rather than interleaved), `nextMilestone` (soonest planned
+  date first, undated open milestones after dated ones, projects with nothing open
+  last), `code`. Every order breaks its ties by project code, which is unique, so a
+  page is the same page however many times it is turned to.
+- **The cap.** More than 2 000 matching projects (the actuals contract's own batch
+  limit) is a **400** naming `status` and asking to narrow with `status`,
+  `customerId` or `search`, rather than answering a partial portfolio — a total over
+  part of a filtered set is a wrong number, not a missing one.
+- **Totals are taken over the whole filtered set, before the page is cut** —
+  project count, over-budget count, ready count, and `readyAmounts` (one sum per
+  currency, by currency code) — so paging never changes the headline figures. Rows
+  are shaped once per read; customer names are resolved for the **page only**, once
+  per distinct customer on it.
+
+### The dashboard signals
+
+`GET /stats/summary` gains `readyMilestones`: how many `ready` milestones sit on
+projects whose money the caller has financial rights on. It is a count, not an
+amount (the milestones may be in several currencies), a state now rather than a
+figure over the period like `activeProjects`, and it has no delta for the same
+reason a currency-mixed amount has no meaning.
+
+`GET /stats/attention` gains four types, alongside the existing `projectOverdue`:
+
+| Type | Raised for | Recipients | `entityId` | `occurredAt` |
+| --- | --- | --- | --- | --- |
+| `budgetWarning` | `80 % ≤` used `≤ 100 %` (exact ratio) on an **active** project | the project's **manager role** holders | the project id | the day work was last logged, midnight UTC, clamped to never be in the future; else now |
+| `budgetExceeded` | used `> 100 %` on an **active** project | same | same | same |
+| `milestoneReady` | a `ready` milestone on a project that is not cancelled or completed | anyone with **financial rights** on the project | `<projectId>/<milestoneId>` | the milestone's `ready_at`, falling back to `updated_at` |
+| `milestoneOverdue` | a `planned` milestone whose planned date has passed, on an **active** project | the project's **manager role** holders | `<projectId>/<milestoneId>` | the planned date, midnight UTC |
+
+The two budget types and `milestoneOverdue` go to the project's **manager role**
+specifically, never to a holder of `projects:manage-all` who is not also a manager —
+otherwise an administrator who can manage every project would be sent every
+project's alerts and would read none of them. `milestoneReady` goes the other way,
+to anyone with financial rights, because whoever may see a project's money is who
+invoices it. A project never raises both budget types at once, because the exact
+ratio falls in exactly one of the three bands (below 80 %, the warning band, or
+exceeded).
+
+`id` on these four types is `<type>:<entityId>` (unlike `projectOverdue`, whose id
+stays the bare project id) — a project raising more than one kind at once would
+otherwise be one row on the dashboard's merged list, keyed as it is on module and
+id. The host builds the link from `entityId` (`/projects/<projectId>/economy` for
+all four, the two milestone types split on `/` for the project id rather than
+URL-encoded whole) and a translated sentence naming the project or the milestone,
+exactly as it already does for Time's own attention items.
+
+### The optional actuals dependency
+
+Everything above depends on **`contracts.ProjectActuals`**, the one contract Time
+tracking provides and Projects optionally consumes — the mirror image of
+[Products](#billing-lines-and-the-optional-products-dependency): there, Projects
+consumes an optional contract from another module; here, Projects is still the
+consumer, but the provider is the module that in every other respect *depends on*
+Projects. `Compose` resolves both directions before any module mounts, so neither
+ever calls the other over HTTP or reads the other's schema, and there is no cycle at
+request time — see [module boundaries](module-boundaries.md). With `time` disabled,
+`Deps.Actuals` is nil and this whole feature degrades to "budgets and plans, nothing
+to compare them with" (`timeTracking: false`), never to zeroes.
+
 ## Locking
 
 Every transaction that changes a project's currency, fixed price or billing type — or
@@ -532,7 +733,7 @@ project a new task belongs to.
 ## Contracts for other modules
 
 Cross-module reads go through `internal/contracts` — never another module's schema or
-HTTP endpoints. Three contracts meet here; all are DTOs only, and for all of them a
+HTTP endpoints. Four contracts meet here; all are DTOs only, and for all of them a
 missing row is `(nil, nil)`, never an error.
 
 - **`contracts.UserDirectory`** — provided by *identity*, **always present** once
@@ -560,14 +761,24 @@ missing row is `(nil, nil)`, never an error.
   consumer that gates on a financial-viewer permission of its own should surface
   them. `TaskEntry` is deliberately thin — id, project, title, status, assignee and
   due date — enough to name a task on a timesheet row, never enough to manage one.
+- **`contracts.ProjectActuals`** — provided by *time*, **nil when time is disabled**
+  (the second optional contract, and the first Projects *consumes* rather than
+  provides). `Actuals(projectID, currency)` and `ActualsForProjects` (batch, capped
+  at `contracts.MaxActualsRequests`). It performs no authorization — Projects has
+  already decided who may see the project and its money — and reports hours in three
+  buckets (approved, submitted, draft) plus bill and cost amounts, each counted only
+  when logged in the currency Projects asked for. See
+  [Project economy](#project-economy) and [what Time reports](time.md#what-time-reports-to-other-modules).
 
-On the platform side, `module.Module` has provider fields `Users`, `Products` and
-`Projects` beside `Directory`, and `module.Deps` has the matching consumer fields.
-`Compose` resolves **at most one enabled provider per slot** — two providers is a
-startup failure naming both — and builds them before any `Mount` runs. An *optional*
-provider whose module is disabled simply leaves its `Deps` field nil, and the
-consumer must handle that (see the 409 above). `modtest` has matching options so a
-module test can run against a fake or a real provider.
+On the platform side, `module.Module` has provider fields `Users`, `Products`,
+`Projects` and `Actuals` beside `Directory`, and `module.Deps` has the matching
+consumer fields. `Compose` resolves **at most one enabled provider per slot** — two
+providers is a startup failure naming both — and builds them before any `Mount`
+runs, `Actuals` last of all so its provider's constructor may itself read the
+project directory. An *optional* provider whose module is disabled simply leaves its
+`Deps` field nil, and the consumer must handle that (see the 409 above, and
+`timeTracking: false` in [Project economy](#project-economy)). `modtest` has
+matching options so a module test can run against a fake or a real provider.
 
 ### What Time tracking should build on
 
@@ -630,6 +841,8 @@ create additionally requires `projects:create`.
 | `DELETE /api/v1/projects/milestones/{milestoneId}` | Only `planned` and never moved; otherwise 400. Manager only |
 | `PUT /api/v1/projects/milestones/{milestoneId}/position` | Renumber the plan 1..n; carries `revision` (checked, not bumped). Manager only |
 | `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan) |
+| `GET /api/v1/projects/{id}/economy` | Budget vs. logged, per line and in total; hours for anyone who sees the project, amounts need financial rights, cost needs `projects:view-costs` too — see [Project economy](#project-economy) |
+| `GET /api/v1/projects/economy` | The portfolio: one row per project the caller has financial rights on. `projects:access`; paged, filtered and sorted — see [Project economy](#project-economy) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |
 | `POST /api/v1/projects/{id}/tasks` | Add a task. Member or manager |
 | `PUT /api/v1/projects/tasks/{taskId}` | Replace a task, carrying `revision`; a stale one answers 409. Member or manager |
@@ -642,11 +855,15 @@ create additionally requires `projects:create`.
 | `GET /api/v1/projects/my-tasks` | The caller's open tasks across every project they see, with project code and name |
 | `GET /api/v1/projects/{id}/timeline` | The project's generated events, newest first, paged |
 | `GET /api/v1/projects/stats` | Counts per status over the projects the caller may see |
-| `GET /api/v1/projects/stats/summary` | `newProjects` and `activeProjects` over a period, with deltas |
+| `GET /api/v1/projects/stats/summary` | `newProjects` and `activeProjects` over a period, with deltas, plus `readyMilestones` (financial rights) |
 | `GET /api/v1/projects/stats/timeseries` | Daily buckets for one metric |
-| `GET /api/v1/projects/stats/attention` | Active projects past their end date |
+| `GET /api/v1/projects/stats/attention` | Active projects past their end date, plus the four economy signals — see [The dashboard signals](#the-dashboard-signals) |
 
-All four stats endpoints respect visibility: a member's numbers cover their projects.
+All four stats endpoints respect visibility: a member's numbers cover their
+projects. The economy figures inside them narrow that further — `readyMilestones`
+and `milestoneReady` to financial rights, the two budget types and
+`milestoneOverdue` to the manager role specifically — see
+[The dashboard signals](#the-dashboard-signals).
 
 `openapi/projects.yaml` is the contract and the source of truth; the router enforces
 each operation's access rule from it at runtime. The running server serves the merged
@@ -672,7 +889,8 @@ like every other module package; module packages never import each other.
 | `/projects/$projectId/tasks` | Tasks tab (list and board, task drawer); `?task={id}` deep-links one task |
 | `/projects/$projectId/people` | People tab (assignments, role badges, add/change/remove for managers) |
 | `/projects/$projectId/billing` | Billing tab, gated on `capabilities.canSeeFinancials` |
-| `/projects/$projectId/economy` | Economy tab (the invoice plan), between Billing and Time; gated on `capabilities.canSeeFinancials` like Billing — the next delivery widens it to everyone who sees the project once it has an hours-only half to show them |
+| `/projects/$projectId/economy` | Economy tab (invoice plan and budget vs. logged), between Billing and Time; shown to everyone who sees the project — unlike Billing, it carries no capability gate, because it has an hours-only half for a caller without financial rights |
+| `/projects/economy` | The economy portfolio, one row per project the caller has financial rights on; sidebar entry "Project economy" behind `projects:access` (the page's own empty state covers a caller with nothing to see) |
 | `/customers/$customerId/projects` | Projects tab on the customer page |
 
 The project header — code, name, customer, status badge and the status control a
@@ -682,11 +900,13 @@ every tab of the detail page rather than on the Overview tab alone.
 The app is registered in `apps/host/frontend/src/apps.ts` and shows in the switcher
 for anyone with `projects:access`, greying out with "Not enabled" when the module is
 off. The host also owns the detail tab list, so Time tracking can add a tab later
-exactly as Energy does on the customer page — the Tasks tab is one entry in that same
-list, gated on nothing but seeing the project. Spotlight has **Create project** and
-**Create task** quick actions and a Projects result group searching by code or name;
-the dashboard has a Projects card, the `newProjects` metric and the overdue-project
-attention items.
+exactly as Energy does on the customer page — the Tasks and Economy tabs are two
+entries in that same list, gated on nothing but seeing the project. Spotlight has
+**Create project** and **Create task** quick actions and a Projects result group
+searching by code or name; the dashboard has a Projects card (the `newProjects`
+metric and, once anything is ready to invoice, a `readyMilestones` hint), the
+overdue-project attention items, and the four economy signals — see
+[The dashboard signals](#the-dashboard-signals).
 
 The billing-line variant picker calls the **products** API from the browser — the
 existing cross-module frontend rule — filtered to `Service` products. A manager who
