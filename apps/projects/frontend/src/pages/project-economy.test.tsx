@@ -22,7 +22,13 @@ const project = (overrides: Partial<Project> = {}): Project =>
     status: "active",
     billingType: "fixed-price",
     internal: false,
-    capabilities: { canManage: true, canContribute: true, canSeeFinancials: true, canManageMilestones: true },
+    capabilities: {
+      canManage: true,
+      canContribute: true,
+      canSeeFinancials: true,
+      canManageMilestones: true,
+      canSeeCosts: false,
+    },
     billingLinesAvailable: true,
     financials: { currency: "NOK", fixedPriceAmount: 1000000 },
     managers: [],
@@ -101,7 +107,13 @@ describe("ProjectEconomy", () => {
   it("tells someone who may not see the amounts why there is no plan, and asks for none", async () => {
     const fetchMock = stubEconomy(
       project({
-        capabilities: { canManage: false, canContribute: false, canSeeFinancials: false, canManageMilestones: false },
+        capabilities: {
+          canManage: false,
+          canContribute: false,
+          canSeeFinancials: false,
+          canManageMilestones: false,
+          canSeeCosts: false,
+        },
         financials: undefined,
       }),
     );
@@ -281,7 +293,13 @@ describe("ProjectEconomy", () => {
   it("offers a viewer with financial rights only the two moves they may make", async () => {
     stubEconomy(
       project({
-        capabilities: { canManage: false, canContribute: false, canSeeFinancials: true, canManageMilestones: false },
+        capabilities: {
+          canManage: false,
+          canContribute: false,
+          canSeeFinancials: true,
+          canManageMilestones: false,
+          canSeeCosts: false,
+        },
       }),
       plan([
         milestone({

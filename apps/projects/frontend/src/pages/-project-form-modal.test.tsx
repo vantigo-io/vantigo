@@ -32,7 +32,13 @@ const project: Project = {
   endDate: null,
   budgetHours: 120,
   financials: { currency: "NOK", budgetAmount: 50000 },
-  capabilities: { canManage: true, canContribute: true, canSeeFinancials: true, canManageMilestones: true },
+  capabilities: {
+    canManage: true,
+    canContribute: true,
+    canSeeFinancials: true,
+    canManageMilestones: true,
+    canSeeCosts: false,
+  },
   billingLinesAvailable: true,
   managers: [],
   revision: 3,
@@ -367,7 +373,13 @@ describe("ProjectFormModal", () => {
       project: {
         ...project,
         financials: undefined,
-        capabilities: { canManage: true, canContribute: true, canSeeFinancials: false, canManageMilestones: true },
+        capabilities: {
+          canManage: true,
+          canContribute: true,
+          canSeeFinancials: false,
+          canManageMilestones: true,
+          canSeeCosts: false,
+        },
       },
     });
 

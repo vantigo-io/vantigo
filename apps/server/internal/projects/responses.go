@@ -51,6 +51,7 @@ func projectResponse(row store.ProjectsProject, a access, customerName *string, 
 			CanContribute:       a.CanContribute,
 			CanSeeFinancials:    a.CanSeeFinancials,
 			CanManageMilestones: a.canManageMilestones(),
+			CanSeeCosts:         a.canSeeCosts(),
 		},
 		BillingLinesAvailable: linesAvailable,
 	}
@@ -260,31 +261,54 @@ func (s *server) milestonePlanResponse(ctx context.Context, project store.Projec
 		return gen.BillingMilestonePlanResponse{}, err
 	}
 	now := s.deps.Clock()
-	// The three sums are accumulated in exact decimal and rounded once, at the
-	// end (milestoneTotals): adding money in float64 answers 0.10 + 0.20 with
-	// 0.30000000000000004, and this module's money rule is exact decimal.
-	amounts := map[string]*big.Rat{}
-	data := make([]gen.BillingMilestoneResponse, 0, len(rows))
-	for _, row := range rows {
-		milestone, err := s.milestoneResponse(ctx, row, project, a, people, now)
-		if err != nil {
-			return gen.BillingMilestonePlanResponse{}, err
-		}
-		if milestone.EffectiveAmount != nil {
-			sum, ok := amounts[row.Status]
-			if !ok {
-				sum = new(big.Rat)
-				amounts[row.Status] = sum
-			}
-			sum.Add(sum, exactCents(*milestone.EffectiveAmount))
-		}
-		data = append(data, milestone)
-	}
-	totals, err := milestoneTotals(project, amounts)
+	effective, totals, err := s.milestonePlanTotals(ctx, project, rows)
 	if err != nil {
 		return gen.BillingMilestonePlanResponse{}, err
 	}
+	data := make([]gen.BillingMilestoneResponse, 0, len(rows))
+	for i, row := range rows {
+		milestone, err := milestoneResponse(row, project, a, people, now, effective[i])
+		if err != nil {
+			return gen.BillingMilestonePlanResponse{}, err
+		}
+		data = append(data, milestone)
+	}
 	return gen.BillingMilestonePlanResponse{Milestones: data, Totals: totals}, nil
+}
+
+// milestonePlanTotals is what a set of a project's milestones adds up to,
+// with each row's own effective amount alongside so the plan renders exactly
+// the numbers it summed. The invoice plan and the economy read both answer
+// from here, which is what makes it impossible for the two endpoints to
+// disagree about what a project has planned, ready and invoiced.
+//
+// The three sums are accumulated in exact decimal and rounded once, at the
+// end (milestoneTotals): adding money in float64 answers 0.10 + 0.20 with
+// 0.30000000000000004, and this module's money rule is exact decimal.
+func (s *server) milestonePlanTotals(ctx context.Context, project store.ProjectsProject, rows []store.ProjectsBillingMilestone) ([]*float64, gen.BillingMilestonePlanTotals, error) {
+	amounts := map[string]*big.Rat{}
+	effective := make([]*float64, len(rows))
+	for i, row := range rows {
+		amount, err := s.milestoneEffective(ctx, row, project)
+		if err != nil {
+			return nil, gen.BillingMilestonePlanTotals{}, err
+		}
+		effective[i] = amount
+		if amount == nil {
+			continue
+		}
+		sum, ok := amounts[row.Status]
+		if !ok {
+			sum = new(big.Rat)
+			amounts[row.Status] = sum
+		}
+		sum.Add(sum, exactCents(*amount))
+	}
+	totals, err := milestoneTotals(project, amounts)
+	if err != nil {
+		return nil, gen.BillingMilestonePlanTotals{}, err
+	}
+	return effective, totals, nil
 }
 
 // milestoneResponseFor is one milestone rendered the way a plan of them is,
@@ -295,7 +319,36 @@ func (s *server) milestoneResponseFor(ctx context.Context, project store.Project
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
 	}
-	return s.milestoneResponse(ctx, row, project, a, people, s.deps.Clock())
+	effective, err := s.milestoneEffective(ctx, row, project)
+	if err != nil {
+		return gen.BillingMilestoneResponse{}, err
+	}
+	return milestoneResponse(row, project, a, people, s.deps.Clock(), effective)
+}
+
+// milestoneEffective is one milestone's effective amount as every surface
+// reports it, and nil for a milestone nobody can price.
+//
+// A milestone nobody can price renders without an amount rather than with
+// 0.00 (which would read as a milestone somebody planned at nothing) and
+// rather than failing the whole read: one row in a state the module's own
+// rules forbid must not take the plan down with it. The expected case — a
+// cancelled percent milestone on a project that has since left fixed-price
+// billing — is legitimate and silent; anything else is a row that should not
+// exist, so it is logged at warning, once per read of it.
+func (s *server) milestoneEffective(ctx context.Context, m store.ProjectsBillingMilestone, project store.ProjectsProject) (*float64, error) {
+	switch amount, err := milestoneEffectiveAmount(m, project); {
+	case errors.Is(err, errMilestoneUnpriced):
+		if m.Status != milestoneStatusCancelled {
+			s.deps.Logger.WarnContext(ctx, "projects: a billing milestone cannot be priced",
+				"milestone_id", m.ID, "project_id", m.ProjectID, "status", m.Status, "error", err.Error())
+		}
+		return nil, nil
+	case err != nil:
+		return nil, err
+	default:
+		return &amount, nil
+	}
 }
 
 // milestonePeople names everyone a set of milestones was marked ready or
@@ -316,9 +369,11 @@ func (s *server) milestonePeople(ctx context.Context, rows []store.ProjectsBilli
 }
 
 // milestoneResponse projects one milestone. Two of its fields are computed
-// rather than stored: the effective amount, which is what makes an open
-// percent milestone follow the project's fixed price (design §3.2), and
-// overdue, which is the server's own date against the planned one.
+// rather than stored: the effective amount — which is what makes an open
+// percent milestone follow the project's fixed price (design §3.2), and which
+// is passed in rather than computed here so that a row carries exactly the
+// number milestonePlanTotals summed — and overdue, which is the server's own
+// date against the planned one.
 //
 // currency is the milestone's own when it carries a flat amount — the one it
 // was entered in, which a cancelled milestone can carry past a change to the
@@ -326,7 +381,7 @@ func (s *server) milestonePeople(ctx context.Context, rows []store.ProjectsBilli
 // a percent resolves against a fixed price that is always in that currency.
 // It is absent only for a percent milestone on a project that has no currency
 // at all, which again only a cancelled one can outlive.
-func (s *server) milestoneResponse(ctx context.Context, m store.ProjectsBillingMilestone, project store.ProjectsProject, a access, people map[uuid.UUID]contracts.UserEntry, now time.Time) (gen.BillingMilestoneResponse, error) {
+func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsProject, a access, people map[uuid.UUID]contracts.UserEntry, now time.Time, effective *float64) (gen.BillingMilestoneResponse, error) {
 	amount, err := floatPtrFromNumeric(m.Amount)
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
@@ -334,25 +389,6 @@ func (s *server) milestoneResponse(ctx context.Context, m store.ProjectsBillingM
 	percent, err := floatPtrFromNumeric(m.Percent)
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
-	}
-	// A milestone nobody can price renders without an amount rather than with
-	// 0.00 (which would read as a milestone somebody planned at nothing) and
-	// rather than failing the whole read: one row in a state the module's own
-	// rules forbid must not take the plan down with it. The expected case —
-	// a cancelled percent milestone on a project that has since left
-	// fixed-price billing — is legitimate and silent; anything else is a row
-	// that should not exist, so it is logged at warning, once per read of it.
-	var effective *float64
-	switch amount, err := milestoneEffectiveAmount(m, project); {
-	case errors.Is(err, errMilestoneUnpriced):
-		if m.Status != milestoneStatusCancelled {
-			s.deps.Logger.WarnContext(ctx, "projects: a billing milestone cannot be priced",
-				"milestone_id", m.ID, "project_id", m.ProjectID, "status", m.Status, "error", err.Error())
-		}
-	case err != nil:
-		return gen.BillingMilestoneResponse{}, err
-	default:
-		effective = &amount
 	}
 	return gen.BillingMilestoneResponse{
 		Id:               m.ID,

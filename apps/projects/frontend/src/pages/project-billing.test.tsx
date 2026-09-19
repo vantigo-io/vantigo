@@ -25,7 +25,13 @@ const project = (overrides: Partial<Project> = {}): Project =>
     status: "active",
     billingType: "fixed-price",
     internal: false,
-    capabilities: { canManage: true, canContribute: true, canSeeFinancials: true, canManageMilestones: true },
+    capabilities: {
+      canManage: true,
+      canContribute: true,
+      canSeeFinancials: true,
+      canManageMilestones: true,
+      canSeeCosts: false,
+    },
     billingLinesAvailable: true,
     financials: { currency: "NOK", fixedPriceAmount: 250000, budgetAmount: 300000, defaultBillRate: 1250 },
     managers: [],
@@ -64,7 +70,13 @@ describe("ProjectBilling", () => {
   it("tells someone who may not see the amounts why the tab is empty, and asks for nothing", async () => {
     const fetchMock = stubBilling(
       project({
-        capabilities: { canManage: false, canContribute: false, canSeeFinancials: false, canManageMilestones: false },
+        capabilities: {
+          canManage: false,
+          canContribute: false,
+          canSeeFinancials: false,
+          canManageMilestones: false,
+          canSeeCosts: false,
+        },
         financials: undefined,
       }),
     );
@@ -177,7 +189,13 @@ describe("ProjectBilling", () => {
   it("offers no line actions to someone who may not manage the project", async () => {
     stubBilling(
       project({
-        capabilities: { canManage: false, canContribute: false, canSeeFinancials: true, canManageMilestones: false },
+        capabilities: {
+          canManage: false,
+          canContribute: false,
+          canSeeFinancials: true,
+          canManageMilestones: false,
+          canSeeCosts: false,
+        },
       }),
     );
     renderWithProviders(<ProjectBilling projectId={7} />);
