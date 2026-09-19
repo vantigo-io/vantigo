@@ -63,6 +63,20 @@ func (s *server) authorize(ctx context.Context, q *store.Queries, projectID int3
 	return a, nil
 }
 
+// canSeeMilestones and canManageMilestones are the two answers every billing
+// milestone operation is gated on (design §5, §3.2). They are named rather
+// than spelled out at each call site because the split is easy to get wrong:
+// a milestone is nothing but money, so *reading* one already takes financial
+// rights — a member who sees the project gets 403, not the 404 an outsider
+// gets — while writing one takes being the project's manager, which is what
+// CanManage already means here (its role, or projects:manage-all).
+//
+// The one exception is the move to and from 'invoiced', which needs financial
+// rights alone: milestoneMoves carries that, not these.
+func (a access) canSeeMilestones() bool { return a.CanSeeFinancials }
+
+func (a access) canManageMilestones() bool { return a.CanManage }
+
 // widenBy adds what role grants to a and records the role on it. It is a
 // widening only: a capability a global permission already granted is never
 // taken away by a narrower role. An unknown or empty role grants nothing,

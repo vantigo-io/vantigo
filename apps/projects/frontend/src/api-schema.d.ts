@@ -37,6 +37,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/milestones/{milestoneId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a billing milestone by id */
+        get: operations["getProjectsMilestonesByMilestoneId"];
+        /** Update a billing milestone */
+        put: operations["putProjectsMilestonesByMilestoneId"];
+        post?: never;
+        /** Delete a billing milestone */
+        delete: operations["deleteProjectsMilestonesByMilestoneId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/milestones/{milestoneId}/position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Move a billing milestone in the plan */
+        put: operations["putProjectsMilestonesByMilestoneIdPosition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/milestones/{milestoneId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a billing milestone through its status flow */
+        post: operations["postProjectsMilestonesByMilestoneIdStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/my-tasks": {
         parameters: {
             query?: never;
@@ -118,6 +171,24 @@ export interface paths {
         /** Change a project's billing line */
         put: operations["putProjectsByIdBillingLinesByLineId"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{id}/milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a project's billing milestones */
+        get: operations["getProjectsByIdMilestones"];
+        put?: never;
+        /** Add a billing milestone to a project */
+        post: operations["postProjectsByIdMilestones"];
         delete?: never;
         options?: never;
         head?: never;
@@ -483,6 +554,207 @@ export interface components {
             /** @description Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. */
             variantMissing: boolean;
         };
+        /** @description What the calling user may do with this milestone right now, so the frontend never re-derives the status flow. Marking invoiced and undoing it need financial rights on the project; everything else is the project's manager. */
+        BillingMilestoneCapabilities: {
+            /** @description Whether the milestone may be cancelled, which is what a manager does with one that is no longer going to be billed. */
+            canCancel: boolean;
+            /** @description Whether the milestone may be deleted. Only one that is still planned and has never changed status may be; anything else is cancelled instead. */
+            canDelete: boolean;
+            /** @description Whether the milestone's name, date and amount may be changed. An invoiced or a cancelled milestone is read-only until it is moved back. */
+            canEdit: boolean;
+            canMarkInvoiced: boolean;
+            /** @description Whether a milestone that is ready may be put back to planned. */
+            canMarkPlanned: boolean;
+            canMarkReady: boolean;
+            /** @description Whether a cancelled milestone may be put back to planned. */
+            canReopen: boolean;
+            /** @description Whether the invoicing may be undone, which puts the milestone back to ready and clears the reference, the date and the frozen amount. */
+            canUndoInvoiced: boolean;
+        };
+        /** @description Who marked a milestone ready or invoiced, named as the user directory knows them now. An account disabled since keeps the stamp and renders inactive. */
+        BillingMilestonePerson: {
+            active: boolean;
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
+        };
+        /** @description A project's invoice plan — its billing milestones in manual order, cancelled ones last, and what they add up to. */
+        BillingMilestonePlanResponse: {
+            milestones: components["schemas"]["BillingMilestoneResponse"][];
+            totals: components["schemas"]["BillingMilestonePlanTotals"];
+        };
+        /** @description What a project's milestones add up to, one sum of effective amounts per status. Totals never block a save; they are what the plan is read against. */
+        BillingMilestonePlanTotals: {
+            /**
+             * Format: double
+             * @description Cancelled milestones bill nothing, so this sum counts against neither the fixed price nor anything else. It is reported so the plan can show what was dropped.
+             */
+            cancelled: number;
+            /** @description The project's currency, which every amount here is in. Absent when the project has none — which is also when it can have no milestones. */
+            currency?: string | null;
+            /**
+             * Format: double
+             * @description The project's fixed price, present only on a fixed-price project. It is what unplanned and overPlanned are measured against.
+             */
+            fixedPrice?: number | null;
+            /** Format: double */
+            invoiced: number;
+            /**
+             * Format: double
+             * @description How much the plan exceeds the fixed price by, present only on a fixed-price project the plan is over. Never present together with unplanned.
+             */
+            overPlanned?: number | null;
+            /**
+             * Format: double
+             * @description The sum of the milestones still in 'planned'. Ready and invoiced ones have their own totals; this is not a running total of the three.
+             */
+            planned: number;
+            /** Format: double */
+            ready: number;
+            /**
+             * Format: double
+             * @description How much of the fixed price planned + ready + invoiced does not cover, present only on a fixed-price project with something left to plan.
+             */
+            unplanned?: number | null;
+        };
+        /** @description Where a milestone should sit in the plan. The project's milestones are renumbered 1..n in one transaction, so the order never has a gap. Cancelled milestones keep their number and are still listed last. */
+        BillingMilestonePositionRequest: {
+            /**
+             * Format: int32
+             * @description The 1-based place in the plan. A position past the end means last.
+             */
+            position: number;
+            /**
+             * Format: int32
+             * @description The revision the caller read the milestone at.
+             */
+            revision: number;
+        };
+        /** @description A billing milestone as it should stand. Exactly one of amount and percent is carried — a percent is a share of the project's fixed price and needs the project to have one, and either way the project needs a currency. */
+        BillingMilestoneRequest: {
+            /**
+             * Format: double
+             * @description A flat amount in the project's currency; greater than zero and at most 9999999999.99. Exactly one of amount and percent.
+             */
+            amount?: number | null;
+            /** @description At most 2000 characters once trimmed; a blank one is stored as none. */
+            description?: string | null;
+            /** @description Trimmed before validation and storage; never blank, at most 200 characters. */
+            name: string;
+            /**
+             * Format: double
+             * @description A share of the project's fixed price, greater than zero and at most 100, with at most two decimals. Exactly one of amount and percent.
+             */
+            percent?: number | null;
+            /**
+             * Format: date
+             * @description The day the milestone is expected to be billed. A plain calendar date, compared with the server's own UTC date to decide whether the milestone is overdue.
+             */
+            plannedDate?: string | null;
+        };
+        /** @description One billing milestone — a named step of the invoice plan, priced either as a flat amount or as a share of the project's fixed price. Every milestone operation needs financial rights on the project, so nothing here is shaped out per caller. */
+        BillingMilestoneResponse: {
+            /**
+             * Format: double
+             * @description The flat amount as entered, absent on a percent milestone.
+             */
+            amount?: number | null;
+            capabilities: components["schemas"]["BillingMilestoneCapabilities"];
+            /** Format: date-time */
+            createdAt: string;
+            /** @description The project's currency, which every amount on the milestone is in. Absent only when the project no longer has one, which only a cancelled milestone can outlive — the currency cannot be cleared while any milestone that still bills something exists. */
+            currency?: string | null;
+            description?: string | null;
+            /**
+             * Format: double
+             * @description What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not.
+             */
+            effectiveAmount: number;
+            /** Format: int32 */
+            id: number;
+            /**
+             * Format: date
+             * @description The date on the invoice, optional and only ever set while the milestone is invoiced.
+             */
+            invoiceDate?: string | null;
+            /** @description The reference of the invoice this milestone was billed on, optional and only ever set while the milestone is invoiced. At most 100 characters once trimmed. */
+            invoiceReference?: string | null;
+            /** Format: date-time */
+            invoicedAt?: string | null;
+            /** @description Absent until the milestone is invoiced, and cleared again when the invoicing is undone. */
+            invoicedBy?: components["schemas"]["BillingMilestonePerson"];
+            name: string;
+            /** @description Whether the milestone is still planned or ready and its planned date has passed, compared as plain UTC dates against the server's clock. */
+            overdue: boolean;
+            /**
+             * Format: double
+             * @description The share of the fixed price as entered, absent on an amount milestone.
+             */
+            percent?: number | null;
+            /** Format: date */
+            plannedDate?: string | null;
+            /**
+             * Format: int32
+             * @description The milestone's manual place in the project's plan, 1-based and without gaps.
+             */
+            position: number;
+            /** Format: int32 */
+            projectId: number;
+            /** Format: date-time */
+            readyAt?: string | null;
+            /** @description Absent until the milestone is marked ready, and cleared again when it goes back to planned. */
+            readyBy?: components["schemas"]["BillingMilestonePerson"];
+            /**
+             * Format: int32
+             * @description The revision every write against this milestone must carry.
+             */
+            revision: number;
+            /** @description 'planned', 'ready', 'invoiced' or 'cancelled'. */
+            status: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description One move through the milestone's status flow — planned to ready to invoiced, cancelled from either open status and reopened from cancelled, and the invoicing undone back to ready. Any other pair is refused by naming both statuses. */
+        BillingMilestoneStatusRequest: {
+            /**
+             * Format: date
+             * @description Accepted only on a move to 'invoiced'.
+             */
+            invoiceDate?: string | null;
+            /** @description Accepted only on a move to 'invoiced'; at most 100 characters once trimmed. */
+            invoiceReference?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the milestone at.
+             */
+            revision: number;
+            /** @description 'planned', 'ready', 'invoiced' or 'cancelled'. */
+            status: string;
+        };
+        /** @description A milestone as it should stand afterwards, carrying the revision it was read at. Where it sits in the plan is not part of it — position is the move's — so an edit saved from an open form cannot undo somebody's reordering. */
+        BillingMilestoneUpdateRequest: {
+            /**
+             * Format: double
+             * @description A flat amount in the project's currency; greater than zero and at most 9999999999.99. Exactly one of amount and percent.
+             */
+            amount?: number | null;
+            /** @description At most 2000 characters once trimmed; a blank one is stored as none. */
+            description?: string | null;
+            /** @description Trimmed before validation and storage; never blank, at most 200 characters. */
+            name: string;
+            /**
+             * Format: double
+             * @description A share of the project's fixed price, greater than zero and at most 100, with at most two decimals. Exactly one of amount and percent.
+             */
+            percent?: number | null;
+            /** Format: date */
+            plannedDate?: string | null;
+            /**
+             * Format: int32
+             * @description The revision the caller read the milestone at.
+             */
+            revision: number;
+        };
         /** @description One thing to tick off a task. The text is trimmed before validation and storage; the item is appended after the ones already there, open. */
         ChecklistItemRequest: {
             /** @description At most 500 characters once trimmed, and never blank. */
@@ -607,6 +879,8 @@ export interface components {
             /** @description Whether the caller may write the project's work — tasks, checklists and comments. True for its members and its managers. */
             canContribute: boolean;
             canManage: boolean;
+            /** @description Whether the caller may add, edit, reorder, cancel and reopen this project's billing milestones. The project's managers, and nobody else — a holder of projects:view-financials reads the plan and marks milestones invoiced, but does not write it. */
+            canManageMilestones: boolean;
             canSeeFinancials: boolean;
         };
         /** @description A project code nobody has used yet, derived from the customer and project names (design §4.2). The caller may type anything valid instead. */
@@ -1169,6 +1443,314 @@ export interface operations {
             };
         };
     };
+    getProjectsMilestonesByMilestoneId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingMilestoneResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but may not see its financial fields. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsMilestonesByMilestoneId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingMilestoneUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request — the body failed a rule, or the milestone is invoiced or cancelled and so read-only. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the supplied revision is not the milestone's current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    deleteProjectsMilestonesByMilestoneId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content — the milestone is gone and the plan has been renumbered. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request — the milestone is not planned, or it has changed status at least once; cancel it instead. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putProjectsMilestonesByMilestoneIdPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingMilestonePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the milestone where it now sits; the project's milestones have been renumbered 1..n. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the supplied revision is not the milestone's current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    postProjectsMilestonesByMilestoneIdStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                milestoneId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingMilestoneStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description OK — the milestone in its new status, with whatever stamps the move set or cleared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request — the status is not one of the four, the move is not one the flow allows, or an invoice reference or date was sent on a move other than to 'invoiced'. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — marking invoiced and undoing it need financial rights on the project; every other move needs the caller to be its manager. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — the milestone does not exist, or it belongs to a project the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict — the supplied revision is not the milestone's current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     getProjectsMyTasks: {
         parameters: {
             query?: never;
@@ -1565,6 +2147,113 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    getProjectsByIdMilestones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — the plan in position order, cancelled milestones last, with its totals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingMilestonePlanResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but may not see its financial fields. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postProjectsByIdMilestones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingMilestoneRequest"];
+            };
+        };
+        responses: {
+            /** @description Created — the milestone, appended last in the plan and planned. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingMilestoneResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

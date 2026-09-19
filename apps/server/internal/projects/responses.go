@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -44,9 +45,10 @@ func projectResponse(row store.ProjectsProject, a access, customerName *string, 
 		UpdatedAt:    row.UpdatedAt,
 		Managers:     managers,
 		Capabilities: gen.ProjectCapabilities{
-			CanManage:        a.CanManage,
-			CanContribute:    a.CanContribute,
-			CanSeeFinancials: a.CanSeeFinancials,
+			CanManage:           a.CanManage,
+			CanContribute:       a.CanContribute,
+			CanSeeFinancials:    a.CanSeeFinancials,
+			CanManageMilestones: a.canManageMilestones(),
 		},
 		BillingLinesAvailable: linesAvailable,
 	}
@@ -238,6 +240,130 @@ func (s *server) linePricing(ctx context.Context, project store.ProjectsProject,
 		pricing.ListPrice = &gen.BillingLineListPrice{Amount: price.Amount, Currency: price.Currency}
 	}
 	return pricing, nil
+}
+
+// milestonePlanResponse is a project's whole invoice plan for one caller: the
+// milestones in the order the query answered — position, cancelled last — and
+// what they add up to (design §3.2). Nothing here is shaped per caller the
+// way a line's pricing is: every milestone operation already needs financial
+// rights, so a caller who gets an answer at all may see all of it.
+//
+// The stamps' users are named in one directory call for the whole plan rather
+// than one per milestone, the shape taskAssignees gives a tree of tasks — and
+// it is made here, outside any transaction, because a contracts directory is
+// another module's pool and must never be read under this module's locks.
+func (s *server) milestonePlanResponse(ctx context.Context, project store.ProjectsProject, a access, rows []store.ProjectsBillingMilestone) (gen.BillingMilestonePlanResponse, error) {
+	people, err := s.milestonePeople(ctx, rows)
+	if err != nil {
+		return gen.BillingMilestonePlanResponse{}, err
+	}
+	now := s.deps.Clock()
+	amounts := map[string]float64{}
+	data := make([]gen.BillingMilestoneResponse, 0, len(rows))
+	for _, row := range rows {
+		milestone, err := milestoneResponse(row, project, a, people, now)
+		if err != nil {
+			return gen.BillingMilestonePlanResponse{}, err
+		}
+		amounts[row.Status] += milestone.EffectiveAmount
+		data = append(data, milestone)
+	}
+	totals, err := milestoneTotals(project, amounts)
+	if err != nil {
+		return gen.BillingMilestonePlanResponse{}, err
+	}
+	return gen.BillingMilestonePlanResponse{Milestones: data, Totals: totals}, nil
+}
+
+// milestoneResponseFor is one milestone rendered the way a plan of them is,
+// so a create, an edit, a move and a status change all answer through exactly
+// the code a read does.
+func (s *server) milestoneResponseFor(ctx context.Context, project store.ProjectsProject, a access, row store.ProjectsBillingMilestone) (gen.BillingMilestoneResponse, error) {
+	people, err := s.milestonePeople(ctx, []store.ProjectsBillingMilestone{row})
+	if err != nil {
+		return gen.BillingMilestoneResponse{}, err
+	}
+	return milestoneResponse(row, project, a, people, s.deps.Clock())
+}
+
+// milestonePeople names everyone a set of milestones was marked ready or
+// invoiced by, in one directory call for the whole set.
+func (s *server) milestonePeople(ctx context.Context, rows []store.ProjectsBillingMilestone) (map[uuid.UUID]contracts.UserEntry, error) {
+	ids := make([]uuid.UUID, 0, 2*len(rows))
+	seen := make(map[uuid.UUID]bool, 2*len(rows))
+	for _, row := range rows {
+		for _, id := range []*uuid.UUID{row.ReadyByUserID, row.InvoicedByUserID} {
+			if id == nil || seen[*id] {
+				continue
+			}
+			seen[*id] = true
+			ids = append(ids, *id)
+		}
+	}
+	return s.userEntries(ctx, ids)
+}
+
+// milestoneResponse projects one milestone. Two of its fields are computed
+// rather than stored: the effective amount, which is what makes an open
+// percent milestone follow the project's fixed price (design §3.2), and
+// overdue, which is the server's own date against the planned one.
+//
+// currency is the project's, and is absent only when the project no longer
+// has one — which only a cancelled milestone can outlive, since the guard on
+// the project (§3.3) refuses to clear a currency while anything that still
+// bills something exists.
+func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsProject, a access, people map[uuid.UUID]contracts.UserEntry, now time.Time) (gen.BillingMilestoneResponse, error) {
+	amount, err := floatPtrFromNumeric(m.Amount)
+	if err != nil {
+		return gen.BillingMilestoneResponse{}, err
+	}
+	percent, err := floatPtrFromNumeric(m.Percent)
+	if err != nil {
+		return gen.BillingMilestoneResponse{}, err
+	}
+	effective, err := milestoneEffectiveAmount(m, project)
+	if err != nil {
+		return gen.BillingMilestoneResponse{}, err
+	}
+	return gen.BillingMilestoneResponse{
+		Id:               m.ID,
+		ProjectId:        m.ProjectID,
+		Name:             m.Name,
+		Description:      m.Description,
+		PlannedDate:      dateFromPgtype(m.PlannedDate),
+		Amount:           amount,
+		Percent:          percent,
+		EffectiveAmount:  effective,
+		Currency:         project.Currency,
+		Status:           m.Status,
+		Position:         m.Position,
+		Overdue:          milestoneOverdue(m, now),
+		ReadyAt:          m.ReadyAt,
+		ReadyBy:          milestonePerson(m.ReadyByUserID, people),
+		InvoicedAt:       m.InvoicedAt,
+		InvoicedBy:       milestonePerson(m.InvoicedByUserID, people),
+		InvoiceReference: m.InvoiceReference,
+		InvoiceDate:      dateFromPgtype(m.InvoiceDate),
+		Revision:         m.Revision,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+		Capabilities:     milestoneCapabilities(m, a),
+	}, nil
+}
+
+// milestonePerson names one stamp's user, nil when there is no stamp. An id
+// the directory no longer knows still gets an entry — unknownUser, inactive —
+// so the record of who marked a milestone survives the account that did it,
+// exactly as a task's assignee and a comment's author do.
+func milestonePerson(id *uuid.UUID, people map[uuid.UUID]contracts.UserEntry) *gen.BillingMilestonePerson {
+	if id == nil {
+		return nil
+	}
+	entry, ok := people[*id]
+	if !ok {
+		entry = contracts.UserEntry{ID: *id, DisplayName: unknownUser}
+	}
+	return &gen.BillingMilestonePerson{UserId: *id, DisplayName: entry.DisplayName, Active: entry.Active}
 }
 
 // taskRow is the shape every query that reads a task for the API answers in:

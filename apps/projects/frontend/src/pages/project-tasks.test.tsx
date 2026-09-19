@@ -21,7 +21,12 @@ const project = (canContribute: boolean): Project =>
     status: "active",
     billingType: "time-and-materials",
     internal: false,
-    capabilities: { canManage: canContribute, canContribute, canSeeFinancials: canContribute },
+    capabilities: {
+      canManage: canContribute,
+      canContribute,
+      canSeeFinancials: canContribute,
+      canManageMilestones: canContribute,
+    },
     billingLinesAvailable: true,
     managers: [],
     revision: 3,
