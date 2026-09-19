@@ -39,25 +39,22 @@ import (
 // **Every write locks the project first.** What a milestone may be depends on
 // the project — it needs a currency, and a percent one needs a fixed price —
 // and the project's own update can take either away (design §3.3). So every
-// write here opens its transaction with LockProject, re-decides the
-// currency-dependent rules against the row that lock returns, and only then
-// takes the milestone's own row lock; the ordering advisory lock, when a
-// write needs one at all, comes last. Project row → milestone row → advisory,
-// in that order on every path, is what keeps two writers queuing rather than
-// deadlocking. A contracts directory (deps.Users) is never read inside one of
-// these transactions: the caller is resolved before it and the stamps' names
-// after it.
+// write here opens its transaction with LockProject and re-decides the
+// project-dependent rules against the row that lock returns: for a create and
+// an edit that is the body (lockProjectFor), and for a status move it is the
+// move itself (milestoneMoveRefusal), because a reopen or an invoice-undo is
+// how a milestone the guards deliberately exempt gets back to billing
+// something. The milestone's own row lock comes second, always in that order,
+// which is also what serialises the writes that decide a position — so
+// milestones need no ordering lock of their own the way tasks do.
+//
+// A contracts directory (deps.Users) is never read inside one of these
+// transactions: the caller is resolved before it and the stamps' names after
+// it.
 //
 // **Everything the caller may do is answered back** in the milestone's own
 // `capabilities`, so the frontend renders buttons from the API rather than
 // from a second copy of the move table.
-
-// milestoneOrderLockClass is the class every milestone-ordering advisory lock
-// is taken in, with the project's id as the object — one lock per project,
-// held for the transaction that is deciding a position in it. Tasks use 9;
-// Postgres keeps two-argument advisory locks in a lock space of their own, so
-// neither can collide with identity's single-argument ones.
-const milestoneOrderLockClass = 10
 
 // errMilestoneGone is what LockMilestone finding no row means: the milestone
 // was deleted between the handler's own read and its transaction, which is
@@ -212,11 +209,6 @@ func (s *server) PostProjectsByIdMilestones(ctx context.Context, req gen.PostPro
 		if err != nil {
 			return err
 		}
-		if err := txq.AcquireMilestoneOrderLock(ctx, store.AcquireMilestoneOrderLockParams{
-			LockClass: milestoneOrderLockClass, ProjectID: locked.ID,
-		}); err != nil {
-			return fmt.Errorf("projects: take the milestone ordering lock: %w", err)
-		}
 		last, err := txq.MaxMilestonePosition(ctx, locked.ID)
 		if err != nil {
 			return fmt.Errorf("projects: read the last milestone's position: %w", err)
@@ -342,6 +334,11 @@ func (s *server) PutProjectsMilestonesByMilestoneId(ctx context.Context, req gen
 		return gen.PutProjectsMilestonesByMilestoneId400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
 	}
 
+	by, err := s.callerAs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	now := s.deps.Clock()
 	var locked store.ProjectsProject
 	var changed store.ProjectsBillingMilestone
@@ -374,7 +371,18 @@ func (s *server) PutProjectsMilestonesByMilestoneId(ctx context.Context, req gen
 			Percent:     parsed.Percent,
 			Now:         now,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		// The entry is decided from the row this transaction holds against the
+		// row it just wrote, so what it names is what actually moved — an edit
+		// that changed nothing still bumps the revision but records no event.
+		fields, err := milestoneFields(before, changed)
+		if err != nil || len(fields) == 0 {
+			return err
+		}
+		return recordMilestoneEventWith(ctx, txq, now, eventMilestoneChanged, changed,
+			map[string]any{"fields": fields}, by)
 	})
 	var refusal fieldRefusal
 	var revConflict revisionRefusal
@@ -450,11 +458,6 @@ func (s *server) DeleteProjectsMilestonesByMilestoneId(ctx context.Context, req 
 		// manager's status change can answer differently.
 		if milestone.Status != milestoneStatusPlanned || milestone.EverMoved {
 			return singleFieldRefusal("status", milestoneNotDeletable())
-		}
-		if err := txq.AcquireMilestoneOrderLock(ctx, store.AcquireMilestoneOrderLockParams{
-			LockClass: milestoneOrderLockClass, ProjectID: milestone.ProjectID,
-		}); err != nil {
-			return fmt.Errorf("projects: take the milestone ordering lock: %w", err)
 		}
 		rows, err := txq.DeleteMilestone(ctx, milestone.ID)
 		if err != nil {
@@ -546,11 +549,6 @@ func (s *server) PutProjectsMilestonesByMilestoneIdPosition(ctx context.Context,
 		if milestone.Revision != body.Revision {
 			return revisionRefusal{current: milestone.Revision}
 		}
-		if err := txq.AcquireMilestoneOrderLock(ctx, store.AcquireMilestoneOrderLockParams{
-			LockClass: milestoneOrderLockClass, ProjectID: milestone.ProjectID,
-		}); err != nil {
-			return fmt.Errorf("projects: take the milestone ordering lock: %w", err)
-		}
 		ids, err := txq.MilestoneIDs(ctx, milestone.ProjectID)
 		if err != nil {
 			return fmt.Errorf("projects: lock the project's milestones: %w", err)
@@ -634,12 +632,6 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 		return gen.PostProjectsMilestonesByMilestoneIdStatus400ApplicationProblemPlusJSONResponse(
 			invalidProject(fieldError("status", msg))), nil
 	}
-	reference, msg := validateInvoiceReference(body.InvoiceReference)
-	if msg != "" {
-		return gen.PostProjectsMilestonesByMilestoneIdStatus400ApplicationProblemPlusJSONResponse(
-			invalidProject(fieldError("invoiceReference", msg))), nil
-	}
-
 	by, err := s.callerAs(ctx)
 	if err != nil {
 		return nil, err
@@ -677,9 +669,27 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 		if under.Right == rightManager && !scope.Access.canManageMilestones() {
 			return errMilestoneMoveForbidden
 		}
+		// Design §3.3, asked of the move rather than of a body: a milestone
+		// that is going back to billing something needs the project still to
+		// be able to denominate and price it. An undo whose fixed price is
+		// gone converts instead of refusing (milestoneMoveRefusal).
+		msg, convert := milestoneMoveRefusal(before, locked, status, under)
+		if msg != "" {
+			return singleFieldRefusal("status", msg)
+		}
 		// The reference and the date belong to the invoicing and to nothing
-		// else, so which move this is decides whether they are accepted.
-		if !under.SetInvoice {
+		// else, so which move this is decides whether they are accepted at
+		// all — which is asked before how long they are, or a caller who sent
+		// one on the wrong move is told it is too long rather than that they
+		// should not have sent it.
+		var reference *string
+		if under.SetInvoice {
+			trimmed, msg := validateInvoiceReference(body.InvoiceReference)
+			if msg != "" {
+				return singleFieldRefusal("invoiceReference", msg)
+			}
+			reference = trimmed
+		} else {
 			invoiceErrs := map[string][]string{}
 			if body.InvoiceReference != nil {
 				invoiceErrs["invoiceReference"] = []string{invoiceFieldNotAllowed("reference")}
@@ -692,13 +702,17 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 			}
 		}
 
-		params, err := milestoneStatusParams(before, locked, under, status, reference, body.InvoiceDate, by, now)
+		params, err := milestoneStatusParams(before, locked, under, status, reference, body.InvoiceDate, convert, by, now)
 		if err != nil {
 			return err
 		}
 		moved, err = txq.UpdateMilestoneStatus(ctx, params)
 		if err != nil {
 			return fmt.Errorf("projects: move milestone status: %w", err)
+		}
+		if convert {
+			return recordMilestoneEventWith(ctx, txq, now, under.Event, moved,
+				map[string]any{"convertedToAmount": true}, by)
 		}
 		return recordMilestoneEvent(ctx, txq, now, under.Event, moved, by)
 	})
@@ -736,6 +750,12 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 // The frozen amount is computed here, from the locked project and the locked
 // milestone, which is what makes E5's "freezes the amount" true at exactly
 // the instant the move commits.
+//
+// convert is the undo's one special case: a percent milestone whose project
+// has since dropped the fixed price becomes an amount milestone carrying the
+// number that was frozen when it was invoiced. That number is read *before*
+// the invoice fields are cleared, because clearing them is what would
+// otherwise lose it.
 func milestoneStatusParams(
 	before store.ProjectsBillingMilestone,
 	project store.ProjectsProject,
@@ -743,12 +763,15 @@ func milestoneStatusParams(
 	status string,
 	reference *string,
 	invoiceDate *openapi_types.Date,
+	convert bool,
 	by actor,
 	now time.Time,
 ) (store.UpdateMilestoneStatusParams, error) {
 	params := store.UpdateMilestoneStatusParams{
 		ID:               before.ID,
 		Status:           status,
+		Amount:           before.Amount,
+		Percent:          before.Percent,
 		ReadyAt:          before.ReadyAt,
 		ReadyByUserID:    before.ReadyByUserID,
 		InvoicedAt:       before.InvoicedAt,
@@ -757,6 +780,9 @@ func milestoneStatusParams(
 		InvoiceDate:      before.InvoiceDate,
 		InvoicedAmount:   before.InvoicedAmount,
 		Now:              now,
+	}
+	if convert {
+		params.Amount, params.Percent = before.InvoicedAmount, pgtype.Numeric{}
 	}
 	switch {
 	case move.SetReady:

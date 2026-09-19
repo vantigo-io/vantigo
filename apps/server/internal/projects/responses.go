@@ -3,7 +3,9 @@ package projects
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/google/uuid"
@@ -258,14 +260,24 @@ func (s *server) milestonePlanResponse(ctx context.Context, project store.Projec
 		return gen.BillingMilestonePlanResponse{}, err
 	}
 	now := s.deps.Clock()
-	amounts := map[string]float64{}
+	// The four sums are accumulated in exact decimal and rounded once, at the
+	// end (milestoneTotals): adding money in float64 answers 0.10 + 0.20 with
+	// 0.30000000000000004, and this module's money rule is exact decimal.
+	amounts := map[string]*big.Rat{}
 	data := make([]gen.BillingMilestoneResponse, 0, len(rows))
 	for _, row := range rows {
 		milestone, err := milestoneResponse(row, project, a, people, now)
 		if err != nil {
 			return gen.BillingMilestonePlanResponse{}, err
 		}
-		amounts[row.Status] += milestone.EffectiveAmount
+		if milestone.EffectiveAmount != nil {
+			sum, ok := amounts[row.Status]
+			if !ok {
+				sum = new(big.Rat)
+				amounts[row.Status] = sum
+			}
+			sum.Add(sum, exactCents(*milestone.EffectiveAmount))
+		}
 		data = append(data, milestone)
 	}
 	totals, err := milestoneTotals(project, amounts)
@@ -321,9 +333,20 @@ func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsP
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
 	}
-	effective, err := milestoneEffectiveAmount(m, project)
-	if err != nil {
+	// The one milestone with no effective amount is a cancelled percent one on
+	// a project that has since left fixed-price billing — legitimate, because
+	// design §3.3's guard lets the project do that precisely because a
+	// cancelled milestone bills nothing. Its amount is absent rather than
+	// 0.00, which would read as a milestone somebody planned at nothing. The
+	// same failure on any other milestone is an infrastructure error, because
+	// the status flow refuses every move that could create one.
+	var effective *float64
+	switch amount, err := milestoneEffectiveAmount(m, project); {
+	case errors.Is(err, errMilestoneUnpriced) && m.Status == milestoneStatusCancelled:
+	case err != nil:
 		return gen.BillingMilestoneResponse{}, err
+	default:
+		effective = &amount
 	}
 	return gen.BillingMilestoneResponse{
 		Id:               m.ID,
@@ -347,7 +370,7 @@ func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsP
 		Revision:         m.Revision,
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
-		Capabilities:     milestoneCapabilities(m, a),
+		Capabilities:     milestoneCapabilities(m, project, a),
 	}, nil
 }
 

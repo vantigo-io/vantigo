@@ -202,9 +202,9 @@ type BillingMilestoneResponse struct {
 	Currency    *string `json:"currency,omitempty"`
 	Description *string `json:"description,omitempty"`
 
-	// EffectiveAmount What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not.
-	EffectiveAmount float64 `json:"effectiveAmount"`
-	Id              int32   `json:"id"`
+	// EffectiveAmount What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not. Absent in exactly one case, and never zero instead of it — a cancelled milestone priced as a percent of a fixed price the project has since dropped, which has no amount to report; every other milestone has one.
+	EffectiveAmount *float64 `json:"effectiveAmount,omitempty"`
+	Id              int32    `json:"id"`
 
 	// InvoiceDate The date on the invoice, optional and only ever set while the milestone is invoiced.
 	InvoiceDate *openapi_types.Date `json:"invoiceDate,omitempty"`
@@ -240,7 +240,7 @@ type BillingMilestoneResponse struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// BillingMilestoneStatusRequest One move through the milestone's status flow — planned to ready to invoiced, cancelled from either open status and reopened from cancelled, and the invoicing undone back to ready. Any other pair is refused by naming both statuses.
+// BillingMilestoneStatusRequest One move through the milestone's status flow — planned to ready to invoiced, cancelled from either open status and reopened from cancelled, and the invoicing undone back to ready. Any other pair is refused by naming both statuses. A move whose target is not 'cancelled' also re-asks the project's own rules, so reopening or marking ready is refused while the project has no currency, or while a milestone priced as a percent has no fixed price to be a share of. Undoing an invoicing is the one exception and is never refused — crediting an invoice is a real event — but if the fixed price is gone the milestone is converted to an amount milestone carrying the amount that was frozen when it was invoiced, with percent cleared; the timeline entry records that it was converted.
 type BillingMilestoneStatusRequest struct {
 	// InvoiceDate Accepted only on a move to 'invoiced'.
 	InvoiceDate *openapi_types.Date `json:"invoiceDate,omitempty"`

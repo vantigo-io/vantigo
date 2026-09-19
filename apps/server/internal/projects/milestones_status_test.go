@@ -209,8 +209,8 @@ func TestPostProjectsMilestonesByMilestoneIdStatus_Invoiced_FreezesTheAmountAndS
 		"invoiceReference": "F-2026-0042", "invoiceDate": "2026-09-30",
 	})
 
-	if invoiced.EffectiveAmount != 100000 {
-		t.Errorf("EffectiveAmount = %v, want the 100000 frozen at this instant", invoiced.EffectiveAmount)
+	if got := effectiveAmount(t, invoiced); got != 100000 {
+		t.Errorf("EffectiveAmount = %v, want the 100000 frozen at this instant", got)
 	}
 	if invoiced.InvoicedAt == nil || !invoiced.InvoicedAt.Equal(h.Now()) {
 		t.Errorf("InvoicedAt = %v, want the server clock", invoiced.InvoicedAt)
@@ -262,7 +262,7 @@ func TestPostProjectsMilestonesByMilestoneIdStatus_Undo_ClearsAllFourInvoiceFiel
 		t.Errorf("the frozen amount survived the undo")
 	}
 	putProject(t, c, project, map[string]any{"fixedPriceAmount": 800000})
-	if got := getMilestone(t, c, m.Id).EffectiveAmount; got != 200000 {
+	if got := effectiveAmount(t, getMilestone(t, c, m.Id)); got != 200000 {
 		t.Errorf("EffectiveAmount = %v, want 200000 — an un-invoiced percent follows the price again", got)
 	}
 }
@@ -440,5 +440,242 @@ func TestMilestones_Capabilities_AreTheMoveTablePerStatus(t *testing.T) {
 		if m.Capabilities != tc.want {
 			t.Errorf("%s: Capabilities = %+v, want %+v", tc.status, m.Capabilities, tc.want)
 		}
+	}
+}
+
+// The first of the two sequences design §3.3's guards do not cover, because
+// they deliberately exempt what cannot bill: a cancelled milestone lets the
+// project clear its currency, and reopening it would put a live amount back
+// on a project that has no currency to denominate it in. Every move whose
+// target is not 'cancelled' therefore re-asks the project's own rules against
+// the row the transaction holds, the way a create and an edit do.
+func TestPostProjectsMilestonesByMilestoneIdStatus_Reopen_RefusedWithoutTheProjectsCurrency(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, c, "MSGUARD10")
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Avlyst"})
+	m = movedMilestone(t, c, m, milestoneCancelled, nil)
+	project = putProject(t, c, project, map[string]any{"currency": nil})
+
+	r := moveMilestoneStatus(t, c, m, milestonePlanned, nil)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	msgs := problem.Errors["status"]
+	if len(msgs) == 0 {
+		t.Fatalf("errors = %v, want a message on 'status'", problem.Errors)
+	}
+	if !strings.Contains(strings.ToLower(msgs[0]), "currency") {
+		t.Errorf("message = %q, want it to point at the project's currency", msgs[0])
+	}
+	if got := getMilestone(t, c, m.Id); got.Status != milestoneCancelled {
+		t.Errorf("Status = %q, want the milestone left cancelled", got.Status)
+	}
+	if caps := getMilestone(t, c, m.Id).Capabilities; caps.CanReopen {
+		t.Errorf("capabilities = %+v, want canReopen false — the server would refuse it", caps)
+	}
+}
+
+// The same hole seen through the fixed price: a cancelled percent milestone
+// lets the project leave fixed-price billing, and reopening it would leave a
+// planned milestone whose amount resolves from a price that is gone.
+func TestPostProjectsMilestonesByMilestoneIdStatus_Reopen_RefusedWithoutTheFixedPrice(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSGUARD11", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	m = movedMilestone(t, c, m, milestoneCancelled, nil)
+	project = putProject(t, c, project, map[string]any{
+		"billingType": "time-and-materials", "fixedPriceAmount": nil,
+	})
+
+	r := moveMilestoneStatus(t, c, m, milestonePlanned, nil)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	msgs := problem.Errors["status"]
+	if len(msgs) == 0 {
+		t.Fatalf("errors = %v, want a message on 'status'", problem.Errors)
+	}
+	if !strings.Contains(strings.ToLower(msgs[0]), "fixed price") {
+		t.Errorf("message = %q, want it to point at the project's fixed price", msgs[0])
+	}
+	if caps := getMilestone(t, c, m.Id).Capabilities; caps.CanReopen {
+		t.Errorf("capabilities = %+v, want canReopen false", caps)
+	}
+}
+
+// Marking a milestone ready asks the same question of a milestone that never
+// left 'planned': it is a move towards billing, so the project has to be able
+// to price it. Design §3.3's guard on the project means an *open* percent
+// milestone can never legitimately outlive the fixed price — so this rule is
+// defence in depth rather than a path a caller can walk, and the only way to
+// reach it is to put the project in that state behind the API's back. The
+// price is put back before anything is read, because a planned milestone with
+// no resolvable amount is a state the module treats as an error rather than a
+// renderable one (only a cancelled one is renderable without an amount).
+func TestPostProjectsMilestonesByMilestoneIdStatus_MarkReady_RefusedWithoutTheFixedPrice(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSGUARD12", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	h.Exec(t, `UPDATE projects.projects SET billing_type = 'time-and-materials', fixed_price_amount = NULL WHERE id = $1`, project.Id)
+
+	r := moveMilestoneStatus(t, c, m, milestoneReady, nil)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	msgs := problem.Errors["status"]
+	if len(msgs) == 0 {
+		t.Fatalf("errors = %v, want a message on 'status'", problem.Errors)
+	}
+	if !strings.Contains(strings.ToLower(msgs[0]), "fixed price") {
+		t.Errorf("message = %q, want it to point at the project's fixed price", msgs[0])
+	}
+
+	h.Exec(t, `UPDATE projects.projects SET billing_type = 'fixed-price', fixed_price_amount = 400000 WHERE id = $1`, project.Id)
+	if got := getMilestone(t, c, m.Id); got.Status != milestonePlanned || got.Revision != 1 {
+		t.Errorf("milestone = %+v, want it untouched by the refused move", got)
+	}
+}
+
+// The one exception, and the reason it is one: crediting an invoice is a real
+// thing that happens, so an undo is never refused. A percent milestone whose
+// project no longer has a fixed price becomes an amount milestone instead,
+// carrying forward the amount that was frozen when it was invoiced — the
+// number that was actually billed, which is the only one that means anything
+// once the price it was a share of is gone.
+func TestPostProjectsMilestonesByMilestoneIdStatus_Undo_ConvertsAPercentWhoseFixedPriceIsGone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSGUARD13", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	m = movedMilestone(t, c, m, milestoneReady, nil)
+	m = movedMilestone(t, c, m, milestoneInvoiced, nil)
+	project = putProject(t, c, project, map[string]any{
+		"billingType": "time-and-materials", "fixedPriceAmount": nil,
+	})
+
+	if caps := getMilestone(t, c, m.Id).Capabilities; !caps.CanUndoInvoiced {
+		t.Fatalf("capabilities = %+v, want canUndoInvoiced true even without a fixed price", caps)
+	}
+	undone := movedMilestone(t, c, m, milestoneReady, nil)
+
+	if undone.Percent != nil {
+		t.Errorf("Percent = %v, want it cleared by the conversion", undone.Percent)
+	}
+	if undone.Amount == nil || *undone.Amount != 100000 {
+		t.Errorf("Amount = %v, want the 100000 that was frozen when it was invoiced", undone.Amount)
+	}
+	if got := effectiveAmount(t, undone); got != 100000 {
+		t.Errorf("EffectiveAmount = %v, want 100000", got)
+	}
+	stored := modtest.One[string](t, h,
+		`SELECT coalesce(amount::text, 'null') || '/' || coalesce(percent::text, 'null')
+		 FROM projects.billing_milestones WHERE id = $1`, m.Id)
+	if stored != "100000.00/null" {
+		t.Errorf("stored amount/percent = %q, want 100000.00/null", stored)
+	}
+
+	// Converted means converted: a fixed price set later no longer moves it.
+	project = putProject(t, c, project, map[string]any{
+		"billingType": "fixed-price", "fixedPriceAmount": 1000000,
+	})
+	if got := effectiveAmount(t, getMilestone(t, c, m.Id)); got != 100000 {
+		t.Errorf("EffectiveAmount = %v, want the converted 100000 to ignore the new price", got)
+	}
+
+	// The timeline says it was converted, by a flag and never by a number.
+	payload := lastPayloadText(t, h, project.Id, "milestone-invoice-undone")
+	if !strings.Contains(payload, "convertedToAmount") {
+		t.Errorf("payload %s does not record the conversion", payload)
+	}
+	if strings.Contains(payload, "100000") {
+		t.Errorf("payload %s carries an amount", payload)
+	}
+}
+
+// An ordinary undo, on a project that still has its fixed price, converts
+// nothing: the milestone is still a share of that price and goes back to
+// following it. This is the boundary of the case above.
+func TestPostProjectsMilestonesByMilestoneIdStatus_Undo_WithTheFixedPriceStillThere_ConvertsNothing(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := fixedPriceProject(t, c, "MSGUARD14", 400000)
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Andel", "amount": nil, "percent": 25})
+	m = movedMilestone(t, c, m, milestoneReady, nil)
+	m = movedMilestone(t, c, m, milestoneInvoiced, nil)
+
+	undone := movedMilestone(t, c, m, milestoneReady, nil)
+	if undone.Amount != nil || undone.Percent == nil || *undone.Percent != 25 {
+		t.Errorf("milestone = %+v, want it still a percent", undone)
+	}
+	if payload := lastPayloadText(t, h, project.Id, "milestone-invoice-undone"); strings.Contains(payload, "convertedToAmount") {
+		t.Errorf("payload %s claims a conversion that did not happen", payload)
+	}
+}
+
+// projects:manage-all is the project manager's rights held globally (design
+// §5), so a holder who has no role on the project at all may do every
+// manager-only thing with its milestones. Only marking one ready was pinned
+// before; the brief's matrix names the whole of it.
+func TestMilestones_ManageAll_MayDoEverythingWithoutARoleOnTheProject(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, owner, "MSGUARD15")
+
+	admin, _ := signIn(t, h, "projects:manage-all")
+	created := createMilestone(t, admin, project.Id, map[string]any{"name": "Fra admin"})
+	if !created.Capabilities.CanEdit || !created.Capabilities.CanDelete {
+		t.Errorf("capabilities = %+v, want a manage-all holder everything a manager has", created.Capabilities)
+	}
+	changed := changeMilestone(t, admin, created, map[string]any{"name": "Endret av admin"})
+	second := createMilestone(t, admin, project.Id, map[string]any{"name": "Andre"})
+	if r := moveMilestone(t, admin, second, 1); r.Status != http.StatusOK {
+		t.Fatalf("reorder: status %d body %s, want 200", r.Status, r.Body)
+	}
+	cancelled := movedMilestone(t, admin, changed, milestoneCancelled, nil)
+	movedMilestone(t, admin, cancelled, milestonePlanned, nil)
+	if r := admin.Do(http.MethodDelete, milestonePath(second.Id), nil); r.Status != http.StatusNoContent {
+		t.Errorf("delete: status %d body %s, want 204", r.Status, r.Body)
+	}
+}
+
+// Whether a reference is allowed at all is decided before whether it is too
+// long: a caller who sent one on the wrong move has to be told that, not that
+// the thing they should not have sent is also over a hundred characters.
+func TestPostProjectsMilestonesByMilestoneIdStatus_ALongReferenceOnAnotherMove_SaysItIsNotAllowed(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := amountProject(t, c, "MSREF1")
+	m := createMilestone(t, c, project.Id, map[string]any{"name": "Milepæl"})
+
+	r := moveMilestoneStatus(t, c, m, milestoneReady, map[string]any{
+		"invoiceReference": strings.Repeat("x", 101),
+	})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	msgs := problem.Errors["invoiceReference"]
+	if len(msgs) == 0 {
+		t.Fatalf("errors = %v, want a message on 'invoiceReference'", problem.Errors)
+	}
+	if !strings.Contains(msgs[0], "only allowed") {
+		t.Errorf("message = %q, want it to say the field is not allowed on this move", msgs[0])
 	}
 }

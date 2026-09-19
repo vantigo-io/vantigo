@@ -1,6 +1,7 @@
 package projects
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"strconv"
@@ -136,6 +137,54 @@ func validateMilestoneStatus(raw string) (string, string) {
 // is exactly what a stale plan in somebody's browser gets wrong.
 func milestoneMoveNotAllowed(from, to string) string {
 	return fmt.Sprintf("A milestone cannot move from '%s' to '%s'", from, to)
+}
+
+// milestoneMoveNeedsCurrency and milestoneMoveNeedsFixedPrice are the status
+// flow's half of design §3.3. The project's guards deliberately exempt what
+// cannot bill — a cancelled milestone lets the currency go, a cancelled or
+// invoiced percent milestone lets the fixed price go — so the moves that turn
+// such a milestone back into one that *can* bill are the paths that have to
+// ask again, against the project as it now stands.
+//
+// Both report on `status` rather than on any field of the body, because no
+// field of the body is what is wrong: the fix is on the project.
+func milestoneMoveNeedsCurrency(to string) string {
+	return fmt.Sprintf("A milestone cannot become '%s' while the project has no currency to denominate it in; set one first, or leave the milestone cancelled", to)
+}
+
+func milestoneMoveNeedsFixedPrice(to string) string {
+	return fmt.Sprintf("A milestone priced as a percent cannot become '%s' while the project has no fixed price to be a share of; set one first, or leave the milestone cancelled", to)
+}
+
+// milestoneMoveRefusal asks design §3.3's two rules of one move, against the
+// project row the transaction holds. It answers the message to refuse with
+// ("" when the move may proceed) and whether the move must first convert the
+// milestone from a percent to a flat amount.
+//
+// Moving *to* cancelled is never refused: cancelling is how a milestone the
+// project can no longer support is got rid of, and refusing it would leave a
+// caller with a milestone they can neither price nor remove.
+//
+// Undoing an invoicing is never refused either, and that is the one case the
+// conversion exists for. Crediting an invoice is a real event; if the project
+// has dropped the fixed price the milestone was a share of, the share means
+// nothing any more but the amount that was actually billed still does, so the
+// milestone becomes an amount milestone carrying the number that was frozen
+// when it was invoiced.
+func milestoneMoveRefusal(m store.ProjectsBillingMilestone, project store.ProjectsProject, to string, move milestoneMove) (msg string, convert bool) {
+	if to == milestoneStatusCancelled {
+		return "", false
+	}
+	if project.Currency == nil {
+		return milestoneMoveNeedsCurrency(to), false
+	}
+	if !m.Percent.Valid || project.FixedPriceAmount.Valid {
+		return "", false
+	}
+	if move.ClearInvoice {
+		return "", true
+	}
+	return milestoneMoveNeedsFixedPrice(to), false
 }
 
 // milestoneNotEditable is §3.2's read-only rule: the content of an invoiced
@@ -384,9 +433,13 @@ func milestoneFromUpdate(body gen.BillingMilestoneUpdateRequest) gen.BillingMile
 // open percent milestone follow a change to the fixed price — and what makes
 // freezing on → invoiced the thing that stops an already-billed one moving.
 //
-// A percent milestone on a project whose fixed price has gone answers 0: the
-// guard on the project (design §3.3) refuses to let that happen while the
-// milestone is open, and a cancelled one bills nothing anyway.
+// A percent milestone on a project with no fixed price has no effective
+// amount at all, and says so with errMilestoneUnpriced rather than answering
+// 0.00 — a milestone reading as nothing planned is the kind of silent money
+// loss nobody notices. The status flow refuses every move that would create
+// such a milestone (milestoneMoveRefusal), so the only one that can exist is
+// a cancelled one on a project that has since dropped its price, and the
+// response omits its amount rather than inventing one.
 func milestoneEffectiveAmount(m store.ProjectsBillingMilestone, project store.ProjectsProject) (float64, error) {
 	if m.InvoicedAmount.Valid {
 		return floatFromNumeric(m.InvoicedAmount)
@@ -395,15 +448,22 @@ func milestoneEffectiveAmount(m store.ProjectsBillingMilestone, project store.Pr
 		return floatFromNumeric(m.Amount)
 	}
 	if !m.Percent.Valid {
-		return 0, nil
-	}
-	price, ok, err := numericText(project.FixedPriceAmount)
-	if err != nil || !ok {
-		return 0, err
+		return 0, fmt.Errorf("projects: milestone %d: %w — it carries neither an amount nor a percent", m.ID, errMilestoneUnpriced)
 	}
 	percent, ok, err := numericText(m.Percent)
-	if err != nil || !ok {
+	if err != nil {
 		return 0, err
+	}
+	if !ok {
+		return 0, fmt.Errorf("projects: milestone %d: %w — its percent could not be read", m.ID, errMilestoneUnpriced)
+	}
+	price, ok, err := numericText(project.FixedPriceAmount)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, fmt.Errorf("projects: milestone %d: %w — it is %s %% of a fixed price project %d no longer has",
+			m.ID, errMilestoneUnpriced, percent, project.ID)
 	}
 	amount, ok := percentOfPrice(price, percent)
 	if !ok {
@@ -411,6 +471,14 @@ func milestoneEffectiveAmount(m store.ProjectsBillingMilestone, project store.Pr
 	}
 	return amount, nil
 }
+
+// errMilestoneUnpriced is what a milestone whose effective amount cannot be
+// worked out answers with. It is a legitimate state for exactly one kind of
+// milestone — a cancelled percent one on a project that has since left
+// fixed-price billing — and an infrastructure failure for any other, which is
+// why it is a sentinel the response layer matches on rather than a nil amount
+// every caller has to remember to check.
+var errMilestoneUnpriced = errors.New("a milestone with no resolvable amount")
 
 // floatFromNumeric is floatPtrFromNumeric for a column the caller has already
 // established is not NULL, answering 0 for one that somehow is — the callers
@@ -444,21 +512,27 @@ func milestoneOverdue(m store.ProjectsBillingMilestone, now time.Time) bool {
 // copy of the move table. Editing, deleting and every move but the invoicing
 // are the project's manager's; marking invoiced and undoing it need financial
 // rights, which a manager also has.
-func milestoneCapabilities(m store.ProjectsBillingMilestone, a access) gen.BillingMilestoneCapabilities {
+func milestoneCapabilities(m store.ProjectsBillingMilestone, project store.ProjectsProject, a access) gen.BillingMilestoneCapabilities {
 	may := func(to string) bool {
 		move, ok := milestoneMoveFor(m.Status, to)
 		if !ok {
 			return false
 		}
-		if move.Right == rightFinancials {
-			return a.CanSeeFinancials
+		// The project's own rules, mirrored exactly: a capability must never
+		// promise a move the status handler would then refuse, or the UI
+		// offers a button that answers 400.
+		if msg, _ := milestoneMoveRefusal(m, project, to, move); msg != "" {
+			return false
 		}
-		return a.CanManage
+		if move.Right == rightFinancials {
+			return a.canSeeMilestones()
+		}
+		return a.canManageMilestones()
 	}
 	open := m.Status == milestoneStatusPlanned || m.Status == milestoneStatusReady
 	return gen.BillingMilestoneCapabilities{
-		CanEdit:         a.CanManage && open,
-		CanDelete:       a.CanManage && m.Status == milestoneStatusPlanned && !m.EverMoved,
+		CanEdit:         a.canManageMilestones() && open,
+		CanDelete:       a.canManageMilestones() && m.Status == milestoneStatusPlanned && !m.EverMoved,
 		CanMarkReady:    m.Status == milestoneStatusPlanned && may(milestoneStatusReady),
 		CanMarkPlanned:  m.Status == milestoneStatusReady && may(milestoneStatusPlanned),
 		CanMarkInvoiced: may(milestoneStatusInvoiced),
@@ -474,16 +548,27 @@ func milestoneCapabilities(m store.ProjectsBillingMilestone, a access) gen.Billi
 // sum and count against nothing: they bill nothing, so folding them into the
 // comparison would make a dropped milestone look like planned work.
 //
-// The comparison itself is done in exact decimal, like the percent
-// arithmetic, so that a plan of thirds against a round price does not report
-// a rounding artefact as something left to plan.
-func milestoneTotals(project store.ProjectsProject, amounts map[string]float64) (gen.BillingMilestonePlanTotals, error) {
+// Every sum is accumulated as a *big.Rat over the milestones' exact decimal
+// amounts and only rounded once, on the way into the response: adding money
+// in float64 reports 0.10 + 0.20 as 0.30000000000000004, and these four
+// figures are the Economy tab's headline numbers.
+//
+// A milestone with no resolvable amount (a cancelled percent one on a project
+// that has since dropped its fixed price) contributes nothing, which is what
+// it is worth.
+func milestoneTotals(project store.ProjectsProject, amounts map[string]*big.Rat) (gen.BillingMilestonePlanTotals, error) {
+	sum := func(status string) float64 {
+		if r, ok := amounts[status]; ok {
+			return roundHalfUpCents(r)
+		}
+		return 0
+	}
 	totals := gen.BillingMilestonePlanTotals{
 		Currency:  project.Currency,
-		Planned:   amounts[milestoneStatusPlanned],
-		Ready:     amounts[milestoneStatusReady],
-		Invoiced:  amounts[milestoneStatusInvoiced],
-		Cancelled: amounts[milestoneStatusCancelled],
+		Planned:   sum(milestoneStatusPlanned),
+		Ready:     sum(milestoneStatusReady),
+		Invoiced:  sum(milestoneStatusInvoiced),
+		Cancelled: sum(milestoneStatusCancelled),
 	}
 	fixedPrice, err := floatPtrFromNumeric(project.FixedPriceAmount)
 	if err != nil {
@@ -493,10 +578,15 @@ func milestoneTotals(project store.ProjectsProject, amounts map[string]float64) 
 		return totals, nil
 	}
 	totals.FixedPrice = fixedPrice
-	price := exactCents(*fixedPrice)
-	planned := new(big.Rat).Add(exactCents(totals.Planned), exactCents(totals.Ready))
-	planned.Add(planned, exactCents(totals.Invoiced))
-	switch diff := new(big.Rat).Sub(price, planned); diff.Sign() {
+	// The comparison runs over the accumulated rationals rather than over the
+	// four rounded figures above, so nothing is rounded twice.
+	planned := new(big.Rat)
+	for _, status := range []string{milestoneStatusPlanned, milestoneStatusReady, milestoneStatusInvoiced} {
+		if r, ok := amounts[status]; ok {
+			planned.Add(planned, r)
+		}
+	}
+	switch diff := new(big.Rat).Sub(exactCents(*fixedPrice), planned); diff.Sign() {
 	case 1:
 		left := roundHalfUpCents(diff)
 		totals.Unplanned = &left

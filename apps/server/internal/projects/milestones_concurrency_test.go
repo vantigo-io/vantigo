@@ -9,24 +9,24 @@ import (
 )
 
 // What milestones leave to the database rather than to a read-then-write
-// check in Go: the position a create appends at (the project's advisory
-// ordering lock, class 10), the revision a status move is guarded by (the
-// milestone's own row lock), and design §3.3's currency guard (the project's
-// row lock, taken first by every writer that can reach it).
+// check in Go, all three of it resting on the same two locks: the position a
+// create appends at and design §3.3's currency guard (the project's row lock,
+// which every milestone write takes first), and the revision a status move is
+// guarded by (the milestone's own row lock, taken second).
 //
 // None of the three is observable from a single-threaded test — every other
-// milestone test would pass with all three removed — and -race cannot catch
+// milestone test would pass with both locks removed — and -race cannot catch
 // any of them, because a lost update is database behaviour and not a Go data
 // race. Run with -count=10 or more to exercise the timing.
 
 // Creates racing inside one project: appending is "the largest position plus
 // one", and two transactions that read that number at the same time would
 // both write it. What stops them is the lock every milestone write takes —
-// the project's own row, FOR UPDATE, as its first statement — and, inside
-// that, the ordering advisory lock that would still be needed if a write
-// ever reached the plan without the project's row in hand. Neither can be
-// covered by a row lock on the milestone: what two creates race for is the
-// gap after the last row, and a gap has no row to lock.
+// the project's own row, FOR UPDATE, as its first statement. A row lock on
+// the milestone could not: what two creates race for is the gap after the
+// last row, and a gap has no row to lock. Tasks need an advisory lock of
+// their own for this because their writes never touch the project row;
+// milestones do not, because theirs always do.
 //
 // Four at a time over several rounds rather than two once: the window between
 // reading the maximum and writing the row is short, and a single pair

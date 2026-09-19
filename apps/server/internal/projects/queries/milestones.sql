@@ -5,8 +5,8 @@
 -- queries/projects.sql), because what a milestone may be — it needs a
 -- currency, and a percent one needs a fixed price — is decided from the
 -- project, and only one lock held by every such writer serialises them.
--- Ordering is a third lock again (AcquireMilestoneOrderLock), taken last and
--- only by the writes that decide a position.
+-- That one lock is also what orders the writes that decide a position, so
+-- milestones need no ordering lock of their own the way tasks do.
 --
 -- The file opens with the two reads the project's own guards need, which came
 -- before there was any milestone operation to create rows through.
@@ -62,21 +62,14 @@ SELECT * FROM projects.billing_milestones
 WHERE project_id = @project_id
 ORDER BY (status = 'cancelled'), position, id;
 
--- name: AcquireMilestoneOrderLock :exec
--- AcquireMilestoneOrderLock is the serialisation point of every write that
--- decides a position inside one project: a create appending after the last
--- milestone, a move renumbering the plan, and a delete closing the gap it
--- leaves. A row lock cannot cover a create — the number two concurrent
--- creates race for is the gap after the last row, and a gap has no row to
--- lock — so the lock is taken on the project instead, for the rest of the
--- transaction. It is a two-argument advisory lock in class 10 (tasks use 9),
--- which is a lock space of its own: it can never collide with identity's
--- single-argument ones, and it never substitutes for the project's row lock.
-SELECT pg_advisory_xact_lock(@lock_class::integer, @project_id::integer);
-
 -- name: MaxMilestonePosition :one
 -- MaxMilestonePosition is the number a create appends after, 0 for the first
--- milestone of a project.
+-- milestone of a project. Two creates racing for that number are serialised
+-- by the project's own row lock, which every milestone write already holds by
+-- the time it gets here: unlike tasks — whose writes take no project lock and
+-- so need an advisory one of their own (AcquireTaskOrderLock, class 9) — a
+-- milestone write cannot reach this read without LockProject, so a second
+-- advisory lock would only be a second name for the same queue.
 SELECT coalesce(max(position), 0)::integer FROM projects.billing_milestones
 WHERE project_id = @project_id;
 
@@ -148,8 +141,16 @@ RETURNING *;
 -- ever_moved is set by every move and never unset: it is what tells a
 -- milestone that came back to 'planned' from one that was never anything
 -- else, and only the second may be deleted.
+--
+-- amount and percent are written too, and are carried over unchanged by every
+-- move but one: undoing the invoicing of a percent milestone whose project no
+-- longer has a fixed price turns it into an amount milestone carrying what
+-- was actually billed, since design §3.2's effective amount would otherwise
+-- have nothing left to resolve from.
 UPDATE projects.billing_milestones SET
     status = @status,
+    amount = @amount,
+    percent = @percent,
     ready_at = @ready_at,
     ready_by_user_id = @ready_by_user_id,
     invoiced_at = @invoiced_at,
