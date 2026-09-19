@@ -97,6 +97,7 @@ planning data, visible with the line.
 | `description` | varchar(2000) | optional |
 | `planned_date` | date | optional |
 | `amount` | numeric(12,2) | exactly one of `amount` / `percent` |
+| `amount_currency` | char(3) | set iff `amount` is; the currency the amount was entered in, so a cancelled milestone (exempt from the currency guard) cannot be silently redenominated |
 | `percent` | numeric(5,2) | `0 < percent ≤ 100`; only while the project has a fixed price |
 | `status` | varchar(20) not null default `planned` | `planned`, `ready`, `invoiced`, `cancelled` |
 | `position` | integer not null | manual order within the project |
@@ -115,6 +116,11 @@ with `planned_date` for the alert and portfolio reads.
 **Effective amount**: `invoiced_amount` when invoiced; else `amount`; else
 `fixed price × percent / 100`, exact decimal, rounded half-up to two places
 (the rule `time` uses for discounts). Computed on read.
+
+**Totals** are `planned`, `ready` and `invoiced` only. Cancelled milestones
+bill nothing and may still carry an `amount_currency` the project has moved
+off, so they are left out of the plan's arithmetic entirely; reopening such a
+milestone is refused, naming both currencies.
 
 **Status moves** (anything else is a 400 naming the move):
 
