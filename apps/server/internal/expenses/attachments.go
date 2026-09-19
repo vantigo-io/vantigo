@@ -12,6 +12,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -51,6 +52,15 @@ const (
 	maxReceiptsPerEntry    = 10
 	receiptNameMaxLength   = 255
 )
+
+// receiptCleanupTimeout bounds a compensating or post-commit object delete,
+// which runs on a context detached from the request's own (removeReceiptObject).
+// Detached is not unbounded: a store that has stopped answering must not hold
+// a connection open indefinitely.
+const receiptCleanupTimeout = 30 * time.Second
+
+// receiptContentSecurityPolicy is the policy a served receipt carries itself.
+const receiptContentSecurityPolicy = "default-src 'none'; sandbox"
 
 // receiptFormField is the multipart field the contract documents. Unlike
 // .NET's convention of taking whatever single file a form carries, the part
@@ -152,27 +162,51 @@ func sniffReceiptType(data []byte) (receiptType, bool) {
 	return receiptType{}, false
 }
 
+// familyOfDeclared and familyOfExtension are the allowed type a client's
+// declared content type, or a file name's extension, belongs to — if either
+// belongs to one of the four at all.
+func familyOfDeclared(mediaType string) (receiptType, bool) {
+	for _, t := range receiptTypes {
+		if slices.ContainsFunc(t.Declared, func(d string) bool { return strings.EqualFold(d, mediaType) }) {
+			return t, true
+		}
+	}
+	return receiptType{}, false
+}
+
+func familyOfExtension(ext string) (receiptType, bool) {
+	for _, t := range receiptTypes {
+		if slices.Contains(t.Extensions, ext) {
+			return t, true
+		}
+	}
+	return receiptType{}, false
+}
+
 // receiptTypeOf is the type a receipt is stored under: the type sniffed from
-// its own bytes, which must be one of the four AND must agree with what the
-// client declared and with the file's extension. A client that declares
-// nothing, or the generic application/octet-stream some browsers send for a
-// type they do not know (HEIC among them), is judged on the bytes and the
-// extension alone.
+// its own bytes, which must be one of the four and must not be contradicted by
+// what the client called it. The bytes decide; the declared type and the file
+// extension can only ever *disagree*, and they disagree when they name one of
+// the other three formats — a PNG called .pdf is refused, and so is a PDF sent
+// as image/png.
+//
+// Anything the four formats do not claim is simply not evidence. A phone that
+// sends application/octet-stream for a HEIC, a browser that sends no type at
+// all, and an invoice a person saved as "Faktura nr. 12345" (whose last dot
+// begins no extension) are all ordinary, and refusing them taught the caller
+// nothing: the message names the type and the name together, so a refusal
+// there would send them hunting for the wrong problem.
 func receiptTypeOf(declared, fileName string, data []byte) (receiptType, bool) {
 	t, ok := sniffReceiptType(data)
 	if !ok {
 		return receiptType{}, false
 	}
-	if mediaType, _, err := mime.ParseMediaType(declared); strings.TrimSpace(declared) != "" {
-		if err != nil {
-			return receiptType{}, false
-		}
-		if !strings.EqualFold(mediaType, "application/octet-stream") &&
-			!slices.ContainsFunc(t.Declared, func(d string) bool { return strings.EqualFold(d, mediaType) }) {
+	if mediaType, _, err := mime.ParseMediaType(declared); err == nil && mediaType != "" {
+		if other, known := familyOfDeclared(mediaType); known && other.ContentType != t.ContentType {
 			return receiptType{}, false
 		}
 	}
-	if ext := strings.ToLower(path.Ext(fileName)); ext != "" && !slices.Contains(t.Extensions, ext) {
+	if other, known := familyOfExtension(strings.ToLower(path.Ext(fileName))); known && other.ContentType != t.ContentType {
 		return receiptType{}, false
 	}
 	return t, true
@@ -222,8 +256,12 @@ func receiptPart(mr *multipart.Reader) (data []byte, fileName, declared string, 
 	if mr == nil {
 		return nil, "", "", false
 	}
+	found := false
 	for {
 		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return nil, "", "", false
 		}
@@ -231,11 +269,22 @@ func receiptPart(mr *multipart.Reader) (data []byte, fileName, declared string, 
 			_ = part.Close()
 			continue
 		}
+		if found {
+			// A second file in one request: refused rather than dropped. The
+			// contract documents one, and quietly keeping whichever came first
+			// would lose a person's receipt without telling anybody.
+			_ = part.Close()
+			return nil, "", "", false
+		}
+		found = true
 		fileName, declared = part.FileName(), part.Header.Get("Content-Type")
 		data, err = io.ReadAll(io.LimitReader(part, maxReceiptBytes+1))
 		_ = part.Close()
-		return data, fileName, declared, err == nil && len(data) > 0 && len(data) <= maxReceiptBytes
+		if err != nil {
+			return nil, "", "", false
+		}
 	}
+	return data, fileName, declared, found && len(data) > 0 && len(data) <= maxReceiptBytes
 }
 
 // entryTakesReceipts is why an expense's receipts cannot be changed right now,
@@ -298,8 +347,16 @@ func (s *server) visibleAttachment(ctx context.Context, q *store.Queries, c *cal
 // line — it would reach server logs for no one's benefit — so the expense is
 // what a reader correlates on.
 func (s *server) removeReceiptObject(ctx context.Context, entryID int64, key string) {
-	if err := s.objects.Delete(ctx, key); err != nil {
-		s.deps.Logger.ErrorContext(ctx, "expenses: a receipt object could not be removed from the store",
+	// Detached from the request's own cancellation, and bounded by a deadline
+	// of its own. Every call of this is a compensation for a decision already
+	// made — the row is gone, or was never written — and internal/storage's fs
+	// driver checks ctx.Err() before it touches anything, so on the request's
+	// context a client that closed the tab would leave the bytes behind for
+	// good: nothing in this installation ever sweeps them up (docs, M3).
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), receiptCleanupTimeout)
+	defer cancel()
+	if err := s.objects.Delete(cleanup, key); err != nil {
+		s.deps.Logger.ErrorContext(cleanup, "expenses: a receipt object could not be removed from the store",
 			"entry_id", entryID, "error", err.Error())
 	}
 }
@@ -421,6 +478,13 @@ type receiptDownload struct {
 func (r receiptDownload) VisitGetExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Defence in depth over the platform's own policy (internal/security): a
+	// receipt is a document nobody should be able to make fetch anything, and
+	// sandbox puts the one served here in an opaque origin, which is the last
+	// bridge between a PDF's own scripting engine and this app's origin. It
+	// does not affect using the same URL as an <img> source: the policy governs
+	// the document, and an image subresource is not one.
+	w.Header().Set("Content-Security-Policy", receiptContentSecurityPolicy)
 	if r.disposition != "" {
 		w.Header().Set("Content-Disposition", r.disposition)
 	}

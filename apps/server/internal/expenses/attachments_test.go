@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"testing"
 
+	"github.com/vantigo-io/vantigo/server/internal/expenses"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -38,6 +41,8 @@ func TestExpensesReceipts_EveryAllowedTypeRoundTrips(t *testing.T) {
 		{"a screenshot", "skjermbilde.png", "image/png", testPNG(t, 8, 8), "image/png"},
 		{"an invoice", "faktura.pdf", "application/pdf", testPDF(64), "application/pdf"},
 		{"an iPhone photograph", "IMG_0042.HEIC", "image/heic", testHEIC("heic"), "image/heic"},
+		{"one the browser could not name", "IMG_0043.heic", "application/octet-stream", testHEIC("heix"), "image/heic"},
+		{"one sent with no type at all", "IMG_0044.heic", "", testHEIC("mif1"), "image/heic"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			entry := createEntry(t, owner, outlayBody(nil))
@@ -88,6 +93,9 @@ func TestExpensesReceipts_AreServedPrivatelyAndNamedAsTheyWereUploaded(t *testin
 	if xcto := read.Header("X-Content-Type-Options"); xcto != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q, want nosniff", xcto)
 	}
+	if csp := read.Header("Content-Security-Policy"); csp != "default-src 'none'; sandbox" {
+		t.Errorf("Content-Security-Policy = %q, want the receipt's own locked-down policy", csp)
+	}
 
 	heic := uploadReceipt(t, owner, entry.Id, "IMG_1.heic", "image/heic", testHEIC("heix"))
 	if cd := downloadReceipt(t, owner, heic.Id).Header("Content-Disposition"); !strings.HasPrefix(cd, "attachment; ") {
@@ -107,6 +115,15 @@ func TestExpensesReceipts_AreNamedByTheirOwnerButNeverByTheirPath(t *testing.T) 
 	got := uploadReceipt(t, owner, entry.Id, `../../etc/passwd/kvittering.pdf`, "application/pdf", testPDF(8))
 	if got.FileName != "kvittering.pdf" {
 		t.Errorf("fileName = %q, want the base name alone", got.FileName)
+	}
+
+	// A name whose last dot is not an extension at all is somebody's invoice
+	// number, not a lie about the file's type (review M1).
+	for _, name := range []string{"Faktura nr. 12345", "Kvittering 12.03", "scan.2026-09-19", "kvittering"} {
+		got := uploadReceipt(t, owner, entry.Id, name, "application/pdf", testPDF(8))
+		if got.FileName != name {
+			t.Errorf("fileName = %q, want %q kept as it was sent", got.FileName, name)
+		}
 	}
 
 	long := uploadReceipt(t, owner, entry.Id, strings.Repeat("æ", 400)+".pdf", "application/pdf", testPDF(8))
@@ -147,6 +164,7 @@ func TestExpensesReceipts_RefuseWhatIsNotOneOfTheFourTypes(t *testing.T) {
 		{"a PDF named .png, declared as a PDF", "kvittering.png", "application/pdf", testPDF(32)},
 		{"an empty file", "tom.pdf", "application/pdf", nil},
 		{"an ISO media file that is not HEIC", "film.mp4", "video/mp4", testHEIC("mp42")},
+		{"a JPEG named .png", "kvittering.png", "", testJPEG(t, 4, 4)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			errs := refusedReceipt(t, owner, entry.Id, tc.fileName, tc.declared, tc.data)
@@ -499,8 +517,8 @@ func TestExpensesReceipts_AStorageFailureLeavesNothingBehind(t *testing.T) {
 	if got := getEntry(t, owner, entry.Id); got.AttachmentCount != 0 {
 		t.Errorf("entry carries %d receipts after the delete, want none", got.AttachmentCount)
 	}
-	if !strings.Contains(h.Logs(), "receipt") {
-		t.Error("the object that could not be removed was not logged")
+	if !strings.Contains(h.Logs(), "a receipt object could not be removed from the store") {
+		t.Errorf("the object that could not be removed was not logged; logs were:\n%s", h.Logs())
 	}
 }
 
@@ -527,17 +545,171 @@ func TestExpensesReceipts_AreOnEveryExpenseAndEveryPage(t *testing.T) {
 	two := uploadReceipt(t, owner, entry.Id, "to.pdf", "application/pdf", testPDF(16))
 
 	page := listEntries(t, owner, "")
+	seen := 0
 	for _, got := range page.Data {
 		switch got.Id {
 		case entry.Id:
+			seen++
 			if got.AttachmentCount != 2 || len(got.Attachments) != 2 ||
 				got.Attachments[0] != one || got.Attachments[1] != two {
 				t.Errorf("listed entry carries %+v, want both receipts in the order they were uploaded", got.Attachments)
 			}
 		case bare.Id:
+			seen++
 			if len(got.Attachments) != 0 {
 				t.Errorf("listed entry carries %+v, want none", got.Attachments)
 			}
 		}
+	}
+	if seen != 2 {
+		t.Errorf("the page held %d of the two expenses, want both — an empty page must not pass", seen)
+	}
+}
+
+// TestExpensesReceipts_RefuseTwoFilesInOneRequest: the contract documents one
+// file per request, and a body carrying two is refused rather than having the
+// first silently win — a client that sends two has misunderstood something,
+// and quietly dropping one of a person's receipts is the worst answer
+// available (review M5).
+func TestExpensesReceipts_RefuseTwoFilesInOneRequest(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	entry := createEntry(t, owner, outlayBody(nil))
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	for _, name := range []string{"en.pdf", "to.pdf"} {
+		header := textproto.MIMEHeader{}
+		header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, name))
+		header.Set("Content-Type", "application/pdf")
+		part, err := w.CreatePart(header)
+		if err != nil {
+			t.Fatalf("create the %s part: %v", name, err)
+		}
+		if _, err := part.Write(testPDF(8)); err != nil {
+			t.Fatalf("write the %s part: %v", name, err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close the multipart writer: %v", err)
+	}
+
+	r := owner.Do(http.MethodPost, entryAttachmentsPath(entry.Id), nil,
+		modtest.RawBody(w.FormDataContentType(), buf.Bytes()))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("two file parts: status %d body %s, want 400", r.Status, r.Body)
+	}
+	if got := getEntry(t, owner, entry.Id); got.AttachmentCount != 0 {
+		t.Errorf("entry carries %d receipts, want neither of the two stored", got.AttachmentCount)
+	}
+	if n := h.objects.count(); n != 0 {
+		t.Errorf("the object store holds %d objects, want none", n)
+	}
+}
+
+// TestExpensesReceipts_ABodyOverTheRouterCapIsTheSame400: the router's own cap
+// for this operation (the file plus the multipart framing) fires before the
+// handler has read a part, and the read failure folds into the documented 400
+// on file — never an undocumented 413, and never a decode error the contract
+// does not describe (review M7).
+func TestExpensesReceipts_ABodyOverTheRouterCapIsTheSame400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	entry := createEntry(t, owner, outlayBody(nil))
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	filler, err := w.CreateFormField("filler")
+	if err != nil {
+		t.Fatalf("create the filler field: %v", err)
+	}
+	// Past the whole request cap, although the file part alone would pass.
+	if _, err := filler.Write(make([]byte, 10*1024*1024+64*1024+4096)); err != nil {
+		t.Fatalf("write the filler field: %v", err)
+	}
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", `form-data; name="file"; filename="kvittering.pdf"`)
+	header.Set("Content-Type", "application/pdf")
+	part, err := w.CreatePart(header)
+	if err != nil {
+		t.Fatalf("create the file part: %v", err)
+	}
+	if _, err := part.Write(testPDF(8)); err != nil {
+		t.Fatalf("write the file part: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close the multipart writer: %v", err)
+	}
+
+	r := owner.Do(http.MethodPost, entryAttachmentsPath(entry.Id), nil,
+		modtest.RawBody(w.FormDataContentType(), buf.Bytes()))
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("a body over the router cap: status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if problem.Title != invalidReceiptTitle || len(problem.Errors["file"]) == 0 {
+		t.Errorf("problem = %+v, want the documented refusal on the file field", problem)
+	}
+	if n := h.objects.count(); n != 0 {
+		t.Errorf("the object store holds %d objects, want none", n)
+	}
+}
+
+// TestExpensesReceipts_AProjectManagerReadsThemButDoesNotAddThem: seeing
+// somebody's expense — which a manager of its project does — is not changing
+// it. They get the same 403 any other non-owner gets on the upload, and the
+// 200 they are entitled to on the download (review M7).
+func TestExpensesReceipts_AProjectManagerReadsThemButDoesNotAddThem(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signInAs(t, h, projectKraftVerket, roleMember)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+
+	entry := createEntry(t, owner, outlayBody(map[string]any{"projectId": projectKraftVerket}))
+	receipt := uploadReceipt(t, owner, entry.Id, "kvittering.pdf", "application/pdf", testPDF(8))
+
+	if r := postReceipt(t, manager, entry.Id, "min.pdf", "application/pdf", testPDF(8)); r.Status != http.StatusForbidden {
+		t.Errorf("a project manager uploading: status %d body %s, want 403", r.Status, r.Body)
+	}
+	if r := manager.Do(http.MethodDelete, attachmentPath(receipt.Id), nil); r.Status != http.StatusForbidden {
+		t.Errorf("a project manager deleting: status %d body %s, want 403", r.Status, r.Body)
+	}
+	downloadReceipt(t, manager, receipt.Id)
+	if got := getEntry(t, owner, entry.Id); got.AttachmentCount != 1 {
+		t.Errorf("entry carries %d receipts, want only the owner's", got.AttachmentCount)
+	}
+}
+
+// TestExpensesReceipts_UploadsAreRateLimited: ten receipts per expense bounds
+// one expense, and nothing bounds how many expenses a person may record — so
+// the upload carries the platform's own rate limit, which is what stands
+// between any holder of expenses:access and the installation's disk. The
+// limiter is keyed by client address, as every other policy on this platform
+// is, so one client exhausting it leaves another alone.
+func TestExpensesReceipts_UploadsAreRateLimited(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	other, _ := signIn(t, h)
+
+	// Refused uploads count too — the limit is in front of the handler — so
+	// this costs the suite no storage and no rows.
+	const unknownEntry = int64(987654)
+	for i := range expenses.ReceiptUploadsPerHour {
+		if r := postReceipt(t, owner, unknownEntry, "kvittering.pdf", "application/pdf", testPDF(8)); r.Status != http.StatusNotFound {
+			t.Fatalf("upload %d: status %d body %s, want the unknown expense's 404", i+1, r.Status, r.Body)
+		}
+	}
+
+	over := postReceipt(t, owner, unknownEntry, "kvittering.pdf", "application/pdf", testPDF(8))
+	if over.Status != http.StatusTooManyRequests || over.Code() != "rate_limited" || over.Header("Retry-After") == "" {
+		t.Errorf("upload %d: status %d code %q Retry-After %q, want 429 rate_limited with a Retry-After",
+			expenses.ReceiptUploadsPerHour+1, over.Status, over.Code(), over.Header("Retry-After"))
+	}
+	if r := postReceipt(t, other, unknownEntry, "kvittering.pdf", "application/pdf", testPDF(8)); r.Status != http.StatusNotFound {
+		t.Errorf("another client after the first was limited: status %d, want 404", r.Status)
 	}
 }

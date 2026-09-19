@@ -15,3 +15,8 @@ var InLockedTx = inLockedTx
 func SetContractCallHook(hook func(ctx context.Context, method string)) {
 	contractCallHook = hook
 }
+
+// ReceiptUploadsPerHour exposes the upload rate limit's own number to the
+// external tests, so the test that proves the limit bites cannot drift from
+// the policy the module registers.
+const ReceiptUploadsPerHour = receiptUploadsPerHour

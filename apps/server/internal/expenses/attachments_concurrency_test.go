@@ -65,3 +65,39 @@ func TestExpensesReceipts_TwoUploadsRacingForTheLastSlot(t *testing.T) {
 		}
 	}
 }
+
+// TestExpensesReceipts_AnUploadRacingTheExpensesDeletion: both take the
+// expense's row lock, so they cannot interleave — either the upload commits
+// first and the delete carries its object away with the rest, or the delete
+// commits first and the upload finds the expense gone and removes the object
+// it had already written. What must never happen is an object left behind by
+// an expense that no longer exists: with the keys read outside the delete's
+// own transaction, an upload committing in that window is exactly that.
+func TestExpensesReceipts_AnUploadRacingTheExpensesDeletion(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+
+	for round := range raceRounds {
+		entry := createEntry(t, owner, outlayBody(nil))
+		uploadReceipt(t, owner, entry.Id, "fra-for.pdf", "application/pdf", testPDF(8))
+
+		var upload, remove int
+		race(
+			func() {
+				upload = postReceipt(t, owner, entry.Id, "i-kapplop.pdf", "application/pdf", testPDF(16)).Status
+			},
+			func() { remove = owner.Do(http.MethodDelete, entryPath(entry.Id), nil).Status },
+		)
+		if remove != http.StatusNoContent {
+			t.Fatalf("round %d: delete answered %d, want 204", round, remove)
+		}
+		if upload != http.StatusCreated && upload != http.StatusNotFound {
+			t.Errorf("round %d: upload answered %d, want 201 (it won) or 404 (the expense had gone)", round, upload)
+		}
+		if n := h.objects.count(); n != 0 {
+			t.Errorf("round %d: the store holds %v after the expense was deleted, want nothing",
+				round, h.objects.keys())
+		}
+	}
+}

@@ -17,6 +17,7 @@ package expenses
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -58,10 +59,33 @@ var permissions = []contracts.Permission{
 	},
 }
 
-// limits maps each rate-limited operationId to its policy. It is empty and
-// stays empty: no Expenses endpoint is rate limited, only identity's
-// authentication ceremonies are.
-var limits = map[string]ratelimit.Policy{}
+// receiptUploadsPerHour is how many receipt uploads one client address may
+// make. Ten receipts per expense bounds an expense, and nothing bounds how
+// many expenses a person may record — so without this, any holder of
+// expenses:access is one loop away from filling the installation's disk with
+// ten-megabyte files. A hundred and twenty an hour is far past what recording
+// a day's expenses takes and far below what filling a volume takes.
+//
+// It is keyed by client address, because that is what the platform's limiter
+// keys on (module.Router passes httpx.ClientIP); the same shape identity's own
+// policies have.
+const receiptUploadsPerHour = 120
+
+// policyReceiptUpload is that bound as the platform states one.
+var policyReceiptUpload = ratelimit.Policy{
+	Name:    "ExpensesReceiptUpload",
+	Limit:   receiptUploadsPerHour,
+	Window:  time.Hour,
+	Message: "Too many receipt uploads. Please wait a little before adding more.",
+}
+
+// limits maps each rate-limited operationId to its policy. The receipt upload
+// is the module's one rate-limited operation: it is the only one that writes
+// bytes outside the database, and the only one a caller can use to consume an
+// unbounded amount of anything.
+var limits = map[string]ratelimit.Policy{
+	"postExpensesEntriesByIdAttachments": policyReceiptUpload,
+}
 
 // Module is expenses as a platform module: its contract mounted under
 // /api/v1/expenses/ and its four permissions in the composed catalog. It
