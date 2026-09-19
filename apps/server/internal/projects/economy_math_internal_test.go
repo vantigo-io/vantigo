@@ -398,3 +398,22 @@ func TestRemainingHoursClampsAtZero(t *testing.T) {
 		t.Errorf("remainingHours at the budget = %v, want 0", got)
 	}
 }
+
+// A provider that leaves Total unfilled would otherwise read as "nothing
+// logged" beside three filled buckets; hours are exact, so the mismatch is
+// refused rather than shown.
+func TestBucketSumsRefuseATotalThatDisagreesWithItsBuckets(t *testing.T) {
+	t.Parallel()
+	bucket := func(h int64) contracts.ActualsBucket {
+		return contracts.ActualsBucket{HoursHundredths: h, BillAmount: "0.00", CostAmount: "0.00"}
+	}
+	forgotten := contracts.ActualsTotals{Approved: bucket(500), Submitted: bucket(250), Draft: bucket(100), Total: bucket(0)}
+	if _, err := bucketSumsOf(forgotten); err == nil {
+		t.Error("bucketSumsOf accepted a total of 0 h beside 8.5 h in its buckets")
+	}
+	filled := forgotten
+	filled.Total = bucket(850)
+	if _, err := bucketSumsOf(filled); err != nil {
+		t.Errorf("bucketSumsOf refused a consistent total: %v", err)
+	}
+}
