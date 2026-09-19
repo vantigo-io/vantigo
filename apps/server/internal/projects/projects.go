@@ -21,6 +21,46 @@ import (
 // number.
 const counterProjectCode = "project_code"
 
+// fieldRefusal is design §3.3's two guards' decision, carried out of the
+// update's own transaction: which field the 400 belongs on, and the message
+// it carries. Both guards decide it against rows read inside the
+// transaction rather than before it opened (the TOCTOU lesson billing
+// lines' own change already learned), so the decision has to travel out as
+// the transaction's error rather than as a response already built before it
+// ran.
+type fieldRefusal struct {
+	field   string
+	message string
+}
+
+func (e fieldRefusal) Error() string { return e.message }
+
+// currencyLocked is D13's guard (design §3.3): whether the project currently
+// carries an amount denominated in its currency that a currency change would
+// silently reprice. It runs inside the update's own transaction, against the
+// rows as they stand at that instant.
+func (s *server) currencyLocked(ctx context.Context, txq *store.Queries, projectID int32) (bool, error) {
+	fixedLines, err := txq.CountFixedBillingLines(ctx, projectID)
+	if err != nil {
+		return false, fmt.Errorf("projects: count fixed billing lines: %w", err)
+	}
+	if fixedLines > 0 {
+		return true, nil
+	}
+	budgetedLines, err := txq.CountBudgetedBillingLines(ctx, projectID)
+	if err != nil {
+		return false, fmt.Errorf("projects: count budgeted billing lines: %w", err)
+	}
+	if budgetedLines > 0 {
+		return true, nil
+	}
+	milestones, err := txq.CountNonCancelledMilestones(ctx, projectID)
+	if err != nil {
+		return false, fmt.Errorf("projects: count milestones: %w", err)
+	}
+	return milestones > 0, nil
+}
+
 // PostProjects Create a project
 // (POST /api/v1/projects)
 //
@@ -184,29 +224,6 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 		return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
 	}
 
-	// D13's other half, which only an update can break: a 'fixed' billing
-	// line is an amount denominated in the project's currency, so that
-	// currency can be neither cleared nor swapped for another one while such
-	// a line exists — swapping it would silently reprice the line. It is
-	// checked here rather than in validateProject because a project being
-	// *created* has no lines yet, and it is checked whatever Deps.Products
-	// holds: lines stored before products was switched off are still stored,
-	// and their amounts are still in this currency (D10).
-	//
-	// Only a request that actually moves a currency the project has pays for
-	// the query: a project that never had one cannot have a 'fixed' line to
-	// protect, since such a line could not have been created without it.
-	if before.Currency != nil && !equalStringPtr(before.Currency, parsed.Currency) {
-		fixedLines, err := q.CountFixedBillingLines(ctx, before.ID)
-		if err != nil {
-			return nil, fmt.Errorf("projects: count fixed billing lines: %w", err)
-		}
-		if fixedLines > 0 {
-			return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(
-				invalidProject(fieldError("currency", currencyLockedByFixedLine()))), nil
-		}
-	}
-
 	by, err := s.callerAs(ctx)
 	if err != nil {
 		return nil, err
@@ -216,6 +233,45 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 	var after store.ProjectsProject
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+
+		// Design §3.3's two guards, both decided here rather than before the
+		// transaction opened: a billing line or a milestone another request
+		// adds between a pre-transaction read and this write must still be
+		// seen, and only a read taken inside the same transaction as the
+		// write can promise that — the TOCTOU lesson a billing line's own
+		// change already learned (lines.go).
+		//
+		// D13's guard: a 'fixed' billing line, a line's budget amount and a
+		// non-cancelled milestone are all amounts denominated in the
+		// project's currency, so that currency can be neither cleared nor
+		// swapped for another one while any of them exists — swapping it
+		// would silently reprice them. Only a request that actually moves a
+		// currency the project has pays for the reads: a project that never
+		// had one cannot have any of the three to protect, since none of them
+		// could have been created without it.
+		if before.Currency != nil && !equalStringPtr(before.Currency, parsed.Currency) {
+			locked, err := s.currencyLocked(ctx, txq, before.ID)
+			if err != nil {
+				return err
+			}
+			if locked {
+				return fieldRefusal{field: "currency", message: currencyLockedByAmounts()}
+			}
+		}
+		// The fixed-price guard: a percent milestone that is still open
+		// resolves its amount from the project's fixed price, so removing
+		// that price — clearing it, or moving the project off fixed-price
+		// billing — is refused while any exist.
+		if field, trigger := fixedPriceGuardField(before, parsed); trigger {
+			names, err := txq.ListOpenPercentMilestoneNames(ctx, before.ID)
+			if err != nil {
+				return fmt.Errorf("projects: list open percent milestones: %w", err)
+			}
+			if len(names) > 0 {
+				return fieldRefusal{field: field, message: fixedPriceLockedByMilestones(names)}
+			}
+		}
+
 		var err error
 		after, err = txq.UpdateProject(ctx, store.UpdateProjectParams{
 			ID:               req.Id,
@@ -246,7 +302,10 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 		}
 		return recordProjectUpdated(ctx, txq, now, diff, after.ID, by)
 	})
+	var refusal fieldRefusal
 	switch {
+	case errors.As(err, &refusal):
+		return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(invalidProject(fieldError(refusal.field, refusal.message))), nil
 	case errors.Is(err, pgx.ErrNoRows):
 		// The revision the project actually carries is read again rather
 		// than taken from `before`: the row that beat this one to the write

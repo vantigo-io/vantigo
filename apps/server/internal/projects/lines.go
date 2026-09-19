@@ -153,6 +153,8 @@ func (s *server) PostProjectsByIdBillingLines(ctx context.Context, req gen.PostP
 			PricingMode:     parsed.PricingMode,
 			FixedAmount:     parsed.FixedAmount,
 			DiscountPercent: parsed.DiscountPercent,
+			BudgetHours:     parsed.BudgetHours,
+			BudgetAmount:    parsed.BudgetAmount,
 			Now:             now,
 		})
 		if err != nil {
@@ -270,6 +272,8 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 			PricingMode:     parsed.PricingMode,
 			FixedAmount:     parsed.FixedAmount,
 			DiscountPercent: parsed.DiscountPercent,
+			BudgetHours:     parsed.BudgetHours,
+			BudgetAmount:    parsed.BudgetAmount,
 			Active:          parsed.Active,
 			Now:             now,
 		})

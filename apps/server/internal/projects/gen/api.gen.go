@@ -27,6 +27,9 @@ type BillingLineListPrice struct {
 
 // BillingLinePricing What this line bills by, present only when the caller may see the project's financial fields (capabilities.canSeeFinancials). Projects stores the rule and never calculates money; whoever invoices resolves the amount.
 type BillingLinePricing struct {
+	// BudgetAmount The line's planning budget, in the project's currency. Financial data, alongside the rest of this block (unlike budgetHours, which every reader of the line sees); greater than zero when set.
+	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
+
 	// DiscountPercent Set exactly when mode is 'discount'; greater than zero and at most 100.
 	DiscountPercent *float64 `json:"discountPercent,omitempty"`
 
@@ -44,6 +47,12 @@ type BillingLinePricing struct {
 type BillingLineRequest struct {
 	// Active PUT only. Absent leaves the line as it stands. There is no DELETE — a line other modules may have billed against is deactivated, never removed.
 	Active *bool `json:"active,omitempty"`
+
+	// BudgetAmount Optional planning budget in the project's currency; greater than zero when set, and requires the project to have a currency.
+	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
+
+	// BudgetHours Optional planning budget in hours; greater than zero when set.
+	BudgetHours *float64 `json:"budgetHours,omitempty"`
 
 	// Code Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{1,10}$ and be unique within the project.
 	Code string `json:"code"`
@@ -63,10 +72,13 @@ type BillingLineRequest struct {
 
 // BillingLineResponse One billing line — a product variant plus a pricing rule (D9). The variant's product name, SKU and unit are embedded so a reader needs no products permission to render the line.
 type BillingLineResponse struct {
-	Active    bool      `json:"active"`
-	Code      string    `json:"code"`
-	CreatedAt time.Time `json:"createdAt"`
-	Id        int32     `json:"id"`
+	Active bool `json:"active"`
+
+	// BudgetHours The line's planning budget in hours. Planning data, visible with the line regardless of financial rights — unlike budgetAmount, which is inside pricing.
+	BudgetHours *float64  `json:"budgetHours,omitempty"`
+	Code        string    `json:"code"`
+	CreatedAt   time.Time `json:"createdAt"`
+	Id          int32     `json:"id"`
 
 	// Pricing Absent — not null — when the caller may not see the project's financial fields.
 	Pricing *BillingLinePricing `json:"pricing,omitempty"`

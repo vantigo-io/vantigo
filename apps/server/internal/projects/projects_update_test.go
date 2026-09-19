@@ -462,6 +462,145 @@ func TestPutProjectsById_InvalidBody_Returns400(t *testing.T) {
 	}
 }
 
+// Design §3.3's fixed-price guard: a percent milestone that is still
+// 'planned' or 'ready' resolves its amount from the project's fixed price, so
+// moving the project off fixed-price billing is refused while any exist. The
+// caller changed billingType, not fixedPriceAmount — clearing the amount is
+// only a side effect §4.1 already requires of that change — so the guard's
+// error is attributed there (fixedPriceGuardField, values.go).
+// milestones.go is Task 2's; the row is inserted directly (insertMilestone,
+// harness_test.go).
+func TestPutProjectsById_ChangingBillingTypeAwayFromFixedPrice_RefusedWhileOpenPercentMilestonesExist(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "FPG1000", "billingType": "fixed-price", "fixedPriceAmount": 100000, "currency": "NOK",
+	})
+	insertMilestone(t, h, project.Id, map[string]any{"name": "Kickoff", "percent": 50, "status": "planned"})
+
+	r := updateProject(t, c, project, map[string]any{"billingType": "time-and-materials", "fixedPriceAmount": nil})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	msgs := problem.Errors["billingType"]
+	if len(msgs) == 0 || !strings.Contains(msgs[0], "Kickoff") {
+		t.Errorf("errors = %v, want a message on 'billingType' naming 'Kickoff'", problem.Errors)
+	}
+
+	// The refused request changed nothing: the project is still fixed-price.
+	stored := modtest.One[string](t, h, `SELECT billing_type FROM projects.projects WHERE id = $1`, project.Id)
+	if stored != "fixed-price" {
+		t.Errorf("billing_type = %q, want the refused change to have left it 'fixed-price'", stored)
+	}
+}
+
+// The guard is decided from status and percent, not from billing type alone:
+// a milestone that has already been invoiced or was cancelled no longer
+// depends on the fixed price to resolve, so it does not block the move.
+func TestPutProjectsById_ChangingBillingTypeAwayFromFixedPrice_AllowedWhenMilestonesAreInvoicedOrCancelled(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "FPG1001", "billingType": "fixed-price", "fixedPriceAmount": 100000, "currency": "NOK",
+	})
+	insertMilestone(t, h, project.Id, map[string]any{"name": "Invoiced", "percent": 50, "status": "invoiced"})
+	insertMilestone(t, h, project.Id, map[string]any{"name": "Cancelled", "percent": 25, "status": "cancelled"})
+
+	updated := putProject(t, c, project, map[string]any{"billingType": "time-and-materials", "fixedPriceAmount": nil})
+	if updated.BillingType != "time-and-materials" {
+		t.Errorf("BillingType = %q, want 'time-and-materials'", updated.BillingType)
+	}
+}
+
+// Changing the price to another value is allowed even with open percent
+// milestones: they are not losing the price they depend on, only its value —
+// design §3.3 says only removing it is refused.
+func TestPutProjectsById_ChangingFixedPriceAmount_IsAllowedEvenWithOpenPercentMilestones(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "FPG1002", "billingType": "fixed-price", "fixedPriceAmount": 100000, "currency": "NOK",
+	})
+	insertMilestone(t, h, project.Id, map[string]any{"name": "Kickoff", "percent": 50, "status": "planned"})
+
+	updated := putProject(t, c, project, map[string]any{"fixedPriceAmount": 150000})
+	if updated.Financials == nil || updated.Financials.FixedPriceAmount == nil || *updated.Financials.FixedPriceAmount != 150000 {
+		t.Errorf("Financials = %+v, want fixedPriceAmount 150000", updated.Financials)
+	}
+}
+
+// The message names up to five milestones by name, in the project's own
+// order, and folds the rest into a count rather than growing without bound.
+func TestPutProjectsById_FixedPriceGuardMessage_NamesUpToFiveThenMore(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "FPG1003", "billingType": "fixed-price", "fixedPriceAmount": 100000, "currency": "NOK",
+	})
+	names := []string{"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"}
+	for i, name := range names {
+		insertMilestone(t, h, project.Id, map[string]any{
+			"name": name, "percent": 10, "status": "planned", "position": int32(i + 1),
+		})
+	}
+
+	r := updateProject(t, c, project, map[string]any{"billingType": "time-and-materials", "fixedPriceAmount": nil})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	msgs := problem.Errors["billingType"]
+	if len(msgs) == 0 {
+		t.Fatalf("errors = %v, want a message on 'billingType'", problem.Errors)
+	}
+	msg := msgs[0]
+	for _, name := range names[:5] {
+		if !strings.Contains(msg, name) {
+			t.Errorf("message %q, want %q named", msg, name)
+		}
+	}
+	if strings.Contains(msg, "Foxtrot") {
+		t.Errorf("message %q, want the sixth name folded into a count instead of named", msg)
+	}
+	if !strings.Contains(msg, "and 1 more") {
+		t.Errorf("message %q, want \"and 1 more\"", msg)
+	}
+}
+
+// Clearing fixedPriceAmount while billingType stays 'fixed-price' is already
+// refused by §4.1's own rule (validateFixedPriceAmount: a fixed-price project
+// must carry an amount), on the same field, before the milestone guard ever
+// runs — so this is provably not a path a valid request can reach today. It
+// is pinned down here rather than exercised through the guard, whose
+// fixedPriceAmount branch (fixedPriceGuardField, values.go) exists for the
+// day that rule loosens.
+func TestPutProjectsById_ClearingFixedPriceAmountAlone_IsAlreadyRefusedByFieldValidation(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{
+		"code": "FPG1004", "billingType": "fixed-price", "fixedPriceAmount": 100000, "currency": "NOK",
+	})
+	insertMilestone(t, h, project.Id, map[string]any{"name": "Kickoff", "percent": 50, "status": "planned"})
+
+	r := updateProject(t, c, project, map[string]any{"fixedPriceAmount": nil})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["fixedPriceAmount"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'fixedPriceAmount'", problem.Errors)
+	}
+}
+
 // manage-all manages every project, this one included, without holding a
 // role on it (design §5).
 func TestPutProjectsById_ManageAll_MayUpdate(t *testing.T) {

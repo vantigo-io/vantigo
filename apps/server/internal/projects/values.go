@@ -13,6 +13,7 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/projects/gen"
+	"github.com/vantigo-io/vantigo/server/internal/projects/store"
 )
 
 // This file is design §4.1's validation, one function per rule: each takes
@@ -405,6 +406,67 @@ func projectFromUpdate(body gen.ProjectUpdateRequest) gen.ProjectCreateRequest {
 		BudgetHours:      body.BudgetHours,
 		BudgetAmount:     body.BudgetAmount,
 		DefaultBillRate:  body.DefaultBillRate,
+	}
+}
+
+// currencyLockedByAmounts is D13's guard on the project update (design §3.3),
+// extended past a 'fixed' billing line to everything else that denominates
+// an amount in the project's currency: a line's own budget amount, and any
+// milestone that is not cancelled. It does not say which of the three there
+// are or how many: the fix — reprice or remove them first — is the same
+// regardless.
+func currencyLockedByAmounts() string {
+	return "A currency cannot be changed or cleared while the project has amounts in it: a 'fixed' billing line, a line budget, or a billing milestone"
+}
+
+// fixedPriceLockedByMilestones is design §3.3's fixed-price guard message. A
+// percent milestone that is still open resolves its amount from the
+// project's fixed price, so the message names it — up to five, by name, in
+// the project's own order — and folds the rest into a count, so a project
+// with dozens of milestones does not grow a message nobody can read.
+func fixedPriceLockedByMilestones(names []string) string {
+	const shown = 5
+	listed := names
+	suffix := ""
+	if len(names) > shown {
+		listed = names[:shown]
+		suffix = fmt.Sprintf(" and %d more", len(names)-shown)
+	}
+	quoted := make([]string, 0, len(listed))
+	for _, name := range listed {
+		quoted = append(quoted, "'"+name+"'")
+	}
+	return fmt.Sprintf(
+		"A fixed price cannot be removed while it still prices open milestones: %s%s",
+		strings.Join(quoted, ", "), suffix)
+}
+
+// fixedPriceGuardField is design §3.3's fixed-price guard, decided from the
+// project as it stood (before) and the update as validated (parsed): whether
+// it removes the fixed price a percent milestone depends on, and which field
+// of the request actually did it. A project that was not fixed-price already
+// has nothing the guard protects — a percent milestone can only exist while
+// the project has a fixed price (design §3.2) — so before is checked first.
+//
+// Two ways an update can remove the price: moving billingType away from
+// 'fixed-price' (which validateFixedPriceAmount already requires clearing
+// fixedPriceAmount to do, so the field the caller actually changed is
+// billingType), or clearing fixedPriceAmount while billingType stays
+// 'fixed-price' — unreachable through today's validation, which already
+// refuses a 'fixed-price' project with no amount on its own field, but
+// checked here all the same: a validation rule loosening later must not
+// silently reopen this guard's blind spot.
+func fixedPriceGuardField(before store.ProjectsProject, parsed parsedProject) (field string, trigger bool) {
+	if before.BillingType != billingFixedPrice {
+		return "", false
+	}
+	switch {
+	case parsed.BillingType != billingFixedPrice:
+		return "billingType", true
+	case !parsed.FixedPriceAmount.Valid:
+		return "fixedPriceAmount", true
+	default:
+		return "", false
 	}
 }
 

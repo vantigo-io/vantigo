@@ -8,6 +8,7 @@ sql:
     schema:
       - ../db/migrations/00008_projects_baseline.sql
       - ../db/migrations/00009_projects_tasks.sql
+      - ../db/migrations/00011_projects_milestones.sql
     queries: queries
     gen:
       go:

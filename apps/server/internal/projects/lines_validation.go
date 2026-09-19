@@ -127,6 +127,19 @@ func validateFixedNeedsCurrency(mode string, currency *string) string {
 	return fmt.Sprintf("A '%s' line is an amount in the project's currency; set a project currency first", pricingFixed)
 }
 
+// validateLineBudgetAmountNeedsCurrency is a line's own D13: a budget amount
+// is an amount in *some* currency, and the project's is the only one it may
+// be denominated in. It reports on `budgetAmount` itself, unlike a 'fixed'
+// line's rule (validateFixedNeedsCurrency, reported on `pricingMode`): a
+// budget is not tied to the pricing rule, so the field the caller actually
+// set is the field the fix belongs on.
+func validateLineBudgetAmountNeedsCurrency(amount *float64, currency *string) string {
+	if amount == nil || currency != nil {
+		return ""
+	}
+	return "A budget amount is in the project's currency; set a project currency first"
+}
+
 // variantNotFound is the `variantId` message for a variant products does not
 // know. Like a role assignment's unknown user, it is an ordinary field error
 // rather than a 404: the project exists and the caller may manage it, so what
@@ -148,15 +161,6 @@ func (s *server) variantExists(ctx context.Context, variantID int32) (bool, erro
 	return variant != nil, nil
 }
 
-// currencyLockedByFixedLine is D13's other half, reported on the project
-// update that would move the currency out from under a 'fixed' line, by
-// clearing it or by swapping it for another one. It does not say how many
-// lines there are: one is already the answer, and the fix — reprice those
-// lines first — is the same either way.
-func currencyLockedByFixedLine() string {
-	return fmt.Sprintf("A currency cannot be changed or cleared while the project has a '%s' billing line priced in it", pricingFixed)
-}
-
 // parsedLine is one validated line body, in the shape the write wants: the
 // code normalized, the amounts already pgtype.Numeric. Active is a pointer
 // because a PUT that leaves it out leaves the line as it stands, and a create
@@ -167,6 +171,8 @@ type parsedLine struct {
 	PricingMode     string
 	FixedAmount     pgtype.Numeric
 	DiscountPercent pgtype.Numeric
+	BudgetHours     pgtype.Numeric
+	BudgetAmount    pgtype.Numeric
 	Active          *bool
 }
 
@@ -205,6 +211,10 @@ func validateLine(body gen.BillingLineRequest, project store.ProjectsProject) (p
 		add("pricingMode", validateFixedNeedsCurrency(mode, project.Currency))
 	}
 
+	add("budgetHours", validatePositiveAmount("Budget hours", body.BudgetHours))
+	add("budgetAmount", validatePositiveAmount("A budget amount", body.BudgetAmount))
+	add("budgetAmount", validateLineBudgetAmountNeedsCurrency(body.BudgetAmount, project.Currency))
+
 	if len(errs) > 0 {
 		return parsedLine{}, errs, nil
 	}
@@ -217,6 +227,14 @@ func validateLine(body gen.BillingLineRequest, project store.ProjectsProject) (p
 	if err != nil {
 		return parsedLine{}, nil, err
 	}
+	budgetHours, err := numericFromFloatPtr(body.BudgetHours)
+	if err != nil {
+		return parsedLine{}, nil, err
+	}
+	budgetAmount, err := numericFromFloatPtr(body.BudgetAmount)
+	if err != nil {
+		return parsedLine{}, nil, err
+	}
 
 	return parsedLine{
 		Code:            code,
@@ -224,6 +242,8 @@ func validateLine(body gen.BillingLineRequest, project store.ProjectsProject) (p
 		PricingMode:     mode,
 		FixedAmount:     fixedAmount,
 		DiscountPercent: discountPercent,
+		BudgetHours:     budgetHours,
+		BudgetAmount:    budgetAmount,
 		Active:          body.Active,
 	}, nil, nil
 }
