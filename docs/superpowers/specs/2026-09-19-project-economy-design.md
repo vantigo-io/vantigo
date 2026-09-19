@@ -124,14 +124,29 @@ with `planned_date` for the alert and portfolio reads.
 | ready → invoiced, invoiced → ready (undo) | whoever has financial rights on the project |
 | planned/ready → cancelled, cancelled → planned | project manager, `projects:manage-all` |
 
+**A move re-asks the project's rules** against the locked project row. Any move
+whose target is not `cancelled` is refused (400 on `status`) when the project has
+no currency, or when the milestone is a percent and the project has no fixed
+price — with one exception: undoing an invoiced percent milestone on a project
+that no longer has a fixed price is never blocked (a credited invoice is a real
+event); the milestone is converted to an amount equal to what was invoiced.
+`capabilities` mirror the same function, so the API never offers a move it would
+refuse.
+
 Every move writes a project timeline entry (`milestone-ready`,
-`milestone-planned`, `milestone-invoiced`, `milestone-invoice-undone`,
-`milestone-cancelled`, `milestone-reopened`; also `milestone-added`,
-`milestone-removed`). Content edits (name, date, amount) are allowed while
+`milestone-planned`, `milestone-invoiced`, `milestone-invoice-undone` — flagged
+when it converted —, `milestone-cancelled`, `milestone-reopened`; also
+`milestone-added`, `milestone-removed`, and `milestone-changed` with the changed
+field names for a content edit). Payloads carry names, never amounts; a reorder
+writes nothing. Content edits (name, date, amount) are allowed while
 `planned` or `ready`; an invoiced or cancelled milestone is read-only until
 moved back. Delete only while `planned` and `ever_moved = false`.
 
-Milestones do not block a project being completed or cancelled.
+Milestones do not block a project being completed or cancelled. A cancelled
+milestone does not hold the currency or the fixed price in place, so it can
+outlive them: `currency` and `effectiveAmount` are optional on the response and
+absent exactly then. A row that cannot be priced never takes the plan down — it
+renders without an amount and stays out of the totals.
 
 ### 3.3 Guards on the project
 
@@ -140,7 +155,15 @@ Milestones do not block a project being completed or cancelled.
   error naming them. Changing the price is allowed; open percent milestones
   follow it.
 - The existing "currency cannot change/clear while amounts exist" check also
-  counts milestones and line budget amounts.
+  counts non-cancelled milestones and line budget amounts.
+- **Locking.** Every transaction that changes a project's currency, fixed price
+  or billing type, or writes a row whose validity depends on them (billing
+  lines, milestones), locks the project row (`FOR UPDATE`) first and decides
+  under it; other modules' directories are asked before the lock is taken,
+  never under it. That lock also serialises milestone ordering, so milestones
+  need no advisory lock of their own (tasks keep theirs).
+- The fixed-price refusal lands on `billingType` — the only reachable way to
+  leave a fixed price behind.
 
 ## 4. The actuals contract (delivery B)
 
@@ -210,7 +233,7 @@ Conventions as in the module today: 404 for outsiders, revision-guarded writes
 | `GET /milestones/{milestoneId}` | | financial rights |
 | `PUT /milestones/{milestoneId}` | full replace with `revision` | manager, `projects:manage-all` |
 | `DELETE /milestones/{milestoneId}` | only `planned` and never moved; else 400 | manager, `projects:manage-all` |
-| `PUT /milestones/{milestoneId}/position` | `{position, revision}`, per-project advisory lock | manager, `projects:manage-all` |
+| `PUT /milestones/{milestoneId}/position` | `{position, revision}`; checks the revision, does not bump it (a reorder must not stale every open form) | manager, `projects:manage-all` |
 | `POST /milestones/{milestoneId}/status` | `{status, revision, invoiceReference?, invoiceDate?}` | per the move table |
 | billing line create/update/read | gain `budgetHours`, `budgetAmount` (the latter inside the line's financial shaping) | unchanged |
 
@@ -218,6 +241,12 @@ Each milestone response carries `capabilities` (`canEdit`, `canDelete`,
 `canMarkReady`, `canMarkInvoiced`, `canUndoInvoiced`, `canCancel`, `canReopen`)
 so the UI never re-derives the rules. The project response's `capabilities`
 gains `canManageMilestones`.
+
+Access is a ladder: an outsider gets the bare 404 of an unknown id; a caller who
+sees the project without financial rights gets 403 on every milestone operation,
+reads included (the plan's existence is no secret to them, its amounts are);
+financial rights without managing allow reads and the invoiced step; managers do
+everything.
 
 "Financial rights on the project" is the module's existing rule: the project's
 manager, `projects:manage-all`, or `projects:view-financials` on a project the
@@ -261,7 +290,9 @@ can reveal a person's cost rate." Sensitive, delegable, in no default role.
 
 ### Economy tab (`/projects/$projectId/economy`, between Billing and Time)
 
-Shown to everyone who sees the project; content shaped by what the API returns.
+Shown to everyone who sees the project once delivery B lands; in delivery A, which
+has only the plan, the tab is shown to callers with `canSeeFinancials`. Content is
+shaped by what the API returns.
 
 1. **Headline figures** (A: ready to invoice, planned, invoiced; B adds budget
    used with its basis, value of work beside the fixed price, margin).
@@ -273,7 +304,8 @@ Shown to everyone who sees the project; content shaped by what the API returns.
 3. **Per-line table** (B): code, name, budget, mini bar, used %, remaining,
    over-budget flag; a "no line" row when it has hours. Line budgets are edited
    in the Billing tab's line form (A).
-4. **Invoice plan** (A): rows in manual order (drag to reorder for managers),
+4. **Invoice plan** (A): rows in manual order (managers reorder with up/down actions in the row
+   menu — keyboard-accessible, no new dependency; drag is later polish),
    name, planned date, amount ("30 % · 300 000 kr" for percent), status badge,
    overdue marker, actions from `capabilities`; mark-as-invoiced dialog
    (reference, date); cancelled rows struck through and last; footer totals with
