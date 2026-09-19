@@ -536,24 +536,24 @@ export interface components {
             active?: boolean | null;
             /**
              * Format: double
-             * @description Optional planning budget in the project's currency; greater than zero when set, and requires the project to have a currency.
+             * @description Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires the project to have a currency.
              */
             budgetAmount?: number | null;
             /**
              * Format: double
-             * @description Optional planning budget in hours; greater than zero when set.
+             * @description Optional planning budget in hours; greater than zero when set, at most two decimals.
              */
             budgetHours?: number | null;
             /** @description Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{1,10}$ and be unique within the project. */
             code: string;
             /**
              * Format: double
-             * @description Required and in (0, 100] when pricingMode is 'discount', absent otherwise.
+             * @description Required and in (0, 100] when pricingMode is 'discount', absent otherwise. At most two decimals.
              */
             discountPercent?: number | null;
             /**
              * Format: double
-             * @description Required and greater than zero when pricingMode is 'fixed', absent otherwise. A 'fixed' line needs the project to have a currency.
+             * @description Required and greater than zero when pricingMode is 'fixed', absent otherwise, and at most two decimals. A 'fixed' line needs the project to have a currency.
              */
             fixedAmount?: number | null;
             /** @description 'list', 'fixed' or 'discount'. */
@@ -931,9 +931,15 @@ export interface components {
         ProjectCreateRequest: {
             /** @description 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'. */
             billingType: string;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires a currency.
+             */
             budgetAmount?: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Optional planning budget in hours; greater than zero when set, at most two decimals.
+             */
             budgetHours?: number | null;
             /** @description Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{2,20}$ and be unique. */
             code: string;
@@ -946,7 +952,7 @@ export interface components {
             customerId?: number | null;
             /**
              * Format: double
-             * @description The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+             * @description The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set and at most two decimals; requires currency, since it is an amount.
              */
             defaultBillRate?: number | null;
             description?: string | null;
@@ -954,7 +960,7 @@ export interface components {
             endDate?: string | null;
             /**
              * Format: double
-             * @description Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+             * @description Required and greater than zero when billingType is 'fixed-price', absent otherwise. At most two decimals — every decimal column here is scale 2, so a third would be rounded away silently.
              */
             fixedPriceAmount?: number | null;
             name: string;
@@ -1419,9 +1425,15 @@ export interface components {
         ProjectUpdateRequest: {
             /** @description 'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'. */
             billingType: string;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires a currency.
+             */
             budgetAmount?: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description Optional planning budget in hours; greater than zero when set, at most two decimals.
+             */
             budgetHours?: number | null;
             /** @description Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{2,20}$ and be unique. */
             code: string;
@@ -1434,7 +1446,7 @@ export interface components {
             customerId?: number | null;
             /**
              * Format: double
-             * @description The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+             * @description The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set and at most two decimals; requires currency, since it is an amount.
              */
             defaultBillRate?: number | null;
             description?: string | null;
@@ -1442,7 +1454,7 @@ export interface components {
             endDate?: string | null;
             /**
              * Format: double
-             * @description Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+             * @description Required and greater than zero when billingType is 'fixed-price', absent otherwise. At most two decimals — every decimal column here is scale 2, so a third would be rounded away silently.
              */
             fixedPriceAmount?: number | null;
             name: string;

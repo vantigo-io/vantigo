@@ -48,12 +48,12 @@ components:
                     nullable: true
                     type: boolean
                 budgetAmount:
-                    description: Optional planning budget in the project's currency; greater than zero when set, and requires the project to have a currency.
+                    description: Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires the project to have a currency.
                     format: double
                     nullable: true
                     type: number
                 budgetHours:
-                    description: Optional planning budget in hours; greater than zero when set.
+                    description: Optional planning budget in hours; greater than zero when set, at most two decimals.
                     format: double
                     nullable: true
                     type: number
@@ -61,12 +61,12 @@ components:
                     description: Trimmed and upper-cased before validation and storage; must then match ^[A-Z0-9]{1,10}$ and be unique within the project.
                     type: string
                 discountPercent:
-                    description: Required and in (0, 100] when pricingMode is 'discount', absent otherwise.
+                    description: Required and in (0, 100] when pricingMode is 'discount', absent otherwise. At most two decimals.
                     format: double
                     nullable: true
                     type: number
                 fixedAmount:
-                    description: Required and greater than zero when pricingMode is 'fixed', absent otherwise. A 'fixed' line needs the project to have a currency.
+                    description: Required and greater than zero when pricingMode is 'fixed', absent otherwise, and at most two decimals. A 'fixed' line needs the project to have a currency.
                     format: double
                     nullable: true
                     type: number
@@ -704,10 +704,12 @@ components:
                     description: "'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'."
                     type: string
                 budgetAmount:
+                    description: Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires a currency.
                     format: double
                     nullable: true
                     type: number
                 budgetHours:
+                    description: Optional planning budget in hours; greater than zero when set, at most two decimals.
                     format: double
                     nullable: true
                     type: number
@@ -724,7 +726,7 @@ components:
                     nullable: true
                     type: integer
                 defaultBillRate:
-                    description: The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+                    description: The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set and at most two decimals; requires currency, since it is an amount.
                     format: double
                     nullable: true
                     type: number
@@ -736,7 +738,7 @@ components:
                     nullable: true
                     type: string
                 fixedPriceAmount:
-                    description: Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+                    description: Required and greater than zero when billingType is 'fixed-price', absent otherwise. At most two decimals — every decimal column here is scale 2, so a third would be rounded away silently.
                     format: double
                     nullable: true
                     type: number
@@ -1472,10 +1474,12 @@ components:
                     description: "'time-and-materials', 'fixed-price' or 'non-billable'. An internal project (no customerId) must be 'non-billable'."
                     type: string
                 budgetAmount:
+                    description: Optional planning budget in the project's currency; greater than zero when set, at most two decimals, and requires a currency.
                     format: double
                     nullable: true
                     type: number
                 budgetHours:
+                    description: Optional planning budget in hours; greater than zero when set, at most two decimals.
                     format: double
                     nullable: true
                     type: number
@@ -1492,7 +1496,7 @@ components:
                     nullable: true
                     type: integer
                 defaultBillRate:
-                    description: The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set; requires currency, since it is an amount.
+                    description: The rate a time entry bills at when no billing line sets one, in the project's currency. Greater than zero when set and at most two decimals; requires currency, since it is an amount.
                     format: double
                     nullable: true
                     type: number
@@ -1504,7 +1508,7 @@ components:
                     nullable: true
                     type: string
                 fixedPriceAmount:
-                    description: Required and greater than zero when billingType is 'fixed-price', absent otherwise.
+                    description: Required and greater than zero when billingType is 'fixed-price', absent otherwise. At most two decimals — every decimal column here is scale 2, so a third would be rounded away silently.
                     format: double
                     nullable: true
                     type: number

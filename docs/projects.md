@@ -300,7 +300,19 @@ and both bounded by the column that holds them — `budgetAmount` at 9 999 999 9
 (`numeric(12,2)`) and `budgetHours` at 99 999 999.99 (`numeric(10,2)`), so a number
 too wide is a field error rather than a database overflow the handler can only answer
 500 to. The project's own `fixedPriceAmount`, `budgetAmount`, `defaultBillRate` and
-`budgetHours` carry the same bounds, for the same reason. `budgetHours` is planning data — visible with the line to everyone who sees the
+`budgetHours` carry the same bounds, for the same reason.
+
+**At most two decimals, everywhere.** Every decimal column in this module is scale 2
+— `numeric(12,2)` for money, `numeric(10,2)` for hours, `numeric(5,2)` for a percent
+— so a third decimal is a digit the database would round away without saying so, and
+a project or a line priced at something the caller did not type is worse than a
+refusal. A milestone's `amount` and `percent` have always refused it; the project's
+`fixedPriceAmount`, `budgetAmount`, `defaultBillRate` and `budgetHours` and a line's
+`fixedAmount`, `discountPercent`, `budgetAmount` and `budgetHours` now do too, as a
+400 on the field ("A budget amount cannot have more than two decimals"). Two decimals
+and whole numbers are unaffected: the rule is about precision the column cannot keep.
+
+`budgetHours` is planning data — visible with the line to everyone who sees the
 project, deliberately outside the financial shaping above, exactly like the project's
 own `budgetHours`. `budgetAmount` is financial data: it lives inside the line's
 `pricing` object, so it is present only for a caller who may see the money, and it
