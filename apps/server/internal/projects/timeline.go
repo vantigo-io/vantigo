@@ -38,6 +38,15 @@ const (
 	eventLineChanged     = "line-changed"
 	eventLineDeactivated = "line-deactivated"
 	eventLineReactivated = "line-reactivated"
+
+	eventMilestoneAdded         = "milestone-added"
+	eventMilestoneRemoved       = "milestone-removed"
+	eventMilestoneReady         = "milestone-ready"
+	eventMilestonePlanned       = "milestone-planned"
+	eventMilestoneInvoiced      = "milestone-invoiced"
+	eventMilestoneInvoiceUndone = "milestone-invoice-undone"
+	eventMilestoneCancelled     = "milestone-cancelled"
+	eventMilestoneReopened      = "milestone-reopened"
 )
 
 // recordEvent inserts one generated timeline entry. The actor's display name
@@ -215,6 +224,21 @@ func recordLineUpdated(ctx context.Context, q *store.Queries, now time.Time, d l
 		return recordEvent(ctx, q, now, projectID, eventLineReactivated, map[string]any{"code": code}, by)
 	}
 	return nil
+}
+
+// recordMilestoneEvent writes one of the eight milestone entries (design
+// §3.2). The payload is the milestone's id and the name it carried at that
+// moment, and never an amount: a milestone is financial data the project's
+// members may not see (D12), while the timeline is read by everyone who can
+// see the project — so a timeline entry that named a figure would have to be
+// shaped per reader, which a paged, exportable history cannot be.
+//
+// The name is stored rather than resolved on read for the reason every
+// timeline payload here stores what it saw: a milestone renamed or deleted
+// afterwards must not rewrite what the history says happened.
+func recordMilestoneEvent(ctx context.Context, q *store.Queries, now time.Time, eventType string, m store.ProjectsBillingMilestone, by actor) error {
+	payload := map[string]any{"milestoneId": m.ID, "name": m.Name}
+	return recordEvent(ctx, q, now, m.ProjectID, eventType, payload, by)
 }
 
 // projectDiff is what one update actually changed, split the way the

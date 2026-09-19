@@ -7,7 +7,34 @@ package store
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const acquireMilestoneOrderLock = `-- name: AcquireMilestoneOrderLock :exec
+SELECT pg_advisory_xact_lock($1::integer, $2::integer)
+`
+
+type AcquireMilestoneOrderLockParams struct {
+	LockClass int32
+	ProjectID int32
+}
+
+// AcquireMilestoneOrderLock is the serialisation point of every write that
+// decides a position inside one project: a create appending after the last
+// milestone, a move renumbering the plan, and a delete closing the gap it
+// leaves. A row lock cannot cover a create — the number two concurrent
+// creates race for is the gap after the last row, and a gap has no row to
+// lock — so the lock is taken on the project instead, for the rest of the
+// transaction. It is a two-argument advisory lock in class 10 (tasks use 9),
+// which is a lock space of its own: it can never collide with identity's
+// single-argument ones, and it never substitutes for the project's row lock.
+func (q *Queries) AcquireMilestoneOrderLock(ctx context.Context, arg AcquireMilestoneOrderLockParams) error {
+	_, err := q.db.Exec(ctx, acquireMilestoneOrderLock, arg.LockClass, arg.ProjectID)
+	return err
+}
 
 const countNonCancelledMilestones = `-- name: CountNonCancelledMilestones :one
 
@@ -15,9 +42,18 @@ SELECT count(*) FROM projects.billing_milestones
 WHERE project_id = $1 AND status <> 'cancelled'
 `
 
-// This file starts as the two reads the project's own guards need (design
-// §3.3), decided against milestone rows before there is any milestone
-// operation to create them through — Task 2 adds milestones' own CRUD here.
+// The billing milestone queries (design §3.2, §3.3). Three things run through
+// them. A milestone is addressed by its own id, not by its project's, so the
+// read that resolves "which project is this about" comes first. Every write
+// takes the *project's* row lock before anything else (LockProject,
+// queries/projects.sql), because what a milestone may be — it needs a
+// currency, and a percent one needs a fixed price — is decided from the
+// project, and only one lock held by every such writer serialises them.
+// Ordering is a third lock again (AcquireMilestoneOrderLock), taken last and
+// only by the writes that decide a position.
+//
+// The file opens with the two reads the project's own guards need, which came
+// before there was any milestone operation to create rows through.
 // CountNonCancelledMilestones is D13's currency guard, extended to
 // milestones: any milestone that is not cancelled carries an amount in the
 // project's currency (a flat one, or a percent of the fixed price, itself in
@@ -28,6 +64,128 @@ func (q *Queries) CountNonCancelledMilestones(ctx context.Context, projectID int
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const deleteMilestone = `-- name: DeleteMilestone :execrows
+DELETE FROM projects.billing_milestones WHERE id = $1
+`
+
+// DeleteMilestone removes one milestone. Only a milestone that is still
+// planned and has never moved reaches it (design §3.2) — anything that was
+// ever ready, invoiced or cancelled is cancelled rather than removed, so the
+// plan keeps the record. The row count is what decides the 404: two deletes
+// racing must not both answer 204.
+func (q *Queries) DeleteMilestone(ctx context.Context, id int32) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMilestone, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getMilestone = `-- name: GetMilestone :one
+SELECT id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1
+`
+
+// GetMilestone fetches one milestone by id. It is the read that resolves
+// which project a /projects/milestones/{milestoneId} request is about, and an
+// unknown milestone and a milestone on an invisible project answer the same
+// bare 404, so the row is loaded first and discarded after — tasks' GetTask
+// does exactly this for the same reason.
+func (q *Queries) GetMilestone(ctx context.Context, id int32) (ProjectsBillingMilestone, error) {
+	row := q.db.QueryRow(ctx, getMilestone, id)
+	var i ProjectsBillingMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.PlannedDate,
+		&i.Amount,
+		&i.Percent,
+		&i.Status,
+		&i.Position,
+		&i.ReadyAt,
+		&i.ReadyByUserID,
+		&i.InvoicedAt,
+		&i.InvoicedByUserID,
+		&i.InvoiceReference,
+		&i.InvoiceDate,
+		&i.InvoicedAmount,
+		&i.EverMoved,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertMilestone = `-- name: InsertMilestone :one
+INSERT INTO projects.billing_milestones (
+    project_id, name, description, planned_date, amount, percent, position,
+    created_by_user_id, created_at, updated_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7,
+    $8, $9::timestamptz, $9::timestamptz
+)
+RETURNING id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+`
+
+type InsertMilestoneParams struct {
+	ProjectID       int32
+	Name            string
+	Description     *string
+	PlannedDate     pgtype.Date
+	Amount          pgtype.Numeric
+	Percent         pgtype.Numeric
+	Position        int32
+	CreatedByUserID uuid.UUID
+	Now             time.Time
+}
+
+// InsertMilestone creates one milestone. created_at and updated_at are the
+// same instant on creation, supplied by the caller from Deps.Clock(); status
+// and revision take the column defaults ('planned', 1), because a milestone
+// is always created planned and never carries a revision yet; position is the
+// number computed under the project's ordering lock.
+func (q *Queries) InsertMilestone(ctx context.Context, arg InsertMilestoneParams) (ProjectsBillingMilestone, error) {
+	row := q.db.QueryRow(ctx, insertMilestone,
+		arg.ProjectID,
+		arg.Name,
+		arg.Description,
+		arg.PlannedDate,
+		arg.Amount,
+		arg.Percent,
+		arg.Position,
+		arg.CreatedByUserID,
+		arg.Now,
+	)
+	var i ProjectsBillingMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.PlannedDate,
+		&i.Amount,
+		&i.Percent,
+		&i.Status,
+		&i.Position,
+		&i.ReadyAt,
+		&i.ReadyByUserID,
+		&i.InvoicedAt,
+		&i.InvoicedByUserID,
+		&i.InvoiceReference,
+		&i.InvoiceDate,
+		&i.InvoicedAmount,
+		&i.EverMoved,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const listOpenPercentMilestoneNames = `-- name: ListOpenPercentMilestoneNames :many
@@ -62,4 +220,314 @@ func (q *Queries) ListOpenPercentMilestoneNames(ctx context.Context, projectID i
 		return nil, err
 	}
 	return items, nil
+}
+
+const listProjectMilestones = `-- name: ListProjectMilestones :many
+SELECT id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones
+WHERE project_id = $1
+ORDER BY (status = 'cancelled'), position, id
+`
+
+// ListProjectMilestones is a whole project's plan in the order it is read:
+// the manual position, with cancelled milestones after everything else
+// whatever number they carry. A cancelled milestone keeps its position — it
+// is still part of the 1..n the plan is renumbered as — and only sorts last,
+// because what it says is history rather than something still to bill.
+func (q *Queries) ListProjectMilestones(ctx context.Context, projectID int32) ([]ProjectsBillingMilestone, error) {
+	rows, err := q.db.Query(ctx, listProjectMilestones, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsBillingMilestone
+	for rows.Next() {
+		var i ProjectsBillingMilestone
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Description,
+			&i.PlannedDate,
+			&i.Amount,
+			&i.Percent,
+			&i.Status,
+			&i.Position,
+			&i.ReadyAt,
+			&i.ReadyByUserID,
+			&i.InvoicedAt,
+			&i.InvoicedByUserID,
+			&i.InvoiceReference,
+			&i.InvoiceDate,
+			&i.InvoicedAmount,
+			&i.EverMoved,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockMilestone = `-- name: LockMilestone :one
+SELECT id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones WHERE id = $1 FOR UPDATE
+`
+
+// LockMilestone is GetMilestone with the row held for the rest of the
+// transaction. Every write decides against the row it returns rather than
+// against the one the handler read: whether this request is the move that
+// freezes the amount, whether the revision the caller sent is still current,
+// and whether the milestone is still editable at all are all questions
+// another writer can answer differently in between. It is taken *after* the
+// project's own lock, never before, so two writers that hold both can only
+// queue and never deadlock.
+func (q *Queries) LockMilestone(ctx context.Context, id int32) (ProjectsBillingMilestone, error) {
+	row := q.db.QueryRow(ctx, lockMilestone, id)
+	var i ProjectsBillingMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.PlannedDate,
+		&i.Amount,
+		&i.Percent,
+		&i.Status,
+		&i.Position,
+		&i.ReadyAt,
+		&i.ReadyByUserID,
+		&i.InvoicedAt,
+		&i.InvoicedByUserID,
+		&i.InvoiceReference,
+		&i.InvoiceDate,
+		&i.InvoicedAmount,
+		&i.EverMoved,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const maxMilestonePosition = `-- name: MaxMilestonePosition :one
+SELECT coalesce(max(position), 0)::integer FROM projects.billing_milestones
+WHERE project_id = $1
+`
+
+// MaxMilestonePosition is the number a create appends after, 0 for the first
+// milestone of a project.
+func (q *Queries) MaxMilestonePosition(ctx context.Context, projectID int32) (int32, error) {
+	row := q.db.QueryRow(ctx, maxMilestonePosition, projectID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const milestoneIDs = `-- name: MilestoneIDs :many
+SELECT id FROM projects.billing_milestones
+WHERE project_id = $1
+ORDER BY position, id
+FOR UPDATE
+`
+
+// MilestoneIDs is one project's plan in its current order, every row held for
+// the rest of the transaction. A move reorders this list in Go and writes it
+// back with RenumberMilestones, so what it renumbers is exactly what it read.
+// The order is the stored one, cancelled milestones in their own place rather
+// than at the end: the listing moves them for the reader, the numbering does
+// not move them at all.
+func (q *Queries) MilestoneIDs(ctx context.Context, projectID int32) ([]int32, error) {
+	rows, err := q.db.Query(ctx, milestoneIDs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int32
+	for rows.Next() {
+		var id int32
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const renumberMilestones = `-- name: RenumberMilestones :exec
+UPDATE projects.billing_milestones m
+SET position = v.ord::integer, updated_at = $1::timestamptz
+FROM unnest($2::integer[]) WITH ORDINALITY AS v(id, ord)
+WHERE m.id = v.id AND m.position <> v.ord::integer
+`
+
+type RenumberMilestonesParams struct {
+	Now time.Time
+	Ids []int32
+}
+
+// RenumberMilestones writes a plan's order back as 1..n in one statement: ids
+// is the plan in its new order and WITH ORDINALITY is the number each one
+// takes. A row already carrying its number is left alone, so a move that only
+// reordered part of the plan does not touch the rest of it — and no
+// revision moves, because where a milestone sits is not a field of its form.
+func (q *Queries) RenumberMilestones(ctx context.Context, arg RenumberMilestonesParams) error {
+	_, err := q.db.Exec(ctx, renumberMilestones, arg.Now, arg.Ids)
+	return err
+}
+
+const updateMilestone = `-- name: UpdateMilestone :one
+UPDATE projects.billing_milestones SET
+    name = $1,
+    description = $2,
+    planned_date = $3,
+    amount = $4,
+    percent = $5,
+    revision = revision + 1,
+    updated_at = $6::timestamptz
+WHERE id = $7
+RETURNING id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+`
+
+type UpdateMilestoneParams struct {
+	Name        string
+	Description *string
+	PlannedDate pgtype.Date
+	Amount      pgtype.Numeric
+	Percent     pgtype.Numeric
+	Now         time.Time
+	ID          int32
+}
+
+// UpdateMilestone applies one content edit. It carries no revision predicate:
+// the handler holds the row under LockMilestone and has already compared the
+// revision against it, which is a comparison nothing can win a race against
+// while that lock is held — and it lets the 409 name the current revision
+// from the locked row rather than from a second read taken after a rollback.
+// What the edit does not touch is where the milestone sits and what status it
+// is in: position is the move's and status is the status operation's.
+func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams) (ProjectsBillingMilestone, error) {
+	row := q.db.QueryRow(ctx, updateMilestone,
+		arg.Name,
+		arg.Description,
+		arg.PlannedDate,
+		arg.Amount,
+		arg.Percent,
+		arg.Now,
+		arg.ID,
+	)
+	var i ProjectsBillingMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.PlannedDate,
+		&i.Amount,
+		&i.Percent,
+		&i.Status,
+		&i.Position,
+		&i.ReadyAt,
+		&i.ReadyByUserID,
+		&i.InvoicedAt,
+		&i.InvoicedByUserID,
+		&i.InvoiceReference,
+		&i.InvoiceDate,
+		&i.InvoicedAmount,
+		&i.EverMoved,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateMilestoneStatus = `-- name: UpdateMilestoneStatus :one
+UPDATE projects.billing_milestones SET
+    status = $1,
+    ready_at = $2,
+    ready_by_user_id = $3,
+    invoiced_at = $4,
+    invoiced_by_user_id = $5,
+    invoice_reference = $6,
+    invoice_date = $7,
+    invoiced_amount = $8,
+    ever_moved = true,
+    revision = revision + 1,
+    updated_at = $9::timestamptz
+WHERE id = $10
+RETURNING id, project_id, name, description, planned_date, amount, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at
+`
+
+type UpdateMilestoneStatusParams struct {
+	Status           string
+	ReadyAt          *time.Time
+	ReadyByUserID    *uuid.UUID
+	InvoicedAt       *time.Time
+	InvoicedByUserID *uuid.UUID
+	InvoiceReference *string
+	InvoiceDate      pgtype.Date
+	InvoicedAmount   pgtype.Numeric
+	Now              time.Time
+	ID               int32
+}
+
+// UpdateMilestoneStatus applies one status move. Every stamp is passed
+// explicitly rather than computed in SQL, because which of them a move sets
+// and which it clears is design §3.2's table, and that table is decided in Go
+// against the locked row: → ready stamps ready_at/by and ready → planned
+// clears them, → invoiced stamps invoiced_at/by and freezes invoiced_amount
+// while the undo clears those and the reference and the date with them.
+//
+// ever_moved is set by every move and never unset: it is what tells a
+// milestone that came back to 'planned' from one that was never anything
+// else, and only the second may be deleted.
+func (q *Queries) UpdateMilestoneStatus(ctx context.Context, arg UpdateMilestoneStatusParams) (ProjectsBillingMilestone, error) {
+	row := q.db.QueryRow(ctx, updateMilestoneStatus,
+		arg.Status,
+		arg.ReadyAt,
+		arg.ReadyByUserID,
+		arg.InvoicedAt,
+		arg.InvoicedByUserID,
+		arg.InvoiceReference,
+		arg.InvoiceDate,
+		arg.InvoicedAmount,
+		arg.Now,
+		arg.ID,
+	)
+	var i ProjectsBillingMilestone
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.PlannedDate,
+		&i.Amount,
+		&i.Percent,
+		&i.Status,
+		&i.Position,
+		&i.ReadyAt,
+		&i.ReadyByUserID,
+		&i.InvoicedAt,
+		&i.InvoicedByUserID,
+		&i.InvoiceReference,
+		&i.InvoiceDate,
+		&i.InvoicedAmount,
+		&i.EverMoved,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

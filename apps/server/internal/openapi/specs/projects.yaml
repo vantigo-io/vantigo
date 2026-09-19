@@ -138,6 +138,305 @@ components:
                 - createdAt
                 - updatedAt
             type: object
+        BillingMilestoneCapabilities:
+            description: What the calling user may do with this milestone right now, so the frontend never re-derives the status flow. Marking invoiced and undoing it need financial rights on the project; everything else is the project's manager.
+            properties:
+                canCancel:
+                    description: Whether the milestone may be cancelled, which is what a manager does with one that is no longer going to be billed.
+                    type: boolean
+                canDelete:
+                    description: Whether the milestone may be deleted. Only one that is still planned and has never changed status may be; anything else is cancelled instead.
+                    type: boolean
+                canEdit:
+                    description: Whether the milestone's name, date and amount may be changed. An invoiced or a cancelled milestone is read-only until it is moved back.
+                    type: boolean
+                canMarkInvoiced:
+                    type: boolean
+                canMarkPlanned:
+                    description: Whether a milestone that is ready may be put back to planned.
+                    type: boolean
+                canMarkReady:
+                    type: boolean
+                canReopen:
+                    description: Whether a cancelled milestone may be put back to planned.
+                    type: boolean
+                canUndoInvoiced:
+                    description: Whether the invoicing may be undone, which puts the milestone back to ready and clears the reference, the date and the frozen amount.
+                    type: boolean
+            required:
+                - canEdit
+                - canDelete
+                - canMarkReady
+                - canMarkPlanned
+                - canMarkInvoiced
+                - canUndoInvoiced
+                - canCancel
+                - canReopen
+            type: object
+        BillingMilestonePerson:
+            description: Who marked a milestone ready or invoiced, named as the user directory knows them now. An account disabled since keeps the stamp and renders inactive.
+            properties:
+                active:
+                    type: boolean
+                displayName:
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - active
+            type: object
+        BillingMilestonePlanResponse:
+            description: A project's invoice plan — its billing milestones in manual order, cancelled ones last, and what they add up to.
+            properties:
+                milestones:
+                    items:
+                        $ref: '#/components/schemas/BillingMilestoneResponse'
+                    type: array
+                totals:
+                    $ref: '#/components/schemas/BillingMilestonePlanTotals'
+            required:
+                - milestones
+                - totals
+            type: object
+        BillingMilestonePlanTotals:
+            description: What a project's milestones add up to, one sum of effective amounts per status. Totals never block a save; they are what the plan is read against.
+            properties:
+                cancelled:
+                    description: Cancelled milestones bill nothing, so this sum counts against neither the fixed price nor anything else. It is reported so the plan can show what was dropped.
+                    format: double
+                    type: number
+                currency:
+                    description: The project's currency, which every amount here is in. Absent when the project has none — which is also when it can have no milestones.
+                    nullable: true
+                    type: string
+                fixedPrice:
+                    description: The project's fixed price, present only on a fixed-price project. It is what unplanned and overPlanned are measured against.
+                    format: double
+                    nullable: true
+                    type: number
+                invoiced:
+                    format: double
+                    type: number
+                overPlanned:
+                    description: How much the plan exceeds the fixed price by, present only on a fixed-price project the plan is over. Never present together with unplanned.
+                    format: double
+                    nullable: true
+                    type: number
+                planned:
+                    description: The sum of the milestones still in 'planned'. Ready and invoiced ones have their own totals; this is not a running total of the three.
+                    format: double
+                    type: number
+                ready:
+                    format: double
+                    type: number
+                unplanned:
+                    description: How much of the fixed price planned + ready + invoiced does not cover, present only on a fixed-price project with something left to plan.
+                    format: double
+                    nullable: true
+                    type: number
+            required:
+                - planned
+                - ready
+                - invoiced
+                - cancelled
+            type: object
+        BillingMilestonePositionRequest:
+            description: Where a milestone should sit in the plan. The project's milestones are renumbered 1..n in one transaction, so the order never has a gap. Cancelled milestones keep their number and are still listed last.
+            properties:
+                position:
+                    description: The 1-based place in the plan. A position past the end means last.
+                    format: int32
+                    type: integer
+                revision:
+                    description: The revision the caller read the milestone at.
+                    format: int32
+                    type: integer
+            required:
+                - position
+                - revision
+            type: object
+        BillingMilestoneRequest:
+            description: A billing milestone as it should stand. Exactly one of amount and percent is carried — a percent is a share of the project's fixed price and needs the project to have one, and either way the project needs a currency.
+            properties:
+                amount:
+                    description: A flat amount in the project's currency; greater than zero and at most 9999999999.99. Exactly one of amount and percent.
+                    format: double
+                    nullable: true
+                    type: number
+                description:
+                    description: At most 2000 characters once trimmed; a blank one is stored as none.
+                    nullable: true
+                    type: string
+                name:
+                    description: Trimmed before validation and storage; never blank, at most 200 characters.
+                    type: string
+                percent:
+                    description: A share of the project's fixed price, greater than zero and at most 100, with at most two decimals. Exactly one of amount and percent.
+                    format: double
+                    nullable: true
+                    type: number
+                plannedDate:
+                    description: The day the milestone is expected to be billed. A plain calendar date, compared with the server's own UTC date to decide whether the milestone is overdue.
+                    format: date
+                    nullable: true
+                    type: string
+            required:
+                - name
+            type: object
+        BillingMilestoneResponse:
+            description: One billing milestone — a named step of the invoice plan, priced either as a flat amount or as a share of the project's fixed price. Every milestone operation needs financial rights on the project, so nothing here is shaped out per caller.
+            properties:
+                amount:
+                    description: The flat amount as entered, absent on a percent milestone.
+                    format: double
+                    nullable: true
+                    type: number
+                capabilities:
+                    $ref: '#/components/schemas/BillingMilestoneCapabilities'
+                createdAt:
+                    format: date-time
+                    type: string
+                currency:
+                    description: The project's currency, which every amount on the milestone is in. Absent only when the project no longer has one, which only a cancelled milestone can outlive — the currency cannot be cleared while any milestone that still bills something exists.
+                    nullable: true
+                    type: string
+                description:
+                    nullable: true
+                    type: string
+                effectiveAmount:
+                    description: What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not.
+                    format: double
+                    type: number
+                id:
+                    format: int32
+                    type: integer
+                invoiceDate:
+                    description: The date on the invoice, optional and only ever set while the milestone is invoiced.
+                    format: date
+                    nullable: true
+                    type: string
+                invoiceReference:
+                    description: The reference of the invoice this milestone was billed on, optional and only ever set while the milestone is invoiced. At most 100 characters once trimmed.
+                    nullable: true
+                    type: string
+                invoicedAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                invoicedBy:
+                    allOf:
+                        - $ref: '#/components/schemas/BillingMilestonePerson'
+                    description: Absent until the milestone is invoiced, and cleared again when the invoicing is undone.
+                name:
+                    type: string
+                overdue:
+                    description: Whether the milestone is still planned or ready and its planned date has passed, compared as plain UTC dates against the server's clock.
+                    type: boolean
+                percent:
+                    description: The share of the fixed price as entered, absent on an amount milestone.
+                    format: double
+                    nullable: true
+                    type: number
+                plannedDate:
+                    format: date
+                    nullable: true
+                    type: string
+                position:
+                    description: The milestone's manual place in the project's plan, 1-based and without gaps.
+                    format: int32
+                    type: integer
+                projectId:
+                    format: int32
+                    type: integer
+                readyAt:
+                    format: date-time
+                    nullable: true
+                    type: string
+                readyBy:
+                    allOf:
+                        - $ref: '#/components/schemas/BillingMilestonePerson'
+                    description: Absent until the milestone is marked ready, and cleared again when it goes back to planned.
+                revision:
+                    description: The revision every write against this milestone must carry.
+                    format: int32
+                    type: integer
+                status:
+                    description: "'planned', 'ready', 'invoiced' or 'cancelled'."
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - projectId
+                - name
+                - effectiveAmount
+                - status
+                - position
+                - overdue
+                - revision
+                - createdAt
+                - updatedAt
+                - capabilities
+            type: object
+        BillingMilestoneStatusRequest:
+            description: One move through the milestone's status flow — planned to ready to invoiced, cancelled from either open status and reopened from cancelled, and the invoicing undone back to ready. Any other pair is refused by naming both statuses.
+            properties:
+                invoiceDate:
+                    description: Accepted only on a move to 'invoiced'.
+                    format: date
+                    nullable: true
+                    type: string
+                invoiceReference:
+                    description: Accepted only on a move to 'invoiced'; at most 100 characters once trimmed.
+                    nullable: true
+                    type: string
+                revision:
+                    description: The revision the caller read the milestone at.
+                    format: int32
+                    type: integer
+                status:
+                    description: "'planned', 'ready', 'invoiced' or 'cancelled'."
+                    type: string
+            required:
+                - status
+                - revision
+            type: object
+        BillingMilestoneUpdateRequest:
+            description: A milestone as it should stand afterwards, carrying the revision it was read at. Where it sits in the plan is not part of it — position is the move's — so an edit saved from an open form cannot undo somebody's reordering.
+            properties:
+                amount:
+                    description: A flat amount in the project's currency; greater than zero and at most 9999999999.99. Exactly one of amount and percent.
+                    format: double
+                    nullable: true
+                    type: number
+                description:
+                    description: At most 2000 characters once trimmed; a blank one is stored as none.
+                    nullable: true
+                    type: string
+                name:
+                    description: Trimmed before validation and storage; never blank, at most 200 characters.
+                    type: string
+                percent:
+                    description: A share of the project's fixed price, greater than zero and at most 100, with at most two decimals. Exactly one of amount and percent.
+                    format: double
+                    nullable: true
+                    type: number
+                plannedDate:
+                    format: date
+                    nullable: true
+                    type: string
+                revision:
+                    description: The revision the caller read the milestone at.
+                    format: int32
+                    type: integer
+            required:
+                - name
+                - revision
+            type: object
         ChecklistItemRequest:
             description: One thing to tick off a task. The text is trimmed before validation and storage; the item is appended after the ones already there, open.
             properties:
@@ -375,12 +674,16 @@ components:
                     type: boolean
                 canManage:
                     type: boolean
+                canManageMilestones:
+                    description: Whether the caller may add, edit, reorder, cancel and reopen this project's billing milestones. The project's managers, and nobody else — a holder of projects:view-financials reads the plan and marks milestones invoiced, but does not write it.
+                    type: boolean
                 canSeeFinancials:
                     type: boolean
             required:
                 - canManage
                 - canContribute
                 - canSeeFinancials
+                - canManageMilestones
             type: object
         ProjectCodeSuggestionResponse:
             description: A project code nobody has used yet, derived from the customer and project names (design §4.2). The caller may type anything valid instead.
@@ -1147,6 +1450,235 @@ paths:
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
+    /api/v1/projects/milestones/{milestoneId}:
+        delete:
+            operationId: deleteProjectsMilestonesByMilestoneId
+            parameters:
+                - in: path
+                  name: milestoneId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content — the milestone is gone and the plan has been renumbered.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the milestone is not planned, or it has changed status at least once; cancel it instead.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all.
+                "404":
+                    description: Not Found — the milestone does not exist, or it belongs to a project the caller cannot see.
+            summary: Delete a billing milestone
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        get:
+            operationId: getProjectsMilestonesByMilestoneId
+            parameters:
+                - in: path
+                  name: milestoneId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingMilestoneResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but may not see its financial fields.
+                "404":
+                    description: Not Found — the milestone does not exist, or it belongs to a project the caller cannot see.
+            summary: Get a billing milestone by id
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        put:
+            operationId: putProjectsMilestonesByMilestoneId
+            parameters:
+                - in: path
+                  name: milestoneId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BillingMilestoneUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingMilestoneResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the body failed a rule, or the milestone is invoiced or cancelled and so read-only.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all.
+                "404":
+                    description: Not Found — the milestone does not exist, or it belongs to a project the caller cannot see.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the supplied revision is not the milestone's current one.
+            summary: Update a billing milestone
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/milestones/{milestoneId}/position:
+        put:
+            operationId: putProjectsMilestonesByMilestoneIdPosition
+            parameters:
+                - in: path
+                  name: milestoneId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BillingMilestonePositionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingMilestoneResponse'
+                    description: OK — the milestone where it now sits; the project's milestones have been renumbered 1..n.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all.
+                "404":
+                    description: Not Found — the milestone does not exist, or it belongs to a project the caller cannot see.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the supplied revision is not the milestone's current one.
+            summary: Move a billing milestone in the plan
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/milestones/{milestoneId}/status:
+        post:
+            operationId: postProjectsMilestonesByMilestoneIdStatus
+            parameters:
+                - in: path
+                  name: milestoneId
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BillingMilestoneStatusRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingMilestoneResponse'
+                    description: OK — the milestone in its new status, with whatever stamps the move set or cleared.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the status is not one of the four, the move is not one the flow allows, or an invoice reference or date was sent on a move other than to 'invoiced'.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — marking invoiced and undoing it need financial rights on the project; every other move needs the caller to be its manager.
+                "404":
+                    description: Not Found — the milestone does not exist, or it belongs to a project the caller cannot see.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the supplied revision is not the milestone's current one.
+            summary: Move a billing milestone through its status flow
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
     /api/v1/projects/my-tasks:
         get:
             operationId: getProjectsMyTasks
@@ -1455,6 +1987,87 @@ paths:
                                 $ref: common.yaml#/components/schemas/ProblemDetails
                     description: Conflict — the products module is not enabled, so this installation has no billing lines.
             summary: Change a project's billing line
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/{id}/milestones:
+        get:
+            operationId: getProjectsByIdMilestones
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingMilestonePlanResponse'
+                    description: OK — the plan in position order, cancelled milestones last, with its totals.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but may not see its financial fields.
+                "404":
+                    description: Not Found — no such project, or one the caller cannot see.
+            summary: List a project's billing milestones
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+        post:
+            operationId: postProjectsByIdMilestones
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/BillingMilestoneRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingMilestoneResponse'
+                    description: Created — the milestone, appended last in the plan and planned.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller can see the project but is not its manager, or may not see its financial fields at all.
+                "404":
+                    description: Not Found — no such project, or one the caller cannot see.
+            summary: Add a billing milestone to a project
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access

@@ -8,7 +8,7 @@ const values = (
   capabilities: Parameters<typeof visibleProjectDetailTabs>[2],
 ) => visibleProjectDetailTabs(enabledModules, permissions, capabilities).map((tab) => tab.value);
 
-const canSeeEverything = { canManage: true, canContribute: true, canSeeFinancials: true };
+const canSeeEverything = { canManage: true, canContribute: true, canSeeFinancials: true, canManageMilestones: true };
 
 describe("project detail tab visibility", () => {
   it("shows every tab to a caller who may see the project's financial fields", () => {
@@ -35,11 +35,14 @@ describe("project detail tab visibility", () => {
   // A viewer gets the tab and a read-only board; the package decides that from
   // canContribute, not the host.
   it("shows the tasks tab to anyone who sees the project, financials or not", () => {
-    expect(values(moduleKeys, [], { canManage: false, canContribute: false, canSeeFinancials: false })).toEqual([
-      "overview",
-      "tasks",
-      "people",
-    ]);
+    expect(
+      values(moduleKeys, [], {
+        canManage: false,
+        canContribute: false,
+        canSeeFinancials: false,
+        canManageMilestones: false,
+      }),
+    ).toEqual(["overview", "tasks", "people"]);
   });
 
   // The capability, not a permission, decides: the backend shapes the
@@ -47,12 +50,14 @@ describe("project detail tab visibility", () => {
   // who may see a project without its amounts gets no Billing tab — and, if
   // they paste the URL anyway, the package's own forbidden state.
   it("hides the billing tab without canSeeFinancials on this project", () => {
-    expect(values(moduleKeys, ["*"], { canManage: true, canContribute: true, canSeeFinancials: false })).toEqual([
-      "overview",
-      "tasks",
-      "people",
-      "time",
-    ]);
+    expect(
+      values(moduleKeys, ["*"], {
+        canManage: true,
+        canContribute: true,
+        canSeeFinancials: false,
+        canManageMilestones: true,
+      }),
+    ).toEqual(["overview", "tasks", "people", "time"]);
   });
 
   it("hides the billing tab while the project is still loading", () => {

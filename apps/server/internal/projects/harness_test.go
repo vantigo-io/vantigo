@@ -342,9 +342,10 @@ type personJSON struct {
 }
 
 type capabilitiesJSON struct {
-	CanManage        bool `json:"canManage"`
-	CanContribute    bool `json:"canContribute"`
-	CanSeeFinancials bool `json:"canSeeFinancials"`
+	CanManage           bool `json:"canManage"`
+	CanContribute       bool `json:"canContribute"`
+	CanSeeFinancials    bool `json:"canSeeFinancials"`
+	CanManageMilestones bool `json:"canManageMilestones"`
 }
 
 type financialsJSON struct {
@@ -446,6 +447,247 @@ func getTasks(t *testing.T, c *modtest.Client, projectID int32) []taskJSON {
 	var tasks []taskJSON
 	r.JSON(&tasks)
 	return tasks
+}
+
+// milestonesPath is a project's invoice plan; milestonePath is one milestone,
+// which is addressed without its project because a milestone id already names
+// one — the same shape a task is addressed in.
+func milestonesPath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/milestones", projectID)
+}
+
+func milestonePath(milestoneID int32) string {
+	return fmt.Sprintf("/api/v1/projects/milestones/%d", milestoneID)
+}
+
+func milestonePositionPath(milestoneID int32) string {
+	return milestonePath(milestoneID) + "/position"
+}
+
+func milestoneStatusPath(milestoneID int32) string {
+	return milestonePath(milestoneID) + "/status"
+}
+
+// milestoneBody is a valid minimal create body — a name and a flat amount,
+// the cheapest milestone there is — which tests override one field of at a
+// time. A nil override value removes that field, the same convention
+// createBody uses.
+func milestoneBody(overrides map[string]any) map[string]any {
+	body := map[string]any{"name": "Oppstart", "amount": 100000}
+	maps.Copy(body, overrides)
+	for field, value := range overrides {
+		if value == nil {
+			delete(body, field)
+		}
+	}
+	return body
+}
+
+func postMilestone(t *testing.T, c *modtest.Client, projectID int32, overrides map[string]any) *modtest.Response {
+	t.Helper()
+	return c.Do(http.MethodPost, milestonesPath(projectID), milestoneBody(overrides))
+}
+
+// createMilestone is postMilestone for a test that expects it to be created.
+func createMilestone(t *testing.T, c *modtest.Client, projectID int32, overrides map[string]any) milestoneJSON {
+	t.Helper()
+	r := postMilestone(t, c, projectID, overrides)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("create milestone: status %d body %s, want 201", r.Status, r.Body)
+	}
+	var milestone milestoneJSON
+	r.JSON(&milestone)
+	return milestone
+}
+
+func readMilestones(t *testing.T, c *modtest.Client, projectID int32) *modtest.Response {
+	t.Helper()
+	return c.Do(http.MethodGet, milestonesPath(projectID), nil)
+}
+
+// getMilestones is readMilestones for a test that expects to be shown the
+// plan. The order is the endpoint's: by position, cancelled last.
+func getMilestones(t *testing.T, c *modtest.Client, projectID int32) milestonePlanJSON {
+	t.Helper()
+	r := readMilestones(t, c, projectID)
+	if r.Status != http.StatusOK {
+		t.Fatalf("list milestones: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var plan milestonePlanJSON
+	r.JSON(&plan)
+	return plan
+}
+
+// getMilestone reads one milestone and fails the test unless it answered 200.
+func getMilestone(t *testing.T, c *modtest.Client, milestoneID int32) milestoneJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, milestonePath(milestoneID), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get milestone: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var milestone milestoneJSON
+	r.JSON(&milestone)
+	return milestone
+}
+
+// putMilestone sends one full-replace edit and returns the response.
+func putMilestone(t *testing.T, c *modtest.Client, m milestoneJSON, overrides map[string]any) *modtest.Response {
+	t.Helper()
+	body := map[string]any{"name": m.Name, "revision": m.Revision}
+	if m.Description != nil {
+		body["description"] = *m.Description
+	}
+	if m.PlannedDate != nil {
+		body["plannedDate"] = *m.PlannedDate
+	}
+	if m.Amount != nil {
+		body["amount"] = *m.Amount
+	}
+	if m.Percent != nil {
+		body["percent"] = *m.Percent
+	}
+	maps.Copy(body, overrides)
+	for field, value := range overrides {
+		if value == nil {
+			delete(body, field)
+		}
+	}
+	return c.Do(http.MethodPut, milestonePath(m.Id), body)
+}
+
+// changeMilestone is putMilestone for a test that expects it to be applied.
+func changeMilestone(t *testing.T, c *modtest.Client, m milestoneJSON, overrides map[string]any) milestoneJSON {
+	t.Helper()
+	r := putMilestone(t, c, m, overrides)
+	if r.Status != http.StatusOK {
+		t.Fatalf("change milestone: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var changed milestoneJSON
+	r.JSON(&changed)
+	return changed
+}
+
+// moveMilestoneStatus sends one status move and returns the response, whatever
+// it is: half the cases in the move matrix are refusals.
+func moveMilestoneStatus(t *testing.T, c *modtest.Client, m milestoneJSON, status string, overrides map[string]any) *modtest.Response {
+	t.Helper()
+	body := map[string]any{"status": status, "revision": m.Revision}
+	maps.Copy(body, overrides)
+	for field, value := range overrides {
+		if value == nil {
+			delete(body, field)
+		}
+	}
+	return c.Do(http.MethodPost, milestoneStatusPath(m.Id), body)
+}
+
+// movedMilestone is moveMilestoneStatus for a test that expects the move to
+// be made, which is also how a test builds a milestone in a later status.
+func movedMilestone(t *testing.T, c *modtest.Client, m milestoneJSON, status string, overrides map[string]any) milestoneJSON {
+	t.Helper()
+	r := moveMilestoneStatus(t, c, m, status, overrides)
+	if r.Status != http.StatusOK {
+		t.Fatalf("move milestone to %q: status %d body %s, want 200", status, r.Status, r.Body)
+	}
+	var moved milestoneJSON
+	r.JSON(&moved)
+	return moved
+}
+
+// moveMilestone sends one position change and returns the response.
+func moveMilestone(t *testing.T, c *modtest.Client, m milestoneJSON, position int32) *modtest.Response {
+	t.Helper()
+	return c.Do(http.MethodPut, milestonePositionPath(m.Id),
+		map[string]any{"position": position, "revision": m.Revision})
+}
+
+// milestoneJSON decodes BillingMilestoneResponse. Every optional field is a
+// pointer: a milestone carries exactly one of amount and percent, and the
+// four invoice fields exist only while it is invoiced.
+type milestoneJSON struct {
+	Id               int32                     `json:"id"`
+	ProjectId        int32                     `json:"projectId"`
+	Name             string                    `json:"name"`
+	Description      *string                   `json:"description"`
+	PlannedDate      *string                   `json:"plannedDate"`
+	Amount           *float64                  `json:"amount"`
+	Percent          *float64                  `json:"percent"`
+	EffectiveAmount  float64                   `json:"effectiveAmount"`
+	Currency         *string                   `json:"currency"`
+	Status           string                    `json:"status"`
+	Position         int32                     `json:"position"`
+	Overdue          bool                      `json:"overdue"`
+	ReadyAt          *time.Time                `json:"readyAt"`
+	ReadyBy          *milestonePersonJSON      `json:"readyBy"`
+	InvoicedAt       *time.Time                `json:"invoicedAt"`
+	InvoicedBy       *milestonePersonJSON      `json:"invoicedBy"`
+	InvoiceReference *string                   `json:"invoiceReference"`
+	InvoiceDate      *string                   `json:"invoiceDate"`
+	Revision         int32                     `json:"revision"`
+	CreatedAt        time.Time                 `json:"createdAt"`
+	UpdatedAt        time.Time                 `json:"updatedAt"`
+	Capabilities     milestoneCapabilitiesJSON `json:"capabilities"`
+}
+
+// milestonePersonJSON decodes BillingMilestonePerson — who marked a milestone
+// ready or invoiced. active is the user directory's answer, exactly as a
+// task assignee's is: an account disabled afterwards keeps the stamp.
+type milestonePersonJSON struct {
+	UserId      uuid.UUID `json:"userId"`
+	DisplayName string    `json:"displayName"`
+	Active      bool      `json:"active"`
+}
+
+// milestoneCapabilitiesJSON decodes BillingMilestoneCapabilities, the eight
+// answers that save the frontend re-deriving design §3.2's move table.
+type milestoneCapabilitiesJSON struct {
+	CanEdit         bool `json:"canEdit"`
+	CanDelete       bool `json:"canDelete"`
+	CanMarkReady    bool `json:"canMarkReady"`
+	CanMarkPlanned  bool `json:"canMarkPlanned"`
+	CanMarkInvoiced bool `json:"canMarkInvoiced"`
+	CanUndoInvoiced bool `json:"canUndoInvoiced"`
+	CanCancel       bool `json:"canCancel"`
+	CanReopen       bool `json:"canReopen"`
+}
+
+// milestonePlanJSON decodes BillingMilestonePlanResponse: the milestones and
+// what they add up to.
+type milestonePlanJSON struct {
+	Milestones []milestoneJSON     `json:"milestones"`
+	Totals     milestoneTotalsJSON `json:"totals"`
+}
+
+// milestoneTotalsJSON decodes BillingMilestonePlanTotals. The three optional
+// numbers exist only against a fixed price, and unplanned and overPlanned are
+// two sides of one comparison, so never both.
+type milestoneTotalsJSON struct {
+	Currency    *string  `json:"currency"`
+	Planned     float64  `json:"planned"`
+	Ready       float64  `json:"ready"`
+	Invoiced    float64  `json:"invoiced"`
+	Cancelled   float64  `json:"cancelled"`
+	FixedPrice  *float64 `json:"fixedPrice"`
+	Unplanned   *float64 `json:"unplanned"`
+	OverPlanned *float64 `json:"overPlanned"`
+}
+
+// milestoneNames and milestonePositions are the two orderings a plan test
+// asserts on: which milestones came back, and the numbers they carry.
+func milestoneNames(plan milestonePlanJSON) []string {
+	out := make([]string, 0, len(plan.Milestones))
+	for _, m := range plan.Milestones {
+		out = append(out, m.Name)
+	}
+	return out
+}
+
+func milestonePositions(plan milestonePlanJSON) []int32 {
+	out := make([]int32, 0, len(plan.Milestones))
+	for _, m := range plan.Milestones {
+		out = append(out, m.Position)
+	}
+	return out
 }
 
 // validationProblemJSON decodes the field-error body every §4.1 refusal
