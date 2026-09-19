@@ -200,7 +200,9 @@ type ActualsBucket struct {
 
 type ActualsTotals struct {
     Approved, Submitted, Draft ActualsBucket
-    UnpricedHoursHundredths    int64   // no bill rate, or a rate in another currency
+    Total                      ActualsBucket // rounded once from the unrounded sums; never add buckets or lines
+    UnpricedHoursHundredths    int64   // BILLABLE hours with no bill amount in the requested currency
+    UncostedHoursHundredths    int64   // hours whose cost is not in CostAmount (no cost rate, or another currency)
     BillableHoursHundredths    int64
     NonBillableHoursHundredths int64
     LastEntryDate              *string // YYYY-MM-DD
@@ -278,7 +280,9 @@ and milestones and no actuals; `budgetUsed` is absent.
 ### Stats
 
 `GET /stats/summary` gains `readyMilestones`, the number of ready milestones the
-caller may see (a count, not an amount: projects may be in several currencies).
+caller may see on projects that are neither cancelled nor completed — exactly
+what the `milestoneReady` items list (a count, not an amount: projects may be in
+several currencies).
 `GET /stats/attention` gains:
 
 | Type | For | entityId |
@@ -312,7 +316,8 @@ shaped by what the API returns.
    hours and amount per segment, the task-estimate figure and the unpriced-hours
    note. Distinguishable without colour; every figure reachable by keyboard and
    screen reader.
-3. **Per-line table** (B): code, name, budget, mini bar, used %, remaining,
+3. **Per-line table** (B): code (billing lines have no name of their own),
+   budget, mini bar with the logged hours beside it, used %, remaining,
    over-budget flag; a "no line" row when it has hours. Line budgets are edited
    in the Billing tab's line form (A).
 4. **Invoice plan** (A): rows in manual order (managers reorder with up/down actions in the row
@@ -327,22 +332,33 @@ shaped by what the API returns.
 A caller without financial rights sees the hours budget and bars only, and no
 invoice plan.
 
-### Portfolio (`/projects/economy`, sidebar item "Economy")
+### Portfolio (`/projects/economy`, sidebar item "Project economy")
 
-Visible to `projects:view-financials`, `projects:manage-all` and anyone who
-manages a project (the API decides the rows). Table per §5, filter chips, sort,
+The sidebar item is visible with `projects:access` — a project manager has rows
+here without holding any global financial permission, and the sidebar can only
+express permissions; the API decides the rows (financial rights on each), and
+the page has an empty state for a caller with none. Table per §5, filter chips, sort,
 totals line, URL-held state, row → the project's Economy tab.
 
 ### Dashboard
 
-Projects card metric for ready milestones; the four attention types link to the
-project's Economy tab. English and Norwegian throughout.
+The Projects card's hint reads "N milestones ready to invoice" when there are any
+(otherwise its usual new-projects hint); the four attention types link to the
+project's Economy tab. Budget and overdue items go to holders of the manager
+role on the project — not to `projects:manage-all` — and ready items to anyone
+with financial rights on it. If the actuals provider fails while the list is
+built, the budget items are dropped and the failure logged; the rest stands. English and Norwegian throughout.
 
 ## 8. Edge cases
 
 - Hours with no rate or another currency count in hours, not in amounts, and
   surface as "unpriced".
-- A deactivated line, or one without a budget, shows actuals and no bar.
+- Where there is no budget to measure against — a line, a portfolio row or the
+  project itself — no bar is drawn (a full-width bar reads as "100 % used"); the
+  three-bucket split is written out instead. A deactivated line that has a budget
+  keeps its bar: the budget is still the yardstick for the hours already logged.
+- With Time tracking off the headline names what is budgeted; "No budget set" is
+  for a project that has none.
 - Project without currency: no milestone or line budget amounts; hour budgets and
   bars work.
 - Concurrent edits: revision conflicts; reordering under the per-project lock.
