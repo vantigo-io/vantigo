@@ -312,6 +312,14 @@ caller to shape.
 - **The same three buckets everywhere.** `Approved` (approved and invoiced entries),
   `Submitted` and `Draft` (draft and rejected entries) — the split every surface in
   this module already shows.
+- **`Total` is a fourth bucket, not a sum of the other three.** Each bucket's amount
+  is rounded once, on its own; `Total`'s amount is the unrounded sum of everything
+  in all three buckets, rounded once. Those two roundings can land a cent apart, so
+  adding the three published bucket amounts is not reliably the same number as
+  `Total`. `Total` is the figure a consumer should read whenever it wants "the
+  project's amount" rather than one bucket's, and it should never be reached by
+  adding the three. Its hours are simply the three buckets' hours, which do add up
+  exactly either way.
 - **The currency rule for bill and for cost, decided independently.** An entry's bill
   amount counts only when its `billCurrency` equals the currency the caller asked
   for; its cost amount counts only when its `costCurrency` does, on its own. A person
