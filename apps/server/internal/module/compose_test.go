@@ -876,6 +876,120 @@ func (*fakeProjectDirectory) CanLogTime(context.Context, int32, uuid.UUID) (bool
 	return false, nil
 }
 
+type fakeProjectActuals struct {
+	projects contracts.ProjectDirectory // whatever Deps carried when it was built
+}
+
+func (*fakeProjectActuals) Actuals(context.Context, contracts.ActualsRequest) (contracts.ProjectActualsEntry, error) {
+	return contracts.ProjectActualsEntry{}, nil
+}
+
+func (*fakeProjectActuals) ActualsForProjects(context.Context, []contracts.ActualsRequest) (map[int32]contracts.ActualsTotals, error) {
+	return nil, nil
+}
+
+// Actuals is the fifth provider slot (contracts.ProjectActuals) and resolves
+// like the others: before any Mount runs, onto every module's Deps.
+func TestCompose_InjectsActualsProvider(t *testing.T) {
+	actuals := &fakeProjectActuals{}
+	var got Deps
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Actuals: func(Deps) contracts.ProjectActuals { return actuals }, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Actuals != actuals {
+		t.Errorf("Deps.Actuals = %v, want the provider's actuals", got.Actuals)
+	}
+}
+
+// Actuals resolves after Projects: the module owning logged work is built on
+// the one owning projects, so its provider func sees the project directory
+// already on deps. Ordering is what this pins — the provider must not call
+// the directory while it serves, which is the provider's own test.
+func TestCompose_ActualsProviderSeesTheProjectDirectory(t *testing.T) {
+	projects := &fakeProjectDirectory{}
+	built := &fakeProjectActuals{}
+
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "beta", Actuals: func(d Deps) contracts.ProjectActuals {
+			built.projects = d.Projects
+			return built
+		}, Mount: staticHandler("beta")},
+		Module{Name: "alpha", Projects: func(Deps) contracts.ProjectDirectory { return projects }, Mount: staticHandler("alpha")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if built.projects != projects {
+		t.Errorf("the actuals provider saw Deps.Projects = %v, want the project directory resolved before it", built.projects)
+	}
+}
+
+// Two modules both declaring Actuals is a compose error naming both.
+func TestCompose_DuplicateActualsProvider_Fails(t *testing.T) {
+	_, err := compose(Deps{Access: &fakeAccess{}}, fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Actuals: func(Deps) contracts.ProjectActuals { return &fakeProjectActuals{} }, Mount: staticHandler("alpha")},
+		Module{Name: "beta", Actuals: func(Deps) contracts.ProjectActuals { return &fakeProjectActuals{} }, Mount: staticHandler("beta")},
+	)
+	if err == nil {
+		t.Fatal("compose: want an error when two modules declare project actuals")
+	}
+	if !strings.Contains(err.Error(), "project actuals") {
+		t.Errorf("error %q does not say \"project actuals\"", err)
+	}
+	if !strings.Contains(err.Error(), "alpha") || !strings.Contains(err.Error(), "beta") {
+		t.Errorf("error %q does not name both modules", err)
+	}
+}
+
+// With time disabled, the consumer's Deps.Actuals is nil rather than the
+// disabled module's provider — which is how projects tells "time tracking is
+// off" from "nothing logged".
+func TestCompose_DisabledActualsProvider_LeavesNil(t *testing.T) {
+	var got Deps
+	_, err := compose(
+		Deps{Access: &fakeAccess{}, Config: &config.Config{Modules: []string{"alpha"}}},
+		fakeLoad(map[string]string{"alpha": alphaContract, "beta": betaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+		Module{Name: "beta", Actuals: func(Deps) contracts.ProjectActuals { return &fakeProjectActuals{} }, Mount: staticHandler("beta")},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Actuals != nil {
+		t.Errorf("Deps.Actuals = %v, want nil: beta (the actuals provider) is disabled", got.Actuals)
+	}
+}
+
+// A value preset on Deps.Actuals survives when no enabled module declares
+// Module.Actuals: the seam modtest.WithActuals relies on.
+func TestCompose_PresetActualsSurviveWhenNoProvider(t *testing.T) {
+	preset := &fakeProjectActuals{}
+	var got Deps
+	_, err := compose(Deps{Access: &fakeAccess{}, Actuals: preset}, fakeLoad(map[string]string{"alpha": alphaContract}),
+		Module{Name: "alpha", Mount: func(d Deps) (http.Handler, error) {
+			got = d
+			return staticHandler("alpha")(d)
+		}},
+	)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	if got.Actuals != preset {
+		t.Errorf("Deps.Actuals = %v, want the preset value to survive with no provider", got.Actuals)
+	}
+}
+
 // Decision (task 1): the three new provider slots (Users, Products,
 // Projects) resolve the same way Directory does — before any Mount runs —
 // and each reaches every module's Deps, including a module that provides

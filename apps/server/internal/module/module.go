@@ -61,6 +61,14 @@ type Deps struct {
 	// it, on every module's Deps copy, from whichever enabled module
 	// declares Module.Projects; it is nil when projects is disabled.
 	Projects contracts.ProjectDirectory
+	// Actuals is what has been logged against projects, the one sanctioned
+	// way a module reads another's record of actual work (see
+	// contracts.ProjectActuals). Compose sets it, on every module's Deps
+	// copy, from whichever enabled module declares Module.Actuals, after
+	// Projects — so the provider may read deps.Projects while it is built,
+	// though never while it serves; it is nil when time is disabled, which a
+	// caller reads as "time tracking is off".
+	Actuals contracts.ProjectActuals
 	// HTTPTransport is the RoundTripper a module's own outbound HTTP client
 	// (customers' Brreg lookup, so far the only one) dials through. nil in
 	// production, meaning http.DefaultTransport; a test harness sets it to a
@@ -133,6 +141,13 @@ type Module struct {
 	// every module's Deps, including the provider's own, the same way it
 	// resolves Directory.
 	Projects func(Deps) contracts.ProjectDirectory
+	// Actuals builds this module's contracts.ProjectActuals implementation,
+	// if it provides one. At most one enabled module may set it; Compose
+	// calls it before any Mount runs — after it has resolved Projects, so a
+	// provider built here may read deps.Projects — and puts the result on
+	// every module's Deps, including the provider's own, the same way it
+	// resolves Directory.
+	Actuals func(Deps) contracts.ProjectActuals
 	// Workers builds this module's background workers (worker.Worker), if
 	// it has any. Unlike Directory, any number of enabled modules may set
 	// it; Workers (workers.go) resolves it from deps the same way — before
