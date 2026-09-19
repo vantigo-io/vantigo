@@ -410,6 +410,13 @@ func New(t *testing.T, opts ...Option) *Harness {
 	return h
 }
 
+// Logs is everything the installation has written to Deps.Logger so far, as
+// the JSON lines slog produced. It is how a test asserts a decision the
+// response cannot show: a dependency that failed, was deliberately swallowed
+// so the rest of the answer survived, and was supposed to say so in the log.
+// A test that only wants "nothing was said about X" reads it the same way.
+func (h *Harness) Logs() string { return string(h.log.Bytes()) }
+
 // Now is the harness clock, the installation's Deps.Clock.
 func (h *Harness) Now() time.Time {
 	h.mu.Lock()

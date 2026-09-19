@@ -274,14 +274,24 @@ func (s *server) budgetAttention(ctx context.Context, q *store.Queries, userID u
 	if s.deps.Actuals == nil {
 		return nil, nil
 	}
+	// One row past the cap, so a truncation is noticed rather than assumed
+	// away. The portfolio answers 400 in this situation because a partial
+	// total is a wrong number; a dashboard has no filters to narrow and
+	// nothing to total, so it keeps the capped set and says in the log that
+	// the rest were not looked at.
 	projects, err := q.ManagedActiveProjects(ctx, store.ManagedActiveProjectsParams{
-		UserID: userID, RowLimit: portfolioMaxProjects,
+		UserID: userID, RowLimit: portfolioMaxProjects + 1,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("projects: read the projects the caller manages: %w", err)
 	}
 	if len(projects) == 0 {
 		return nil, nil
+	}
+	if len(projects) > portfolioMaxProjects {
+		projects = projects[:portfolioMaxProjects]
+		s.deps.Logger.WarnContext(ctx, "projects: the dashboard's budget alerts cover only the first projects the caller manages",
+			"user_id", userID, "cap", portfolioMaxProjects)
 	}
 	logged, err := s.portfolioActuals(ctx, projects)
 	if err != nil {
@@ -318,9 +328,16 @@ func (s *server) budgetAttention(ctx context.Context, q *store.Queries, userID u
 // logged against the project, at midnight UTC, and the present moment for a
 // project that has a budget and nothing logged — which cannot raise an alert
 // today, but would read as 1 January year one if it ever did.
+//
+// It is clamped to now, which is a deliberate narrowing of "the day work was
+// last logged". Nothing stops somebody logging work against a future date, and
+// the dashboard both sorts on this field and prints it as "3 days ago": an
+// alert dated next Friday would sort to the bottom of the merged list — the
+// opposite of urgent — and read as "in 3 days" about something that is true
+// today.
 func budgetOccurredAt(w loggedWork, now time.Time) time.Time {
 	if w.LastEntryDate != nil {
-		if day, err := time.Parse(time.DateOnly, *w.LastEntryDate); err == nil {
+		if day, err := time.Parse(time.DateOnly, *w.LastEntryDate); err == nil && !day.After(now) {
 			return day
 		}
 	}

@@ -68,10 +68,17 @@ var portfolioSorts = []string{
 
 const portfolioStatusAll = "all"
 
-// portfolioMaxProjects is how many projects one portfolio answer may be
-// about. It is the actuals contract's own batch cap rather than a second
-// number: the whole page is one call, so what that call can carry is what the
-// portfolio can carry.
+// portfolioMaxProjects is how many projects one read may ask the actuals
+// contract about. It is that contract's own batch cap rather than a second
+// number: the whole set is one call, so what that call can carry is what a
+// read can carry.
+//
+// The two readers that hit it answer differently, and deliberately. The
+// portfolio refuses (400) — it publishes totals, and a total over part of a
+// set is a wrong number rather than a missing one. The dashboard's budget
+// alerts keep the capped set and log that they did — an attention list is
+// already a selection of things worth looking at, it totals nothing, and there
+// is no filter for the reader to narrow.
 const portfolioMaxProjects = contracts.MaxActualsRequests
 
 // GetProjectsEconomy List the economy of the projects whose money the caller may see
@@ -316,6 +323,16 @@ func (s *server) portfolioRowFor(
 	}
 
 	for i, m := range open {
+		next, ready := i == 0, m.Status == milestoneStatusReady
+		if !next && !ready {
+			// A planned milestone that is not the next one contributes only to
+			// nothing: it is not reported and it is not in readyAmount. Pricing
+			// it anyway would be arithmetic per milestone across the whole
+			// filtered set, and — worse — milestoneEffective logs a warning per
+			// unpriceable row, so a handful of orphaned percent milestones would
+			// warn on every portfolio read about rows nobody is even shown.
+			continue
+		}
 		// The effective amount is the invoice plan's own, degrading to no
 		// amount for a milestone nobody can price rather than failing a whole
 		// portfolio over one row.
@@ -323,7 +340,7 @@ func (s *server) portfolioRowFor(
 		if err != nil {
 			return portfolioRow{}, err
 		}
-		if i == 0 {
+		if next {
 			out.row.NextMilestone = &gen.ProjectEconomyNextMilestone{
 				Id:              m.ID,
 				Name:            m.Name,
@@ -333,7 +350,7 @@ func (s *server) portfolioRowFor(
 				Overdue:         milestoneOverdue(m, now),
 			}
 		}
-		if m.Status != milestoneStatusReady {
+		if !ready {
 			continue
 		}
 		out.row.ReadyCount++

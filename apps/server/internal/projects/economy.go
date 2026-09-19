@@ -343,7 +343,18 @@ func economyLines(lines []store.ProjectsBillingLine, reported []contracts.LineAc
 			return nil, err
 		}
 		if reportedLine.BillingLineID != nil && known[*reportedLine.BillingLineID] {
-			byLine[*reportedLine.BillingLineID] = work
+			// Folded rather than assigned, exactly as the no-line row below is.
+			// The contract promises one entry per line, so a second entry for
+			// one line is a provider bug — but overwriting would drop hours
+			// that are still inside the project's own totals, and "an hour
+			// somebody logged must appear somewhere" is the rule this whole
+			// merge exists for.
+			id := *reportedLine.BillingLineID
+			previous, seen := byLine[id]
+			if !seen {
+				previous = zeroWork()
+			}
+			byLine[id] = previous.add(work)
 			continue
 		}
 		noLine, hasNoLine = noLine.add(work), true
