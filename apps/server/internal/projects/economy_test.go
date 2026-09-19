@@ -150,6 +150,17 @@ func TestGetProjectEconomy_ManagerSeesAmountsButNotCosts(t *testing.T) {
 	if economy.Cost != nil {
 		t.Errorf("cost = %+v, want it absent without projects:view-costs", economy.Cost)
 	}
+	// The capability says the same thing the absent block does: financial
+	// rights are not enough on their own (design §2 E7), and the frontend gates
+	// on the pair rather than on either half.
+	var reread projectJSON
+	getProject(t, manager, project.Id).JSON(&reread)
+	if !reread.Capabilities.CanSeeFinancials {
+		t.Error("capabilities.canSeeFinancials = false for the project's manager, want true")
+	}
+	if reread.Capabilities.CanSeeCosts {
+		t.Error("capabilities.canSeeCosts = true for a manager without projects:view-costs, want false")
+	}
 	// The amount budget is the first basis, so the percentage is money
 	// against money: 13 500 of 200 000.
 	if economy.BudgetUsed == nil || economy.BudgetUsed.Basis != "amount" || economy.BudgetUsed.Percent != 6.8 {
@@ -178,6 +189,11 @@ func TestGetProjectEconomy_ViewFinancialsSeesAmounts(t *testing.T) {
 	}
 	if economy.Cost != nil {
 		t.Errorf("cost = %+v, want it absent without projects:view-costs", economy.Cost)
+	}
+	var reread projectJSON
+	getProject(t, viewer, project.Id).JSON(&reread)
+	if !reread.Capabilities.CanSeeFinancials || reread.Capabilities.CanSeeCosts {
+		t.Errorf("capabilities = %+v, want financials without costs", reread.Capabilities)
 	}
 }
 
@@ -383,6 +399,45 @@ func TestGetProjectEconomy_HoursOnAnUnknownLineJoinTheNoLineRow(t *testing.T) {
 	}
 }
 
+// A line reported twice keeps both entries' hours. The contract promises one
+// entry per line, so this is a provider bug if it ever happens — but the two
+// entries' hours are inside the project's own totals either way, and a row
+// that silently kept only the second would make the line rows and the project
+// disagree with no way to tell from the answer. It folds, exactly as the
+// no-line row folds the work of lines this project does not have.
+func TestGetProjectEconomy_ALineReportedTwiceKeepsBothItsEntries(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	manager, _ := signIn(t, h, "projects:create")
+	project, dev, _ := economySetUp(t, manager, "ECODUPE1000")
+	entry := func(hours float64, amount string) contracts.LineActuals {
+		return contracts.LineActuals{BillingLineID: &dev, Totals: loggedTotals(
+			loggedBucket(hours, amount, "0.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00"))}
+	}
+	actuals.set(project.Id,
+		loggedTotals(loggedBucket(7, "6300.00", "0.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")),
+		entry(4, "3600.00"), entry(3, "2700.00"))
+
+	economy := getEconomy(t, manager, project.Id)
+	var row *economyLineJSON
+	for i := range economy.Lines {
+		if economy.Lines[i].BillingLineId != nil && *economy.Lines[i].BillingLineId == dev {
+			row = &economy.Lines[i]
+		}
+	}
+	if row == nil {
+		t.Fatalf("lines = %+v, want a row for line %d", economy.Lines, dev)
+	}
+	if row.Actuals.TotalHours != 7 || *row.Actuals.TotalAmount != 6300 {
+		t.Errorf("line actuals = %+v, want both entries folded (7 h, 6300) rather than only the last", row.Actuals)
+	}
+	if economy.Actuals.TotalHours != row.Actuals.TotalHours {
+		t.Errorf("the project reports %v h and its one line %v h — a fold that dropped an entry would show here",
+			economy.Actuals.TotalHours, row.Actuals.TotalHours)
+	}
+}
+
 // The lines' budgets are reported beside the project's own, so a surface can
 // say "the lines add up to 80 h of the project's 100 h" without adding
 // anything up itself. Deactivated lines count: an hour logged against one was
@@ -406,7 +461,10 @@ func TestGetProjectEconomy_LineBudgetsAddUpBesideTheProjects(t *testing.T) {
 	bare := economyProject(t, manager, "ECOSUM2000", nil)
 	createLine(t, manager, bare.Id, map[string]any{"code": "DEV", "variantId": variantDeveloperHour})
 	raw := rawEconomy(t, manager, bare.Id)
-	budget, _ := raw["budget"].(map[string]any)
+	budget, ok := raw["budget"].(map[string]any)
+	if !ok {
+		t.Fatalf("budget = %v, want the required object — the loop below asserts nothing without it", raw["budget"])
+	}
 	for _, key := range []string{"linesHours", "linesAmount"} {
 		if _, present := budget[key]; present {
 			t.Errorf("budget.%s is present though no line has one, want it absent", key)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -328,6 +329,11 @@ func TestGetProjectsEconomy_SortsByBudgetUsedWithNoBasisLast(t *testing.T) {
 	if got := portfolioCodes(page); fmt.Sprint(got) != "[PSMOST11 PSTIEA11 PSTIEB11 PSHALF11 PSNONE11]" {
 		t.Errorf("default order = %v, want most-used first, ties by code, no basis last", got)
 	}
+	// Every sort falls through to the code as its tie-break, so the order above
+	// is only a claim about budgetUsed if it differs from the alphabetical one.
+	if got := portfolioCodes(getPortfolio(t, creator, "sort=code")); fmt.Sprint(got) != "[PSHALF11 PSMOST11 PSNONE11 PSTIEA11 PSTIEB11]" {
+		t.Errorf("sort=code gave %v, want the alphabetical order, which differs from the budgetUsed one", got)
+	}
 	if row := portfolioRow(t, page, "PSNONE11"); row.BudgetUsed != nil {
 		t.Errorf("PSNONE11 budgetUsed = %+v, want absent: it has no basis", row.BudgetUsed)
 	}
@@ -348,9 +354,13 @@ func TestGetProjectsEconomy_SortsByReadyAmountWithinEachCurrency(t *testing.T) {
 	actuals := newFakeActuals()
 	h := newHarnessWithActuals(t, actuals)
 	creator, _ := signIn(t, h, "projects:create")
-	nokBig := portfolioProject(t, creator, "PRNOKBIG", nil)
-	nokSmall := portfolioProject(t, creator, "PRNOKSML", nil)
-	eur := portfolioProject(t, creator, "PREUR111", map[string]any{"currency": "EUR"})
+	// The codes are chosen so that the expected order disagrees with the
+	// alphabetical one at every position: every sort falls through to the code
+	// as its tie-break, so a fixture whose two orders coincide would stay green
+	// with the whole comparison deleted.
+	nokBig := portfolioProject(t, creator, "PRNOKZ11", nil)
+	nokSmall := portfolioProject(t, creator, "PRNOKA11", nil)
+	eur := portfolioProject(t, creator, "PRZEUR11", map[string]any{"currency": "EUR"})
 	portfolioProject(t, creator, "PRNONE11", nil)
 	for _, seed := range []struct {
 		project projectJSON
@@ -360,11 +370,14 @@ func TestGetProjectsEconomy_SortsByReadyAmountWithinEachCurrency(t *testing.T) {
 	}
 
 	page := getPortfolio(t, creator, "sort=readyAmount")
-	if got := portfolioCodes(page); fmt.Sprint(got) != "[PREUR111 PRNOKBIG PRNOKSML PRNONE11]" {
+	if got := portfolioCodes(page); fmt.Sprint(got) != "[PRZEUR11 PRNOKZ11 PRNOKA11 PRNONE11]" {
 		t.Errorf("sort=readyAmount gave %v, want EUR before NOK, largest first inside each, nothing-ready last", got)
 	}
-	if row := portfolioRow(t, page, "PRNOKBIG"); row.ReadyAmount == nil || *row.ReadyAmount != 5000 {
-		t.Errorf("PRNOKBIG readyAmount = %v, want 5000", row.ReadyAmount)
+	if got := portfolioCodes(getPortfolio(t, creator, "sort=code")); fmt.Sprint(got) != "[PRNOKA11 PRNOKZ11 PRNONE11 PRZEUR11]" {
+		t.Errorf("sort=code gave %v, want the alphabetical order — which this fixture makes differ from the readyAmount one at every position", got)
+	}
+	if row := portfolioRow(t, page, "PRNOKZ11"); row.ReadyAmount == nil || *row.ReadyAmount != 5000 {
+		t.Errorf("PRNOKZ11 readyAmount = %v, want 5000", row.ReadyAmount)
 	}
 	if row := portfolioRow(t, page, "PRNONE11"); row.ReadyAmount != nil || row.ReadyCount != 0 {
 		t.Errorf("PRNONE11 = %+v, want no ready amount at all", row)
@@ -480,6 +493,16 @@ func TestGetProjectsEconomy_PagesWithTotalsOverTheWholeFilteredSet(t *testing.T)
 	if first.Totals.ProjectCount != 3 || first.Totals.ReadyCount != 3 {
 		t.Errorf("totals = %+v, want the whole filtered set", first.Totals)
 	}
+
+	// A page past the end is an empty page of a portfolio that still has three
+	// projects in it, not an empty portfolio.
+	past := getPortfolio(t, creator, "sort=code&pageSize=2&page=9")
+	if len(past.Data) != 0 {
+		t.Errorf("page 9 = %v, want no rows", portfolioCodes(past))
+	}
+	if past.Pagination.TotalCount != 3 || fmt.Sprint(past.Totals) != fmt.Sprint(first.Totals) {
+		t.Errorf("page 9 pagination = %+v totals = %v, want the same set described", past.Pagination, past.Totals)
+	}
 }
 
 // One request, one call into the module that owns the hours — not one per
@@ -534,9 +557,16 @@ func TestGetProjectsEconomy_WithoutTimeTracking(t *testing.T) {
 	h := newHarness(t)
 	creator, _ := signIn(t, h, "projects:create")
 	project := portfolioProject(t, creator, "PTNOTIME", nil)
+	portfolioProject(t, creator, "PTALSONO", nil)
 	movedMilestone(t, creator, createMilestone(t, creator, project.Id, map[string]any{"amount": 750}), "ready", nil)
 
 	page := getPortfolio(t, creator, "")
+	// Every row has a budget and none has a percentage, so the default sort
+	// compares nothing and the whole list falls through to its tie-break. A
+	// portfolio whose order depended on map iteration would shuffle here.
+	if got := portfolioCodes(page); fmt.Sprint(got) != "[PTALSONO PTNOTIME]" {
+		t.Errorf("default order without time tracking = %v, want code order: no row has a basis to compare", got)
+	}
 	if page.TimeTracking {
 		t.Errorf("timeTracking = true, want false: no module reports what has been logged")
 	}
@@ -647,6 +677,58 @@ func TestGetProjectsEconomy_RejectsUnknownParameters(t *testing.T) {
 		if len(problem.Errors[tc.field]) == 0 {
 			t.Errorf("%q: problem = %+v, want a message on %q", tc.query, problem, tc.field)
 		}
+	}
+}
+
+// unpriceableWarning is what responses.go logs for a milestone whose amount
+// cannot be worked out. The portfolio must not produce it for milestones it
+// never reports.
+const unpriceableWarning = "a billing milestone cannot be priced"
+
+// A milestone that is neither the row's next one nor ready is never priced at
+// all. Pricing it would be exact-decimal arithmetic per milestone across the
+// whole filtered set for a number nothing reads — and, worse, an unpriceable
+// one logs a warning, so a handful of percent milestones orphaned by a project
+// leaving fixed-price billing would warn on every portfolio read, about rows
+// that are not even on the page.
+func TestGetProjectsEconomy_DoesNotPriceMilestonesItDoesNotReport(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	creator, _ := signIn(t, h, "projects:create")
+	project := portfolioProject(t, creator, "PWORPHAN", nil)
+	createMilestone(t, creator, project.Id, map[string]any{
+		"name": "Neste", "plannedDate": modtest.Start.Add(72 * time.Hour).Format(time.DateOnly),
+	})
+	// A percent milestone on a project with no fixed price has no effective
+	// amount. The API refuses to create one — only a project that dropped its
+	// fixed price after the fact leaves one behind — so it goes in directly,
+	// undated, which puts it after the dated one.
+	orphan := insertMilestone(t, h, project.Id, map[string]any{
+		"name": "Uprisbar", "percent": 25.00, "position": int32(2),
+	})
+
+	row := portfolioRow(t, getPortfolio(t, creator, ""), "PWORPHAN")
+	if row.NextMilestone == nil || row.NextMilestone.Name != "Neste" {
+		t.Fatalf("nextMilestone = %+v, want the dated one", row.NextMilestone)
+	}
+	if row.ReadyCount != 0 {
+		t.Errorf("readyCount = %d, want 0", row.ReadyCount)
+	}
+	if strings.Contains(h.Logs(), unpriceableWarning) {
+		t.Errorf("the read warned about a milestone it does not report:\n%s", h.Logs())
+	}
+
+	// Ready, the same milestone *is* reported — it counts towards readyCount —
+	// so it is priced, and the warning is then the honest one. That is what
+	// makes the assertion above able to fail.
+	h.Exec(t, `UPDATE projects.billing_milestones SET status = 'ready' WHERE id = $1`, orphan)
+	row = portfolioRow(t, getPortfolio(t, creator, ""), "PWORPHAN")
+	if row.ReadyCount != 1 || row.ReadyAmount != nil {
+		t.Errorf("row = %+v, want it counted and left out of the amount", row)
+	}
+	if !strings.Contains(h.Logs(), unpriceableWarning) {
+		t.Errorf("nothing was logged about a milestone the row reports and cannot price:\n%s", h.Logs())
 	}
 }
 

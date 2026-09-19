@@ -638,4 +638,37 @@ func TestGetProjectsStatsAttention_AFailingProviderLeavesTheRestOfTheList(t *tes
 	if got := attentionOfType(items, "milestoneReady"); len(got) != 1 {
 		t.Errorf("milestoneReady items = %+v, want the rest of the list to survive a broken provider", got)
 	}
+	// Swallowing a failure silently is how a dashboard quietly stops telling
+	// anybody anything, so the swallow says so in the log.
+	if !strings.Contains(h.Logs(), "the dashboard's budget alerts were left out") {
+		t.Errorf("nothing was logged about the dropped alerts:\n%s", h.Logs())
+	}
+}
+
+// A budget alert is never dated in the future. Nothing stops somebody logging
+// work against next week, and the dashboard both sorts on occurredAt and
+// prints it as "3 days ago": a future date would sort the alert to the bottom
+// of the merged list and describe something true today as something upcoming.
+func TestGetProjectsStatsAttention_BudgetAlertsAreNeverDatedInTheFuture(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	creator, _ := signIn(t, h, "projects:create")
+	project := portfolioProject(t, creator, "SBFUTURE", nil)
+	totals := loggedTotals(loggedBucket(10, "1500.00", "0.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00"))
+	ahead := modtest.Start.Add(30 * 24 * time.Hour).Format(time.DateOnly)
+	totals.LastEntryDate = &ahead
+	actuals.set(project.Id, totals)
+
+	items := attentionOfType(readAttention(t, creator), "budgetExceeded")
+	if len(items) != 1 {
+		t.Fatalf("budgetExceeded items = %+v, want one", items)
+	}
+	aheadDay, _ := time.Parse(time.DateOnly, ahead)
+	if items[0].OccurredAt.Equal(aheadDay) {
+		t.Errorf("occurredAt = %v, want it clamped rather than the future entry date", items[0].OccurredAt)
+	}
+	if items[0].OccurredAt.After(h.Now()) {
+		t.Errorf("occurredAt = %v, want no later than now (%v)", items[0].OccurredAt, h.Now())
+	}
 }
