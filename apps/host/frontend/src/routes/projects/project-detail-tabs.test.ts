@@ -8,7 +8,13 @@ const values = (
   capabilities: Parameters<typeof visibleProjectDetailTabs>[2],
 ) => visibleProjectDetailTabs(enabledModules, permissions, capabilities).map((tab) => tab.value);
 
-const canSeeEverything = { canManage: true, canContribute: true, canSeeFinancials: true, canManageMilestones: true };
+const canSeeEverything = {
+  canManage: true,
+  canContribute: true,
+  canSeeFinancials: true,
+  canManageMilestones: true,
+  canSeeCosts: true,
+};
 
 describe("project detail tab visibility", () => {
   it("shows every tab to a caller who may see the project's financial fields", () => {
@@ -38,6 +44,7 @@ describe("project detail tab visibility", () => {
         canContribute: true,
         canSeeFinancials: false,
         canManageMilestones: true,
+        canSeeCosts: false,
       }),
     ).not.toContain("economy");
   });
@@ -68,6 +75,7 @@ describe("project detail tab visibility", () => {
         canContribute: false,
         canSeeFinancials: false,
         canManageMilestones: false,
+        canSeeCosts: false,
       }),
     ).toEqual(["overview", "tasks", "people"]);
   });
@@ -83,6 +91,7 @@ describe("project detail tab visibility", () => {
         canContribute: true,
         canSeeFinancials: false,
         canManageMilestones: true,
+        canSeeCosts: false,
       }),
     ).toEqual(["overview", "tasks", "people", "time"]);
   });

@@ -393,7 +393,10 @@ type ProjectCapabilities struct {
 
 	// CanManageMilestones Whether the caller may add, edit, reorder, cancel and reopen this project's billing milestones. The project's managers, and nobody else — a holder of projects:view-financials reads the plan and marks milestones invoiced, but does not write it.
 	CanManageMilestones bool `json:"canManageMilestones"`
-	CanSeeFinancials    bool `json:"canSeeFinancials"`
+
+	// CanSeeCosts Whether the caller may see what this project's work costs the company, and the margin — the economy read's `cost` block. Financial rights on the project *and* the sensitive projects:view-costs permission; a holder of the permission who may not see this project's money gets neither.
+	CanSeeCosts      bool `json:"canSeeCosts"`
+	CanSeeFinancials bool `json:"canSeeFinancials"`
 }
 
 // ProjectCodeSuggestionResponse A project code nobody has used yet, derived from the customer and project names (design §4.2). The caller may type anything valid instead.
@@ -426,6 +429,148 @@ type ProjectCreateRequest struct {
 	FixedPriceAmount *float64            `json:"fixedPriceAmount,omitempty"`
 	Name             string              `json:"name"`
 	StartDate        *openapi_types.Date `json:"startDate,omitempty"`
+}
+
+// ProjectEconomyActuals What has been logged, in the three buckets every economy surface shows the split of, plus the figures that span all three. Hours are visible to everyone who sees the project; the amounts are financial data and absent without financial rights on it.
+type ProjectEconomyActuals struct {
+	// Approved Approved and invoiced entries.
+	Approved ProjectEconomyBucket `json:"approved"`
+
+	// BillableHours The billable share of the three buckets' hours. Billable plus non-billable is the total.
+	BillableHours float64 `json:"billableHours"`
+
+	// Draft Draft and rejected entries.
+	Draft ProjectEconomyBucket `json:"draft"`
+
+	// LastEntryDate The day the most recent entry in any of the three buckets was logged for, drafts included. Absent when nothing has been logged.
+	LastEntryDate    *openapi_types.Date `json:"lastEntryDate,omitempty"`
+	NonBillableHours float64             `json:"nonBillableHours"`
+
+	// Submitted One bucket of logged work. The hours are there for everyone who sees the project; the amount is financial data.
+	Submitted ProjectEconomyBucket `json:"submitted"`
+
+	// TotalAmount The three buckets' bill amounts added up, in the project's currency. Financial data, so absent without financial rights; also absent when the project has no currency, since nothing could be denominated then.
+	TotalAmount *float64 `json:"totalAmount,omitempty"`
+
+	// TotalHours The three buckets' hours added up.
+	TotalHours float64 `json:"totalHours"`
+
+	// UnpricedHours Hours that carry no bill rate, or a rate in a currency other than the project's, and so count in hours but in no amount.
+	UnpricedHours float64 `json:"unpricedHours"`
+}
+
+// ProjectEconomyBucket One bucket of logged work. The hours are there for everyone who sees the project; the amount is financial data.
+type ProjectEconomyBucket struct {
+	// Amount What the bucket's work bills at, in the project's currency. Absent without financial rights on the project, and absent when the project has no currency.
+	Amount *float64 `json:"amount,omitempty"`
+	Hours  float64  `json:"hours"`
+}
+
+// ProjectEconomyBudget What was planned — the project's own budget and what its billing lines' budgets add up to. Hours are planning data and visible to everyone who sees the project; the amounts are financial and absent without financial rights on it. The project's budget and the lines' are independent numbers whose relation is shown, never enforced.
+type ProjectEconomyBudget struct {
+	// Amount The project's budget amount, the budgeted value of the work.
+	Amount *float64 `json:"amount,omitempty"`
+
+	// FixedPrice The project's fixed price, set only on a fixed-price project.
+	FixedPrice *float64 `json:"fixedPrice,omitempty"`
+
+	// Hours The project's own budget in hours.
+	Hours *float64 `json:"hours,omitempty"`
+
+	// LinesAmount The billing lines' budget amounts added up, deactivated lines included. Absent when no line carries one.
+	LinesAmount *float64 `json:"linesAmount,omitempty"`
+
+	// LinesHours The billing lines' budget hours added up, deactivated lines included. Absent when no line carries one.
+	LinesHours *float64 `json:"linesHours,omitempty"`
+}
+
+// ProjectEconomyBudgetUsed How much of the budget the logged work has used, by the module's one definition. The basis is chosen in a fixed order — the project's budget amount, then the fixed price of a fixed-price project, then the budget hours — and a caller who may not see amounts only ever gets the hours basis. Absent when the project has no basis at all, and absent when time tracking is not enabled.
+type ProjectEconomyBudgetUsed struct {
+	// ApprovedPercent The approved bucket alone against the same basis, rounded the same way.
+	ApprovedPercent float64 `json:"approvedPercent"`
+
+	// Basis 'amount', 'fixedPrice' or 'hours' — which budget the percentages are measured against.
+	Basis string `json:"basis"`
+
+	// Percent All three buckets against the basis, as a percentage rounded half up to one decimal. The rounding is for display only: overBudget and the dashboard's thresholds are decided on the exact ratio, so 100.04 % is over budget although it prints 100.0.
+	Percent float64 `json:"percent"`
+}
+
+// ProjectEconomyCost What the work has cost the company and what is left over. Present only for a caller with financial rights on the project *and* projects:view-costs, and only when time tracking is enabled — on a small project a total cost next to the hours reveals a person's cost rate. Every amount is in the project's currency; a cost recorded in another one is not summed, exactly as a bill amount in another one is not.
+type ProjectEconomyCost struct {
+	Approved float64 `json:"approved"`
+	Draft    float64 `json:"draft"`
+
+	// Margin The three buckets' bill amount minus the three buckets' cost. Negative when the work has cost more than it bills.
+	Margin    float64 `json:"margin"`
+	Submitted float64 `json:"submitted"`
+	Total     float64 `json:"total"`
+
+	// UncostedHours Hours the total leaves out because they carry no cost rate, or a cost rate in another currency. The margin is short by whatever they would have cost, so a surface showing it says how many hours it excludes.
+	UncostedHours float64 `json:"uncostedHours"`
+}
+
+// ProjectEconomyLine One row of the per-line breakdown — every billing line of the project, deactivated ones included, in the same order the billing tab lists them, plus one row without a billingLineId for work logged against no line at all. A line the project does not have that work was nonetheless logged against folds into that same row rather than being dropped.
+type ProjectEconomyLine struct {
+	// Active Whether the line is still active. Absent on the row that stands for work logged without a line.
+	Active *bool `json:"active,omitempty"`
+
+	// Actuals What has been logged against this line. Absent exactly when timeTracking is false.
+	Actuals *ProjectEconomyActuals `json:"actuals,omitempty"`
+
+	// BillingLineId The line this row is about. Absent on the row that stands for work logged without a line.
+	BillingLineId *int32 `json:"billingLineId,omitempty"`
+
+	// BudgetAmount The line's budget amount. Financial data, so absent without financial rights on the project.
+	BudgetAmount *float64 `json:"budgetAmount,omitempty"`
+
+	// BudgetHours The line's budget in hours, planning data like the project's own.
+	BudgetHours *float64 `json:"budgetHours,omitempty"`
+
+	// Code The line's own code, as the line carries it. Absent on the row that stands for work logged without a line.
+	Code *string `json:"code,omitempty"`
+
+	// OverBudget Whether the logged work has passed the line's budget, decided on the exact ratio rather than on the rounded usedPercent.
+	OverBudget bool `json:"overBudget"`
+
+	// RemainingHours What is left of the line's budget hours, never negative — a line that has gone past its budget reports 0 here and says so through overBudget. Absent when the line carries no budget in hours, and when timeTracking is false.
+	RemainingHours *float64 `json:"remainingHours,omitempty"`
+
+	// UsedPercent The logged work against this line's own budget — its budget amount when the caller may see amounts and it is set, otherwise its budget hours — rounded half up to one decimal. Absent when the line has no budget to measure against, and when timeTracking is false.
+	UsedPercent *float64 `json:"usedPercent,omitempty"`
+}
+
+// ProjectEconomyResponse A project's budget against what has been logged on it (design §5, delivery B). Everyone who sees the project sees the hours; amounts, the fixed price, the milestone totals and the currency need financial rights on it, and the cost block needs projects:view-costs as well. Fields the caller may not see are absent, never null and never zero. Nothing here is cached: the hours are read live through the actuals contract on every request.
+type ProjectEconomyResponse struct {
+	// Actuals What has been logged on the project as a whole. Absent exactly when timeTracking is false.
+	Actuals *ProjectEconomyActuals `json:"actuals,omitempty"`
+
+	// Budget What was planned — the project's own budget and what its billing lines' budgets add up to. Hours are planning data and visible to everyone who sees the project; the amounts are financial and absent without financial rights on it. The project's budget and the lines' are independent numbers whose relation is shown, never enforced.
+	Budget ProjectEconomyBudget `json:"budget"`
+
+	// BudgetUsed Absent when there is no basis to measure against, and when timeTracking is false.
+	BudgetUsed *ProjectEconomyBudgetUsed `json:"budgetUsed,omitempty"`
+
+	// Cost Absent without financial rights on the project and projects:view-costs, and absent when timeTracking is false.
+	Cost *ProjectEconomyCost `json:"cost,omitempty"`
+
+	// Currency The currency every amount in this response is in. Financial data, exactly as on the project itself, so a caller who may not see the money sees no currency either; absent too when the project carries none.
+	Currency *string `json:"currency,omitempty"`
+
+	// Lines One row per billing line, plus the no-line row when anything was logged without one. Always present, and empty on a project with no lines and nothing logged.
+	Lines []ProjectEconomyLine `json:"lines"`
+
+	// Milestones The invoice plan's totals, the same sums GET /projects/{id}/milestones answers with. Financial data, so absent without financial rights on the project; present, with zeroes, for a project whose plan is empty.
+	Milestones *BillingMilestonePlanTotals `json:"milestones,omitempty"`
+
+	// OverBudget Whether the logged work has passed the budget budgetUsed measures against, decided on the exact ratio rather than on the rounded percent. False when there is nothing to measure against.
+	OverBudget bool `json:"overBudget"`
+
+	// TaskEstimateHours The project's tasks' estimates added up, subtasks and finished ones included — a secondary planning figure beside the budget, not a budget of its own. Absent when no task carries an estimate.
+	TaskEstimateHours *float64 `json:"taskEstimateHours,omitempty"`
+
+	// TimeTracking Whether this installation has a module that reports what has been logged against projects. False means the budgets and the invoice plan are still here and there are no actuals to compare them with — not that nothing has been logged.
+	TimeTracking bool `json:"timeTracking"`
 }
 
 // ProjectFinancials The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see".
@@ -909,6 +1054,9 @@ type ServerInterface interface {
 	// PutProjectsByIdBillingLinesByLineId Change a project's billing line
 	// (PUT /api/v1/projects/{id}/billing-lines/{lineId})
 	PutProjectsByIdBillingLinesByLineId(w http.ResponseWriter, r *http.Request, id int32, lineId int32)
+	// GetProjectsByIdEconomy Get a project's budget against what has been logged on it
+	// (GET /api/v1/projects/{id}/economy)
+	GetProjectsByIdEconomy(w http.ResponseWriter, r *http.Request, id int32)
 	// GetProjectsByIdMilestones List a project's billing milestones
 	// (GET /api/v1/projects/{id}/milestones)
 	GetProjectsByIdMilestones(w http.ResponseWriter, r *http.Request, id int32)
@@ -1953,6 +2101,32 @@ func (siw *ServerInterfaceWrapper) PutProjectsByIdBillingLinesByLineId(w http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetProjectsByIdEconomy operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsByIdEconomy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int32
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int32", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsByIdEconomy(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetProjectsByIdMilestones operation middleware
 func (siw *ServerInterfaceWrapper) GetProjectsByIdMilestones(w http.ResponseWriter, r *http.Request) {
 
@@ -2398,6 +2572,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines", wrapper.GetProjectsByIdBillingLines)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines", wrapper.PostProjectsByIdBillingLines)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/{id}/billing-lines/{lineId}", wrapper.PutProjectsByIdBillingLinesByLineId)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/economy", wrapper.GetProjectsByIdEconomy)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/milestones", wrapper.GetProjectsByIdMilestones)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects/{id}/milestones", wrapper.PostProjectsByIdMilestones)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/{id}/roles", wrapper.GetProjectsByIdRoles)
@@ -4517,6 +4692,64 @@ func (response PutProjectsByIdBillingLinesByLineId409ApplicationProblemPlusJSONR
 	return err
 }
 
+type GetProjectsByIdEconomyRequestObject struct {
+	Id int32 `json:"id"`
+}
+
+type GetProjectsByIdEconomyResponseObject interface {
+	VisitGetProjectsByIdEconomyResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsByIdEconomy200JSONResponse ProjectEconomyResponse
+
+func (response GetProjectsByIdEconomy200JSONResponse) VisitGetProjectsByIdEconomyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdEconomy401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdEconomy401JSONResponse) VisitGetProjectsByIdEconomyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdEconomy403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsByIdEconomy403JSONResponse) VisitGetProjectsByIdEconomyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsByIdEconomy404Response struct {
+}
+
+func (response GetProjectsByIdEconomy404Response) VisitGetProjectsByIdEconomyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
 type GetProjectsByIdMilestonesRequestObject struct {
 	Id int32 `json:"id"`
 }
@@ -5234,6 +5467,9 @@ type StrictServerInterface interface {
 	// PutProjectsByIdBillingLinesByLineId Change a project's billing line
 	// (PUT /api/v1/projects/{id}/billing-lines/{lineId})
 	PutProjectsByIdBillingLinesByLineId(ctx context.Context, request PutProjectsByIdBillingLinesByLineIdRequestObject) (PutProjectsByIdBillingLinesByLineIdResponseObject, error)
+	// GetProjectsByIdEconomy Get a project's budget against what has been logged on it
+	// (GET /api/v1/projects/{id}/economy)
+	GetProjectsByIdEconomy(ctx context.Context, request GetProjectsByIdEconomyRequestObject) (GetProjectsByIdEconomyResponseObject, error)
 	// GetProjectsByIdMilestones List a project's billing milestones
 	// (GET /api/v1/projects/{id}/milestones)
 	GetProjectsByIdMilestones(ctx context.Context, request GetProjectsByIdMilestonesRequestObject) (GetProjectsByIdMilestonesResponseObject, error)
@@ -6191,6 +6427,32 @@ func (sh *strictHandler) PutProjectsByIdBillingLinesByLineId(w http.ResponseWrit
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutProjectsByIdBillingLinesByLineIdResponseObject); ok {
 		if err := validResponse.VisitPutProjectsByIdBillingLinesByLineIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsByIdEconomy operation middleware
+func (sh *strictHandler) GetProjectsByIdEconomy(w http.ResponseWriter, r *http.Request, id int32) {
+	var request GetProjectsByIdEconomyRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsByIdEconomy(ctx, request.(GetProjectsByIdEconomyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsByIdEconomy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsByIdEconomyResponseObject); ok {
+		if err := validResponse.VisitGetProjectsByIdEconomyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

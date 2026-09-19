@@ -15,18 +15,26 @@ import (
 	"github.com/vantigo-io/vantigo/server/internal/ratelimit"
 )
 
-// permissions is the module's permission catalog (design §5). Every
+// permissions is the module's permission catalog (design §5, §6). Every
 // operation requires projects:access — it is what puts the app in the
 // switcher, and without it a project member would never see the tile (D8) —
-// and the other four sit above the per-project roles. The two that widen
+// and the other five sit above the per-project roles. The three that widen
 // what a caller sees beyond their own projects' money and management are
-// sensitive; all five are delegable, as every other module's are.
+// sensitive; all six are delegable, as every other module's are.
+//
+// projects:view-costs is the odd one out: it widens nothing on its own. It
+// only ever adds the cost and margin block to a project whose money the
+// caller can already see (design §2 E7), and it is in no role by default —
+// the three built-in roles are seeded with no permission keys at all
+// (migration 00002), so "no default role" is what every new permission
+// starts as and nothing here has to opt out of one.
 var permissions = []contracts.Permission{
 	{Key: "projects:access", Display: "Use Projects", Description: "Use the Projects app and see the projects you hold a role in.", Category: "Projects", Sensitive: false, Delegable: true},
 	{Key: "projects:create", Display: "Create projects", Description: "Create projects.", Category: "Projects", Sensitive: false, Delegable: true},
 	{Key: "projects:view-all", Display: "View all projects", Description: "See every project, not only the ones you hold a role in.", Category: "Projects", Sensitive: false, Delegable: true},
 	{Key: "projects:manage-all", Display: "Manage all projects", Description: "Manage every project, which also means seeing it and its financial fields.", Category: "Projects", Sensitive: true, Delegable: true},
 	{Key: "projects:view-financials", Display: "View project financials", Description: "See fixed prices, budget amounts and line pricing on every project you can see.", Category: "Projects", Sensitive: true, Delegable: true},
+	{Key: "projects:view-costs", Display: "View project costs", Description: "See what the work costs the company and the margin, on projects whose financials you can see. On a small project this can reveal a person's cost rate.", Category: "Projects", Sensitive: true, Delegable: true},
 }
 
 // limits maps each rate-limited operationId to its policy. It is empty and
@@ -35,7 +43,7 @@ var permissions = []contracts.Permission{
 var limits = map[string]ratelimit.Policy{}
 
 // Module is projects as a platform module: its contract mounted under
-// /api/v1/projects/, its five permissions in the composed catalog, and the
+// /api/v1/projects/, its six permissions in the composed catalog, and the
 // contracts.ProjectDirectory it publishes to the modules built on top of it
 // — Time tracking first.
 func Module() module.Module {

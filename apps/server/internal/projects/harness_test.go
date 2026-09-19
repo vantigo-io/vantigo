@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,6 +48,21 @@ func newHarnessWithoutProducts(t *testing.T, opts ...modtest.Option) *modtest.Ha
 func newHarnessWithCatalog(t *testing.T, catalog *fakeCatalog, opts ...modtest.Option) *modtest.Harness {
 	t.Helper()
 	return newProjectsHarness(t, catalog, opts...)
+}
+
+// newHarnessWithActuals is newHarness with a module that reports what has
+// been logged against projects composed beside it — the economy read's other
+// half. depguard forbids internal/projects/** from importing internal/time
+// even in a test, so the provider is a fake built directly against
+// internal/contracts and handed to Deps.Actuals through modtest.WithActuals,
+// exactly the seam the product catalog uses.
+//
+// newHarness itself deliberately leaves it out: a nil Deps.Actuals is a real
+// installation — one with no time tracking — and it is what every test of
+// that case drives.
+func newHarnessWithActuals(t *testing.T, actuals *fakeActuals, opts ...modtest.Option) *modtest.Harness {
+	t.Helper()
+	return newProjectsHarness(t, newFakeCatalog(), append([]modtest.Option{modtest.WithActuals(actuals)}, opts...)...)
 }
 
 // newProjectsHarness is the one composition every harness here is: the
@@ -197,6 +215,116 @@ func (c *fakeCatalog) ListPrice(_ context.Context, variantID int32, currency str
 		return nil, nil
 	}
 	return &contracts.Money{Amount: price, Currency: currency}, nil
+}
+
+// fakeActuals is contracts.ProjectActuals over whatever a test says has been
+// logged. It is the economy read's only source of hours, so it carries the
+// three things a test of that read needs to say: what was logged (set), that
+// the module that owns the hours could not answer (fail), and what was
+// actually asked of it (requests) — the last because "exactly one call, with
+// the project's own currency, outside any transaction" is a rule of the read
+// rather than a detail of it.
+//
+// onCall runs inside Actuals, which is how a test proves the handler holds no
+// lock while it waits: the hook takes the project's row lock on another
+// connection and would be refused if the request were holding one.
+//
+// A project nothing was set for answers zero-valued totals and no lines,
+// which is what the provider answers for a project nobody has logged against.
+type fakeActuals struct {
+	mu       sync.Mutex
+	entries  map[int32]contracts.ProjectActualsEntry
+	err      error
+	requests []contracts.ActualsRequest
+	onCall   func(context.Context, contracts.ActualsRequest)
+}
+
+var _ contracts.ProjectActuals = (*fakeActuals)(nil)
+
+func newFakeActuals() *fakeActuals {
+	return &fakeActuals{entries: map[int32]contracts.ProjectActualsEntry{}}
+}
+
+// set says what has been logged against one project: its totals, and the
+// per-line split the provider reports — only lines anything is on, by line id
+// ascending, with the work logged on no line last, exactly as the contract
+// promises.
+func (f *fakeActuals) set(projectID int32, totals contracts.ActualsTotals, lines ...contracts.LineActuals) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.entries[projectID] = contracts.ProjectActualsEntry{Totals: totals, Lines: lines}
+}
+
+// fail makes every later call answer err, the way a saturated pool or a
+// degraded time module looks from here. It is "could not read", never "there
+// is nothing".
+func (f *fakeActuals) fail(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.err = err
+}
+
+// during registers a hook run inside every Actuals call, before it answers.
+func (f *fakeActuals) during(hook func(context.Context, contracts.ActualsRequest)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.onCall = hook
+}
+
+// asked is every request the provider has been handed, in order: the call
+// log a test reads to prove the read asks once and asks for the right
+// currency.
+func (f *fakeActuals) asked() []contracts.ActualsRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.requests)
+}
+
+func (f *fakeActuals) Actuals(ctx context.Context, req contracts.ActualsRequest) (contracts.ProjectActualsEntry, error) {
+	f.mu.Lock()
+	f.requests = append(f.requests, req)
+	hook, err, entry := f.onCall, f.err, f.entries[req.ProjectID]
+	f.mu.Unlock()
+
+	if hook != nil {
+		hook(ctx, req)
+	}
+	if err != nil {
+		return contracts.ProjectActualsEntry{}, err
+	}
+	return entry, nil
+}
+
+func (f *fakeActuals) ActualsForProjects(ctx context.Context, reqs []contracts.ActualsRequest) (map[int32]contracts.ActualsTotals, error) {
+	out := make(map[int32]contracts.ActualsTotals, len(reqs))
+	for _, req := range reqs {
+		entry, err := f.Actuals(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		out[req.ProjectID] = entry.Totals
+	}
+	return out, nil
+}
+
+// loggedHours is a count of hours as the contract carries it — int64
+// hundredths, exact — so a test writes 7.5 and the fake reports 750.
+func loggedHours(h float64) int64 { return int64(math.Round(h * 100)) }
+
+// loggedBucket is one of the three buckets: its hours, what they bill and
+// what they cost, the amounts as the decimal text the contract uses.
+func loggedBucket(h float64, bill, cost string) contracts.ActualsBucket {
+	return contracts.ActualsBucket{HoursHundredths: loggedHours(h), BillAmount: bill, CostAmount: cost}
+}
+
+// loggedTotals is the three buckets plus the figures that span them, with
+// billable defaulting to every hour logged — the ordinary case — so a test
+// only says otherwise when that is its subject.
+func loggedTotals(approved, submitted, draft contracts.ActualsBucket) contracts.ActualsTotals {
+	return contracts.ActualsTotals{
+		Approved: approved, Submitted: submitted, Draft: draft,
+		BillableHoursHundredths: approved.HoursHundredths + submitted.HoursHundredths + draft.HoursHundredths,
+	}
 }
 
 // signIn seeds a caller holding projects:access plus whatever else the test
@@ -378,6 +506,7 @@ type capabilitiesJSON struct {
 	CanContribute       bool `json:"canContribute"`
 	CanSeeFinancials    bool `json:"canSeeFinancials"`
 	CanManageMilestones bool `json:"canManageMilestones"`
+	CanSeeCosts         bool `json:"canSeeCosts"`
 }
 
 type financialsJSON struct {
@@ -734,6 +863,112 @@ func milestonePositions(plan milestonePlanJSON) []int32 {
 		out = append(out, m.Position)
 	}
 	return out
+}
+
+// economyPath is a project's economy read.
+func economyPath(projectID int32) string {
+	return fmt.Sprintf("/api/v1/projects/%d/economy", projectID)
+}
+
+// readEconomy asks for a project's economy and returns whatever came back:
+// half the cases here are about what a caller is *not* shown, and one is a
+// 404.
+func readEconomy(t *testing.T, c *modtest.Client, projectID int32, opts ...modtest.RequestOption) *modtest.Response {
+	t.Helper()
+	return c.Do(http.MethodGet, economyPath(projectID), nil, opts...)
+}
+
+// getEconomy is readEconomy for a test that expects to be shown the economy.
+func getEconomy(t *testing.T, c *modtest.Client, projectID int32) economyJSON {
+	t.Helper()
+	r := readEconomy(t, c, projectID)
+	if r.Status != http.StatusOK {
+		t.Fatalf("read the economy: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var economy economyJSON
+	r.JSON(&economy)
+	return economy
+}
+
+// rawEconomy is getEconomy decoded into a map, for the assertions whose whole
+// subject is that a key is *not* there: a nil pointer cannot tell "absent"
+// from "null", and this module's shaping is by absence.
+func rawEconomy(t *testing.T, c *modtest.Client, projectID int32) map[string]any {
+	t.Helper()
+	r := readEconomy(t, c, projectID)
+	if r.Status != http.StatusOK {
+		t.Fatalf("read the economy: status %d body %s, want 200", r.Status, r.Body)
+	}
+	raw := map[string]any{}
+	r.JSON(&raw)
+	return raw
+}
+
+// economyJSON decodes ProjectEconomyResponse. Every shaped field is a
+// pointer, because absent is what this endpoint says instead of zero.
+type economyJSON struct {
+	TimeTracking      bool                 `json:"timeTracking"`
+	Currency          *string              `json:"currency"`
+	Budget            economyBudgetJSON    `json:"budget"`
+	Actuals           *economyActualsJSON  `json:"actuals"`
+	Lines             []economyLineJSON    `json:"lines"`
+	TaskEstimateHours *float64             `json:"taskEstimateHours"`
+	BudgetUsed        *budgetUsedJSON      `json:"budgetUsed"`
+	OverBudget        bool                 `json:"overBudget"`
+	Milestones        *milestoneTotalsJSON `json:"milestones"`
+	Cost              *economyCostJSON     `json:"cost"`
+}
+
+type economyBudgetJSON struct {
+	Hours       *float64 `json:"hours"`
+	LinesHours  *float64 `json:"linesHours"`
+	Amount      *float64 `json:"amount"`
+	FixedPrice  *float64 `json:"fixedPrice"`
+	LinesAmount *float64 `json:"linesAmount"`
+}
+
+type economyActualsJSON struct {
+	Approved         economyBucketJSON `json:"approved"`
+	Submitted        economyBucketJSON `json:"submitted"`
+	Draft            economyBucketJSON `json:"draft"`
+	TotalHours       float64           `json:"totalHours"`
+	TotalAmount      *float64          `json:"totalAmount"`
+	UnpricedHours    float64           `json:"unpricedHours"`
+	BillableHours    float64           `json:"billableHours"`
+	NonBillableHours float64           `json:"nonBillableHours"`
+	LastEntryDate    *string           `json:"lastEntryDate"`
+}
+
+type economyBucketJSON struct {
+	Hours  float64  `json:"hours"`
+	Amount *float64 `json:"amount"`
+}
+
+type economyLineJSON struct {
+	BillingLineId  *int32              `json:"billingLineId"`
+	Code           *string             `json:"code"`
+	Active         *bool               `json:"active"`
+	BudgetHours    *float64            `json:"budgetHours"`
+	BudgetAmount   *float64            `json:"budgetAmount"`
+	Actuals        *economyActualsJSON `json:"actuals"`
+	UsedPercent    *float64            `json:"usedPercent"`
+	RemainingHours *float64            `json:"remainingHours"`
+	OverBudget     bool                `json:"overBudget"`
+}
+
+type budgetUsedJSON struct {
+	Basis           string  `json:"basis"`
+	Percent         float64 `json:"percent"`
+	ApprovedPercent float64 `json:"approvedPercent"`
+}
+
+type economyCostJSON struct {
+	Approved      float64 `json:"approved"`
+	Submitted     float64 `json:"submitted"`
+	Draft         float64 `json:"draft"`
+	Total         float64 `json:"total"`
+	Margin        float64 `json:"margin"`
+	UncostedHours float64 `json:"uncostedHours"`
 }
 
 // validationProblemJSON decodes the field-error body every §4.1 refusal

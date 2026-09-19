@@ -680,16 +680,24 @@ func percentOfPrice(priceText, percentText string) (float64, bool) {
 // roundHalfUpCents rounds r to two decimals, a half cent away from zero, and
 // answers the nearest float64 — whose shortest text is then exactly those two
 // decimals, which is what the column stores and what the contract's JSON
-// number carries.
-func roundHalfUpCents(r *big.Rat) float64 {
-	cents := new(big.Rat).Mul(r, big.NewRat(100, 1))
+// number carries. It is roundHalfUpAt at the scale every money column in this
+// module holds.
+func roundHalfUpCents(r *big.Rat) float64 { return roundHalfUpAt(r, 100) }
+
+// roundHalfUpAt rounds r to the decimal scale given as its reciprocal — 100
+// for two places, 10 for one — half away from zero, and answers the nearest
+// float64. It is the module's one rounding rule: money rounds to cents with
+// it and the economy's percentages round to a single decimal with it, so the
+// two can never disagree about which way a half goes.
+func roundHalfUpAt(r *big.Rat, scale int64) float64 {
+	scaled := new(big.Rat).Mul(r, new(big.Rat).SetInt64(scale))
 	half := big.NewRat(1, 2)
-	if cents.Sign() < 0 {
+	if scaled.Sign() < 0 {
 		half.Neg(half)
 	}
-	cents.Add(cents, half)
-	whole := new(big.Int).Quo(cents.Num(), cents.Denom()) // truncates toward zero
-	f, _ := new(big.Rat).SetFrac(whole, big.NewInt(100)).Float64()
+	scaled.Add(scaled, half)
+	whole := new(big.Int).Quo(scaled.Num(), scaled.Denom()) // truncates toward zero
+	f, _ := new(big.Rat).SetFrac(whole, big.NewInt(scale)).Float64()
 	return f
 }
 

@@ -26,6 +26,12 @@ type access struct {
 	CanSeeFinancials bool
 	CanContribute    bool
 	CanManage        bool
+	// ViewCosts is the global projects:view-costs permission, unwidened by
+	// any role: no project role grants it and none ever will, because the
+	// point of it is that managing a project is not enough (design §2 E7).
+	// CanSeeCosts is what handlers ask; this is the half of it that comes
+	// from the caller's permissions rather than from this project.
+	ViewCosts bool
 }
 
 // globalAccess is what the caller's global permissions grant on every
@@ -41,6 +47,9 @@ func (s *server) globalAccess(ctx context.Context) access {
 		CanSeeFinancials: manageAll || financials,
 		CanContribute:    manageAll,
 		CanManage:        manageAll,
+		// Deliberately not implied by manage-all: seeing what the company
+		// pays its people is not part of running a project (design §2 E7).
+		ViewCosts: contracts.HasPermission(ctx, s.deps.Access, "projects:view-costs"),
 	}
 }
 
@@ -62,6 +71,16 @@ func (s *server) authorize(ctx context.Context, q *store.Queries, projectID int3
 	}
 	return a, nil
 }
+
+// canSeeCosts is design §2 E7: what the work costs the company, and the
+// margin, need financial rights on *this* project and the sensitive
+// projects:view-costs permission. Both halves, always — on a small project a
+// total cost divided by the hours is one person's cost rate, so a holder of
+// the permission who may not see this project's money sees no cost either,
+// and a manager who may see every other number on the project still does not
+// see this one. ViewCosts is never widened by a role, so being the project's
+// manager cannot supply the second half by itself.
+func (a access) canSeeCosts() bool { return a.CanSeeFinancials && a.ViewCosts }
 
 // canSeeMilestones and canManageMilestones are the two answers every billing
 // milestone operation is gated on (design §5, §3.2). They are named rather
