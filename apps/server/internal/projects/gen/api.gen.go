@@ -394,7 +394,7 @@ type ProjectCapabilities struct {
 	// CanManageMilestones Whether the caller may add, edit, reorder, cancel and reopen this project's billing milestones. The project's managers, and nobody else — a holder of projects:view-financials reads the plan and marks milestones invoiced, but does not write it.
 	CanManageMilestones bool `json:"canManageMilestones"`
 
-	// CanSeeCosts Whether the caller may see what this project's work costs the company, and the margin — the economy read's `cost` block. Financial rights on the project *and* the sensitive projects:view-costs permission; a holder of the permission who may not see this project's money gets neither.
+	// CanSeeCosts Whether the caller may see what this project's work costs the company, and the margin — the economy read's `cost` block. Financial rights on the project *and* the sensitive projects:view-costs permission; a holder of the permission who may not see this project's money gets neither. It answers the permission question alone — the block is still absent when the project carries no currency or time tracking is off, so a surface decides whether to *offer* the view from this flag and whether to *draw* it from the block itself.
 	CanSeeCosts      bool `json:"canSeeCosts"`
 	CanSeeFinancials bool `json:"canSeeFinancials"`
 }
@@ -496,7 +496,7 @@ type ProjectEconomyBudgetUsed struct {
 	Percent float64 `json:"percent"`
 }
 
-// ProjectEconomyCost What the work has cost the company and what is left over. Present only for a caller with financial rights on the project *and* projects:view-costs, and only when time tracking is enabled — on a small project a total cost next to the hours reveals a person's cost rate. Every amount is in the project's currency; a cost recorded in another one is not summed, exactly as a bill amount in another one is not.
+// ProjectEconomyCost What the work has cost the company and what is left over. Present only for a caller with financial rights on the project *and* projects:view-costs, only when time tracking is enabled, and only when the project carries a currency — a cost in no currency is a number nobody can read, and on a small project a total cost next to the hours reveals a person's cost rate. Every amount is in the project's currency; a cost recorded in another one is not summed, exactly as a bill amount in another one is not.
 type ProjectEconomyCost struct {
 	Approved float64 `json:"approved"`
 	Draft    float64 `json:"draft"`
@@ -592,7 +592,7 @@ type ProjectEconomyResponse struct {
 	// BudgetUsed Absent when there is no basis to measure against, and when timeTracking is false.
 	BudgetUsed *ProjectEconomyBudgetUsed `json:"budgetUsed,omitempty"`
 
-	// Cost Absent without financial rights on the project and projects:view-costs, and absent when timeTracking is false.
+	// Cost Absent without financial rights on the project and projects:view-costs, absent when timeTracking is false, and absent when the project carries no currency. Render the cost panel on this block being present rather than on capabilities.canSeeCosts, which answers only the permission half.
 	Cost *ProjectEconomyCost `json:"cost,omitempty"`
 
 	// Currency The currency every amount in this response is in. Financial data, exactly as on the project itself, so a caller who may not see the money sees no currency either; absent too when the project carries none.
@@ -992,15 +992,20 @@ type GetProjectsCodeSuggestionParams struct {
 
 // GetProjectsEconomyParams defines parameters for GetProjectsEconomy.
 type GetProjectsEconomyParams struct {
-	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	// Page Which page to return, counting from 1. Defaults to 1; anything below it is refused rather than clamped.
+	Page *int32 `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize How many rows a page holds. Defaults to 25, and must be between 1 and 100.
 	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 
 	// Search Matches the project code or name, case-insensitively. '%' and '_' are literal characters, not wildcards.
 	Search *string `form:"search,omitempty" json:"search,omitempty"`
 
-	// Status One of 'planned', 'active', 'on-hold', 'completed', 'cancelled' or 'all'. Defaults to 'active' — a portfolio is about the work being done now — and 'all' is how every status is asked for.
-	Status     *string `form:"status,omitempty" json:"status,omitempty"`
-	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
+	// Status One of 'planned', 'active', 'on-hold', 'completed', 'cancelled' or 'all'. An omitted *or empty* value is 'active' — a portfolio is about the work being done now — and 'all' is the only way to lift the filter. This differs from GET /api/v1/projects, where an empty status filters nothing: a cleared status control on a page that shares one with the project list has to send 'all' here.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// CustomerId Narrows the portfolio to one customer's projects. An internal project — one with no customer — matches no value of it.
+	CustomerId *int32 `form:"customerId,omitempty" json:"customerId,omitempty"`
 
 	// OverBudget true keeps only the rows whose logged work has passed the budget. Nothing is over budget when time tracking is off.
 	OverBudget *bool `form:"overBudget,omitempty" json:"overBudget,omitempty"`

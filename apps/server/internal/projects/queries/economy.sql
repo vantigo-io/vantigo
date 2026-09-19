@@ -150,8 +150,11 @@ ORDER BY m.planned_date, m.id;
 -- ManagedActiveProjects is the projects the two budget alerts are computed
 -- over: the active ones the caller holds the manager role on. Their budgets
 -- come from the row; what has been logged against them comes from the actuals
--- contract, in one call for the whole list, which is why the list is capped
--- the way the portfolio is.
+-- contract, in one call for the whole list, which is why row_limit exists at
+-- all — it is that call's batch cap. The caller asks for one row past it and
+-- says in the log when the extra row comes back, because unlike the portfolio
+-- it keeps the capped set rather than refusing: an attention list totals
+-- nothing and has no filter to narrow.
 SELECT p.* FROM projects.projects p
 WHERE p.status = 'active'
   AND EXISTS (SELECT 1 FROM projects.project_roles r
