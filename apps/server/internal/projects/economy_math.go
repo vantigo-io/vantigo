@@ -86,10 +86,16 @@ type bucketSum struct {
 // bucketSums is the logged side of the comparison. Approved carries invoiced
 // work and Draft carries rejected work — the split the contract's provider
 // already made, passed through rather than re-decided here.
+//
+// Total is the provider's own across-bucket figure, not the three added up.
+// Each bucket is rounded on its own, so three buckets worth half a cent each
+// are published as 0.01 apiece while the work is worth 0.02: adding them is
+// the wrong number, and the contract carries Total precisely so nobody has to.
 type bucketSums struct {
 	Approved  bucketSum
 	Submitted bucketSum
 	Draft     bucketSum
+	Total     bucketSum
 }
 
 // budgetUse is what one comparison answers: which basis was used, the exact
@@ -199,18 +205,15 @@ var (
 // and both mean the same thing to the caller — there is no percentage.
 func positive(r *big.Rat) bool { return r != nil && r.Sign() > 0 }
 
-// totalHours and totalAmount are the three buckets added up. They are the
-// project's own totals only when the sums came from ActualsTotals: a
-// provider rounds each bucket once on its own, so adding *lines* to reach a
-// project's figures is a different number and is never done (see
+// totalHours and totalAmount are the subject's own whole figure, as the
+// provider computed it from the unrounded sum — never the three published
+// buckets added together, which is a different number by up to a cent or two
+// and is not the one an invoice would show. Adding *lines* to reach a
+// project's figures is wrong for the same reason and is never done (see
 // bucketSumsOf's caller).
-func (s bucketSums) totalHours() *big.Rat {
-	return new(big.Rat).Add(new(big.Rat).Add(s.Approved.Hours, s.Submitted.Hours), s.Draft.Hours)
-}
+func (s bucketSums) totalHours() *big.Rat { return s.Total.Hours }
 
-func (s bucketSums) totalAmount() *big.Rat {
-	return new(big.Rat).Add(new(big.Rat).Add(s.Approved.Amount, s.Submitted.Amount), s.Draft.Amount)
-}
+func (s bucketSums) totalAmount() *big.Rat { return s.Total.Amount }
 
 // bucketSumsOf converts one ActualsTotals into the exact decimals the
 // arithmetic works in. An amount the provider spelled in a text big.Rat
@@ -225,6 +228,7 @@ func bucketSumsOf(t contracts.ActualsTotals) (bucketSums, error) {
 		{t.Approved, &out.Approved},
 		{t.Submitted, &out.Submitted},
 		{t.Draft, &out.Draft},
+		{t.Total, &out.Total},
 	} {
 		amount, err := exactAmount(pair.from.BillAmount)
 		if err != nil {
@@ -247,6 +251,7 @@ func costSumsOf(t contracts.ActualsTotals) (bucketSums, error) {
 		{t.Approved, &out.Approved},
 		{t.Submitted, &out.Submitted},
 		{t.Draft, &out.Draft},
+		{t.Total, &out.Total},
 	} {
 		amount, err := exactAmount(pair.from.CostAmount)
 		if err != nil {
@@ -335,7 +340,7 @@ func zeroWork() loggedWork {
 
 func zeroSums() bucketSums {
 	zero := func() bucketSum { return bucketSum{Hours: new(big.Rat), Amount: new(big.Rat)} }
-	return bucketSums{Approved: zero(), Submitted: zero(), Draft: zero()}
+	return bucketSums{Approved: zero(), Submitted: zero(), Draft: zero(), Total: zero()}
 }
 
 // add is bucketSums addition, bucket by bucket.
@@ -350,6 +355,7 @@ func (s bucketSums) add(o bucketSums) bucketSums {
 		Approved:  pair(s.Approved, o.Approved),
 		Submitted: pair(s.Submitted, o.Submitted),
 		Draft:     pair(s.Draft, o.Draft),
+		Total:     pair(s.Total, o.Total),
 	}
 }
 

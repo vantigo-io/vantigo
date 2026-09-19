@@ -389,11 +389,23 @@ func TestGetProjectsStatsSummary_CountsReadyMilestonesTheCallerMaySee(t *testing
 	}
 	// One more that is not ready, so the count is a status and not a total.
 	createMilestone(t, creator, first.Id, map[string]any{"name": "Senere"})
+	// And two on projects that are over: the card must count what the
+	// attention list and the portfolio count, or the dashboard offers three
+	// numbers for one question.
+	for code, status := range map[string]string{"SRMDONE1": "completed", "SRMCANCL": "cancelled"} {
+		over := portfolioProject(t, creator, code, nil)
+		movedMilestone(t, creator, createMilestone(t, creator, over.Id, nil), "ready", nil)
+		setStatus(t, creator, over.Id, status)
+	}
 	h.Advance(time.Second)
 
 	period := statsRange(modtest.Start, h.Now())
 	if got := readSummary(t, creator, period).ReadyMilestones; got != 3 {
-		t.Errorf("the manager's readyMilestones = %d, want 3", got)
+		t.Errorf("the manager's readyMilestones = %d, want 3: a completed or cancelled project's invoicing is over", got)
+	}
+	// The same caller's attention list is the other half of the agreement.
+	if got := attentionOfType(readAttention(t, creator), "milestoneReady"); len(got) != 3 {
+		t.Errorf("milestoneReady items = %d, want 3 — the same milestones the card counts", len(got))
 	}
 
 	member, memberID := signIn(t, h)

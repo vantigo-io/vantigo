@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"math/big"
 	"net/http"
 	"slices"
 	"sort"
@@ -352,11 +353,41 @@ func loggedBucket(h float64, bill, cost string) contracts.ActualsBucket {
 // loggedTotals is the three buckets plus the figures that span them, with
 // billable defaulting to every hour logged — the ordinary case — so a test
 // only says otherwise when that is its subject.
+//
+// Total is derived from the three buckets, which is what the real provider
+// answers whenever nothing lands on a rounding boundary. A test whose subject
+// *is* that boundary — where the whole, rounded once, differs from the three
+// figures added up — assigns Total itself afterwards, the way one assigns
+// LastEntryDate.
 func loggedTotals(approved, submitted, draft contracts.ActualsBucket) contracts.ActualsTotals {
+	hours := approved.HoursHundredths + submitted.HoursHundredths + draft.HoursHundredths
 	return contracts.ActualsTotals{
 		Approved: approved, Submitted: submitted, Draft: draft,
-		BillableHoursHundredths: approved.HoursHundredths + submitted.HoursHundredths + draft.HoursHundredths,
+		Total: contracts.ActualsBucket{
+			HoursHundredths: hours,
+			BillAmount:      addedAmounts(approved.BillAmount, submitted.BillAmount, draft.BillAmount),
+			CostAmount:      addedAmounts(approved.CostAmount, submitted.CostAmount, draft.CostAmount),
+		},
+		BillableHoursHundredths: hours,
 	}
+}
+
+// addedAmounts adds the contract's decimal texts exactly and renders the sum
+// with two decimals. It is only ever handed figures a test wrote, so a text
+// that is not a decimal is that test's own bug and panicking names it at once.
+func addedAmounts(texts ...string) string {
+	sum := new(big.Rat)
+	for _, text := range texts {
+		if text == "" {
+			continue
+		}
+		amount, ok := new(big.Rat).SetString(text)
+		if !ok {
+			panic(fmt.Sprintf("projects test: %q is not a decimal amount", text))
+		}
+		sum.Add(sum, amount)
+	}
+	return sum.FloatString(2)
 }
 
 // signIn seeds a caller holding projects:access plus whatever else the test
