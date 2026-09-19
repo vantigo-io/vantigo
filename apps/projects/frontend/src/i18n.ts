@@ -154,6 +154,9 @@ export const projectsCatalog = {
     pricingFixedValue: "Fixed {{amount}}",
     pricingDiscountValue: "{{percent}} % off list price",
     unknownProduct: "Unknown product",
+    productDetailsUnavailable: "Product details unavailable",
+    catalogUnavailableWarning:
+      "The product catalog could not be read, so product names and list prices are missing. Your billing lines are unchanged.",
     inactive: "Inactive",
     addBillingLine: "Add billing line",
     editBillingLine: "Edit billing line",
@@ -552,6 +555,9 @@ export const projectsCatalog = {
     pricingFixedValue: "Fast {{amount}}",
     pricingDiscountValue: "{{percent}} % avslag fra listeprisen",
     unknownProduct: "Ukjent produkt",
+    productDetailsUnavailable: "Produktdetaljer utilgjengelig",
+    catalogUnavailableWarning:
+      "Produktkatalogen kunne ikke leses, så produktnavn og listepriser mangler. Fakturalinjene dine er uendret.",
     inactive: "Inaktiv",
     addBillingLine: "Legg til fakturalinje",
     editBillingLine: "Rediger fakturalinje",

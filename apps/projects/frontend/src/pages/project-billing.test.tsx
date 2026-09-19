@@ -187,6 +187,53 @@ describe("ProjectBilling", () => {
     expect(within(row).getByText("Unknown product")).toBeInTheDocument();
   });
 
+  it("warns once when the product catalog could not be read, and leaves the line's own data alone", async () => {
+    stubBilling(project(), [
+      line({
+        catalogUnavailable: true,
+        productName: null,
+        sku: null,
+        unit: null,
+        pricing: { mode: "fixed", fixedAmount: 1450 },
+      }),
+    ]);
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    expect(
+      await screen.findByText(
+        "The product catalog could not be read, so product names and list prices are missing. Your billing lines are unchanged.",
+      ),
+    ).toBeInTheDocument();
+    const row = (await screen.findByText("KVEWEBS-PM")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("Product details unavailable")).toBeInTheDocument();
+    expect(within(row).queryByText("Unknown product")).not.toBeInTheDocument();
+    expect(row).toHaveTextContent(`Fixed ${money(1450)}`);
+    expect(within(row).getByText("Active")).toBeInTheDocument();
+  });
+
+  it("does not warn about the catalog when every line answered fine", async () => {
+    stubBilling(project());
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    await screen.findByText("KVEWEBS-PM");
+    expect(
+      screen.queryByText(
+        "The product catalog could not be read, so product names and list prices are missing. Your billing lines are unchanged.",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still opens the edit form on a line the catalog could not name", async () => {
+    stubBilling(project(), [line({ catalogUnavailable: true, productName: null, sku: null, unit: null })]);
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    await screen.findByText("KVEWEBS-PM");
+    await userEvent.click(screen.getByRole("button", { name: "Edit PM" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit billing line" });
+    await waitFor(() => expect(within(dialog).getByLabelText(/line code/i)).toHaveValue("PM"));
+  });
+
   it("offers no line actions to someone who may not manage the project", async () => {
     stubBilling(
       project({
@@ -227,6 +274,13 @@ describe("ProjectBilling", () => {
     expect(await screen.findByRole("button", { name: "Edit PM" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit DEV" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit billing line" })).not.toBeInTheDocument();
+  });
+
+  it("names the table after the billing lines heading", async () => {
+    stubBilling(project());
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    expect(await screen.findByRole("table", { name: "Billing lines" })).toBeInTheDocument();
   });
 
   it("says when the project has no lines yet", async () => {

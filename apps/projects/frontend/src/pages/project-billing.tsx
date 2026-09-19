@@ -1,8 +1,8 @@
 import { ActionIcon, Alert, Badge, Box, Button, Card, Group, SimpleGrid, Stack, Table, Text } from "@mantine/core";
-import { IconAlertCircle, IconLock, IconPencil, IconPlus } from "@tabler/icons-react";
+import { IconAlertCircle, IconInfoCircle, IconLock, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, type LocaleFormatters, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { type BillingLine, billingLinesQueryOptions } from "../api/lines";
 import { type Project, projectQueryOptions } from "../api/projects";
 import { Field } from "../components/field";
@@ -90,13 +90,15 @@ const BillingLinesCard = ({ projectId, project }: { projectId: number; project: 
   const { data: lines, isPending, isError, error } = useQuery(billingLinesQueryOptions(projectId));
   const [modalState, setModalState] = useState<BillingLineModalState | null>(null);
   const canManage = project.capabilities.canManage;
+  const catalogUnavailable = lines?.some((line) => line.catalogUnavailable) ?? false;
+  const headingId = useId();
 
   return (
     <Card withBorder padding="lg" radius="md">
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
           <Stack gap={2}>
-            <Text fw={600} component="h3">
+            <Text fw={600} component="h3" id={headingId}>
               {t("billingLines")}
             </Text>
             <Text size="sm" c="dimmed">
@@ -118,9 +120,15 @@ const BillingLinesCard = ({ projectId, project }: { projectId: number; project: 
         {isPending && <ContentSkeleton rows={3} rowHeight={48} />}
         {lines && lines.length === 0 && <EmptyState title={t("noBillingLines")} size="sm" />}
 
+        {catalogUnavailable && (
+          <Alert color="yellow" icon={<IconInfoCircle size={16} />}>
+            {t("catalogUnavailableWarning")}
+          </Alert>
+        )}
+
         {lines && lines.length > 0 && (
           <Table.ScrollContainer minWidth={760}>
-            <Table striped highlightOnHover>
+            <Table striped highlightOnHover aria-labelledby={headingId}>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("trackableCode")}</Table.Th>
@@ -182,7 +190,13 @@ const LineRow = ({
         </Text>
       </Table.Td>
       <Table.Td>
-        {line.variantMissing || !line.productName ? (
+        {line.catalogUnavailable ? (
+          // variantMissing means nothing here: the catalog was never asked, so
+          // "gone from the catalog" is not an answer anybody gave.
+          <Text size="sm" c="dimmed">
+            {t("productDetailsUnavailable")}
+          </Text>
+        ) : line.variantMissing || !line.productName ? (
           <Text size="sm" c="dimmed">
             {t("unknownProduct")}
           </Text>
