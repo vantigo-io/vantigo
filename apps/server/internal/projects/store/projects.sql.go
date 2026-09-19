@@ -250,6 +250,48 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]P
 	return items, nil
 }
 
+const lockProject = `-- name: LockProject :one
+SELECT id, code, name, description, customer_id, status, start_date, end_date, billing_type, currency, fixed_price_amount, budget_hours, budget_amount, revision, created_by_user_id, created_at, updated_at, default_bill_rate FROM projects.projects WHERE id = $1 FOR UPDATE
+`
+
+// LockProject is a project row, locked FOR UPDATE for the rest of the
+// transaction (design §3.3). Every writer that decides something from the
+// project's currency, fixed price or billing type — the project's own
+// update, and a billing line's create or change, since a 'fixed' amount and
+// a budget amount are both denominated in that currency (Task 2's
+// milestones will be a third) — takes this lock as its *first* statement and
+// decides against the row it reads back here, never against a row read
+// before the transaction opened. FOR UPDATE rather than FOR SHARE: this
+// transaction may itself be the one changing those columns, and every one of
+// these writers takes the same lock in the same mode, so there is no lock
+// upgrade and nothing to deadlock against — only a plain queue on a write
+// that is rare to begin with.
+func (q *Queries) LockProject(ctx context.Context, id int32) (ProjectsProject, error) {
+	row := q.db.QueryRow(ctx, lockProject, id)
+	var i ProjectsProject
+	err := row.Scan(
+		&i.ID,
+		&i.Code,
+		&i.Name,
+		&i.Description,
+		&i.CustomerID,
+		&i.Status,
+		&i.StartDate,
+		&i.EndDate,
+		&i.BillingType,
+		&i.Currency,
+		&i.FixedPriceAmount,
+		&i.BudgetHours,
+		&i.BudgetAmount,
+		&i.Revision,
+		&i.CreatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DefaultBillRate,
+	)
+	return i, err
+}
+
 const managersForProjects = `-- name: ManagersForProjects :many
 SELECT project_id, user_id FROM projects.project_roles
 WHERE project_id = ANY($1::integer[]) AND role = 'manager'

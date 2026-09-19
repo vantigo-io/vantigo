@@ -241,10 +241,14 @@ var milestoneNumericColumns = map[string]bool{"amount": true, "percent": true, "
 // overrides is a column name to value map, layered over a valid minimal
 // default (one open, amount-priced, 'planned' milestone at position 1); a nil
 // value in overrides removes that column from the insert, leaving the
-// column's own default (or SQL NULL) to stand. Setting "percent" without
-// also setting "amount" drops the default amount, since a real milestone
-// never carries both (design §3.2) — the DB itself does not enforce that;
-// only Go's rules do (there are no CHECK constraints here, house style).
+// column's own default (or SQL NULL) to stand — overrides set exactly what
+// they name, and nothing else. The one exception is deliberate, not
+// incidental: setting "percent" to an actual value, without also naming
+// "amount", drops the default amount, since a real milestone never carries
+// both (design §3.2) — the DB itself does not enforce that; only Go's rules
+// do (there are no CHECK constraints here, house style). Setting "percent"
+// to nil (asking for a milestone with neither) does not trigger that — nil
+// always means "leave this column out", never "and drop something else too".
 func insertMilestone(t *testing.T, h *modtest.Harness, projectID int32, overrides map[string]any) int32 {
 	t.Helper()
 	now := time.Now().UTC()
@@ -258,7 +262,7 @@ func insertMilestone(t *testing.T, h *modtest.Harness, projectID int32, override
 		"created_at":         now,
 		"updated_at":         now,
 	}
-	if _, settingPercent := overrides["percent"]; settingPercent {
+	if v, ok := overrides["percent"]; ok && v != nil {
 		if _, keepingAmount := overrides["amount"]; !keepingAmount {
 			delete(row, "amount")
 		}

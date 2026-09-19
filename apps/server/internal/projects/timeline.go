@@ -119,6 +119,12 @@ func lineFields(line store.ProjectsBillingLine) []string {
 	if line.DiscountPercent.Valid {
 		fields = append(fields, "discountPercent")
 	}
+	if line.BudgetHours.Valid {
+		fields = append(fields, "budgetHours")
+	}
+	if line.BudgetAmount.Valid {
+		fields = append(fields, "budgetAmount")
+	}
 	return fields
 }
 
@@ -172,6 +178,20 @@ func diffLines(before, after store.ProjectsBillingLine) (lineDiff, error) {
 	}
 	if changed {
 		d.Fields = append(d.Fields, "discountPercent")
+	}
+	changed, err = numericChanged(before.BudgetHours, after.BudgetHours)
+	if err != nil {
+		return lineDiff{}, err
+	}
+	if changed {
+		d.Fields = append(d.Fields, "budgetHours")
+	}
+	changed, err = numericChanged(before.BudgetAmount, after.BudgetAmount)
+	if err != nil {
+		return lineDiff{}, err
+	}
+	if changed {
+		d.Fields = append(d.Fields, "budgetAmount")
 	}
 	return d, nil
 }
