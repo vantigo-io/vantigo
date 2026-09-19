@@ -65,6 +65,7 @@ import { Route as EnergyMeteringPointsIndexRouteImport } from './routes/energy/m
 import { Route as EnergyMeteringPointsMeteringPointIdRouteImport } from './routes/energy/metering-points/$meteringPointId'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId.index'
 import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
+import { Route as ProjectsProjectIdEconomyRouteImport } from './routes/projects/$projectId.economy'
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
 import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
@@ -357,6 +358,12 @@ const ProjectsProjectIdBillingRoute =
     path: '/billing',
     getParentRoute: () => ProjectsProjectIdRoute,
   } as any)
+const ProjectsProjectIdEconomyRoute =
+  ProjectsProjectIdEconomyRouteImport.update({
+    id: '/economy',
+    path: '/economy',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
 const ProjectsProjectIdPeopleRoute = ProjectsProjectIdPeopleRouteImport.update({
   id: '/people',
   path: '/people',
@@ -426,6 +433,7 @@ export interface FileRoutesByFullPath {
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
+  '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
@@ -476,6 +484,7 @@ export interface FileRoutesByTo {
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
+  '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
@@ -538,6 +547,7 @@ export interface FileRoutesById {
   '/customers/contacts/$contactId': typeof CustomersContactsContactIdRoute
   '/energy/metering-points/$meteringPointId': typeof EnergyMeteringPointsMeteringPointIdRoute
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
+  '/projects/$projectId/economy': typeof ProjectsProjectIdEconomyRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
   '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
@@ -601,6 +611,7 @@ export interface FileRouteTypes {
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/projects/$projectId/billing'
+    | '/projects/$projectId/economy'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
@@ -651,6 +662,7 @@ export interface FileRouteTypes {
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/projects/$projectId/billing'
+    | '/projects/$projectId/economy'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
@@ -712,6 +724,7 @@ export interface FileRouteTypes {
     | '/customers/contacts/$contactId'
     | '/energy/metering-points/$meteringPointId'
     | '/projects/$projectId/billing'
+    | '/projects/$projectId/economy'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
     | '/projects/$projectId/time'
@@ -1137,6 +1150,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdBillingRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/economy': {
+      id: '/projects/$projectId/economy'
+      path: '/economy'
+      fullPath: '/projects/$projectId/economy'
+      preLoaderRoute: typeof ProjectsProjectIdEconomyRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
     '/projects/$projectId/people': {
       id: '/projects/$projectId/people'
       path: '/people'
@@ -1258,6 +1278,7 @@ const ProductsRouteWithChildren = ProductsRoute._addFileChildren(
 
 interface ProjectsProjectIdRouteChildren {
   ProjectsProjectIdBillingRoute: typeof ProjectsProjectIdBillingRoute
+  ProjectsProjectIdEconomyRoute: typeof ProjectsProjectIdEconomyRoute
   ProjectsProjectIdPeopleRoute: typeof ProjectsProjectIdPeopleRoute
   ProjectsProjectIdTasksRoute: typeof ProjectsProjectIdTasksRoute
   ProjectsProjectIdTimeRoute: typeof ProjectsProjectIdTimeRoute
@@ -1266,6 +1287,7 @@ interface ProjectsProjectIdRouteChildren {
 
 const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
   ProjectsProjectIdBillingRoute: ProjectsProjectIdBillingRoute,
+  ProjectsProjectIdEconomyRoute: ProjectsProjectIdEconomyRoute,
   ProjectsProjectIdPeopleRoute: ProjectsProjectIdPeopleRoute,
   ProjectsProjectIdTasksRoute: ProjectsProjectIdTasksRoute,
   ProjectsProjectIdTimeRoute: ProjectsProjectIdTimeRoute,

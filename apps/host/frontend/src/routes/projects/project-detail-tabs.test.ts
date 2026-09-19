@@ -12,7 +12,34 @@ const canSeeEverything = { canManage: true, canContribute: true, canSeeFinancial
 
 describe("project detail tab visibility", () => {
   it("shows every tab to a caller who may see the project's financial fields", () => {
-    expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual(["overview", "tasks", "people", "billing", "time"]);
+    expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual([
+      "overview",
+      "tasks",
+      "people",
+      "billing",
+      "economy",
+      "time",
+    ]);
+  });
+
+  // Delivery A of the economy view only has an invoice plan to show, so it is
+  // gated exactly like Billing: the capability, not a permission. The next
+  // delivery widens this once the tab has an hours-only half for everyone who
+  // sees the project.
+  it("puts the economy tab between billing and time, gated on canSeeFinancials like billing", () => {
+    expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual(expect.arrayContaining(["billing", "economy", "time"]));
+    const shown = values(moduleKeys, ["*"], canSeeEverything);
+    expect(shown.indexOf("billing")).toBeLessThan(shown.indexOf("economy"));
+    expect(shown.indexOf("economy")).toBeLessThan(shown.indexOf("time"));
+
+    expect(
+      values(moduleKeys, ["*"], {
+        canManage: true,
+        canContribute: true,
+        canSeeFinancials: false,
+        canManageMilestones: true,
+      }),
+    ).not.toContain("economy");
   });
 
   // The Time tab belongs to another module, so it carries both gates the
@@ -26,7 +53,7 @@ describe("project detail tab visibility", () => {
     expect(values(undefined, ["*"], canSeeEverything)).not.toContain("time");
   });
 
-  it("puts the time tab after billing, where the project's own views end", () => {
+  it("puts the time tab last, after the project's own views end", () => {
     expect(values(moduleKeys, ["*"], canSeeEverything).at(-1)).toBe("time");
   });
 
@@ -69,7 +96,13 @@ describe("project detail tab visibility", () => {
   // permission guard. The gate exists for the tabs other modules will add,
   // the way Energy adds one to the customer page.
   it("leaves the app's own tabs to the route guard rather than re-checking projects:access", () => {
-    expect(values(moduleKeys, [], canSeeEverything)).toEqual(["overview", "tasks", "people", "billing"]);
-    expect(values(moduleKeys, undefined, canSeeEverything)).toEqual(["overview", "tasks", "people", "billing"]);
+    expect(values(moduleKeys, [], canSeeEverything)).toEqual(["overview", "tasks", "people", "billing", "economy"]);
+    expect(values(moduleKeys, undefined, canSeeEverything)).toEqual([
+      "overview",
+      "tasks",
+      "people",
+      "billing",
+      "economy",
+    ]);
   });
 });
