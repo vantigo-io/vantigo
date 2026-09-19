@@ -219,7 +219,17 @@ func (s bucketSums) totalAmount() *big.Rat { return s.Total.Amount }
 // arithmetic works in. An amount the provider spelled in a text big.Rat
 // cannot read is an error rather than a zero: a margin or a percentage
 // silently computed from nothing is worse than no answer at all.
+//
+// The same goes for a provider that forgets Total: hours are exact, so
+// Total's hours are the three buckets' hours or the provider is broken, and a
+// project reading "0 h logged" beside three filled buckets is refused here
+// rather than shown. (Amounts cannot be checked that way — Total is rounded
+// once from the unrounded sum and legitimately differs from the buckets by a
+// cent.)
 func bucketSumsOf(t contracts.ActualsTotals) (bucketSums, error) {
+	if buckets := t.Approved.HoursHundredths + t.Submitted.HoursHundredths + t.Draft.HoursHundredths; t.Total.HoursHundredths != buckets {
+		return bucketSums{}, fmt.Errorf("projects: the actuals provider reports %d hundredths of an hour in total and %d across its buckets", t.Total.HoursHundredths, buckets)
+	}
 	var out bucketSums
 	for _, pair := range []struct {
 		from contracts.ActualsBucket
