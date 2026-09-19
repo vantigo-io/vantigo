@@ -174,7 +174,7 @@ func (s *server) GetProjectsCodeSuggestion(ctx context.Context, req gen.GetProje
 
 	prefix := internalPrefix
 	if req.Params.CustomerId != nil {
-		customer, err := s.deps.Directory.Customer(ctx, *req.Params.CustomerId)
+		customer, err := s.directoryCustomer(ctx, *req.Params.CustomerId)
 		if err != nil {
 			return nil, fmt.Errorf("projects: look up a customer for a code suggestion: %w", err)
 		}

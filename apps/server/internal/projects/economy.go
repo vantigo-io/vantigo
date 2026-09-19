@@ -116,7 +116,7 @@ func (s *server) projectActuals(ctx context.Context, project store.ProjectsProje
 	if s.deps.Actuals == nil {
 		return nil, nil
 	}
-	entry, err := s.deps.Actuals.Actuals(ctx, contracts.ActualsRequest{
+	entry, err := s.actualsFor(ctx, contracts.ActualsRequest{
 		ProjectID: project.ID,
 		Currency:  project.Currency,
 	})

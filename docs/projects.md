@@ -732,11 +732,26 @@ write. The one edit that does change a key is a new project code (it is unique):
 update runs in the transaction already holding the lock, which Postgres upgrades in
 place — still mutually exclusive, just not cheaper for that one edit.
 
-A cross-module call — asking the product catalog whether a variant exists — is always
-made **before** the project's lock is taken, never inside the locked transaction:
-a slow or blocked call into another module must never stall every other writer of the
-project. The transaction then only decides whether that prefetched answer matters,
-against the row its own lock returns.
+A cross-module call — asking the product catalog whether a variant exists, naming the
+caller through the user directory, resolving a customer — is always made **before**
+the project's lock is taken, never inside the locked transaction: these are in-process
+calls into another module that read through the same connection pool, so a transaction
+that holds row locks and then waits for one of them stalls every other writer of the
+project, and under enough load starves the pool outright. The transaction then only
+decides whether that prefetched answer matters, against the row its own lock returns.
+
+**This is enforced for the whole module, not documented and hoped for.** Every guarded
+write goes through one helper, `withProjectLock`, which takes the lock as its first
+statement and hands the body a context marked as holding it; and every call this
+module makes into `Deps.Products`, `Deps.Users`, `Deps.Directory` or `Deps.Actuals`
+goes through a thin accessor in `contracts.go` and through nowhere else. The
+accessors report each call to a hook that is nil in production — one nil comparison,
+no behaviour change — and that the test suite installs for every test, failing it when
+the context is a marked one. A new write path, or a new cross-module call on an
+existing one, is covered the moment it is written rather than when someone remembers
+to add a probe for it. One such probe remains beside the billing-line tests, checking
+the complementary thing the mark cannot: that Postgres really is holding the row at
+the moment of the call.
 
 ## Tasks
 

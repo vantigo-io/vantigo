@@ -64,7 +64,7 @@ func (s *server) userEntries(ctx context.Context, ids []uuid.UUID) (map[uuid.UUI
 	if len(ids) == 0 {
 		return entries, nil
 	}
-	found, err := s.deps.Users.Users(ctx, ids)
+	found, err := s.usersUsers(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("projects: resolve the project's people: %w", err)
 	}
@@ -85,7 +85,7 @@ func (s *server) userEntries(ctx context.Context, ids []uuid.UUID) (map[uuid.UUI
 // because whether that user can still act is what decides if a *new* role may
 // be given to them at all.
 func (s *server) subjectOf(ctx context.Context, userID uuid.UUID) (actor, *contracts.UserEntry, error) {
-	entry, err := s.deps.Users.User(ctx, userID)
+	entry, err := s.usersUser(ctx, userID)
 	if err != nil {
 		return actor{}, nil, fmt.Errorf("projects: resolve the assignment's user: %w", err)
 	}
@@ -404,7 +404,7 @@ func (s *server) GetProjectsByIdAssignableUsers(ctx context.Context, req gen.Get
 	}
 	// SearchUsers answers active users only, so a disabled account is never a
 	// candidate; nothing here has to filter for that.
-	found, err := s.deps.Users.SearchUsers(ctx, search, assignableUserLimit+len(taken))
+	found, err := s.usersSearchUsers(ctx, search, assignableUserLimit+len(taken))
 	if err != nil {
 		return nil, fmt.Errorf("projects: search assignable users: %w", err)
 	}

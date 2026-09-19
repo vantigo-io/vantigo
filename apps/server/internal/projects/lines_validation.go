@@ -167,7 +167,7 @@ func variantNotFound(variantID int32) string {
 // is the price of never letting a slow or blocked call into another module
 // stall every other writer of the project behind that lock.
 func (s *server) variantExists(ctx context.Context, variantID int32) (bool, error) {
-	variant, err := s.deps.Products.Variant(ctx, variantID)
+	variant, err := s.productsVariant(ctx, variantID)
 	if err != nil {
 		return false, fmt.Errorf("projects: look up product variant: %w", err)
 	}

@@ -258,27 +258,17 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 
 	now := s.deps.Clock()
 	var after store.ProjectsProject
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-
-		// The project row, locked FOR UPDATE, is this transaction's first
-		// statement (design §3.3): design §3.3's two guards below, and the
-		// revision check that follows, all have to be decided against the
-		// row this transaction now holds rather than `before` — read before
-		// the transaction opened — because a billing line's own create or
-		// change (lines.go) takes the identical lock before writing a
-		// 'fixed' amount or a budget amount, and only one lock, taken first
-		// by whichever request gets there first, actually serialises the
-		// two against each other. `before` still answers the questions that
-		// do not depend on freshness (access, §4.1's own field rules).
-		locked, err := txq.LockProject(ctx, before.ID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errProjectVanished
-		}
-		if err != nil {
-			return fmt.Errorf("projects: lock project: %w", err)
-		}
-
+	// The project row, locked FOR NO KEY UPDATE, is this transaction's first
+	// statement (design §3.3): design §3.3's two guards below, and the
+	// revision check that follows, all have to be decided against the row this
+	// transaction now holds rather than `before` — read before the transaction
+	// opened — because a billing line's own create or change (lines.go) takes
+	// the identical lock before writing a 'fixed' amount or a budget amount,
+	// and only one lock, taken first by whichever request gets there first,
+	// actually serialises the two against each other. `before` still answers
+	// the questions that do not depend on freshness (access, §4.1's own field
+	// rules).
+	err = s.withProjectLock(ctx, before.ID, func(ctx context.Context, txq *store.Queries, locked store.ProjectsProject) error {
 		// The revision the caller read is checked against the locked row
 		// rather than left to UpdateProject's own WHERE clause: this
 		// transaction holds the only lock that could let it move, so the
@@ -320,6 +310,7 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 			}
 		}
 
+		var err error
 		after, err = txq.UpdateProject(ctx, store.UpdateProjectParams{
 			ID:               req.Id,
 			Revision:         body.Revision,

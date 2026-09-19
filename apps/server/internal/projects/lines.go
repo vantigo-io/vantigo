@@ -143,33 +143,24 @@ func (s *server) PostProjectsByIdBillingLines(ctx context.Context, req gen.PostP
 
 	now := s.deps.Clock()
 	var created store.ProjectsBillingLine
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-
-		// The project row, locked FOR UPDATE, is this transaction's first
-		// statement — the same lock and the same query PutProjectsById
-		// takes before deciding to clear or swap the currency (design
-		// §3.3), so the two writers serialise on this row instead of racing
-		// past each other: a 'fixed' amount and a budget amount are both
-		// denominated in the project's currency, exactly what that guard
-		// protects. Re-running validateLine against the row this
-		// transaction now holds — rather than trusting the pool read from
-		// above the guards ran against — is what actually decides the
-		// currency-dependent rules under the lock; everything else about
-		// the body already passed and cannot have changed.
-		locked, err := txq.LockProject(ctx, project.ID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errProjectVanished
-		}
-		if err != nil {
-			return fmt.Errorf("projects: lock project: %w", err)
-		}
+	// The project row, locked FOR NO KEY UPDATE, is this transaction's first
+	// statement — the same lock and the same query PutProjectsById takes
+	// before deciding to clear or swap the currency (design §3.3), so the two
+	// writers serialise on this row instead of racing past each other: a
+	// 'fixed' amount and a budget amount are both denominated in the project's
+	// currency, exactly what that guard protects. Re-running validateLine
+	// against the row this transaction now holds — rather than trusting the
+	// pool read from above the guards ran against — is what actually decides
+	// the currency-dependent rules under the lock; everything else about the
+	// body already passed and cannot have changed.
+	err = s.withProjectLock(ctx, project.ID, func(ctx context.Context, txq *store.Queries, locked store.ProjectsProject) error {
 		if _, lockedErrs, err := validateLine(body, locked); err != nil {
 			return err
 		} else if len(lockedErrs) > 0 {
 			return fieldRefusal{errs: lockedErrs}
 		}
 
+		var err error
 		created, err = txq.InsertBillingLine(ctx, store.InsertBillingLineParams{
 			ProjectID:       project.ID,
 			Code:            parsed.Code,
@@ -287,24 +278,14 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 
 	now := s.deps.Clock()
 	var changed store.ProjectsBillingLine
-	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
-		txq := store.New(tx)
-
-		// The project's own lock comes before the line's (design §3.3): a
-		// fixed lock ordering across every writer that can take both is
-		// what keeps two guarded writers from deadlocking against each
-		// other rather than simply queuing. Re-running validateLine against
-		// the row this transaction now holds is what decides the
-		// currency-dependent rules under that lock, the same way the
-		// create does (PostProjectsByIdBillingLines) — everything else
-		// about the body already passed and cannot have changed.
-		locked, err := txq.LockProject(ctx, project.ID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errProjectVanished
-		}
-		if err != nil {
-			return fmt.Errorf("projects: lock project: %w", err)
-		}
+	// The project's own lock comes before the line's (design §3.3): a fixed
+	// lock ordering across every writer that can take both is what keeps two
+	// guarded writers from deadlocking against each other rather than simply
+	// queuing. Re-running validateLine against the row this transaction now
+	// holds is what decides the currency-dependent rules under that lock, the
+	// same way the create does (PostProjectsByIdBillingLines) — everything
+	// else about the body already passed and cannot have changed.
+	err = s.withProjectLock(ctx, project.ID, func(ctx context.Context, txq *store.Queries, locked store.ProjectsProject) error {
 		if _, lockedErrs, err := validateLine(body, locked); err != nil {
 			return err
 		} else if len(lockedErrs) > 0 {

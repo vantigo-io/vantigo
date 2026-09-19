@@ -92,16 +92,16 @@ func TestPostProjectsByIdBillingLines_RacingAClearOfTheCurrency_NeverLeavesABudg
 // a cross-module call must never run while this module holds the project's
 // row lock.
 //
-// This is a narrower, single-file stand-in for the time module's
-// harness-wide context-marking (server.go's withLockedTx/inLockedTx, proven
-// in time/harness_test.go's newTimeHarness cleanup): that mechanism marks
-// every locked transaction's context and has the harness's fake directories
-// check it on every call, catching this class of bug for the whole module
-// regardless of which write path it is introduced on. Doing the same here
-// would mean changing harness_test.go's shared fakeCatalog and every
-// harness constructor it feeds — worthwhile, but out of this fix's file
-// list (lines.go / lines_validation.go / their tests / projects_update_test.go).
-// This probe pins the one path this round actually touched instead.
+// The module now also has the harness-wide guarantee this probe was once a
+// stand-in for: withProjectLock marks every locked transaction's context and
+// the package's contract-call hook records anything asked of another module
+// under it (contracts.go, harness_test.go's lockedContractCalls), which
+// catches this class of bug on every write path rather than on the one a fix
+// happened to touch. The probe is kept beside it because it proves something
+// the mark cannot: that the row is *actually* locked in Postgres at the
+// moment of the call, rather than that the code believes it is. The two fail
+// independently, which is the point — a marking that drifted off a
+// transaction would leave this test still failing.
 type lockProbeCatalog struct {
 	*fakeCatalog
 	pool      *pgxpool.Pool
