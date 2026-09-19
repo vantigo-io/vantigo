@@ -1,4 +1,11 @@
-import { IconClock, IconCoin, IconLayoutDashboard, IconListCheck, IconUsers } from "@tabler/icons-react";
+import {
+  IconClock,
+  IconCoin,
+  IconLayoutDashboard,
+  IconListCheck,
+  IconReportMoney,
+  IconUsers,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { PageTabs, useI18n } from "@vantigo/frontend-shell";
@@ -20,17 +27,24 @@ interface ProjectDetailGate {
   capability?: keyof ProjectCapabilities;
 }
 
-type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "time";
+type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "economy" | "time";
 
 interface ProjectDetailTab extends ProjectDetailGate {
   value: ProjectDetailView;
-  labelKey: "project.overviewTab" | "project.tasksTab" | "project.peopleTab" | "project.billingTab" | "project.timeTab";
+  labelKey:
+    | "project.overviewTab"
+    | "project.tasksTab"
+    | "project.peopleTab"
+    | "project.billingTab"
+    | "project.economyTab"
+    | "project.timeTab";
   icon: typeof IconLayoutDashboard;
   to:
     | "/projects/$projectId"
     | "/projects/$projectId/tasks"
     | "/projects/$projectId/people"
     | "/projects/$projectId/billing"
+    | "/projects/$projectId/economy"
     | "/projects/$projectId/time";
 }
 
@@ -72,6 +86,19 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     // Financial fields are shaped out of the response per project, so the
     // project itself — not a permission — says whether this tab has anything
     // to show. Deep-linking it anyway renders the package's forbidden state.
+    capability: "canSeeFinancials",
+  },
+  {
+    // Delivery A of the economy view: the invoice plan. Gated the same way
+    // Billing is — the capability, not a permission — because the amounts
+    // are per-project financial data. A caller with only canManageMilestones
+    // (a manager without financial rights) still gets no tab; the next
+    // delivery widens this to everyone who sees the project once the tab has
+    // an hours-only half to show them.
+    value: "economy",
+    labelKey: "project.economyTab",
+    icon: IconReportMoney,
+    to: "/projects/$projectId/economy",
     capability: "canSeeFinancials",
   },
   {

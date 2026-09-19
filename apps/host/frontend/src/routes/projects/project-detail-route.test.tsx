@@ -51,20 +51,33 @@ const renderLayout = (capabilities: { canManage: boolean; canSeeFinancials: bool
 describe("the project detail route's tab row", () => {
   afterEach(cleanup);
 
-  it("shows the Billing tab when the project reports canSeeFinancials", () => {
+  it("shows the Billing and Economy tabs when the project reports canSeeFinancials", () => {
     renderLayout({ canManage: true, canSeeFinancials: true });
 
     expect(screen.getByText("project 31")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "People" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Billing" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Economy" })).toBeInTheDocument();
   });
 
-  it("hides the Billing tab when the project does not, leaving the other two", () => {
+  it("hides the Billing and Economy tabs when the project does not, leaving the other two", () => {
     renderLayout({ canManage: true, canSeeFinancials: false });
 
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "People" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Billing" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Economy" })).not.toBeInTheDocument();
+  });
+
+  // Delivery A's Economy tab is gated exactly like Billing (see
+  // project-detail-tabs.test.ts for the exact ordering); this pins the same
+  // production call site the Billing assertions above do, so a future edit
+  // that drops the capability through undefined here cannot go unnoticed.
+  it("orders the Economy tab between Billing and the app's own tabs end", () => {
+    renderLayout({ canManage: true, canSeeFinancials: true });
+
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(tabs.indexOf("Billing")).toBeLessThan(tabs.indexOf("Economy"));
   });
 });
