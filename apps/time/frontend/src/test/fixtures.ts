@@ -2,7 +2,7 @@ import type { TimeApprovalGroup } from "../api/approvals";
 import type { TimeEntry } from "../api/entries";
 import type { TimePersonOverview } from "../api/people";
 import type { MyProject, MyTaskOption, ProjectBillingLine } from "../api/projects";
-import type { PersonRate } from "../api/rates";
+import type { AssignableRateUser, PersonRate } from "../api/rates";
 import type { TimeProjectSummary } from "../api/stats";
 import type { TimeWeek, TimeWeekRow } from "../api/weeks";
 import { weekDays } from "../lib/week";
@@ -167,6 +167,12 @@ export const peopleOverview: TimePersonOverview[] = [
       { weekStart: WEEK, hours: 0, approvedHours: 0, rejectedCount: 0, submittedAt: null },
     ],
   },
+];
+
+/** What the directory search answers: active users, whether or not they ever logged an hour. */
+export const assignableUsers: AssignableRateUser[] = [
+  { userId: ME, displayName: "Ada Lovelace" },
+  { userId: OTHER, displayName: "Grace Hopper" },
 ];
 
 export const personRates: PersonRate[] = [

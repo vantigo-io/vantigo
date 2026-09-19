@@ -34,8 +34,8 @@ export const PeoplePage = () => {
   const { weeks } = useSearch({ strict: false }) as PeopleSearch;
   const navigate = useNavigate() as (options: unknown) => void;
 
-  const window = windowOf(weeks);
-  const { data, isPending, isError, error } = useQuery(peopleOverviewQueryOptions(window));
+  const weeksShown = windowOf(weeks);
+  const { data, isPending, isError, error } = useQuery(peopleOverviewQueryOptions(weeksShown));
   const forbidden = (error as ApiError | null)?.status === 403;
 
   const weekStarts = data?.[0]?.weeks.map((week) => week.weekStart) ?? [];
@@ -48,16 +48,19 @@ export const PeoplePage = () => {
     <Stack gap="lg">
       <PageHeader title={t("people")} description={t("peopleDescription")} />
 
-      <Group>
-        <Select
-          label={t("weeksShown")}
-          data={options}
-          value={String(window)}
-          allowDeselect={false}
-          w={160}
-          onChange={(value) => navigate({ search: { weeks: Number(value) } })}
-        />
-      </Group>
+      {/* Nothing to narrow when the caller may not see the table at all. */}
+      {!forbidden && (
+        <Group>
+          <Select
+            label={t("weeksShown")}
+            data={options}
+            value={String(weeksShown)}
+            allowDeselect={false}
+            w={160}
+            onChange={(value) => navigate({ search: { weeks: Number(value) } })}
+          />
+        </Group>
+      )}
 
       <Card withBorder padding="lg" radius="md">
         {isError && !forbidden && (

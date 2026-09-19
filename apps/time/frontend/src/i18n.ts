@@ -133,6 +133,7 @@ export const timeCatalog = {
     rejectReasonTooLong: "A reason holds at most 1000 characters",
     entriesApproved: "Time approved",
     entriesRejected: "Time rejected",
+    entryChanged: "1 entry",
     entriesChanged: "{{count}} entries",
     couldNotApprove: "Could not approve the time",
     couldNotReject: "Could not reject the time",
@@ -195,10 +196,10 @@ export const timeCatalog = {
     personRequired: "Choose a person",
     validFromRequired: "Choose the first day the card is in effect",
     rateRequired: "Give a bill rate, a cost rate, or both",
+    rateAboveZero: "A rate is more than zero",
     currencyRequired: "A currency is a three-letter code, like NOK",
-    noPeopleForRates: "Nobody to give a rate to yet",
-    ratePersonDescription:
-      "A person can be picked here once they have logged an hour or already have a card; anyone else gets their first card through the API.",
+    noPeopleForRates: "No user by that name",
+    ratePersonDescription: "Search anyone who works here, whether or not they have logged an hour yet.",
 
     projectTime: "Time",
     projectTimeDescription: "Every hour logged against this project's lines and tasks.",
@@ -343,6 +344,7 @@ export const timeCatalog = {
     rejectReasonTooLong: "En begrunnelse kan ha høyst 1000 tegn",
     entriesApproved: "Timene er godkjent",
     entriesRejected: "Timene er avvist",
+    entryChanged: "1 føring",
     entriesChanged: "{{count}} føringer",
     couldNotApprove: "Kunne ikke godkjenne timene",
     couldNotReject: "Kunne ikke avvise timene",
@@ -406,10 +408,10 @@ export const timeCatalog = {
     personRequired: "Velg en person",
     validFromRequired: "Velg første dag kortet gjelder",
     rateRequired: "Oppgi en fakturapris, en kostpris eller begge",
+    rateAboveZero: "En pris er større enn null",
     currencyRequired: "En valuta er en kode på tre bokstaver, som NOK",
-    noPeopleForRates: "Ingen å gi en pris til ennå",
-    ratePersonDescription:
-      "En person kan velges her når de har ført en time eller allerede har et kort; andre får sitt første kort gjennom API-et.",
+    noPeopleForRates: "Ingen bruker med det navnet",
+    ratePersonDescription: "Søk opp hvem som helst som jobber her, uansett om de har ført en time ennå.",
 
     projectTime: "Timer",
     projectTimeDescription: "Hver time som er ført på linjene og oppgavene til dette prosjektet.",

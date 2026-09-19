@@ -206,6 +206,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/time/rates/assignable-users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search users for a rate card
+         * @description Any active user a rate card could be added for, including one with no logged hours yet. Matches display name, case-insensitively; absent or empty answers the first page.
+         */
+        get: operations["getTimeRatesAssignableUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/time/rates/users/{userId}": {
         parameters: {
             query?: never;
@@ -389,6 +409,12 @@ export interface components {
              * @description The week's Monday.
              */
             weekStart: string;
+        };
+        /** @description One active user, named for a rate card's picker. */
+        TimeAssignableUser: {
+            displayName: string;
+            /** Format: uuid */
+            userId: string;
         };
         /** @description The entries to approve, each submitted, on a project the caller approves for (its manager, or time:approve), and not dated before the lock date unless the caller holds time:manage. All or nothing — one entry that may not be approved refuses the whole request and changes nothing. */
         TimeEntryApproveRequest: {
@@ -1592,6 +1618,47 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getTimeRatesAssignableUsers: {
+        parameters: {
+            query?: {
+                /** @description Matches the user's display name, case-insensitively. Absent or empty answers the first active users. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — at most 20 active users, in the order the directory returns them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimeAssignableUser"][];
                 };
             };
             /** @description Unauthorized */
