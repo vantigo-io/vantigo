@@ -320,10 +320,17 @@ caller to shape.
   reported at all.
 - **Unpriced hours are billable hours without a usable bill rate** — no rate, or a
   rate in another currency — and nothing else: non-billable work is never unpriced,
-  because it was never meant to carry a price. This is the same figure the project
-  summary's `unpricedHours` reports (`GET /time/projects/{id}/summary`); a fix made
-  to one query and not the other would make the two disagree, so both are pinned by
-  the same test.
+  because it was never meant to carry a price. It is the same figure the project
+  summary's `unpricedHours` reports (`GET /time/projects/{id}/summary`) **for the
+  hours that summary covers**, and the two agree exactly when both of the following
+  hold. The summary counts only `submitted`, `approved` and `invoiced` entries, so a
+  billable draft or rejected entry with no rate is unpriced here and outside the
+  summary entirely; and the summary *infers* a currency for a project that carries
+  none, while the contract reports no amounts at all when asked without one and so
+  calls every priced billable hour unpriced. A project with a currency and no
+  unpriced draft is the region where the two are one number, and
+  `TestActualsUnpricedHoursAgreeWithTheProjectSummary` pins both the agreement and
+  the divergence.
 - **Uncosted hours** are the same idea for cost, but across *every* bucket, billable
   or not: work nobody is billed for still costs the company, so a consumer showing a
   margin has to know how many of its hours it left out of that number.
