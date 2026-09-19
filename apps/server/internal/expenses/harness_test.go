@@ -261,6 +261,30 @@ func (f *fakeProjects) setCanLogTime(projectID int32, allowed bool) {
 	f.canLogTime[projectID] = allowed
 }
 
+// clearCanLogTime drops an override set by setCanLogTime, so the directory
+// answers its own rule again.
+func (f *fakeProjects) clearCanLogTime(projectID int32) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.canLogTime, projectID)
+}
+
+// deactivateLine and activateLine are a billing line going out of use and
+// coming back, the way projects changing it looks from here.
+func (f *fakeProjects) deactivateLine(lineID int32) { f.setLineActive(lineID, false) }
+func (f *fakeProjects) activateLine(lineID int32)   { f.setLineActive(lineID, true) }
+
+func (f *fakeProjects) setLineActive(lineID int32, active bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	line, ok := f.lines[lineID]
+	if !ok {
+		return
+	}
+	line.Active = active
+	f.lines[lineID] = line
+}
+
 // removeProject takes a project away, the way projects losing it looks from
 // here: the directory answers (nil, nil) for it from then on.
 func (f *fakeProjects) removeProject(id int32) {
@@ -686,8 +710,11 @@ func putSettings(t *testing.T, c *modtest.Client, body map[string]any) settingsJ
 }
 
 // refused sends body to path and fails the test unless it was refused with a
-// validation problem carrying title, answering the field errors.
-func refused(t *testing.T, c *modtest.Client, method, path string, body map[string]any, title string) map[string][]string {
+// validation problem carrying title, answering the field errors. body is `any`
+// rather than a map so a DELETE, which declares no request body, can pass a
+// real nil — a nil map inside an interface is not nil, and the contract
+// recorder rightly refuses a body on an operation that declares none.
+func refused(t *testing.T, c *modtest.Client, method, path string, body any, title string) map[string][]string {
 	t.Helper()
 	r := c.Do(method, path, body)
 	if r.Status != http.StatusBadRequest {
@@ -1033,8 +1060,9 @@ func listProjectOptions(t *testing.T, c *modtest.Client) []projectOptionJSON {
 }
 
 // refusedEntry is refused for an entry body: the field errors of a create or
-// an update that did not pass.
-func refusedEntry(t *testing.T, c *modtest.Client, method, path string, body map[string]any) map[string][]string {
+// an update that did not pass. body is `any` so the same helper serves a
+// DELETE, which carries none.
+func refusedEntry(t *testing.T, c *modtest.Client, method, path string, body any) map[string][]string {
 	t.Helper()
 	return refused(t, c, method, path, body, invalidEntryTitle)
 }
@@ -1133,6 +1161,14 @@ func uploadReceipt(t *testing.T, c *modtest.Client, entryID int64, fileName, con
 
 // refusedReceipt is an upload that did not pass: the field errors of the
 // validation problem it was refused with.
+// refusedReceiptDelete is the field errors of a receipt delete refused by what
+// the expense is right now — its status, or the period lock — which is a 400
+// naming the reason rather than a bare 403.
+func refusedReceiptDelete(t *testing.T, c *modtest.Client, attachmentID int64) map[string][]string {
+	t.Helper()
+	return refused(t, c, http.MethodDelete, attachmentPath(attachmentID), nil, invalidReceiptTitle)
+}
+
 func refusedReceipt(t *testing.T, c *modtest.Client, entryID int64, fileName, contentType string, data []byte) map[string][]string {
 	t.Helper()
 	r := postReceipt(t, c, entryID, fileName, contentType, data)

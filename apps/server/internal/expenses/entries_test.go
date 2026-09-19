@@ -417,13 +417,17 @@ func TestExpensesEntries_ThePeriodLockHoldsBackEveryWriteButManages(t *testing.T
 	if len(errs["entryDate"]) == 0 {
 		t.Errorf("recording into a locked period: errors = %v, want one on entryDate", errs)
 	}
-	// The locked entry itself is no longer the employee's to change...
-	if r := employee.Do(http.MethodPut, entryPath(before.Id),
-		outlayBody(map[string]any{"revision": before.Revision, "entryDate": "2026-01-15"})); r.Status != http.StatusForbidden {
-		t.Errorf("edit a locked entry: status %d body %s, want 403", r.Status, r.Body)
+	// The locked entry itself is no longer the employee's to change — a 400
+	// naming the lock, because what refuses them is the entry's date and not
+	// who they are (entries_update_test.go pins the whole rule).
+	errs = refusedEntry(t, employee, http.MethodPut, entryPath(before.Id),
+		outlayBody(map[string]any{"revision": before.Revision, "entryDate": "2026-01-15"}))
+	if len(errs["entryDate"]) == 0 {
+		t.Errorf("edit a locked entry: errors = %v, want one on entryDate", errs)
 	}
-	if r := employee.Do(http.MethodDelete, entryPath(before.Id), nil); r.Status != http.StatusForbidden {
-		t.Errorf("delete a locked entry: status %d body %s, want 403", r.Status, r.Body)
+	errs = refusedEntry(t, employee, http.MethodDelete, entryPath(before.Id), nil)
+	if len(errs["entryDate"]) == 0 {
+		t.Errorf("delete a locked entry: errors = %v, want one on entryDate", errs)
 	}
 	if locked := getEntry(t, employee, before.Id); locked.Capabilities.CanEdit || locked.Capabilities.CanDelete {
 		t.Errorf("capabilities = %+v, want nothing on an entry before the lock", locked.Capabilities)

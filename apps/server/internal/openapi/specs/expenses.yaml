@@ -183,7 +183,7 @@ components:
             description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.'
             properties:
                 billRatePerKm:
-                    description: What the customer is charged per kilometre on billable mileage. Defaults from the mileage_customer rate in force on the entry date; required when the table has none. Refused on anything else.
+                    description: 'What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project''s money to fill in. Refused on anything but billable mileage.'
                     format: double
                     type: number
                 billable:
@@ -226,7 +226,7 @@ components:
                     description: '''outlay'' or ''mileage''.'
                     type: string
                 markupPercent:
-                    description: A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Defaults from the settings. Refused on anything else.
+                    description: 'A billable outlay''s markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings'' default. Refused on anything but a billable outlay.'
                     format: double
                     type: number
                 paidBy:
@@ -378,9 +378,10 @@ components:
                 - capabilities
             type: object
         ExpensesEntryUpdateRequest:
-            description: A full replace of an expense, held to every rule a create is held to, and guarded by the revision the entry was read at. What is left out is cleared. The owner stays whoever the entry already concerns.
+            description: 'A full replace of an expense, held to every rule a create is held to, and guarded by the revision the entry was read at. What is left out is cleared — with three deliberate exceptions, because a replace only replaces what its caller can see: the markup and the customer rate per kilometre are kept unless the caller has financial rights on the project and sends one, the project a line already carries is not judged for bookability again, and in an installation with no projects module the stored project link, markup, customer rate and bill amount are carried through untouched. The owner stays whoever the entry already concerns.'
             properties:
                 billRatePerKm:
+                    description: 'See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.'
                     format: double
                     type: number
                 billable:
@@ -414,6 +415,7 @@ components:
                 kind:
                     type: string
                 markupPercent:
+                    description: 'See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.'
                     format: double
                     type: number
                 paidBy:
@@ -422,6 +424,7 @@ components:
                     format: int32
                     type: integer
                 projectId:
+                    description: A project the line already carries is kept even once it stops accepting new bookings; a different one is judged in full.
                     format: int32
                     type: integer
                 revision:
@@ -662,7 +665,7 @@ openapi: 3.0.3
 paths:
     /api/v1/expenses/attachments/{id}:
         delete:
-            description: Removes a receipt while its expense is still its owner's to change — a draft or a rejected line, by its owner or by expenses:manage, and not before the period lock. The stored object goes with the row.
+            description: 'Removes a receipt while its expense is still its owner''s to change — a draft or a rejected line, by its owner or by expenses:manage, and not before the period lock. The stored object goes with the row. The two refusals are told apart as they are everywhere else here: who is asking is a 403, what the expense is right now is a 400 naming the reason.'
             operationId: deleteExpensesAttachmentsById
             parameters:
                 - in: path
@@ -674,6 +677,12 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — on entryId, because the expense the receipt is on has moved past being editable or is dated before the period lock.
                 "401":
                     content:
                         application/json:
@@ -685,7 +694,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden — the caller may see the expense but may not change it, because it is not theirs, because it has been submitted, or because it is dated before the period lock.
+                    description: Forbidden — the expense is not the caller's to change; they are neither its owner nor a holder of expenses:manage.
                 "404":
                     description: Not Found — no receipt has that id, or the caller may not see the expense it is on.
             summary: Delete a receipt
@@ -967,7 +976,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/entries/{id}:
         delete:
-            description: Deletes an expense while it is still its owner's to change — a draft or a rejected line, by its owner or by expenses:manage, and not before the period lock.
+            description: 'Deletes an expense while it is still its owner''s to change — a draft or a rejected line, by its owner or by expenses:manage, and not before the period lock. The two refusals are told apart on purpose: who is asking is a 403, what the expense is right now is a 400 naming the reason.'
             operationId: deleteExpensesEntriesById
             parameters:
                 - in: path
@@ -979,6 +988,12 @@ paths:
             responses:
                 "204":
                     description: No Content
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the expense has moved past being editable (on status) or is dated before the period lock (on entryDate).
                 "401":
                     content:
                         application/json:
@@ -990,7 +1005,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden — the caller may see the expense but may not delete it.
+                    description: Forbidden — the expense is not the caller's to change; they are neither its owner nor a holder of expenses:manage.
                 "404":
                     description: Not Found — no expense has that id, or the caller may not see it.
             summary: Delete an expense
@@ -1060,7 +1075,7 @@ paths:
                         application/problem+json:
                             schema:
                                 $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
-                    description: Bad Request
+                    description: Bad Request — a field did not pass, or the expense has moved past being editable (on status) or is dated before the period lock (on entryDate).
                 "401":
                     content:
                         application/json:
@@ -1072,7 +1087,7 @@ paths:
                         application/json:
                             schema:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
-                    description: Forbidden — the caller may see the expense but may not change it.
+                    description: Forbidden — the expense is not the caller's to change; they are neither its owner nor a holder of expenses:manage.
                 "404":
                     description: Not Found — no expense has that id, or the caller may not see it.
                 "409":

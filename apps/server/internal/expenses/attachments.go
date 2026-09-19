@@ -238,23 +238,23 @@ func receiptPart(mr *multipart.Reader) (data []byte, fileName, declared string, 
 	}
 }
 
-// entryTakesReceipts is why an expense cannot take a receipt right now, "" when
-// it can. The three reasons are design's, in the order that says the most
-// permanent thing first: a mileage line never carries one, a settled expense no
-// longer does, and a locked period holds everything back but expenses:manage.
+// entryTakesReceipts is why an expense's receipts cannot be changed right now,
+// "" when they can. A mileage line never carries one; beyond that the reasons
+// are the expense's own state, which entryStateRefusal owns for the whole
+// module (a closed period, or an expense that has moved past being editable).
+//
 // Whether the caller may change the expense at all is a separate question,
-// answered before this one with a 403 (authorize.go's entryAccess).
+// answered before this one with a 403 — the module's one rule for the two
+// codes: who is asking is a 403 (or the bare 404 of something they cannot
+// see), what the expense is right now is a 400 naming the reason. Both the
+// upload and the delete report it on entryId, because the expense is the thing
+// that refuses and the thing the caller can do something about.
 func entryTakesReceipts(c *caller, entry store.ExpensesEntry) string {
-	switch {
-	case entry.Kind != kindOutlay:
+	if entry.Kind != kindOutlay {
 		return "Only an outlay carries a receipt; a mileage line has none"
-	case !c.mayWritePast(entry.EntryDate.Time):
-		return lockedBeforeMessage(*lockedBefore(c.Settings))
-	case !slices.Contains(editableStatuses, entry.Status):
-		return fmt.Sprintf("An expense that has been %s can no longer have its receipts changed", entry.Status)
-	default:
-		return ""
 	}
+	_, msg := entryStateRefusal(c, entry)
+	return msg
 }
 
 // attachmentResponse renders one receipt row. The object key is not on it, and
@@ -511,11 +511,13 @@ func (s *server) GetExpensesAttachmentsById(ctx context.Context, req gen.GetExpe
 //
 // Removing a receipt is changing the expense, so it is exactly
 // capabilities.canEdit: its owner or expenses:manage, while the expense is a
-// draft or rejected, and not before the period lock. A caller who may see the
-// expense but not change it gets the access layer's own 403 — the same answer
-// deleting the expense itself would give them — and one who may not see it, the
-// unknown id's 404. The row goes in the transaction; the object goes after it
-// has committed.
+// draft or rejected, and not before the period lock. The two halves answer
+// differently, as they do on the expense's own PUT and DELETE: a caller the
+// expense does not belong to gets the access layer's 403 (and one who may not
+// see it at all, the unknown id's 404), while an expense that has been
+// submitted or is dated inside a closed period is a 400 on entryId naming the
+// reason. The row goes in the transaction; the object goes after it has
+// committed.
 func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.DeleteExpensesAttachmentsByIdRequestObject) (gen.DeleteExpensesAttachmentsByIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	c, err := s.callerFor(ctx, q)
@@ -529,11 +531,15 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 	if !found {
 		return gen.DeleteExpensesAttachmentsById404Response{}, nil
 	}
-	if !a.CanEdit {
+	if !a.IsWriter {
 		return gen.DeleteExpensesAttachmentsById403JSONResponse(forbidden()), nil
 	}
+	if msg := entryTakesReceipts(c, entry); msg != "" {
+		return gen.DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse(
+			invalidReceipt(fieldError("entryId", msg))), nil
+	}
 
-	var settled bool
+	var settled string
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		locked, err := txq.LockEntry(ctx, entry.ID)
 		switch {
@@ -545,8 +551,9 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 		case err != nil:
 			return fmt.Errorf("expenses: lock an expense: %w", err)
 		case !slices.Contains(editableStatuses, locked.Status):
-			// A submit committed between the read and the lock.
-			settled = true
+			// A submit committed between the read and the lock — the state
+			// refusal above, arrived at a moment later.
+			settled = locked.Status
 			return nil
 		}
 		if _, err := txq.DeleteAttachment(ctx, req.Id); err != nil {
@@ -557,8 +564,9 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 	if err != nil {
 		return nil, err
 	}
-	if settled {
-		return gen.DeleteExpensesAttachmentsById403JSONResponse(forbidden()), nil
+	if settled != "" {
+		return gen.DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse(invalidReceipt(fieldError("entryId",
+			fmt.Sprintf("An expense that has been %s can no longer be changed", settled)))), nil
 	}
 	s.removeReceiptObject(ctx, entry.ID, attachment.ObjectKey)
 	return gen.DeleteExpensesAttachmentsById204Response{}, nil

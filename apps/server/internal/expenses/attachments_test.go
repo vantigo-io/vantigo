@@ -271,8 +271,12 @@ func TestExpensesReceipts_OnlyWhileTheExpenseIsEditable(t *testing.T) {
 			if len(errs["entryId"]) == 0 {
 				t.Errorf("errors = %v, want the refusal on the expense", errs)
 			}
-			if r := owner.Do(http.MethodDelete, attachmentPath(receipt.Id), nil); r.Status != http.StatusForbidden {
-				t.Errorf("delete a %s expense's receipt: status %d body %s, want 403", status, r.Status, r.Body)
+			// What the expense *is* refuses the delete, not who is asking, so
+			// it is a 400 naming the reason — the same rule the expense's own
+			// PUT and DELETE follow.
+			errs = refusedReceiptDelete(t, owner, receipt.Id)
+			if len(errs["entryId"]) == 0 {
+				t.Errorf("delete a %s expense's receipt: errors = %v, want one on entryId", status, errs)
 			}
 			// It is still readable: an approver has to be able to see what
 			// they approved.
@@ -305,8 +309,8 @@ func TestExpensesReceipts_ThePeriodLockFreezesThemToo(t *testing.T) {
 	if len(errs["entryId"]) == 0 {
 		t.Errorf("errors = %v, want the refusal on the expense", errs)
 	}
-	if r := owner.Do(http.MethodDelete, attachmentPath(receipt.Id), nil); r.Status != http.StatusForbidden {
-		t.Errorf("delete behind the lock: status %d body %s, want 403", r.Status, r.Body)
+	if errs := refusedReceiptDelete(t, owner, receipt.Id); len(errs["entryId"]) == 0 {
+		t.Errorf("delete behind the lock: errors = %v, want one on entryId naming the lock", errs)
 	}
 
 	// The administrator works past it, for their colleague's expense.
