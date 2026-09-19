@@ -158,10 +158,13 @@ renders without an amount and stays out of the totals.
   counts non-cancelled milestones and line budget amounts.
 - **Locking.** Every transaction that changes a project's currency, fixed price
   or billing type, or writes a row whose validity depends on them (billing
-  lines, milestones), locks the project row (`FOR UPDATE`) first and decides
-  under it; other modules' directories are asked before the lock is taken,
-  never under it. That lock also serialises milestone ordering, so milestones
-  need no advisory lock of their own (tasks keep theirs).
+  lines, milestones), locks the project row (`FOR NO KEY UPDATE`) first and
+  decides under it; other modules' directories are asked before the lock is
+  taken, never under it. `FOR NO KEY UPDATE` still conflicts with itself and
+  with the project UPDATE's own row lock, so the guarantee is the same as
+  `FOR UPDATE`'s, but it does not block the `FOR KEY SHARE` every insert that
+  references the project takes. That lock also serialises milestone ordering,
+  so milestones need no advisory lock of their own (tasks keep theirs).
 - The fixed-price refusal lands on `billingType` — the only reachable way to
   leave a fixed price behind.
 

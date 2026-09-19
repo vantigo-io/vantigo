@@ -682,3 +682,44 @@ func TestPutProjectsById_ManageAll_MayUpdate(t *testing.T) {
 		t.Errorf("Name = %q, want the new name", updated.Name)
 	}
 }
+
+// The project's own amounts carry the same upper bounds as the line budgets
+// and the milestone amounts next door: past what the column can hold is a
+// field error, not a 22003 the handler can only answer 500 to.
+func TestPostProjects_AmountsPastTheirColumns_Return400OnTheField(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+
+	for _, tc := range []struct {
+		name      string
+		overrides map[string]any
+		field     string
+	}{
+		{"a fixed price past numeric(12,2)", map[string]any{
+			"code": "LIMIT2000", "billingType": "fixed-price",
+			"fixedPriceAmount": 10000000000.00, "currency": "NOK",
+		}, "fixedPriceAmount"},
+		{"a budget amount past numeric(12,2)", map[string]any{
+			"code": "LIMIT2001", "budgetAmount": 10000000000.00, "currency": "NOK",
+		}, "budgetAmount"},
+		{"budget hours past numeric(10,2)", map[string]any{
+			"code": "LIMIT2002", "budgetHours": 100000000.00,
+		}, "budgetHours"},
+		{"a default bill rate past numeric(12,2)", map[string]any{
+			"code": "LIMIT2003", "defaultBillRate": 10000000000.00, "currency": "NOK",
+		}, "defaultBillRate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := c.Do(http.MethodPost, "/api/v1/projects", createBody(tc.overrides))
+			if r.Status != http.StatusBadRequest {
+				t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+			}
+			var problem validationProblemJSON
+			r.JSON(&problem)
+			if len(problem.Errors[tc.field]) == 0 {
+				t.Errorf("errors = %v, want a message on %q", problem.Errors, tc.field)
+			}
+		})
+	}
+}

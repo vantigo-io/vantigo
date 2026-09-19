@@ -186,11 +186,13 @@ func (s *server) PostProjectsByIdMilestones(ctx context.Context, req gen.PostPro
 		return gen.PostProjectsByIdMilestones403JSONResponse(forbidden()), nil
 	}
 
-	parsed, fieldErrs, err := validateMilestone(body, project)
-	if err != nil {
+	// The body is judged once here, against the project as the handler read
+	// it, so a bad body is answered without opening a transaction at all; the
+	// project-dependent half is then re-asked under the lock, and it is that
+	// answer the row is written from.
+	if _, fieldErrs, err := validateMilestone(body, project); err != nil {
 		return nil, err
-	}
-	if len(fieldErrs) > 0 {
+	} else if len(fieldErrs) > 0 {
 		return gen.PostProjectsByIdMilestones400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
 	}
 
@@ -205,7 +207,13 @@ func (s *server) PostProjectsByIdMilestones(ctx context.Context, req gen.PostPro
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
-		locked, err = s.lockProjectFor(ctx, txq, project.ID, body)
+		locked, err = lockProject(ctx, txq, project.ID)
+		if err != nil {
+			return err
+		}
+		// Re-asked against the locked row, and it is that row's currency the
+		// new milestone's amount is stamped with.
+		parsed, err := revalidateMilestone(body, locked)
 		if err != nil {
 			return err
 		}
@@ -219,6 +227,7 @@ func (s *server) PostProjectsByIdMilestones(ctx context.Context, req gen.PostPro
 			Description:     parsed.Description,
 			PlannedDate:     parsed.PlannedDate,
 			Amount:          parsed.Amount,
+			AmountCurrency:  parsed.AmountCurrency,
 			Percent:         parsed.Percent,
 			Position:        last + 1,
 			CreatedByUserID: by.UserID,
@@ -246,17 +255,12 @@ func (s *server) PostProjectsByIdMilestones(ctx context.Context, req gen.PostPro
 	return gen.PostProjectsByIdMilestones201JSONResponse(resp), nil
 }
 
-// lockProjectFor takes the project's row lock — the first statement of every
-// milestone write — and re-runs the body's currency-dependent rules against
-// the row it returns. It is the one place design §3.3's "decide under the
-// project's lock" is spelled out for milestones, so no path can forget half
-// of it, and it answers the locked row every caller then writes against.
-//
-// Only the rules that depend on the project are re-asked; everything else
-// about the body is a property of the body alone and cannot have moved since
-// the handler validated it. body is the create's shape, which an update is
-// converted into (milestoneFromUpdate), so one function serves both.
-func (s *server) lockProjectFor(ctx context.Context, txq *store.Queries, projectID int32, body gen.BillingMilestoneRequest) (store.ProjectsProject, error) {
+// lockProject takes the project's row lock — the first statement of every
+// milestone write, whether or not that write reads anything off the project —
+// and answers the row it returns, which is the only row any of them then
+// decides against. A project that vanished under it maps to the handler's own
+// 404.
+func lockProject(ctx context.Context, txq *store.Queries, projectID int32) (store.ProjectsProject, error) {
 	locked, err := txq.LockProject(ctx, projectID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return store.ProjectsProject{}, errProjectVanished
@@ -264,12 +268,34 @@ func (s *server) lockProjectFor(ctx context.Context, txq *store.Queries, project
 	if err != nil {
 		return store.ProjectsProject{}, fmt.Errorf("projects: lock project: %w", err)
 	}
-	if _, lockedErrs, err := validateMilestone(body, locked); err != nil {
-		return store.ProjectsProject{}, err
-	} else if len(lockedErrs) > 0 {
-		return store.ProjectsProject{}, fieldRefusal{errs: lockedErrs}
-	}
 	return locked, nil
+}
+
+// revalidateMilestone re-asks the body's project-dependent rules against the
+// locked project — whether there is a currency to denominate the amount in,
+// and a fixed price for a percent to be a share of — and answers the parsed
+// milestone, whose AmountCurrency is stamped from that same locked row.
+// Everything else about the body is a property of the body alone and cannot
+// have moved since the handler validated it.
+//
+// It is deliberately separate from taking the lock. A create runs the two
+// together (it has no revision to lose to), but an update must decide its
+// *own* refusals first — a stale revision, and a milestone that is read-only
+// — because a caller two states behind must be told to re-read, not sent off
+// to change the project for a milestone they may not even edit. Locks in one
+// order, decisions in another.
+//
+// body is the create's shape, which an update is converted into
+// (milestoneFromUpdate), so one function serves both.
+func revalidateMilestone(body gen.BillingMilestoneRequest, locked store.ProjectsProject) (parsedMilestone, error) {
+	parsed, lockedErrs, err := validateMilestone(body, locked)
+	if err != nil {
+		return parsedMilestone{}, err
+	}
+	if len(lockedErrs) > 0 {
+		return parsedMilestone{}, fieldRefusal{errs: lockedErrs}
+	}
+	return parsed, nil
 }
 
 // GetProjectsMilestonesByMilestoneId Get a billing milestone by id
@@ -325,14 +351,13 @@ func (s *server) PutProjectsMilestonesByMilestoneId(ctx context.Context, req gen
 		return gen.PutProjectsMilestonesByMilestoneId403JSONResponse(forbidden()), nil
 	}
 
+	// The body is deliberately *not* judged here, unlike on a create. Some of
+	// its rules depend on the project, and answering one of those before the
+	// milestone's own revision and read-only checks would tell a caller two
+	// states behind to go and change the project — for a milestone they may
+	// no longer edit at all. Everything is decided inside the transaction, in
+	// the order the caller needs it (see below).
 	content := milestoneFromUpdate(body)
-	parsed, fieldErrs, err := validateMilestone(content, scope.Project)
-	if err != nil {
-		return nil, err
-	}
-	if len(fieldErrs) > 0 {
-		return gen.PutProjectsMilestonesByMilestoneId400ApplicationProblemPlusJSONResponse(invalidProject(fieldErrs)), nil
-	}
 
 	by, err := s.callerAs(ctx)
 	if err != nil {
@@ -345,7 +370,11 @@ func (s *server) PutProjectsMilestonesByMilestoneId(ctx context.Context, req gen
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
-		locked, err = s.lockProjectFor(ctx, txq, scope.Project.ID, content)
+		// Locks in the fixed order — project, then milestone — but decisions
+		// in the caller's: a stale revision and a read-only milestone are
+		// both about the resource being addressed, and only once those pass
+		// is it worth telling the caller anything about the project.
+		locked, err = lockProject(ctx, txq, scope.Project.ID)
 		if err != nil {
 			return err
 		}
@@ -362,14 +391,19 @@ func (s *server) PutProjectsMilestonesByMilestoneId(ctx context.Context, req gen
 		if before.Status != milestoneStatusPlanned && before.Status != milestoneStatusReady {
 			return singleFieldRefusal("status", milestoneNotEditable(before.Status))
 		}
+		parsed, err := revalidateMilestone(content, locked)
+		if err != nil {
+			return err
+		}
 		changed, err = txq.UpdateMilestone(ctx, store.UpdateMilestoneParams{
-			ID:          before.ID,
-			Name:        parsed.Name,
-			Description: parsed.Description,
-			PlannedDate: parsed.PlannedDate,
-			Amount:      parsed.Amount,
-			Percent:     parsed.Percent,
-			Now:         now,
+			ID:             before.ID,
+			Name:           parsed.Name,
+			Description:    parsed.Description,
+			PlannedDate:    parsed.PlannedDate,
+			Amount:         parsed.Amount,
+			AmountCurrency: parsed.AmountCurrency,
+			Percent:        parsed.Percent,
+			Now:            now,
 		})
 		if err != nil {
 			return err
@@ -440,11 +474,8 @@ func (s *server) DeleteProjectsMilestonesByMilestoneId(ctx context.Context, req 
 	deleted := false
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if _, err := txq.LockProject(ctx, scope.Project.ID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errProjectVanished
-			}
-			return fmt.Errorf("projects: lock project: %w", err)
+		if _, err := lockProject(ctx, txq, scope.Project.ID); err != nil {
+			return err
 		}
 		milestone, err := txq.LockMilestone(ctx, scope.Milestone.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -531,13 +562,13 @@ func (s *server) PutProjectsMilestonesByMilestoneIdPosition(ctx context.Context,
 	}
 
 	now := s.deps.Clock()
+	var locked store.ProjectsProject
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		if _, err := txq.LockProject(ctx, scope.Project.ID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errProjectVanished
-			}
-			return fmt.Errorf("projects: lock project: %w", err)
+		var err error
+		locked, err = lockProject(ctx, txq, scope.Project.ID)
+		if err != nil {
+			return err
 		}
 		milestone, err := txq.LockMilestone(ctx, scope.Milestone.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -578,7 +609,9 @@ func (s *server) PutProjectsMilestonesByMilestoneIdPosition(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("projects: read the moved milestone back: %w", err)
 	}
-	resp, err := s.milestoneResponseFor(ctx, scope.Project, scope.Access, moved)
+	// Rendered from the row this write's own transaction locked, like every
+	// other write path here, rather than from the copy read before it.
+	resp, err := s.milestoneResponseFor(ctx, locked, scope.Access, moved)
 	if err != nil {
 		return nil, err
 	}
@@ -643,12 +676,9 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 		var err error
-		locked, err = txq.LockProject(ctx, scope.Project.ID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errProjectVanished
-		}
+		locked, err = lockProject(ctx, txq, scope.Project.ID)
 		if err != nil {
-			return fmt.Errorf("projects: lock project: %w", err)
+			return err
 		}
 		before, err := txq.LockMilestone(ctx, scope.Milestone.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -753,9 +783,9 @@ func (s *server) PostProjectsMilestonesByMilestoneIdStatus(ctx context.Context, 
 //
 // convert is the undo's one special case: a percent milestone whose project
 // has since dropped the fixed price becomes an amount milestone carrying the
-// number that was frozen when it was invoiced. That number is read *before*
-// the invoice fields are cleared, because clearing them is what would
-// otherwise lose it.
+// number that was frozen when it was invoiced, stamped with the currency that
+// invoice was raised in. That number is read *before* the invoice fields are
+// cleared, because clearing them is what would otherwise lose it.
 func milestoneStatusParams(
 	before store.ProjectsBillingMilestone,
 	project store.ProjectsProject,
@@ -771,6 +801,7 @@ func milestoneStatusParams(
 		ID:               before.ID,
 		Status:           status,
 		Amount:           before.Amount,
+		AmountCurrency:   before.AmountCurrency,
 		Percent:          before.Percent,
 		ReadyAt:          before.ReadyAt,
 		ReadyByUserID:    before.ReadyByUserID,
@@ -782,7 +813,12 @@ func milestoneStatusParams(
 		Now:              now,
 	}
 	if convert {
+		// The amount that was actually invoiced, denominated in the project's
+		// currency — which cannot have moved while an invoiced milestone
+		// existed, so the locked row's currency is the one the invoice was
+		// raised in.
 		params.Amount, params.Percent = before.InvoicedAmount, pgtype.Numeric{}
+		params.AmountCurrency = project.Currency
 	}
 	switch {
 	case move.SetReady:

@@ -66,7 +66,6 @@ const totals = (overrides: Partial<BillingMilestoneTotals> = {}): BillingMilesto
   planned: 300000,
   ready: 0,
   invoiced: 0,
-  cancelled: 0,
   currency: "NOK",
   fixedPrice: 1000000,
   ...overrides,

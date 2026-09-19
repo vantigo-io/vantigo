@@ -256,8 +256,12 @@ status, dates, budgets and people — just no priced lines.
 
 ### Budgets on billing lines
 
-A line may carry `budgetHours` and `budgetAmount`, both optional and both `> 0` when
-set. `budgetHours` is planning data — visible with the line to everyone who sees the
+A line may carry `budgetHours` and `budgetAmount`, both optional, both `> 0` when set
+and both bounded by the column that holds them — `budgetAmount` at 9 999 999 999.99
+(`numeric(12,2)`) and `budgetHours` at 99 999 999.99 (`numeric(10,2)`), so a number
+too wide is a field error rather than a database overflow the handler can only answer
+500 to. The project's own `fixedPriceAmount`, `budgetAmount`, `defaultBillRate` and
+`budgetHours` carry the same bounds, for the same reason. `budgetHours` is planning data — visible with the line to everyone who sees the
 project, deliberately outside the financial shaping above, exactly like the project's
 own `budgetHours`. `budgetAmount` is financial data: it lives inside the line's
 `pricing` object, so it is present only for a caller who may see the money, and it
@@ -271,9 +275,12 @@ entry works.
 ## Billing milestones and the invoice plan
 
 A **billing milestone** is a named step of a project's invoice plan: `name`, an
-optional `description` and `plannedDate`, and either a flat `amount` (in the
-project's currency) or a `percent` of the project's fixed price — exactly one of the
-two, never both, never neither. Any project that carries a currency may have
+optional `description` and `plannedDate`, and either a flat `amount` or a `percent`
+of the project's fixed price — exactly one of the two, never both, never neither.
+A flat amount **remembers the currency it was entered in** (`amount_currency`,
+stamped from the project's currency when the amount is written and cleared when the
+milestone becomes a percent one); a percent has none of its own, because it resolves
+against a fixed price that is always in the project's current currency. Any project that carries a currency may have
 milestones, whatever its billing type; a `percent` milestone additionally needs the
 project to be `fixed-price` with a `fixedPriceAmount` set, because a percent is a
 share of that number.
@@ -287,10 +294,14 @@ columns' text, never `float64`), rounded half up to two places — 300 000.00 at
 value, 12 500.00125, rounds down). Because it is computed on read, an open (not yet
 invoiced) percent milestone follows a later change to the fixed price; freezing is
 what stops an invoiced one from moving — the number an invoice was actually raised
-for must never drift under it. `effectiveAmount` is absent, never zero, in exactly
-one case: a **cancelled** milestone priced as a percent of a fixed price the project
-has since dropped — there is nothing left to compute it from, and a milestone that
-bills nothing should not read as "0.00" either.
+for must never drift under it. `effectiveAmount` is absent, never zero, when the milestone
+cannot be priced at all, and such a milestone is left out of the totals too. The
+expected case is a **cancelled** milestone priced as a percent of a fixed price the
+project has since dropped — there is nothing left to compute it from, and a milestone
+that bills nothing should not read as "0.00" either. Any *other* status in that state
+is a row the module's own rules forbid, so it renders the same way and is logged at
+warning rather than failing the read: one bad row, which only data written outside
+the API can produce, must not take the whole plan down.
 
 **Status moves.** A milestone is `planned`, `ready`, `invoiced` or `cancelled`. Every
 allowed move, and who may make it:
@@ -308,16 +319,19 @@ Any other pair — including a move to the status the milestone already has — 
 on `status` naming both statuses; it is not a "no-op", so it writes no timeline entry.
 
 A move whose target is not `cancelled` **re-asks the project's own rules** against the
-row the write locks: it is refused if the project has no currency, or if the
-milestone is a percent one and the project has no fixed price. Cancelling is never
+row the write locks: it is refused if the project has no currency, if the milestone is
+a percent one and the project has no fixed price, or if the milestone's flat amount is
+in a currency the project has since moved off — that last one can only be a reopen,
+and the refusal says to add a new milestone rather than bringing an old number back
+into a different currency. Cancelling is never
 refused this way — it is how a milestone the project can no longer support is got rid
 of. **The one exception** is undoing an invoicing (`invoiced → ready`): it is never
 refused either, because crediting an invoice is a real event that must not be
 blocked. If the milestone was a percent of a fixed price the project has since
 dropped, the undo instead **converts** it to an amount milestone — `amount` becomes
-the amount that was frozen when it was invoiced, `percent` is cleared — so the number
-that was actually billed survives even though the share it once was no longer means
-anything. The timeline entry for that undo carries `convertedToAmount: true`.
+the amount that was frozen when it was invoiced, stamped with the currency that
+invoice was raised in, and `percent` is cleared — so the number that was actually
+billed survives even though the share it once was no longer means anything. The timeline entry for that undo carries `convertedToAmount: true`.
 
 Marking a milestone `→ ready` stamps who did it and when; `ready → planned` and
 `cancelled → planned` clear those stamps. `→ invoiced` stamps who and when, stores an
@@ -341,7 +355,9 @@ left.
 whole project's milestones 1..n in one transaction, so a reorder and a delete can
 never leave a gap or a duplicate; a position past the end means last. The listing
 always sorts cancelled milestones last, whatever position they are renumbered to —
-they keep their number, only the display order moves. There is no separate ordering
+they keep their number, only the display order moves, so `position` and the array
+index diverge as soon as a cancelled milestone holds an early number. `position` in a
+request is always the stored numbering, never an index into the returned list. There is no separate ordering
 lock: every milestone write already locks the project row first (see
 [Locking](#locking)), which serialises every write against one project, ordering
 included.
@@ -360,8 +376,10 @@ may say it was billed.
 `totals.currency` is optional on the plan: a cancelled milestone can outlive the
 project's currency or fixed price (the currency guard in
 [One currency per project](#domain-model) only counts non-cancelled milestones), so a
-required field would sometimes have to lie. They are absent only in that state, never
-`null` in place of a real value and never `0` in place of absent.
+required field would sometimes have to lie. A milestone's `currency` is its
+`amount_currency` when it has a flat amount and the project's current currency when it
+has a percent; it is absent only for a percent milestone on a project with no currency
+at all. Nothing is ever `null` in place of a real value, or `0` in place of absent.
 
 **Guarding the fixed price.** Removing a project's fixed price — clearing
 `fixedPriceAmount`, or changing `billingType` away from `fixed-price`, which requires
@@ -372,12 +390,15 @@ project's own validation already refuses clearing the amount on its own), and it
 names up to five of the milestones by name, then "and N more". Changing the price to
 a different number is always allowed; every open percent milestone simply follows it.
 
-The plan's `GET` also returns **totals** — `planned`, `ready`, `invoiced` and
-`cancelled` sums of effective amounts (cancelled counts against nothing, since it
-bills nothing) and, against a fixed price, `unplanned` or `overPlanned` (never both):
-the difference between the fixed price and what is planned, ready and invoiced,
-whichever way it runs. Totals never block a save — a plan may be over- or
-under-planned and still saved.
+The plan's `GET` also returns **totals** — `planned`, `ready` and `invoiced` sums of
+effective amounts and, against a fixed price, `unplanned` or `overPlanned` (never
+both): the difference between the fixed price and what is planned, ready and
+invoiced, whichever way it runs. There is **no cancelled sum**: a cancelled milestone
+bills nothing, and its flat amount may still be denominated in a currency the project
+has moved off, so summing it would mix two currencies into one figure. Every
+milestone that *is* summed is in the project's current currency, because the guard
+will not let that currency move while one exists. Totals never block a save — a plan
+may be over- or under-planned and still saved.
 
 The timeline gained nine event types: `milestone-added`, `milestone-changed`,
 `milestone-removed`, `milestone-ready`, `milestone-planned`, `milestone-invoiced`,
@@ -395,15 +416,23 @@ rest of the module's endpoints.
 Every transaction that changes a project's currency, fixed price or billing type — or
 that writes a row whose validity depends on one of those (a billing line's `fixed`
 pricing or `budgetAmount`, a billing milestone) — **locks the project row first**
-(`SELECT ... FOR UPDATE`) and decides its rule against the row that lock returns, not
-against a read taken before the transaction opened. This closes the race between,
-for example, a line getting a `budgetAmount` and the project's currency being cleared
-in the same instant: whichever transaction locks the row first wins, and the other
-re-validates against what the winner left behind. The lock is always `FOR UPDATE`,
-never `FOR SHARE`, and always taken in the same order relative to any other lock a
-transaction needs (the project row, then a line's or a milestone's own row) — one
-lock mode and one order everywhere means nothing can deadlock and nothing needs to
-upgrade.
+(`SELECT ... FOR NO KEY UPDATE`) and decides its rule against the row that lock
+returns, not against a read taken before the transaction opened. This closes the race
+between, for example, a line getting a `budgetAmount` and the project's currency being
+cleared in the same instant: whichever transaction locks the row first wins, and the
+other re-validates against what the winner left behind. One lock mode everywhere, and
+always taken in the same order relative to any other lock a transaction needs (the
+project row, then a line's or a milestone's own row) — so nothing can deadlock and
+nothing needs to upgrade.
+
+`FOR NO KEY UPDATE` rather than `FOR UPDATE` on purpose. The weaker mode still
+conflicts with itself and with the row lock the project's own `UPDATE` takes, so every
+guarded writer still serialises against every other; what it does *not* conflict with
+is the `FOR KEY SHARE` Postgres takes on the project row for each insert that
+references it. Under `FOR UPDATE`, creating an unrelated task, role, comment, billing
+line, milestone or timeline entry on the same project would wait behind any guarded
+write. Nothing in this module changes a project's key, which is what makes the weaker
+mode correct and not merely cheaper.
 
 A cross-module call — asking the product catalog whether a variant exists — is always
 made **before** the project's lock is taken, never inside the locked transaction:

@@ -110,12 +110,16 @@ type BillingMilestoneCapabilities struct {
 	CanDelete bool `json:"canDelete"`
 
 	// CanEdit Whether the milestone's name, date and amount may be changed. An invoiced or a cancelled milestone is read-only until it is moved back.
-	CanEdit         bool `json:"canEdit"`
+	CanEdit bool `json:"canEdit"`
+
+	// CanMarkInvoiced Whether the milestone may be marked invoiced, which freezes its effective amount. This is one of the two flags that does not mean "the caller manages the project" — financial rights alone are enough, because whoever may see the money may say it was billed.
 	CanMarkInvoiced bool `json:"canMarkInvoiced"`
 
 	// CanMarkPlanned Whether a milestone that is ready may be put back to planned.
 	CanMarkPlanned bool `json:"canMarkPlanned"`
-	CanMarkReady   bool `json:"canMarkReady"`
+
+	// CanMarkReady Whether the milestone may be marked ready to invoice. The project's manager, and only while the project can still price it.
+	CanMarkReady bool `json:"canMarkReady"`
 
 	// CanReopen Whether a cancelled milestone may be put back to planned.
 	CanReopen bool `json:"canReopen"`
@@ -135,16 +139,13 @@ type BillingMilestonePerson struct {
 type BillingMilestonePlanResponse struct {
 	Milestones []BillingMilestoneResponse `json:"milestones"`
 
-	// Totals What a project's milestones add up to, one sum of effective amounts per status. Totals never block a save; they are what the plan is read against.
+	// Totals What a project's milestones add up to, one sum of effective amounts per open status. There is no cancelled sum — a cancelled milestone bills nothing and may still be denominated in a currency the project has moved off, so it is left out of the plan's arithmetic entirely. Totals never block a save; they are what the plan is read against.
 	Totals BillingMilestonePlanTotals `json:"totals"`
 }
 
-// BillingMilestonePlanTotals What a project's milestones add up to, one sum of effective amounts per status. Totals never block a save; they are what the plan is read against.
+// BillingMilestonePlanTotals What a project's milestones add up to, one sum of effective amounts per open status. There is no cancelled sum — a cancelled milestone bills nothing and may still be denominated in a currency the project has moved off, so it is left out of the plan's arithmetic entirely. Totals never block a save; they are what the plan is read against.
 type BillingMilestonePlanTotals struct {
-	// Cancelled Cancelled milestones bill nothing, so this sum counts against neither the fixed price nor anything else. It is reported so the plan can show what was dropped.
-	Cancelled float64 `json:"cancelled"`
-
-	// Currency The project's currency, which every amount here is in. Absent when the project has none — which is also when it can have no milestones.
+	// Currency The project's current currency, which every amount in these totals is in. Absent when the project has none — which a cancelled milestone can outlive, so it is not the same as "the plan is empty".
 	Currency *string `json:"currency,omitempty"`
 
 	// FixedPrice The project's fixed price, present only on a fixed-price project. It is what unplanned and overPlanned are measured against.
@@ -164,7 +165,7 @@ type BillingMilestonePlanTotals struct {
 
 // BillingMilestonePositionRequest Where a milestone should sit in the plan. The project's milestones are renumbered 1..n in one transaction, so the order never has a gap. Cancelled milestones keep their number and are still listed last.
 type BillingMilestonePositionRequest struct {
-	// Position The 1-based place in the plan. A position past the end means last.
+	// Position The 1-based place in the plan, in the same numbering BillingMilestoneResponse.position reports — not an index into the listing, which sorts cancelled milestones last. A position past the end means last.
 	Position int32 `json:"position"`
 
 	// Revision The revision the caller read the milestone at.
@@ -198,11 +199,11 @@ type BillingMilestoneResponse struct {
 	Capabilities BillingMilestoneCapabilities `json:"capabilities"`
 	CreatedAt    time.Time                    `json:"createdAt"`
 
-	// Currency The project's currency, which every amount on the milestone is in. Absent only when the project no longer has one, which only a cancelled milestone can outlive — the currency cannot be cleared while any milestone that still bills something exists.
+	// Currency What this milestone's amounts are denominated in. A milestone with a flat amount carries the currency it was entered in and keeps it — a cancelled one can outlive a change to the project's, and its number still means what it meant. A milestone with a percent reports the project's current currency, because it resolves against a fixed price that is always in it, and is absent only when the project has no currency at all.
 	Currency    *string `json:"currency,omitempty"`
 	Description *string `json:"description,omitempty"`
 
-	// EffectiveAmount What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not. Absent in exactly one case, and never zero instead of it — a cancelled milestone priced as a percent of a fixed price the project has since dropped, which has no amount to report; every other milestone has one.
+	// EffectiveAmount What the plan counts — the frozen amount once invoiced, else the flat amount, else the project's fixed price times the percent, in exact decimal rounded half up to two places. Computed on read, so an open percent milestone follows a change to the fixed price and an invoiced one does not. Absent, and never zero instead of it, when the milestone cannot be priced at all — normally a cancelled milestone priced as a percent of a fixed price the project has since dropped, and such a milestone is left out of the totals too.
 	EffectiveAmount *float64 `json:"effectiveAmount,omitempty"`
 	Id              int32    `json:"id"`
 
@@ -224,7 +225,7 @@ type BillingMilestoneResponse struct {
 	Percent     *float64            `json:"percent,omitempty"`
 	PlannedDate *openapi_types.Date `json:"plannedDate,omitempty"`
 
-	// Position The milestone's manual place in the project's plan, 1-based and without gaps.
+	// Position The milestone's own place in the project's plan — the stored 1..n numbering across all of the project's milestones, without gaps. It is not an index into the returned array, which lists cancelled milestones last whatever number they hold, so a cancelled milestone with an early position appears at the end with that early number. Send this field's value, never an array index, when moving a milestone.
 	Position  int32      `json:"position"`
 	ProjectId int32      `json:"projectId"`
 	ReadyAt   *time.Time `json:"readyAt,omitempty"`

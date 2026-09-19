@@ -266,7 +266,7 @@ func (s *server) milestonePlanResponse(ctx context.Context, project store.Projec
 	amounts := map[string]*big.Rat{}
 	data := make([]gen.BillingMilestoneResponse, 0, len(rows))
 	for _, row := range rows {
-		milestone, err := milestoneResponse(row, project, a, people, now)
+		milestone, err := s.milestoneResponse(ctx, row, project, a, people, now)
 		if err != nil {
 			return gen.BillingMilestonePlanResponse{}, err
 		}
@@ -295,7 +295,7 @@ func (s *server) milestoneResponseFor(ctx context.Context, project store.Project
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
 	}
-	return milestoneResponse(row, project, a, people, s.deps.Clock())
+	return s.milestoneResponse(ctx, row, project, a, people, s.deps.Clock())
 }
 
 // milestonePeople names everyone a set of milestones was marked ready or
@@ -320,11 +320,13 @@ func (s *server) milestonePeople(ctx context.Context, rows []store.ProjectsBilli
 // percent milestone follow the project's fixed price (design §3.2), and
 // overdue, which is the server's own date against the planned one.
 //
-// currency is the project's, and is absent only when the project no longer
-// has one — which only a cancelled milestone can outlive, since the guard on
-// the project (§3.3) refuses to clear a currency while anything that still
-// bills something exists.
-func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsProject, a access, people map[uuid.UUID]contracts.UserEntry, now time.Time) (gen.BillingMilestoneResponse, error) {
+// currency is the milestone's own when it carries a flat amount — the one it
+// was entered in, which a cancelled milestone can carry past a change to the
+// project's — and the project's current one when it carries a percent, since
+// a percent resolves against a fixed price that is always in that currency.
+// It is absent only for a percent milestone on a project that has no currency
+// at all, which again only a cancelled one can outlive.
+func (s *server) milestoneResponse(ctx context.Context, m store.ProjectsBillingMilestone, project store.ProjectsProject, a access, people map[uuid.UUID]contracts.UserEntry, now time.Time) (gen.BillingMilestoneResponse, error) {
 	amount, err := floatPtrFromNumeric(m.Amount)
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
@@ -333,16 +335,20 @@ func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsP
 	if err != nil {
 		return gen.BillingMilestoneResponse{}, err
 	}
-	// The one milestone with no effective amount is a cancelled percent one on
-	// a project that has since left fixed-price billing — legitimate, because
-	// design §3.3's guard lets the project do that precisely because a
-	// cancelled milestone bills nothing. Its amount is absent rather than
-	// 0.00, which would read as a milestone somebody planned at nothing. The
-	// same failure on any other milestone is an infrastructure error, because
-	// the status flow refuses every move that could create one.
+	// A milestone nobody can price renders without an amount rather than with
+	// 0.00 (which would read as a milestone somebody planned at nothing) and
+	// rather than failing the whole read: one row in a state the module's own
+	// rules forbid must not take the plan down with it. The expected case —
+	// a cancelled percent milestone on a project that has since left
+	// fixed-price billing — is legitimate and silent; anything else is a row
+	// that should not exist, so it is logged at warning, once per read of it.
 	var effective *float64
 	switch amount, err := milestoneEffectiveAmount(m, project); {
-	case errors.Is(err, errMilestoneUnpriced) && m.Status == milestoneStatusCancelled:
+	case errors.Is(err, errMilestoneUnpriced):
+		if m.Status != milestoneStatusCancelled {
+			s.deps.Logger.WarnContext(ctx, "projects: a billing milestone cannot be priced",
+				"milestone_id", m.ID, "project_id", m.ProjectID, "status", m.Status, "error", err.Error())
+		}
 	case err != nil:
 		return gen.BillingMilestoneResponse{}, err
 	default:
@@ -357,7 +363,7 @@ func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsP
 		Amount:           amount,
 		Percent:          percent,
 		EffectiveAmount:  effective,
-		Currency:         project.Currency,
+		Currency:         milestoneCurrency(m, project),
 		Status:           m.Status,
 		Position:         m.Position,
 		Overdue:          milestoneOverdue(m, now),
@@ -372,6 +378,19 @@ func milestoneResponse(m store.ProjectsBillingMilestone, project store.ProjectsP
 		UpdatedAt:        m.UpdatedAt,
 		Capabilities:     milestoneCapabilities(m, project, a),
 	}, nil
+}
+
+// milestoneCurrency is what the milestone's numbers are denominated in: its
+// own stamp when it carries a flat amount, and the project's current currency
+// otherwise, because a percent resolves against a fixed price that is always
+// in it. The two can only differ on a cancelled milestone — the project's
+// currency guard (design §3.3) exempts nothing else — and that is exactly the
+// case the stamp exists for.
+func milestoneCurrency(m store.ProjectsBillingMilestone, project store.ProjectsProject) *string {
+	if m.AmountCurrency != nil {
+		return m.AmountCurrency
+	}
+	return project.Currency
 }
 
 // milestonePerson names one stamp's user, nil when there is no stamp. An id

@@ -269,10 +269,16 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 	// from the row LockBillingLine returns, so it is decided there, not
 	// here; this is only the read, done early enough not to matter to the
 	// lock's holder.
-	requestedVariantExists, err := s.variantExists(ctx, parsed.VariantID)
-	if err != nil {
-		return nil, err
-	}
+	// The lookup's *error* is kept beside its answer rather than returned
+	// here. The answer is only consulted when the locked row shows the
+	// request actually moves the line to a different variant, and a request
+	// that does not — switching a line off, renaming it, changing its budget
+	// — must keep working while products is degraded. That is the same rule
+	// the "gone" case already follows ("a line whose product is gone must
+	// stay editable, not least to be deactivated"): a catalog that errors and
+	// a catalog that answers "no such variant" are both answers this request
+	// has no use for.
+	requestedVariantExists, variantLookupErr := s.variantExists(ctx, parsed.VariantID)
 
 	by, err := s.callerAs(ctx)
 	if err != nil {
@@ -322,8 +328,15 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 		// what this request does. The catalog was already asked, above,
 		// before this transaction opened; requestedVariantExists is simply
 		// set aside, never re-asked, when the variant turns out unchanged.
-		if before.VariantID != parsed.VariantID && !requestedVariantExists {
-			return errVariantNotFound
+		if before.VariantID != parsed.VariantID {
+			// Only now does the catalog's answer matter, so only now does its
+			// failure to give one become this request's problem.
+			if variantLookupErr != nil {
+				return variantLookupErr
+			}
+			if !requestedVariantExists {
+				return errVariantNotFound
+			}
 		}
 		changed, err = txq.UpdateBillingLine(ctx, store.UpdateBillingLineParams{
 			ID:              req.LineId,

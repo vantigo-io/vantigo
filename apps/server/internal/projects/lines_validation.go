@@ -87,6 +87,8 @@ func validateFixedAmount(mode string, amount *float64) string {
 			return fmt.Sprintf("A '%s' line must have a fixed amount", pricingFixed)
 		case *amount <= 0:
 			return "A fixed amount must be greater than zero"
+		case *amount > maxAmount12:
+			return fmt.Sprintf("A fixed amount cannot be greater than %.2f", maxAmount12)
 		default:
 			return ""
 		}
@@ -216,8 +218,8 @@ func validateLine(body gen.BillingLineRequest, project store.ProjectsProject) (p
 		add("pricingMode", validateFixedNeedsCurrency(mode, project.Currency))
 	}
 
-	add("budgetHours", validatePositiveAmount("Budget hours", body.BudgetHours))
-	add("budgetAmount", validatePositiveAmount("A budget amount", body.BudgetAmount))
+	add("budgetHours", validatePositiveAmount("Budget hours", body.BudgetHours, maxHours10))
+	add("budgetAmount", validatePositiveAmount("A budget amount", body.BudgetAmount, maxAmount12))
 	add("budgetAmount", validateLineBudgetAmountNeedsCurrency(body.BudgetAmount, project.Currency))
 
 	if len(errs) > 0 {

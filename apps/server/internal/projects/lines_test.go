@@ -3,6 +3,7 @@ package projects_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -97,9 +98,9 @@ func createLine(t *testing.T, c *modtest.Client, projectID int32, overrides map[
 	return line
 }
 
-func putLine(t *testing.T, c *modtest.Client, projectID, lineID int32, body map[string]any) *modtest.Response {
+func putLine(t *testing.T, c *modtest.Client, projectID, lineID int32, body map[string]any, opts ...modtest.RequestOption) *modtest.Response {
 	t.Helper()
-	return c.Do(http.MethodPut, linePath(projectID, lineID), body)
+	return c.Do(http.MethodPut, linePath(projectID, lineID), body, opts...)
 }
 
 // changeLine is putLine for a test that expects the change to be applied.
@@ -1026,5 +1027,76 @@ func TestPostProjectsByIdBillingLines_WritesTheLineAddedEntry(t *testing.T) {
 	raw := lastPayloadText(t, h, project.Id, "line-added")
 	if strings.Contains(raw, "900") {
 		t.Errorf("line-added payload = %s, want no amount in it (900 leaked)", raw)
+	}
+}
+
+// An amount too large for its column is a bad body, not a broken server: the
+// upper bounds are Go's, so an oversized budget answers 400 on the field
+// rather than letting Postgres raise a 22003 the handler can only turn into a
+// 500. The project's own budget fields carry the same bounds for the same
+// reason.
+func TestBillingLines_BudgetsPastTheirColumns_Return400OnTheField(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LIMIT1000", "currency": "NOK"})
+
+	for _, tc := range []struct {
+		name      string
+		overrides map[string]any
+		field     string
+	}{
+		{"a budget amount past numeric(12,2)", map[string]any{"budgetAmount": 10000000000.00}, "budgetAmount"},
+		{"budget hours past numeric(10,2)", map[string]any{"budgetHours": 100000000.00}, "budgetHours"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := postLine(t, c, project.Id, tc.overrides)
+			if r.Status != http.StatusBadRequest {
+				t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+			}
+			var problem validationProblemJSON
+			r.JSON(&problem)
+			if len(problem.Errors[tc.field]) == 0 {
+				t.Errorf("errors = %v, want a message on %q", problem.Errors, tc.field)
+			}
+		})
+	}
+}
+
+// The other half of eb894d4's prefetch: asking the catalog before the
+// transaction must not make its *error* fatal to a change that never needed
+// the answer. Keeping the variant a line is already pinned to is always
+// allowed — "a line whose product is gone must stay editable, not least to be
+// deactivated" — and a catalog that is erroring rather than answering "gone"
+// has to be treated the same way, or the one moment a manager most needs to
+// switch a line off is the moment they cannot.
+func TestPutProjectsByIdBillingLines_CatalogDown_StillChangesAnUnchangedVariant(t *testing.T) {
+	t.Parallel()
+	catalog := newFakeCatalog()
+	h := newHarnessWithCatalog(t, catalog)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "CATDOWN1"})
+	line := createLine(t, c, project.Id, nil)
+
+	catalog.fail(errors.New("products: the catalog is unavailable"))
+
+	// Same variant, only `active` flipped: the catalog's answer is irrelevant.
+	off := changeLine(t, c, project.Id, line.Id, lineBody(map[string]any{"active": false}))
+	if off.Active {
+		t.Errorf("Active = true, want the line switched off while the catalog is down")
+	}
+
+	// Moving the line to another variant does need the answer, so the failure
+	// surfaces there and nowhere else. The exchange is off-contract on
+	// purpose — a 500 is not a declared response — so it opts out of the
+	// recorder rather than being validated against a status the contract
+	// rightly does not promise.
+	r := putLine(t, c, project.Id, line.Id, lineBody(map[string]any{"variantId": variantDeveloperHour}),
+		modtest.SkipContract("a degraded catalog is an infrastructure failure, deliberately off-contract"))
+	if r.Status != http.StatusInternalServerError {
+		t.Errorf("changing the variant: status %d body %s, want 500", r.Status, r.Body)
+	}
+	if again := listLines(t, c, project.Id); again[0].VariantId != variantProjectManagerHour {
+		t.Errorf("VariantId = %d, want the line left on its own variant", again[0].VariantId)
 	}
 }
