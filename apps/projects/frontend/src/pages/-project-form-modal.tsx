@@ -16,7 +16,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import {
   ApiValidationError,
   type BillingType,
@@ -140,6 +140,7 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
     },
   });
 
+  const billingTypeErrorId = useId();
   const internal = form.values.customer === "internal";
   const customerId = typeof form.values.customer === "number" ? form.values.customer : undefined;
   // Amounts belong to whoever may see them; creating a project, the caller
@@ -293,12 +294,15 @@ const ProjectForm = ({ state, onClose }: { state: ProjectModalState; onClose: ()
           label={t("billingType")}
           labelElement="div"
           error={form.errors.billingType}
+          errorProps={{ id: billingTypeErrorId }}
           description={internal ? t("internalProjectDescription") : undefined}
         >
           <SegmentedControl
             fullWidth
             mt={4}
             aria-label={t("billingType")}
+            aria-invalid={form.errors.billingType ? true : undefined}
+            aria-describedby={form.errors.billingType ? billingTypeErrorId : undefined}
             disabled={internal}
             data={billingTypes.map((value) => ({ value, label: t(billingTypeLabelKey(value)) }))}
             value={form.values.billingType}

@@ -211,7 +211,11 @@ const LineRow = ({
       </Table.Td>
       {canManage && (
         <Table.Td>
-          <ActionIcon variant="subtle" aria-label={t("editBillingLine")} onClick={() => onEdit({ mode: "edit", line })}>
+          <ActionIcon
+            variant="subtle"
+            aria-label={t("editBillingLineFor", { code: line.code })}
+            onClick={() => onEdit({ mode: "edit", line })}
+          >
             <IconPencil size={16} />
           </ActionIcon>
         </Table.Td>

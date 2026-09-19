@@ -250,6 +250,36 @@ describe("ProjectFormModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  // The message renders visually next to the control (asserted above), but a
+  // SegmentedControl is not an Input, so Mantine never wires it into
+  // aria-describedby the way it would a text field — without this, a
+  // screen-reader user who submits and hears nothing has no way to know the
+  // save failed short of re-reading the whole dialog.
+  it("describes the billing-type control by its server error for assistive tech", async () => {
+    stubProjectsApi(() =>
+      jsonResponse(400, {
+        title: "Invalid project",
+        errors: {
+          billingType: ["A project with billing milestones priced as a share of the fixed price must keep one"],
+        },
+      }),
+    );
+    renderModal({ mode: "edit", project });
+
+    const control = screen.getByRole("radiogroup", { name: "Billing type" });
+    expect(control).not.toHaveAttribute("aria-invalid", "true");
+    expect(control).not.toHaveAttribute("aria-describedby");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Save changes" }));
+
+    const message = await screen.findByText(
+      "A project with billing milestones priced as a share of the fixed price must keep one",
+    );
+    expect(control).toHaveAttribute("aria-invalid", "true");
+    expect(control).toHaveAttribute("aria-describedby", message.id);
+    expect(message.id).toBeTruthy();
+  });
+
   it("asks before changing the code of an existing project, and cancelling does not save", async () => {
     const fetchMock = stubProjectsApi();
     const { onClose } = renderModal({ mode: "edit", project });

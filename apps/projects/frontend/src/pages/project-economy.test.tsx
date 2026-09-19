@@ -439,6 +439,59 @@ describe("ProjectEconomy", () => {
     ).toBeInTheDocument();
   });
 
+  // A cancelled milestone's own currency (amount_currency) can drift from the
+  // project's while it sits cancelled; the server refuses a reopen that would
+  // bring it back on the surface with a mismatched currency (400 on `status`).
+  // capabilities.canReopen keeps the button off a fresh read, but a plan open
+  // in a stale tab can still send the request — this is the same generic
+  // field-error surfacing as any other refused move, pinned for this move too.
+  it("says out loud when the server refuses to reopen a milestone stuck in a currency the project has left", async () => {
+    stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, project()));
+      if (url.pathname === "/api/v1/projects/7/milestones") {
+        return Promise.resolve(
+          jsonResponse(
+            200,
+            plan([
+              milestone({
+                id: 3,
+                name: "Handover",
+                status: "cancelled",
+                currency: "NOK",
+                capabilities: capabilities({ canEdit: false, canDelete: false, canCancel: false, canReopen: true }),
+              }),
+            ]),
+          ),
+        );
+      }
+      if (url.pathname === "/api/v1/projects/milestones/3/status" && init?.method === "POST") {
+        return Promise.resolve(
+          jsonResponse(400, {
+            title: "Invalid project",
+            errors: {
+              status: [
+                "A milestone cannot become 'planned' while its amount is in NOK and the project is now in EUR; add a new milestone instead",
+              ],
+            },
+          }),
+        );
+      }
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByText("Handover");
+    await userEvent.click(screen.getByRole("button", { name: "Actions for Handover" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Reopen the milestone" }));
+
+    expect(
+      await screen.findByText(
+        "A milestone cannot become 'planned' while its amount is in NOK and the project is now in EUR; add a new milestone instead",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("translates a revision conflict rather than quoting the project's own wording", async () => {
     stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
@@ -473,5 +526,40 @@ describe("ProjectEconomy", () => {
     renderWithProviders(<ProjectEconomy projectId={7} />);
 
     expect(await screen.findByText("Could not load the invoice plan")).toBeInTheDocument();
+  });
+
+  // A flat amount remembers the currency it was entered in (docs/projects.md,
+  // "Billing milestones and the invoice plan"), so a cancelled milestone can
+  // read in a currency the project has since moved off. Each row must format
+  // in *its own* currency; only the headline figures and the footer read the
+  // plan's current one (totals.currency).
+  it("formats a cancelled milestone's amount in the currency it was entered in, not the plan's current one", async () => {
+    stubEconomy(
+      project({ financials: { currency: "EUR", fixedPriceAmount: 1000000 } }),
+      plan(
+        [
+          milestone({
+            id: 2,
+            name: "Old scope",
+            status: "cancelled",
+            amount: 50000,
+            effectiveAmount: 50000,
+            currency: "NOK",
+            capabilities: capabilities({ canEdit: false, canDelete: false, canCancel: false, canReopen: true }),
+          }),
+        ],
+        { currency: "EUR", planned: 0, fixedPrice: 1000000 },
+      ),
+    );
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const row = await rowFor("Old scope");
+    expect(row).toHaveTextContent(money(50000, "NOK"));
+    expect(row).not.toHaveTextContent(money(50000, "EUR"));
+
+    const totalsCard = screen.getByTestId("milestone-totals");
+    expect(totalsCard).toHaveTextContent(money(0, "EUR"));
+    const footer = screen.getByTestId("milestone-plan-footer");
+    expect(footer).toHaveTextContent(money(1000000, "EUR"));
   });
 });
