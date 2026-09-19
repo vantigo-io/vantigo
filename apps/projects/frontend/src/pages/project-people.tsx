@@ -5,7 +5,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconPlus, IconTrash } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   assignableUsersQueryOptions,
   type ProjectRole,
@@ -35,6 +35,7 @@ export const ProjectPeople = ({ projectId }: { projectId: number }) => {
   const project = useQuery(projectQueryOptions(projectId));
   const { data: assignments, isPending, isError, error } = useQuery(projectRolesQueryOptions(projectId));
   const [addOpen, setAddOpen] = useState(false);
+  const headingId = useId();
 
   // The project answers who may act here, so the tab waits for it and says so
   // when it fails, rather than quietly rendering a read-only table.
@@ -59,7 +60,7 @@ export const ProjectPeople = ({ projectId }: { projectId: number }) => {
     <Card withBorder padding="lg" radius="md" mt="md">
       <Stack gap="md">
         <Group justify="space-between" wrap="wrap">
-          <Text fw={600} component="h3">
+          <Text fw={600} component="h3" id={headingId}>
             {t("projectPeople")}
           </Text>
           {canManage && (
@@ -80,7 +81,7 @@ export const ProjectPeople = ({ projectId }: { projectId: number }) => {
 
         {people.length > 0 && (
           <Table.ScrollContainer minWidth={520}>
-            <Table striped highlightOnHover>
+            <Table striped highlightOnHover aria-labelledby={headingId}>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("name")}</Table.Th>
@@ -172,7 +173,7 @@ const PersonRow = ({
       <Table.Td>
         {canManage ? (
           <Select
-            aria-label={t("changeRole")}
+            aria-label={t("changeRoleFor", { name: person.displayName })}
             w={160}
             size="xs"
             allowDeselect={false}
@@ -192,7 +193,7 @@ const PersonRow = ({
           <ActionIcon
             variant="subtle"
             color="red"
-            aria-label={t("removePerson")}
+            aria-label={t("removePersonFor", { name: person.displayName })}
             loading={remove.isPending}
             onClick={confirmRemove}
           >

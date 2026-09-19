@@ -162,7 +162,7 @@ export const EconomyPortfolio = () => {
               {/* Eight empty column headers above an empty state say nothing. */}
               {data.data.length > 0 && (
                 <Table.ScrollContainer minWidth={1100}>
-                  <Table striped highlightOnHover>
+                  <Table striped highlightOnHover aria-label={t("economyPortfolio")}>
                     <Table.Thead>
                       <Table.Tr>
                         <Table.Th>{t("project")}</Table.Th>

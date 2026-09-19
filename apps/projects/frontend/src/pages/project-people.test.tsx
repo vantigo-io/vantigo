@@ -72,8 +72,15 @@ describe("ProjectPeople", () => {
 
     await screen.findByText("Ada Lovelace");
     expect(screen.queryByRole("button", { name: "Add person" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Change role" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /remove/i })).not.toBeInTheDocument();
+  });
+
+  it("names the table after its own heading", async () => {
+    stubPeople(false);
+    renderWithProviders(<ProjectPeople projectId={7} />);
+
+    expect(await screen.findByRole("table", { name: "People on this project" })).toBeInTheDocument();
   });
 
   it("adds a person in the role the manager chose", async () => {
@@ -102,7 +109,7 @@ describe("ProjectPeople", () => {
     renderWithProviders(<ProjectPeople projectId={7} />);
 
     const row = (await screen.findByText("Ada Lovelace")).closest("tr") as HTMLElement;
-    await userEvent.click(within(row).getByRole("combobox", { name: "Change role" }));
+    await userEvent.click(within(row).getByRole("combobox", { name: "Change Ada Lovelace's role" }));
     await userEvent.click(await screen.findByRole("option", { name: "Viewer" }));
 
     await waitFor(() => {
@@ -117,7 +124,7 @@ describe("ProjectPeople", () => {
     renderWithProviders(<ProjectPeople projectId={7} />);
 
     const row = (await screen.findByText("Alan Turing")).closest("tr") as HTMLElement;
-    await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Remove Alan Turing" }));
 
     const confirm = await screen.findByRole("dialog", { name: "Remove Alan Turing?" });
     await userEvent.click(within(confirm).getByRole("button", { name: "Remove" }));
@@ -133,7 +140,7 @@ describe("ProjectPeople", () => {
     renderWithProviders(<ProjectPeople projectId={7} />);
 
     const row = (await screen.findByText("Alan Turing")).closest("tr") as HTMLElement;
-    await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
+    await userEvent.click(within(row).getByRole("button", { name: "Remove Alan Turing" }));
     const confirm = await screen.findByRole("dialog", { name: "Remove Alan Turing?" });
     await userEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
 

@@ -17,7 +17,7 @@ import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconDots, IconInfoCircle, IconLock, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { type Economy, type EconomyLine, projectEconomyQueryOptions } from "../api/economy";
 import {
   type BillingMilestone,
@@ -92,6 +92,7 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
   const { data: economy, isPending, isError, error } = useQuery(projectEconomyQueryOptions(projectId));
   const currency = economy?.currency ?? undefined;
   const { hours, money, percent, basisPhrase } = useEconomyFormat(currency);
+  const headingId = useId();
 
   if (isError) {
     return (
@@ -142,7 +143,7 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
     <Card withBorder padding="lg" radius="md" data-testid="project-budget">
       <Stack gap="md">
         <Stack gap={2}>
-          <Text fw={600} component="h3">
+          <Text fw={600} component="h3" id={headingId}>
             {t("budgetAndWork")}
           </Text>
           <Text size="sm" c="dimmed">
@@ -227,7 +228,7 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
 
         {economy.lines.length > 0 && (
           <Table.ScrollContainer minWidth={720}>
-            <Table striped highlightOnHover>
+            <Table striped highlightOnHover aria-labelledby={headingId}>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>{t("line")}</Table.Th>
@@ -355,6 +356,7 @@ const InvoicePlan = ({ projectId, project }: { projectId: number; project: Proje
   const [modalState, setModalState] = useState<MilestoneModalState | null>(null);
   const [invoicing, setInvoicing] = useState<BillingMilestone | null>(null);
   const [projectModal, setProjectModal] = useState<ProjectModalState | null>(null);
+  const headingId = useId();
 
   const currency = project.financials?.currency ?? undefined;
   const fixedPrice = project.financials?.fixedPriceAmount ?? undefined;
@@ -373,7 +375,7 @@ const InvoicePlan = ({ projectId, project }: { projectId: number; project: Proje
         <Stack gap="md">
           <Group justify="space-between" wrap="wrap">
             <Stack gap={2}>
-              <Text fw={600} component="h3">
+              <Text fw={600} component="h3" id={headingId}>
                 {t("invoicePlan")}
               </Text>
               <Text size="sm" c="dimmed">
@@ -410,7 +412,7 @@ const InvoicePlan = ({ projectId, project }: { projectId: number; project: Proje
 
           {milestones.length > 0 && (
             <Table.ScrollContainer minWidth={760}>
-              <Table striped highlightOnHover>
+              <Table striped highlightOnHover aria-labelledby={headingId}>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>{t("milestoneName")}</Table.Th>

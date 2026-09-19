@@ -180,7 +180,7 @@ export const ProjectsPage = ({ canCreate }: { canCreate: boolean }) => {
           {data && (
             <>
               <Table.ScrollContainer minWidth={860}>
-                <Table striped highlightOnHover>
+                <Table striped highlightOnHover aria-label={t("projects")}>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{t("code")}</Table.Th>

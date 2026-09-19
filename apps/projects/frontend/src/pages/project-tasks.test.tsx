@@ -99,8 +99,18 @@ describe("ProjectTasks", () => {
     expect(within(screen.getByTestId("task-group-done")).getByText("Ship the release")).toBeInTheDocument();
 
     expect(screen.queryByText("Draft the outline")).not.toBeInTheDocument();
-    await userEvent.click(within(todo).getByRole("button", { name: "Show subtasks" }));
+    await userEvent.click(within(todo).getByRole("button", { name: "Show Write the docs's subtasks" }));
     expect(await screen.findByText("Draft the outline")).toBeInTheDocument();
+  });
+
+  it("names each status group's table after its status, and each row's subtasks toggle after its task", async () => {
+    stubTasks(true);
+    renderWithProviders(<ProjectTasks projectId={7} />);
+
+    await screen.findByTestId("task-group-todo");
+    expect(screen.getByRole("table", { name: "Tasks: To do" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Tasks: Done" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show subtasks" })).not.toBeInTheDocument();
   });
 
   it("opens the drawer on the task a row names", async () => {

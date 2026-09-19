@@ -68,7 +68,7 @@ describe("MyTasksPage", () => {
     renderWithProviders(<MyTasksPage />);
 
     const row = (await screen.findByText("Write the docs")).closest("tr") as HTMLElement;
-    await userEvent.click(within(row).getByRole("combobox", { name: "Change status" }));
+    await userEvent.click(within(row).getByRole("combobox", { name: "Change the status of Write the docs" }));
     await userEvent.click(await screen.findByRole("option", { name: "Done" }));
 
     await waitFor(() => {
@@ -81,6 +81,16 @@ describe("MyTasksPage", () => {
         dueDate: "2026-02-28",
       });
     });
+  });
+
+  it("names the table after the page, and each row's status control after its task", async () => {
+    stubMyTasks(jsonResponse(200, mine));
+    renderWithProviders(<MyTasksPage />);
+
+    expect(await screen.findByRole("table", { name: "My tasks" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Change the status of Write the docs" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Change the status of Ship the beta" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Change status" })).not.toBeInTheDocument();
   });
 
   it("says when nothing is assigned to the caller", async () => {

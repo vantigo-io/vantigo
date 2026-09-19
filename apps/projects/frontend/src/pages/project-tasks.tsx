@@ -201,7 +201,11 @@ const TaskList = ({ tasks, onOpen }: { tasks: Task[]; onOpen: (taskId: number) =
               </Text>
             ) : (
               <Table.ScrollContainer minWidth={760}>
-                <Table striped highlightOnHover>
+                <Table
+                  striped
+                  highlightOnHover
+                  aria-label={t("taskListForStatus", { status: t(taskStatusLabelKey(status)) })}
+                >
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>{t("taskTitle")}</Table.Th>
@@ -242,7 +246,9 @@ const TaskRow = ({ task, onOpen }: { task: Task; onOpen: (taskId: number) => voi
               <ActionIcon
                 variant="subtle"
                 size="sm"
-                aria-label={unfolded ? t("hideSubtasks") : t("showSubtasks")}
+                aria-label={
+                  unfolded ? t("hideSubtasksFor", { title: task.title }) : t("showSubtasksFor", { title: task.title })
+                }
                 onClick={(event) => {
                   event.stopPropagation();
                   setUnfolded((open) => !open);

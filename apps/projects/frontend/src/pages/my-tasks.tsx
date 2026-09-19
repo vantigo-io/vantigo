@@ -36,7 +36,7 @@ export const MyTasksPage = () => {
 
           {data && data.length > 0 && (
             <Table.ScrollContainer minWidth={760}>
-              <Table striped highlightOnHover>
+              <Table striped highlightOnHover aria-label={t("myTasks")}>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>{t("project")}</Table.Th>
@@ -92,7 +92,7 @@ const MyTaskRow = ({ task }: { task: MyTask }) => {
       <Table.Td>{link(taskHref, task.title)}</Table.Td>
       <Table.Td>
         <Select
-          aria-label={t("changeTaskStatus")}
+          aria-label={t("changeTaskStatusFor", { title: task.title })}
           w={150}
           size="xs"
           allowDeselect={false}

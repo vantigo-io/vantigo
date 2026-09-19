@@ -249,6 +249,13 @@ describe("ProjectEconomy", () => {
     expect(within(headline).getByText("Ready to invoice")).toBeInTheDocument();
   });
 
+  it("names the invoice plan table after its own heading", async () => {
+    stubEconomy(project(), plan([milestone()]));
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByRole("table", { name: "Invoice plan" })).toBeInTheDocument();
+  });
+
   it("renders a milestone's date, amount and status, and marks an overdue one", async () => {
     stubEconomy(
       project(),
@@ -954,6 +961,15 @@ describe("ProjectEconomy — the budget half", () => {
     expect(within(row).getByTestId("budget-bar")).toHaveAccessibleName(
       `${rawMoney(132000)} of ${rawMoney(120000)} used, over budget: ${rawMoney(132000)} approved, ${rawMoney(0)} submitted, ${rawMoney(0)} draft.`,
     );
+  });
+
+  it("names the lines table after the budget heading it sits under", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ lines: [line({ billingLineId: 5, code: "DEV" })] }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByRole("table", { name: "Budget and logged work" })).toBeInTheDocument();
   });
 
   it("says what the lines' budgets add up to against the project's own", async () => {
