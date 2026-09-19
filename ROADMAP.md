@@ -209,7 +209,7 @@ that writes it. See [`docs/time.md`](docs/time.md).
 *Unblocks:* hours that can be invoiced, the first real consumer of billing
 lines, and a task list contractors and consultants will actually keep.
 
-### Phase 3 — Budgets, billing milestones and costs (in progress)
+### Phase 3 — Budgets, billing milestones and costs (first delivery done)
 
 Decided in `docs/superpowers/specs/2026-09-19-project-economy-design.md`, two
 deliveries.
@@ -233,19 +233,32 @@ for the model, the status table and the guards.
 *Unblocks:* fixed-price milestone invoicing recorded in Vantigo, and the
 Economy tab's first half (`/projects/$projectId/economy`).
 
-**Next: budget vs actual, portfolio and alerts.** A new optional contract
+**Budget vs actual, portfolio and alerts (done).** A new optional contract
 (`contracts.ProjectActuals`) through which Time supplies logged hours and
 amounts, in three buckets (approved, submitted, draft), to Projects without
 Projects ever reading the `time` schema; "budget used" resolved from one
-basis per project (budget amount → fixed price → budget hours); the Economy
-tab's budget half (bars, per-line table); a project portfolio page
-(`/projects/economy`); dashboard alerts for a budget nearing or past 100 %
-and for a ready or overdue milestone; `projects:view-costs`, a new sensitive
-permission for cost and margin, granted to nobody by default. Expenses,
-supplier costs and overtime multipliers stay out of scope for both
-deliveries.
+basis per project (budget amount → fixed price → budget hours), on the exact
+ratio, never the rounded percentage; the Economy tab's budget half (bars,
+per-line table), now shown to everyone who sees the project rather than only
+to its financial viewers; a project portfolio page (`/projects/economy`,
+sidebar entry "Project economy"), filtered, sorted and capped at 2 000
+projects; dashboard signals — a "ready to invoice" hint on the Projects card
+and four attention types (a budget nearing or past 100 %, a ready or an
+overdue milestone) linking to the Economy tab; `projects:view-costs`, a new
+sensitive permission for cost and margin, granted to nobody by default. See
+[`docs/projects.md`](docs/projects.md#project-economy) for the model, the
+shaping rules and the dashboard signals, and
+[`docs/time.md`](docs/time.md#what-time-reports-to-other-modules) for the
+contract Time implements.
 
 *Unblocks:* profitability and budget alerts, a project portfolio view.
+
+**Next: expenses and supplier costs, overtime and work-type multipliers.**
+Both were out of scope for this delivery and stay the two concrete next
+steps for project economics. Forecast / estimate-to-complete and
+original-vs-revised budgets (tracking a budget's own history rather than
+only its current value) are candidates worth deciding on once those land,
+not committed work yet.
 
 ### Phase 4 — Delivery milestones, timeline and templates
 
