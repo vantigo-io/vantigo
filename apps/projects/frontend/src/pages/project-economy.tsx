@@ -18,6 +18,7 @@ import { IconAlertCircle, IconDots, IconInfoCircle, IconLock, IconPlus } from "@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
 import { type ReactNode, useState } from "react";
+import { type Economy, type EconomyLine, projectEconomyQueryOptions } from "../api/economy";
 import {
   type BillingMilestone,
   type BillingMilestoneTotals,
@@ -29,9 +30,11 @@ import {
 import { type Project, projectQueryOptions } from "../api/projects";
 import type { ApiError } from "../api/request";
 import { ApiValidationError } from "../api/request";
+import { BudgetBar } from "../components/budget-bar";
 import { Field } from "../components/field";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
+import { type BudgetBasis, useEconomyFormat } from "../lib/economy";
 import { type MilestoneStatus, milestoneStatusColor, milestoneStatusLabelKey } from "../lib/milestones";
 import { MilestoneFormModal, type MilestoneModalState } from "./-milestone-form-modal";
 import { MilestoneInvoicedModal } from "./-milestone-invoiced-modal";
@@ -52,10 +55,14 @@ const useMoney = () => {
 };
 
 /**
- * The Economy tab (design §7). Delivery A fills it with the invoice plan,
- * which is financial data throughout: the API answers 403 to a caller who may
- * see the project but not its amounts, so the tab asks the project first and
- * never asks for a plan it would only be refused.
+ * The Economy tab (design §7): the budget against what has been logged, and
+ * below it the invoice plan.
+ *
+ * The economy read never answers 403 — a caller who may not see the money is
+ * answered without it, progressively emptier — so the budget half is shown to
+ * everyone who sees the project, in hours when that is all they may see. The
+ * invoice plan is financial data throughout and the API refuses it outright,
+ * so that half alone stays behind `canSeeFinancials` and is never asked for.
  */
 export const ProjectEconomy = ({ projectId }: { projectId: number }) => {
   const { t } = useI18n("projects");
@@ -75,18 +82,249 @@ export const ProjectEconomy = ({ projectId }: { projectId: number }) => {
       </Box>
     );
 
-  if (!project.capabilities.canSeeFinancials) {
-    return (
-      <Box mt="md">
+  return (
+    <Stack gap="lg" mt="md">
+      <BudgetSection projectId={projectId} />
+      {project.capabilities.canSeeFinancials ? (
+        <InvoicePlan projectId={projectId} project={project} />
+      ) : (
         <EmptyState icon={IconLock} title={t("financialsHidden")} description={t("invoicePlanHiddenDescription")} />
-      </Box>
+      )}
+    </Stack>
+  );
+};
+
+/**
+ * What was budgeted and what has been logged against it. Everything here is
+ * rendered from what the response carries rather than from what the caller is
+ * allowed: an absent field is absent, never a zero, and an absent `budgetUsed`
+ * is "there is nothing to measure against" rather than "none of it is used".
+ */
+const BudgetSection = ({ projectId }: { projectId: number }) => {
+  const { t } = useI18n("projects");
+  const { data: economy, isPending, isError, error } = useQuery(projectEconomyQueryOptions(projectId));
+  const currency = economy?.currency ?? undefined;
+  const { hours, money, percent, basisPhrase } = useEconomyFormat(currency);
+
+  if (isError) {
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={16} />} title={t("failedToLoadEconomy")}>
+        {error.message}
+      </Alert>
+    );
+  }
+  if (isPending) return <ContentSkeleton rows={3} rowHeight={48} />;
+
+  const used = economy.budgetUsed;
+  const basisValue = used ? basisAmount(economy, used.basis) : undefined;
+  const usedText = used
+    ? t("budgetUsedPercentOf", {
+        percent: percent(used.percent),
+        basis: basisPhrase(used.basis, basisValue),
+      })
+    : t("noBudgetSet");
+
+  const linesAddUp: string[] = [];
+  if (economy.budget.linesHours != null && economy.budget.hours != null) {
+    linesAddUp.push(
+      t("budgetLinesAddUp", { lines: hours(economy.budget.linesHours), project: hours(economy.budget.hours) }),
+    );
+  }
+  if (economy.budget.linesAmount != null && economy.budget.amount != null) {
+    linesAddUp.push(
+      t("budgetLinesAddUp", { lines: money(economy.budget.linesAmount), project: money(economy.budget.amount) }),
     );
   }
 
   return (
-    <Stack gap="lg" mt="md">
-      <InvoicePlan projectId={projectId} project={project} />
-    </Stack>
+    <Card withBorder padding="lg" radius="md" data-testid="project-budget">
+      <Stack gap="md">
+        <Stack gap={2}>
+          <Text fw={600} component="h3">
+            {t("budgetAndWork")}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {t("budgetAndWorkDescription")}
+          </Text>
+        </Stack>
+
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md" data-testid="budget-headline">
+          <Field label={t("budgetUsed")}>
+            {usedText}
+            {/* The server decides this on the exact ratio: 100.04 % arrives as
+                percent 100 with overBudget true, so the badge follows the
+                boolean and never the rounded number. */}
+            {economy.overBudget && (
+              <Badge component="span" variant="light" color="red" size="sm" ml={6}>
+                {t("overBudget")}
+              </Badge>
+            )}
+          </Field>
+          {economy.actuals?.totalAmount != null && (
+            <Field label={t("valueOfWork")}>{money(economy.actuals.totalAmount)}</Field>
+          )}
+          {economy.budget.fixedPrice != null && (
+            <Field label={t("fixedPriceAmount")}>{money(economy.budget.fixedPrice)}</Field>
+          )}
+          {/* canSeeCosts says the caller *may* be shown costs; the block itself
+              is also absent on a currencyless project and without time
+              tracking, so the panel follows the block. */}
+          {economy.cost && <Field label={t("margin")}>{money(economy.cost.margin)}</Field>}
+        </SimpleGrid>
+
+        {economy.timeTracking ? (
+          economy.actuals && (
+            <Box data-testid="project-budget-bar">
+              <BudgetBar
+                segments={economy.actuals}
+                basis={used?.basis}
+                budget={basisValue}
+                currency={currency}
+                overBudget={economy.overBudget}
+              />
+            </Box>
+          )
+        ) : (
+          <Text size="sm" c="dimmed" data-testid="time-tracking-off">
+            {t("timeTrackingOff")}
+          </Text>
+        )}
+
+        <Stack gap={4}>
+          {/* On a money basis, hours with no rate bill nothing and so make the
+              bar understate: the figure is said out loud rather than left to
+              be inferred from a percentage that looks too low. */}
+          {economy.actuals && economy.actuals.unpricedHours > 0 && (
+            <Text size="sm" c="dimmed" data-testid="unpriced-note">
+              {t("unpricedHoursNote", { hours: hours(economy.actuals.unpricedHours) })}
+            </Text>
+          )}
+          {economy.cost && economy.cost.uncostedHours > 0 && (
+            <Text size="sm" c="dimmed" data-testid="uncosted-note">
+              {t("uncostedHoursNote", { hours: hours(economy.cost.uncostedHours) })}
+            </Text>
+          )}
+          {economy.taskEstimateHours != null && (
+            <Text size="sm" c="dimmed">
+              {t("taskEstimateTotal", { hours: hours(economy.taskEstimateHours) })}
+            </Text>
+          )}
+          {linesAddUp.map((sentence) => (
+            <Text key={sentence} size="sm" c="dimmed">
+              {sentence}
+            </Text>
+          ))}
+        </Stack>
+
+        {economy.lines.length > 0 && (
+          <Table.ScrollContainer minWidth={720}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("line")}</Table.Th>
+                  <Table.Th>{t("budget")}</Table.Th>
+                  <Table.Th>{t("logged")}</Table.Th>
+                  <Table.Th>{t("used")}</Table.Th>
+                  <Table.Th>{t("remaining")}</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {economy.lines.map((line) => (
+                  <EconomyLineRow key={line.billingLineId ?? "no-line"} line={line} currency={currency} />
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Stack>
+    </Card>
+  );
+};
+
+/** Which of the project's budgets a basis names. */
+const basisAmount = (economy: Economy, basis: BudgetBasis): number | null | undefined =>
+  basis === "amount"
+    ? economy.budget.amount
+    : basis === "fixedPrice"
+      ? economy.budget.fixedPrice
+      : economy.budget.hours;
+
+/**
+ * One billing line's budget against its own logged work. A line's percentage
+ * is measured against its budget *amount* when it has one, while the hours
+ * left over are always hours — so "over budget" and "5 h remaining" can
+ * legitimately sit in the same row, and the bar names the basis it used.
+ */
+const EconomyLineRow = ({ line, currency }: { line: EconomyLine; currency?: string }) => {
+  const { t } = useI18n("projects");
+  const { hours, money, percent, basisPhrase } = useEconomyFormat(currency);
+  const inactive = line.active === false;
+  const basis: BudgetBasis | undefined =
+    line.budgetAmount != null ? "amount" : line.budgetHours != null ? "hours" : undefined;
+  const budget = line.budgetAmount ?? line.budgetHours ?? undefined;
+
+  const budgets: string[] = [];
+  if (line.budgetHours != null) budgets.push(hours(line.budgetHours));
+  if (line.budgetAmount != null) budgets.push(money(line.budgetAmount));
+
+  return (
+    <Table.Tr>
+      <Table.Td>
+        <Group gap="xs" wrap="nowrap">
+          <Text
+            size="sm"
+            fw={500}
+            ff={line.code ? "monospace" : undefined}
+            c={inactive ? "dimmed" : undefined}
+            data-testid="economy-line-name"
+          >
+            {/* Work logged against no line at all, and work logged against a
+                line this project does not have, share one row. */}
+            {line.code ?? t("noBillingLine")}
+          </Text>
+          {/* Dimming alone is not a state anybody can read, so the row says it. */}
+          {inactive && (
+            <Badge variant="light" color="gray" size="sm">
+              {t("inactive")}
+            </Badge>
+          )}
+        </Group>
+      </Table.Td>
+      <Table.Td>
+        <Text size="sm">{budgets.length > 0 ? budgets.join(" · ") : t("notAvailable")}</Text>
+      </Table.Td>
+      <Table.Td>
+        {line.actuals ? (
+          <BudgetBar
+            size="sm"
+            segments={line.actuals}
+            basis={basis}
+            budget={budget}
+            currency={currency}
+            overBudget={line.overBudget}
+          />
+        ) : (
+          <Text size="sm">{t("notAvailable")}</Text>
+        )}
+      </Table.Td>
+      <Table.Td>
+        <Group gap="xs" wrap="nowrap">
+          <Text size="sm">
+            {line.usedPercent == null || basis === undefined
+              ? t("notAvailable")
+              : t("budgetUsedPercentOf", { percent: percent(line.usedPercent), basis: basisPhrase(basis, budget) })}
+          </Text>
+          {line.overBudget && (
+            <Badge variant="light" color="red" size="sm">
+              {t("overBudget")}
+            </Badge>
+          )}
+        </Group>
+      </Table.Td>
+      <Table.Td>
+        <Text size="sm">{line.remainingHours != null ? hours(line.remainingHours) : t("notAvailable")}</Text>
+      </Table.Td>
+    </Table.Tr>
   );
 };
 
