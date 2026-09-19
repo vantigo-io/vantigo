@@ -5,6 +5,7 @@ import { problemResponse } from "../test/api";
 import { peopleOverview } from "../test/fixtures";
 import { renderRoute } from "../test/route-tree";
 import { stubTimeApi } from "../test/server";
+import { windowOf } from "./people";
 
 /** The `weeks` every read of the overview asked for, in order. */
 const weeksAsked = (calls: [RequestInfo | URL, RequestInit | undefined][]): (string | null)[] =>
@@ -51,5 +52,28 @@ describe("PeoplePage", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     // Nothing to narrow when there is nothing to see.
     expect(screen.queryByRole("combobox", { name: "Weeks" })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * `weeks` out of range is the host route's problem — it drops the value to
+ * `undefined` before the page ever sees it (`apps/host/frontend/src/routes/time/people.tsx`,
+ * mirrored in `test/route-tree.tsx`'s `asWeekWindow`). The page has only its
+ * own default to supply, not a second clamp that could disagree with the
+ * route's.
+ */
+describe("windowOf", () => {
+  it("falls back to the default only when there is no window at all", () => {
+    expect(windowOf(undefined)).toBe(4);
+    expect(windowOf(1)).toBe(1);
+    expect(windowOf(8)).toBe(8);
+    expect(windowOf(12)).toBe(12);
+  });
+
+  // Out of range is never supposed to reach the page — the route drops it —
+  // so the page has nothing of its own to clamp it to; a second opinion here
+  // would only give a value that disagrees with the route's `undefined`.
+  it("does not clamp a value the route was supposed to have dropped", () => {
+    expect(windowOf(13)).toBe(13);
   });
 });

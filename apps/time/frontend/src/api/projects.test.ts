@@ -31,7 +31,10 @@ describe("myProjectsQueryOptions", () => {
       { id: 1001, code: "KVEM1000", name: "Kverneland web", status: "active", billingType: "time-and-materials" },
     ]);
     expect(options.queryKey[0]).toBe("time");
-    expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/projects?mine=true&pageSize=100");
+    // Narrowed to active projects server-side: without it, a caller with
+    // enough roles could have every loggable project pushed off the one page
+    // this read asks for. `isLoggable` stays as the belt-and-braces check.
+    expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/projects?mine=true&status=active&pageSize=100");
   });
 });
 

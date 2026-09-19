@@ -303,6 +303,17 @@ export const attentionTitle = (
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
 
+/**
+ * The Time card's "N waiting for your approval" hint, or nothing when there
+ * is nothing to approve. Zero is the ordinary case for most `time:access`
+ * holders — they approve nobody's hours — so a standing zero would be a
+ * permanent fixture rather than something worth reading.
+ */
+export const awaitingApprovalHint = (
+  count: number | undefined,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string | undefined => (count ? t("dashboard.awaitingApprovalHint", { count }) : undefined);
+
 const deltaPercent = (current: number, absoluteDelta: number) => {
   const previous = current - absoluteDelta;
   if (previous === 0) return absoluteDelta === 0 ? 0 : absoluteDelta > 0 ? 100 : -100;
@@ -736,8 +747,9 @@ const DashboardPage = () => {
                     : "—"
                 }
                 // The second figure is the one that asks for an action, so it
-                // is the hint rather than a card of its own.
-                hint={t("dashboard.awaitingApprovalHint", { count: timeSummary.data?.awaitingMyApproval ?? 0 })}
+                // is the hint rather than a card of its own — but only while
+                // there is something in it to act on.
+                hint={awaitingApprovalHint(timeSummary.data?.awaitingMyApproval, t)}
                 delta={
                   timeSummary.data
                     ? {

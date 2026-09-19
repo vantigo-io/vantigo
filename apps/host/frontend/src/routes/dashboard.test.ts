@@ -1,6 +1,6 @@
 import { i18n } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
-import { attentionHref, attentionTitle, attentionTitleKey, attentionWeek } from "./dashboard";
+import { attentionHref, attentionTitle, attentionTitleKey, attentionWeek, awaitingApprovalHint } from "./dashboard";
 import "../i18n";
 
 /**
@@ -97,5 +97,15 @@ describe("the dashboard's attention links", () => {
         expect(i18n.t(key, { ns: "host", lng, date: "2026-08-31" })).toContain("2026-08-31");
       }
     }
+  });
+
+  // Zero is the normal case for most people who hold `time:access` but
+  // approve nobody's hours, so a standing "0 waiting" hint would be a
+  // permanent fixture rather than useful information.
+  it("hides the Time card's approval hint once there is nothing waiting", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count}`;
+    expect(awaitingApprovalHint(0, t)).toBeUndefined();
+    expect(awaitingApprovalHint(undefined, t)).toBeUndefined();
+    expect(awaitingApprovalHint(3, t)).toBe("dashboard.awaitingApprovalHint:3");
   });
 });
