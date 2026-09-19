@@ -803,6 +803,63 @@ describe("ProjectEconomy — the budget half", () => {
     expect(screen.queryByTestId("budget-bar")).not.toBeInTheDocument();
     // The budgets themselves are still the point of the tab.
     expect(await rowFor("DEV")).toHaveTextContent("200 h");
+    // budgetUsed is absent for two different reasons; without time tracking it
+    // means "nothing to compare with", not "nothing was budgeted".
+    const headline = screen.getByTestId("budget-headline");
+    expect(headline).toHaveTextContent(`${money(480000)} budgeted`);
+    expect(headline).not.toHaveTextContent("No budget set");
+  });
+
+  it("names the budget the server would have measured against, in its own order", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ timeTracking: false, actuals: undefined, budgetUsed: undefined, budget: { hours: 400 } }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+    expect(await screen.findByText("400 h budgeted")).toBeInTheDocument();
+
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        timeTracking: false,
+        actuals: undefined,
+        budgetUsed: undefined,
+        budget: { fixedPrice: 1000000 },
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+    expect(await screen.findByText(`Fixed price ${money(1000000)}`)).toBeInTheDocument();
+  });
+
+  it("says nothing is budgeted only when nothing is", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ timeTracking: false, actuals: undefined, budgetUsed: undefined, budget: {} }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByTestId("budget-headline")).toHaveTextContent("No budget set");
+  });
+
+  // Spec §8: a line without a budget shows its actuals and no bar — a bar with
+  // nothing to measure against is full width, which reads as "100 % used".
+  it("draws no bar on a line with no budget, and says the split in words instead", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        lines: [
+          line({
+            budgetHours: undefined,
+            budgetAmount: undefined,
+            usedPercent: undefined,
+            remainingHours: undefined,
+            actuals: work(20, 10, 5),
+          }),
+        ],
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const row = await rowFor("DEV");
+    expect(within(row).queryByTestId("budget-bar")).not.toBeInTheDocument();
+    expect(row).toHaveTextContent("35 h");
+    expect(row).toHaveTextContent("20 h approved · 10 h submitted · 5 h draft");
   });
 
   it("lists every line, dims a deactivated one and puts the no-line row last", async () => {
@@ -850,6 +907,9 @@ describe("ProjectEconomy — the budget half", () => {
     const row = await rowFor("DEV");
     expect(row).toHaveTextContent(`110 % of the budget (${money(120000)})`);
     expect(row).toHaveTextContent("5 h");
+    // The bar's numbers live in its label; the column still owes a sighted
+    // reader the hours.
+    expect(row).toHaveTextContent("35 h");
     expect(within(row).getByText("Over budget")).toBeInTheDocument();
     expect(within(row).getByTestId("budget-bar")).toHaveAccessibleName(
       `${rawMoney(132000)} of ${rawMoney(120000)} used, over budget: ${rawMoney(132000)} approved, ${rawMoney(0)} submitted, ${rawMoney(0)} draft.`,

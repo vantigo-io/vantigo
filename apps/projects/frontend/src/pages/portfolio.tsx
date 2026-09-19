@@ -29,6 +29,7 @@ import { type EconomyRow, economyPortfolioQueryOptions } from "../api/economy";
 import { ApiValidationError } from "../api/request";
 import { BudgetBar } from "../components/budget-bar";
 import { CustomerPicker } from "../components/customer-picker";
+import { LoggedSplit } from "../components/logged-split";
 import { ProjectStatusBadge } from "../components/project-status-badge";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
@@ -131,12 +132,12 @@ export const EconomyPortfolio = () => {
               onChange={(value) => filterBy({ sort: value && isEconomySort(value) ? value : "budgetUsed" })}
             />
             <Switch
-              label={t("overBudget")}
+              label={t("onlyOverBudget")}
               checked={params.overBudget}
               onChange={() => filterBy({ overBudget: !params.overBudget })}
             />
             <Switch
-              label={t("readyTotal")}
+              label={t("onlyWithReadyMilestones")}
               checked={params.hasReady}
               onChange={() => filterBy({ hasReady: !params.hasReady })}
             />
@@ -158,27 +159,30 @@ export const EconomyPortfolio = () => {
 
           {data && (
             <>
-              <Table.ScrollContainer minWidth={1100}>
-                <Table striped highlightOnHover>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>{t("project")}</Table.Th>
-                      <Table.Th>{t("customer")}</Table.Th>
-                      <Table.Th>{t("status")}</Table.Th>
-                      <Table.Th>{t("budgetUsed")}</Table.Th>
-                      <Table.Th>{t("valueOfWork")}</Table.Th>
-                      <Table.Th>{t("pendingHours")}</Table.Th>
-                      <Table.Th>{t("nextMilestone")}</Table.Th>
-                      <Table.Th>{t("readyTotal")}</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {data.data.map((project) => (
-                      <PortfolioRow key={project.project.id} row={project} />
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </Table.ScrollContainer>
+              {/* Eight empty column headers above an empty state say nothing. */}
+              {data.data.length > 0 && (
+                <Table.ScrollContainer minWidth={1100}>
+                  <Table striped highlightOnHover>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>{t("project")}</Table.Th>
+                        <Table.Th>{t("customer")}</Table.Th>
+                        <Table.Th>{t("status")}</Table.Th>
+                        <Table.Th>{t("budgetUsed")}</Table.Th>
+                        <Table.Th>{t("valueOfWork")}</Table.Th>
+                        <Table.Th>{t("pendingHours")}</Table.Th>
+                        <Table.Th>{t("nextMilestone")}</Table.Th>
+                        <Table.Th>{t("readyTotal")}</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {data.data.map((project) => (
+                        <PortfolioRow key={project.project.id} row={project} />
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
 
               {data.data.length === 0 && <EmptyState title={t("noEconomyProjects")} />}
 
@@ -228,7 +232,9 @@ const PortfolioRow = ({ row }: { row: EconomyRow }) => {
       </Table.Td>
       <Table.Td miw={200}>
         {/* The row carries the basis but not the number behind it, so the bar
-            is drawn against its own total and the basis is named in words. */}
+            is drawn against its own total and the basis is named in words. With
+            no basis at all there is no bar — a full-width one would read as
+            "all of it used" — and the buckets are written out instead. */}
         {row.budgetUsed ? (
           <Stack gap={4}>
             {row.actuals && (
@@ -247,6 +253,11 @@ const PortfolioRow = ({ row }: { row: EconomyRow }) => {
                 </Badge>
               )}
             </Group>
+          </Stack>
+        ) : row.actuals ? (
+          <Stack gap={4}>
+            <LoggedSplit segments={row.actuals} totalHours={row.actuals.totalHours} />
+            <Text size="sm">{t("notAvailable")}</Text>
           </Stack>
         ) : (
           <Text size="sm">{t("notAvailable")}</Text>
@@ -277,6 +288,13 @@ const PortfolioRow = ({ row }: { row: EconomyRow }) => {
                 </Badge>
               )}
             </Group>
+            {/* What it is worth is the reason to look at the column; absent for
+                a milestone nobody can price. */}
+            {milestone.effectiveAmount != null && (
+              <Text size="xs" c="dimmed">
+                {money(milestone.effectiveAmount)}
+              </Text>
+            )}
           </Stack>
         ) : (
           <Text size="sm" c="dimmed">

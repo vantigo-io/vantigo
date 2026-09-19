@@ -35,16 +35,22 @@ const legendKeys: Record<Bucket, string> = {
 };
 
 /**
- * Approved is solid, submitted is the same colour lighter, and draft is
- * hatched: the three are told apart by pattern as well as by colour, so the
- * bar reads the same to somebody who cannot tell the two blues apart.
+ * Approved is solid, submitted is the same colour lighter, and draft is that
+ * lighter fill hatched: the three are told apart by pattern as well as by
+ * colour, so the bar reads the same to somebody who cannot tell the two blues
+ * apart.
+ *
+ * Every value is one of Mantine's scheme-aware virtual colours rather than a
+ * numbered shade, which is the same value in both schemes: `-filled` and
+ * `-light` follow the colour scheme the way the rest of the repo's tinted
+ * surfaces do, so the bar is not a bright block on a dark page.
  */
 const fills: Record<Bucket, CSSProperties> = {
-  approved: { backgroundColor: "var(--mantine-color-blue-6)" },
-  submitted: { backgroundColor: "var(--mantine-color-blue-3)" },
+  approved: { backgroundColor: "var(--mantine-color-blue-filled)" },
+  submitted: { backgroundColor: "var(--mantine-color-blue-light)" },
   draft: {
-    backgroundColor: "var(--mantine-color-blue-1)",
-    backgroundImage: "repeating-linear-gradient(45deg, var(--mantine-color-blue-4) 0 3px, transparent 3px 7px)",
+    backgroundColor: "var(--mantine-color-blue-light)",
+    backgroundImage: "repeating-linear-gradient(45deg, var(--mantine-color-blue-filled) 0 3px, transparent 3px 7px)",
   },
 };
 
@@ -96,7 +102,7 @@ export const BudgetBar = ({ segments, basis, budget, currency, overBudget, size 
           height: size === "sm" ? 8 : 18,
           borderRadius: "var(--mantine-radius-sm)",
           overflow: "hidden",
-          backgroundColor: "var(--mantine-color-gray-2)",
+          backgroundColor: "var(--mantine-color-default-border)",
         }}
       >
         {/* A bucket with nothing in it draws nothing: a zero-width sliver is a
@@ -119,7 +125,7 @@ export const BudgetBar = ({ segments, basis, budget, currency, overBudget, size 
               bottom: 0,
               left: pct(geometry.overflow.from),
               width: pct(geometry.overflow.to - geometry.overflow.from),
-              backgroundColor: "var(--mantine-color-red-6)",
+              backgroundColor: "var(--mantine-color-red-filled)",
               opacity: 0.55,
             }}
           />
@@ -134,7 +140,7 @@ export const BudgetBar = ({ segments, basis, budget, currency, overBudget, size 
               left: pct(geometry.marker),
               width: 2,
               transform: "translateX(-1px)",
-              backgroundColor: "var(--mantine-color-dark-5)",
+              backgroundColor: "var(--mantine-color-text)",
             }}
           />
         )}

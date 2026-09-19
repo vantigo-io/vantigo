@@ -32,6 +32,7 @@ import type { ApiError } from "../api/request";
 import { ApiValidationError } from "../api/request";
 import { BudgetBar } from "../components/budget-bar";
 import { Field } from "../components/field";
+import { LoggedSplit } from "../components/logged-split";
 import "../i18n";
 import { useProjectDates } from "../lib/dates";
 import { type BudgetBasis, useEconomyFormat } from "../lib/economy";
@@ -117,12 +118,27 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
 
   const used = economy.budgetUsed;
   const basisValue = used ? basisAmount(economy, used.basis) : undefined;
+  // `budgetUsed` is absent for two different reasons — no basis to measure
+  // against, and no time tracking — and they are not the same sentence. With no
+  // hours to compare, the field says what *was* budgeted, picking the basis in
+  // the server's own order; "No budget set" is kept for the case where none of
+  // the three is there at all.
+  const budgeted =
+    economy.budget.amount != null
+      ? t("budgetedValue", { value: money(economy.budget.amount) })
+      : economy.budget.fixedPrice != null
+        ? t("budgetedFixedPrice", { amount: money(economy.budget.fixedPrice) })
+        : economy.budget.hours != null
+          ? t("budgetedValue", { value: hours(economy.budget.hours) })
+          : undefined;
   const usedText = used
     ? t("budgetUsedPercentOf", {
         percent: percent(used.percent),
         basis: basisPhrase(used.basis, basisValue),
       })
-    : t("noBudgetSet");
+    : !economy.timeTracking && budgeted !== undefined
+      ? budgeted
+      : t("noBudgetSet");
 
   const linesAddUp: string[] = [];
   if (economy.budget.linesHours != null && economy.budget.hours != null) {
@@ -293,18 +309,28 @@ const EconomyLineRow = ({ line, currency }: { line: EconomyLine; currency?: stri
       <Table.Td>
         <Text size="sm">{budgets.length > 0 ? budgets.join(" · ") : t("notAvailable")}</Text>
       </Table.Td>
-      <Table.Td>
-        {line.actuals ? (
-          <BudgetBar
-            size="sm"
-            segments={line.actuals}
-            basis={basis}
-            budget={budget}
-            currency={currency}
-            overBudget={line.overBudget}
-          />
-        ) : (
+      <Table.Td miw={180}>
+        {/* Spec §8: a line without a budget shows its actuals and no bar. A bar
+            with nothing to measure against fills its whole width whatever was
+            logged, which is exactly what a line at 100 % looks like. */}
+        {line.actuals === undefined ? (
           <Text size="sm">{t("notAvailable")}</Text>
+        ) : basis === undefined ? (
+          <LoggedSplit segments={line.actuals} totalHours={line.actuals.totalHours} />
+        ) : (
+          <Stack gap={4}>
+            <BudgetBar
+              size="sm"
+              segments={line.actuals}
+              basis={basis}
+              budget={budget}
+              currency={currency}
+              overBudget={line.overBudget}
+            />
+            {/* The bar's numbers live in its label; the column owes a sighted
+                reader the hours too. */}
+            <Text size="sm">{hours(line.actuals.totalHours)}</Text>
+          </Stack>
         )}
       </Table.Td>
       <Table.Td>

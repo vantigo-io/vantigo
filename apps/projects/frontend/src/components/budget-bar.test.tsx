@@ -36,6 +36,18 @@ describe("BudgetBar", () => {
     const bar = screen.getByTestId("budget-bar");
     expect(within(bar).getByTestId("budget-bar-marker")).toHaveStyle({ left: "80%" });
     expect(within(bar).getByTestId("budget-bar-overflow")).toHaveStyle({ left: "80%", width: "20%" });
+    // The overflow is an overlay: it must not resize the buckets underneath it,
+    // or the proportions a reader compares would change with the overrun.
+    expect(within(bar).getByTestId("budget-bar-approved")).toHaveStyle({ width: "60%" });
+    expect(within(bar).getByTestId("budget-bar-submitted")).toHaveStyle({ width: "30%" });
+    expect(within(bar).getByTestId("budget-bar-draft")).toHaveStyle({ width: "10%" });
+  });
+
+  // A third of a bar is 33.33333333333333 %, which must not reach the DOM.
+  it("trims the float noise off a three-way split", () => {
+    renderWithProviders(<BudgetBar segments={hours(1, 1, 1)} overBudget={false} />);
+
+    expect(screen.getByTestId("budget-bar-approved")).toHaveStyle({ width: "33.3333%" });
   });
 
   it("leaves a bucket with nothing in it out of the bar, and keeps it in the legend", () => {
