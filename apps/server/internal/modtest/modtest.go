@@ -122,6 +122,7 @@ type setup struct {
 	directory   contracts.CustomerDirectory
 	products    contracts.ProductCatalog
 	projects    contracts.ProjectDirectory
+	actuals     contracts.ProjectActuals
 	smtpVerify  func(ctx context.Context, cfg config.MailConfig) error
 	smtpSend    func(ctx context.Context, cfg config.MailConfig, msg mail.Outbound) error
 	objectStore storage.ObjectStore
@@ -199,6 +200,21 @@ func WithProducts(p contracts.ProductCatalog) Option {
 // the fake is what stands in for it here.
 func WithProjects(p contracts.ProjectDirectory) Option {
 	return func(s *setup) { s.projects = p }
+}
+
+// WithActuals sets Deps.Actuals directly to p, for a module under test that
+// reads what has been logged against projects (contracts.ProjectActuals)
+// without composing the module that owns the hours beside it — depguard
+// forbids the module's own test package from importing time, the same reason
+// WithProducts and WithProjects give. The fake decides what the module under
+// test sees logged, which is the only way a test can ask for figures it
+// chose. module.Compose only ever overwrites Deps.Actuals when one of the
+// composed modules declares Module.Actuals, so a value set here survives
+// Compose unchanged — exactly as WithProducts' catalog does, and for the same
+// reason: a harness that stubs a contract does not compose the module that
+// would provide it.
+func WithActuals(p contracts.ProjectActuals) Option {
+	return func(s *setup) { s.actuals = p }
 }
 
 // WithSMTPVerify sets the function Deps.SMTPVerify carries, for a module
@@ -350,6 +366,7 @@ func New(t *testing.T, opts ...Option) *Harness {
 		Directory:     s.directory,
 		Products:      s.products,
 		Projects:      s.projects,
+		Actuals:       s.actuals,
 		SMTPVerify:    s.smtpVerify,
 		SMTPSend:      s.smtpSend,
 		ObjectStore:   s.objectStore,
