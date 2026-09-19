@@ -124,6 +124,13 @@ describe("EconomyPortfolio", () => {
     expect(projectRow).toHaveTextContent(money(200000));
   });
 
+  it("names the table after the page it belongs to", async () => {
+    stubPortfolio(jsonResponse(200, portfolio([row()])));
+    renderPage();
+
+    expect(await screen.findByRole("table", { name: "Project economy" })).toBeInTheDocument();
+  });
+
   // Every surface shows the three buckets (E2), bar or no bar.
   it("says what has been logged in words when there is no budget to measure against", async () => {
     stubPortfolio(

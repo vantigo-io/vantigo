@@ -95,6 +95,13 @@ describe("ProjectsPage", () => {
     expect(row).toHaveTextContent("2026");
   });
 
+  it("names the table after the page", async () => {
+    stubProjects(jsonResponse(200, page([summary({})])));
+    renderPage();
+
+    expect(await screen.findByRole("table", { name: "Projects" })).toBeInTheDocument();
+  });
+
   it("counts the active, planned and on-hold projects", async () => {
     stubProjects(jsonResponse(200, page([summary({})])));
     renderPage();
