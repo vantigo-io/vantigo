@@ -25,7 +25,7 @@ import (
 // moduleSchemas are the PostgreSQL schemas owned by one module each. The
 // platform schema is deliberately not one of these: internal/ratelimit
 // reaches it from outside its own module, by design (Global Constraints).
-var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects", "time"}
+var moduleSchemas = []string{"identity", "customers", "products", "energy", "communications", "projects", "time", "expenses"}
 
 // schemaOwnedFile is one migration or query file, with the module that owns
 // it and its full text.
@@ -1427,6 +1427,83 @@ func TestProjectsMilestones_AppliesAndIsIdempotent(t *testing.T) {
 	}
 	if dataType != "character" || maxLength != "3" {
 		t.Errorf("amount_currency is %s(%s), want character(3)", dataType, maxLength)
+	}
+}
+
+// TestExpensesBaseline_AppliesAndIsIdempotent proves
+// 00012_expenses_baseline.sql applies, rolls back and re-applies cleanly, with
+// the five tables of design §3.1–3.5, the two unique indexes the module's
+// refusals key on, and the seeds an installation starts with: the eight
+// categories in order, the two state mileage rates, and the single settings
+// row. Re-applying after a rollback re-seeds, which is what makes the down
+// migration safe to use on a live database.
+func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 12) // 00012_expenses_baseline.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	rows, err := pool.Query(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = 'expenses' ORDER BY table_name`)
+	if err != nil {
+		t.Fatalf("query tables: %v", err)
+	}
+	gotTables, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect tables: %v", err)
+	}
+	if want := []string{"attachments", "categories", "entries", "rates", "settings"}; !equalStrings(gotTables, want) {
+		t.Errorf("tables = %v, want %v", gotTables, want)
+	}
+
+	if cols := indexColumns(t, ctx, pool, "expenses", "ux_rates_kind_valid_from"); !equalStrings(cols, []string{"kind", "valid_from"}) {
+		t.Errorf("ux_rates_kind_valid_from columns = %v, want [kind valid_from]", cols)
+	}
+
+	// The category name is unique on lower(name), so the index is over an
+	// expression rather than a column and reads back as one unnamed member.
+	var nameIndex string
+	if err := pool.QueryRow(ctx, `
+		SELECT pg_get_indexdef(i.indexrelid)
+		FROM pg_index i
+		JOIN pg_class ic ON ic.oid = i.indexrelid
+		JOIN pg_namespace n ON n.oid = ic.relnamespace
+		WHERE n.nspname = 'expenses' AND ic.relname = 'ux_categories_name_lower'`).Scan(&nameIndex); err != nil {
+		t.Fatalf("query ux_categories_name_lower: %v", err)
+	}
+	if !strings.Contains(nameIndex, "UNIQUE") || !strings.Contains(nameIndex, "lower((name)::text)") {
+		t.Errorf("ux_categories_name_lower = %q, want a unique index over lower(name)", nameIndex)
+	}
+
+	seededRows, err := pool.Query(ctx, `SELECT name FROM expenses.categories ORDER BY position`)
+	if err != nil {
+		t.Fatalf("query categories: %v", err)
+	}
+	gotCategories, err := pgx.CollectRows(seededRows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("collect categories: %v", err)
+	}
+	wantCategories := []string{"Materials", "Subcontractor", "Equipment hire", "Travel", "Accommodation", "Meals", "Phone and internet", "Other"}
+	if !equalStrings(gotCategories, wantCategories) {
+		t.Errorf("seeded categories = %v, want %v", gotCategories, wantCategories)
+	}
+
+	var rateCount, settingsCount int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM expenses.rates WHERE source = 'State rate'`).Scan(&rateCount); err != nil {
+		t.Fatalf("count seeded rates: %v", err)
+	}
+	if rateCount != 2 {
+		t.Errorf("seeded rates = %d, want the two state mileage rates", rateCount)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM expenses.settings`).Scan(&settingsCount); err != nil {
+		t.Fatalf("count settings: %v", err)
+	}
+	if settingsCount != 1 {
+		t.Errorf("settings rows = %d, want the single row", settingsCount)
 	}
 }
 
