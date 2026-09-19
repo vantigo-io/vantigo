@@ -299,6 +299,51 @@ seam is already the right shape for it:
 Until that module exists, no endpoint writes `invoicedAt`; the column and the status
 are there so the state machine is complete rather than retrofitted.
 
+## What Time reports to other modules
+
+Time is the first module to *provide* a cross-module contract rather than only
+consume one: it implements `contracts.ProjectActuals` (`internal/time/actuals.go`),
+which is what has been logged against a project, for whoever compares it with what
+was planned — Projects' economy view today, an invoice later. It performs no
+authorization of its own: the caller has already decided who may see the project and
+who may see amounts, and the answer hands back hours and money together for the
+caller to shape.
+
+- **The same three buckets everywhere.** `Approved` (approved and invoiced entries),
+  `Submitted` and `Draft` (draft and rejected entries) — the split every surface in
+  this module already shows.
+- **The currency rule for bill and for cost, decided independently.** An entry's bill
+  amount counts only when its `billCurrency` equals the currency the caller asked
+  for; its cost amount counts only when its `costCurrency` does, on its own. A person
+  carded in EUR working on a NOK project can have a row whose bill counts and whose
+  cost does not, on the very same hours. With no currency asked for, no amount is
+  reported at all.
+- **Unpriced hours are billable hours without a usable bill rate** — no rate, or a
+  rate in another currency — and nothing else: non-billable work is never unpriced,
+  because it was never meant to carry a price. This is the same figure the project
+  summary's `unpricedHours` reports (`GET /time/projects/{id}/summary`); a fix made
+  to one query and not the other would make the two disagree, so both are pinned by
+  the same test.
+- **Uncosted hours** are the same idea for cost, but across *every* bucket, billable
+  or not: work nobody is billed for still costs the company, so a consumer showing a
+  margin has to know how many of its hours it left out of that number.
+- **No authorization, ever.** `Actuals`/`ActualsForProjects` answer whatever was
+  logged; they never consult a role, a permission or the caller's identity, because
+  the caller has already made that decision for its own surface.
+- **The batch is capped at `contracts.MaxActualsRequests` (2 000)** projects per
+  `ActualsForProjects` call, and naming one project twice in a batch is a hard error
+  rather than a resolvable ambiguity — silently picking the first, the last, or
+  merging the two would each be defensible, which is reason enough to refuse all of
+  it instead.
+- **It never calls back into `contracts.ProjectDirectory`.** A project's currency is
+  a fact the module that owns projects has already decided, and asking for it while
+  serving a request from that same module would be a cycle at request time — so the
+  currency arrives *in* the request (`ActualsRequest.Currency`) instead of being
+  looked up.
+
+See [module boundaries](module-boundaries.md) for how this contract is resolved
+without either module importing the other.
+
 ## Enabling and disabling
 
 `MODULES` is a positive allowlist; unset enables every module the binary can mount.

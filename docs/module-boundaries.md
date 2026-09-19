@@ -32,12 +32,15 @@ Communications' outbox is the working example.
 5. **One module, one mount.** A module exposes one `Module()` returning a
    `module.Module`: its name, its `Mount`, the permissions it contributes, the
    background workers it contributes, and the cross-module contracts it *provides*.
-   There are four provider slots, each filled by at most one enabled module:
+   There are five provider slots, each filled by at most one enabled module:
    `Directory` (`contracts.CustomerDirectory`, customers), `Users`
    (`contracts.UserDirectory`, identity), `Products` (`contracts.ProductCatalog`,
-   products) and `Projects` (`contracts.ProjectDirectory`, projects).
-   `module.Compose` mounts each module at `/api/v1/<name>/` and builds every provider
-   before any `Mount` runs, so a module's `Deps` already carries what it consumes.
+   products), `Projects` (`contracts.ProjectDirectory`, projects) and `Actuals`
+   (`contracts.ProjectActuals`, time). `module.Compose` mounts each module at
+   `/api/v1/<name>/` and builds every provider before any `Mount` runs, so a
+   module's `Deps` already carries what it consumes; `Actuals` is resolved last,
+   after `Projects`, so an actuals provider's *constructor* is allowed to read
+   the project directory (time's does not, but a future provider could).
 6. **Never reach around the boundary.** Do not call another module's HTTP endpoints
    from inside the process, and do not reach into another module's schema.
 7. **Frontend packages are isolated too.** A module frontend package (for instance
@@ -60,7 +63,7 @@ Communications' outbox is the working example.
   invalid or duplicate permission key, a `Mount` error, a path two modules both
   declare, a component two modules declare differently under the same name, or two
   modules both declaring the same provider — a customer directory, a user directory,
-  a product catalog or a project directory — naming both.
+  a product catalog, a project directory or project actuals — naming both.
 - **Rule 7**: `no-restricted-imports` in each module frontend's `eslint.config.js`,
   run by `bun run frontend:lint` locally and in CI.
 
@@ -102,14 +105,29 @@ config check, an optional one leaves the `Deps` field nil and **the consumer mus
 handle nil**. The one exception is `contracts.UserDirectory`: identity is always
 mounted, so `Deps.Users` is always set once composed.
 
-Time is the first module to consume three at once and provide none:
+`contracts.ProjectActuals` is the second optional contract, and the first to run in
+the *opposite* direction from the module that needs it: **Time provides it, Projects
+optionally consumes it.** Time's own dependency on Projects is required — it hangs
+hours off `contracts.ProjectDirectory` and cannot start without it (`time requires
+projects`, below) — but Projects' economy view does not require Time back: with
+`time` disabled `Deps.Actuals` is nil, Projects answers `timeTracking: false` and
+shows budgets with nothing to compare them against, and nothing fails startup. Both
+directions are resolved by `Compose` before any module mounts, so there is no runtime
+call in either direction that could cycle — `internal/projects` still imports no
+other module (depguard) and no SQL of either module crosses into the other's schema.
+
+Time is the first module to consume three contracts and provide one:
 `contracts.ProjectDirectory` (required — hence the config check),
 `contracts.UserDirectory` (always there, for names and for the rate card's user
-search) and `contracts.ProductCatalog` (optional — with products disabled a `list` or
+search), `contracts.ProductCatalog` (optional — with products disabled a `list` or
 `discount` billing line simply has no price, and the rate chain falls through to the
-project default). It also keeps a rule worth copying: **no contract call inside a
-transaction that holds a lock**, enforced by fakes that record any call made under
-one.
+project default) — and it provides `contracts.ProjectActuals` (optional for its
+consumer, above), reading its own `time` tables and never calling back into
+`contracts.ProjectDirectory` to serve it: the currency an amount is measured in
+arrives in the request, because Projects is the module that owns that fact. It also
+keeps a rule worth copying: **no contract call inside a transaction that holds a
+lock**, enforced by fakes that record any call made under one — the economy reads on
+both sides take no lock at all.
 
 ## Adding a module
 
