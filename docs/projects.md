@@ -9,10 +9,11 @@ inside the single Vantigo binary (`apps/server/internal/projects`), owns the
 here too: they are how a project's work is broken down, and they follow the project's
 own roles rather than permissions of their own.
 
-It deliberately stops there. Projects stores no hours, issues no invoice and
-**calculates no money**: it records the rule (billing type, fixed price, budget, and
-billing lines pinned to product variants) and leaves resolving amounts to the module
-that bills.
+It deliberately stops there. Projects stores no hours and issues no invoice: it
+records the rule (billing type, fixed price, budget, and billing lines pinned to
+product variants) and leaves resolving amounts to the module that bills. It computes
+exactly one thing itself — a billing milestone's share of the fixed price, the
+percent-of-price arithmetic behind the invoice plan below — and nothing more.
 
 ## Domain model
 
@@ -25,7 +26,12 @@ that bills.
   One role per user per project; the creator of a project becomes its manager.
 - **Billing line** — a short code within the project pinned to a product variant plus
   one pricing rule (`list`, `fixed` or `discount`). A line can be deactivated, never
-  deleted.
+  deleted. It may also carry a `budgetHours` and a `budgetAmount` — see
+  [Billing lines and the optional Products dependency](#billing-lines-and-the-optional-products-dependency).
+- **Billing milestone** — a named step of a project's invoice plan, priced as a flat
+  amount or a share of the fixed price, moving through `planned → ready → invoiced`
+  with `cancelled` off to the side — see
+  [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan).
 - **Task** — a piece of the project's work: `title`, `description`, `status`, one
   optional `assigneeUserId`, `startDate`/`dueDate`, `estimateHours`, a `position`
   among its siblings and an optional `parentTaskId` (see [Tasks](#tasks)). Each task
@@ -36,7 +42,10 @@ that bills.
   transaction as the change: `project-created`, `code-changed`, `status-changed`,
   `details-changed`, `customer-changed`, `billing-changed`, `role-added`,
   `role-changed`, `role-removed`, `line-added`, `line-changed`, `line-deactivated`,
-  `line-reactivated`. There are no manual notes.
+  `line-reactivated`, `milestone-added`, `milestone-changed`, `milestone-removed`,
+  `milestone-ready`, `milestone-planned`, `milestone-invoiced`,
+  `milestone-invoice-undone`, `milestone-cancelled`, `milestone-reopened`. There are
+  no manual notes.
 
 `status` is one of `planned`, `active`, `on-hold`, `completed`, `cancelled`, and
 **every transition is allowed**, reopening included. Only `active` means "open for
@@ -56,12 +65,14 @@ Cancelled projects and inactive lines still resolve through the contract below, 
 old hours stay readable.
 
 **One currency per project.** `currency` (ISO 4217 shape, `^[A-Z]{3}$`) is required
-as soon as any amount is set — a fixed price, a budget amount, a default bill rate, or
-a `fixed` billing line — and while a `fixed` line exists it can be neither cleared nor
-changed to another currency (deactivated lines count: their amount is still denominated in the
-currency it was typed in, and the line can be reactivated). Reprice or remove those
-lines first. `list` and `discount` lines resolve in the project's currency, so they
-never hold it back.
+as soon as any amount is set — a fixed price, a budget amount, a default bill rate, a
+`fixed` billing line, a line's `budgetAmount`, or a billing milestone — and while any
+of those exist it can be neither cleared nor changed to another currency (deactivated
+lines count: their amount is still denominated in the currency it was typed in, and
+the line can be reactivated; a **cancelled** milestone does not count — it bills
+nothing, so it cannot hold the currency back). Reprice, remove or cancel those first.
+`list` and `discount` lines resolve in the project's currency, so they never hold it
+back. See [Locking](#locking) for how this is decided safely under concurrent writes.
 
 The `projects` schema holds no foreign key that leaves it: `customer_id`,
 `variant_id` and every user ID are opaque, per
@@ -203,8 +214,11 @@ Writing financial fields needs no rule of its own: only managers and `manage-all
 update a project, both see its financials, and whoever creates a project becomes its
 manager.
 
-Every project response also carries `capabilities` (`canManage`, `canSeeFinancials`)
-and `billingLinesAvailable`, so the frontend never re-derives authorization.
+Every project response also carries `capabilities` (`canManage`, `canSeeFinancials`,
+`canManageMilestones`) and `billingLinesAvailable`, so the frontend never re-derives
+authorization. `canManageMilestones` is true for the project's managers and
+`projects:manage-all`, and false for a `projects:view-financials` holder who is not
+one — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan).
 
 ## Billing lines and the optional Products dependency
 
@@ -239,6 +253,163 @@ status, dates, budgets and people — just no priced lines.
 
 `MODULES` carrying `projects` without `customers` fails startup with
 `projects requires customers`, exactly as `energy` and `communications` do.
+
+### Budgets on billing lines
+
+A line may carry `budgetHours` and `budgetAmount`, both optional and both `> 0` when
+set. `budgetHours` is planning data — visible with the line to everyone who sees the
+project, deliberately outside the financial shaping above, exactly like the project's
+own `budgetHours`. `budgetAmount` is financial data: it lives inside the line's
+`pricing` object, so it is present only for a caller who may see the money, and it
+requires the project to have a `currency` (reported as a field error on
+`budgetAmount` itself). Setting either is optional and independent of the other; a
+line's relation to the project's own budget is not enforced, only shown, in the
+Economy tab's later delivery. A `line-changed` timeline entry names `budgetHours` and
+`budgetAmount` alongside the line's other fields — never a value, as every line-change
+entry works.
+
+## Billing milestones and the invoice plan
+
+A **billing milestone** is a named step of a project's invoice plan: `name`, an
+optional `description` and `plannedDate`, and either a flat `amount` (in the
+project's currency) or a `percent` of the project's fixed price — exactly one of the
+two, never both, never neither. Any project that carries a currency may have
+milestones, whatever its billing type; a `percent` milestone additionally needs the
+project to be `fixed-price` with a `fixedPriceAmount` set, because a percent is a
+share of that number.
+
+**Effective amount** is what the plan actually counts for a milestone, computed on
+every read rather than stored: the amount frozen when it was invoiced, else the flat
+amount as entered, else the project's fixed price times the percent. The
+percent-of-price arithmetic is **exact decimal** (`math/big.Rat` over the numeric
+columns' text, never `float64`), rounded half up to two places — 300 000.00 at
+33.33 % is exactly 99 990.00, and 100 000.01 at 12.5 % is exactly 12 500.00 (the true
+value, 12 500.00125, rounds down). Because it is computed on read, an open (not yet
+invoiced) percent milestone follows a later change to the fixed price; freezing is
+what stops an invoiced one from moving — the number an invoice was actually raised
+for must never drift under it. `effectiveAmount` is absent, never zero, in exactly
+one case: a **cancelled** milestone priced as a percent of a fixed price the project
+has since dropped — there is nothing left to compute it from, and a milestone that
+bills nothing should not read as "0.00" either.
+
+**Status moves.** A milestone is `planned`, `ready`, `invoiced` or `cancelled`. Every
+allowed move, and who may make it:
+
+| From → to | Who |
+| --- | --- |
+| `planned → ready` | project manager, `projects:manage-all` |
+| `ready → planned` | project manager, `projects:manage-all` |
+| `ready → invoiced` | financial rights on the project (manager, `manage-all`, or `projects:view-financials`) |
+| `invoiced → ready` (undo) | financial rights |
+| `planned → cancelled`, `ready → cancelled` | project manager, `projects:manage-all` |
+| `cancelled → planned` (reopen) | project manager, `projects:manage-all` |
+
+Any other pair — including a move to the status the milestone already has — is a 400
+on `status` naming both statuses; it is not a "no-op", so it writes no timeline entry.
+
+A move whose target is not `cancelled` **re-asks the project's own rules** against the
+row the write locks: it is refused if the project has no currency, or if the
+milestone is a percent one and the project has no fixed price. Cancelling is never
+refused this way — it is how a milestone the project can no longer support is got rid
+of. **The one exception** is undoing an invoicing (`invoiced → ready`): it is never
+refused either, because crediting an invoice is a real event that must not be
+blocked. If the milestone was a percent of a fixed price the project has since
+dropped, the undo instead **converts** it to an amount milestone — `amount` becomes
+the amount that was frozen when it was invoiced, `percent` is cleared — so the number
+that was actually billed survives even though the share it once was no longer means
+anything. The timeline entry for that undo carries `convertedToAmount: true`.
+
+Marking a milestone `→ ready` stamps who did it and when; `ready → planned` and
+`cancelled → planned` clear those stamps. `→ invoiced` stamps who and when, stores an
+optional `invoiceReference` (≤ 100 characters, trimmed) and `invoiceDate`, and
+freezes the effective amount into `invoicedAmount`; `invoiced → ready` clears all
+four. A reference or a date sent on any other move is refused, naming the field,
+rather than silently ignored.
+
+**Editing and deleting.** A milestone's content (name, dates, amount or percent) can
+be edited by the project's manager only while it is `planned` or `ready`; an
+`invoiced` or a `cancelled` milestone is read-only until moved back — a 400 on
+`status` says so. An edit that changes nothing writes no timeline entry; one that does
+writes `milestone-changed` naming the fields that moved (`name`, `description`,
+`plannedDate`, `amount`, `percent` — names only, never the values). **Delete** is
+narrower still: only while the milestone is still `planned` **and has never changed
+status** (`ever_moved`) — anything else is part of what the plan says happened, and
+is cancelled instead. A delete renumbers the remaining milestones 1..n so no gap is
+left.
+
+**Ordering.** A new milestone is appended last. `PUT .../position` renumbers the
+whole project's milestones 1..n in one transaction, so a reorder and a delete can
+never leave a gap or a duplicate; a position past the end means last. The listing
+always sorts cancelled milestones last, whatever position they are renumbered to —
+they keep their number, only the display order moves. There is no separate ordering
+lock: every milestone write already locks the project row first (see
+[Locking](#locking)), which serialises every write against one project, ordering
+included.
+
+**Access.** Reading the plan or one milestone needs financial rights on the project —
+not merely seeing it — because every row is an amount. An outsider to the project
+gets the same bare **404** an unknown id gets, resolved by loading the milestone
+first and then its project, exactly as a task is. A caller who can see the project
+but holds no financial rights gets **403** on every milestone operation, reads
+included — the milestone's existence is not the secret, its amount is. Writing
+(create, edit, delete, reorder) needs the project's manager or `manage-all`; marking
+invoiced and undoing it need only financial rights, because whoever may see the money
+may say it was billed.
+
+`currency` and `effectiveAmount` are both **optional** on a milestone, and
+`totals.currency` is optional on the plan: a cancelled milestone can outlive the
+project's currency or fixed price (the currency guard in
+[One currency per project](#domain-model) only counts non-cancelled milestones), so a
+required field would sometimes have to lie. They are absent only in that state, never
+`null` in place of a real value and never `0` in place of absent.
+
+**Guarding the fixed price.** Removing a project's fixed price — clearing
+`fixedPriceAmount`, or changing `billingType` away from `fixed-price`, which requires
+clearing it — is refused while open (non-cancelled, non-invoiced) percent milestones
+still price themselves from it. The refusal lands on `billingType`, because that is
+the only field a caller can actually change to reach this state (a `fixed-price`
+project's own validation already refuses clearing the amount on its own), and it
+names up to five of the milestones by name, then "and N more". Changing the price to
+a different number is always allowed; every open percent milestone simply follows it.
+
+The plan's `GET` also returns **totals** — `planned`, `ready`, `invoiced` and
+`cancelled` sums of effective amounts (cancelled counts against nothing, since it
+bills nothing) and, against a fixed price, `unplanned` or `overPlanned` (never both):
+the difference between the fixed price and what is planned, ready and invoiced,
+whichever way it runs. Totals never block a save — a plan may be over- or
+under-planned and still saved.
+
+The timeline gained nine event types: `milestone-added`, `milestone-changed`,
+`milestone-removed`, `milestone-ready`, `milestone-planned`, `milestone-invoiced`,
+`milestone-invoice-undone`, `milestone-cancelled`, `milestone-reopened`. As with a
+billing line's own entries, the payload never carries an amount — only the
+milestone's id and name (and, for `milestone-changed`, the field names that moved; for
+`milestone-invoice-undone`, the `convertedToAmount` flag) — because the timeline is
+read by everyone who can see the project, financial rights or not.
+
+The seven milestone operations are in the [API](#api) table below, alongside the
+rest of the module's endpoints.
+
+## Locking
+
+Every transaction that changes a project's currency, fixed price or billing type — or
+that writes a row whose validity depends on one of those (a billing line's `fixed`
+pricing or `budgetAmount`, a billing milestone) — **locks the project row first**
+(`SELECT ... FOR UPDATE`) and decides its rule against the row that lock returns, not
+against a read taken before the transaction opened. This closes the race between,
+for example, a line getting a `budgetAmount` and the project's currency being cleared
+in the same instant: whichever transaction locks the row first wins, and the other
+re-validates against what the winner left behind. The lock is always `FOR UPDATE`,
+never `FOR SHARE`, and always taken in the same order relative to any other lock a
+transaction needs (the project row, then a line's or a milestone's own row) — one
+lock mode and one order everywhere means nothing can deadlock and nothing needs to
+upgrade.
+
+A cross-module call — asking the product catalog whether a variant exists — is always
+made **before** the project's lock is taken, never inside the locked transaction:
+a slow or blocked call into another module must never stall every other writer of the
+project. The transaction then only decides whether that prefetched answer matters,
+against the row its own lock returns.
 
 ## Tasks
 
@@ -404,9 +575,16 @@ create additionally requires `projects:create`.
 | `PUT /api/v1/projects/{id}/roles/{userId}` | Add or change an assignment. Manager only |
 | `DELETE /api/v1/projects/{id}/roles/{userId}` | Remove an assignment. Manager only |
 | `GET /api/v1/projects/{id}/assignable-users` | Active users not already assigned, for the picker. Manager only |
-| `GET /api/v1/projects/{id}/billing-lines` | The project's lines, pricing shaped. 409 when products is off |
-| `POST /api/v1/projects/{id}/billing-lines` | Add a line. Manager only |
-| `PUT /api/v1/projects/{id}/billing-lines/{lineId}` | Update a line, `active` included. Manager only |
+| `GET /api/v1/projects/{id}/billing-lines` | The project's lines, pricing shaped (`budgetAmount` included). 409 when products is off |
+| `POST /api/v1/projects/{id}/billing-lines` | Add a line, `budgetHours`/`budgetAmount` included. Manager only |
+| `PUT /api/v1/projects/{id}/billing-lines/{lineId}` | Update a line, `active` and budgets included. Manager only |
+| `GET /api/v1/projects/{id}/milestones` | The invoice plan, position order, cancelled last, with totals. Financial rights |
+| `POST /api/v1/projects/{id}/milestones` | Add a milestone; appended last. Manager only |
+| `GET /api/v1/projects/milestones/{milestoneId}` | One milestone. Financial rights |
+| `PUT /api/v1/projects/milestones/{milestoneId}` | Full replace, carrying `revision`; a stale one answers 409. Manager only |
+| `DELETE /api/v1/projects/milestones/{milestoneId}` | Only `planned` and never moved; otherwise 400. Manager only |
+| `PUT /api/v1/projects/milestones/{milestoneId}/position` | Renumber the plan 1..n; carries `revision` (checked, not bumped). Manager only |
+| `POST /api/v1/projects/milestones/{milestoneId}/status` | One move through the status flow — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan) |
 | `GET /api/v1/projects/{id}/tasks` | The project's task tree, with checklist counts and comment counts. Anyone who sees the project |
 | `POST /api/v1/projects/{id}/tasks` | Add a task. Member or manager |
 | `PUT /api/v1/projects/tasks/{taskId}` | Replace a task, carrying `revision`; a stale one answers 409. Member or manager |
@@ -449,6 +627,7 @@ like every other module package; module packages never import each other.
 | `/projects/$projectId/tasks` | Tasks tab (list and board, task drawer); `?task={id}` deep-links one task |
 | `/projects/$projectId/people` | People tab (assignments, role badges, add/change/remove for managers) |
 | `/projects/$projectId/billing` | Billing tab, gated on `capabilities.canSeeFinancials` |
+| `/projects/$projectId/economy` | Economy tab (the invoice plan), between Billing and Time; gated on `capabilities.canSeeFinancials` like Billing — the next delivery widens it to everyone who sees the project once it has an hours-only half to show them |
 | `/customers/$customerId/projects` | Projects tab on the customer page |
 
 The project header — code, name, customer, status badge and the status control a

@@ -209,15 +209,43 @@ that writes it. See [`docs/time.md`](docs/time.md).
 *Unblocks:* hours that can be invoiced, the first real consumer of billing
 lines, and a task list contractors and consultants will actually keep.
 
-### Phase 3 — Budgets, billing milestones and costs (next)
+### Phase 3 — Budgets, billing milestones and costs (in progress)
 
-Budget vs actual per project and billing line (hours, cost, revenue: expected
-→ to invoice → invoiced); **billing milestones** on the commercial side (date,
-amount or % of the fixed price, a-konto as one kind), separate from delivery
-milestones; expenses and supplier costs with markup; overtime and work-type
-multipliers as billing-line rules.
+Decided in `docs/superpowers/specs/2026-09-19-project-economy-design.md`, two
+deliveries.
 
-*Unblocks:* fixed-price and a-konto invoicing, profitability, budget alerts.
+**Billing milestones and line budgets (done).** A project's invoice plan: a
+billing milestone (name, optional planned date, a flat amount or a percent of
+the fixed price) moving through `planned → ready → invoiced` with `cancelled`
+off to the side, manual ordering, and a manual "mark as invoiced" step that
+freezes the amount (a later Invoices module will set the same status). The
+percent-of-price amount is computed exact-decimal, on read, so an open
+milestone follows a later change to the fixed price; project guards refuse
+clearing the currency or the fixed price while amounts still depend on them.
+Line budgets: `budgetHours` (planning data) and `budgetAmount` (financial,
+needs a currency) on a billing line, shown beside the line's pricing. Every
+write that depends on the project's currency, fixed price or billing type
+locks the project row first and decides under it — no separate ordering lock
+turned out to be needed once that held. See
+[`docs/projects.md`](docs/projects.md#billing-milestones-and-the-invoice-plan)
+for the model, the status table and the guards.
+
+*Unblocks:* fixed-price milestone invoicing recorded in Vantigo, and the
+Economy tab's first half (`/projects/$projectId/economy`).
+
+**Next: budget vs actual, portfolio and alerts.** A new optional contract
+(`contracts.ProjectActuals`) through which Time supplies logged hours and
+amounts, in three buckets (approved, submitted, draft), to Projects without
+Projects ever reading the `time` schema; "budget used" resolved from one
+basis per project (budget amount → fixed price → budget hours); the Economy
+tab's budget half (bars, per-line table); a project portfolio page
+(`/projects/economy`); dashboard alerts for a budget nearing or past 100 %
+and for a ready or overdue milestone; `projects:view-costs`, a new sensitive
+permission for cost and margin, granted to nobody by default. Expenses,
+supplier costs and overtime multipliers stay out of scope for both
+deliveries.
+
+*Unblocks:* profitability and budget alerts, a project portfolio view.
 
 ### Phase 4 — Delivery milestones, timeline and templates
 
