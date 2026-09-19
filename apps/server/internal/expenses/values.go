@@ -69,6 +69,14 @@ func validateCurrency(raw string) (string, string) {
 // text — the same text the numeric columns store — rather than on float
 // arithmetic. label names the value in the message ("A rate").
 func validateDecimal(label string, v float64, minimum, maximum float64) string {
+	return validateScaled(label, v, minimum, maximum, moneyPlaces)
+}
+
+// validateScaled is validateDecimal for a column that holds a different number
+// of decimals — a distance in kilometres is numeric(8,1), so a second decimal
+// is a mistake worth reporting rather than something the column would round
+// away behind the caller's back.
+func validateScaled(label string, v float64, minimum, maximum float64, places int) string {
 	switch {
 	case math.IsNaN(v) || v < minimum:
 		if minimum == 0 {
@@ -79,10 +87,54 @@ func validateDecimal(label string, v float64, minimum, maximum float64) string {
 		return fmt.Sprintf("%s cannot be more than %s", label, formatNumber(maximum))
 	}
 	text := strconv.FormatFloat(v, 'f', -1, 64)
-	if _, decimals, ok := strings.Cut(text, "."); ok && len(decimals) > 2 {
-		return fmt.Sprintf("%s can have at most two decimals, but was %s", label, text)
+	if _, decimals, ok := strings.Cut(text, "."); ok && len(decimals) > places {
+		return fmt.Sprintf("%s can have at most %s, but was %s", label, decimalPlaces(places), text)
 	}
 	return ""
+}
+
+// decimalPlaces names a scale in the message validateScaled reports.
+func decimalPlaces(places int) string {
+	if places == 1 {
+		return "one decimal"
+	}
+	return fmt.Sprintf("%d decimals", places)
+}
+
+// ratFromFloat is a JSON number as the exact decimal it was written as, through
+// its shortest round-tripping text — the way every amount reaches money.go, so
+// no float arithmetic ever stands between a request and an amount.
+func ratFromFloat(v float64) *big.Rat {
+	r, ok := new(big.Rat).SetString(strconv.FormatFloat(v, 'f', -1, 64))
+	if !ok {
+		return new(big.Rat)
+	}
+	return r
+}
+
+// numericFromRat stores an exact decimal as the column's value, at places
+// decimals and rounded half up — the one road from money.go's arithmetic into
+// the database.
+func numericFromRat(v *big.Rat, places int) (pgtype.Numeric, error) {
+	return numericFromText(decimalText(v, places))
+}
+
+// numericFromRatPtr is numericFromRat for an optional value; nil stays an
+// invalid (SQL NULL) pgtype.Numeric.
+func numericFromRatPtr(v *big.Rat, places int) (pgtype.Numeric, error) {
+	if v == nil {
+		return pgtype.Numeric{}, nil
+	}
+	return numericFromRat(v, places)
+}
+
+// ratPtrFromNumeric reads an optional numeric column as an exact decimal, nil
+// for a SQL NULL.
+func ratPtrFromNumeric(n pgtype.Numeric) (*big.Rat, error) {
+	if !n.Valid {
+		return nil, nil
+	}
+	return ratFromNumeric(n)
 }
 
 // validateAboveZero is validateDecimal for a value that must be greater than

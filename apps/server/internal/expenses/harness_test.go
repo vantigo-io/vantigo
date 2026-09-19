@@ -449,15 +449,32 @@ func signInAs(t *testing.T, h *harness, projectID int32, role string, permission
 // The module's paths, so a typo is one compile error rather than a 404 a test
 // then explains to itself.
 const (
-	metaPath       = "/api/v1/expenses/meta"
-	settingsPath   = "/api/v1/expenses/settings"
-	ratesPath      = "/api/v1/expenses/rates"
-	ratesResetPath = ratesPath + "/reset"
-	categoriesPath = "/api/v1/expenses/categories"
+	metaPath           = "/api/v1/expenses/meta"
+	settingsPath       = "/api/v1/expenses/settings"
+	ratesPath          = "/api/v1/expenses/rates"
+	ratesResetPath     = ratesPath + "/reset"
+	categoriesPath     = "/api/v1/expenses/categories"
+	entriesPath        = "/api/v1/expenses/entries"
+	projectOptionsPath = "/api/v1/expenses/projects"
 )
 
 func ratePath(id int32) string     { return fmt.Sprintf("%s/%d", ratesPath, id) }
 func categoryPath(id int32) string { return fmt.Sprintf("%s/%d", categoriesPath, id) }
+func entryPath(id int64) string    { return fmt.Sprintf("%s/%d", entriesPath, id) }
+
+// The titles this module's refusals carry, so a test says which refusal it
+// expects rather than repeating the string.
+const (
+	invalidEntryTitle = "Invalid expense"
+	invalidQueryTitle = "Invalid query parameters"
+)
+
+// materialsCategory is the first seeded category's id. The migration gives
+// expenses.categories an identity starting at 1001 and seeds design §3.3's
+// eight names in order, so Materials is 1001;
+// TestExpensesEntries_TheDefaultBodyNamesASeededCategory pins it here rather
+// than leaving every entry body to look it up.
+const materialsCategory = 1001
 
 // metaJSON decodes ExpensesMetaResponse.
 type metaJSON struct {
@@ -702,4 +719,228 @@ func categoryNames(categories []categoryJSON) []string {
 		names = append(names, c.Name)
 	}
 	return names
+}
+
+// The pieces of ExpensesEntryResponse a test reads. Every optional one is a
+// pointer, so "absent" and "zero" are told apart; a test whose subject is
+// whether a key is there at all reads the entry as a bare object instead
+// (rawEntry).
+type (
+	entryCategoryJSON struct {
+		Id   int32  `json:"id"`
+		Name string `json:"name"`
+	}
+	entryProjectJSON struct {
+		Id   int32  `json:"id"`
+		Code string `json:"code"`
+		Name string `json:"name"`
+	}
+	entryLineJSON struct {
+		Id   int32  `json:"id"`
+		Code string `json:"code"`
+	}
+	entryOwnerJSON struct {
+		UserId      uuid.UUID `json:"userId"`
+		DisplayName string    `json:"displayName"`
+		Active      bool      `json:"active"`
+	}
+	entryBillingJSON struct {
+		MarkupPercent *float64 `json:"markupPercent"`
+		BillRatePerKm *float64 `json:"billRatePerKm"`
+		BillAmount    float64  `json:"billAmount"`
+	}
+	entryCapabilitiesJSON struct {
+		CanEdit         bool `json:"canEdit"`
+		CanDelete       bool `json:"canDelete"`
+		CanSubmit       bool `json:"canSubmit"`
+		CanApprove      bool `json:"canApprove"`
+		CanOverrideRate bool `json:"canOverrideRate"`
+		CanMarkInvoiced bool `json:"canMarkInvoiced"`
+		CanSeeBilling   bool `json:"canSeeBilling"`
+	}
+)
+
+// entryJSON decodes ExpensesEntryResponse.
+type entryJSON struct {
+	Id              int64                 `json:"id"`
+	Kind            string                `json:"kind"`
+	EntryDate       string                `json:"entryDate"`
+	Description     string                `json:"description"`
+	Category        *entryCategoryJSON    `json:"category"`
+	Supplier        *string               `json:"supplier"`
+	PaidBy          *string               `json:"paidBy"`
+	Currency        string                `json:"currency"`
+	GrossAmount     float64               `json:"grossAmount"`
+	VatAmount       *float64              `json:"vatAmount"`
+	NetAmount       float64               `json:"netAmount"`
+	DistanceKm      *float64              `json:"distanceKm"`
+	FromPlace       *string               `json:"fromPlace"`
+	ToPlace         *string               `json:"toPlace"`
+	Passengers      *int32                `json:"passengers"`
+	Rate            *float64              `json:"rate"`
+	PassengerRate   *float64              `json:"passengerRate"`
+	OwedToEmployee  float64               `json:"owedToEmployee"`
+	Status          string                `json:"status"`
+	SubmittedAt     *string               `json:"submittedAt"`
+	DecidedAt       *string               `json:"decidedAt"`
+	RejectionReason *string               `json:"rejectionReason"`
+	Project         *entryProjectJSON     `json:"project"`
+	BillingLine     *entryLineJSON        `json:"billingLine"`
+	Billable        bool                  `json:"billable"`
+	Billing         *entryBillingJSON     `json:"billing"`
+	AttachmentCount int32                 `json:"attachmentCount"`
+	Owner           entryOwnerJSON        `json:"owner"`
+	Revision        int32                 `json:"revision"`
+	Capabilities    entryCapabilitiesJSON `json:"capabilities"`
+}
+
+// entryPageJSON decodes PaginatedResponseOfExpensesEntryResponse.
+type entryPageJSON struct {
+	Data       []entryJSON `json:"data"`
+	Pagination struct {
+		Page       int32 `json:"page"`
+		PageSize   int32 `json:"pageSize"`
+		TotalCount int32 `json:"totalCount"`
+		TotalPages int32 `json:"totalPages"`
+	} `json:"pagination"`
+}
+
+// projectOptionJSON decodes ExpensesProjectOption.
+type projectOptionJSON struct {
+	Id           int32           `json:"id"`
+	Code         string          `json:"code"`
+	Name         string          `json:"name"`
+	Currency     *string         `json:"currency"`
+	BillingLines []entryLineJSON `json:"billingLines"`
+}
+
+// outlayBody is a valid minimal outlay — a receipt the employee paid — which
+// tests override one field of at a time. A nil override value removes that
+// field.
+func outlayBody(overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{
+		"kind":        "outlay",
+		"entryDate":   "2026-03-10",
+		"description": "Kabel og kontakter",
+		"categoryId":  materialsCategory,
+		"paidBy":      "employee",
+		"currency":    "NOK",
+		"grossAmount": 1250.00,
+	}, overrides)
+}
+
+// mileageBody is a valid minimal mileage line, which tests override one field
+// of at a time. The distance is the one the seeded rates price.
+func mileageBody(overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{
+		"kind":        "mileage",
+		"entryDate":   "2026-03-10",
+		"description": "Til anlegget og tilbake",
+		"distanceKm":  120.0,
+	}, overrides)
+}
+
+// bodyWith is base with overrides applied; a nil value removes the field, so a
+// test can say "without a currency" as well as "with this currency".
+func bodyWith(base, overrides map[string]any) map[string]any {
+	maps.Copy(base, overrides)
+	for field, value := range overrides {
+		if value == nil {
+			delete(base, field)
+		}
+	}
+	return base
+}
+
+// createEntry records an entry and fails the test unless it was created.
+func createEntry(t *testing.T, c *modtest.Client, body map[string]any) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, entriesPath, body)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("create entry %v: status %d body %s, want 201", body, r.Status, r.Body)
+	}
+	var entry entryJSON
+	r.JSON(&entry)
+	return entry
+}
+
+// getEntry reads one entry and fails the test unless it answered 200.
+func getEntry(t *testing.T, c *modtest.Client, id int64) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, entryPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get entry %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	var entry entryJSON
+	r.JSON(&entry)
+	return entry
+}
+
+// rawEntry reads one entry as a bare JSON object, for a test whose subject is
+// whether a key is there at all — a nil pointer cannot tell "absent" from
+// "null".
+func rawEntry(t *testing.T, c *modtest.Client, id int64) map[string]any {
+	t.Helper()
+	r := c.Do(http.MethodGet, entryPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get entry %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	var raw map[string]any
+	r.JSON(&raw)
+	return raw
+}
+
+// updateEntry replaces an entry and fails the test unless it answered 200. The
+// body is a create body plus the revision it was read at.
+func updateEntry(t *testing.T, c *modtest.Client, id int64, body map[string]any) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPut, entryPath(id), body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("update entry %d with %v: status %d body %s, want 200", id, body, r.Status, r.Body)
+	}
+	var entry entryJSON
+	r.JSON(&entry)
+	return entry
+}
+
+// listEntries reads a page of entries and fails the test unless it answered
+// 200. query is appended as it stands ("?userId=…"), "" for none.
+func listEntries(t *testing.T, c *modtest.Client, query string) entryPageJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, entriesPath+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("list entries %q: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	var page entryPageJSON
+	r.JSON(&page)
+	return page
+}
+
+// entryIDs is the ids of a page's entries, in the order they were listed.
+func entryIDs(page entryPageJSON) []int64 {
+	ids := make([]int64, 0, len(page.Data))
+	for _, e := range page.Data {
+		ids = append(ids, e.Id)
+	}
+	return ids
+}
+
+// listProjectOptions reads the projects the caller may book on and fails the
+// test unless it answered 200.
+func listProjectOptions(t *testing.T, c *modtest.Client) []projectOptionJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, projectOptionsPath, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("list project options: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var options []projectOptionJSON
+	r.JSON(&options)
+	return options
+}
+
+// refusedEntry is refused for an entry body: the field errors of a create or
+// an update that did not pass.
+func refusedEntry(t *testing.T, c *modtest.Client, method, path string, body map[string]any) map[string][]string {
+	t.Helper()
+	return refused(t, c, method, path, body, invalidEntryTitle)
 }
