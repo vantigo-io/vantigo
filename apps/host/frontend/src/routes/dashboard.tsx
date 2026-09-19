@@ -103,6 +103,8 @@ interface ProjectsSummary {
   activeProjectsDelta: number;
   newProjects: number;
   newProjectsDelta: number;
+  /** Ready milestones the caller has financial rights on — a state, not a delta. */
+  readyMilestones: number;
 }
 
 interface TimeSummary {
@@ -243,6 +245,9 @@ const fetchAttention = async (module: ModuleKey, signal: AbortSignal) => {
   }
 };
 
+/** The four project-economy attention types, which all link to the Economy tab. */
+const projectEconomyAttentionTypes = ["budgetWarning", "budgetExceeded", "milestoneReady", "milestoneOverdue"];
+
 /**
  * Where an attention item leads. Every module agrees on `type` and
  * `entityId`, so this is the one place that turns the pair into a URL.
@@ -257,7 +262,18 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
   if (item.module === "customers") return `/customers/${encodeURIComponent(item.entityId)}`;
   if (item.module === "products") return `/products/${encodeURIComponent(item.entityId)}`;
   if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
-  if (item.module === "projects") return `/projects/${encodeURIComponent(item.entityId)}`;
+  if (item.module === "projects") {
+    // The two budget types carry a bare project id, same as projectOverdue;
+    // the two milestone types carry `<projectId>/<milestoneId>`, which is the
+    // milestone's own id, not a URL — encoding the pair whole (as the bare
+    // project case below does) would turn the slash into %2F and break the
+    // link, so the project id is taken as the part before it.
+    if (projectEconomyAttentionTypes.includes(item.type)) {
+      const projectId = item.entityId.split("/")[0] ?? item.entityId;
+      return `/projects/${encodeURIComponent(projectId)}/economy`;
+    }
+    return `/projects/${encodeURIComponent(item.entityId)}`;
+  }
   if (item.module === "time") {
     if (item.type === "weekUnsubmitted") return `/time?week=${encodeURIComponent(item.entityId)}`;
     if (item.type === "approvalWaiting") return "/time/approvals";
@@ -268,16 +284,29 @@ export const attentionHref = (item: { module: ModuleKey; type: string; entityId:
   return "/communications/inbox";
 };
 
+const projectAttentionTitleKeys: Record<string, string> = {
+  budgetWarning: "dashboard.projectBudgetWarning",
+  budgetExceeded: "dashboard.projectBudgetExceeded",
+  milestoneReady: "dashboard.projectMilestoneReady",
+  milestoneOverdue: "dashboard.projectMilestoneOverdue",
+};
+
 /**
- * The catalog key that names a time item, or undefined for an item whose own
+ * The catalog key that names an item, or undefined for an item whose own
  * `title` the server already wrote. Time's titles are built from data rather
  * than from a catalog, so they arrive in English; naming them again here is
- * what puts them in the reader's language.
+ * what puts them in the reader's language. The four project-economy types are
+ * server-built too (a project or a milestone name), so they take the same
+ * treatment, this time with the name filled into the sentence rather than a
+ * date.
  */
 export const attentionTitleKey = (item: { module: ModuleKey; type: string }) => {
-  if (item.module !== "time") return undefined;
-  if (item.type === "weekUnsubmitted") return "dashboard.timeWeekUnsubmitted";
-  if (item.type === "approvalWaiting") return "dashboard.timeApprovalWaiting";
+  if (item.module === "time") {
+    if (item.type === "weekUnsubmitted") return "dashboard.timeWeekUnsubmitted";
+    if (item.type === "approvalWaiting") return "dashboard.timeApprovalWaiting";
+    return undefined;
+  }
+  if (item.module === "projects") return projectAttentionTitleKeys[item.type];
   return undefined;
 };
 
@@ -300,8 +329,22 @@ export const attentionTitle = (
 ) => {
   const key = attentionTitleKey(item);
   if (!key) return item.title;
+  if (item.module === "projects") return t(key, { name: item.title });
   return t(key, { date: formatDate(attentionWeek(item.entityId), { dateStyle: "medium", timeZone: "UTC" }) });
 };
+
+/**
+ * The Projects card's "N milestones ready to invoice" hint, or nothing when
+ * there is nothing ready. It is a state, not a delta (milestones may be in
+ * several currencies, so there is no one comparable total), and zero is the
+ * ordinary case for most projects, so a standing zero would be a permanent
+ * fixture rather than something worth reading — the same reasoning as Time's
+ * approval hint.
+ */
+export const readyMilestonesHint = (
+  count: number | undefined,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string | undefined => (count ? t("dashboard.readyMilestonesHint", { count }) : undefined);
 
 /**
  * The Time card's "N waiting for your approval" hint, or nothing when there
@@ -721,7 +764,10 @@ const DashboardPage = () => {
                 key={module.module}
                 label={t("dashboard.activeProjects")}
                 value={projectsSummary.data?.activeProjects ?? "—"}
-                hint={t("dashboard.newProjectsHint", { count: projectsSummary.data?.newProjects ?? 0 })}
+                // The second figure is the one worth acting on, so — as with
+                // Time's approval count — it is the hint, and only while there
+                // is something in it to act on.
+                hint={readyMilestonesHint(projectsSummary.data?.readyMilestones, t)}
                 delta={
                   projectsSummary.data
                     ? {

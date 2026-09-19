@@ -273,6 +273,12 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.projectsViewFinancials",
     descriptionKey: "admin.permission.projectsViewFinancialsDescription",
   },
+  "projects:view-costs": {
+    moduleKey: "admin.permission.module.projects",
+    categoryKey: "admin.permission.category.projects",
+    displayNameKey: "admin.permission.projectsViewCosts",
+    descriptionKey: "admin.permission.projectsViewCostsDescription",
+  },
   "time:access": {
     moduleKey: "admin.permission.module.time",
     categoryKey: "admin.permission.category.time",
@@ -492,6 +498,9 @@ const en = {
   "admin.permission.projectsViewFinancials": "View project financials",
   "admin.permission.projectsViewFinancialsDescription":
     "See fixed prices, budget amounts and line pricing on every project you can see.",
+  "admin.permission.projectsViewCosts": "View project costs",
+  "admin.permission.projectsViewCostsDescription":
+    "See what the work costs the company and the margin, on projects whose financials you can see. On a small project this can reveal a person's cost rate.",
   "admin.permission.timeAccess": "Use Time",
   "admin.permission.timeAccessDescription":
     "Use the Time app: log hours on the projects you work on and see your own entries.",
@@ -815,6 +824,9 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.projectsViewFinancials": "Se prosjektøkonomi",
   "admin.permission.projectsViewFinancialsDescription":
     "Se fastpriser, budsjettbeløp og linjepriser på alle prosjekter du kan se.",
+  "admin.permission.projectsViewCosts": "Se prosjektkostnader",
+  "admin.permission.projectsViewCostsDescription":
+    "Se hva arbeidet koster bedriften og dekningsbidraget, på prosjekter du kan se økonomien til. På et lite prosjekt kan dette avsløre en persons kostnadssats.",
   "admin.permission.timeAccess": "Bruk Timer",
   "admin.permission.timeAccessDescription":
     "Bruk Timer-appen: før timer på prosjektene du jobber på, og se dine egne føringer.",
