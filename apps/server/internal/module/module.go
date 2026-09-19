@@ -37,6 +37,11 @@ type Deps struct {
 	Catalog map[string]contracts.Permission // the composed catalog
 	// Doc is this module's own contract. Compose sets it, on a copy of Deps,
 	// before calling Mount, by loading the module's own specs/<name>.yaml.
+	//
+	// It is read-only: the embedded specs are parsed once per process and the
+	// same document is handed to every composition (see embedded in
+	// compose.go), so a module that wrote to it would be writing to every
+	// other composition's contract too.
 	Doc *openapi3.T
 	// Directory is the customer directory, the one sanctioned way a module
 	// reads another's data (see contracts.CustomerDirectory). Compose sets
