@@ -1,9 +1,17 @@
+import type { TimeApprovalGroup } from "../api/approvals";
+import type { PaginatedResponse } from "../api/entries";
+import type { TimePersonOverview } from "../api/people";
 import type { MyProject, MyTaskOption, ProjectBillingLine } from "../api/projects";
+import type { PersonRate } from "../api/rates";
 import type { TimeSettings } from "../api/settings";
+import type { TimeProjectSummary } from "../api/stats";
 import type { TimeWeek } from "../api/weeks";
 import { jsonResponse } from "./api";
 import { stubFetch } from "./fetch";
 import { entry, kvemLines, myProjects, myTasks, WEEK, week } from "./fixtures";
+
+/** A read the stub answers from a fixture, or a `Response` when the test wants a refusal. */
+type Read<T> = T | Response;
 
 export interface TimeServer {
   /** The caller's week, whichever Monday is asked for; a function is asked again on every read. */
@@ -12,9 +20,30 @@ export interface TimeServer {
   projects?: MyProject[];
   lines?: Record<number, ProjectBillingLine[]>;
   tasks?: MyTaskOption[];
+  /** The approval queue, as its groups alone: the stub wraps them in a page. */
+  approvals?: Read<TimeApprovalGroup[]>;
+  people?: Read<TimePersonOverview[]>;
+  rates?: Read<PersonRate[]>;
+  projectSummary?: Read<TimeProjectSummary>;
   /** Answers a write instead of the default success; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
 }
+
+/** The fixture, or the refusal the test put in its place; a Response is cloned so a refetch reads it again. */
+const answer = <T>(read: Read<T> | undefined, fallback: T): Response =>
+  read instanceof Response ? read.clone() : jsonResponse(200, read ?? fallback);
+
+const page = <T>(data: T[]): PaginatedResponse<T> => ({
+  data,
+  pagination: {
+    page: 1,
+    pageSize: 25,
+    totalCount: data.length,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  },
+});
 
 /**
  * The time and projects APIs as the pages read them, from fixtures. Writes
@@ -30,14 +59,27 @@ export const stubTimeApi = (server: TimeServer = {}) =>
     const currentWeek = (): TimeWeek => (typeof server.week === "function" ? server.week() : (server.week ?? week([])));
 
     if (method !== "GET") {
-      const answer = server.write?.(method, path, body);
-      if (answer) return Promise.resolve(answer);
+      const answered = server.write?.(method, path, body);
+      if (answered) return Promise.resolve(answered);
       if (method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
       if (path.endsWith("/submit") && path.startsWith("/api/v1/time/weeks/")) {
         return Promise.resolve(jsonResponse(200, currentWeek()));
       }
       if (path === "/api/v1/time/entries" && method === "POST") {
         return Promise.resolve(jsonResponse(201, entry({ ...body, id: 900, revision: 1 })));
+      }
+      if (path === "/api/v1/time/rates" && method === "POST") {
+        return Promise.resolve(jsonResponse(201, { id: 99, displayName: "", ...body }));
+      }
+      if (path.startsWith("/api/v1/time/rates/")) return Promise.resolve(jsonResponse(200, { id: 99, ...body }));
+      if (path === "/api/v1/time/settings") return Promise.resolve(jsonResponse(200, body));
+      if (path.startsWith("/api/v1/time/entries/")) {
+        return Promise.resolve(
+          jsonResponse(
+            200,
+            (body?.ids ?? []).map((id: number) => entry({ id })),
+          ),
+        );
       }
       return Promise.resolve(jsonResponse(200, entry({ ...body })));
     }
@@ -47,6 +89,24 @@ export const stubTimeApi = (server: TimeServer = {}) =>
       return Promise.resolve(jsonResponse(200, { ...currentWeek(), weekStart }));
     }
     if (path === "/api/v1/time/settings") return Promise.resolve(jsonResponse(200, server.settings ?? {}));
+    if (path === "/api/v1/time/approvals") {
+      return Promise.resolve(
+        server.approvals instanceof Response
+          ? server.approvals.clone()
+          : jsonResponse(200, page(server.approvals ?? [])),
+      );
+    }
+    if (path === "/api/v1/time/people") return Promise.resolve(answer(server.people, []));
+    if (path === "/api/v1/time/rates") return Promise.resolve(answer(server.rates, []));
+    if (/^\/api\/v1\/time\/projects\/\d+\/summary$/.test(path)) {
+      return Promise.resolve(
+        server.projectSummary instanceof Response
+          ? server.projectSummary.clone()
+          : server.projectSummary
+            ? jsonResponse(200, server.projectSummary)
+            : new Response(null, { status: 404 }),
+      );
+    }
     if (path === "/api/v1/projects") {
       return Promise.resolve(jsonResponse(200, { data: server.projects ?? myProjects, pagination: { page: 1 } }));
     }

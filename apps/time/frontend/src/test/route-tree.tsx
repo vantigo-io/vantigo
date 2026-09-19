@@ -12,9 +12,18 @@ import {
 } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import { isIsoDate } from "../lib/week";
+import { ApprovalsPage, type ApprovalsSearch } from "../pages/approvals";
 import { DayPage, type DaySearch } from "../pages/day";
 import { MyWeekPage, type MyWeekSearch } from "../pages/my-week";
+import { PeoplePage, type PeopleSearch } from "../pages/people";
+import { SettingsPage } from "../pages/settings";
 import "../i18n";
+
+/** A positive whole number in a search param, the way the host route validates a page. */
+const asCount = (value: unknown): number | undefined => {
+  const count = Number(value);
+  return Number.isInteger(count) && count > 0 ? count : undefined;
+};
 
 /**
  * Stands in for the host routes the package's pages are mounted by (Task 7):
@@ -43,6 +52,19 @@ export const makeRouteTree = () => {
         date: isIsoDate(search.date) ? search.date : undefined,
       }),
     }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/time/approvals",
+      component: ApprovalsPage,
+      validateSearch: (search: Record<string, unknown>): ApprovalsSearch => ({ page: asCount(search.page) }),
+    }),
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/time/people",
+      component: PeoplePage,
+      validateSearch: (search: Record<string, unknown>): PeopleSearch => ({ weeks: asCount(search.weeks) }),
+    }),
+    createRoute({ getParentRoute: () => rootRoute, path: "/time/settings", component: SettingsPage }),
   ]);
 };
 

@@ -1,9 +1,16 @@
+import type { TimeApprovalGroup } from "../api/approvals";
 import type { TimeEntry } from "../api/entries";
+import type { TimePersonOverview } from "../api/people";
 import type { MyProject, MyTaskOption, ProjectBillingLine } from "../api/projects";
+import type { PersonRate } from "../api/rates";
+import type { TimeProjectSummary } from "../api/stats";
 import type { TimeWeek, TimeWeekRow } from "../api/weeks";
 import { weekDays } from "../lib/week";
 
 export const ME = "11111111-1111-1111-1111-111111111111";
+
+/** Somebody else, whose time the caller approves and whose rates they manage. */
+export const OTHER = "22222222-2222-2222-2222-222222222222";
 
 /** The week every page test looks at: Monday 14 September 2026. */
 export const WEEK = "2026-09-14";
@@ -95,3 +102,117 @@ export const myTasks: MyTaskOption[] = [
   { id: 5001, title: "Skriv spesifikasjonen", projectId: 1001, projectCode: "KVEM1000", projectName: "Kverneland web" },
   { id: 5003, title: "Oversett rapporten", projectId: 1004, projectCode: "EURO2026", projectName: "Euro" },
 ];
+
+/** An entry as the approval queue answers one: submitted, and the caller may approve it. */
+export const submittedEntry = (overrides: Partial<TimeEntry> = {}): TimeEntry =>
+  entry({
+    status: "submitted",
+    capabilities: { canEdit: false, canSubmit: false, canApprove: true, canUnapprove: false },
+    ...overrides,
+  });
+
+/** The week before the one every other fixture uses. */
+export const LAST_WEEK = "2026-09-07";
+
+/** The queue as two groups, oldest week first, the way the server orders them. */
+export const approvalGroups: TimeApprovalGroup[] = [
+  {
+    userId: OTHER,
+    displayName: "Grace Hopper",
+    weekStart: LAST_WEEK,
+    hours: 4,
+    entries: [
+      submittedEntry({
+        id: 711,
+        userId: OTHER,
+        userDisplayName: "Grace Hopper",
+        entryDate: LAST_WEEK,
+        hours: 4,
+        note: "Hardware bring-up",
+      }),
+    ],
+  },
+  {
+    userId: ME,
+    displayName: "Ada Lovelace",
+    weekStart: WEEK,
+    hours: 9.5,
+    entries: [
+      submittedEntry({
+        id: 701,
+        entryDate: WEEK,
+        hours: 7.5,
+        note: "Kickoff",
+        billing: { billRate: 1200, currency: "NOK" },
+      }),
+      submittedEntry({ id: 702, ...devTaskRow, entryDate: "2026-09-15", hours: 2, billable: false }),
+    ],
+  },
+];
+
+export const peopleOverview: TimePersonOverview[] = [
+  {
+    userId: ME,
+    displayName: "Ada Lovelace",
+    weeks: [
+      { weekStart: LAST_WEEK, hours: 32, approvedHours: 32, rejectedCount: 0, submittedAt: "2026-09-12T14:00:00Z" },
+      { weekStart: WEEK, hours: 9.5, approvedHours: 0, rejectedCount: 1, submittedAt: null },
+    ],
+  },
+  {
+    userId: OTHER,
+    displayName: "Grace Hopper",
+    weeks: [
+      { weekStart: LAST_WEEK, hours: 4, approvedHours: 0, rejectedCount: 0, submittedAt: "2026-09-11T09:00:00Z" },
+      { weekStart: WEEK, hours: 0, approvedHours: 0, rejectedCount: 0, submittedAt: null },
+    ],
+  },
+];
+
+export const personRates: PersonRate[] = [
+  {
+    id: 41,
+    userId: ME,
+    displayName: "Ada Lovelace",
+    validFrom: "2026-01-01",
+    billRate: 1100,
+    costRate: 700,
+    currency: "NOK",
+  },
+  {
+    id: 42,
+    userId: ME,
+    displayName: "Ada Lovelace",
+    validFrom: "2026-07-01",
+    billRate: 1200,
+    costRate: null,
+    currency: "NOK",
+  },
+  {
+    id: 43,
+    userId: OTHER,
+    displayName: "Grace Hopper",
+    validFrom: "2026-03-01",
+    billRate: null,
+    costRate: 800,
+    currency: "NOK",
+  },
+];
+
+export const projectSummary: TimeProjectSummary = {
+  projectId: 1001,
+  hours: {
+    total: 30.5,
+    byStatus: { draft: 2.5, submitted: 8, approved: 20, rejected: 1.5, invoiced: 0 },
+    byLine: [
+      { billingLineId: 3001, billingLineCode: "PM", trackableCode: "KVEM1000-PM", hours: 10.5 },
+      { billingLineId: 3002, billingLineCode: "DEV", trackableCode: "KVEM1000-DEV", hours: 18 },
+      { hours: 2 },
+    ],
+    byPerson: [
+      { userId: ME, displayName: "Ada Lovelace", hours: 22.5 },
+      { userId: OTHER, displayName: "Grace Hopper", hours: 8 },
+    ],
+  },
+  billing: { amount: 33600, currency: "NOK", unpricedHours: 2 },
+};

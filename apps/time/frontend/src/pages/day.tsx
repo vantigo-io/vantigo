@@ -3,6 +3,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
+  IconArrowBackUp,
   IconCalendarWeek,
   IconChevronLeft,
   IconChevronRight,
@@ -15,10 +16,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { useState } from "react";
+import { unapproveTimeEntries } from "../api/approvals";
 import { deleteTimeEntry, type TimeEntry } from "../api/entries";
 import { isLocked, timeSettingsQueryOptions } from "../api/settings";
 import { weekQueryOptions } from "../api/weeks";
 import { EntryStatusBadge } from "../components/entry-status-badge";
+import { RefusalList } from "../components/refusal-list";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { useHoursFormat } from "../lib/hours";
@@ -180,6 +183,18 @@ const EntryCard = ({ entry, editable, onEdit }: EntryCardProps) => {
       notifications.show({ color: "red", title: t("couldNotDeleteEntry"), message: refusalMessage(failure) }),
   });
 
+  // The approval queue holds submitted entries only, so an approved one is
+  // taken back here — the one place its approver still sees it.
+  const unapprove = useMutation({
+    mutationFn: () => unapproveTimeEntries([entry.id]),
+    onSuccess: () => {
+      notifications.show({ color: "teal", title: t("entriesUnapproved"), message: label });
+      return queryClient.invalidateQueries({ queryKey: ["time"] });
+    },
+    onError: (failure) =>
+      notifications.show({ color: "red", title: t("couldNotUnapprove"), message: <RefusalList error={failure} /> }),
+  });
+
   const confirmRemove = () =>
     modals.openConfirmModal({
       title: t("deleteEntryTitle"),
@@ -216,6 +231,16 @@ const EntryCard = ({ entry, editable, onEdit }: EntryCardProps) => {
         <Stack gap={6} align="flex-end">
           <Text fw={700}>{t("hoursShort", { hours: duration })}</Text>
           <EntryStatusBadge status={entry.status} size="sm" />
+          {entry.capabilities.canUnapprove && (
+            <ActionIcon
+              variant="subtle"
+              aria-label={t("unapprove")}
+              loading={unapprove.isPending}
+              onClick={() => unapprove.mutate()}
+            >
+              <IconArrowBackUp size={16} />
+            </ActionIcon>
+          )}
           {editable && (
             <Group gap={4} wrap="nowrap">
               <ActionIcon variant="subtle" aria-label={t("editEntry")} onClick={onEdit}>

@@ -1,0 +1,129 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { problemResponse, sent } from "../test/api";
+import { peopleOverview, personRates } from "../test/fixtures";
+import { renderRoute } from "../test/route-tree";
+import { stubTimeApi } from "../test/server";
+
+/** Types a date the way a person does, in the format the field shows. */
+const typeDate = async (field: HTMLElement, text: string) => {
+  await userEvent.clear(field);
+  await userEvent.type(field, text);
+  await userEvent.tab();
+};
+
+const confirm = async (title: string, button: string) => {
+  const dialog = await screen.findByRole("dialog", { name: title });
+  await userEvent.click(within(dialog).getByRole("button", { name: button }));
+};
+
+describe("SettingsPage", () => {
+  it("locks the period once the change is confirmed", async () => {
+    const fetchMock = stubTimeApi({ rates: personRates, people: peopleOverview });
+    renderRoute("/time/settings");
+
+    await typeDate(await screen.findByLabelText("Locked before"), "Oct 1, 2026");
+    await userEvent.click(screen.getByRole("button", { name: "Save the lock" }));
+    const dialog = await screen.findByRole("dialog", { name: "Change the lock?" });
+    expect(dialog).toHaveTextContent("Oct 1, 2026");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "PUT")).toEqual({ url: "/api/v1/time/settings", body: { lockedBefore: "2026-10-01" } }),
+    );
+    expect(await screen.findByText("Lock saved")).toBeInTheDocument();
+  });
+
+  it("removes the lock", async () => {
+    const fetchMock = stubTimeApi({ rates: personRates, settings: { lockedBefore: "2026-09-01" } });
+    renderRoute("/time/settings");
+
+    await waitFor(() => expect(screen.getByLabelText("Locked before")).toHaveValue("Sep 1, 2026"));
+    await userEvent.click(screen.getByRole("button", { name: "Clear the lock" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save the lock" }));
+    await confirm("Change the lock?", "Save");
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "PUT")).toEqual({ url: "/api/v1/time/settings", body: { lockedBefore: null } }),
+    );
+  });
+
+  it("lists every person's rate cards by the day each takes effect", async () => {
+    stubTimeApi({ rates: personRates });
+    renderRoute("/time/settings");
+
+    const ada = (await screen.findByText("Ada Lovelace")).closest("[data-rates]") as HTMLElement;
+    const rows = within(ada).getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("Jul 1, 2026");
+    expect(rows[0]).toHaveTextContent("1,200.00");
+    expect(rows[1]).toHaveTextContent("Jan 1, 2026");
+    expect(rows[1]).toHaveTextContent("700.00");
+  });
+
+  it("adds a rate for somebody who has logged time", async () => {
+    const fetchMock = stubTimeApi({ rates: personRates, people: peopleOverview });
+    renderRoute("/time/settings");
+
+    await screen.findByText("Ada Lovelace");
+    await userEvent.click(screen.getByRole("button", { name: "Add rate" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a rate card" });
+
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Person" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Grace Hopper" }));
+    await typeDate(within(dialog).getByRole("textbox", { name: "Valid from" }), "Oct 1, 2026");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Bill rate" }), "1450");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({
+        url: "/api/v1/time/rates",
+        body: {
+          userId: "22222222-2222-2222-2222-222222222222",
+          validFrom: "2026-10-01",
+          billRate: 1450,
+          costRate: null,
+          currency: "NOK",
+        },
+      }),
+    );
+  });
+
+  it("refuses a card with neither rate, and puts the server's refusal on its field", async () => {
+    stubTimeApi({
+      rates: personRates,
+      people: peopleOverview,
+      write: () => problemResponse(400, "Invalid rate", { validFrom: ["That day already has a rate card"] }),
+    });
+    renderRoute("/time/settings");
+
+    await screen.findByText("Ada Lovelace");
+    await userEvent.click(screen.getByRole("button", { name: "Add rate" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a rate card" });
+
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Person" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Ada Lovelace" }));
+    await typeDate(within(dialog).getByRole("textbox", { name: "Valid from" }), "Jan 1, 2026");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText("Give a bill rate, a cost rate, or both")).toBeInTheDocument();
+
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Cost rate" }), "800");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByText("That day already has a rate card")).toBeInTheDocument();
+  });
+
+  it("deletes a rate card once the caller confirms", async () => {
+    const fetchMock = stubTimeApi({ rates: personRates });
+    renderRoute("/time/settings");
+
+    const grace = (await screen.findByText("Grace Hopper")).closest("[data-rates]") as HTMLElement;
+    await userEvent.click(within(grace).getByRole("button", { name: "Delete the rate" }));
+    await confirm("Delete the rate?", "Delete");
+
+    await waitFor(() => {
+      const [url, init] = fetchMock.actualCalls.find(([, request]) => request?.method === "DELETE") ?? [];
+      expect(String(url)).toBe("/api/v1/time/rates/43");
+      expect(init?.method).toBe("DELETE");
+    });
+  });
+});
