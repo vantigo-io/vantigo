@@ -1,6 +1,13 @@
 import { i18n } from "@vantigo/frontend-shell";
 import { describe, expect, it } from "vitest";
-import { attentionHref, attentionTitle, attentionTitleKey, attentionWeek, awaitingApprovalHint } from "./dashboard";
+import {
+  attentionHref,
+  attentionTitle,
+  attentionTitleKey,
+  attentionWeek,
+  awaitingApprovalHint,
+  readyMilestonesHint,
+} from "./dashboard";
 import "../i18n";
 
 /**
@@ -20,6 +27,22 @@ describe("the dashboard's attention links", () => {
     expect(attentionHref({ module: "projects", type: "projectOverdue", entityId: "31" })).toBe("/projects/31");
     expect(attentionHref({ module: "communications", type: "conversationNoReply", entityId: "abc" })).toBe(
       "/communications/inbox?conversationId=abc",
+    );
+  });
+
+  // The four economy signals all open the project's Economy tab. The two
+  // budget types carry a bare project id, same as projectOverdue; the two
+  // milestone types carry `<projectId>/<milestoneId>`, which is not a URL of
+  // its own — naively URL-encoding it (as a bare `encodeURIComponent` would)
+  // turns the slash into %2F and breaks the link, so it must be split first.
+  it("sends every economy signal to the project's Economy tab, splitting a milestone id", () => {
+    expect(attentionHref({ module: "projects", type: "budgetWarning", entityId: "31" })).toBe("/projects/31/economy");
+    expect(attentionHref({ module: "projects", type: "budgetExceeded", entityId: "31" })).toBe("/projects/31/economy");
+    expect(attentionHref({ module: "projects", type: "milestoneReady", entityId: "31/2001" })).toBe(
+      "/projects/31/economy",
+    );
+    expect(attentionHref({ module: "projects", type: "milestoneOverdue", entityId: "31/2001" })).toBe(
+      "/projects/31/economy",
     );
   });
 
@@ -97,6 +120,59 @@ describe("the dashboard's attention links", () => {
         expect(i18n.t(key, { ns: "host", lng, date: "2026-08-31" })).toContain("2026-08-31");
       }
     }
+  });
+
+  // The four economy signals carry the project's or the milestone's own name
+  // in `title` (the server's field for it, English or not), and the host
+  // builds a full sentence from a catalog key, the way it does for time.
+  it("names the four economy signals from a catalog, carrying the project's or milestone's own name", () => {
+    expect(attentionTitleKey({ module: "projects", type: "budgetWarning" })).toBe("dashboard.projectBudgetWarning");
+    expect(attentionTitleKey({ module: "projects", type: "budgetExceeded" })).toBe("dashboard.projectBudgetExceeded");
+    expect(attentionTitleKey({ module: "projects", type: "milestoneReady" })).toBe("dashboard.projectMilestoneReady");
+    expect(attentionTitleKey({ module: "projects", type: "milestoneOverdue" })).toBe(
+      "dashboard.projectMilestoneOverdue",
+    );
+
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.name}`;
+    expect(
+      attentionTitle(
+        { module: "projects", type: "budgetWarning", entityId: "31", title: "Roof replacement" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.projectBudgetWarning:Roof replacement");
+    expect(
+      attentionTitle(
+        { module: "projects", type: "milestoneReady", entityId: "31/2001", title: "Foundation poured" },
+        t,
+        formatInLosAngeles,
+      ),
+    ).toBe("dashboard.projectMilestoneReady:Foundation poured");
+  });
+
+  it("has all four economy titles in English and Norwegian", () => {
+    for (const key of [
+      "dashboard.projectBudgetWarning",
+      "dashboard.projectBudgetExceeded",
+      "dashboard.projectMilestoneReady",
+      "dashboard.projectMilestoneOverdue",
+    ]) {
+      for (const lng of ["en", "nb"]) {
+        expect(i18n.t(key, { ns: "host", lng, name: "Roof replacement" })).not.toBe(key);
+        expect(i18n.t(key, { ns: "host", lng, name: "Roof replacement" })).toContain("Roof replacement");
+      }
+    }
+  });
+
+  // Ready milestones are a state, not a delta: most active projects have
+  // none, so a standing "0 ready to invoice" would be a permanent fixture
+  // rather than something worth reading — the same reasoning as Time's
+  // approval hint.
+  it("hides the Projects card's ready-milestones hint once there is nothing ready", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count}`;
+    expect(readyMilestonesHint(0, t)).toBeUndefined();
+    expect(readyMilestonesHint(undefined, t)).toBeUndefined();
+    expect(readyMilestonesHint(4, t)).toBe("dashboard.readyMilestonesHint:4");
   });
 
   // Zero is the normal case for most people who hold `time:access` but

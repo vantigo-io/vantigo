@@ -89,17 +89,15 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     capability: "canSeeFinancials",
   },
   {
-    // Delivery A of the economy view: the invoice plan. Gated the same way
-    // Billing is — the capability, not a permission — because the amounts
-    // are per-project financial data. A caller with only canManageMilestones
-    // (a manager without financial rights) still gets no tab; the next
-    // delivery widens this to everyone who sees the project once the tab has
-    // an hours-only half to show them.
+    // The economy view now has an hours-only half for a caller without
+    // financial rights (the budget bar in hours, no amounts), so — unlike
+    // delivery A — it carries no capability gate: whoever sees the project
+    // sees this tab, the same rule Overview and Tasks follow. The response
+    // shapes away everything the caller may not see.
     value: "economy",
     labelKey: "project.economyTab",
     icon: IconReportMoney,
     to: "/projects/$projectId/economy",
-    capability: "canSeeFinancials",
   },
   {
     // The first tab from another module: the hours logged on this project.

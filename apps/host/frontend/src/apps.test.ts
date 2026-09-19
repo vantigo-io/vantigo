@@ -48,6 +48,7 @@ describe("the app registry", () => {
       "/customers/contacts",
       "/projects",
       "/projects/my-tasks",
+      "/projects/economy",
       "/time",
       "/time/approvals",
       "/time/people",
@@ -75,13 +76,14 @@ describe("the app registry", () => {
     expect(() => appForKey("billing" as never)).toThrow(/billing/);
   });
 
-  // The Projects app is two sidebar entries behind the same one permission, so
-  // its tile is exactly as visible as they are: shown to a caller holding
+  // The Projects app is three sidebar entries behind the same one permission,
+  // so its tile is exactly as visible as they are: shown to a caller holding
   // projects:access, absent without it, and muted rather than hidden when the
-  // installation did not mount the module. My tasks comes after the list and
-  // carries no search strategy — it takes no URL search params of its own
-  // beyond the create intent Spotlight hands it.
-  it("gives Projects a list and My tasks behind projects:access, and a tile that follows them", () => {
+  // installation did not mount the module. My tasks and the economy portfolio
+  // come after the list and carry no search strategy of their own — the
+  // portfolio's own validator supplies its defaults, and my tasks takes no URL
+  // search params beyond the create intent Spotlight hands it.
+  it("gives Projects a list, My tasks and the economy portfolio behind projects:access, and a tile that follows them", () => {
     const projects = appForKey("projects");
     expect(projects).toMatchObject({ module: "projects", label: "navigation.projects", home: "/projects" });
     expect(projects.requiredPermissions).toEqual(["projects:access"]);
@@ -89,6 +91,7 @@ describe("the app registry", () => {
     expect(items.map((item) => [item.label, item.to, item.searchStrategy])).toEqual([
       ["navigation.projects", "/projects", "projects-list"],
       ["navigation.myTasks", "/projects/my-tasks", undefined],
+      ["navigation.projectsEconomy", "/projects/economy", undefined],
     ]);
     for (const item of items) expect(item.requiredPermissions).toEqual(["projects:access"]);
   });
