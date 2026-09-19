@@ -3,6 +3,7 @@ package timetracking_test
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"testing"
 
@@ -16,6 +17,44 @@ const ratesPath = "/api/v1/time/rates"
 func ratePath(id int32) string { return fmt.Sprintf("%s/%d", ratesPath, id) }
 
 func userRatesPath(userID uuid.UUID) string { return ratesPath + "/users/" + userID.String() }
+
+const assignableUsersPath = ratesPath + "/assignable-users"
+
+// assignableUserJSON decodes TimeAssignableUser.
+type assignableUserJSON struct {
+	UserId      uuid.UUID `json:"userId"`
+	DisplayName string    `json:"displayName"`
+}
+
+// assignableUsers reads the rate card's assignable-user search, failing the
+// test unless it answered 200. An empty search reads the first page of
+// everybody active.
+func assignableUsers(t *testing.T, c *modtest.Client, search string) []assignableUserJSON {
+	t.Helper()
+	path := assignableUsersPath
+	if search != "" {
+		path += "?search=" + url.QueryEscape(search)
+	}
+	r := c.Do(http.MethodGet, path, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("assignable users %q: status %d body %s, want 200", search, r.Status, r.Body)
+	}
+	var users []assignableUserJSON
+	r.JSON(&users)
+	return users
+}
+
+func assignableDisplayNames(users []assignableUserJSON) []string {
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		names = append(names, u.DisplayName)
+	}
+	return names
+}
+
+func containsName(haystack []string, needle string) bool {
+	return slices.Contains(haystack, needle)
+}
 
 // rateJSON decodes TimeRateResponse.
 type rateJSON struct {
@@ -245,4 +284,101 @@ func TestTimeRates_ANewRate_PricesNewEntriesAndDraftsButNeverASubmittedOne(t *te
 	}
 	wantRate(t, getEntry(t, member, submitted.Id), 1000, "EUR", "person")
 	wantRate(t, createEntry(t, member, euro("2026-09-18")), 1300, "EUR", "person")
+}
+
+// The rate card's picker (a new hire with no logged hours has to be findable
+// too): any active user, by display name, narrowed as the caller types and
+// with disabled accounts left out.
+func TestGetTimeRatesAssignableUsers_MatchesActiveUsersByDisplayName(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "time:manage")
+
+	_, hireID := signIn(t, h)
+	setDisplayName(t, h, hireID, "Kandidat Ny")
+	_, otherID := signIn(t, h)
+	setDisplayName(t, h, otherID, "Kandidat Annen")
+	_, disabledID := signIn(t, h)
+	setDisplayName(t, h, disabledID, "Kandidat Deaktivert")
+	h.Exec(t, `UPDATE identity.users SET is_disabled = true WHERE id = $1`, disabledID)
+
+	// A new hire has no rate row and no logged hours, but is still findable:
+	// the search reads the user directory, not anything time itself stores.
+	got := assignableUsers(t, admin, "Kandidat Ny")
+	if want := []string{"Kandidat Ny"}; fmt.Sprint(assignableDisplayNames(got)) != fmt.Sprint(want) {
+		t.Errorf("search 'Kandidat Ny' = %v, want %v", assignableDisplayNames(got), want)
+	}
+
+	// A narrower search leaves the other candidate out; the disabled one never
+	// shows up at all.
+	narrow := assignableDisplayNames(assignableUsers(t, admin, "Kandidat"))
+	if !containsName(narrow, "Kandidat Ny") || !containsName(narrow, "Kandidat Annen") {
+		t.Errorf("search 'Kandidat' = %v, want both active candidates", narrow)
+	}
+	if containsName(narrow, "Kandidat Deaktivert") {
+		t.Errorf("search 'Kandidat' = %v, want the disabled user left out", narrow)
+	}
+
+	// An empty search is the first page, not an empty answer: the picker
+	// opens before anything is typed.
+	empty := assignableDisplayNames(assignableUsers(t, admin, ""))
+	if !containsName(empty, "Kandidat Ny") {
+		t.Errorf("empty search = %v, want it to include an active user", empty)
+	}
+	if containsName(empty, "Kandidat Deaktivert") {
+		t.Errorf("empty search = %v, want the disabled user left out", empty)
+	}
+}
+
+// assignableUserLimit (D-shared with projects' assignable-user search): the
+// picker's first page is at most 20 rows, however many active users match.
+func TestGetTimeRatesAssignableUsers_MoreThanTwentyMatches_AnswersAtMostTwenty(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "time:manage")
+
+	for i := range 25 {
+		_, id := signIn(t, h)
+		setDisplayName(t, h, id, fmt.Sprintf("Mange Kandidat %02d", i))
+	}
+
+	got := assignableUsers(t, admin, "Mange Kandidat")
+	if len(got) != 20 {
+		t.Errorf("assignable users = %d, want 20 (the picker's page size)", len(got))
+	}
+}
+
+// Same access rule as every other rates operation: time:access alone, or
+// time:access with time:approve and time:view-all, is not time:manage.
+func TestGetTimeRatesAssignableUsers_WithoutTimeManage_IsForbidden(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	for _, perms := range [][]string{nil, {"time:view-all", "time:approve"}} {
+		c, _ := signIn(t, h, perms...)
+		if r := c.Do(http.MethodGet, assignableUsersPath, nil); r.Status != http.StatusForbidden {
+			t.Errorf("%v: status %d, want 403", perms, r.Status)
+		}
+	}
+}
+
+// The literal segment "assignable-users" must be answered by this operation,
+// not swallowed by /time/rates/{id} (which would 400 on a non-numeric id) or
+// by /time/rates/users/{userId} (a different literal segment). A manage
+// caller getting 200 with the picker's shape proves the router chose this
+// route.
+func TestGetTimeRatesAssignableUsers_RoutesToThisOperation(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, id := signIn(t, h, "time:manage")
+	setDisplayName(t, h, id, "Routing Kandidat")
+
+	r := admin.Do(http.MethodGet, assignableUsersPath, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("GET %s: status %d body %s, want 200 (not /time/rates/{id}'s 400 or /time/rates/users/{userId}'s 404)", assignableUsersPath, r.Status, r.Body)
+	}
+	var users []assignableUserJSON
+	r.JSON(&users)
+	if !containsName(assignableDisplayNames(users), "Routing Kandidat") {
+		t.Errorf("assignable users = %v, want the signed-in manage caller included", assignableDisplayNames(users))
+	}
 }
