@@ -33,7 +33,7 @@ components:
                 listPrice:
                     allOf:
                         - $ref: '#/components/schemas/BillingLineListPrice'
-                    description: Absent when the project has no currency, or the variant has no list price in it.
+                    description: Absent when the project has no currency, the variant has no list price in it, or the catalog could not be read (the line's catalogUnavailable is then true).
                 mode:
                     description: "'list', 'fixed' or 'discount'."
                     type: string
@@ -92,6 +92,9 @@ components:
                     format: double
                     nullable: true
                     type: number
+                catalogUnavailable:
+                    description: Whether the products catalog could not be read while this line was rendered. A read never fails on it — the line comes back without the fields the catalog would have supplied (productName, sku, unit and pricing.listPrice), and everything the line itself stores (code, variantId, active, budgets and the pricing rule) is unaffected. variantMissing says nothing while this is true.
+                    type: boolean
                 code:
                     type: string
                 createdAt:
@@ -105,18 +108,18 @@ components:
                         - $ref: '#/components/schemas/BillingLinePricing'
                     description: Absent — not null — when the caller may not see the project's financial fields.
                 productName:
-                    description: Absent when the catalog no longer knows the variant.
+                    description: Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
                     nullable: true
                     type: string
                 sku:
-                    description: Absent when the catalog no longer knows the variant.
+                    description: Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
                     nullable: true
                     type: string
                 trackableCode:
                     description: The project's code and the line's code joined with a hyphen, as later modules quote it ('KVEM1000-PM'). It follows the project's code when that is changed.
                     type: string
                 unit:
-                    description: Absent when the catalog no longer knows the variant.
+                    description: Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
                     nullable: true
                     type: string
                 updatedAt:
@@ -126,7 +129,7 @@ components:
                     format: int32
                     type: integer
                 variantMissing:
-                    description: Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced.
+                    description: Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. Always false when catalogUnavailable is true — the catalog was never asked, so whether it still knows the variant is unknown rather than answered.
                     type: boolean
             required:
                 - id
@@ -134,6 +137,7 @@ components:
                 - trackableCode
                 - variantId
                 - variantMissing
+                - catalogUnavailable
                 - active
                 - createdAt
                 - updatedAt
@@ -2378,7 +2382,7 @@ paths:
                                 items:
                                     $ref: '#/components/schemas/BillingLineResponse'
                                 type: array
-                    description: OK — every line of the project, deactivated ones included, by code. Pricing is shaped out for a caller who may not see financials.
+                    description: OK — every line of the project, deactivated ones included, by code. Pricing is shaped out for a caller who may not see financials. A products catalog that cannot be read does not fail the read — the affected lines come back with catalogUnavailable true and without the fields the catalog supplies.
                 "401":
                     content:
                         application/json:

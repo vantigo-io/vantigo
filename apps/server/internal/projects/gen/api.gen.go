@@ -36,7 +36,7 @@ type BillingLinePricing struct {
 	// FixedAmount Set exactly when mode is 'fixed'; an amount in the project's currency.
 	FixedAmount *float64 `json:"fixedAmount,omitempty"`
 
-	// ListPrice Absent when the project has no currency, or the variant has no list price in it.
+	// ListPrice Absent when the project has no currency, the variant has no list price in it, or the catalog could not be read (the line's catalogUnavailable is then true).
 	ListPrice *BillingLineListPrice `json:"listPrice,omitempty"`
 
 	// Mode 'list', 'fixed' or 'discount'.
@@ -75,29 +75,32 @@ type BillingLineResponse struct {
 	Active bool `json:"active"`
 
 	// BudgetHours The line's planning budget in hours. Planning data, visible with the line regardless of financial rights — unlike budgetAmount, which is inside pricing.
-	BudgetHours *float64  `json:"budgetHours,omitempty"`
-	Code        string    `json:"code"`
-	CreatedAt   time.Time `json:"createdAt"`
-	Id          int32     `json:"id"`
+	BudgetHours *float64 `json:"budgetHours,omitempty"`
+
+	// CatalogUnavailable Whether the products catalog could not be read while this line was rendered. A read never fails on it — the line comes back without the fields the catalog would have supplied (productName, sku, unit and pricing.listPrice), and everything the line itself stores (code, variantId, active, budgets and the pricing rule) is unaffected. variantMissing says nothing while this is true.
+	CatalogUnavailable bool      `json:"catalogUnavailable"`
+	Code               string    `json:"code"`
+	CreatedAt          time.Time `json:"createdAt"`
+	Id                 int32     `json:"id"`
 
 	// Pricing Absent — not null — when the caller may not see the project's financial fields.
 	Pricing *BillingLinePricing `json:"pricing,omitempty"`
 
-	// ProductName Absent when the catalog no longer knows the variant.
+	// ProductName Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
 	ProductName *string `json:"productName,omitempty"`
 
-	// Sku Absent when the catalog no longer knows the variant.
+	// Sku Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
 	Sku *string `json:"sku,omitempty"`
 
 	// TrackableCode The project's code and the line's code joined with a hyphen, as later modules quote it ('KVEM1000-PM'). It follows the project's code when that is changed.
 	TrackableCode string `json:"trackableCode"`
 
-	// Unit Absent when the catalog no longer knows the variant.
+	// Unit Absent when the catalog no longer knows the variant, or could not be read at all (catalogUnavailable).
 	Unit      *string   `json:"unit,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	VariantId int32     `json:"variantId"`
 
-	// VariantMissing Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced.
+	// VariantMissing Whether the products catalog no longer knows this line's variant. The line still resolves, so work already billed against it stays priced. Always false when catalogUnavailable is true — the catalog was never asked, so whether it still knows the variant is unknown rather than answered.
 	VariantMissing bool `json:"variantMissing"`
 }
 

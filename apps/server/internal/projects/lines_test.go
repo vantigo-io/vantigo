@@ -26,19 +26,20 @@ import (
 // decodes into a map instead, since a nil pointer cannot tell "absent" from
 // "null".
 type lineJSON struct {
-	Id             int32        `json:"id"`
-	Code           string       `json:"code"`
-	TrackableCode  string       `json:"trackableCode"`
-	VariantId      int32        `json:"variantId"`
-	ProductName    *string      `json:"productName"`
-	Sku            *string      `json:"sku"`
-	Unit           *string      `json:"unit"`
-	VariantMissing bool         `json:"variantMissing"`
-	Active         bool         `json:"active"`
-	BudgetHours    *float64     `json:"budgetHours"`
-	CreatedAt      time.Time    `json:"createdAt"`
-	UpdatedAt      time.Time    `json:"updatedAt"`
-	Pricing        *pricingJSON `json:"pricing"`
+	Id                 int32        `json:"id"`
+	Code               string       `json:"code"`
+	TrackableCode      string       `json:"trackableCode"`
+	VariantId          int32        `json:"variantId"`
+	ProductName        *string      `json:"productName"`
+	Sku                *string      `json:"sku"`
+	Unit               *string      `json:"unit"`
+	VariantMissing     bool         `json:"variantMissing"`
+	CatalogUnavailable bool         `json:"catalogUnavailable"`
+	Active             bool         `json:"active"`
+	BudgetHours        *float64     `json:"budgetHours"`
+	CreatedAt          time.Time    `json:"createdAt"`
+	UpdatedAt          time.Time    `json:"updatedAt"`
+	Pricing            *pricingJSON `json:"pricing"`
 }
 
 type pricingJSON struct {
@@ -1098,5 +1099,115 @@ func TestPutProjectsByIdBillingLines_CatalogDown_StillChangesAnUnchangedVariant(
 	}
 	if again := listLines(t, c, project.Id); again[0].VariantId != variantProjectManagerHour {
 		t.Errorf("VariantId = %d, want the line left on its own variant", again[0].VariantId)
+	}
+}
+
+// catalogUnavailableWarning is the one line the module logs per request whose
+// billing lines could not be rendered in full. Tests read it to prove the
+// degradation is *reported* rather than merely survived: a response quietly
+// missing a product name is how an outage goes unnoticed for a week.
+const catalogUnavailableWarning = "projects: the product catalog could not be read"
+
+// A catalog that errors while a line is being *rendered* must not fail the
+// request. Before this, a change that never needed the catalog's answer — a
+// deactivation — was written, committed, and then answered 500 by the
+// renderer, so the client retried and got a 409 on a change that had already
+// been made. The write is the same as it always was; what changes is that the
+// answer comes back without the fields the catalog would have supplied, and
+// says so.
+func TestPutProjectsByIdBillingLines_CatalogDownWhileRendering_Returns200WithoutTheCatalogsFields(t *testing.T) {
+	t.Parallel()
+	catalog := newFakeCatalog()
+	h := newHarnessWithCatalog(t, catalog)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "RENDER1000", "currency": "NOK"})
+	line := createLine(t, c, project.Id, nil)
+
+	catalog.fail(errors.New("products: the catalog is unavailable"))
+
+	off := changeLine(t, c, project.Id, line.Id, lineBody(map[string]any{"active": false}))
+	if !off.CatalogUnavailable {
+		t.Error("CatalogUnavailable = false, want the answer to say the catalog could not be read")
+	}
+	if off.ProductName != nil || off.Sku != nil || off.Unit != nil {
+		t.Errorf("line = %+v, want no catalog-derived fields while the catalog is down", off)
+	}
+	// "The catalog could not be read" is not "the catalog no longer knows this
+	// variant": nothing was answered, so nothing is claimed.
+	if off.VariantMissing {
+		t.Error("VariantMissing = true, want false — the catalog was never asked")
+	}
+	// Everything the line itself stores still comes back, the write included.
+	if off.Active {
+		t.Error("Active = true, want the line switched off")
+	}
+	if off.Pricing == nil || off.Pricing.Mode != "list" {
+		t.Errorf("Pricing = %+v, want the stored rule regardless of the catalog", off.Pricing)
+	} else if off.Pricing.ListPrice != nil {
+		t.Errorf("ListPrice = %+v, want it left out while the catalog is down", off.Pricing.ListPrice)
+	}
+	if !strings.Contains(h.Logs(), catalogUnavailableWarning) {
+		t.Errorf("nothing was logged about the catalog the request could not read:\n%s", h.Logs())
+	}
+}
+
+// The same rule on the read. A list of lines is the surface a degraded catalog
+// is most visible on — every line of it wants a name and a price — and a
+// caller who can no longer see their own project's lines at all is worse off
+// than one who sees them without their product names.
+func TestGetProjectsByIdBillingLines_CatalogDownWhileRendering_Returns200WithoutTheCatalogsFields(t *testing.T) {
+	t.Parallel()
+	catalog := newFakeCatalog()
+	h := newHarnessWithCatalog(t, catalog)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "RENDER1001", "currency": "NOK"})
+	createLine(t, c, project.Id, nil)
+	createLine(t, c, project.Id, map[string]any{"code": "DEV", "variantId": variantDeveloperHour})
+
+	catalog.fail(errors.New("products: the catalog is unavailable"))
+
+	lines := listLines(t, c, project.Id)
+	if len(lines) != 2 {
+		t.Fatalf("lines = %d, want both of them", len(lines))
+	}
+	for _, line := range lines {
+		if !line.CatalogUnavailable {
+			t.Errorf("line %q: CatalogUnavailable = false, want the read to say so", line.Code)
+		}
+		if line.ProductName != nil || line.Sku != nil || line.Unit != nil || line.VariantMissing {
+			t.Errorf("line %q = %+v, want no catalog-derived fields and no claim about the variant", line.Code, line)
+		}
+		if line.Pricing == nil || line.Pricing.ListPrice != nil {
+			t.Errorf("line %q: Pricing = %+v, want the stored rule and no list price", line.Code, line.Pricing)
+		}
+	}
+	// One warning for the request, not one per line: an outage that fills the
+	// log with a line per row buries itself.
+	if n := strings.Count(h.Logs(), catalogUnavailableWarning); n != 1 {
+		t.Errorf("logged the catalog warning %d times for one request, want exactly 1:\n%s", n, h.Logs())
+	}
+}
+
+// The other side of the ruling, and the one that must not move: a catalog
+// error while *validating* a variant the request is actually moving the line
+// to stays a 5xx. The write turns on an answer nobody gave, so it must not
+// proceed — degrading a read is honest, degrading a decision is not. The
+// exchange is off-contract on purpose, exactly as the change's own case is.
+func TestPostProjectsByIdBillingLines_CatalogDownWhileValidating_Returns500(t *testing.T) {
+	t.Parallel()
+	catalog := newFakeCatalog()
+	h := newHarnessWithCatalog(t, catalog)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "RENDER1002", "currency": "NOK"})
+
+	catalog.fail(errors.New("products: the catalog is unavailable"))
+
+	r := c.Do(http.MethodPost, linesPath(project.Id), lineBody(nil),
+		modtest.SkipContract("a degraded catalog is an infrastructure failure, deliberately off-contract"))
+	if r.Status != http.StatusInternalServerError {
+		t.Fatalf("status %d body %s, want 500", r.Status, r.Body)
+	}
+	if n := h.Count(t, `SELECT count(*) FROM projects.billing_lines WHERE project_id = $1`, project.Id); n != 0 {
+		t.Errorf("%d line(s) stored, want the create refused rather than written against an unknown variant", n)
 	}
 }
