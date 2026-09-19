@@ -106,24 +106,27 @@ const unknownUser = "Unknown user"
 // may be read inside a locked transaction, so it is resolved in bulk for a set
 // of rows, after any write has committed.
 type entryNames struct {
-	users       map[uuid.UUID]contracts.UserEntry
-	projects    map[int32]contracts.ProjectEntry
-	lines       map[int32]contracts.BillingLineEntry
-	categories  map[int32]store.ExpensesCategory
-	attachments map[int64]int32
+	users      map[uuid.UUID]contracts.UserEntry
+	projects   map[int32]contracts.ProjectEntry
+	lines      map[int32]contracts.BillingLineEntry
+	categories map[int32]store.ExpensesCategory
+	// attachments is each entry's receipts, oldest first. The count an entry
+	// is rendered with is the length of its list rather than a second query, so
+	// attachmentCount and attachments can never disagree.
+	attachments map[int64][]gen.ExpensesAttachmentResponse
 }
 
 // namesFor resolves rows' names: one user-directory call for every owner, one
 // project-directory call for every project, one billing-lines call per project
-// that any row has a line on, one category read and one attachment count for
-// the whole set.
+// that any row has a line on, one category read and one receipt read for the
+// whole set.
 func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entryNames, error) {
 	names := entryNames{
 		users:       map[uuid.UUID]contracts.UserEntry{},
 		projects:    map[int32]contracts.ProjectEntry{},
 		lines:       map[int32]contracts.BillingLineEntry{},
 		categories:  map[int32]store.ExpensesCategory{},
-		attachments: map[int64]int32{},
+		attachments: map[int64][]gen.ExpensesAttachmentResponse{},
 	}
 	if len(rows) == 0 {
 		return names, nil
@@ -190,12 +193,13 @@ func (s *server) namesFor(ctx context.Context, rows []store.ExpensesEntry) (entr
 	for _, category := range categories {
 		names.categories[category.ID] = category
 	}
-	counts, err := q.CountAttachmentsForEntries(ctx, entryIDs)
+	attachments, err := q.ListAttachmentsForEntries(ctx, entryIDs)
 	if err != nil {
-		return entryNames{}, fmt.Errorf("expenses: count the expenses' receipts: %w", err)
+		return entryNames{}, fmt.Errorf("expenses: read the expenses' receipts: %w", err)
 	}
-	for _, count := range counts {
-		names.attachments[count.EntryID] = int32(count.Total)
+	for _, attachment := range attachments {
+		names.attachments[attachment.EntryID] = append(names.attachments[attachment.EntryID],
+			attachmentResponse(attachment))
 	}
 	return names, nil
 }
@@ -233,7 +237,8 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 		SubmittedAt:     row.SubmittedAt,
 		DecidedAt:       row.DecidedAt,
 		RejectionReason: row.RejectionReason,
-		AttachmentCount: names.attachments[row.ID],
+		AttachmentCount: int32(len(names.attachments[row.ID])),
+		Attachments:     attachmentsOf(names, row.ID),
 		Owner:           ownerResponse(row.UserID, names),
 		Revision:        row.Revision,
 		CreatedAt:       row.CreatedAt,
@@ -289,6 +294,16 @@ func entryResponse(row store.ExpensesEntry, a entryAccess, names entryNames) (ge
 		resp.Billing = billing
 	}
 	return resp, nil
+}
+
+// attachmentsOf is an entry's receipts, always a list and never null: an
+// expense with none carries an empty array, so a client never has to tell
+// "none" from "not answered".
+func attachmentsOf(names entryNames, entryID int64) []gen.ExpensesAttachmentResponse {
+	if list, ok := names.attachments[entryID]; ok {
+		return list
+	}
+	return []gen.ExpensesAttachmentResponse{}
 }
 
 // owedToEmployee is what the owner gets back (design §3.1): the gross of an

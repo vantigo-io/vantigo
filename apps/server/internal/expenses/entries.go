@@ -573,6 +573,12 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 // capabilities.canDelete. A caller who may see the expense but not delete it
 // gets the access layer's own 403; one who may not see it, the unknown id's
 // 404.
+//
+// The receipt rows go with the expense (the foreign key cascades); the objects
+// they name are removed once that delete has committed, and never before — a
+// delete that turns out not to have happened must not have taken anything with
+// it. A removal the store refuses is logged and does not fail the request: the
+// row is what made it a receipt, and what is left is a stray object.
 func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteExpensesEntriesByIdRequestObject) (gen.DeleteExpensesEntriesByIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	c, err := s.callerFor(ctx, q)
@@ -590,6 +596,10 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 		return gen.DeleteExpensesEntriesById403JSONResponse(forbidden()), nil
 	}
 
+	keys, err := q.ListAttachmentKeysForEntry(ctx, req.Id)
+	if err != nil {
+		return nil, fmt.Errorf("expenses: read an expense's receipt keys: %w", err)
+	}
 	deleted, err := q.DeleteEntry(ctx, store.DeleteEntryParams{ID: req.Id, AnyOwner: c.Manage, UserID: c.UserID})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: delete an expense: %w", err)
@@ -603,6 +613,9 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 			return nil, fmt.Errorf("expenses: re-read an expense after a delete that removed nothing: %w", err)
 		}
 		return gen.DeleteExpensesEntriesById403JSONResponse(forbidden()), nil
+	}
+	for _, key := range keys {
+		s.removeReceiptObject(ctx, req.Id, key)
 	}
 	return gen.DeleteExpensesEntriesById204Response{}, nil
 }

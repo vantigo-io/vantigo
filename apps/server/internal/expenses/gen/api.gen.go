@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -18,6 +20,19 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
+
+// ExpensesAttachmentResponse One receipt on an expense (design §3.2). The bytes themselves are never in a JSON body: they are read back from GET /attachments/{id}, which serves them with the expense's own visibility.
+type ExpensesAttachmentResponse struct {
+	// ContentType What the receipt was detected to be when it was uploaded — image/jpeg, image/png, image/heic or application/pdf — and what the download is served as.
+	ContentType string `json:"contentType"`
+
+	// FileName The name the client uploaded it under, stripped of any path and capped at 255 characters. It is never what the object is stored under.
+	FileName string `json:"fileName"`
+	Id       int64  `json:"id"`
+
+	// SizeBytes The receipt's size in bytes, at most 10 MB.
+	SizeBytes int64 `json:"sizeBytes"`
+}
 
 // ExpensesCategoryRequest A new expense category. The name is unique case-insensitively; position orders the picker and defaults to the end.
 type ExpensesCategoryRequest struct {
@@ -176,9 +191,12 @@ type ExpensesEntryRequest struct {
 
 // ExpensesEntryResponse One expense as the caller may see it (design §5). What the caller may not see is absent rather than null or zero — above all the billing object, which needs financial rights on the entry's project.
 type ExpensesEntryResponse struct {
-	// AttachmentCount How many receipts the entry carries.
+	// AttachmentCount How many receipts the entry carries — the length of attachments, kept as its own field so a client can show the count without reading the list.
 	AttachmentCount int32 `json:"attachmentCount"`
-	Billable        bool  `json:"billable"`
+
+	// Attachments The entry's receipts, oldest first. Always present, empty when it carries none, on a single read and in a list alike: the count and the list never disagree.
+	Attachments []ExpensesAttachmentResponse `json:"attachments"`
+	Billable    bool                         `json:"billable"`
 
 	// Billing What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
 	Billing *ExpensesEntryBilling `json:"billing,omitempty"`
@@ -423,6 +441,11 @@ type GetExpensesEntriesParams struct {
 	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
+// PostExpensesEntriesByIdAttachmentsMultipartBody defines parameters for PostExpensesEntriesByIdAttachments.
+type PostExpensesEntriesByIdAttachmentsMultipartBody struct {
+	File openapi_types.File `json:"file"`
+}
+
 // PostExpensesCategoriesJSONRequestBody defines body for PostExpensesCategories for application/json ContentType.
 type PostExpensesCategoriesJSONRequestBody = ExpensesCategoryRequest
 
@@ -434,6 +457,9 @@ type PostExpensesEntriesJSONRequestBody = ExpensesEntryRequest
 
 // PutExpensesEntriesByIdJSONRequestBody defines body for PutExpensesEntriesById for application/json ContentType.
 type PutExpensesEntriesByIdJSONRequestBody = ExpensesEntryUpdateRequest
+
+// PostExpensesEntriesByIdAttachmentsMultipartRequestBody defines body for PostExpensesEntriesByIdAttachments for multipart/form-data ContentType.
+type PostExpensesEntriesByIdAttachmentsMultipartRequestBody PostExpensesEntriesByIdAttachmentsMultipartBody
 
 // PostExpensesRatesJSONRequestBody defines body for PostExpensesRates for application/json ContentType.
 type PostExpensesRatesJSONRequestBody = ExpensesRateRequest
@@ -449,6 +475,12 @@ type PutExpensesSettingsJSONRequestBody = ExpensesSettingsRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// DeleteExpensesAttachmentsById Delete a receipt
+	// (DELETE /api/v1/expenses/attachments/{id})
+	DeleteExpensesAttachmentsById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetExpensesAttachmentsById Download a receipt
+	// (GET /api/v1/expenses/attachments/{id})
+	GetExpensesAttachmentsById(w http.ResponseWriter, r *http.Request, id int64)
 	// GetExpensesCategories List expense categories
 	// (GET /api/v1/expenses/categories)
 	GetExpensesCategories(w http.ResponseWriter, r *http.Request)
@@ -473,6 +505,9 @@ type ServerInterface interface {
 	// PutExpensesEntriesById Change an expense
 	// (PUT /api/v1/expenses/entries/{id})
 	PutExpensesEntriesById(w http.ResponseWriter, r *http.Request, id int64)
+	// PostExpensesEntriesByIdAttachments Attach a receipt to an expense
+	// (POST /api/v1/expenses/entries/{id}/attachments)
+	PostExpensesEntriesByIdAttachments(w http.ResponseWriter, r *http.Request, id int64)
 	// GetExpensesMeta Get the Expenses metadata
 	// (GET /api/v1/expenses/meta)
 	GetExpensesMeta(w http.ResponseWriter, r *http.Request)
@@ -510,6 +545,58 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// DeleteExpensesAttachmentsById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteExpensesAttachmentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteExpensesAttachmentsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesAttachmentsById operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesAttachmentsById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesAttachmentsById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetExpensesCategories operation middleware
 func (siw *ServerInterfaceWrapper) GetExpensesCategories(w http.ResponseWriter, r *http.Request) {
@@ -772,6 +859,32 @@ func (siw *ServerInterfaceWrapper) PutExpensesEntriesById(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutExpensesEntriesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesEntriesByIdAttachments operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesEntriesByIdAttachments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesEntriesByIdAttachments(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1051,6 +1164,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/attachments/{id}", wrapper.DeleteExpensesAttachmentsById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/attachments/{id}", wrapper.GetExpensesAttachmentsById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/categories", wrapper.GetExpensesCategories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/categories", wrapper.PostExpensesCategories)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/categories/{id}", wrapper.PutExpensesCategoriesById)
@@ -1059,6 +1174,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.DeleteExpensesEntriesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.GetExpensesEntriesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.PutExpensesEntriesById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/attachments", wrapper.PostExpensesEntriesByIdAttachments)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/meta", wrapper.GetExpensesMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects", wrapper.GetExpensesProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.GetExpensesRates)
@@ -1070,6 +1186,137 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/settings", wrapper.PutExpensesSettings)
 
 	return m
+}
+
+type DeleteExpensesAttachmentsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteExpensesAttachmentsByIdResponseObject interface {
+	VisitDeleteExpensesAttachmentsByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteExpensesAttachmentsById204Response struct {
+}
+
+func (response DeleteExpensesAttachmentsById204Response) VisitDeleteExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteExpensesAttachmentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteExpensesAttachmentsById401JSONResponse) VisitDeleteExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesAttachmentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteExpensesAttachmentsById403JSONResponse) VisitDeleteExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesAttachmentsById404Response struct {
+}
+
+func (response DeleteExpensesAttachmentsById404Response) VisitDeleteExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetExpensesAttachmentsByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetExpensesAttachmentsByIdResponseObject interface {
+	VisitGetExpensesAttachmentsByIdResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesAttachmentsById200AsteriskResponse struct {
+	Body          io.Reader
+	ContentType   string
+	ContentLength int64
+}
+
+func (response GetExpensesAttachmentsById200AsteriskResponse) VisitGetExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", response.ContentType)
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetExpensesAttachmentsById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesAttachmentsById401JSONResponse) VisitGetExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesAttachmentsById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesAttachmentsById403JSONResponse) VisitGetExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesAttachmentsById404Response struct {
+}
+
+func (response GetExpensesAttachmentsById404Response) VisitGetExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetExpensesAttachmentsById503ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesAttachmentsById503ApplicationProblemPlusJSONResponse) VisitGetExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type GetExpensesCategoriesRequestObject struct {
@@ -1579,6 +1826,93 @@ func (response PutExpensesEntriesById409ApplicationProblemPlusJSONResponse) Visi
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdAttachmentsRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *multipart.Reader
+}
+
+type PostExpensesEntriesByIdAttachmentsResponseObject interface {
+	VisitPostExpensesEntriesByIdAttachmentsResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesEntriesByIdAttachments201JSONResponse ExpensesAttachmentResponse
+
+func (response PostExpensesEntriesByIdAttachments201JSONResponse) VisitPostExpensesEntriesByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdAttachments400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesEntriesByIdAttachments400ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdAttachments401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntriesByIdAttachments401JSONResponse) VisitPostExpensesEntriesByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdAttachments403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntriesByIdAttachments403JSONResponse) VisitPostExpensesEntriesByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdAttachments404Response struct {
+}
+
+func (response PostExpensesEntriesByIdAttachments404Response) VisitPostExpensesEntriesByIdAttachmentsResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostExpensesEntriesByIdAttachments503ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostExpensesEntriesByIdAttachments503ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2112,6 +2446,12 @@ func (response PutExpensesSettings403JSONResponse) VisitPutExpensesSettingsRespo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// DeleteExpensesAttachmentsById Delete a receipt
+	// (DELETE /api/v1/expenses/attachments/{id})
+	DeleteExpensesAttachmentsById(ctx context.Context, request DeleteExpensesAttachmentsByIdRequestObject) (DeleteExpensesAttachmentsByIdResponseObject, error)
+	// GetExpensesAttachmentsById Download a receipt
+	// (GET /api/v1/expenses/attachments/{id})
+	GetExpensesAttachmentsById(ctx context.Context, request GetExpensesAttachmentsByIdRequestObject) (GetExpensesAttachmentsByIdResponseObject, error)
 	// GetExpensesCategories List expense categories
 	// (GET /api/v1/expenses/categories)
 	GetExpensesCategories(ctx context.Context, request GetExpensesCategoriesRequestObject) (GetExpensesCategoriesResponseObject, error)
@@ -2136,6 +2476,9 @@ type StrictServerInterface interface {
 	// PutExpensesEntriesById Change an expense
 	// (PUT /api/v1/expenses/entries/{id})
 	PutExpensesEntriesById(ctx context.Context, request PutExpensesEntriesByIdRequestObject) (PutExpensesEntriesByIdResponseObject, error)
+	// PostExpensesEntriesByIdAttachments Attach a receipt to an expense
+	// (POST /api/v1/expenses/entries/{id}/attachments)
+	PostExpensesEntriesByIdAttachments(ctx context.Context, request PostExpensesEntriesByIdAttachmentsRequestObject) (PostExpensesEntriesByIdAttachmentsResponseObject, error)
 	// GetExpensesMeta Get the Expenses metadata
 	// (GET /api/v1/expenses/meta)
 	GetExpensesMeta(ctx context.Context, request GetExpensesMetaRequestObject) (GetExpensesMetaResponseObject, error)
@@ -2202,6 +2545,58 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// DeleteExpensesAttachmentsById operation middleware
+func (sh *strictHandler) DeleteExpensesAttachmentsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteExpensesAttachmentsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteExpensesAttachmentsById(ctx, request.(DeleteExpensesAttachmentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteExpensesAttachmentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteExpensesAttachmentsByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteExpensesAttachmentsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesAttachmentsById operation middleware
+func (sh *strictHandler) GetExpensesAttachmentsById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetExpensesAttachmentsByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesAttachmentsById(ctx, request.(GetExpensesAttachmentsByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesAttachmentsById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesAttachmentsByIdResponseObject); ok {
+		if err := validResponse.VisitGetExpensesAttachmentsByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetExpensesCategories operation middleware
@@ -2427,6 +2822,39 @@ func (sh *strictHandler) PutExpensesEntriesById(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutExpensesEntriesByIdResponseObject); ok {
 		if err := validResponse.VisitPutExpensesEntriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesEntriesByIdAttachments operation middleware
+func (sh *strictHandler) PostExpensesEntriesByIdAttachments(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostExpensesEntriesByIdAttachmentsRequestObject
+
+	request.Id = id
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesEntriesByIdAttachments(ctx, request.(PostExpensesEntriesByIdAttachmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesEntriesByIdAttachments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesEntriesByIdAttachmentsResponseObject); ok {
+		if err := validResponse.VisitPostExpensesEntriesByIdAttachmentsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
