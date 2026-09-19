@@ -427,6 +427,27 @@ func TestActualsUnpricedHoursAgreeWithTheProjectSummary(t *testing.T) {
 		t.Errorf("unpriced = %d hundredths, the project summary says %d (%v hours): the two surfaces must agree",
 			got.Totals.UnpricedHoursHundredths, summaryHundredths, summary.Billing.UnpricedHours)
 	}
+
+	// And where they legitimately part company. The summary covers only work
+	// waiting for or past a decision, so a billable draft with no rate is
+	// unpriced here and outside the summary entirely. Neither figure is wrong;
+	// the contract says which hours each one is about, and this pins the
+	// boundary rather than leaving the fixture's silence to imply there is none.
+	logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "4.00", billable: true, status: "draft"})
+
+	summary, _ = readProjectSummary(t, client, projectKraftVerket)
+	got, err = p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	if got.Totals.UnpricedHoursHundredths != 900 {
+		t.Errorf("unpriced = %d hundredths, want 900: the unpriced draft counts in all three buckets",
+			got.Totals.UnpricedHoursHundredths)
+	}
+	if got := int64(math.Round(summary.Billing.UnpricedHours * 100)); got != summaryHundredths {
+		t.Errorf("the project summary's unpriced hours moved to %d, want them unchanged at %d: a draft is outside it",
+			got, summaryHundredths)
+	}
 }
 
 // Work costed in another currency is not in CostAmount, and the hours say so
@@ -601,6 +622,65 @@ func TestActualsRoundsOncePerBucketNotPerGroup(t *testing.T) {
 	}
 	wantBucket(t, "line 3001 approved", got.Lines[0].Totals.Approved, 5, "0.01", "0.00")
 	wantBucket(t, "line 3004 approved", got.Lines[1].Totals.Approved, 5, "0.01", "0.00")
+}
+
+// Total is rounded once from the unrounded whole, which is not the same
+// number as adding the three published bucket amounts: each of those was
+// rounded on its own first. Three buckets of 0.005 publish "0.01" apiece — a
+// consumer adding them reports 0.03 for work worth 0.02 (review M1).
+func TestActualsTotalIsRoundedOnceAndNotTheSumOfTheBuckets(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	for _, status := range []string{"approved", "submitted", "draft"} {
+		logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: "0.05", billable: true,
+			billRate: "0.10", billCurrency: "NOK", costRate: "0.10", costCurrency: "NOK", status: status})
+	}
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	for name, bucket := range map[string]contracts.ActualsBucket{
+		"approved": got.Totals.Approved, "submitted": got.Totals.Submitted, "draft": got.Totals.Draft,
+	} {
+		wantBucket(t, name, bucket, 5, "0.01", "0.01")
+	}
+	// 3 × 0.005 is 0.015, which rounds half away from zero to 0.02 — while the
+	// three published buckets add up to 0.03.
+	wantBucket(t, "total", got.Totals.Total, 15, "0.02", "0.02")
+}
+
+// Total is the ordinary case too: the three buckets' hours and their money,
+// on a project where nothing is on a rounding boundary.
+func TestActualsTotalAddsUpTheThreeBuckets(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, user := signIn(t, h)
+	p := actualsProvider(t, h)
+
+	for _, seed := range []struct{ hours, status string }{
+		{"4.00", "approved"}, {"2.50", "submitted"}, {"1.25", "draft"}, {"1.00", "invoiced"},
+	} {
+		logEntry(t, h, user, loggedEntry{project: projectKraftVerket, date: workDay, hours: seed.hours, billable: true,
+			billRate: "100.00", billCurrency: "NOK", costRate: "40.00", costCurrency: "NOK", status: seed.status})
+	}
+
+	got, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectKraftVerket, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	wantBucket(t, "approved", got.Totals.Approved, 500, "500.00", "200.00")
+	wantBucket(t, "total", got.Totals.Total, 875, "875.00", "350.00")
+	// A project with nothing logged answers a zero-valued Total rather than an
+	// empty one, so a consumer never has to check.
+	empty, err := p.Actuals(t.Context(), contracts.ActualsRequest{ProjectID: projectInternal, Currency: ptr("NOK")})
+	if err != nil {
+		t.Fatalf("actuals: %v", err)
+	}
+	wantBucket(t, "empty total", empty.Totals.Total, 0, "0.00", "0.00")
 }
 
 // The batch: every requested project is in the result, one without entries
