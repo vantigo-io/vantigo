@@ -177,6 +177,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{id}/economy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a project's budget against what has been logged on it
+         * @description The project's budget beside what has been logged against it. It takes no lock and holds nothing open: the hours are asked of the module that owns them exactly once per request, outside any transaction, and a failure to reach it fails the request rather than answering zeroes.
+         */
+        get: operations["getProjectsByIdEconomy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{id}/milestones": {
         parameters: {
             query?: never;
@@ -878,6 +898,8 @@ export interface components {
             canManage: boolean;
             /** @description Whether the caller may add, edit, reorder, cancel and reopen this project's billing milestones. The project's managers, and nobody else — a holder of projects:view-financials reads the plan and marks milestones invoiced, but does not write it. */
             canManageMilestones: boolean;
+            /** @description Whether the caller may see what this project's work costs the company, and the margin — the economy read's `cost` block. Financial rights on the project *and* the sensitive projects:view-costs permission; a holder of the permission who may not see this project's money gets neither. */
+            canSeeCosts: boolean;
             canSeeFinancials: boolean;
         };
         /** @description A project code nobody has used yet, derived from the customer and project names (design §4.2). The caller may type anything valid instead. */
@@ -916,6 +938,176 @@ export interface components {
             name: string;
             /** Format: date */
             startDate?: string | null;
+        };
+        /** @description What has been logged, in the three buckets every economy surface shows the split of, plus the figures that span all three. Hours are visible to everyone who sees the project; the amounts are financial data and absent without financial rights on it. */
+        ProjectEconomyActuals: {
+            /** @description Approved and invoiced entries. */
+            approved: components["schemas"]["ProjectEconomyBucket"];
+            /**
+             * Format: double
+             * @description The billable share of the three buckets' hours. Billable plus non-billable is the total.
+             */
+            billableHours: number;
+            /** @description Draft and rejected entries. */
+            draft: components["schemas"]["ProjectEconomyBucket"];
+            /**
+             * Format: date
+             * @description The day the most recent entry in any of the three buckets was logged for, drafts included. Absent when nothing has been logged.
+             */
+            lastEntryDate?: string | null;
+            /** Format: double */
+            nonBillableHours: number;
+            submitted: components["schemas"]["ProjectEconomyBucket"];
+            /**
+             * Format: double
+             * @description The three buckets' bill amounts added up, in the project's currency. Financial data, so absent without financial rights; also absent when the project has no currency, since nothing could be denominated then.
+             */
+            totalAmount?: number | null;
+            /**
+             * Format: double
+             * @description The three buckets' hours added up.
+             */
+            totalHours: number;
+            /**
+             * Format: double
+             * @description Hours that carry no bill rate, or a rate in a currency other than the project's, and so count in hours but in no amount.
+             */
+            unpricedHours: number;
+        };
+        /** @description One bucket of logged work. The hours are there for everyone who sees the project; the amount is financial data. */
+        ProjectEconomyBucket: {
+            /**
+             * Format: double
+             * @description What the bucket's work bills at, in the project's currency. Absent without financial rights on the project, and absent when the project has no currency.
+             */
+            amount?: number | null;
+            /** Format: double */
+            hours: number;
+        };
+        /** @description What was planned — the project's own budget and what its billing lines' budgets add up to. Hours are planning data and visible to everyone who sees the project; the amounts are financial and absent without financial rights on it. The project's budget and the lines' are independent numbers whose relation is shown, never enforced. */
+        ProjectEconomyBudget: {
+            /**
+             * Format: double
+             * @description The project's budget amount, the budgeted value of the work.
+             */
+            amount?: number | null;
+            /**
+             * Format: double
+             * @description The project's fixed price, set only on a fixed-price project.
+             */
+            fixedPrice?: number | null;
+            /**
+             * Format: double
+             * @description The project's own budget in hours.
+             */
+            hours?: number | null;
+            /**
+             * Format: double
+             * @description The billing lines' budget amounts added up, deactivated lines included. Absent when no line carries one.
+             */
+            linesAmount?: number | null;
+            /**
+             * Format: double
+             * @description The billing lines' budget hours added up, deactivated lines included. Absent when no line carries one.
+             */
+            linesHours?: number | null;
+        };
+        /** @description How much of the budget the logged work has used, by the module's one definition. The basis is chosen in a fixed order — the project's budget amount, then the fixed price of a fixed-price project, then the budget hours — and a caller who may not see amounts only ever gets the hours basis. Absent when the project has no basis at all, and absent when time tracking is not enabled. */
+        ProjectEconomyBudgetUsed: {
+            /**
+             * Format: double
+             * @description The approved bucket alone against the same basis, rounded the same way.
+             */
+            approvedPercent: number;
+            /** @description 'amount', 'fixedPrice' or 'hours' — which budget the percentages are measured against. */
+            basis: string;
+            /**
+             * Format: double
+             * @description All three buckets against the basis, as a percentage rounded half up to one decimal. The rounding is for display only: overBudget and the dashboard's thresholds are decided on the exact ratio, so 100.04 % is over budget although it prints 100.0.
+             */
+            percent: number;
+        };
+        /** @description What the work has cost the company and what is left over. Present only for a caller with financial rights on the project *and* projects:view-costs, and only when time tracking is enabled — on a small project a total cost next to the hours reveals a person's cost rate. Every amount is in the project's currency; a cost recorded in another one is not summed, exactly as a bill amount in another one is not. */
+        ProjectEconomyCost: {
+            /** Format: double */
+            approved: number;
+            /** Format: double */
+            draft: number;
+            /**
+             * Format: double
+             * @description The three buckets' bill amount minus the three buckets' cost. Negative when the work has cost more than it bills.
+             */
+            margin: number;
+            /** Format: double */
+            submitted: number;
+            /** Format: double */
+            total: number;
+            /**
+             * Format: double
+             * @description Hours the total leaves out because they carry no cost rate, or a cost rate in another currency. The margin is short by whatever they would have cost, so a surface showing it says how many hours it excludes.
+             */
+            uncostedHours: number;
+        };
+        /** @description One row of the per-line breakdown — every billing line of the project, deactivated ones included, in the same order the billing tab lists them, plus one row without a billingLineId for work logged against no line at all. A line the project does not have that work was nonetheless logged against folds into that same row rather than being dropped. */
+        ProjectEconomyLine: {
+            /** @description Whether the line is still active. Absent on the row that stands for work logged without a line. */
+            active?: boolean | null;
+            /** @description What has been logged against this line. Absent exactly when timeTracking is false. */
+            actuals?: components["schemas"]["ProjectEconomyActuals"];
+            /**
+             * Format: int32
+             * @description The line this row is about. Absent on the row that stands for work logged without a line.
+             */
+            billingLineId?: number | null;
+            /**
+             * Format: double
+             * @description The line's budget amount. Financial data, so absent without financial rights on the project.
+             */
+            budgetAmount?: number | null;
+            /**
+             * Format: double
+             * @description The line's budget in hours, planning data like the project's own.
+             */
+            budgetHours?: number | null;
+            /** @description The line's own code, as the line carries it. Absent on the row that stands for work logged without a line. */
+            code?: string | null;
+            /** @description Whether the logged work has passed the line's budget, decided on the exact ratio rather than on the rounded usedPercent. */
+            overBudget: boolean;
+            /**
+             * Format: double
+             * @description What is left of the line's budget hours, never negative — a line that has gone past its budget reports 0 here and says so through overBudget. Absent when the line carries no budget in hours, and when timeTracking is false.
+             */
+            remainingHours?: number | null;
+            /**
+             * Format: double
+             * @description The logged work against this line's own budget — its budget amount when the caller may see amounts and it is set, otherwise its budget hours — rounded half up to one decimal. Absent when the line has no budget to measure against, and when timeTracking is false.
+             */
+            usedPercent?: number | null;
+        };
+        /** @description A project's budget against what has been logged on it (design §5, delivery B). Everyone who sees the project sees the hours; amounts, the fixed price, the milestone totals and the currency need financial rights on it, and the cost block needs projects:view-costs as well. Fields the caller may not see are absent, never null and never zero. Nothing here is cached: the hours are read live through the actuals contract on every request. */
+        ProjectEconomyResponse: {
+            /** @description What has been logged on the project as a whole. Absent exactly when timeTracking is false. */
+            actuals?: components["schemas"]["ProjectEconomyActuals"];
+            budget: components["schemas"]["ProjectEconomyBudget"];
+            /** @description Absent when there is no basis to measure against, and when timeTracking is false. */
+            budgetUsed?: components["schemas"]["ProjectEconomyBudgetUsed"];
+            /** @description Absent without financial rights on the project and projects:view-costs, and absent when timeTracking is false. */
+            cost?: components["schemas"]["ProjectEconomyCost"];
+            /** @description The currency every amount in this response is in. Financial data, exactly as on the project itself, so a caller who may not see the money sees no currency either; absent too when the project carries none. */
+            currency?: string | null;
+            /** @description One row per billing line, plus the no-line row when anything was logged without one. Always present, and empty on a project with no lines and nothing logged. */
+            lines: components["schemas"]["ProjectEconomyLine"][];
+            /** @description The invoice plan's totals, the same sums GET /projects/{id}/milestones answers with. Financial data, so absent without financial rights on the project; present, with zeroes, for a project whose plan is empty. */
+            milestones?: components["schemas"]["BillingMilestonePlanTotals"];
+            /** @description Whether the logged work has passed the budget budgetUsed measures against, decided on the exact ratio rather than on the rounded percent. False when there is nothing to measure against. */
+            overBudget: boolean;
+            /**
+             * Format: double
+             * @description The project's tasks' estimates added up, subtasks and finished ones included — a secondary planning figure beside the budget, not a budget of its own. Absent when no task carries an estimate.
+             */
+            taskEstimateHours?: number | null;
+            /** @description Whether this installation has a module that reports what has been logged against projects. False means the budgets and the invoice plan are still here and there are no actuals to compare them with — not that nothing has been logged. */
+            timeTracking: boolean;
         };
         /** @description The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see". */
         ProjectFinancials: {
@@ -2144,6 +2336,53 @@ export interface operations {
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
+            };
+        };
+    };
+    getProjectsByIdEconomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK — shaped to what the caller may see: hours for everyone who sees the project, amounts and the milestone totals for financial rights, the cost block for projects:view-costs on top of them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEconomyResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Not Found — no such project, or one the caller cannot see. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

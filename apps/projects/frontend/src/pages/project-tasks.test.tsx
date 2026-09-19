@@ -26,6 +26,7 @@ const project = (canContribute: boolean): Project =>
       canContribute,
       canSeeFinancials: canContribute,
       canManageMilestones: canContribute,
+      canSeeCosts: false,
     },
     billingLinesAvailable: true,
     managers: [],
