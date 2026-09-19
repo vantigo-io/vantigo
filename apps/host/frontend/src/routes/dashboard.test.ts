@@ -6,6 +6,7 @@ import {
   attentionTitleKey,
   attentionWeek,
   awaitingApprovalHint,
+  projectsCardHint,
   readyMilestonesHint,
 } from "./dashboard";
 import "../i18n";
@@ -44,6 +45,15 @@ describe("the dashboard's attention links", () => {
     expect(attentionHref({ module: "projects", type: "milestoneOverdue", entityId: "31/2001" })).toBe(
       "/projects/31/economy",
     );
+  });
+
+  // A provider bug that sends an empty or otherwise unaddressable entityId
+  // must not reach the router as a broken path with a doubled slash; the
+  // app's own list is the safest fallback for anything this build cannot
+  // address precisely.
+  it("falls back to the app's own list for a malformed economy entityId", () => {
+    expect(attentionHref({ module: "projects", type: "budgetWarning", entityId: "" })).toBe("/projects");
+    expect(attentionHref({ module: "projects", type: "milestoneReady", entityId: "/2001" })).toBe("/projects");
   });
 
   // An unsubmitted week carries its Monday, so the link opens that very week
@@ -173,6 +183,19 @@ describe("the dashboard's attention links", () => {
     expect(readyMilestonesHint(0, t)).toBeUndefined();
     expect(readyMilestonesHint(undefined, t)).toBeUndefined();
     expect(readyMilestonesHint(4, t)).toBe("dashboard.readyMilestonesHint:4");
+  });
+
+  // Ruling: the Projects card shows the ready-milestones hint when there is
+  // something ready — it is the more actionable of the two figures — and
+  // otherwise falls back to exactly the "N new projects" hint the card
+  // carried before this feature, rather than going silent.
+  it("shows the ready-milestones hint when something is ready, and falls back to new projects otherwise", () => {
+    const t = (key: string, values?: Record<string, unknown>) => `${key}:${values?.count}`;
+    expect(projectsCardHint(4, 2, t)).toBe("dashboard.readyMilestonesHint:4");
+    expect(projectsCardHint(0, 2, t)).toBe("dashboard.newProjectsHint:2");
+    expect(projectsCardHint(undefined, 2, t)).toBe("dashboard.newProjectsHint:2");
+    expect(projectsCardHint(0, undefined, t)).toBe("dashboard.newProjectsHint:0");
+    expect(projectsCardHint(undefined, undefined, t)).toBe("dashboard.newProjectsHint:0");
   });
 
   // Zero is the normal case for most people who hold `time:access` but
