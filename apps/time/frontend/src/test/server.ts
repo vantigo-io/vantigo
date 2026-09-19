@@ -20,8 +20,12 @@ export interface TimeServer {
   projects?: MyProject[];
   lines?: Record<number, ProjectBillingLine[]>;
   tasks?: MyTaskOption[];
-  /** The approval queue, as its groups alone: the stub wraps them in a page. */
-  approvals?: Read<TimeApprovalGroup[]>;
+  /**
+   * The approval queue, as its groups alone: the stub wraps them in a page.
+   * A function is asked again on every read, so a test can change the queue
+   * after a write the way the server would.
+   */
+  approvals?: Read<TimeApprovalGroup[]> | (() => TimeApprovalGroup[]);
   people?: Read<TimePersonOverview[]>;
   rates?: Read<PersonRate[]>;
   projectSummary?: Read<TimeProjectSummary>;
@@ -90,11 +94,9 @@ export const stubTimeApi = (server: TimeServer = {}) =>
     }
     if (path === "/api/v1/time/settings") return Promise.resolve(jsonResponse(200, server.settings ?? {}));
     if (path === "/api/v1/time/approvals") {
-      return Promise.resolve(
-        server.approvals instanceof Response
-          ? server.approvals.clone()
-          : jsonResponse(200, page(server.approvals ?? [])),
-      );
+      if (server.approvals instanceof Response) return Promise.resolve(server.approvals.clone());
+      const groups = typeof server.approvals === "function" ? server.approvals() : (server.approvals ?? []);
+      return Promise.resolve(jsonResponse(200, page(groups)));
     }
     if (path === "/api/v1/time/people") return Promise.resolve(answer(server.people, []));
     if (path === "/api/v1/time/rates") return Promise.resolve(answer(server.rates, []));

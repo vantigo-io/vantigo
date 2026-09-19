@@ -91,6 +91,31 @@ describe("ApprovalsPage", () => {
     );
   });
 
+  it("drops an entry from the selection once the queue no longer holds it", async () => {
+    let approved = false;
+    stubTimeApi({
+      approvals: () =>
+        approved
+          ? approvalGroups.map((group) => ({ ...group, entries: group.entries.filter((e) => e.id !== 701) }))
+          : approvalGroups,
+      write: () => {
+        approved = true;
+        return undefined;
+      },
+    });
+    renderRoute("/time/approvals");
+
+    const grace = await groupCard("Grace Hopper");
+    await userEvent.click(within(grace).getByRole("checkbox", { name: "Select Grace Hopper's week" }));
+    const ada = await open("Ada Lovelace");
+    const kickoff = (await within(ada).findByText("Kickoff")).closest("tr") as HTMLElement;
+    await userEvent.click(within(kickoff).getByRole("checkbox"));
+    expect(screen.getByRole("button", { name: "Approve 2 selected" })).toBeInTheDocument();
+
+    await userEvent.click(within(kickoff).getByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("button", { name: "Approve 1 selected" })).toBeInTheDocument();
+  });
+
   it("shows every refused id when the batch is turned down as a whole", async () => {
     stubTimeApi({
       approvals: approvalGroups,
