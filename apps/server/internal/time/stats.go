@@ -280,9 +280,14 @@ func (s *server) GetTimeStatsAttention(ctx context.Context, _ gen.GetTimeStatsAt
 // anyway; anyone else, and a project the directory does not know, gets the
 // bare 404. The hours are an aggregate — everyone's, per person — which a
 // member sees although they see only their own entries: it exposes no entry.
-// The billing is D8's, for callers who may see the project's financials: its
-// managers, projects:manage-all, and projects:view-financials on a summary
-// the caller may read — a time permission alone never adds it.
+// The billing is decided by seesProjectFinancials — the same single answer
+// every per-entry billing decision uses (D8): the project's managers,
+// projects:manage-all, and projects:view-financials on a project the caller
+// can see through seesProject (a role on it, projects:view-all, or
+// projects:manage-all). A caller who sees every entry's hours through
+// seesEveryone (time:view-all, time:approve, time:manage) but cannot see the
+// project itself gets the hours here and no billing, exactly as they would on
+// each of that project's entries.
 func (s *server) GetTimeProjectsByProjectIdSummary(ctx context.Context, req gen.GetTimeProjectsByProjectIdSummaryRequestObject) (gen.GetTimeProjectsByProjectIdSummaryResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	c, err := s.callerFor(ctx, q)
@@ -370,7 +375,7 @@ func (s *server) GetTimeProjectsByProjectIdSummary(ctx context.Context, req gen.
 			ByPerson: people,
 		},
 	}
-	if role == roleManager || c.ProjectsManageAll || (c.ProjectsFinancials && readable) {
+	if c.seesProjectFinancials(role) {
 		billing, err := projectBilling(ctx, q, req.ProjectId, project.Currency)
 		if err != nil {
 			return nil, err

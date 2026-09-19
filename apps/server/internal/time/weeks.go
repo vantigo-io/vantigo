@@ -272,10 +272,15 @@ func (s *server) PostTimeWeeksByWeekStartSubmit(ctx context.Context, req gen.Pos
 // transaction, so no directory is asked while rows are locked. Submitting
 // single entries does not record the week as submitted.
 func (s *server) PostTimeEntriesSubmit(ctx context.Context, req gen.PostTimeEntriesSubmitRequestObject) (gen.PostTimeEntriesSubmitResponseObject, error) {
-	var ids []int64
+	var rawIDs []int64
 	if req.Body != nil {
-		ids = uniqueIDs(req.Body.Ids)
+		rawIDs = req.Body.Ids
 	}
+	if len(rawIDs) > maxBatchIDs {
+		return gen.PostTimeEntriesSubmit400ApplicationProblemPlusJSONResponse(
+			invalidSubmission(fieldError("ids", batchTooLargeMessage(len(rawIDs))))), nil
+	}
+	ids := uniqueIDs(rawIDs)
 	if len(ids) == 0 {
 		return gen.PostTimeEntriesSubmit400ApplicationProblemPlusJSONResponse(
 			invalidSubmission(fieldError("ids", "At least one entry id is required"))), nil

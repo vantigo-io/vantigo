@@ -24,10 +24,11 @@ SELECT * FROM time.entries WHERE id = @id;
 
 -- name: DeleteEntry :execrows
 -- DeleteEntry removes an entry only while it is still the owner's to change
--- (D10). The status is re-checked here rather than trusted from the row the
--- handler read, so a submit that commits in between wins and the delete
--- removes nothing.
-DELETE FROM time.entries WHERE id = @id AND status IN ('draft', 'rejected');
+-- (D10). The status and the owner are re-checked here rather than trusted
+-- from the row the handler read, so a submit that commits in between wins
+-- and the delete removes nothing, and the SQL enforces the whole rule
+-- a.CanEdit backstops rather than only the status half of it.
+DELETE FROM time.entries WHERE id = @id AND status IN ('draft', 'rejected') AND user_id = @user_id;
 
 -- name: AcquireDayLock :exec
 -- AcquireDayLock is the serialisation point of every write that decides a
@@ -60,9 +61,11 @@ SELECT * FROM time.entries WHERE id = @id FOR UPDATE;
 -- name: UpdateEntry :one
 -- UpdateEntry replaces an entry's content with its rates resolved again (D3).
 -- A save always leaves a draft: a rejected entry returns to draft with its
--- rejection reason and its submission stamp cleared (design 4.2). The revision and
--- the status are guarded again here, although the row is already locked, so
--- that no caller can ever write over a revision it did not read.
+-- rejection reason and its submission stamp cleared (design 4.2). The
+-- revision, the status and the owner are guarded again here, although the
+-- row is already locked, so that no caller can ever write over a revision it
+-- did not read, and the SQL enforces the whole rule a.CanEdit backstops
+-- rather than only the revision and status half of it.
 UPDATE time.entries SET
     project_id = @project_id,
     billing_line_id = @billing_line_id,
@@ -84,7 +87,7 @@ UPDATE time.entries SET
     submitted_at = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = @id AND revision = @revision AND status IN ('draft', 'rejected')
+WHERE id = @id AND revision = @revision AND status IN ('draft', 'rejected') AND user_id = @user_id
 RETURNING *;
 
 -- name: CountEntries :one

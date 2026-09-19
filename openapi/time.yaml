@@ -72,6 +72,7 @@ components:
                     items:
                         format: int64
                         type: integer
+                    maxItems: 500
                     type: array
             required:
                 - ids
@@ -142,6 +143,7 @@ components:
                     items:
                         format: int64
                         type: integer
+                    maxItems: 500
                     type: array
                 reason:
                     description: Why the entries are rejected, shown to their owner. Required; at most 1000 characters once trimmed.
@@ -322,6 +324,7 @@ components:
                     items:
                         format: int64
                         type: integer
+                    maxItems: 500
                     type: array
             required:
                 - ids
@@ -333,6 +336,7 @@ components:
                     items:
                         format: int64
                         type: integer
+                    maxItems: 500
                     type: array
             required:
                 - ids
@@ -440,7 +444,7 @@ components:
                 - rejectedCount
             type: object
         TimeProjectBilling:
-            description: The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials who may read the summary. A time permission alone never adds it.
+            description: The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials on a project they can otherwise see (a role on it, projects:view-all, or projects:manage-all). A time permission alone never adds it, even one that lets the caller read every entry's hours on this project.
             properties:
                 amount:
                     description: The submitted, approved and invoiced billable hours at the bill rate each entry snapshotted, summed in the currency. Drafts are not counted until they are submitted, rejected entries never.
@@ -1305,7 +1309,7 @@ paths:
             x-vantigo-access: permission:time:access+time:view-all
     /api/v1/time/projects/{projectId}/summary:
         get:
-            description: The project's hours per status, per billing line and per person, and — for callers who may see the project's financials (D8) — what they are worth. For any caller who sees the project (a role on it, projects:view-all or projects:manage-all) and for time:view-all, time:approve and time:manage, who see every entry on it; the billing is added only for the project's managers, projects:manage-all, and projects:view-financials — never for a time permission alone.
+            description: The project's hours per status, per billing line and per person, and — for callers who may see the project's financials (D8) — what they are worth. For any caller who sees the project (a role on it, projects:view-all or projects:manage-all) and for time:view-all, time:approve and time:manage, who see every entry on it; the billing is added only for the project's managers, projects:manage-all, and projects:view-financials on a project the caller can otherwise see — never for a time permission alone, even where it adds the hours.
             operationId: getTimeProjectsByProjectIdSummary
             parameters:
                 - in: path
