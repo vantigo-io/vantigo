@@ -28,14 +28,22 @@ func rat(t *testing.T, text string) *big.Rat {
 }
 
 // sums builds the three buckets from decimal texts: approved, submitted and
-// draft hours, then the same three bill amounts.
+// draft hours, then the same three bill amounts. Total is the three added up,
+// which is what a provider answers whenever nothing lands on a rounding
+// boundary — these tests are about the comparison, not about the boundary.
 func sums(t *testing.T, approvedHours, submittedHours, draftHours, approvedAmount, submittedAmount, draftAmount string) bucketSums {
 	t.Helper()
-	return bucketSums{
+	out := bucketSums{
 		Approved:  bucketSum{Hours: rat(t, approvedHours), Amount: rat(t, approvedAmount)},
 		Submitted: bucketSum{Hours: rat(t, submittedHours), Amount: rat(t, submittedAmount)},
 		Draft:     bucketSum{Hours: rat(t, draftHours), Amount: rat(t, draftAmount)},
 	}
+	out.Total = bucketSum{Hours: new(big.Rat), Amount: new(big.Rat)}
+	for _, bucket := range []bucketSum{out.Approved, out.Submitted, out.Draft} {
+		out.Total.Hours.Add(out.Total.Hours, bucket.Hours)
+		out.Total.Amount.Add(out.Total.Amount, bucket.Amount)
+	}
+	return out
 }
 
 // TestBudgetUsedPicksTheBasisInOrder pins design §2 E8's fall-through: the
@@ -293,21 +301,25 @@ func TestLineBudgetUsed(t *testing.T) {
 	}
 }
 
-// The buckets are added in exact decimal. 0.10 + 0.20 is 0.30, which is
-// exactly what float64 addition cannot say.
-func TestBucketSumsAddUpExactly(t *testing.T) {
+// Every figure is read in exact decimal, the provider's own Total included —
+// and the total is read rather than derived: the contract computes it from the
+// unrounded whole, so it can legitimately differ from the three published
+// buckets added up, and taking the sum instead would quietly report the number
+// the contract exists to avoid.
+func TestBucketSumsReadTheProvidersTotal(t *testing.T) {
 	t.Parallel()
 
 	got, err := bucketSumsOf(contracts.ActualsTotals{
 		Approved:  contracts.ActualsBucket{HoursHundredths: 10, BillAmount: "0.10", CostAmount: "0.05"},
 		Submitted: contracts.ActualsBucket{HoursHundredths: 20, BillAmount: "0.20", CostAmount: "0.05"},
 		Draft:     contracts.ActualsBucket{HoursHundredths: 5, BillAmount: "0.00", CostAmount: "0.05"},
+		Total:     contracts.ActualsBucket{HoursHundredths: 35, BillAmount: "0.29", CostAmount: "0.14"},
 	})
 	if err != nil {
 		t.Fatalf("bucketSumsOf: %v", err)
 	}
-	if amount := decimalNumber(got.totalAmount()); amount != 0.3 {
-		t.Errorf("total bill amount = %v, want 0.3", amount)
+	if amount := decimalNumber(got.totalAmount()); amount != 0.29 {
+		t.Errorf("total bill amount = %v, want the provider's 0.29 rather than 0.3 from adding the buckets", amount)
 	}
 	if hours := decimalNumber(got.totalHours()); hours != 0.35 {
 		t.Errorf("total hours = %v, want 0.35", hours)
@@ -326,6 +338,7 @@ func TestCostSumsReadTheCostAmounts(t *testing.T) {
 		Approved:  contracts.ActualsBucket{HoursHundredths: 100, BillAmount: "900.00", CostAmount: "400.00"},
 		Submitted: contracts.ActualsBucket{HoursHundredths: 100, BillAmount: "900.00", CostAmount: "0.00"},
 		Draft:     contracts.ActualsBucket{HoursHundredths: 0, BillAmount: "0.00", CostAmount: "0.00"},
+		Total:     contracts.ActualsBucket{HoursHundredths: 200, BillAmount: "1800.00", CostAmount: "400.00"},
 	})
 	if err != nil {
 		t.Fatalf("costSumsOf: %v", err)
