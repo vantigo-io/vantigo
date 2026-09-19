@@ -1,6 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, Outlet } from "@tanstack/react-router";
+import { validateEconomyPortfolioSearch } from "../lib/economy";
 import { isProjectStatus } from "../lib/status";
+import { EconomyPortfolio } from "../pages/portfolio";
 import { ProjectsPage, type ProjectsSearch } from "../pages/projects.index";
 import "../i18n";
 
@@ -39,6 +41,14 @@ export const makeRouteTree = (canCreate: boolean) => {
       path: "/projects",
       component: () => <ProjectsPage canCreate={canCreate} />,
       validateSearch,
+    }),
+    // The portfolio route validates its search with the package's own
+    // validator, which is exactly what the host route is given to use.
+    createRoute({
+      getParentRoute: () => rootRoute,
+      path: "/projects/economy",
+      component: () => <EconomyPortfolio />,
+      validateSearch: validateEconomyPortfolioSearch,
     }),
   ]);
 };

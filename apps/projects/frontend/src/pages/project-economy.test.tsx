@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
+import type { Economy, EconomyActuals, EconomyLine } from "../api/economy";
 import type { BillingMilestone, BillingMilestonePlan, BillingMilestoneTotals } from "../api/milestones";
 import type { Project } from "../api/projects";
 import { stubFetch } from "../test/fetch";
@@ -13,6 +14,56 @@ const jsonResponse = (status: number, body: unknown) =>
 /** The same formatter the page uses, so the assertion does not hard-code a locale's separators. */
 const money = (amount: number, currency = "NOK") =>
   new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount).replace(/\u00a0/g, " ");
+
+/** The same amount with its non-breaking space kept, the way an accessible name carries it. */
+const rawMoney = (amount: number, currency = "NOK") =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
+
+const work = (
+  approved: number,
+  submitted: number,
+  draft: number,
+  overrides: Partial<EconomyActuals> = {},
+): EconomyActuals => ({
+  approved: { hours: approved },
+  submitted: { hours: submitted },
+  draft: { hours: draft },
+  totalHours: approved + submitted + draft,
+  billableHours: approved + submitted + draft,
+  nonBillableHours: 0,
+  unpricedHours: 0,
+  ...overrides,
+});
+
+/** What the economy endpoint answers a manager with financial rights but no cost rights. */
+const economy = (overrides: Partial<Economy> = {}): Economy => ({
+  timeTracking: true,
+  currency: "NOK",
+  budget: { hours: 400, amount: 480000, fixedPrice: 1000000 },
+  lines: [],
+  overBudget: false,
+  actuals: work(210, 62, 40, {
+    approved: { hours: 210, amount: 240000 },
+    submitted: { hours: 62, amount: 120000 },
+    draft: { hours: 40, amount: 0 },
+    totalAmount: 360000,
+  }),
+  budgetUsed: { basis: "amount", percent: 75, approvedPercent: 50 },
+  milestones: totals(),
+  ...overrides,
+});
+
+const line = (overrides: Partial<EconomyLine> = {}): EconomyLine => ({
+  billingLineId: 5,
+  code: "DEV",
+  active: true,
+  overBudget: false,
+  budgetHours: 200,
+  actuals: work(100, 0, 0),
+  usedPercent: 50,
+  remainingHours: 100,
+  ...overrides,
+});
 
 const project = (overrides: Partial<Project> = {}): Project =>
   ({
@@ -85,10 +136,28 @@ const plan = (
   totals: totals(overrides),
 });
 
-const stubEconomy = (row: Project, body: BillingMilestonePlan | null = plan([milestone()]), status = 200) =>
+interface EconomyStub {
+  /** The economy endpoint's answer, or the status it refuses with. */
+  economy?: Economy;
+  economyStatus?: number;
+}
+
+const stubEconomy = (
+  row: Project,
+  body: BillingMilestonePlan | null = plan([milestone()]),
+  status = 200,
+  { economy: economyBody = economy(), economyStatus = 200 }: EconomyStub = {},
+) =>
   stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, row));
+    if (url.pathname === "/api/v1/projects/7/economy") {
+      return Promise.resolve(
+        economyStatus === 200
+          ? jsonResponse(200, economyBody)
+          : jsonResponse(economyStatus, { title: "The budget is unavailable" }),
+      );
+    }
     if (url.pathname === "/api/v1/customers") {
       return Promise.resolve(jsonResponse(200, { data: [], pagination: { page: 1, pageSize: 20 } }));
     }
@@ -433,6 +502,7 @@ describe("ProjectEconomy", () => {
     stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, project()));
+      if (url.pathname === "/api/v1/projects/7/economy") return Promise.resolve(jsonResponse(200, economy()));
       if (url.pathname === "/api/v1/projects/7/milestones") {
         return Promise.resolve(jsonResponse(200, plan([milestone()])));
       }
@@ -467,6 +537,7 @@ describe("ProjectEconomy", () => {
     stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, project()));
+      if (url.pathname === "/api/v1/projects/7/economy") return Promise.resolve(jsonResponse(200, economy()));
       if (url.pathname === "/api/v1/projects/7/milestones") {
         return Promise.resolve(
           jsonResponse(
@@ -514,6 +585,7 @@ describe("ProjectEconomy", () => {
     stubFetch((input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname === "/api/v1/projects/7") return Promise.resolve(jsonResponse(200, project()));
+      if (url.pathname === "/api/v1/projects/7/economy") return Promise.resolve(jsonResponse(200, economy()));
       if (url.pathname === "/api/v1/projects/7/milestones") {
         return Promise.resolve(jsonResponse(200, plan([milestone()])));
       }
@@ -579,5 +651,234 @@ describe("ProjectEconomy", () => {
     expect(totalsCard).toHaveTextContent(money(0, "EUR"));
     const footer = screen.getByTestId("milestone-plan-footer");
     expect(footer).toHaveTextContent(money(1000000, "EUR"));
+  });
+});
+
+describe("ProjectEconomy — the budget half", () => {
+  it("names the budget the percentage is measured against, and what the work is worth", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ budgetUsed: { basis: "amount", percent: 75, approvedPercent: 50 } }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const headline = await screen.findByTestId("budget-headline");
+    expect(headline).toHaveTextContent(`75 % of the budget (${money(480000)})`);
+    expect(within(headline).getByText("Value of work").parentElement).toHaveTextContent(money(360000));
+    expect(within(headline).getByText("Fixed price amount").parentElement).toHaveTextContent(money(1000000));
+  });
+
+  it("says a fixed-price basis and an hours basis in their own words", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ budgetUsed: { basis: "fixedPrice", percent: 36, approvedPercent: 24 } }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+    expect(await screen.findByText("36 % of the fixed price")).toBeInTheDocument();
+
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ budgetUsed: { basis: "hours", percent: 78, approvedPercent: 52.5 } }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+    expect(await screen.findByText("78 % of 400 hours")).toBeInTheDocument();
+  });
+
+  // An absent budgetUsed is "there is nothing to measure against", which is a
+  // different thing from having used none of the budget.
+  it("says there is no budget rather than drawing 0 %", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ budgetUsed: undefined, budget: {}, overBudget: false }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const headline = await screen.findByTestId("budget-headline");
+    expect(headline).toHaveTextContent("No budget set");
+    expect(headline).not.toHaveTextContent("0 %");
+  });
+
+  // 100.04 % arrives as percent 100 with overBudget true: the badge follows the
+  // server's boolean, never the rounded number.
+  it("marks the project over budget on the server's word rather than on the rounded percentage", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ overBudget: true, budgetUsed: { basis: "amount", percent: 100, approvedPercent: 80 } }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const headline = await screen.findByTestId("budget-headline");
+    expect(within(headline).getByText("Over budget")).toBeInTheDocument();
+  });
+
+  it("gives someone who cannot see the amounts the hours view instead of a locked note", async () => {
+    const fetchMock = stubEconomy(
+      project({
+        capabilities: {
+          canManage: false,
+          canContribute: true,
+          canSeeFinancials: false,
+          canManageMilestones: false,
+          canSeeCosts: false,
+        },
+        financials: undefined,
+      }),
+      plan([milestone()]),
+      200,
+      {
+        economy: economy({
+          currency: undefined,
+          budget: { hours: 400 },
+          actuals: work(210, 62, 40),
+          budgetUsed: { basis: "hours", percent: 78, approvedPercent: 52.5 },
+          milestones: undefined,
+          lines: [line({ actuals: work(100, 0, 0) })],
+        }),
+      },
+    );
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByText("78 % of 400 hours")).toBeInTheDocument();
+    expect(within(screen.getByTestId("project-budget-bar")).getByRole("img")).toHaveAccessibleName(
+      "312 h of 400 h used: 210 h approved, 62 h submitted, 40 h draft.",
+    );
+    expect(await rowFor("DEV")).toHaveTextContent("50 %");
+    // The invoice plan alone stays behind financial rights, and is not asked for.
+    expect(screen.getByTestId("empty-state")).toHaveTextContent("invoice plan");
+    expect(fetchMock.actualCalls.some(([url]) => String(url).includes("/milestones"))).toBe(false);
+  });
+
+  it("notes the hours that carry no rate, which the amounts leave out", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ actuals: work(210, 62, 40, { unpricedHours: 12, totalAmount: 360000 }) }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByText("12 h have no rate and are not in the amounts.")).toBeInTheDocument();
+  });
+
+  it("says how many hours the margin leaves out, wherever it shows a margin", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        cost: { approved: 120000, submitted: 60000, draft: 0, total: 180000, margin: 180000, uncostedHours: 12 },
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const headline = await screen.findByTestId("budget-headline");
+    expect(within(headline).getByText("Margin").parentElement).toHaveTextContent(money(180000));
+    expect(screen.getByText("The margin leaves out 12 h with no cost.")).toBeInTheDocument();
+  });
+
+  // canSeeCosts is not enough: the block is also absent on a currencyless
+  // project and without time tracking, so the panel follows the block itself.
+  it("shows no margin at all when the server sent no cost block", async () => {
+    stubEconomy(
+      project({
+        capabilities: {
+          canManage: true,
+          canContribute: true,
+          canSeeFinancials: true,
+          canManageMilestones: true,
+          canSeeCosts: true,
+        },
+      }),
+      plan([milestone()]),
+      200,
+      { economy: economy({ cost: undefined }) },
+    );
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByTestId("budget-headline");
+    expect(screen.queryByText("Margin")).not.toBeInTheDocument();
+  });
+
+  it("keeps the budgets and replaces the bars when time tracking is off", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        timeTracking: false,
+        actuals: undefined,
+        budgetUsed: undefined,
+        lines: [line({ actuals: undefined, usedPercent: undefined, remainingHours: undefined })],
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByText("Hours appear here when Time tracking is enabled.")).toBeInTheDocument();
+    expect(screen.queryByTestId("budget-bar")).not.toBeInTheDocument();
+    // The budgets themselves are still the point of the tab.
+    expect(await rowFor("DEV")).toHaveTextContent("200 h");
+  });
+
+  it("lists every line, dims a deactivated one and puts the no-line row last", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        lines: [
+          line({ billingLineId: 5, code: "DEV" }),
+          line({ billingLineId: 6, code: "OLD", active: false }),
+          line({ billingLineId: undefined, code: undefined, active: undefined, budgetHours: undefined }),
+        ],
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    await screen.findByText("DEV");
+    const names = screen.getAllByTestId("economy-line-name").map((node) => node.textContent);
+    expect(names).toEqual(["DEV", "OLD", "No billing line"]);
+    expect(within(await rowFor("OLD")).getByText("Inactive")).toBeInTheDocument();
+  });
+
+  // A line's percentage can be measured in money while its remaining hours are
+  // hours, so over budget and hours left over legitimately sit in one row.
+  it("names each line's bar with the basis that line was measured on", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({
+        lines: [
+          line({
+            budgetAmount: 120000,
+            budgetHours: 40,
+            usedPercent: 110,
+            remainingHours: 5,
+            overBudget: true,
+            actuals: work(35, 0, 0, {
+              approved: { hours: 35, amount: 132000 },
+              submitted: { hours: 0, amount: 0 },
+              draft: { hours: 0, amount: 0 },
+              totalAmount: 132000,
+            }),
+          }),
+        ],
+      }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    const row = await rowFor("DEV");
+    expect(row).toHaveTextContent(`110 % of the budget (${money(120000)})`);
+    expect(row).toHaveTextContent("5 h");
+    expect(within(row).getByText("Over budget")).toBeInTheDocument();
+    expect(within(row).getByTestId("budget-bar")).toHaveAccessibleName(
+      `${rawMoney(132000)} of ${rawMoney(120000)} used, over budget: ${rawMoney(132000)} approved, ${rawMoney(0)} submitted, ${rawMoney(0)} draft.`,
+    );
+  });
+
+  it("says what the lines' budgets add up to against the project's own", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, {
+      economy: economy({ budget: { hours: 400, linesHours: 380, amount: 480000, fixedPrice: 1000000 } }),
+    });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(
+      await screen.findByText("The billing lines' budgets add up to 380 h of the project's 400 h."),
+    ).toBeInTheDocument();
+  });
+
+  it("puts the task estimates beside the budget", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economy: economy({ taskEstimateHours: 320 }) });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByText("The tasks are estimated at 320 h.")).toBeInTheDocument();
+  });
+
+  it("reports a budget that cannot be read, and still shows the invoice plan", async () => {
+    stubEconomy(project(), plan([milestone()]), 200, { economyStatus: 500 });
+    renderWithProviders(<ProjectEconomy projectId={7} />);
+
+    expect(await screen.findByText("Could not load the budget")).toBeInTheDocument();
+    expect(await screen.findByText("Kick-off")).toBeInTheDocument();
   });
 });
