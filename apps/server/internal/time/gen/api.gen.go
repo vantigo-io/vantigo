@@ -255,7 +255,7 @@ type TimePersonWeek struct {
 	WeekStart openapi_types.Date `json:"weekStart"`
 }
 
-// TimeProjectBilling The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials who may read the summary. A time permission alone never adds it.
+// TimeProjectBilling The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials on a project they can otherwise see (a role on it, projects:view-all, or projects:manage-all). A time permission alone never adds it, even one that lets the caller read every entry's hours on this project.
 type TimeProjectBilling struct {
 	// Amount The submitted, approved and invoiced billable hours at the bill rate each entry snapshotted, summed in the currency. Drafts are not counted until they are submitted, rejected entries never.
 	Amount float64 `json:"amount"`
@@ -312,7 +312,7 @@ type TimeProjectPersonHours struct {
 
 // TimeProjectSummaryResponse A project's time at a glance, for the time panel on the project page.
 type TimeProjectSummaryResponse struct {
-	// Billing The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials who may read the summary. A time permission alone never adds it.
+	// Billing The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials on a project they can otherwise see (a role on it, projects:view-all, or projects:manage-all). A time permission alone never adds it, even one that lets the caller read every entry's hours on this project.
 	Billing *TimeProjectBilling `json:"billing,omitempty"`
 
 	// Hours A project's logged hours. total, byLine and byPerson count every entry but rejected ones — the hours that stand, drafts included; byStatus lists every status, rejected included.

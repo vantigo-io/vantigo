@@ -83,6 +83,20 @@ func uniqueIDs(ids []int64) []int64 {
 	return out
 }
 
+// maxBatchIDs bounds every batch ids array — submit, approve, reject and
+// unapprove — matching the openapi contract's maxItems on those schemas. No
+// request-validation middleware sits in front of these handlers, so the
+// handler enforces its own contract: without a cap, LockEntries would row-lock
+// and warmRoles would look up a project role for as many ids as the body's
+// 1 MiB cap allows.
+const maxBatchIDs = 500
+
+// batchTooLargeMessage is the "ids" field message for a batch over
+// maxBatchIDs, naming both the cap and what was sent.
+func batchTooLargeMessage(n int) string {
+	return fmt.Sprintf("At most %d entry ids may be given at once; %d were given", maxBatchIDs, n)
+}
+
 // transitionOutcome is what a transition answers: forbidden for a caller who
 // approves for nothing at all, the field errors of a refused request, or the
 // moved entries in the order their ids were given.
@@ -109,6 +123,9 @@ func (s *server) transitionEntries(ctx context.Context, t transition, rawIDs []i
 		return transitionOutcome{forbidden: true}, nil
 	}
 
+	if len(rawIDs) > maxBatchIDs {
+		errs = withFieldError(errs, "ids", batchTooLargeMessage(len(rawIDs)))
+	}
 	ids := uniqueIDs(rawIDs)
 	if len(ids) == 0 {
 		errs = withFieldError(errs, "ids", "At least one entry id is required")

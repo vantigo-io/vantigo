@@ -159,6 +159,25 @@ func TestPostTimeEntriesApprove_AnyRefusal_RefusesThemAllNamingEachId(t *testing
 	}
 }
 
+// The batch cap (openapi/time.yaml's maxItems: 500) is enforced by the
+// handler itself, not by request-validation middleware, so the same 400
+// shape as every other batch refusal is what a caller over the cap gets —
+// before any entry is even read.
+func TestPostTimeEntriesApprove_MoreThan500Ids_Refuses400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	manager, _ := signInAs(t, h, projectKraftVerket, roleManager)
+
+	ids := make([]int64, 501)
+	for i := range ids {
+		ids[i] = int64(i + 1)
+	}
+	errs := batchErrorsOf(t, manager, approvePath, map[string]any{"ids": ids})
+	if len(errs["ids"]) != 1 || !strings.Contains(errs["ids"][0], "At most 500 entry ids may be given at once; 501 were given") {
+		t.Errorf("ids errors = %v, want one message naming the 500 cap", errs["ids"])
+	}
+}
+
 func TestPostTimeEntriesReject_RequiresAReasonOfAtMost1000Characters(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

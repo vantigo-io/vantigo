@@ -516,11 +516,13 @@ func TestGetTimeProjectSummary_HoursAndBillingForAManager(t *testing.T) {
 }
 
 // D8 on the summary: a member sees the project's hours — everyone's, as an
-// aggregate — but not its money; projects:view-financials on a summary the
-// caller may read, or projects:manage-all, adds the billing; projects:view-all
-// alone does not. The time permissions that see every entry — time:view-all,
-// time:approve — read the hours without a role on the project, and never the
-// money on their own.
+// aggregate — but not its money; projects:view-financials on a project the
+// caller sees (a role on it, projects:view-all, or projects:manage-all) adds
+// the billing; projects:view-all alone does not. The time permissions that
+// see every entry — time:view-all, time:approve, time:manage — read the
+// hours without a role on the project, and their billing answer is exactly
+// seesProjectFinancials: none of them adds money on a project the caller
+// cannot otherwise see, projects:view-financials included.
 func TestGetTimeProjectSummary_BillingOnlyForThoseWhoSeeTheFinancials(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -532,6 +534,14 @@ func TestGetTimeProjectSummary_BillingOnlyForThoseWhoSeeTheFinancials(t *testing
 		wantBilling bool
 	}{
 		{"member", anna, false},
+		{"member+projects:view-financials", func() *modtest.Client {
+			c, _ := signInAs(t, h, projectKraftVerket, roleMember, "projects:view-financials")
+			return c
+		}(), true},
+		{"viewer+projects:view-financials", func() *modtest.Client {
+			c, _ := signInAs(t, h, projectKraftVerket, roleViewer, "projects:view-financials")
+			return c
+		}(), true},
 		{"projects:view-all", func() *modtest.Client { c, _ := signIn(t, h, "projects:view-all"); return c }(), false},
 		{"projects:view-all+view-financials", func() *modtest.Client {
 			c, _ := signIn(t, h, "projects:view-all", "projects:view-financials")
@@ -544,7 +554,7 @@ func TestGetTimeProjectSummary_BillingOnlyForThoseWhoSeeTheFinancials(t *testing
 		{"time:view-all+projects:view-financials", func() *modtest.Client {
 			c, _ := signIn(t, h, "time:view-all", "projects:view-financials")
 			return c
-		}(), true},
+		}(), false},
 	} {
 		s, raw := readProjectSummary(t, tc.client, projectKraftVerket)
 		if _, has := raw["billing"]; has != tc.wantBilling {

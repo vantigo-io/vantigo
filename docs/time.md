@@ -124,7 +124,11 @@ to `draft` too. `invoiced` has no way out.
 - **rejected** — an approver sent it back with a reason (required, at most 1000
   characters). Editing a rejected entry makes it a draft again and clears
   `submittedAt`, so it has to be submitted afresh.
-- **invoiced** — terminal. Nothing moves an invoiced entry, unapprove included.
+- **invoiced** — terminal. Nothing moves an invoiced entry, unapprove included. This
+  module never writes `status: "invoiced"` or `invoicedAt` itself — the column, the
+  `WHERE status = 'approved'` guards and the "Entry N is invoiced" refusals all exist
+  for the future Invoices module to use. Tests reach the state directly through the
+  database.
 
 **Unapprove** takes an approved entry back to a **fresh draft**: it clears
 `submittedAt` as well as the approval, so the week reports unsubmitted changes and the
@@ -133,7 +137,15 @@ approvers and for `time:manage`; the period lock holds it back for everyone but
 `time:manage`, because an unapproved entry becomes a draft its owner could not edit.
 
 Approve, reject and unapprove are **batch, all-or-nothing**: a request naming ten ids
-either moves all ten or moves none and answers with a message per refused id.
+either moves all ten or moves none and answers with a message per refused id. Every
+batch's `ids` array is capped at 500 entries; a longer array is refused on `ids`
+before any entry is read.
+
+There is no owner-side "unsubmit". Once submitted, an entry is out of its owner's
+hands until an approver acts on it: a mistaken submission is undone by an approver
+rejecting it (which requires a reason), or by an approver or `time:manage` unapproving
+it after it is approved. A person who submits by mistake has to ask for one of those,
+which is a support burden worth knowing about.
 
 ## Weekly submission
 
@@ -190,6 +202,13 @@ The project hours summary follows the **project's** visibility rather than time'
 summary is a view of a project.
 
 ## Rate cards and the directory
+
+`GET /time/rates` without a `userId`, and `GET /time/people`, are unpaginated: they
+answer one row per person (every rate row, and every person with activity in up to 12
+weeks) with no `page`/`pageSize`. Both are `time:manage`/`time:view-all` admin reads
+sized by headcount rather than by activity history, which is fine for the small
+installations Vantigo targets, but they are the only two lists in the module that do
+not page.
 
 `GET /time/rates/assignable-users?search=` is the **only** view of the user directory
 the module has, and it is deliberately small: `time:manage` only, it matches display

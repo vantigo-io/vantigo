@@ -81,15 +81,21 @@ func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int
 }
 
 const deleteEntry = `-- name: DeleteEntry :execrows
-DELETE FROM time.entries WHERE id = $1 AND status IN ('draft', 'rejected')
+DELETE FROM time.entries WHERE id = $1 AND status IN ('draft', 'rejected') AND user_id = $2
 `
 
+type DeleteEntryParams struct {
+	ID     int64
+	UserID uuid.UUID
+}
+
 // DeleteEntry removes an entry only while it is still the owner's to change
-// (D10). The status is re-checked here rather than trusted from the row the
-// handler read, so a submit that commits in between wins and the delete
-// removes nothing.
-func (q *Queries) DeleteEntry(ctx context.Context, id int64) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteEntry, id)
+// (D10). The status and the owner are re-checked here rather than trusted
+// from the row the handler read, so a submit that commits in between wins
+// and the delete removes nothing, and the SQL enforces the whole rule
+// a.CanEdit backstops rather than only the status half of it.
+func (q *Queries) DeleteEntry(ctx context.Context, arg DeleteEntryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEntry, arg.ID, arg.UserID)
 	if err != nil {
 		return 0, err
 	}
@@ -578,7 +584,7 @@ UPDATE time.entries SET
     submitted_at = NULL,
     revision = revision + 1,
     updated_at = $16::timestamptz
-WHERE id = $17 AND revision = $18 AND status IN ('draft', 'rejected')
+WHERE id = $17 AND revision = $18 AND status IN ('draft', 'rejected') AND user_id = $19
 RETURNING id, user_id, project_id, billing_line_id, task_id, task_title, entry_date, hours, start_time, end_time, note, billable, bill_rate, bill_currency, cost_rate, cost_currency, rate_source, status, rejection_reason, submitted_at, approved_by_user_id, approved_at, invoiced_at, revision, created_at, updated_at
 `
 
@@ -601,13 +607,16 @@ type UpdateEntryParams struct {
 	Now           time.Time
 	ID            int64
 	Revision      int32
+	UserID        uuid.UUID
 }
 
 // UpdateEntry replaces an entry's content with its rates resolved again (D3).
 // A save always leaves a draft: a rejected entry returns to draft with its
-// rejection reason and its submission stamp cleared (design 4.2). The revision and
-// the status are guarded again here, although the row is already locked, so
-// that no caller can ever write over a revision it did not read.
+// rejection reason and its submission stamp cleared (design 4.2). The
+// revision, the status and the owner are guarded again here, although the
+// row is already locked, so that no caller can ever write over a revision it
+// did not read, and the SQL enforces the whole rule a.CanEdit backstops
+// rather than only the revision and status half of it.
 func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (TimeEntry, error) {
 	row := q.db.QueryRow(ctx, updateEntry,
 		arg.ProjectID,
@@ -628,6 +637,7 @@ func (q *Queries) UpdateEntry(ctx context.Context, arg UpdateEntryParams) (TimeE
 		arg.Now,
 		arg.ID,
 		arg.Revision,
+		arg.UserID,
 	)
 	var i TimeEntry
 	err := row.Scan(

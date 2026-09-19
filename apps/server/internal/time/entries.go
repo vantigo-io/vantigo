@@ -253,7 +253,7 @@ func (s *server) GetTimeEntriesById(ctx context.Context, req gen.GetTimeEntriesB
 // the access layer's own 403; one who may not see it, the unknown id's 404.
 func (s *server) DeleteTimeEntriesById(ctx context.Context, req gen.DeleteTimeEntriesByIdRequestObject) (gen.DeleteTimeEntriesByIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
-	_, a, found, err := s.visibleEntry(ctx, q, req.Id)
+	row, a, found, err := s.visibleEntry(ctx, q, req.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,10 @@ func (s *server) DeleteTimeEntriesById(ctx context.Context, req gen.DeleteTimeEn
 	if !a.CanEdit {
 		return gen.DeleteTimeEntriesById403JSONResponse(forbidden()), nil
 	}
-	deleted, err := q.DeleteEntry(ctx, req.Id)
+	// a.CanEdit implies a.IsOwner, so row.UserID is the caller's own id; the
+	// query re-guards the owner anyway (queries/entries.sql), the same
+	// backstop it already gives the status.
+	deleted, err := q.DeleteEntry(ctx, store.DeleteEntryParams{ID: req.Id, UserID: row.UserID})
 	if err != nil {
 		return nil, fmt.Errorf("time: delete entry: %w", err)
 	}
@@ -446,6 +449,7 @@ func (s *server) PutTimeEntriesById(ctx context.Context, req gen.PutTimeEntriesB
 		updated, err = txq.UpdateEntry(ctx, store.UpdateEntryParams{
 			ID:            current.ID,
 			Revision:      body.Revision,
+			UserID:        c.UserID,
 			ProjectID:     parsed.ProjectID,
 			BillingLineID: parsed.LineID,
 			TaskID:        parsed.TaskID,

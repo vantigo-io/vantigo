@@ -171,7 +171,7 @@ export interface paths {
         };
         /**
          * Get a project's time summary
-         * @description The project's hours per status, per billing line and per person, and — for callers who may see the project's financials (D8) — what they are worth. For any caller who sees the project (a role on it, projects:view-all or projects:manage-all) and for time:view-all, time:approve and time:manage, who see every entry on it; the billing is added only for the project's managers, projects:manage-all, and projects:view-financials — never for a time permission alone.
+         * @description The project's hours per status, per billing line and per person, and — for callers who may see the project's financials (D8) — what they are worth. For any caller who sees the project (a role on it, projects:view-all or projects:manage-all) and for time:view-all, time:approve and time:manage, who see every entry on it; the billing is added only for the project's managers, projects:manage-all, and projects:view-financials on a project the caller can otherwise see — never for a time permission alone, even where it adds the hours.
          */
         get: operations["getTimeProjectsByProjectIdSummary"];
         put?: never;
@@ -637,7 +637,7 @@ export interface components {
              */
             weekStart: string;
         };
-        /** @description The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials who may read the summary. A time permission alone never adds it. */
+        /** @description The money in a project's time (D8), present only for callers who may see the project's financials — its managers, callers with projects:manage-all, and callers with projects:view-financials on a project they can otherwise see (a role on it, projects:view-all, or projects:manage-all). A time permission alone never adds it, even one that lets the caller read every entry's hours on this project. */
         TimeProjectBilling: {
             /**
              * Format: double
