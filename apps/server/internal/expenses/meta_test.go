@@ -24,8 +24,11 @@ func TestExpensesMeta_WithProjects_SaysSoAndCarriesWhatAFormNeeds(t *testing.T) 
 	if !meta.ProjectsAvailable {
 		t.Error("projectsAvailable = false with the projects module enabled, want true")
 	}
-	if meta.DefaultCurrency != "NOK" || meta.DefaultMarkupPercent != 0 {
-		t.Errorf("defaults = %s / %v, want NOK / 0", meta.DefaultCurrency, meta.DefaultMarkupPercent)
+	if meta.DefaultCurrency != "NOK" {
+		t.Errorf("defaultCurrency = %s, want NOK", meta.DefaultCurrency)
+	}
+	if meta.DefaultMarkupPercent != nil {
+		t.Errorf("defaultMarkupPercent = %v, want none — it is expenses:manage's", meta.DefaultMarkupPercent)
 	}
 	if meta.LockedBefore != nil || meta.ReceiptRequiredOver != nil {
 		t.Errorf("a fresh installation: lockedBefore %v receiptRequiredOver %v, want neither",
@@ -90,8 +93,11 @@ func TestExpensesMeta_FollowsTheSettingsAndTheCategories(t *testing.T) {
 	createCategory(t, admin, map[string]any{"name": "Parking"})
 
 	meta := getMeta(t, admin)
-	if meta.DefaultCurrency != "EUR" || meta.DefaultMarkupPercent != 12.5 {
-		t.Errorf("defaults = %s / %v, want EUR / 12.5", meta.DefaultCurrency, meta.DefaultMarkupPercent)
+	if meta.DefaultCurrency != "EUR" {
+		t.Errorf("defaultCurrency = %s, want EUR", meta.DefaultCurrency)
+	}
+	if meta.DefaultMarkupPercent == nil || *meta.DefaultMarkupPercent != 12.5 {
+		t.Errorf("defaultMarkupPercent = %v, want 12.5 for an administrator", meta.DefaultMarkupPercent)
 	}
 	if meta.LockedBefore == nil || *meta.LockedBefore != "2026-08-31" {
 		t.Errorf("lockedBefore = %v, want the lock that was just set", meta.LockedBefore)

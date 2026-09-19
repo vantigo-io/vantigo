@@ -117,39 +117,6 @@ func (q *Queries) InsertRate(ctx context.Context, arg InsertRateParams) (Expense
 	return i, err
 }
 
-const insertRateIfMissing = `-- name: InsertRateIfMissing :execrows
-INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::timestamptz)
-ON CONFLICT (kind, valid_from) DO NOTHING
-`
-
-type InsertRateIfMissingParams struct {
-	Kind      string
-	ValidFrom pgtype.Date
-	Value     pgtype.Numeric
-	Currency  *string
-	Source    *string
-	Now       time.Time
-}
-
-// InsertRateIfMissing writes one seeded row back unless the kind already has
-// a row for that day — the reset operation's whole write, so a row an
-// administrator edited on the seeded day keeps their value.
-func (q *Queries) InsertRateIfMissing(ctx context.Context, arg InsertRateIfMissingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, insertRateIfMissing,
-		arg.Kind,
-		arg.ValidFrom,
-		arg.Value,
-		arg.Currency,
-		arg.Source,
-		arg.Now,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const listRates = `-- name: ListRates :many
 SELECT id, kind, valid_from, value, currency, source, created_at, updated_at FROM expenses.rates ORDER BY kind, valid_from DESC
 `
@@ -184,6 +151,47 @@ func (q *Queries) ListRates(ctx context.Context) ([]ExpensesRate, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const restoreSeedRate = `-- name: RestoreSeedRate :execrows
+INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::timestamptz)
+ON CONFLICT (kind, valid_from) DO UPDATE SET
+    value = EXCLUDED.value,
+    currency = EXCLUDED.currency,
+    source = EXCLUDED.source,
+    updated_at = EXCLUDED.updated_at
+`
+
+type RestoreSeedRateParams struct {
+	Kind      string
+	ValidFrom pgtype.Date
+	Value     pgtype.Numeric
+	Currency  *string
+	Source    *string
+	Now       time.Time
+}
+
+// RestoreSeedRate writes one shipped row back as it shipped — the reset
+// operation's whole write. A day the product ships is the product's: removed,
+// it is created again; edited, it returns to its shipped value, currency and
+// source label, keeping the row's id so anything that quotes it still finds
+// it. Only the (kind, valid_from) pairs named by the seed table are touched,
+// so the company's own rows, on their own days, are never in the conflict
+// target and never change.
+func (q *Queries) RestoreSeedRate(ctx context.Context, arg RestoreSeedRateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreSeedRate,
+		arg.Kind,
+		arg.ValidFrom,
+		arg.Value,
+		arg.Currency,
+		arg.Source,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateRate = `-- name: UpdateRate :one

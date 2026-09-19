@@ -21,7 +21,8 @@ func (s *server) GetExpensesMeta(ctx context.Context, _ gen.GetExpensesMetaReque
 	if err != nil {
 		return nil, err
 	}
-	current, err := settingsResponse(row)
+	canManage := s.has(ctx, "expenses:manage")
+	current, err := settingsResponse(row, canManage)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +40,7 @@ func (s *server) GetExpensesMeta(ctx context.Context, _ gen.GetExpensesMetaReque
 		Capabilities: gen.ExpensesMetaCapabilities{
 			CanApprove: s.has(ctx, "expenses:approve"),
 			CanViewAll: s.has(ctx, "expenses:view-all"),
-			CanManage:  s.has(ctx, "expenses:manage"),
+			CanManage:  canManage,
 		},
 	}), nil
 }

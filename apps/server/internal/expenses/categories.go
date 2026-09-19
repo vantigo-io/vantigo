@@ -29,6 +29,17 @@ func categoryNameTaken(name string) string {
 	return fmt.Sprintf("A category named '%s' already exists", name)
 }
 
+// validateCategoryPosition is the picker's own rule, the one projects applies
+// to a task among its siblings: positions are 1-based, so anything below one
+// is a mistake. There is no upper bound — a position past the end of the list
+// means last, which is what a picker dragged to the bottom sends.
+func validateCategoryPosition(position *int32) string {
+	if position == nil || *position >= 1 {
+		return ""
+	}
+	return "A position must be 1 or greater"
+}
+
 // parseCategoryName is the name rule: required, trimmed, and at most the
 // column's width. It answers the trimmed name and the message to report.
 func parseCategoryName(raw string) (string, string) {
@@ -91,6 +102,10 @@ func (s *server) PostExpensesCategories(ctx context.Context, req gen.PostExpense
 		return gen.PostExpensesCategories400ApplicationProblemPlusJSONResponse(
 			invalidCategory(fieldError("name", msg))), nil
 	}
+	if msg := validateCategoryPosition(body.Position); msg != "" {
+		return gen.PostExpensesCategories400ApplicationProblemPlusJSONResponse(
+			invalidCategory(fieldError("position", msg))), nil
+	}
 
 	q := store.New(s.deps.Pool)
 	active := true
@@ -142,6 +157,10 @@ func (s *server) PutExpensesCategoriesById(ctx context.Context, req gen.PutExpen
 	if msg != "" {
 		return gen.PutExpensesCategoriesById400ApplicationProblemPlusJSONResponse(
 			invalidCategory(fieldError("name", msg))), nil
+	}
+	if msg := validateCategoryPosition(&body.Position); msg != "" {
+		return gen.PutExpensesCategoriesById400ApplicationProblemPlusJSONResponse(
+			invalidCategory(fieldError("position", msg))), nil
 	}
 
 	updated, err := q.UpdateCategory(ctx, store.UpdateCategoryParams{

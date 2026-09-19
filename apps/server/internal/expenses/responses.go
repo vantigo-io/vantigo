@@ -17,20 +17,28 @@ import (
 // what is not there is absent, never null — a nil pointer on an omitempty
 // field, so a client can tell "no lock is set" from "the lock is null".
 
-// settingsResponse renders the installation's settings row.
-func settingsResponse(row store.ExpensesSetting) (gen.ExpensesSettingsResponse, error) {
-	markup, err := floatFromNumeric(row.DefaultMarkupPercent)
-	if err != nil {
-		return gen.ExpensesSettingsResponse{}, err
-	}
+// settingsResponse renders the installation's settings row, shaped for the
+// caller: the default markup is expenses:manage's alone. What the company adds
+// to a supplier cost before it invoices it on is a commercial figure, which
+// design §5 keeps on the same side as the markup, the customer rate and the
+// bill amount on an expense — and no form needs the number, because the server
+// applies the default itself when a billable outlay names no markup. Meta
+// carries it under exactly the same rule, so the two reads never disagree.
+func settingsResponse(row store.ExpensesSetting, canManage bool) (gen.ExpensesSettingsResponse, error) {
 	threshold, err := floatPtrFromNumeric(row.ReceiptRequiredOver)
 	if err != nil {
 		return gen.ExpensesSettingsResponse{}, err
 	}
 	resp := gen.ExpensesSettingsResponse{
-		DefaultCurrency:      row.DefaultCurrency,
-		DefaultMarkupPercent: markup,
-		ReceiptRequiredOver:  threshold,
+		DefaultCurrency:     row.DefaultCurrency,
+		ReceiptRequiredOver: threshold,
+	}
+	if canManage {
+		markup, err := floatFromNumeric(row.DefaultMarkupPercent)
+		if err != nil {
+			return gen.ExpensesSettingsResponse{}, err
+		}
+		resp.DefaultMarkupPercent = &markup
 	}
 	if row.LockedBefore.Valid {
 		resp.LockedBefore = &openapi_types.Date{Time: row.LockedBefore.Time}

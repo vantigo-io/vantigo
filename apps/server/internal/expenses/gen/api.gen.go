@@ -25,7 +25,7 @@ type ExpensesCategoryRequest struct {
 	Active *bool  `json:"active,omitempty"`
 	Name   string `json:"name"`
 
-	// Position Where the category sits in the picker. Absent puts it last.
+	// Position Where the category sits in the picker, 1 or greater. Absent puts it last.
 	Position *int32 `json:"position,omitempty"`
 }
 
@@ -39,9 +39,11 @@ type ExpensesCategoryResponse struct {
 
 // ExpensesCategoryUpdateRequest A full replace of a category's name, whether it may be chosen, and where it sits. Renaming it onto another category's name — however it is cased — is refused on the name field.
 type ExpensesCategoryUpdateRequest struct {
-	Active   bool   `json:"active"`
-	Name     string `json:"name"`
-	Position int32  `json:"position"`
+	Active bool   `json:"active"`
+	Name   string `json:"name"`
+
+	// Position Where the category sits in the picker, 1 or greater.
+	Position int32 `json:"position"`
 }
 
 // ExpensesEntryBilling What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
@@ -294,8 +296,8 @@ type ExpensesMetaResponse struct {
 	// DefaultCurrency The currency a new expense starts in.
 	DefaultCurrency string `json:"defaultCurrency"`
 
-	// DefaultMarkupPercent The markup a new billable outlay starts with.
-	DefaultMarkupPercent float64 `json:"defaultMarkupPercent"`
+	// DefaultMarkupPercent The markup a new billable outlay starts with. Present only for expenses:manage, as on GET /settings — the server applies the default itself, so no form needs the number.
+	DefaultMarkupPercent *float64 `json:"defaultMarkupPercent,omitempty"`
 
 	// LockedBefore The period lock — nothing dated before it may be touched except by expenses:manage. Absent when no lock is set.
 	LockedBefore *openapi_types.Date `json:"lockedBefore,omitempty"`
@@ -303,7 +305,7 @@ type ExpensesMetaResponse struct {
 	// ProjectsAvailable Whether the projects module is enabled in this installation (decision X2).
 	ProjectsAvailable bool `json:"projectsAvailable"`
 
-	// ReceiptRequiredOver An employee-paid outlay above this gross amount cannot be submitted without a receipt. Absent when no threshold is set.
+	// ReceiptRequiredOver An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 
@@ -339,7 +341,7 @@ type ExpensesRateRequest struct {
 	Value     float64            `json:"value"`
 }
 
-// ExpensesRateResetRequest The rate kind to restore. Seeded rows of that kind that are missing are written back exactly as they shipped; nothing is changed and nothing is removed, so a company's own rows and its own edits to a seeded day survive.
+// ExpensesRateResetRequest The rate kind to restore. Every row of that kind the product shipped is written back exactly as it shipped — restored when it was removed, and put back to its shipped value, currency and label when it was edited. The company's own rows, on their own days, are untouched, and nothing is removed.
 type ExpensesRateResetRequest struct {
 	Kind string `json:"kind"`
 }
@@ -374,19 +376,21 @@ type ExpensesSettingsRequest struct {
 	DefaultMarkupPercent float64             `json:"defaultMarkupPercent"`
 	LockedBefore         *openapi_types.Date `json:"lockedBefore,omitempty"`
 
-	// ReceiptRequiredOver Greater than zero, at most two decimals.
+	// ReceiptRequiredOver Zero or greater, at most two decimals. Zero means every employee-paid outlay needs a receipt; leaving it out turns the rule off.
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 
 // ExpensesSettingsResponse The installation's expense settings (design §3.5). Every expenses:access holder may read them — the lock and the receipt rule decide what they may record — and expenses:manage changes them.
 type ExpensesSettingsResponse struct {
-	DefaultCurrency      string  `json:"defaultCurrency"`
-	DefaultMarkupPercent float64 `json:"defaultMarkupPercent"`
+	DefaultCurrency string `json:"defaultCurrency"`
+
+	// DefaultMarkupPercent The markup a new billable outlay starts with. Present only for expenses:manage — what the company adds to a supplier cost before invoicing it on is a commercial figure (design §5). No form needs it: the server applies the default itself when a billable outlay names no markup.
+	DefaultMarkupPercent *float64 `json:"defaultMarkupPercent,omitempty"`
 
 	// LockedBefore Absent when no lock is set.
 	LockedBefore *openapi_types.Date `json:"lockedBefore,omitempty"`
 
-	// ReceiptRequiredOver Absent when no threshold is set.
+	// ReceiptRequiredOver An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 

@@ -11,8 +11,8 @@ func TestExpensesSettings_RoundTripAndReadableByEveryAccessHolder(t *testing.T) 
 	admin, _ := signIn(t, h, "expenses:manage")
 	employee, _ := signIn(t, h)
 
-	if got := getSettings(t, employee); got.DefaultCurrency != "NOK" || got.DefaultMarkupPercent != 0 {
-		t.Errorf("a fresh installation: settings = %+v, want NOK and no markup", got)
+	if got := getSettings(t, employee); got.DefaultCurrency != "NOK" {
+		t.Errorf("a fresh installation: settings = %+v, want NOK", got)
 	}
 
 	saved := putSettings(t, admin, settingsBody(map[string]any{
@@ -24,7 +24,7 @@ func TestExpensesSettings_RoundTripAndReadableByEveryAccessHolder(t *testing.T) 
 	if saved.DefaultCurrency != "EUR" {
 		t.Errorf("defaultCurrency = %q, want it upper-cased to EUR", saved.DefaultCurrency)
 	}
-	if saved.DefaultMarkupPercent != 7.25 {
+	if saved.DefaultMarkupPercent == nil || *saved.DefaultMarkupPercent != 7.25 {
 		t.Errorf("defaultMarkupPercent = %v, want 7.25", saved.DefaultMarkupPercent)
 	}
 	if saved.LockedBefore == nil || *saved.LockedBefore != "2026-09-10" {
@@ -37,10 +37,57 @@ func TestExpensesSettings_RoundTripAndReadableByEveryAccessHolder(t *testing.T) 
 	// Everyone who may use the app reads them: the lock and the receipt rule
 	// decide what they may record, and the client shows both.
 	got := getSettings(t, employee)
-	if got.DefaultCurrency != saved.DefaultCurrency || got.DefaultMarkupPercent != saved.DefaultMarkupPercent ||
+	if got.DefaultCurrency != saved.DefaultCurrency ||
 		got.LockedBefore == nil || *got.LockedBefore != *saved.LockedBefore ||
 		got.ReceiptRequiredOver == nil || *got.ReceiptRequiredOver != *saved.ReceiptRequiredOver {
 		t.Errorf("an employee reads %+v, want the same settings the administrator saved, %+v", got, saved)
+	}
+}
+
+// The default markup is a commercial figure — what the company adds to a
+// supplier cost before it invoices it on — and design §5 keeps that side of an
+// expense for financial rights. It is expenses:manage's in both reads that
+// carry it, and neither read needs it for the expense form: the server applies
+// the default itself when a billable outlay names no markup.
+func TestExpensesSettings_TheDefaultMarkupIsAnAdministratorsToRead(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+	employee, _ := signIn(t, h)
+	putSettings(t, admin, settingsBody(map[string]any{"defaultMarkupPercent": 12.5}))
+
+	if got := getSettings(t, admin); got.DefaultMarkupPercent == nil || *got.DefaultMarkupPercent != 12.5 {
+		t.Errorf("an administrator reads defaultMarkupPercent %v, want 12.5", got.DefaultMarkupPercent)
+	}
+	if got := getSettings(t, employee); got.DefaultMarkupPercent != nil {
+		t.Errorf("an employee reads defaultMarkupPercent %v, want none", got.DefaultMarkupPercent)
+	}
+	for name, raw := range map[string]map[string]any{
+		"the settings": rawSettings(t, employee),
+		"meta":         rawMeta(t, employee),
+	} {
+		if _, ok := raw["defaultMarkupPercent"]; ok {
+			t.Errorf("%s = %v, want no defaultMarkupPercent key at all for an employee", name, raw)
+		}
+	}
+	if meta := getMeta(t, admin); meta.DefaultMarkupPercent == nil || *meta.DefaultMarkupPercent != 12.5 {
+		t.Errorf("an administrator's meta carries defaultMarkupPercent %v, want 12.5", meta.DefaultMarkupPercent)
+	}
+}
+
+// A receipt threshold of zero is a policy, not a mistake: every employee-paid
+// outlay then needs a receipt. Clearing the setting is what turns the rule off.
+func TestExpensesSettings_AThresholdOfZeroMeansAlwaysRequireAReceipt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+
+	saved := putSettings(t, admin, settingsBody(map[string]any{"receiptRequiredOver": 0}))
+	if saved.ReceiptRequiredOver == nil || *saved.ReceiptRequiredOver != 0 {
+		t.Errorf("receiptRequiredOver = %v, want zero kept as a value", saved.ReceiptRequiredOver)
+	}
+	if raw := rawSettings(t, admin); raw["receiptRequiredOver"] != float64(0) {
+		t.Errorf("settings = %v, want receiptRequiredOver present and zero", raw)
 	}
 }
 
@@ -84,7 +131,6 @@ func TestExpensesSettings_RefusesAFieldItCannotStore(t *testing.T) {
 		"a negative markup":        {map[string]any{"defaultMarkupPercent": -1}, "defaultMarkupPercent"},
 		"a markup over 1000":       {map[string]any{"defaultMarkupPercent": 1000.01}, "defaultMarkupPercent"},
 		"a markup of three":        {map[string]any{"defaultMarkupPercent": 1.234}, "defaultMarkupPercent"},
-		"a threshold of zero":      {map[string]any{"receiptRequiredOver": 0}, "receiptRequiredOver"},
 		"a negative threshold":     {map[string]any{"receiptRequiredOver": -5}, "receiptRequiredOver"},
 		"a threshold of three":     {map[string]any{"receiptRequiredOver": 10.001}, "receiptRequiredOver"},
 		"a threshold that is huge": {map[string]any{"receiptRequiredOver": 10_000_000_000.0}, "receiptRequiredOver"},

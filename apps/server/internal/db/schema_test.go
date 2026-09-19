@@ -1505,6 +1505,117 @@ func TestExpensesBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	if settingsCount != 1 {
 		t.Errorf("settings rows = %d, want the single row", settingsCount)
 	}
+	// And "one row" is the table's own rule: a second row is refused by the
+	// database, not merely never written by the module.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO expenses.settings (id, default_currency, default_markup_percent, updated_at)
+		VALUES (2, 'NOK', 0, now())`); !isUniqueViolation(err) {
+		t.Errorf("a second settings row: %v, want a unique violation from ux_settings_single_row", err)
+	}
+}
+
+// expensesColumns is design §3.1 and §3.2 written out: the entries and
+// attachments columns with their types and nullability. No later delivery of
+// this module may add a migration, so this is where the shape delivery B
+// builds on is pinned — a widened column or a dropped one fails here rather
+// than in whichever query first misses it.
+var expensesColumns = map[string][]expensesColumn{
+	"entries": {
+		{"id", "bigint", "NO"},
+		{"user_id", "uuid", "NO"},
+		{"created_by_user_id", "uuid", "NO"},
+		{"claim_id", "bigint", "YES"},
+		{"kind", "character varying", "NO"},
+		{"entry_date", "date", "NO"},
+		{"description", "character varying", "NO"},
+		{"category_id", "integer", "YES"},
+		{"supplier", "character varying", "YES"},
+		{"paid_by", "character varying", "YES"},
+		{"currency", "character", "NO"},
+		{"gross_amount", "numeric", "NO"},
+		{"vat_amount", "numeric", "YES"},
+		{"distance_km", "numeric", "YES"},
+		{"from_place", "character varying", "YES"},
+		{"to_place", "character varying", "YES"},
+		{"passengers", "smallint", "NO"},
+		{"rate", "numeric", "YES"},
+		{"passenger_rate", "numeric", "YES"},
+		{"rate_overridden_by_user_id", "uuid", "YES"},
+		{"rate_table_value", "numeric", "YES"},
+		{"project_id", "integer", "YES"},
+		{"billing_line_id", "integer", "YES"},
+		{"billable", "boolean", "NO"},
+		{"markup_percent", "numeric", "YES"},
+		{"bill_rate_per_km", "numeric", "YES"},
+		{"bill_amount", "numeric", "YES"},
+		{"status", "character varying", "NO"},
+		{"submitted_at", "timestamp with time zone", "YES"},
+		{"decided_at", "timestamp with time zone", "YES"},
+		{"decided_by_user_id", "uuid", "YES"},
+		{"rejection_reason", "character varying", "YES"},
+		{"reimbursed_at", "timestamp with time zone", "YES"},
+		{"reimbursed_by_user_id", "uuid", "YES"},
+		{"reimbursement_reference", "character varying", "YES"},
+		{"reimbursement_date", "date", "YES"},
+		{"invoiced_at", "timestamp with time zone", "YES"},
+		{"invoiced_by_user_id", "uuid", "YES"},
+		{"invoice_reference", "character varying", "YES"},
+		{"revision", "integer", "NO"},
+		{"created_at", "timestamp with time zone", "NO"},
+		{"updated_at", "timestamp with time zone", "NO"},
+	},
+	"attachments": {
+		{"id", "bigint", "NO"},
+		{"entry_id", "bigint", "NO"},
+		{"object_key", "text", "NO"},
+		{"file_name", "character varying", "NO"},
+		{"content_type", "character varying", "NO"},
+		{"size_bytes", "bigint", "NO"},
+		{"uploaded_by_user_id", "uuid", "NO"},
+		{"created_at", "timestamp with time zone", "NO"},
+	},
+}
+
+// expensesColumn is one row of information_schema.columns, in the order the
+// query selects it.
+type expensesColumn struct {
+	Name     string
+	DataType string
+	Nullable string
+}
+
+// The columns of expenses.entries and expenses.attachments are exactly design
+// §3.1 and §3.2, in order. The module's own suite would catch a column its
+// queries name; this catches the ones no query names yet — the reimbursement,
+// invoicing, rate-override and travel-claim columns that later deliveries
+// depend on and that no later migration may add.
+func TestExpensesBaseline_PinsTheEntryAndAttachmentColumns(t *testing.T) {
+	pool, _ := testdb.Migrated(t)
+	ctx := context.Background()
+
+	for table, want := range expensesColumns {
+		rows, err := pool.Query(ctx, `
+			SELECT column_name, data_type, is_nullable
+			FROM information_schema.columns
+			WHERE table_schema = 'expenses' AND table_name = $1
+			ORDER BY ordinal_position`, table)
+		if err != nil {
+			t.Fatalf("query %s columns: %v", table, err)
+		}
+		got, err := pgx.CollectRows(rows, pgx.RowToStructByPos[expensesColumn])
+		if err != nil {
+			t.Fatalf("collect %s columns: %v", table, err)
+		}
+		if len(got) != len(want) {
+			t.Errorf("expenses.%s has %d columns, want the %d of the design; got %v", table, len(got), len(want), got)
+			continue
+		}
+		for i, w := range want {
+			if got[i] != w {
+				t.Errorf("expenses.%s column %d = %+v, want %+v", table, i, got[i], w)
+			}
+		}
+	}
 }
 
 // isUniqueViolation reports whether err is Postgres SQL state 23505
