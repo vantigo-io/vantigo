@@ -748,11 +748,15 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 // gets the access layer's own 403; one who may not see it, the unknown id's
 // 404.
 //
-// The receipt rows go with the expense (the foreign key cascades); the objects
-// they name are removed once that delete has committed, and never before — a
-// delete that turns out not to have happened must not have taken anything with
-// it. A removal the store refuses is logged and does not fail the request: the
-// row is what made it a receipt, and what is left is a stray object.
+// The receipt rows go with the expense (the foreign key cascades). Their object
+// keys are read under the expense's own row lock, in the transaction that
+// deletes it, because an upload takes that same lock: read outside it, a
+// receipt committing between the read and the delete would have its row
+// cascaded away and its object left behind. The objects themselves are removed
+// once the delete has committed, and never before — a delete that turns out not
+// to have happened must not have taken anything with it. A removal the store
+// refuses is logged and does not fail the request: the row is what made it a
+// receipt, and what is left is a stray object.
 func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteExpensesEntriesByIdRequestObject) (gen.DeleteExpensesEntriesByIdResponseObject, error) {
 	q := store.New(s.deps.Pool)
 	c, err := s.callerFor(ctx, q)
@@ -774,29 +778,51 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 			invalidEntry(fieldError(field, msg))), nil
 	}
 
-	keys, err := q.ListAttachmentKeysForEntry(ctx, req.Id)
-	if err != nil {
-		return nil, fmt.Errorf("expenses: read an expense's receipt keys: %w", err)
-	}
-	deleted, err := q.DeleteEntry(ctx, store.DeleteEntryParams{ID: req.Id, AnyOwner: c.Manage, UserID: c.UserID})
-	if err != nil {
-		return nil, fmt.Errorf("expenses: delete an expense: %w", err)
-	}
-	if deleted == 0 {
-		// Something committed between the read and the delete: a concurrent
-		// delete (it is gone) or a submit (it is no longer a draft). The
-		// re-read decides which, and the second case is the state refusal
-		// above, arrived at a moment later.
-		row, err := q.GetEntry(ctx, req.Id)
+	var (
+		keys       []string
+		deleted    int64
+		gone       bool
+		staleField string
+		staleMsg   string
+	)
+	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
+		locked, err := txq.LockEntry(ctx, req.Id)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return gen.DeleteExpensesEntriesById404Response{}, nil
-		} else if err != nil {
-			return nil, fmt.Errorf("expenses: re-read an expense after a delete that removed nothing: %w", err)
+			// A concurrent delete won; it is gone, which is the unknown id.
+			gone = true
+			return nil
 		}
-		if field, msg := entryStateRefusal(c, row); msg != "" {
-			return gen.DeleteExpensesEntriesById400ApplicationProblemPlusJSONResponse(
-				invalidEntry(fieldError(field, msg))), nil
+		if err != nil {
+			return fmt.Errorf("expenses: lock an expense: %w", err)
 		}
+		// Judged again on the row as it is under the lock: a submit that
+		// committed since is the state refusal above, arrived a moment later.
+		if staleField, staleMsg = entryStateRefusal(c, locked); staleMsg != "" {
+			return nil
+		}
+		if keys, err = txq.ListAttachmentKeysForEntry(ctx, req.Id); err != nil {
+			return fmt.Errorf("expenses: read an expense's receipt keys: %w", err)
+		}
+		if deleted, err = txq.DeleteEntry(ctx, store.DeleteEntryParams{
+			ID: req.Id, AnyOwner: c.Manage, UserID: c.UserID,
+		}); err != nil {
+			return fmt.Errorf("expenses: delete an expense: %w", err)
+		}
+		return nil
+	})
+	switch {
+	case err != nil:
+		return nil, err
+	case gone:
+		return gen.DeleteExpensesEntriesById404Response{}, nil
+	case staleMsg != "":
+		return gen.DeleteExpensesEntriesById400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError(staleField, staleMsg))), nil
+	case deleted == 0:
+		// Unreachable: the row was locked, the caller is its writer (checked
+		// above) and its state passed under the lock, which is every guard
+		// DeleteEntry itself applies. Answered rather than asserted, because a
+		// future guard added to the query should not become a silent 204.
 		return gen.DeleteExpensesEntriesById403JSONResponse(forbidden()), nil
 	}
 	for _, key := range keys {

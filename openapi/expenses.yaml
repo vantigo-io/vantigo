@@ -1150,6 +1150,16 @@ paths:
                     description: Forbidden — the caller may see the expense but it is not theirs to change.
                 "404":
                     description: Not Found — no expense has that id, or the caller may not see it.
+                "429":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Too Many Requests — at most 120 receipt uploads an hour from one client address.
+                    headers:
+                        Retry-After:
+                            schema:
+                                type: string
                 "503":
                     content:
                         application/problem+json:
