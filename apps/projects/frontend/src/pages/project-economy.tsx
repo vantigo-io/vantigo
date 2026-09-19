@@ -42,20 +42,6 @@ import { MilestoneInvoicedModal } from "./-milestone-invoiced-modal";
 import { ProjectFormModal, type ProjectModalState } from "./-project-form-modal";
 
 /**
- * An amount as this project writes it: in the project's currency when it has
- * one, and the catalog's dash — never a zero — for an amount the API left out.
- */
-const useMoney = () => {
-  const { t, formatters } = useI18n("projects");
-  return (value: number | null | undefined, currency: string | undefined): string =>
-    value === null || value === undefined
-      ? t("notAvailable")
-      : currency
-        ? formatters.formatCurrency(value, currency)
-        : formatters.formatNumber(value);
-};
-
-/**
  * The Economy tab (design §7): the budget against what has been logged, and
  * below it the invoice plan.
  *
@@ -189,17 +175,24 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
         </SimpleGrid>
 
         {economy.timeTracking ? (
-          economy.actuals && (
+          economy.actuals &&
+          // The project's own bar follows the same rule as its lines and the
+          // portfolio's rows: with no basis a bar fills its whole width whatever
+          // was logged, which is what a project at 100 % looks like — right
+          // under a headline saying there is no budget.
+          (used === undefined ? (
+            <LoggedSplit segments={economy.actuals} totalHours={economy.actuals.totalHours} />
+          ) : (
             <Box data-testid="project-budget-bar">
               <BudgetBar
                 segments={economy.actuals}
-                basis={used?.basis}
+                basis={used.basis}
                 budget={basisValue}
                 currency={currency}
                 overBudget={economy.overBudget}
               />
             </Box>
-          )
+          ))
         ) : (
           <Text size="sm" c="dimmed" data-testid="time-tracking-off">
             {t("timeTrackingOff")}
@@ -327,9 +320,11 @@ const EconomyLineRow = ({ line, currency }: { line: EconomyLine; currency?: stri
               currency={currency}
               overBudget={line.overBudget}
             />
-            {/* The bar's numbers live in its label; the column owes a sighted
-                reader the hours too. */}
-            <Text size="sm">{hours(line.actuals.totalHours)}</Text>
+            {/* The bar's label already reads the total out; this copy is for
+                eyes only, so a reader is not told the same hours twice. */}
+            <Text size="sm" aria-hidden>
+              {hours(line.actuals.totalHours)}
+            </Text>
           </Stack>
         )}
       </Table.Td>
@@ -465,15 +460,14 @@ const InvoicePlan = ({ projectId, project }: { projectId: number; project: Proje
 /** What the plan stands at, in the three figures somebody planning invoices reads first. */
 const HeadlineFigures = ({ totals }: { totals: BillingMilestoneTotals }) => {
   const { t } = useI18n("projects");
-  const money = useMoney();
-  const currency = totals.currency ?? undefined;
+  const { money } = useEconomyFormat(totals.currency ?? undefined);
 
   return (
     <Card withBorder padding="lg" radius="md" data-testid="milestone-totals">
       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-        <Field label={t("plannedTotal")}>{money(totals.planned, currency)}</Field>
-        <Field label={t("readyTotal")}>{money(totals.ready, currency)}</Field>
-        <Field label={t("invoicedTotal")}>{money(totals.invoiced, currency)}</Field>
+        <Field label={t("plannedTotal")}>{money(totals.planned)}</Field>
+        <Field label={t("readyTotal")}>{money(totals.ready)}</Field>
+        <Field label={t("invoicedTotal")}>{money(totals.invoiced)}</Field>
       </SimpleGrid>
     </Card>
   );
@@ -486,8 +480,7 @@ const HeadlineFigures = ({ totals }: { totals: BillingMilestoneTotals }) => {
  */
 const PlanFooter = ({ totals }: { totals: BillingMilestoneTotals }) => {
   const { t } = useI18n("projects");
-  const money = useMoney();
-  const currency = totals.currency ?? undefined;
+  const { money } = useEconomyFormat(totals.currency ?? undefined);
   if (totals.fixedPrice === undefined || totals.fixedPrice === null) return null;
 
   return (
@@ -497,17 +490,17 @@ const PlanFooter = ({ totals }: { totals: BillingMilestoneTotals }) => {
           {t("fixedPriceAmount")}
         </Text>
         <Text size="sm" fw={600}>
-          {money(totals.fixedPrice, currency)}
+          {money(totals.fixedPrice)}
         </Text>
       </Group>
       {totals.unplanned !== undefined && totals.unplanned !== null && (
         <Text size="sm" c="dimmed">
-          {t("milestonesUnplanned", { amount: money(totals.unplanned, currency) })}
+          {t("milestonesUnplanned", { amount: money(totals.unplanned) })}
         </Text>
       )}
       {totals.overPlanned !== undefined && totals.overPlanned !== null && (
         <Alert color="yellow" icon={<IconInfoCircle size={16} />} data-testid="over-planned-note">
-          {t("milestonesOverPlanned", { amount: money(totals.overPlanned, currency) })}
+          {t("milestonesOverPlanned", { amount: money(totals.overPlanned) })}
         </Alert>
       )}
     </Stack>
@@ -517,9 +510,10 @@ const PlanFooter = ({ totals }: { totals: BillingMilestoneTotals }) => {
 /** How a milestone is priced, in words: a flat amount, or a share and what it comes to. */
 const MilestoneAmount = ({ milestone }: { milestone: BillingMilestone }) => {
   const { t, formatters } = useI18n("projects");
-  const money = useMoney();
-  const currency = milestone.currency ?? undefined;
-  const amount = money(milestone.effectiveAmount, currency);
+  // A flat amount remembers the currency it was entered in, so each row reads
+  // in its own rather than in the plan's current one.
+  const { money } = useEconomyFormat(milestone.currency ?? undefined);
+  const amount = money(milestone.effectiveAmount);
   if (milestone.percent === undefined || milestone.percent === null) return <Text size="sm">{amount}</Text>;
   return (
     <Text size="sm">
