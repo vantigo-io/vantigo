@@ -825,8 +825,8 @@ func TestLoad_TrustedProxyHopsRequireCIDRsOutsideDevelopment(t *testing.T) {
 }
 
 func TestLoad_Modules(t *testing.T) {
-	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time"}) {
-		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time when MODULES is unset", cfg.Modules)
+	if cfg := mustLoad(t, validEnv()); !slices.Equal(cfg.Modules, []string{"customers", "products", "energy", "communications", "projects", "time", "expenses"}) {
+		t.Errorf("Modules = %v, want the default customers,products,energy,communications,projects,time,expenses when MODULES is unset", cfg.Modules)
 	}
 
 	cfg := mustLoad(t, with(validEnv(), "MODULES", " Customers ,, ENERGY,products "))
@@ -834,7 +834,7 @@ func TestLoad_Modules(t *testing.T) {
 		t.Errorf("Modules = %v, want trimmed, lower-cased entries with empties dropped", cfg.Modules)
 	}
 
-	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time") {
+	if msg := loadError(t, with(validEnv(), "MODULES", "customers,widgets")); !strings.Contains(msg, `"widgets" is not a known module`) || !strings.Contains(msg, "customers, products, energy, communications, projects, time, expenses") {
 		t.Errorf("error = %q, want it to name the bad value and the known set", msg)
 	}
 
@@ -857,6 +857,20 @@ func TestLoad_Modules(t *testing.T) {
 	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,energy,communications,projects,time"))
 	if !slices.Equal(cfg.Modules, []string{"customers", "energy", "communications", "projects", "time"}) {
 		t.Errorf("Modules = %v, want exactly customers,energy,communications,projects,time", cfg.Modules)
+	}
+
+	// expenses depends on nobody (decision X1): it loads beside customers
+	// alone, and — since it does not read the customer directory either — on
+	// its own. Both are configurations an installation may actually run, so
+	// both are pinned here; a "expenses requires ..." rule added to modules()
+	// would fail one of them.
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "customers,expenses"))
+	if !slices.Equal(cfg.Modules, []string{"customers", "expenses"}) {
+		t.Errorf("Modules = %v, want exactly customers,expenses", cfg.Modules)
+	}
+	cfg = mustLoad(t, with(validEnv(), "MODULES", "expenses"))
+	if !slices.Equal(cfg.Modules, []string{"expenses"}) {
+		t.Errorf("Modules = %v, want exactly expenses", cfg.Modules)
 	}
 }
 

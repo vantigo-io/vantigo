@@ -60,10 +60,11 @@ a one-shot job, and then starts Vantigo:
 - **Vantigo** — <http://localhost:8080>
 - **API contract** — `GET http://localhost:8080/api/openapi.json` (requires a session)
 
-The Customers, Products, Energy, Communications, Projects and Time modules are
-enabled by default (`MODULES` in `vantigo.env`). They share one PostgreSQL database
-named `vantigo`, with independent `identity`, `customers`, `products`, `energy`,
-`communications`, `projects` and `time` schemas and migration histories.
+The Customers, Products, Energy, Communications, Projects, Time and Expenses
+modules are enabled by default (`MODULES` in `vantigo.env`). They share one
+PostgreSQL database named `vantigo`, with independent `identity`, `customers`,
+`products`, `energy`, `communications`, `projects`, `time` and `expenses`
+schemas and migration histories.
 
 ## First sign-in
 
@@ -158,9 +159,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "vantigo" GRANT USAGE, SELECT ON SEQUENCES TO 
 -- Default privileges only cover objects created afterwards; grant on the
 -- schemas the enabled modules already created (add/remove schemas to match
 -- the MODULES enabled in your installation).
-GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time TO "vantigo_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time TO "vantigo_app";
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time TO "vantigo_app";
+GRANT USAGE ON SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA identity, customers, products, energy, communications, projects, time, expenses TO "vantigo_app";
 ```
 
 ## Background workers
@@ -222,7 +223,7 @@ The whole application can be served below one configurable path prefix. Set
 host (no path — the path prefix is `APP_BASE_PATH`, not part of `APP_URL`).
 The API prefixes remain `/api/v1/identity`, `/api/v1/customers`,
 `/api/v1/products`, `/api/v1/energy`, `/api/v1/communications`,
-`/api/v1/projects` and `/api/v1/time`.
+`/api/v1/projects`, `/api/v1/time` and `/api/v1/expenses`.
 
 For example, with nginx:
 
@@ -254,8 +255,8 @@ configured through the Communications API, where the host, port and a protected
 password are stored as mailbox credentials — there is no environment variable
 for them. Those channels are **SMTP-only**: the API refuses to create or update
 a channel naming any other provider, and rejects a Mailgun credential outright.
-See [communications](../../docs/communications.md). The Projects and Time modules
-need no environment variable of their own; see
+See [communications](../../docs/communications.md). The Projects, Time and
+Expenses modules need no environment variable of their own; see
 [projects](../../docs/projects.md) and [time](../../docs/time.md).
 
 Telemetry is off by default. Standard OTLP variables can be set in

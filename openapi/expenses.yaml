@@ -1,0 +1,619 @@
+components:
+    schemas:
+        ExpensesCategoryRequest:
+            description: A new expense category. The name is unique case-insensitively; position orders the picker and defaults to the end.
+            properties:
+                active:
+                    description: Whether the category may be chosen. Absent means active.
+                    type: boolean
+                name:
+                    type: string
+                position:
+                    description: Where the category sits in the picker. Absent puts it last.
+                    format: int32
+                    type: integer
+            required:
+                - name
+            type: object
+        ExpensesCategoryResponse:
+            description: One expense category (design §3.3). Categories are deactivated, never deleted, once an expense has used one.
+            properties:
+                active:
+                    type: boolean
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                position:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - name
+                - active
+                - position
+            type: object
+        ExpensesCategoryUpdateRequest:
+            description: A full replace of a category's name, whether it may be chosen, and where it sits. Renaming it onto another category's name — however it is cased — is refused on the name field.
+            properties:
+                active:
+                    type: boolean
+                name:
+                    type: string
+                position:
+                    format: int32
+                    type: integer
+            required:
+                - name
+                - active
+                - position
+            type: object
+        ExpensesMetaCapabilities:
+            description: What the calling user may do in this module, so the frontend never re-derives the rules.
+            properties:
+                canApprove:
+                    description: Whether the caller holds expenses:approve.
+                    type: boolean
+                canManage:
+                    description: Whether the caller holds expenses:manage — settings, rates, categories, recording for a colleague, reimbursements and working past the period lock.
+                    type: boolean
+                canViewAll:
+                    description: Whether the caller holds expenses:view-all.
+                    type: boolean
+            required:
+                - canApprove
+                - canViewAll
+                - canManage
+            type: object
+        ExpensesMetaResponse:
+            description: What the Expenses app needs before it can draw anything — above all whether this installation has projects at all (decision X2). Without projects there is no project field, billing line, billable flag or markup anywhere, and every request carrying one is refused on that field.
+            properties:
+                capabilities:
+                    $ref: '#/components/schemas/ExpensesMetaCapabilities'
+                categories:
+                    description: Every category, active first is not assumed — they come in position order, then by name, inactive ones included so a stored expense can still name its own.
+                    items:
+                        $ref: '#/components/schemas/ExpensesCategoryResponse'
+                    type: array
+                defaultCurrency:
+                    description: The currency a new expense starts in.
+                    type: string
+                defaultMarkupPercent:
+                    description: The markup a new billable outlay starts with.
+                    format: double
+                    type: number
+                lockedBefore:
+                    description: The period lock — nothing dated before it may be touched except by expenses:manage. Absent when no lock is set.
+                    format: date
+                    type: string
+                projectsAvailable:
+                    description: Whether the projects module is enabled in this installation (decision X2).
+                    type: boolean
+                receiptRequiredOver:
+                    description: An employee-paid outlay above this gross amount cannot be submitted without a receipt. Absent when no threshold is set.
+                    format: double
+                    type: number
+            required:
+                - projectsAvailable
+                - defaultCurrency
+                - defaultMarkupPercent
+                - categories
+                - capabilities
+            type: object
+        ExpensesRateRequest:
+            description: A new dated rate (design §3.4). A money kind carries a currency and a value greater than zero with at most two decimals; a percentage kind carries no currency and a value between 0 and 100. One row per kind and valid-from day.
+            properties:
+                currency:
+                    description: A three-letter ISO 4217 code. Required for the money kinds, refused for the percentage kinds.
+                    type: string
+                kind:
+                    description: 'One of: mileage, mileage_passenger, mileage_customer, per_diem_6_12, per_diem_over_12, per_diem_overnight_hotel, per_diem_overnight_other, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent.'
+                    type: string
+                source:
+                    description: Where the rate comes from, for display — "State rate" on a seeded row. Absent means the company's own.
+                    type: string
+                validFrom:
+                    format: date
+                    type: string
+                value:
+                    format: double
+                    type: number
+            required:
+                - kind
+                - validFrom
+                - value
+            type: object
+        ExpensesRateResetRequest:
+            description: The rate kind to restore. Seeded rows of that kind that are missing are written back exactly as they shipped; nothing is changed and nothing is removed, so a company's own rows and its own edits to a seeded day survive.
+            properties:
+                kind:
+                    type: string
+            required:
+                - kind
+            type: object
+        ExpensesRateResponse:
+            description: One dated rate. The rate in force on a date is the row of that kind with the greatest validFrom on or before it.
+            properties:
+                currency:
+                    description: The money kinds' three-letter ISO 4217 code. Absent on the percentage kinds.
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                kind:
+                    type: string
+                source:
+                    description: Where the rate comes from, for display. Absent means the company's own.
+                    type: string
+                validFrom:
+                    format: date
+                    type: string
+                value:
+                    format: double
+                    type: number
+            required:
+                - id
+                - kind
+                - validFrom
+                - value
+            type: object
+        ExpensesRateUpdateRequest:
+            description: A full replace of a rate row's day, value, currency and source. The kind stays the row's own.
+            properties:
+                currency:
+                    type: string
+                source:
+                    type: string
+                validFrom:
+                    format: date
+                    type: string
+                value:
+                    format: double
+                    type: number
+            required:
+                - validFrom
+                - value
+            type: object
+        ExpensesSettingsRequest:
+            description: A full replace of the installation's expense settings. Leaving lockedBefore or receiptRequiredOver out — or sending null — clears it.
+            properties:
+                defaultCurrency:
+                    description: A three-letter ISO 4217 code.
+                    type: string
+                defaultMarkupPercent:
+                    description: 0 to 1000, at most two decimals.
+                    format: double
+                    type: number
+                lockedBefore:
+                    format: date
+                    type: string
+                receiptRequiredOver:
+                    description: Greater than zero, at most two decimals.
+                    format: double
+                    type: number
+            required:
+                - defaultCurrency
+                - defaultMarkupPercent
+            type: object
+        ExpensesSettingsResponse:
+            description: The installation's expense settings (design §3.5). Every expenses:access holder may read them — the lock and the receipt rule decide what they may record — and expenses:manage changes them.
+            properties:
+                defaultCurrency:
+                    type: string
+                defaultMarkupPercent:
+                    format: double
+                    type: number
+                lockedBefore:
+                    description: Absent when no lock is set.
+                    format: date
+                    type: string
+                receiptRequiredOver:
+                    description: Absent when no threshold is set.
+                    format: double
+                    type: number
+            required:
+                - defaultCurrency
+                - defaultMarkupPercent
+            type: object
+info:
+    title: Vantigo Expenses API
+    version: "1"
+openapi: 3.0.3
+paths:
+    /api/v1/expenses/categories:
+        get:
+            description: Every expense category, in position order and then by name, inactive ones included so a stored expense can still name its own.
+            operationId: getExpensesCategories
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesCategoryResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List expense categories
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        post:
+            description: Adds an expense category.
+            operationId: postExpensesCategories
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesCategoryRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesCategoryResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — including a name another category already has, however it is cased.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Add an expense category
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/categories/{id}:
+        put:
+            description: Replaces a category's name, whether it may be chosen, and where it sits. A category is never deleted — one that is no longer wanted is deactivated, so the expenses booked on it keep their name.
+            operationId: putExpensesCategoriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesCategoryUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesCategoryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — including a name another category already has, however it is cased.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no category has that id.
+            summary: Change an expense category
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/meta:
+        get:
+            description: What this installation of Expenses can do (decision X2) and the settings and categories every form needs, in one read.
+            operationId: getExpensesMeta
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesMetaResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the Expenses metadata
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/rates:
+        get:
+            description: Every dated rate, by kind and then the latest first. The client groups them per kind.
+            operationId: getExpensesRates
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesRateResponse'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the expense rates
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+        post:
+            description: Adds a dated rate. It prices expenses saved from now on; a submitted expense's rate never moves.
+            operationId: postExpensesRates
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesRateRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesRateResponse'
+                    description: Created
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — including a validFrom the kind already has a row for.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Add an expense rate
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/rates/reset:
+        post:
+            description: Puts back the rows one kind shipped with (decision X8) that are no longer there. Nothing is changed and nothing is removed, so the company's own rows and its own edits to a seeded day survive. A kind with no seeded rows changes nothing.
+            operationId: postExpensesRatesReset
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesRateResetRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesRateResponse'
+                                type: array
+                    description: OK — every rate as it now stands, the same list GET /rates answers.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the kind is not one of the rate kinds.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Restore a rate kind's seeded rows
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/rates/{id}:
+        delete:
+            description: Removes a rate row. Expenses it priced keep what was snapshotted on them.
+            operationId: deleteExpensesRatesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no rate has that id.
+            summary: Delete an expense rate
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+        put:
+            description: Replaces a rate row's day, value, currency and source. The kind stays the row's own.
+            operationId: putExpensesRatesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int32
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesRateUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesRateResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — including a validFrom the kind already has another row for.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no rate has that id.
+            summary: Change an expense rate
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/settings:
+        get:
+            description: The settings every expenses:access holder may know — the currency a new expense starts in, the default markup, the receipt threshold and the period lock.
+            operationId: getExpensesSettings
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesSettingsResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Get the expense settings
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        put:
+            description: Replaces the installation's expense settings. Any lock date is accepted, one in the future included — the lock is an administrator's statement about which period is closed.
+            operationId: putExpensesSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesSettingsResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request — the currency, the markup or the receipt threshold did not pass.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Change the expense settings
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access+expenses:manage
+servers:
+    - url: /
