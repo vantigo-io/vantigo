@@ -483,6 +483,71 @@ func TestBillingLines_Budgets_StoredReturnedAndCleared(t *testing.T) {
 	}
 }
 
+// budgetAmount lives inside pricing, not at the line's top level: a caller
+// with financial rights sees it there and nowhere else. The assertion is on
+// raw JSON, the only way to tell "not present at the top level" from "never
+// serialised at all".
+func TestBillingLines_BudgetAmount_LivesInsidePricingNotAtTheTopLevel(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LBUD1001", "currency": "NOK"})
+	createLine(t, c, project.Id, map[string]any{"budgetAmount": 5000})
+
+	r := readLines(t, c, project.Id)
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d body %s, want 200", r.Status, r.Body)
+	}
+	var raw []map[string]any
+	if err := json.Unmarshal(r.Body, &raw); err != nil {
+		t.Fatalf("decode %s: %v", r.Body, err)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("body %s, want exactly one line", r.Body)
+	}
+	if _, present := raw[0]["budgetAmount"]; present {
+		t.Errorf("body %s carries a top-level 'budgetAmount', want it only inside 'pricing'", r.Body)
+	}
+	pricing, ok := raw[0]["pricing"].(map[string]any)
+	if !ok {
+		t.Fatalf("body %s, want a 'pricing' object for a manager", r.Body)
+	}
+	if pricing["budgetAmount"] != 5000.0 {
+		t.Errorf("pricing.budgetAmount = %v, want 5000", pricing["budgetAmount"])
+	}
+}
+
+// A PUT that changes only a budget still writes line-changed: budgetHours
+// and budgetAmount are fields like any other, named (never valued, D12) in
+// the timeline, and a change that touched only them must not read as if
+// nothing happened.
+func TestPutProjectsByIdBillingLines_ChangingOnlyABudget_WritesLineChanged(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "LBUDCHG1000", "currency": "NOK"})
+	line := createLine(t, c, project.Id, map[string]any{"budgetHours": 40, "budgetAmount": 5000})
+
+	changeLine(t, c, project.Id, line.Id, lineBody(map[string]any{"budgetHours": 80, "budgetAmount": 10000}))
+
+	if got := eventTypes(t, h, project.Id); len(got) != 3 || got[2] != "line-changed" {
+		t.Fatalf("timeline = %v, want [project-created line-added line-changed]", got)
+	}
+	payload := lastPayload(t, h, project.Id, "line-changed")
+	fields := payloadFields(t, payload)
+	for _, want := range []string{"budgetHours", "budgetAmount"} {
+		if !contains(fields, want) {
+			t.Errorf("fields = %v, want %q named", fields, want)
+		}
+	}
+	raw := lastPayloadText(t, h, project.Id, "line-changed")
+	for _, leaked := range []string{"80", "10000"} {
+		if strings.Contains(raw, leaked) {
+			t.Errorf("line-changed payload = %s, want no amount in it (%s leaked)", raw, leaked)
+		}
+	}
+}
+
 // D13's guard extended past a 'fixed' line (design §3.3): a milestone that is
 // not cancelled also denominates an amount in the project's currency, so the
 // currency cannot be cleared while one exists — but a cancelled milestone
@@ -528,6 +593,45 @@ func TestPutProjectsById_ClearingTheCurrencyWithABudgetedLine_Returns400(t *test
 	createLine(t, c, project.Id, map[string]any{"budgetAmount": 5000})
 
 	r := updateProject(t, c, project, map[string]any{"currency": nil})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["currency"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'currency'", problem.Errors)
+	}
+}
+
+// The guard's trigger is "changed or cleared" (`!equalStringPtr`), not just
+// "cleared": swapping NOK for SEK would silently reprice a milestone or a
+// budgeted line exactly as clearing the currency would.
+func TestPutProjectsById_ChangingTheCurrencyWithAMilestone_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "MCUR1002", "currency": "NOK"})
+	insertMilestone(t, h, project.Id, nil)
+
+	r := updateProject(t, c, project, map[string]any{"currency": "SEK"})
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if len(problem.Errors["currency"]) == 0 {
+		t.Errorf("errors = %v, want a message on 'currency'", problem.Errors)
+	}
+}
+
+func TestPutProjectsById_ChangingTheCurrencyWithABudgetedLine_Returns400(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "BCUR1001", "currency": "NOK"})
+	createLine(t, c, project.Id, map[string]any{"budgetAmount": 5000})
+
+	r := updateProject(t, c, project, map[string]any{"currency": "SEK"})
 	if r.Status != http.StatusBadRequest {
 		t.Fatalf("status %d body %s, want 400", r.Status, r.Body)
 	}

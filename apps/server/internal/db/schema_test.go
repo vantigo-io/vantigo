@@ -1356,6 +1356,64 @@ func TestTimeBaseline_AppliesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestProjectsMilestones_AppliesAndIsIdempotent proves
+// 00011_projects_milestones.sql applies, rolls back and re-applies cleanly:
+// projects.billing_milestones exists with its two indexes (design §3.2's
+// manual order and the partial one over the two open statuses), and
+// projects.billing_lines gained its own budget columns (§3.1).
+func TestProjectsMilestones_AppliesAndIsIdempotent(t *testing.T) {
+	url := testdb.URL(t)
+	applyUpDownUp(t, url, 11) // 00011_projects_milestones.sql
+
+	ctx := context.Background()
+	pool, err := db.Open(ctx, url)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+
+	var hasTable bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (
+		SELECT 1 FROM information_schema.tables
+		WHERE table_schema = 'projects' AND table_name = 'billing_milestones')`).Scan(&hasTable); err != nil {
+		t.Fatalf("check billing_milestones exists: %v", err)
+	}
+	if !hasTable {
+		t.Fatal("projects.billing_milestones does not exist")
+	}
+
+	if cols := indexColumns(t, ctx, pool, "projects", "ix_billing_milestones_project_id_position"); !equalStrings(cols, []string{"project_id", "position"}) {
+		t.Errorf("ix_billing_milestones_project_id_position columns = %v, want [project_id position]", cols)
+	}
+	if cols := indexColumns(t, ctx, pool, "projects", "ix_billing_milestones_project_id_planned_date_open"); !equalStrings(cols, []string{"project_id", "planned_date"}) {
+		t.Errorf("ix_billing_milestones_project_id_planned_date_open columns = %v, want [project_id planned_date]", cols)
+	}
+	var predicate string
+	if err := pool.QueryRow(ctx, `
+		SELECT pg_get_expr(i.indpred, i.indrelid)
+		FROM pg_index i
+		JOIN pg_class ic ON ic.oid = i.indexrelid
+		JOIN pg_namespace n ON n.oid = ic.relnamespace
+		WHERE n.nspname = 'projects' AND ic.relname = 'ix_billing_milestones_project_id_planned_date_open'`).Scan(&predicate); err != nil {
+		t.Fatalf("query partial index predicate: %v", err)
+	}
+	if want := "((status)::text = ANY ((ARRAY['planned'::character varying, 'ready'::character varying])::text[]))"; predicate != want {
+		t.Errorf("partial index predicate = %q, want %q", predicate, want)
+	}
+
+	for _, col := range []string{"budget_hours", "budget_amount"} {
+		var hasColumn bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns
+			WHERE table_schema = 'projects' AND table_name = 'billing_lines' AND column_name = $1)`, col).Scan(&hasColumn); err != nil {
+			t.Fatalf("check billing_lines.%s exists: %v", col, err)
+		}
+		if !hasColumn {
+			t.Errorf("projects.billing_lines has no %s column", col)
+		}
+	}
+}
+
 // isUniqueViolation reports whether err is Postgres SQL state 23505
 // (unique_violation).
 func isUniqueViolation(err error) bool {

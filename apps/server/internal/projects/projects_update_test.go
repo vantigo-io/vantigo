@@ -596,8 +596,38 @@ func TestPutProjectsById_ClearingFixedPriceAmountAlone_IsAlreadyRefusedByFieldVa
 	}
 	var problem validationProblemJSON
 	r.JSON(&problem)
-	if len(problem.Errors["fixedPriceAmount"]) == 0 {
-		t.Errorf("errors = %v, want a message on 'fixedPriceAmount'", problem.Errors)
+	msgs := problem.Errors["fixedPriceAmount"]
+	if len(msgs) == 0 {
+		t.Fatalf("errors = %v, want a message on 'fixedPriceAmount'", problem.Errors)
+	}
+	// The message has to be §4.1's own ("must have a fixed price amount"),
+	// not the guard's: if it ever named the milestone, the guard's dead
+	// branch (fixedPriceGuardField, values.go) would have gone live without
+	// this test failing to say so.
+	if strings.Contains(msgs[0], "Kickoff") {
+		t.Errorf("message %q, want §4.1's own field rule, not the milestone guard", msgs[0])
+	}
+}
+
+// insertMilestone's overrides set exactly what they name: {"percent": nil}
+// asks for a milestone with no percent, not one with no amount either — the
+// default amount only drops when percent is actually being set to a value
+// (harness_test.go).
+func TestInsertMilestone_PercentSetToNil_KeepsTheDefaultAmount(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	c, _ := signIn(t, h, "projects:create")
+	project := createProject(t, c, map[string]any{"code": "IMH1000"})
+
+	id := insertMilestone(t, h, project.Id, map[string]any{"percent": nil})
+
+	amount := modtest.One[*float64](t, h, `SELECT amount FROM projects.billing_milestones WHERE id = $1`, id)
+	if amount == nil || *amount != 1000.00 {
+		t.Errorf("amount = %v, want the default 1000 kept, since percent was cleared rather than set", amount)
+	}
+	percent := modtest.One[*float64](t, h, `SELECT percent FROM projects.billing_milestones WHERE id = $1`, id)
+	if percent != nil {
+		t.Errorf("percent = %v, want it absent", percent)
 	}
 }
 

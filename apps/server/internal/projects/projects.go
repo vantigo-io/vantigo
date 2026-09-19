@@ -21,24 +21,51 @@ import (
 // number.
 const counterProjectCode = "project_code"
 
-// fieldRefusal is design §3.3's two guards' decision, carried out of the
-// update's own transaction: which field the 400 belongs on, and the message
-// it carries. Both guards decide it against rows read inside the
-// transaction rather than before it opened (the TOCTOU lesson billing
-// lines' own change already learned), so the decision has to travel out as
-// the transaction's error rather than as a response already built before it
-// ran.
+// fieldRefusal is a validation decision made inside a transaction, carried
+// out of it as a 400's full field-error map (invalidProject's own shape),
+// because a response cannot be built from inside a transaction that might
+// still be rolled back by something else. Design §3.3's two project guards
+// use it (always one field), and a billing line's re-validation under the
+// project's lock uses it too (lines.go — potentially more than one field, if
+// the currency clearing under the lock breaks more than one rule of the
+// body's at once).
 type fieldRefusal struct {
-	field   string
-	message string
+	errs map[string][]string
 }
 
-func (e fieldRefusal) Error() string { return e.message }
+func (e fieldRefusal) Error() string { return "projects: refused a write decided under a lock" }
+
+// singleFieldRefusal is fieldRefusal for a guard that only ever blames one
+// field, which is both of design §3.3's guards.
+func singleFieldRefusal(field, message string) fieldRefusal {
+	return fieldRefusal{errs: fieldError(field, message)}
+}
+
+// revisionRefusal carries the update's stale-revision decision out of the
+// transaction, once it is decided against the project row the transaction
+// holds locked (LockProject) rather than against a second read taken after
+// the transaction has already rolled back. current is the revision the
+// project actually carries, for the same 409 revisionConflict already
+// builds from it.
+type revisionRefusal struct {
+	current int32
+}
+
+func (e revisionRefusal) Error() string { return "projects: refused a stale revision under a lock" }
+
+// errProjectVanished is what LockProject finding no row means. Nothing in
+// this module ever deletes a project (there is no such operation), so this
+// is unreached today; it exists because a writer that locks a project deep
+// inside its own transaction (a billing line's create or change, lines.go)
+// must still answer exactly the 404 it would have answered had the project
+// never been there at all, if that ever changes.
+var errProjectVanished = errors.New("projects: the project vanished under its own lock")
 
 // currencyLocked is D13's guard (design §3.3): whether the project currently
 // carries an amount denominated in its currency that a currency change would
 // silently reprice. It runs inside the update's own transaction, against the
-// rows as they stand at that instant.
+// rows as they stand at that instant, under the same lock (LockProject) the
+// currency and billing-type checks below run under.
 func (s *server) currencyLocked(ctx context.Context, txq *store.Queries, projectID int32) (bool, error) {
 	fixedLines, err := txq.CountFixedBillingLines(ctx, projectID)
 	if err != nil {
@@ -234,13 +261,34 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
 
-		// Design §3.3's two guards, both decided here rather than before the
-		// transaction opened: a billing line or a milestone another request
-		// adds between a pre-transaction read and this write must still be
-		// seen, and only a read taken inside the same transaction as the
-		// write can promise that — the TOCTOU lesson a billing line's own
-		// change already learned (lines.go).
-		//
+		// The project row, locked FOR UPDATE, is this transaction's first
+		// statement (design §3.3): design §3.3's two guards below, and the
+		// revision check that follows, all have to be decided against the
+		// row this transaction now holds rather than `before` — read before
+		// the transaction opened — because a billing line's own create or
+		// change (lines.go) takes the identical lock before writing a
+		// 'fixed' amount or a budget amount, and only one lock, taken first
+		// by whichever request gets there first, actually serialises the
+		// two against each other. `before` still answers the questions that
+		// do not depend on freshness (access, §4.1's own field rules).
+		locked, err := txq.LockProject(ctx, before.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errProjectVanished
+		}
+		if err != nil {
+			return fmt.Errorf("projects: lock project: %w", err)
+		}
+
+		// The revision the caller read is checked against the locked row
+		// rather than left to UpdateProject's own WHERE clause: this
+		// transaction holds the only lock that could let it move, so the
+		// current revision named in a 409 can be read here, under that
+		// lock, instead of via a second, unlocked read after this
+		// transaction has already rolled back.
+		if locked.Revision != body.Revision {
+			return revisionRefusal{current: locked.Revision}
+		}
+
 		// D13's guard: a 'fixed' billing line, a line's budget amount and a
 		// non-cancelled milestone are all amounts denominated in the
 		// project's currency, so that currency can be neither cleared nor
@@ -249,30 +297,29 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 		// currency the project has pays for the reads: a project that never
 		// had one cannot have any of the three to protect, since none of them
 		// could have been created without it.
-		if before.Currency != nil && !equalStringPtr(before.Currency, parsed.Currency) {
-			locked, err := s.currencyLocked(ctx, txq, before.ID)
+		if locked.Currency != nil && !equalStringPtr(locked.Currency, parsed.Currency) {
+			amountsLocked, err := s.currencyLocked(ctx, txq, locked.ID)
 			if err != nil {
 				return err
 			}
-			if locked {
-				return fieldRefusal{field: "currency", message: currencyLockedByAmounts()}
+			if amountsLocked {
+				return singleFieldRefusal("currency", currencyLockedByAmounts())
 			}
 		}
 		// The fixed-price guard: a percent milestone that is still open
 		// resolves its amount from the project's fixed price, so removing
 		// that price — clearing it, or moving the project off fixed-price
 		// billing — is refused while any exist.
-		if field, trigger := fixedPriceGuardField(before, parsed); trigger {
-			names, err := txq.ListOpenPercentMilestoneNames(ctx, before.ID)
+		if field, trigger := fixedPriceGuardField(locked, parsed); trigger {
+			names, err := txq.ListOpenPercentMilestoneNames(ctx, locked.ID)
 			if err != nil {
 				return fmt.Errorf("projects: list open percent milestones: %w", err)
 			}
 			if len(names) > 0 {
-				return fieldRefusal{field: field, message: fixedPriceLockedByMilestones(names)}
+				return singleFieldRefusal(field, fixedPriceLockedByMilestones(names))
 			}
 		}
 
-		var err error
 		after, err = txq.UpdateProject(ctx, store.UpdateProjectParams{
 			ID:               req.Id,
 			Revision:         body.Revision,
@@ -293,7 +340,7 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 		if err != nil {
 			return err
 		}
-		diff, err := diffProjects(before, after)
+		diff, err := diffProjects(locked, after)
 		if err != nil {
 			return err
 		}
@@ -303,14 +350,20 @@ func (s *server) PutProjectsById(ctx context.Context, req gen.PutProjectsByIdReq
 		return recordProjectUpdated(ctx, txq, now, diff, after.ID, by)
 	})
 	var refusal fieldRefusal
+	var revConflict revisionRefusal
 	switch {
 	case errors.As(err, &refusal):
-		return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(invalidProject(fieldError(refusal.field, refusal.message))), nil
+		return gen.PutProjectsById400ApplicationProblemPlusJSONResponse(invalidProject(refusal.errs)), nil
+	case errors.As(err, &revConflict):
+		return gen.PutProjectsById409ApplicationProblemPlusJSONResponse(revisionConflict(revConflict.current, body.Revision)), nil
+	case errors.Is(err, errProjectVanished):
+		return gen.PutProjectsById404Response{}, nil
 	case errors.Is(err, pgx.ErrNoRows):
-		// The revision the project actually carries is read again rather
-		// than taken from `before`: the row that beat this one to the write
-		// committed after `before` was loaded, so `before`'s revision would
-		// report the number the caller already sent.
+		// Not reachable through this handler's own logic any more — the
+		// revision check above already decides that under the same lock
+		// UpdateProject's WHERE clause re-checks — but kept as the same
+		// fallback the WHERE clause has always been, in case anything ever
+		// calls UpdateProject without going through that check first.
 		current, err := q.GetProject(ctx, req.Id)
 		if err != nil {
 			return nil, fmt.Errorf("projects: re-read the project after a revision conflict: %w", err)

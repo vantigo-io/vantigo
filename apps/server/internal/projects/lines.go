@@ -145,7 +145,31 @@ func (s *server) PostProjectsByIdBillingLines(ctx context.Context, req gen.PostP
 	var created store.ProjectsBillingLine
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
-		var err error
+
+		// The project row, locked FOR UPDATE, is this transaction's first
+		// statement — the same lock and the same query PutProjectsById
+		// takes before deciding to clear or swap the currency (design
+		// §3.3), so the two writers serialise on this row instead of racing
+		// past each other: a 'fixed' amount and a budget amount are both
+		// denominated in the project's currency, exactly what that guard
+		// protects. Re-running validateLine against the row this
+		// transaction now holds — rather than trusting the pool read from
+		// above the guards ran against — is what actually decides the
+		// currency-dependent rules under the lock; everything else about
+		// the body already passed and cannot have changed.
+		locked, err := txq.LockProject(ctx, project.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errProjectVanished
+		}
+		if err != nil {
+			return fmt.Errorf("projects: lock project: %w", err)
+		}
+		if _, lockedErrs, err := validateLine(body, locked); err != nil {
+			return err
+		} else if len(lockedErrs) > 0 {
+			return fieldRefusal{errs: lockedErrs}
+		}
+
 		created, err = txq.InsertBillingLine(ctx, store.InsertBillingLineParams{
 			ProjectID:       project.ID,
 			Code:            parsed.Code,
@@ -162,11 +186,16 @@ func (s *server) PostProjectsByIdBillingLines(ctx context.Context, req gen.PostP
 		}
 		return recordLineAdded(ctx, txq, now, project.ID, created, by)
 	})
-	if db.IsUniqueViolation(err, "ux_billing_lines_project_id_code") {
+	var refusal fieldRefusal
+	switch {
+	case errors.As(err, &refusal):
+		return gen.PostProjectsByIdBillingLines400ApplicationProblemPlusJSONResponse(invalidProject(refusal.errs)), nil
+	case errors.Is(err, errProjectVanished):
+		return gen.PostProjectsByIdBillingLines404Response{}, nil
+	case db.IsUniqueViolation(err, "ux_billing_lines_project_id_code"):
 		return gen.PostProjectsByIdBillingLines400ApplicationProblemPlusJSONResponse(
 			invalidProject(fieldError("code", lineCodeTaken(parsed.Code)))), nil
-	}
-	if err != nil {
+	case err != nil:
 		return nil, fmt.Errorf("projects: create billing line: %w", err)
 	}
 
@@ -236,6 +265,28 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 	var changed store.ProjectsBillingLine
 	err = db.WithTx(ctx, s.deps.Pool, pgx.TxOptions{}, func(tx pgx.Tx) error {
 		txq := store.New(tx)
+
+		// The project's own lock comes before the line's (design §3.3): a
+		// fixed lock ordering across every writer that can take both is
+		// what keeps two guarded writers from deadlocking against each
+		// other rather than simply queuing. Re-running validateLine against
+		// the row this transaction now holds is what decides the
+		// currency-dependent rules under that lock, the same way the
+		// create does (PostProjectsByIdBillingLines) — everything else
+		// about the body already passed and cannot have changed.
+		locked, err := txq.LockProject(ctx, project.ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errProjectVanished
+		}
+		if err != nil {
+			return fmt.Errorf("projects: lock project: %w", err)
+		}
+		if _, lockedErrs, err := validateLine(body, locked); err != nil {
+			return err
+		} else if len(lockedErrs) > 0 {
+			return fieldRefusal{errs: lockedErrs}
+		}
+
 		before, err := txq.LockBillingLine(ctx, store.LockBillingLineParams{ID: req.LineId, ProjectID: project.ID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errLineNotFound
@@ -289,7 +340,12 @@ func (s *server) PutProjectsByIdBillingLinesByLineId(ctx context.Context, req ge
 		}
 		return recordLineUpdated(ctx, txq, now, d, project.ID, changed.Code, by)
 	})
+	var refusal fieldRefusal
 	switch {
+	case errors.As(err, &refusal):
+		return gen.PutProjectsByIdBillingLinesByLineId400ApplicationProblemPlusJSONResponse(invalidProject(refusal.errs)), nil
+	case errors.Is(err, errProjectVanished):
+		return gen.PutProjectsByIdBillingLinesByLineId404Response{}, nil
 	case errors.Is(err, errLineNotFound):
 		return gen.PutProjectsByIdBillingLinesByLineId404Response{}, nil
 	case errors.Is(err, errVariantNotFound):
