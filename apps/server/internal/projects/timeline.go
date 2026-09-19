@@ -228,7 +228,7 @@ func recordLineUpdated(ctx context.Context, q *store.Queries, now time.Time, d l
 	return nil
 }
 
-// recordMilestoneEvent writes one of the eight milestone entries (design
+// recordMilestoneEvent writes one of the nine milestone entries (design
 // §3.2). The payload is the milestone's id and the name it carried at that
 // moment, and never an amount: a milestone is financial data the project's
 // members may not see (D12), while the timeline is read by everyone who can
