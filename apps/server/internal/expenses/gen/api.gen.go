@@ -128,7 +128,7 @@ type ExpensesEntryProject struct {
 
 // ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.
 type ExpensesEntryRequest struct {
-	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Defaults from the mileage_customer rate in force on the entry date; required when the table has none. Refused on anything else.
+	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the mileage_customer rate in force on the entry date. When there is no such rate and the caller could not have named one, the line is saved billable with no customer rate and nothing billed, for whoever can see the project's money to fill in. Refused on anything but billable mileage.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
 
 	// Billable Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing.
@@ -164,7 +164,7 @@ type ExpensesEntryRequest struct {
 	// Kind 'outlay' or 'mileage'.
 	Kind string `json:"kind"`
 
-	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Defaults from the settings. Refused on anything else.
+	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Only a caller with financial rights on the project — the ones who are sent the billing object — may name it; anyone else is refused on this field. Left out, a save keeps whatever the line already carries, and a line that carries none takes the settings' default. Refused on anything but a billable outlay.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
 
 	// PaidBy 'employee' or 'company'. Required on an outlay, refused on a mileage line — mileage is always owed to the employee.
@@ -261,8 +261,9 @@ type ExpensesEntryResponse struct {
 	VatAmount *float64 `json:"vatAmount,omitempty"`
 }
 
-// ExpensesEntryUpdateRequest A full replace of an expense, held to every rule a create is held to, and guarded by the revision the entry was read at. What is left out is cleared. The owner stays whoever the entry already concerns.
+// ExpensesEntryUpdateRequest A full replace of an expense, held to every rule a create is held to, and guarded by the revision the entry was read at. What is left out is cleared — with three deliberate exceptions, because a replace only replaces what its caller can see: the markup and the customer rate per kilometre are kept unless the caller has financial rights on the project and sends one, the project a line already carries is not judged for bookability again, and in an installation with no projects module the stored project link, markup, customer rate and bill amount are carried through untouched. The owner stays whoever the entry already concerns.
 type ExpensesEntryUpdateRequest struct {
+	// BillRatePerKm See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
 	Billable      *bool    `json:"billable,omitempty"`
 	BillingLineId *int32   `json:"billingLineId,omitempty"`
@@ -275,14 +276,18 @@ type ExpensesEntryUpdateRequest struct {
 	DistanceKm  *float64 `json:"distanceKm,omitempty"`
 
 	// EntryDate Neither the day the entry had nor the day it is given may fall before the period lock, except for expenses:manage.
-	EntryDate     openapi_types.Date `json:"entryDate"`
-	FromPlace     *string            `json:"fromPlace,omitempty"`
-	GrossAmount   *float64           `json:"grossAmount,omitempty"`
-	Kind          string             `json:"kind"`
-	MarkupPercent *float64           `json:"markupPercent,omitempty"`
-	PaidBy        *string            `json:"paidBy,omitempty"`
-	Passengers    *int32             `json:"passengers,omitempty"`
-	ProjectId     *int32             `json:"projectId,omitempty"`
+	EntryDate   openapi_types.Date `json:"entryDate"`
+	FromPlace   *string            `json:"fromPlace,omitempty"`
+	GrossAmount *float64           `json:"grossAmount,omitempty"`
+	Kind        string             `json:"kind"`
+
+	// MarkupPercent See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.
+	MarkupPercent *float64 `json:"markupPercent,omitempty"`
+	PaidBy        *string  `json:"paidBy,omitempty"`
+	Passengers    *int32   `json:"passengers,omitempty"`
+
+	// ProjectId A project the line already carries is kept even once it stops accepting new bookings; a different one is judged in full.
+	ProjectId *int32 `json:"projectId,omitempty"`
 
 	// Revision The revision the entry was read at. A revision that has moved on is a 409.
 	Revision  int32    `json:"revision"`
@@ -1204,6 +1209,20 @@ func (response DeleteExpensesAttachmentsById204Response) VisitDeleteExpensesAtta
 	return nil
 }
 
+type DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse) VisitDeleteExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteExpensesAttachmentsById401JSONResponse externalRef0.AuthErrorResponse
 
 func (response DeleteExpensesAttachmentsById401JSONResponse) VisitDeleteExpensesAttachmentsByIdResponse(w http.ResponseWriter) error {
@@ -1647,6 +1666,20 @@ type DeleteExpensesEntriesById204Response struct {
 func (response DeleteExpensesEntriesById204Response) VisitDeleteExpensesEntriesByIdResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteExpensesEntriesById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response DeleteExpensesEntriesById400ApplicationProblemPlusJSONResponse) VisitDeleteExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteExpensesEntriesById401JSONResponse externalRef0.AuthErrorResponse

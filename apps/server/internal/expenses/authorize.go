@@ -41,6 +41,14 @@ type caller struct {
 
 // callerFor reads the request's caller: every permission this module decides
 // on, and the installation's settings.
+//
+// The period lock is read here, once, before any transaction, and every rule
+// that consults it during the request uses that one reading. A lock an
+// administrator moves between this read and the commit is therefore not
+// re-checked under the row lock — an accepted race: the lock is an
+// administrator's statement about a period, changed rarely and never
+// concurrently with the save it would have caught, and re-reading it inside
+// the transaction would put a second read under the row lock for nothing.
 func (s *server) callerFor(ctx context.Context, q *store.Queries) (*caller, error) {
 	row, err := settings(ctx, q)
 	if err != nil {
@@ -117,6 +125,14 @@ func (c *caller) seesEveryone() bool { return c.ViewAll || c.Approve || c.Manage
 // role, so the answer is cached beside the roles entryAccess reads and a list
 // filtered on these ids can never disagree with the access its rows are
 // rendered with. Without the projects module there are none.
+//
+// It is one Role call per project the caller holds any role on — known, and
+// the same N+1 time's managedProjects makes. Its callers ask only when they
+// have to (a caller who already sees every expense does not), so the common
+// list costs nothing; what would remove it is a role-returning directory call
+// (ProjectsForUser answering the role, or a ManagedProjectsFor), which is
+// worth adding the day delivery C widens contracts.ProjectDirectory anyway and
+// is not worth widening it for on its own.
 func (c *caller) managedProjects(ctx context.Context, s *server) ([]int32, error) {
 	managed := []int32{}
 	if !s.projectsAvailable() {
@@ -155,6 +171,28 @@ func (c *caller) seesProjectFinancials(role string) bool {
 	return role == roleManager || c.ProjectsManageAll || (c.ProjectsFinancials && c.seesProject(role))
 }
 
+// entryStateRefusal is why an expense cannot be changed right now — because of
+// what it *is*, not who is asking: it is dated inside a closed period, or it
+// has moved past the point where it is still editable. It answers the field
+// the reason belongs to and the message, or "" and "" when nothing refuses.
+//
+// This is the module's one rule for the two codes (and attachments.go's
+// refusals go through it as well). A caller who is not the owner and does not
+// hold expenses:manage is refused for who they are: a 403, or the bare 404 an
+// unknown id gets when they cannot even see the expense. A caller who *would*
+// be allowed, and is stopped by the expense's own state, is told what state —
+// a 400 naming the lock date or the status — because that is a fact about the
+// expense they can act on, and a bare 403 would leave them guessing.
+func entryStateRefusal(c *caller, entry store.ExpensesEntry) (string, string) {
+	switch {
+	case !c.mayWritePast(entry.EntryDate.Time):
+		return "entryDate", lockedBeforeMessage(*lockedBefore(c.Settings))
+	case !slices.Contains(editableStatuses, entry.Status):
+		return "status", fmt.Sprintf("An expense that has been %s can no longer be changed", entry.Status)
+	}
+	return "", ""
+}
+
 // roleManager is the role name projects gives a project's manager. It is a
 // string this module reads and never writes; projects owns the vocabulary.
 const roleManager = "manager"
@@ -182,6 +220,12 @@ type entryAccess struct {
 
 	CanSee        bool
 	CanSeeBilling bool
+
+	// IsWriter is whether this expense is the caller's to change *at all* —
+	// its owner, or expenses:manage. It is the half of CanEdit that is about
+	// who is asking; entryStateRefusal is the half that is about what the
+	// expense is right now, and the two answer different status codes.
+	IsWriter bool
 
 	CanEdit         bool
 	CanDelete       bool
@@ -219,7 +263,8 @@ func (c *caller) accessFor(entry store.ExpensesEntry, role string) entryAccess {
 	a.CanSeeBilling = entry.ProjectID != nil && c.seesProjectFinancials(role)
 
 	open := c.mayWritePast(entry.EntryDate.Time)
-	writer := a.IsOwner || c.Manage
+	a.IsWriter = a.IsOwner || c.Manage
+	writer := a.IsWriter
 	a.CanEdit = writer && open && slices.Contains(editableStatuses, entry.Status)
 	a.CanDelete = a.CanEdit
 	a.CanSubmit = writer && open && entry.Status == statusDraft

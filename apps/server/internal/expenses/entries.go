@@ -123,31 +123,55 @@ func (s *server) resolveOwner(ctx context.Context, c *caller, userID *openapi_ty
 // project they may not book on answers the one cannotBookOnProject message
 // whatever the reason, and stops there: checking a line on it would tell a
 // caller which of its ids exist.
+//
+// A link the save is *keeping* is not judged again — design §8's "a project
+// that is no longer active: existing lines stay", which is the same sentence
+// that gives checkCategory its grandfathering. A project that has been
+// completed, or that the owner has been taken off, or a billing line since
+// deactivated, must not make the expense unsaveable: its owner would have to
+// drop the link to fix a typo, which is the cost record quietly disappearing.
+// A *changed* project or line is judged in full, so nothing new is booked
+// somewhere it may not be.
+//
+// It also answers whether the kept project is one the directory can no longer
+// resolve at all. That is not a refusal either — the stored id stays (decision
+// X2) — but nothing can be priced against a project that cannot be read, so
+// the save carries the project columns through untouched instead.
 func (s *server) checkProject(ctx context.Context, ownerID uuid.UUID, p parsedEntry,
-	add func(field, msg string),
-) (*contracts.ProjectEntry, error) {
+	current *store.ExpensesEntry, add func(field, msg string),
+) (*contracts.ProjectEntry, bool, error) {
 	if p.ProjectID == nil || !s.projectsAvailable() {
-		return nil, nil
+		return nil, false, nil
 	}
-	allowed, err := s.projectsCanLogTime(ctx, *p.ProjectID, ownerID)
-	if err != nil {
-		return nil, fmt.Errorf("expenses: check the owner may book on the project: %w", err)
-	}
-	var project *contracts.ProjectEntry
-	if allowed {
-		if project, err = s.projectsProject(ctx, *p.ProjectID); err != nil {
-			return nil, fmt.Errorf("expenses: look up the project: %w", err)
+	keptProject := current != nil && current.ProjectID != nil && *current.ProjectID == *p.ProjectID
+	if !keptProject {
+		allowed, err := s.projectsCanLogTime(ctx, *p.ProjectID, ownerID)
+		if err != nil {
+			return nil, false, fmt.Errorf("expenses: check the owner may book on the project: %w", err)
+		}
+		if !allowed {
+			add("projectId", cannotBookOnProject)
+			return nil, false, nil
 		}
 	}
+	project, err := s.projectsProject(ctx, *p.ProjectID)
+	if err != nil {
+		return nil, false, fmt.Errorf("expenses: look up the project: %w", err)
+	}
 	if project == nil {
+		if keptProject {
+			return nil, true, nil
+		}
 		add("projectId", cannotBookOnProject)
-		return nil, nil
+		return nil, false, nil
 	}
 
-	if p.LineID != nil {
+	keptLine := keptProject && p.LineID != nil &&
+		current.BillingLineID != nil && *current.BillingLineID == *p.LineID
+	if p.LineID != nil && !keptLine {
 		line, err := s.projectsBillingLine(ctx, *p.ProjectID, *p.LineID)
 		if err != nil {
-			return nil, fmt.Errorf("expenses: look up the billing line: %w", err)
+			return nil, false, fmt.Errorf("expenses: look up the billing line: %w", err)
 		}
 		switch {
 		case line == nil:
@@ -156,7 +180,7 @@ func (s *server) checkProject(ctx context.Context, ownerID uuid.UUID, p parsedEn
 			add("billingLineId", fmt.Sprintf("Billing line %d is inactive", *p.LineID))
 		}
 	}
-	return project, nil
+	return project, false, nil
 }
 
 // checkCategory is design §8's category rule: an outlay's category must be one
@@ -185,14 +209,53 @@ func checkCategory(ctx context.Context, q *store.Queries, p parsedEntry, current
 	return nil
 }
 
+// billingScope is what one save knows about the project side of the expense:
+// the project it lands on (nil when it has none, or when the directory could
+// not resolve the one it keeps), whether the caller may see — and therefore
+// set — the money the project makes on it, and the row being replaced, whose
+// figures are preserved for a caller who cannot see them.
+type billingScope struct {
+	Project   *contracts.ProjectEntry
+	Financial bool
+	Current   *store.ExpensesEntry
+}
+
+// storedBillingFigure is a billing figure already on the row being replaced,
+// nil on a create and nil when that row billed nothing — the values a save is
+// to carry forward rather than compute again.
+func storedBillingFigure(current *store.ExpensesEntry, pick func(store.ExpensesEntry) pgtype.Numeric) (*big.Rat, error) {
+	if current == nil || !current.Billable {
+		return nil, nil
+	}
+	return ratPtrFromNumeric(pick(*current))
+}
+
 // resolveValues prices one expense (design §4). A mileage line's amount, rate
 // and passenger supplement come from the dated rate table for its own date and
 // are written again on every save while it is a draft; an outlay stands as it
 // was entered. What the customer is billed is added on top when the line is
 // billable and the project bills at all.
+//
+// The two customer-facing figures — the markup on an outlay and the rate per
+// kilometre on mileage — belong to whoever may see the project's money (design
+// §5), which is what makes their rules here more than a default:
+//
+//   - a figure the caller sent is theirs, and only a caller with financial
+//     rights can have sent one (prepare refuses the field otherwise);
+//   - otherwise the figure already on the line is kept, so a save by somebody
+//     whose form was never shown it cannot silently reset it, and the amount
+//     billed still follows the new net or distance;
+//   - and only a line that carries none falls back to the server's own — the
+//     settings' default markup, the mileage_customer rate in force that day.
+//
+// A billable mileage line with no customer rate in force and nobody able to
+// name one is saved billable with neither a rate nor an amount, rather than
+// refusing an employee over a price they may not know exists; whoever can see
+// the project's money fills it in.
 func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller, p parsedEntry,
-	project *contracts.ProjectEntry, add func(field, msg string),
+	sc billingScope, add func(field, msg string),
 ) (entryValues, error) {
+	project := sc.Project
 	v := entryValues{Currency: p.Currency, Gross: p.Gross, Vat: p.Vat}
 
 	if p.Kind == kindMileage {
@@ -234,6 +297,13 @@ func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller,
 	case kindOutlay:
 		v.MarkupPercent = p.MarkupPercent
 		if v.MarkupPercent == nil {
+			kept, err := storedBillingFigure(sc.Current, func(e store.ExpensesEntry) pgtype.Numeric { return e.MarkupPercent })
+			if err != nil {
+				return entryValues{}, err
+			}
+			v.MarkupPercent = kept
+		}
+		if v.MarkupPercent == nil {
 			markup, err := ratFromNumeric(c.Settings.DefaultMarkupPercent)
 			if err != nil {
 				return entryValues{}, err
@@ -246,10 +316,22 @@ func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller,
 	case kindMileage:
 		v.BillRatePerKm = p.BillRatePerKm
 		if v.BillRatePerKm == nil {
+			kept, err := storedBillingFigure(sc.Current, func(e store.ExpensesEntry) pgtype.Numeric { return e.BillRatePerKm })
+			if err != nil {
+				return entryValues{}, err
+			}
+			v.BillRatePerKm = kept
+		}
+		if v.BillRatePerKm == nil {
 			rate, err := rateFor(ctx, q, rateKindMileageCustomer, p.Date)
 			switch {
 			case errors.Is(err, errNoRate):
-				add("billRatePerKm", "No customer rate per kilometre applies on this date, so the line needs one of its own")
+				// Only somebody who could have named one is told there is
+				// none: to anybody else the message would be about a price
+				// this module deliberately hides from them.
+				if sc.Financial {
+					add("billRatePerKm", "No customer rate per kilometre applies on this date, so the line needs one of its own")
+				}
 			case err != nil:
 				return entryValues{}, err
 			default:
@@ -263,6 +345,37 @@ func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller,
 	return v, nil
 }
 
+// maxMoneyRat is the amount columns' ceiling as an exact decimal, for the
+// products validation cannot bound on their own.
+var maxMoneyRat = ratFromFloat(maxMoney)
+
+// checkAmountsFit is the bound on what the arithmetic produced. Every field a
+// caller sends passes its own rule and only their product can overrun
+// numeric(12,2) — 9999.9 kilometres at a rate an administrator was allowed to
+// enter, a ten-times markup on the largest storable amount — and a column
+// refusing the write would be a 500 for a body that broke no documented rule.
+// The refusal names the field that drove the amount.
+func checkAmountsFit(p parsedEntry, v entryValues, add func(field, msg string)) {
+	grossField := "grossAmount"
+	billField := "markupPercent"
+	if p.Kind == kindMileage {
+		grossField, billField = "distanceKm", "billRatePerKm"
+	}
+	if overflowsMoney(v.Gross) {
+		add(grossField, amountTooBig)
+	}
+	if overflowsMoney(v.BillAmount) {
+		add(billField, amountTooBig)
+	}
+}
+
+// overflowsMoney reports whether an amount is more than a numeric(12,2) holds.
+func overflowsMoney(v *big.Rat) bool { return v != nil && v.Cmp(maxMoneyRat) > 0 }
+
+// amountTooBig is the message an amount that will not fit carries.
+var amountTooBig = fmt.Sprintf("This works out to more than %s, which is more than an expense can hold",
+	formatNumber(maxMoney))
+
 // prepared is one save judged and priced, ready for the database.
 type prepared struct {
 	Owner   uuid.UUID
@@ -270,7 +383,19 @@ type prepared struct {
 	Values  entryValues
 	Columns entryColumns
 	Errors  map[string][]string
+
+	// CarryProject says the six project columns are not this save's to write:
+	// the caller could not have named them and nothing can judge them, so an
+	// update takes them from the row it locks instead. It is set when this
+	// installation has no projects module at all (decision X2 — the stored ids
+	// stay), and when the project the line keeps is one the directory can no
+	// longer resolve.
+	CarryProject bool
 }
+
+// onlyFinancialRights is the message the two customer-facing figures carry
+// when somebody who may not see the project's money tries to set one.
+const onlyFinancialRights = "Only someone who can see the project's financials can set this"
 
 // prepare runs every rule a save is held to, in the order that asks nothing of
 // another module twice: the body, then the owner, then the project, then the
@@ -308,7 +433,32 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 		return prepared{Owner: owner, Errors: errs}, nil
 	}
 
-	project, err := s.checkProject(ctx, owner, parsed, add)
+	// Whether the caller may see — and so set — the money the project makes on
+	// this expense, decided on the project the save lands on rather than the
+	// one it came from. The role is read once and cached beside the ones the
+	// response shaping will ask for.
+	financial := false
+	if s.projectsAvailable() && parsed.ProjectID != nil {
+		role, err := c.role(ctx, s, *parsed.ProjectID)
+		if err != nil {
+			return prepared{}, err
+		}
+		financial = c.seesProjectFinancials(role)
+	}
+	if s.projectsAvailable() && !financial {
+		// Design §5 puts the markup and the customer rate per kilometre on the
+		// project's side of the line, in both directions: a caller who is not
+		// sent them may not set them either. Without the projects module
+		// parseEntry has already refused both, on the same fields.
+		if body.MarkupPercent != nil {
+			add("markupPercent", onlyFinancialRights)
+		}
+		if body.BillRatePerKm != nil {
+			add("billRatePerKm", onlyFinancialRights)
+		}
+	}
+
+	project, projectLost, err := s.checkProject(ctx, owner, parsed, current, add)
 	if err != nil {
 		return prepared{}, err
 	}
@@ -318,10 +468,13 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 	if !c.mayWritePast(parsed.Date) {
 		add("entryDate", lockedBeforeMessage(*lockedBefore(c.Settings)))
 	}
-	values, err := s.resolveValues(ctx, q, c, parsed, project, add)
+	carry := current != nil && (!s.projectsAvailable() || projectLost)
+	values, err := s.resolveValues(ctx, q, c, parsed,
+		billingScope{Project: project, Financial: financial, Current: current}, add)
 	if err != nil {
 		return prepared{}, err
 	}
+	checkAmountsFit(parsed, values, add)
 	if len(errs) > 0 {
 		return prepared{Owner: owner, Errors: errs}, nil
 	}
@@ -330,7 +483,9 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 	if err != nil {
 		return prepared{}, err
 	}
-	return prepared{Owner: owner, Parsed: parsed, Values: values, Columns: columns}, nil
+	return prepared{
+		Owner: owner, Parsed: parsed, Values: values, Columns: columns, CarryProject: carry,
+	}, nil
 }
 
 // PostExpensesEntries Record an expense
@@ -470,8 +625,17 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 	if !found {
 		return gen.PutExpensesEntriesById404Response{}, nil
 	}
-	if !a.CanEdit {
+	if !a.IsWriter {
 		return gen.PutExpensesEntriesById403JSONResponse(forbidden()), nil
+	}
+	// What the expense is right now — settled, or dated inside a closed period
+	// — is a fact about the expense rather than about the caller, so it is a
+	// 400 naming the reason. The lock is judged here on the day the expense
+	// *has*, and again in prepare on the day it is being given, so a locked
+	// line can be edited neither into nor out of the lock.
+	if field, msg := entryStateRefusal(c, current); msg != "" {
+		return gen.PutExpensesEntriesById400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError(field, msg))), nil
 	}
 
 	p, err := s.prepare(ctx, q, c, bodyOfUpdate(body), nil, &current)
@@ -483,11 +647,6 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 	// read.
 	if body.Revision < 1 {
 		p.Errors = withFieldError(p.Errors, "revision", "The revision the expense was read at is required")
-	}
-	// The period lock is judged on the day the expense had as well as the day
-	// it is being given, so a locked line cannot be edited out of the lock.
-	if !c.mayWritePast(current.EntryDate.Time) {
-		p.Errors = withFieldError(p.Errors, "entryDate", lockedBeforeMessage(*lockedBefore(c.Settings)))
 	}
 	if len(p.Errors) > 0 {
 		return gen.PutExpensesEntriesById400ApplicationProblemPlusJSONResponse(invalidEntry(p.Errors)), nil
@@ -516,7 +675,7 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			conflict = &row.Revision
 			return nil
 		}
-		updated, err = txq.UpdateEntry(ctx, store.UpdateEntryParams{
+		params := store.UpdateEntryParams{
 			ID:            row.ID,
 			Revision:      body.Revision,
 			AnyOwner:      c.Manage,
@@ -543,7 +702,22 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			BillRatePerKm: p.Columns.BillRatePerKm,
 			BillAmount:    p.Columns.BillAmount,
 			Now:           s.deps.Clock(),
-		})
+		}
+		if p.CarryProject {
+			// Decision X2: an installation that no longer has the projects
+			// module — or a project the directory can no longer resolve —
+			// leaves what was booked exactly as it was booked. The values come
+			// off the row this transaction holds, not the one the handler read
+			// before it, so a write that committed in between is carried
+			// forward rather than undone.
+			params.ProjectID = row.ProjectID
+			params.BillingLineID = row.BillingLineID
+			params.Billable = row.Billable
+			params.MarkupPercent = row.MarkupPercent
+			params.BillRatePerKm = row.BillRatePerKm
+			params.BillAmount = row.BillAmount
+		}
+		updated, err = txq.UpdateEntry(ctx, params)
 		return err
 	})
 	switch {
@@ -585,15 +759,19 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 	if err != nil {
 		return nil, err
 	}
-	_, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
+	current, a, found, err := s.visibleEntry(ctx, q, c, req.Id)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
 		return gen.DeleteExpensesEntriesById404Response{}, nil
 	}
-	if !a.CanDelete {
+	if !a.IsWriter {
 		return gen.DeleteExpensesEntriesById403JSONResponse(forbidden()), nil
+	}
+	if field, msg := entryStateRefusal(c, current); msg != "" {
+		return gen.DeleteExpensesEntriesById400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError(field, msg))), nil
 	}
 
 	keys, err := q.ListAttachmentKeysForEntry(ctx, req.Id)
@@ -606,11 +784,18 @@ func (s *server) DeleteExpensesEntriesById(ctx context.Context, req gen.DeleteEx
 	}
 	if deleted == 0 {
 		// Something committed between the read and the delete: a concurrent
-		// delete (it is gone) or a submit (it is no longer a draft).
-		if _, err := q.GetEntry(ctx, req.Id); errors.Is(err, pgx.ErrNoRows) {
+		// delete (it is gone) or a submit (it is no longer a draft). The
+		// re-read decides which, and the second case is the state refusal
+		// above, arrived at a moment later.
+		row, err := q.GetEntry(ctx, req.Id)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return gen.DeleteExpensesEntriesById404Response{}, nil
 		} else if err != nil {
 			return nil, fmt.Errorf("expenses: re-read an expense after a delete that removed nothing: %w", err)
+		}
+		if field, msg := entryStateRefusal(c, row); msg != "" {
+			return gen.DeleteExpensesEntriesById400ApplicationProblemPlusJSONResponse(
+				invalidEntry(fieldError(field, msg))), nil
 		}
 		return gen.DeleteExpensesEntriesById403JSONResponse(forbidden()), nil
 	}
