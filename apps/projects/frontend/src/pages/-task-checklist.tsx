@@ -83,7 +83,7 @@ export const TaskChecklist = ({ taskId, canContribute }: TaskChecklistProps) => 
             <ActionIcon
               variant="subtle"
               color="red"
-              aria-label={t("deleteChecklistItemFor", { text: excerptForLabel(item.text) })}
+              aria-label={t("deleteChecklistItemFor", { position: item.position, text: excerptForLabel(item.text) })}
               onClick={() => change.mutate(() => deleteChecklistItem(taskId, item.id))}
             >
               <IconTrash size={16} />
