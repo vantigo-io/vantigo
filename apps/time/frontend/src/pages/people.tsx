@@ -14,14 +14,17 @@ export interface PeopleSearch {
   weeks?: number;
 }
 
-/** The window the API takes: between one and twelve weeks. */
-const MIN_WEEKS = 1;
+/** The widest window the select offers; the host route enforces the same bound and drops anything else. */
 const MAX_WEEKS = 12;
 
-const windowOf = (weeks: number | undefined): number => {
-  if (weeks === undefined || !Number.isInteger(weeks)) return PEOPLE_DEFAULT_WEEKS;
-  return Math.min(Math.max(weeks, MIN_WEEKS), MAX_WEEKS);
-};
+/**
+ * The page's own answer is only its default: an out-of-range `weeks` is the
+ * route's problem, and it drops one to `undefined` before this page ever
+ * sees it, so there is exactly one place that decides what "out of range"
+ * means.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const windowOf = (weeks: number | undefined): number => weeks ?? PEOPLE_DEFAULT_WEEKS;
 
 /**
  * The people overview (design §8, `time:view-all`): everyone who logged time

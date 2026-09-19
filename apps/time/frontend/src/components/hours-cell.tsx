@@ -78,6 +78,14 @@ export const HoursCell = ({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    // A read-only cell with somewhere to send the person is the grid's
+    // hand-off to the day view; it must work from the keyboard the same way
+    // it works on click, not only for a mouse.
+    if (readOnly && onActivate && (event.key === "Enter" || event.key === " ")) {
+      if (event.key === " ") event.preventDefault();
+      onActivate();
+      return;
+    }
     if (event.key === "Enter") event.currentTarget.blur();
     if (event.key === "Escape") {
       cancelled.current = true;

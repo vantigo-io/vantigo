@@ -343,7 +343,9 @@ const WeekRowView = ({ row, days, settings, onKeep }: WeekRowViewProps) => {
           />
         </Table.Td>
       ))}
-      <Table.Td ta="right">{hours.display(row.days.reduce((total, day) => total + sum(day.entries), 0))}</Table.Td>
+      <Table.Td ta="right" aria-label={t("rowTotal", { row: label })}>
+        {hours.display(row.days.reduce((total, day) => total + sum(day.entries), 0))}
+      </Table.Td>
     </Table.Tr>
   );
 };

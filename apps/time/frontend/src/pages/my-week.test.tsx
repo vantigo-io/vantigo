@@ -328,6 +328,15 @@ describe("MyWeekPage", () => {
     expect(await screen.findByText("Changed since you submitted it")).toBeInTheDocument();
   });
 
+  it("names each row's total the way a screen reader can tell them apart", async () => {
+    stubTimeApi({ week: typicalWeek() });
+    renderRoute(`/time?week=${WEEK}`);
+
+    await findCell(PM, "Monday");
+    expect(screen.getByLabelText(`${PM} total`)).toHaveTextContent("11.5");
+    expect(screen.getByLabelText(`${DEV_TASK} total`)).toHaveTextContent("2");
+  });
+
   it("sends a day holding several entries of a row to the day view", async () => {
     stubTimeApi({
       week: week([

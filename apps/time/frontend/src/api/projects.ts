@@ -53,7 +53,7 @@ export const myProjectsQueryOptions = () =>
   queryOptions({
     queryKey: ["time", "options", "projects"],
     queryFn: async ({ signal }) => {
-      const query = new URLSearchParams({ mine: "true", pageSize: String(MY_PROJECTS_PAGE_SIZE) });
+      const query = new URLSearchParams({ mine: "true", status: "active", pageSize: String(MY_PROJECTS_PAGE_SIZE) });
       const page = await request<ProjectListResponse>(`/api/v1/projects?${query}`, { signal });
       return page.data.map(
         ({ id, code, name, status, billingType }): MyProject => ({
