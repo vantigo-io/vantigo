@@ -975,7 +975,10 @@ export interface components {
              * @description The day the most recent entry in any of the three buckets was logged for, drafts included. Absent when nothing has been logged.
              */
             lastEntryDate?: string | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description The share of the three buckets' hours that nobody is billed for. Billable plus non-billable is the total.
+             */
             nonBillableHours: number;
             submitted: components["schemas"]["ProjectEconomyBucket"];
             /**
@@ -990,7 +993,7 @@ export interface components {
             totalHours: number;
             /**
              * Format: double
-             * @description Hours that carry no bill rate, or a rate in a currency other than the project's, and so count in hours but in no amount.
+             * @description Billable hours with no bill amount in the project's currency — work with no bill rate, and work priced in another currency — so they count in hours and in no amount. Non-billable hours are never unpriced — they were never meant to carry a price, and they are reported in nonBillableHours. It is not unconditionally the figure Time tracking's own project summary shows, which covers only submitted, approved and invoiced work.
              */
             unpricedHours: number;
         };
@@ -1001,7 +1004,10 @@ export interface components {
              * @description What the bucket's work bills at, in the project's currency. Absent without financial rights on the project, and absent when the project has no currency.
              */
             amount?: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description The bucket's hours, visible to everyone who can see the project.
+             */
             hours: number;
         };
         /** @description What was planned — the project's own budget and what its billing lines' budgets add up to. Hours are planning data and visible to everyone who sees the project; the amounts are financial and absent without financial rights on it. The project's budget and the lines' are independent numbers whose relation is shown, never enforced. */
@@ -1049,18 +1055,30 @@ export interface components {
         };
         /** @description What the work has cost the company and what is left over. Present only for a caller with financial rights on the project *and* projects:view-costs, only when time tracking is enabled, and only when the project carries a currency — a cost in no currency is a number nobody can read, and on a small project a total cost next to the hours reveals a person's cost rate. Every amount is in the project's currency; a cost recorded in another one is not summed, exactly as a bill amount in another one is not. */
         ProjectEconomyCost: {
-            /** Format: double */
+            /**
+             * Format: double
+             * @description What the approved and invoiced hours cost the company.
+             */
             approved: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description What the draft and rejected hours cost the company.
+             */
             draft: number;
             /**
              * Format: double
              * @description The three buckets' bill amount minus the three buckets' cost. Negative when the work has cost more than it bills.
              */
             margin: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description What the hours waiting for a decision cost the company.
+             */
             submitted: number;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description What all three buckets cost the company, taken from the one across-bucket figure the module that owns the hours reports rather than by adding the three above — each of those is rounded on its own, so their sum can be a cent or two out.
+             */
             total: number;
             /**
              * Format: double
@@ -1210,7 +1228,10 @@ export interface components {
              * @description The three buckets' bill amounts added up, in the project's currency. Absent when the project carries no currency.
              */
             totalAmount?: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @description The three buckets' hours added up.
+             */
             totalHours: number;
         };
         /** @description Which project a portfolio row is about, in the fields the table renders and links from. */
@@ -1355,7 +1376,7 @@ export interface components {
             newProjectsDelta: number;
             /**
              * Format: int32
-             * @description How many billing milestones are ready to invoice, on the projects whose money the caller may see. A count and not an amount: the projects may be in several currencies, and two currencies never add up. It is a state now rather than a figure over the period, exactly as activeProjects is, and it has no delta for the same reason a currency-mixed amount would have no meaning.
+             * @description How many billing milestones are ready to invoice, on the projects whose money the caller may see, leaving out cancelled and completed projects — whose invoicing is over — so that this count, the milestoneReady attention items and the portfolio all answer the same question the same way. A count and not an amount: the projects may be in several currencies, and two currencies never add up. It is a state now rather than a figure over the period, exactly as activeProjects is, and it has no delta for the same reason a currency-mixed amount would have no meaning.
              */
             readyMilestones: number;
             /** Format: date-time */

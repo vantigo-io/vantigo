@@ -485,9 +485,16 @@ Every actual is the same three buckets Time tracking's own entry statuses fold i
 rejected entries; see [Time's state machine](time.md#the-state-machine)), with
 figures that span all three:
 
-- **`unpricedHours`** — hours with no bill rate, or a rate in a currency other than
-  the project's; they count in hours and in no amount. It is the same figure
-  Time tracking's own project summary reports.
+- **`unpricedHours`** — **billable** hours with no bill amount in the project's
+  currency: no bill rate, or a rate in another currency. They count in hours and in
+  no amount. Non-billable hours are never unpriced — they were never meant to carry a
+  price, and they are in `nonBillableHours`; a surface that told somebody to "add the
+  missing rate" for them would be sending them after a rate that must not exist. It
+  is not unconditionally the figure Time tracking's own project summary shows: that
+  summary covers only submitted, approved and invoiced work, so a billable draft with
+  no rate is counted here and not there, and it infers a currency for a project that
+  carries none where this reports no amounts at all. See
+  [what Time reports to other modules](time.md#what-time-reports-to-other-modules).
 - **`uncostedHours`** (inside the `cost` block only) — hours, billable or not, whose
   cost is not counted: no cost rate, or a cost rate in another currency. `margin` is
   short by exactly what these hours would have cost, which is why the block always
@@ -513,6 +520,21 @@ somebody logged must appear somewhere.
 | Anyone who sees the project | ✓ | – | – |
 | Financial rights on the project (manager, `manage-all`, or `view-financials` on a project they can see) | ✓ | ✓ | – |
 | The above **and** `projects:view-costs` | ✓ | ✓ | ✓ |
+
+`unpricedHours` is on the hours side of that table, and it is worth saying out loud:
+it is an **hours** figure, so everyone who can see the project gets it, although Time
+tracking keeps its own copy inside the project summary's `billing` block behind
+financial rights. It is the one figure the economy read gives a project member that
+Time's own API would not — deliberately, because "some of these hours carry no rate"
+is a fact about the work rather than about its price.
+
+Two more things about this endpoint's reach. It is gated on **`projects:access`**,
+not `time:access`, so a caller with a project role and no access to Time tracking at
+all still gets the project's aggregate hours here; that is [E6](#project-economy)'s
+point — Projects owns this view. And it exposes **no per-person and no per-entry
+data** of any kind, while Time's own project summary already gives project members
+per-status, per-line *and per-person* hours, so the economy read is a strict subset
+of it in every respect but the one above.
 
 The `cost` block additionally needs the project to carry a **currency** and
 `timeTracking` to be on — a cost in no currency is a number nobody can read.
@@ -584,10 +606,13 @@ per-project read.
 ### The dashboard signals
 
 `GET /stats/summary` gains `readyMilestones`: how many `ready` milestones sit on
-projects whose money the caller has financial rights on. It is a count, not an
-amount (the milestones may be in several currencies), a state now rather than a
-figure over the period like `activeProjects`, and it has no delta for the same
-reason a currency-mixed amount has no meaning.
+projects whose money the caller has financial rights on, **cancelled and completed
+projects left out** — their invoicing is over, and a card saying "4 ready to invoice"
+above an attention list offering 2 would be two numbers for one question. It counts
+exactly the milestones `milestoneReady` below lists. It is a count, not an amount
+(the milestones may be in several currencies), a state now rather than a figure over
+the period like `activeProjects`, and it has no delta for the same reason a
+currency-mixed amount has no meaning.
 
 `GET /stats/attention` gains four types, alongside the existing `projectOverdue`:
 

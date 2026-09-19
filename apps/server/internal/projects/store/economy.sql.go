@@ -333,6 +333,7 @@ const readyMilestoneCount = `-- name: ReadyMilestoneCount :one
 SELECT count(*) FROM projects.billing_milestones m
 JOIN projects.projects p ON p.id = m.project_id
 WHERE m.status = 'ready'
+  AND p.status NOT IN ('cancelled', 'completed')
   AND ($1::boolean
        OR EXISTS (SELECT 1 FROM projects.project_roles r
                   WHERE r.project_id = p.id AND r.user_id = $2 AND r.role = 'manager')
@@ -352,6 +353,12 @@ type ReadyMilestoneCountParams struct {
 // the caller may see. A count and not an amount — the projects may be in
 // several currencies, and two currencies never add up. Financial rights,
 // because the existence of something ready to invoice is a financial fact.
+//
+// It counts exactly what ReadyMilestonesForCaller below lists, cancelled and
+// completed projects excluded for the same reason: a card saying "4 ready to
+// invoice" over an attention list offering 2 is three numbers for one
+// question, and the one nobody can reach by clicking through is the one that
+// becomes a support ticket.
 func (q *Queries) ReadyMilestoneCount(ctx context.Context, arg ReadyMilestoneCountParams) (int64, error) {
 	row := q.db.QueryRow(ctx, readyMilestoneCount,
 		arg.ManageAll,

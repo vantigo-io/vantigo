@@ -399,6 +399,45 @@ func TestGetProjectEconomy_HoursOnAnUnknownLineJoinTheNoLineRow(t *testing.T) {
 	}
 }
 
+// The provider's own Total is what a total, a margin and a percentage are
+// built from — never the three published buckets added up. Each bucket is
+// rounded on its own, so three buckets worth half a cent each publish 0.01
+// apiece while the work is worth 0.02 altogether; adding them would report
+// 0.03 for money nobody billed.
+func TestGetProjectEconomy_ReportsTheProvidersTotalRatherThanTheBucketSum(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	manager, _ := signIn(t, h, "projects:create")
+	project, _, _ := economySetUp(t, manager, "ECOTOTAL1000")
+	half := loggedBucket(0.05, "0.01", "0.01")
+	totals := loggedTotals(half, half, half)
+	// What the provider computes from the unrounded whole, which is not what
+	// its own three published figures add up to.
+	totals.Total = contracts.ActualsBucket{HoursHundredths: 15, BillAmount: "0.02", CostAmount: "0.02"}
+	actuals.set(project.Id, totals)
+
+	costs, _ := signIn(t, h, "projects:view-all", "projects:view-financials", "projects:view-costs")
+	economy := getEconomy(t, costs, project.Id)
+	if economy.Actuals.TotalAmount == nil || *economy.Actuals.TotalAmount != 0.02 {
+		t.Errorf("totalAmount = %v, want 0.02 — the provider's Total, not 0.03 from adding its buckets",
+			economy.Actuals.TotalAmount)
+	}
+	if economy.Actuals.TotalHours != 0.15 {
+		t.Errorf("totalHours = %v, want 0.15", economy.Actuals.TotalHours)
+	}
+	if economy.Cost == nil {
+		t.Fatal("cost is absent, want it for a projects:view-costs holder")
+	}
+	if economy.Cost.Total != 0.02 {
+		t.Errorf("cost.total = %v, want 0.02 — the provider's Total on the cost side too", economy.Cost.Total)
+	}
+	if economy.Cost.Margin != 0 {
+		t.Errorf("margin = %v, want 0: both sides are the same 0.02, and two sums of rounded buckets would agree by accident",
+			economy.Cost.Margin)
+	}
+}
+
 // A line reported twice keeps both entries' hours. The contract promises one
 // entry per line, so this is a provider bug if it ever happens — but the two
 // entries' hours are inside the project's own totals either way, and a row
