@@ -236,6 +236,7 @@ type fakeActuals struct {
 	entries  map[int32]contracts.ProjectActualsEntry
 	err      error
 	requests []contracts.ActualsRequest
+	batches  [][]contracts.ActualsRequest
 	onCall   func(context.Context, contracts.ActualsRequest)
 }
 
@@ -295,7 +296,38 @@ func (f *fakeActuals) Actuals(ctx context.Context, req contracts.ActualsRequest)
 	return entry, nil
 }
 
+// batched is every batch the provider has been handed, in order — the log a
+// portfolio test reads to prove one request costs exactly one call into the
+// module that owns the hours, however many projects it is about. asked() is
+// the same calls flattened to one entry per project.
+func (f *fakeActuals) batched() [][]contracts.ActualsRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.batches)
+}
+
+// ActualsForProjects answers each request from the same entries Actuals does,
+// and refuses what the real provider refuses: a batch past
+// contracts.MaxActualsRequests, and one project named twice. Both are the
+// caller's bug, so a consumer that builds a batch badly fails the test that
+// built it rather than quietly getting an answer the real module would never
+// have given.
 func (f *fakeActuals) ActualsForProjects(ctx context.Context, reqs []contracts.ActualsRequest) (map[int32]contracts.ActualsTotals, error) {
+	f.mu.Lock()
+	f.batches = append(f.batches, slices.Clone(reqs))
+	f.mu.Unlock()
+
+	if len(reqs) > contracts.MaxActualsRequests {
+		return nil, fmt.Errorf("projects test: %d projects in one batch, at most %d", len(reqs), contracts.MaxActualsRequests)
+	}
+	seen := make(map[int32]bool, len(reqs))
+	for _, req := range reqs {
+		if seen[req.ProjectID] {
+			return nil, fmt.Errorf("projects test: project %d asked for twice in one batch", req.ProjectID)
+		}
+		seen[req.ProjectID] = true
+	}
+
 	out := make(map[int32]contracts.ActualsTotals, len(reqs))
 	for _, req := range reqs {
 		entry, err := f.Actuals(ctx, req)

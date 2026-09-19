@@ -1,12 +1,16 @@
 package projects_test
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/vantigo-io/vantigo/server/internal/contracts"
 	"github.com/vantigo-io/vantigo/server/internal/modtest"
 )
 
@@ -36,6 +40,7 @@ type summaryJSON struct {
 	ActiveProjectsDelta int32     `json:"activeProjectsDelta"`
 	NewProjects         int32     `json:"newProjects"`
 	NewProjectsDelta    int32     `json:"newProjectsDelta"`
+	ReadyMilestones     int32     `json:"readyMilestones"`
 }
 
 // bucketJSON decodes ProjectStatsDailyBucket, one UTC calendar day.
@@ -333,5 +338,304 @@ func TestGetProjectsStatsAttention_StrangerSeesNothing(t *testing.T) {
 	stranger, _ := signIn(t, h)
 	if items := readAttention(t, stranger); len(items) != 0 {
 		t.Errorf("items = %+v, want none: the caller holds no role on the overdue project", items)
+	}
+}
+
+// The economy signals on the dashboard (design §5, delivery B): the ready
+// milestone count on the summary card, and the four attention types. Each
+// one is addressed to somebody — a budget alert to the people running the
+// project, an invoicing one to whoever may see the money — because an item
+// nobody is expected to act on is noise in everybody's list.
+
+// attentionOfType is the items of one type, which is what every assertion
+// below compares: the list is merged from several sources and a test about
+// one of them says so.
+func attentionOfType(items []attentionJSON, want string) []attentionJSON {
+	out := []attentionJSON{}
+	for _, item := range items {
+		if item.Type == want {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// attentionEntityIds is the entity ids of a set of items, in order.
+func attentionEntityIds(items []attentionJSON) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		out = append(out, item.EntityId)
+	}
+	return out
+}
+
+// readyMilestones counts what is waiting to be invoiced on the projects whose
+// money the caller may see — the same rule the portfolio lists rows by, not
+// the wider "can see the project" the rest of this card counts over.
+func TestGetProjectsStatsSummary_CountsReadyMilestonesTheCallerMaySee(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	creator, _ := signIn(t, h, "projects:create")
+	first := portfolioProject(t, creator, "SRMFIRST", nil)
+	second := portfolioProject(t, creator, "SRMSECND", nil)
+	for _, seed := range []struct {
+		project projectJSON
+		count   int
+	}{{first, 2}, {second, 1}} {
+		for i := 0; i < seed.count; i++ {
+			movedMilestone(t, creator,
+				createMilestone(t, creator, seed.project.Id, map[string]any{"name": fmt.Sprintf("M%d", i)}), "ready", nil)
+		}
+	}
+	// One more that is not ready, so the count is a status and not a total.
+	createMilestone(t, creator, first.Id, map[string]any{"name": "Senere"})
+	h.Advance(time.Second)
+
+	period := statsRange(modtest.Start, h.Now())
+	if got := readSummary(t, creator, period).ReadyMilestones; got != 3 {
+		t.Errorf("the manager's readyMilestones = %d, want 3", got)
+	}
+
+	member, memberID := signIn(t, h)
+	addRole(t, h, first.Id, memberID, "member")
+	if got := readSummary(t, member, period).ReadyMilestones; got != 0 {
+		t.Errorf("the member's readyMilestones = %d, want 0: they may not see the project's money", got)
+	}
+
+	financials, _ := signIn(t, h, "projects:view-all", "projects:view-financials")
+	if got := readSummary(t, financials, period).ReadyMilestones; got != 3 {
+		t.Errorf("view-financials' readyMilestones = %d, want 3", got)
+	}
+}
+
+// The two budget alerts, at their boundaries: nothing below 80 %, a warning
+// from 80 % up to and including 100 % exactly, and exceeded past it — decided
+// on the exact ratio, so a project at 100.001 % is exceeded although its
+// percentage prints 100.0. One project never raises both.
+func TestGetProjectsStatsAttention_BudgetAlertsAtTheirThresholds(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	creator, _ := signIn(t, h, "projects:create")
+	billed := func(amount string) contracts.ActualsTotals {
+		return loggedTotals(loggedBucket(1, amount, "0.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00"))
+	}
+	for _, seed := range []struct{ code, name, amount string }{
+		{"SBUNDER1", "Godt innenfor", "799.99"},
+		{"SBWARN11", "Nesten brukt opp", "800.00"},
+		{"SBEDGE11", "Akkurat brukt opp", "1000.00"},
+		{"SBOVER11", "Over budsjett", "1000.01"},
+	} {
+		project := portfolioProject(t, creator, seed.code, map[string]any{"name": seed.name})
+		actuals.set(project.Id, billed(seed.amount))
+	}
+
+	items := readAttention(t, creator)
+	warnings := attentionOfType(items, "budgetWarning")
+	if len(warnings) != 2 {
+		t.Fatalf("budgetWarning items = %+v, want the 80 %% and the 100 %% projects", warnings)
+	}
+	names := []string{warnings[0].Title, warnings[1].Title}
+	slices.Sort(names)
+	if fmt.Sprint(names) != "[Akkurat brukt opp Nesten brukt opp]" {
+		t.Errorf("budgetWarning titles = %v, want the two projects' names", names)
+	}
+	exceeded := attentionOfType(items, "budgetExceeded")
+	if len(exceeded) != 1 || exceeded[0].Title != "Over budsjett" {
+		t.Errorf("budgetExceeded items = %+v, want only the project past 100 %%", exceeded)
+	}
+	for _, item := range append(warnings, exceeded...) {
+		if item.EntityId == "" || strings.Contains(item.EntityId, "/") {
+			t.Errorf("item %+v entityId = %q, want the bare project id", item, item.EntityId)
+		}
+	}
+	ids := map[string]bool{}
+	for _, item := range items {
+		if ids[item.Id] {
+			t.Errorf("two items share the id %q: the dashboard keys its list on it", item.Id)
+		}
+		ids[item.Id] = true
+	}
+}
+
+// A budget alert is addressed to the people running the project, which is the
+// manager *role*. projects:manage-all is not a substitute: an administrator
+// who can manage every project would be sent every project's alerts and read
+// none of them. occurredAt is the day work was last logged, which is what the
+// dashboard prints as "3 days ago".
+func TestGetProjectsStatsAttention_BudgetAlertsGoToTheProjectsManagers(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	creator, _ := signIn(t, h, "projects:create")
+	project := portfolioProject(t, creator, "SBWHO111", nil)
+	onHold := portfolioProject(t, creator, "SBHOLD11", map[string]any{"status": "on-hold"})
+	totals := loggedTotals(loggedBucket(10, "1500.00", "0.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00"))
+	lastDay := modtest.Start.Add(-48 * time.Hour).Format(time.DateOnly)
+	totals.LastEntryDate = &lastDay
+	actuals.set(project.Id, totals)
+	actuals.set(onHold.Id, totals)
+
+	items := attentionOfType(readAttention(t, creator), "budgetExceeded")
+	if len(items) != 1 || items[0].EntityId != fmt.Sprint(project.Id) {
+		t.Fatalf("the manager's budgetExceeded items = %+v, want only the active project", items)
+	}
+	wantDay, _ := time.Parse(time.DateOnly, lastDay)
+	if !items[0].OccurredAt.Equal(wantDay) {
+		t.Errorf("occurredAt = %v, want %v — midnight UTC on the day work was last logged", items[0].OccurredAt, wantDay)
+	}
+
+	admin, _ := signIn(t, h, "projects:manage-all")
+	if got := attentionOfType(readAttention(t, admin), "budgetExceeded"); len(got) != 0 {
+		t.Errorf("manage-all's budgetExceeded items = %+v, want none: an alert is addressed to a project's managers", got)
+	}
+	financials, financialsID := signIn(t, h, "projects:view-financials")
+	addRole(t, h, project.Id, financialsID, "viewer")
+	if got := attentionOfType(readAttention(t, financials), "budgetExceeded"); len(got) != 0 {
+		t.Errorf("view-financials' budgetExceeded items = %+v, want none", got)
+	}
+}
+
+// milestoneReady goes to everybody who may see the project's money, because
+// whoever may see it is who invoices. Its entityId names the project as well
+// as the milestone, which is how the dashboard builds a link to a milestone
+// that is addressed by its own id.
+func TestGetProjectsStatsAttention_MilestoneReadyGoesToFinancialRights(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	creator, _ := signIn(t, h, "projects:create")
+	active := portfolioProject(t, creator, "SMRACTIV", nil)
+	planned := portfolioProject(t, creator, "SMRPLAND", map[string]any{"status": ""})
+	done := portfolioProject(t, creator, "SMRDONE1", nil)
+	cancelled := portfolioProject(t, creator, "SMRCANCL", nil)
+	ready := movedMilestone(t, creator,
+		createMilestone(t, creator, active.Id, map[string]any{"name": "Klar til fakturering"}), "ready", nil)
+	movedMilestone(t, creator, createMilestone(t, creator, planned.Id, nil), "ready", nil)
+	movedMilestone(t, creator, createMilestone(t, creator, done.Id, nil), "ready", nil)
+	movedMilestone(t, creator, createMilestone(t, creator, cancelled.Id, nil), "ready", nil)
+	setStatus(t, creator, done.Id, "completed")
+	setStatus(t, creator, cancelled.Id, "cancelled")
+
+	items := attentionOfType(readAttention(t, creator), "milestoneReady")
+	if len(items) != 2 {
+		t.Fatalf("milestoneReady items = %+v, want the active and the planned project's, and neither finished one's", items)
+	}
+	var found bool
+	for _, item := range items {
+		if item.EntityId != fmt.Sprintf("%d/%d", active.Id, ready.Id) {
+			continue
+		}
+		found = true
+		if item.Title != "Klar til fakturering" {
+			t.Errorf("title = %q, want the milestone's own name", item.Title)
+		}
+		if ready.ReadyAt == nil || !item.OccurredAt.Equal(*ready.ReadyAt) {
+			t.Errorf("occurredAt = %v, want the moment it was marked ready (%v)", item.OccurredAt, ready.ReadyAt)
+		}
+	}
+	if !found {
+		t.Errorf("items = %+v, want one with entityId %d/%d", items, active.Id, ready.Id)
+	}
+
+	member, memberID := signIn(t, h)
+	addRole(t, h, active.Id, memberID, "member")
+	if got := attentionOfType(readAttention(t, member), "milestoneReady"); len(got) != 0 {
+		t.Errorf("the member's milestoneReady items = %+v, want none: they may not see the money", got)
+	}
+	financials, financialsID := signIn(t, h, "projects:view-financials")
+	addRole(t, h, active.Id, financialsID, "viewer")
+	if got := attentionOfType(readAttention(t, financials), "milestoneReady"); len(got) != 1 {
+		t.Errorf("view-financials' milestoneReady items = %+v, want the one on the project they can see", got)
+	}
+}
+
+// milestoneOverdue is a milestone still *planned* whose day has passed, on an
+// active project, for the people running it. A ready one past its date is
+// already its own milestoneReady item, and telling the same person twice
+// about the same milestone is noise.
+func TestGetProjectsStatsAttention_MilestoneOverdueGoesToManagersOfActiveProjects(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	creator, _ := signIn(t, h, "projects:create")
+	active := portfolioProject(t, creator, "SMOACTIV", nil)
+	held := portfolioProject(t, creator, "SMOHELD1", map[string]any{"status": "on-hold"})
+	dueDay := modtest.Start.Add(24 * time.Hour).Truncate(24 * time.Hour)
+	due := dueDay.Format(time.DateOnly)
+	late := createMilestone(t, creator, active.Id, map[string]any{"name": "Forfalt", "plannedDate": due})
+	movedMilestone(t, creator,
+		createMilestone(t, creator, active.Id, map[string]any{"name": "Klar", "plannedDate": due}), "ready", nil)
+	createMilestone(t, creator, active.Id, map[string]any{"name": "Senere", "plannedDate": modtest.Start.Add(30 * 24 * time.Hour).Format(time.DateOnly)})
+	createMilestone(t, creator, held.Id, map[string]any{"name": "Pauset", "plannedDate": due})
+
+	// Two days on, the milestone's day is behind the clock. A session does not
+	// live that long, so the callers below are fresh ones given the roles the
+	// rule is about.
+	h.Advance(48 * time.Hour)
+	reader, readerID := signIn(t, h, "projects:view-financials")
+	addRole(t, h, active.Id, readerID, "viewer")
+	if got := attentionOfType(readAttention(t, reader), "milestoneOverdue"); len(got) != 0 {
+		t.Errorf("view-financials' milestoneOverdue items = %+v, want none: it is the managers who are asked to act", got)
+	}
+
+	manager, managerID := signIn(t, h)
+	addRole(t, h, active.Id, managerID, "manager")
+	addRole(t, h, held.Id, managerID, "manager")
+	items := attentionOfType(readAttention(t, manager), "milestoneOverdue")
+	if got := attentionEntityIds(items); fmt.Sprint(got) != fmt.Sprint([]string{fmt.Sprintf("%d/%d", active.Id, late.Id)}) {
+		t.Fatalf("milestoneOverdue items = %+v, want only the planned, overdue milestone on the active project", items)
+	}
+	if items[0].Title != "Forfalt" || !items[0].OccurredAt.Equal(dueDay) {
+		t.Errorf("item = %+v, want the milestone's name and its planned day at midnight UTC (%v)", items[0], dueDay)
+	}
+}
+
+// Without a module reporting what has been logged there are no budget alerts
+// at all — not alerts computed against zeroes — and everything this module
+// owns by itself is still there.
+func TestGetProjectsStatsAttention_WithoutTimeTrackingThereAreNoBudgetItems(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	creator, _ := signIn(t, h, "projects:create")
+	project := portfolioProject(t, creator, "SBNOTIME", nil)
+	movedMilestone(t, creator, createMilestone(t, creator, project.Id, nil), "ready", nil)
+
+	items := readAttention(t, creator)
+	if got := attentionOfType(items, "budgetWarning"); len(got) != 0 {
+		t.Errorf("budgetWarning items = %+v, want none", got)
+	}
+	if got := attentionOfType(items, "budgetExceeded"); len(got) != 0 {
+		t.Errorf("budgetExceeded items = %+v, want none", got)
+	}
+	if got := attentionOfType(items, "milestoneReady"); len(got) != 1 {
+		t.Errorf("milestoneReady items = %+v, want the one this module knows about on its own", got)
+	}
+}
+
+// A provider that cannot answer costs the dashboard its budget alerts and
+// nothing else. This is the one read in the feature that degrades: the
+// dashboard merges many modules' items into one list, and one module that
+// cannot compute one of its five kinds must not empty the list — unlike the
+// portfolio and the per-project economy, where a budget compared against
+// zeroes would be the whole answer.
+func TestGetProjectsStatsAttention_AFailingProviderLeavesTheRestOfTheList(t *testing.T) {
+	t.Parallel()
+	actuals := newFakeActuals()
+	h := newHarnessWithActuals(t, actuals)
+	creator, _ := signIn(t, h, "projects:create")
+	project := portfolioProject(t, creator, "SBBROKEN", nil)
+	movedMilestone(t, creator, createMilestone(t, creator, project.Id, nil), "ready", nil)
+	actuals.set(project.Id, loggedTotals(loggedBucket(10, "1500.00", "0.00"), loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")))
+
+	if got := attentionOfType(readAttention(t, creator), "budgetExceeded"); len(got) != 1 {
+		t.Fatalf("budgetExceeded items = %+v, want one while the provider answers", got)
+	}
+
+	actuals.fail(errors.New("time: the entries could not be read"))
+	items := readAttention(t, creator)
+	if got := attentionOfType(items, "budgetExceeded"); len(got) != 0 {
+		t.Errorf("budgetExceeded items = %+v, want none once the provider is broken", got)
+	}
+	if got := attentionOfType(items, "milestoneReady"); len(got) != 1 {
+		t.Errorf("milestoneReady items = %+v, want the rest of the list to survive a broken provider", got)
 	}
 }

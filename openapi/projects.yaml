@@ -887,6 +887,18 @@ components:
                 - margin
                 - uncostedHours
             type: object
+        ProjectEconomyCustomer:
+            description: The customer a portfolio row's project bills to, absent on an internal project. The name is resolved through the customer directory, once per distinct customer on the page, and is absent when the directory no longer knows the customer — the project keeps the relationship it was started under either way.
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    nullable: true
+                    type: string
+            required:
+                - id
+            type: object
         ProjectEconomyLine:
             description: One row of the per-line breakdown — every billing line of the project, deactivated ones included, in the same order the billing tab lists them, plus one row without a billingLineId for work logged against no line at all. A line the project does not have that work was nonetheless logged against folds into that same row rather than being dropped.
             properties:
@@ -932,6 +944,68 @@ components:
                     type: number
             required:
                 - overBudget
+            type: object
+        ProjectEconomyListResponse:
+            description: 'One page of the economy portfolio, with totals over the whole filtered set rather than over the page: a portfolio read to decide where to look must not have its headline figures change when somebody turns the page.'
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/ProjectEconomyRow'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+                timeTracking:
+                    description: Whether this installation has a module that reports what has been logged against projects, exactly as the per-project economy reports it. False means no row carries actuals or budgetUsed — not that nothing has been logged.
+                    type: boolean
+                totals:
+                    $ref: '#/components/schemas/ProjectEconomyTotals'
+            required:
+                - data
+                - pagination
+                - totals
+                - timeTracking
+            type: object
+        ProjectEconomyNextMilestone:
+            description: The next open milestone of a portfolio row's project — the earliest-dated 'planned' or 'ready' one, undated ones after dated ones and then in the plan's own order. Absent when the project has no open milestone at all.
+            properties:
+                effectiveAmount:
+                    description: What the milestone is worth, in the project's currency — the flat amount as entered, or the percentage of the project's fixed price. Absent for a milestone nobody can price, exactly as on the invoice plan itself.
+                    format: double
+                    nullable: true
+                    type: number
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                overdue:
+                    description: Whether the milestone's planned day has passed, on the server's own UTC calendar.
+                    type: boolean
+                plannedDate:
+                    description: The day the milestone is planned for. Absent when nobody has dated it, which is what sorts it after every dated one.
+                    format: date
+                    nullable: true
+                    type: string
+                status:
+                    description: "'planned' or 'ready' — the two open statuses."
+                    type: string
+            required:
+                - id
+                - name
+                - status
+                - overdue
+            type: object
+        ProjectEconomyReadyAmount:
+            description: What is ready to invoice in one currency. The portfolio's totals carry one of these per currency, by currency code, because amounts in different currencies are not comparable and adding them would produce a number in neither.
+            properties:
+                amount:
+                    format: double
+                    type: number
+                currency:
+                    type: string
+            required:
+                - currency
+                - amount
             type: object
         ProjectEconomyResponse:
             description: 'A project''s budget against what has been logged on it (design §5, delivery B). Everyone who sees the project sees the hours; amounts, the fixed price, the milestone totals and the currency need financial rights on it, and the cost block needs projects:view-costs as well. Fields the caller may not see are absent, never null and never zero. Nothing here is cached: the hours are read live through the actuals contract on every request.'
@@ -979,6 +1053,124 @@ components:
                 - budget
                 - lines
                 - overBudget
+            type: object
+        ProjectEconomyRow:
+            description: One project in the economy portfolio. Every row is a project the caller has financial rights on — the project's manager, projects:manage-all, or projects:view-financials on a project they can see — so the amounts are never shaped away here the way they are on the per-project economy; a caller who may not see a project's money does not get its row at all. There is no cost or margin in the portfolio — that block is the per-project read's, behind projects:view-costs.
+            properties:
+                actuals:
+                    allOf:
+                        - $ref: '#/components/schemas/ProjectEconomyRowActuals'
+                    description: What has been logged on the project. Absent exactly when timeTracking is false.
+                budgetUsed:
+                    allOf:
+                        - $ref: '#/components/schemas/ProjectEconomyBudgetUsed'
+                    description: Absent when the project has no basis to measure against — such rows sort last under the budgetUsed sort — and absent when timeTracking is false.
+                currency:
+                    description: The currency this row's amounts are in. Absent when the project carries none, and then the row has no amounts at all.
+                    nullable: true
+                    type: string
+                nextMilestone:
+                    allOf:
+                        - $ref: '#/components/schemas/ProjectEconomyNextMilestone'
+                    description: The project's next open milestone, absent when it has none.
+                overBudget:
+                    description: Whether the logged work has passed the budget budgetUsed measures against, decided on the exact ratio rather than on the rounded percent. False when there is nothing to measure against.
+                    type: boolean
+                pendingHours:
+                    description: 'The hours waiting for a decision: the submitted and draft buckets added up. Absent exactly when actuals is — nobody has said there are none, only that this installation cannot say.'
+                    format: double
+                    nullable: true
+                    type: number
+                project:
+                    $ref: '#/components/schemas/ProjectEconomyRowProject'
+                readyAmount:
+                    description: What the project's 'ready' milestones add up to, in its own currency. Absent when it has none ready, when none of them can be priced, and when the project carries no currency.
+                    format: double
+                    nullable: true
+                    type: number
+                readyCount:
+                    description: How many of the project's milestones are ready to invoice.
+                    format: int32
+                    type: integer
+            required:
+                - project
+                - overBudget
+                - readyCount
+            type: object
+        ProjectEconomyRowActuals:
+            description: What has been logged on a portfolio row's project — the three buckets and their totals, and no more. The unpriced, billable and non-billable splits are the per-project economy read's; a portfolio is read across hundreds of projects at once.
+            properties:
+                approved:
+                    allOf:
+                        - $ref: '#/components/schemas/ProjectEconomyBucket'
+                    description: Approved and invoiced entries.
+                draft:
+                    allOf:
+                        - $ref: '#/components/schemas/ProjectEconomyBucket'
+                    description: Draft and rejected entries.
+                submitted:
+                    $ref: '#/components/schemas/ProjectEconomyBucket'
+                totalAmount:
+                    description: The three buckets' bill amounts added up, in the project's currency. Absent when the project carries no currency.
+                    format: double
+                    nullable: true
+                    type: number
+                totalHours:
+                    format: double
+                    type: number
+            required:
+                - approved
+                - submitted
+                - draft
+                - totalHours
+            type: object
+        ProjectEconomyRowProject:
+            description: Which project a portfolio row is about, in the fields the table renders and links from.
+            properties:
+                code:
+                    type: string
+                customer:
+                    allOf:
+                        - $ref: '#/components/schemas/ProjectEconomyCustomer'
+                    description: Absent on an internal project.
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+                status:
+                    type: string
+            required:
+                - id
+                - code
+                - name
+                - status
+            type: object
+        ProjectEconomyTotals:
+            description: What the whole filtered set adds up to, page or no page. readyAmounts is a list rather than one number because the projects in it may be in several currencies, and two currencies never add up.
+            properties:
+                overBudgetCount:
+                    description: How many of those projects have passed their budget. Always 0 when timeTracking is false, since nothing can be compared then.
+                    format: int32
+                    type: integer
+                projectCount:
+                    description: How many projects the filters matched, which is also the pagination's totalCount.
+                    format: int32
+                    type: integer
+                readyAmounts:
+                    description: What is ready to invoice, one entry per currency, by currency code. A project whose ready milestones cannot be priced, or that carries no currency, contributes to readyCount and to no amount.
+                    items:
+                        $ref: '#/components/schemas/ProjectEconomyReadyAmount'
+                    type: array
+                readyCount:
+                    description: How many milestones across those projects are ready to invoice.
+                    format: int32
+                    type: integer
+            required:
+                - projectCount
+                - overBudgetCount
+                - readyCount
+                - readyAmounts
             type: object
         ProjectFinancials:
             description: The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see".
@@ -1122,7 +1314,14 @@ components:
                 - createdAt
             type: object
         ProjectStatsAttentionItem:
-            description: One project the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention; entityId is the project id, which the dashboard turns into a link to /projects/{id}.
+            description: |-
+                One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
+
+                Five types, each with its own recipients: `projectOverdue`, an active project past its end date, for everyone who can see it; `budgetWarning` (80 % ≤ used ≤ 100 %) and `budgetExceeded` (over 100 %), for the managers of an active project and nobody else, so a holder of projects:manage-all is not sent every project's alerts; `milestoneReady`, for everyone with financial rights on a project that is not cancelled or completed; and `milestoneOverdue`, a planned milestone whose day has passed, for the managers of an active project. One project never raises both budget types.
+
+                entityId is the project id for the three project-shaped types and `<projectId>/<milestoneId>` for the two milestone ones, which is what the dashboard builds the link from; id is unique within the list.
+
+                The budget items need what has been logged, which comes from another module. When that module cannot answer, they are left out and the rest of the list is still returned — this endpoint is one of many the dashboard merges, and one degraded module must not empty it.
             properties:
                 entityId:
                     type: string
@@ -1170,6 +1369,10 @@ components:
                 newProjectsDelta:
                     format: int32
                     type: integer
+                readyMilestones:
+                    description: 'How many billing milestones are ready to invoice, on the projects whose money the caller may see. A count and not an amount: the projects may be in several currencies, and two currencies never add up. It is a state now rather than a figure over the period, exactly as activeProjects is, and it has no delta for the same reason a currency-mixed amount would have no meaning.'
+                    format: int32
+                    type: integer
                 to:
                     format: date-time
                     type: string
@@ -1180,6 +1383,7 @@ components:
                 - activeProjectsDelta
                 - newProjects
                 - newProjectsDelta
+                - readyMilestones
             type: object
         ProjectStatusChangeRequest:
             properties:
@@ -1681,6 +1885,82 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Suggest a project code
+            tags:
+                - Projects
+            x-vantigo-access: permission:projects:access
+    /api/v1/projects/economy:
+        get:
+            description: 'The economy portfolio: every project the caller has financial rights on, with its budget usage, what has been logged on it and what it has ready to invoice, so somebody responsible for several projects can see which of them need looking at without opening each one. Rows the caller may not see the money of are not shaped down, they are absent — the portfolio is a financial surface end to end.'
+            operationId: getProjectsEconomy
+            parameters:
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+                - description: Matches the project code or name, case-insensitively. '%' and '_' are literal characters, not wildcards.
+                  in: query
+                  name: search
+                  schema:
+                    type: string
+                - description: "One of 'planned', 'active', 'on-hold', 'completed', 'cancelled' or 'all'. Defaults to 'active' — a portfolio is about the work being done now — and 'all' is how every status is asked for."
+                  in: query
+                  name: status
+                  schema:
+                    default: active
+                    type: string
+                - in: query
+                  name: customerId
+                  schema:
+                    format: int32
+                    type: integer
+                - description: true keeps only the rows whose logged work has passed the budget. Nothing is over budget when time tracking is off.
+                  in: query
+                  name: overBudget
+                  schema:
+                    type: boolean
+                - description: true keeps only the rows with at least one milestone ready to invoice.
+                  in: query
+                  name: hasReady
+                  schema:
+                    type: boolean
+                - description: "Which order the rows come in. 'budgetUsed' (the default) is most-used first on the exact ratio, with rows that have no basis last; 'readyAmount' is by currency code and then the largest amount first, because amounts in different currencies are not comparable and one list cannot rank them against each other; 'nextMilestone' is the soonest planned date first, undated open milestones after dated ones and rows with no open milestone last; 'code' is alphabetical. Every order breaks ties by project code."
+                  in: query
+                  name: sort
+                  schema:
+                    default: budgetUsed
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ProjectEconomyListResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List the economy of the projects whose money the caller may see
             tags:
                 - Projects
             x-vantigo-access: permission:projects:access
