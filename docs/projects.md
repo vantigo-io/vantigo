@@ -230,11 +230,15 @@ Writing financial fields needs no rule of its own: only managers and `manage-all
 update a project, both see its financials, and whoever creates a project becomes its
 manager.
 
-Every project response also carries `capabilities` (`canManage`, `canSeeFinancials`,
-`canManageMilestones`) and `billingLinesAvailable`, so the frontend never re-derives
-authorization. `canManageMilestones` is true for the project's managers and
-`projects:manage-all`, and false for a `projects:view-financials` holder who is not
-one — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan).
+Every project response also carries `capabilities` (`canManage`, `canContribute`,
+`canSeeFinancials`, `canManageMilestones`, `canSeeCosts`) and `billingLinesAvailable`,
+so the frontend never re-derives authorization. `canManageMilestones` is true for the
+project's managers and `projects:manage-all`, and false for a `projects:view-financials`
+holder who is not one — see [Billing milestones and the invoice plan](#billing-milestones-and-the-invoice-plan).
+`canSeeCosts` is the permission half of [Project economy](#project-economy)'s cost
+block alone (financial rights on the project **and** `projects:view-costs`); a
+surface should still draw the block from its presence in the response, not from this
+flag, since the block is also absent without a currency or without time tracking.
 
 ## Billing lines and the optional Products dependency
 
@@ -463,10 +467,14 @@ another about how much of a budget has been used:
    applies.
 
 An amount basis compares the three buckets' bill amount against it; the hours basis
-compares their hours. **No basis at all** (nothing is set, or the caller may not see
-amounts and the project has no budget hours either) means `budgetUsed` is **absent**
-— not a percentage of 0 — and such projects sort last wherever the portfolio orders
-by it.
+compares their hours. **No basis at all** means `budgetUsed` is **absent** — not a
+percentage of 0 — and such projects sort last wherever the portfolio orders by it.
+That covers nothing being set, the caller not seeing amounts with no budget hours
+either, and also the number that would otherwise apply being exactly **zero**: a
+basis must be strictly greater than zero to count. The zero case is not reachable
+through today's API — both the project's own validation and a billing line's refuse
+a zero budget — so this is a completeness note rather than a behaviour anyone can
+trigger.
 
 The ratio used ÷ basis is kept and compared **exactly** (`math/big.Rat`, never a
 float), and `overBudget` is decided on that exact ratio (`> 1`) — a project at
@@ -536,8 +544,14 @@ data** of any kind, while Time's own project summary already gives project membe
 per-status, per-line *and per-person* hours, so the economy read is a strict subset
 of it in every respect but the one above.
 
-The `cost` block additionally needs the project to carry a **currency** and
-`timeTracking` to be on — a cost in no currency is a number nobody can read.
+The **whole Amounts column needs a currency too**, not only cost: `seesAmounts` is
+financial rights **and** the project carrying a currency (`economy.go`'s
+`CanSeeFinancials && project.Currency != nil`), so a currency-less project is an
+hours-only answer for *everybody*, financial rights or not — no `currency`,
+`budget.amount`, `budget.fixedPrice`, `budget.linesAmount`, bucket amounts,
+`actuals.totalAmount` or line `budgetAmount`. The `cost` block additionally needs
+`timeTracking` to be on, on top of that same currency requirement — a cost in no
+currency is a number nobody can read either way.
 `ProjectCapabilities.canSeeCosts` answers the permission half alone; a surface should
 *offer* the cost view from that flag and *draw* it from the `cost` block itself, since
 the block is also absent without a currency or without time tracking even when the
@@ -589,14 +603,17 @@ per-project read.
 - **Sorts**: `budgetUsed` (default, most-used first on the exact ratio, no-basis rows
   last), `readyAmount` (**by currency code first, then the largest amount** —
   amounts in different currencies are not comparable, so a mixed portfolio is
-  grouped by currency rather than interleaved), `nextMilestone` (soonest planned
-  date first, undated open milestones after dated ones, projects with nothing open
-  last), `code`. Every order breaks its ties by project code, which is unique, so a
-  page is the same page however many times it is turned to.
+  grouped by currency rather than interleaved — **with rows that have nothing
+  priced and ready last, whatever their currency**), `nextMilestone` (soonest
+  planned date first, undated open milestones after dated ones, projects with
+  nothing open last), `code`. Every order breaks its ties by project code, which is
+  unique, so a page is the same page however many times it is turned to.
 - **The cap.** More than 2 000 matching projects (the actuals contract's own batch
   limit) is a **400** naming `status` and asking to narrow with `status`,
   `customerId` or `search`, rather than answering a partial portfolio — a total over
-  part of a filtered set is a wrong number, not a missing one.
+  part of a filtered set is a wrong number, not a missing one. The dashboard's
+  budget alerts hit the same cap and answer differently — see
+  [The dashboard signals](#the-dashboard-signals).
 - **Totals are taken over the whole filtered set, before the page is cut** —
   project count, over-budget count, ready count, and `readyAmounts` (one sum per
   currency, by currency code) — so paging never changes the headline figures. Rows
@@ -639,6 +656,14 @@ id. The host builds the link from `entityId` (`/projects/<projectId>/economy` fo
 all four, the two milestone types split on `/` for the project id rather than
 URL-encoded whole) and a translated sentence naming the project or the milestone,
 exactly as it already does for Time's own attention items.
+
+**The budget alerts hit the portfolio's own 2 000-project cap, and answer
+differently when they do.** Where the portfolio refuses with a 400 past the cap —
+a total over part of a filtered set would be a wrong number — the two budget alert
+types instead **keep the first 2 000 projects the caller manages and log a
+warning** naming the caller and the cap: an attention list totals nothing and offers
+no filter to narrow it, so dropping every alert over one truncation would be worse
+than showing an incomplete one. The other three kinds of item are unaffected.
 
 ### The optional actuals dependency
 
