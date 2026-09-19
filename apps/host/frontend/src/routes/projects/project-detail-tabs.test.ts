@@ -28,25 +28,26 @@ describe("project detail tab visibility", () => {
     ]);
   });
 
-  // Delivery A of the economy view only has an invoice plan to show, so it is
-  // gated exactly like Billing: the capability, not a permission. The next
-  // delivery widens this once the tab has an hours-only half for everyone who
-  // sees the project.
-  it("puts the economy tab between billing and time, gated on canSeeFinancials like billing", () => {
+  it("puts the economy tab between billing and time", () => {
     expect(values(moduleKeys, ["*"], canSeeEverything)).toEqual(expect.arrayContaining(["billing", "economy", "time"]));
     const shown = values(moduleKeys, ["*"], canSeeEverything);
     expect(shown.indexOf("billing")).toBeLessThan(shown.indexOf("economy"));
     expect(shown.indexOf("economy")).toBeLessThan(shown.indexOf("time"));
+  });
 
+  // The economy view has an hours-only half for a caller without financial
+  // rights, so — unlike Billing — it carries no capability gate: a plain
+  // member sees it the same way they see Overview and Tasks.
+  it("shows the economy tab to a plain member without financial rights", () => {
     expect(
       values(moduleKeys, ["*"], {
-        canManage: true,
+        canManage: false,
         canContribute: true,
         canSeeFinancials: false,
-        canManageMilestones: true,
+        canManageMilestones: false,
         canSeeCosts: false,
       }),
-    ).not.toContain("economy");
+    ).toContain("economy");
   });
 
   // The Time tab belongs to another module, so it carries both gates the
@@ -67,8 +68,9 @@ describe("project detail tab visibility", () => {
   // Tasks follow the project's own roles — there is no task permission and no
   // task capability (design §6) — so seeing the project is seeing its tasks.
   // A viewer gets the tab and a read-only board; the package decides that from
-  // canContribute, not the host.
-  it("shows the tasks tab to anyone who sees the project, financials or not", () => {
+  // canContribute, not the host. Economy carries no gate of its own either, so
+  // it is there too, with only its amounts shaped away by the response.
+  it("shows the tasks and economy tabs to anyone who sees the project, financials or not", () => {
     expect(
       values(moduleKeys, [], {
         canManage: false,
@@ -77,14 +79,15 @@ describe("project detail tab visibility", () => {
         canManageMilestones: false,
         canSeeCosts: false,
       }),
-    ).toEqual(["overview", "tasks", "people"]);
+    ).toEqual(["overview", "tasks", "people", "economy"]);
   });
 
   // The capability, not a permission, decides: the backend shapes the
   // financial fields out of the response per project (design D12), so a caller
   // who may see a project without its amounts gets no Billing tab — and, if
-  // they paste the URL anyway, the package's own forbidden state.
-  it("hides the billing tab without canSeeFinancials on this project", () => {
+  // they paste the URL anyway, the package's own forbidden state. Economy
+  // carries no such gate, so it stays.
+  it("hides the billing tab without canSeeFinancials on this project, but keeps economy", () => {
     expect(
       values(moduleKeys, ["*"], {
         canManage: true,
@@ -93,11 +96,11 @@ describe("project detail tab visibility", () => {
         canManageMilestones: true,
         canSeeCosts: false,
       }),
-    ).toEqual(["overview", "tasks", "people", "time"]);
+    ).toEqual(["overview", "tasks", "people", "economy", "time"]);
   });
 
-  it("hides the billing tab while the project is still loading", () => {
-    expect(values(moduleKeys, ["*"], undefined)).toEqual(["overview", "tasks", "people", "time"]);
+  it("hides the billing tab while the project is still loading, but keeps economy", () => {
+    expect(values(moduleKeys, ["*"], undefined)).toEqual(["overview", "tasks", "people", "economy", "time"]);
   });
 
   // The app's own tabs carry no module or permission gate: the

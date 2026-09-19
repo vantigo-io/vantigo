@@ -61,19 +61,22 @@ describe("the project detail route's tab row", () => {
     expect(screen.getByRole("tab", { name: "Economy" })).toBeInTheDocument();
   });
 
-  it("hides the Billing and Economy tabs when the project does not, leaving the other two", () => {
+  // The economy view has an hours-only half for a caller without financial
+  // rights, so — unlike Billing, whose amounts are entirely financial data —
+  // it carries no capability gate: a plain member still gets the tab, and the
+  // page itself shapes what it shows out of the response.
+  it("hides the Billing tab when the project does not report canSeeFinancials, but keeps Economy", () => {
     renderLayout({ canManage: true, canSeeFinancials: false });
 
     expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "People" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Billing" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Economy" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Economy" })).toBeInTheDocument();
   });
 
-  // Delivery A's Economy tab is gated exactly like Billing (see
-  // project-detail-tabs.test.ts for the exact ordering); this pins the same
-  // production call site the Billing assertions above do, so a future edit
-  // that drops the capability through undefined here cannot go unnoticed.
+  // This pins the same production call site the Billing assertions above do,
+  // so a future edit that drops the capability through undefined here cannot
+  // go unnoticed.
   it("orders the Economy tab between Billing and the app's own tabs end", () => {
     renderLayout({ canManage: true, canSeeFinancials: true });
 
