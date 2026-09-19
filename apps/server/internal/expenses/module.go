@@ -78,18 +78,26 @@ func Module() module.Module {
 
 // mount registers every contract operation on the platform router, which wraps
 // each in its access rule and request-body cap before the generated wrapper
-// decodes it. It fails when the router reports a problem: an operation never
-// registered, a rule that does not parse, or a permission missing from the
-// catalog.
+// decodes it. Every body is capped at the router's default
+// (module.DefaultMaxBodyBytes) except the receipt upload, which gets
+// maxReceiptRequestBytes (receiptBodyLimits). It fails when the router reports
+// a problem — an operation never registered, a rule that does not parse, a
+// permission missing from the catalog, or a BodyLimits entry naming no
+// operation — or when the object store receipts go through cannot be built.
 func mount(d module.Deps) (http.Handler, error) {
 	router := module.NewRouter(module.RouterOptions{
-		Doc:     d.Doc,
-		Access:  d.Access,
-		Limiter: d.Limiter,
-		Limits:  limits,
-		Catalog: d.Catalog,
+		Doc:        d.Doc,
+		Access:     d.Access,
+		Limiter:    d.Limiter,
+		Limits:     limits,
+		Catalog:    d.Catalog,
+		BodyLimits: receiptBodyLimits,
 	})
-	strict := gen.NewStrictHandlerWithOptions(newServer(d), nil, gen.StrictHTTPServerOptions{
+	srv, err := newServer(d)
+	if err != nil {
+		return nil, err
+	}
+	strict := gen.NewStrictHandlerWithOptions(srv, nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  module.DecodeError(apicommon.WriteDecodeError),
 		ResponseErrorHandlerFunc: module.ResponseError(),
 	})

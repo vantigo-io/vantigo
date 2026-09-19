@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"maps"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -81,18 +86,20 @@ func newExpensesHarness(t *testing.T, projects *fakeProjects, opts ...modtest.Op
 	h := &harness{Harness: modtest.New(t, append(base, opts...)...), projects: projects, objects: objects}
 	t.Cleanup(func() {
 		if calls := lockedContractCalls.since(before); len(calls) > 0 {
-			t.Errorf("a cross-module call was made from inside one of this module's locked transactions:\n%s",
+			t.Errorf("a call outside this module's own database was made from inside one of its locked transactions:\n%s",
 				strings.Join(calls, "\n"))
 		}
 	})
 	return h
 }
 
-// lockedContractCalls is every cross-module call the module made from inside a
-// transaction that holds locks (expenses.InLockedTx). The directories read
+// lockedContractCalls is every call out of the module — to another module's
+// directory, or to the object store its receipts go through — made from inside
+// a transaction that holds locks (expenses.InLockedTx). The directories read
 // through the same connection pool as the module, so a transaction holding row
-// locks while it waits for one of them can starve the pool under load; the rule
-// is that none ever does, and every harness checks it when its test ends.
+// locks while it waits for one of them can starve the pool under load, and a
+// slow object store under a row lock is the same hazard by another route; the
+// rule is that none ever does, and every harness checks it when its test ends.
 //
 // It is one recorder for the package rather than one per harness because the
 // hook it is installed as is a package-level one (TestMain), and the module's
@@ -379,13 +386,26 @@ func (f *fakeProjects) CanLogTime(_ context.Context, projectID int32, userID uui
 	return role == roleMember || role == roleManager, nil
 }
 
-// fakeObjectStore is storage.ObjectStore in memory: the receipts a later
-// delivery uploads go here rather than to a filesystem, so no test depends on
-// filesystem permissions. It is installed by every harness from the start so
-// the attachment paths have somewhere to write the day they land.
+// fakeObjectStore is storage.ObjectStore in memory: the receipts this module
+// uploads go here rather than to a filesystem, so no test depends on
+// filesystem permissions. It is installed by every harness, so the attachment
+// paths always have somewhere to write.
+//
+// Every operation reports itself to lockedContractCalls, so the whole-suite
+// check that covers this module's calls into its neighbours covers its calls
+// into the object store too: the bytes are written before the locked
+// transaction and removed after it, never inside one.
+//
+// Each of the four operations can be made to fail on demand (failPut and its
+// siblings), which is the only way to drive the storage-failure answers — a
+// write that fails after an entry was locked, a read of an object that is not
+// there any more — deterministically.
 type fakeObjectStore struct {
-	mu      sync.Mutex
-	objects map[string][]byte
+	mu        sync.Mutex
+	objects   map[string][]byte
+	putErr    error
+	getErr    error
+	deleteErr error
 }
 
 var _ storage.ObjectStore = (*fakeObjectStore)(nil)
@@ -394,20 +414,28 @@ func newFakeObjectStore() *fakeObjectStore {
 	return &fakeObjectStore{objects: map[string][]byte{}}
 }
 
-func (s *fakeObjectStore) Put(_ context.Context, key string, r io.Reader, _ string) error {
+func (s *fakeObjectStore) Put(ctx context.Context, key string, r io.Reader, _ string) error {
+	lockedContractCalls.note(ctx, "ObjectStore.Put")
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.putErr != nil {
+		return s.putErr
+	}
 	s.objects[key] = data
 	return nil
 }
 
-func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, error) {
+func (s *fakeObjectStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	lockedContractCalls.note(ctx, "ObjectStore.Get")
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
 	data, ok := s.objects[key]
 	if !ok {
 		return nil, fmt.Errorf("expenses test store: %q: %w", key, storage.ErrNotExist)
@@ -415,18 +443,58 @@ func (s *fakeObjectStore) Get(_ context.Context, key string) (io.ReadCloser, err
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-func (s *fakeObjectStore) Exists(_ context.Context, key string) (bool, error) {
+func (s *fakeObjectStore) Exists(ctx context.Context, key string) (bool, error) {
+	lockedContractCalls.note(ctx, "ObjectStore.Exists")
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.objects[key]
 	return ok, nil
 }
 
-func (s *fakeObjectStore) Delete(_ context.Context, key string) error {
+func (s *fakeObjectStore) Delete(ctx context.Context, key string) error {
+	lockedContractCalls.note(ctx, "ObjectStore.Delete")
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
 	delete(s.objects, key)
 	return nil
+}
+
+// failPut, failGet and failDelete make the next and every later call of that
+// operation fail with err; nil restores it.
+func (s *fakeObjectStore) failPut(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.putErr = err
+}
+
+func (s *fakeObjectStore) failGet(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.getErr = err
+}
+
+func (s *fakeObjectStore) failDelete(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.deleteErr = err
+}
+
+// keys is every key the store holds, sorted, so a test can say exactly what
+// was written and what was cleaned up again.
+func (s *fakeObjectStore) keys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Sorted(maps.Keys(s.objects))
+}
+
+// count is how many objects the store holds.
+func (s *fakeObjectStore) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.objects)
 }
 
 // signIn seeds a caller holding expenses:access plus whatever else the test
@@ -456,17 +524,29 @@ const (
 	categoriesPath     = "/api/v1/expenses/categories"
 	entriesPath        = "/api/v1/expenses/entries"
 	projectOptionsPath = "/api/v1/expenses/projects"
+	attachmentsPath    = "/api/v1/expenses/attachments"
 )
 
 func ratePath(id int32) string     { return fmt.Sprintf("%s/%d", ratesPath, id) }
 func categoryPath(id int32) string { return fmt.Sprintf("%s/%d", categoriesPath, id) }
 func entryPath(id int64) string    { return fmt.Sprintf("%s/%d", entriesPath, id) }
+func attachmentPath(id int64) string {
+	return fmt.Sprintf("%s/%d", attachmentsPath, id)
+}
+
+// entryAttachmentsPath is where a receipt is uploaded: the entry's own
+// sub-collection, unlike the read and the delete, which are by attachment id
+// alone.
+func entryAttachmentsPath(entryID int64) string {
+	return fmt.Sprintf("%s/%d/attachments", entriesPath, entryID)
+}
 
 // The titles this module's refusals carry, so a test says which refusal it
 // expects rather than repeating the string.
 const (
-	invalidEntryTitle = "Invalid expense"
-	invalidQueryTitle = "Invalid query parameters"
+	invalidEntryTitle   = "Invalid expense"
+	invalidQueryTitle   = "Invalid query parameters"
+	invalidReceiptTitle = "Invalid receipt"
 )
 
 // materialsCategory is the first seeded category's id. The migration gives
@@ -802,6 +882,7 @@ type entryJSON struct {
 	Billable        bool                  `json:"billable"`
 	Billing         *entryBillingJSON     `json:"billing"`
 	AttachmentCount int32                 `json:"attachmentCount"`
+	Attachments     []attachmentJSON      `json:"attachments"`
 	Owner           entryOwnerJSON        `json:"owner"`
 	Revision        int32                 `json:"revision"`
 	Capabilities    entryCapabilitiesJSON `json:"capabilities"`
@@ -956,4 +1037,123 @@ func listProjectOptions(t *testing.T, c *modtest.Client) []projectOptionJSON {
 func refusedEntry(t *testing.T, c *modtest.Client, method, path string, body map[string]any) map[string][]string {
 	t.Helper()
 	return refused(t, c, method, path, body, invalidEntryTitle)
+}
+
+// attachmentJSON decodes ExpensesAttachmentResponse — the receipt itself, as
+// the upload answers it and as every entry carries it.
+type attachmentJSON struct {
+	Id          int64  `json:"id"`
+	FileName    string `json:"fileName"`
+	ContentType string `json:"contentType"`
+	SizeBytes   int64  `json:"sizeBytes"`
+}
+
+// The receipt bytes every test uploads. No binary fixture is committed: the
+// images come from the standard library's own encoders, and the PDF and the
+// HEIC file are the magic bytes each format is sniffed by.
+func testPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatalf("encode PNG: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func testJPEG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height)), &jpeg.Options{Quality: 80}); err != nil {
+		t.Fatalf("encode JPEG: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// testPDF is the smallest thing http.DetectContentType calls a PDF: the
+// "%PDF-" header, then enough of a document body to look like one.
+func testPDF(padding int) []byte {
+	return append([]byte("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"), bytes.Repeat([]byte("x"), padding)...)
+}
+
+// testHEIC is an ISO base media file whose ftyp brand is "heic" — the format
+// an iPhone photographs a receipt in, and the one net/http's sniffer does not
+// know, so this module reads the brand itself.
+func testHEIC(brand string) []byte {
+	box := []byte{0, 0, 0, 24}
+	box = append(box, []byte("ftyp")...)
+	box = append(box, []byte(brand)...)
+	box = append(box, 0, 0, 0, 0)
+	box = append(box, []byte("mif1")...)
+	return append(box, []byte("meta and the picture itself")...)
+}
+
+// receiptForm is one multipart/form-data body carrying a single part named
+// field, with the file name and declared content type a client would send.
+func receiptForm(t *testing.T, field, fileName, contentType string, data []byte) (string, []byte) {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, field, fileName))
+	if contentType != "" {
+		header.Set("Content-Type", contentType)
+	}
+	part, err := w.CreatePart(header)
+	if err != nil {
+		t.Fatalf("create the %q part: %v", field, err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatalf("write the %q part: %v", field, err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close the multipart writer: %v", err)
+	}
+	return w.FormDataContentType(), buf.Bytes()
+}
+
+// postReceipt uploads one receipt and answers the whole response, for a test
+// whose subject is a refusal.
+func postReceipt(t *testing.T, c *modtest.Client, entryID int64, fileName, contentType string, data []byte) *modtest.Response {
+	t.Helper()
+	ct, body := receiptForm(t, "file", fileName, contentType, data)
+	return c.Do(http.MethodPost, entryAttachmentsPath(entryID), nil, modtest.RawBody(ct, body))
+}
+
+// uploadReceipt uploads one receipt and fails the test unless it was created.
+func uploadReceipt(t *testing.T, c *modtest.Client, entryID int64, fileName, contentType string, data []byte) attachmentJSON {
+	t.Helper()
+	r := postReceipt(t, c, entryID, fileName, contentType, data)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("upload %s to entry %d: status %d body %s, want 201", fileName, entryID, r.Status, r.Body)
+	}
+	var attachment attachmentJSON
+	r.JSON(&attachment)
+	return attachment
+}
+
+// refusedReceipt is an upload that did not pass: the field errors of the
+// validation problem it was refused with.
+func refusedReceipt(t *testing.T, c *modtest.Client, entryID int64, fileName, contentType string, data []byte) map[string][]string {
+	t.Helper()
+	r := postReceipt(t, c, entryID, fileName, contentType, data)
+	if r.Status != http.StatusBadRequest {
+		t.Fatalf("upload %s to entry %d: status %d body %s, want 400", fileName, entryID, r.Status, r.Body)
+	}
+	var problem validationProblemJSON
+	r.JSON(&problem)
+	if problem.Title != invalidReceiptTitle {
+		t.Errorf("problem title = %q, want %q", problem.Title, invalidReceiptTitle)
+	}
+	return problem.Errors
+}
+
+// downloadReceipt reads one receipt's bytes and fails the test unless it
+// answered 200.
+func downloadReceipt(t *testing.T, c *modtest.Client, id int64) *modtest.Response {
+	t.Helper()
+	r := c.Do(http.MethodGet, attachmentPath(id), nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("download attachment %d: status %d body %s, want 200", id, r.Status, r.Body)
+	}
+	return r
 }

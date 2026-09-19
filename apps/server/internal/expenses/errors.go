@@ -28,12 +28,31 @@ const (
 	invalidCategoryTitle = "Invalid category"
 	invalidEntryTitle    = "Invalid expense"
 	invalidQueryTitle    = "Invalid query parameters"
+	invalidReceiptTitle  = "Invalid receipt"
 )
 
 // invalidEntry is the 400 body for an expense whose fields did not pass
 // design §3.1 and §4.
 func invalidEntry(errs map[string][]string) apicommon.HttpValidationProblemDetails {
 	return apicommon.ValidationProblem(invalidEntryTitle, errs)
+}
+
+// invalidReceipt is the 400 body for a receipt upload that did not pass design
+// §3.2: on 'file' for what was uploaded, on 'entryId' for what it was uploaded
+// onto.
+func invalidReceipt(errs map[string][]string) apicommon.HttpValidationProblemDetails {
+	return apicommon.ValidationProblem(invalidReceiptTitle, errs)
+}
+
+// receiptStoreUnavailable is the 503 an upload or a download answers when the
+// object store itself fails. It is a distinct answer from every 4xx above: the
+// request was right and the installation could not serve it, which is worth
+// retrying and worth an operator seeing, rather than a 404 that would hide a
+// fault as a missing receipt.
+func receiptStoreUnavailable() apicommon.ProblemDetails {
+	return apicommon.ProblemStatus("Receipt storage is unavailable",
+		"The receipt store could not be reached. Nothing was changed; try again.",
+		http.StatusServiceUnavailable)
 }
 
 // invalidQuery is the 400 a list answers for query parameters it cannot use,

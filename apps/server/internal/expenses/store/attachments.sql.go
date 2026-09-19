@@ -7,34 +7,168 @@ package store
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
 )
 
-const countAttachmentsForEntries = `-- name: CountAttachmentsForEntries :many
-SELECT entry_id, count(*)::bigint AS total
-FROM expenses.attachments
-WHERE entry_id = ANY($1::bigint[])
-GROUP BY entry_id
+const countAttachmentsForEntry = `-- name: CountAttachmentsForEntry :one
+SELECT count(*)::bigint FROM expenses.attachments WHERE entry_id = $1
 `
 
-type CountAttachmentsForEntriesRow struct {
-	EntryID int64
-	Total   int64
+// CountAttachmentsForEntry is how many receipts one expense carries. It is
+// read under the expense's own row lock, so two uploads that both see nine
+// cannot both become the tenth.
+func (q *Queries) CountAttachmentsForEntry(ctx context.Context, entryID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countAttachmentsForEntry, entryID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
-// CountAttachmentsForEntries is how many receipts each of the given expenses
-// carries, for the attachmentCount every entry is rendered with — one query
-// for a whole page rather than one per row. An id with no receipts is simply
-// absent from the result, which the caller reads as zero.
-func (q *Queries) CountAttachmentsForEntries(ctx context.Context, entryIds []int64) ([]CountAttachmentsForEntriesRow, error) {
-	rows, err := q.db.Query(ctx, countAttachmentsForEntries, entryIds)
+const deleteAttachment = `-- name: DeleteAttachment :execrows
+DELETE FROM expenses.attachments WHERE id = $1
+`
+
+// DeleteAttachment removes one receipt's row. The object it named is removed
+// after the transaction commits; a failure there is logged and never fails the
+// request, because the row — not the object — is what the expense carries.
+func (q *Queries) DeleteAttachment(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAttachment, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getAttachment = `-- name: GetAttachment :one
+SELECT id, entry_id, object_key, file_name, content_type, size_bytes, uploaded_by_user_id, created_at FROM expenses.attachments WHERE id = $1
+`
+
+// GetAttachment fetches one receipt by id. Who may read it is decided in Go
+// from the expense it is on (authorize.go), never here: an outsider's 404 has
+// to be indistinguishable from an unknown id's, so the row is loaded first and
+// discarded after.
+func (q *Queries) GetAttachment(ctx context.Context, id int64) (ExpensesAttachment, error) {
+	row := q.db.QueryRow(ctx, getAttachment, id)
+	var i ExpensesAttachment
+	err := row.Scan(
+		&i.ID,
+		&i.EntryID,
+		&i.ObjectKey,
+		&i.FileName,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.UploadedByUserID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertAttachment = `-- name: InsertAttachment :one
+INSERT INTO expenses.attachments (
+    entry_id, object_key, file_name, content_type, size_bytes, uploaded_by_user_id, created_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7::timestamptz
+)
+RETURNING id, entry_id, object_key, file_name, content_type, size_bytes, uploaded_by_user_id, created_at
+`
+
+type InsertAttachmentParams struct {
+	EntryID          int64
+	ObjectKey        string
+	FileName         string
+	ContentType      string
+	SizeBytes        int64
+	UploadedByUserID uuid.UUID
+	Now              time.Time
+}
+
+// InsertAttachment records one receipt. The object is already written under
+// object_key: the row is what makes it a receipt, so it is inserted last, in
+// the transaction that holds the expense's row lock.
+func (q *Queries) InsertAttachment(ctx context.Context, arg InsertAttachmentParams) (ExpensesAttachment, error) {
+	row := q.db.QueryRow(ctx, insertAttachment,
+		arg.EntryID,
+		arg.ObjectKey,
+		arg.FileName,
+		arg.ContentType,
+		arg.SizeBytes,
+		arg.UploadedByUserID,
+		arg.Now,
+	)
+	var i ExpensesAttachment
+	err := row.Scan(
+		&i.ID,
+		&i.EntryID,
+		&i.ObjectKey,
+		&i.FileName,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.UploadedByUserID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listAttachmentKeysForEntry = `-- name: ListAttachmentKeysForEntry :many
+SELECT object_key FROM expenses.attachments WHERE entry_id = $1 ORDER BY id
+`
+
+// ListAttachmentKeysForEntry is the object keys of one expense's receipts,
+// read before the expense is deleted: the rows go with it (the foreign key
+// cascades), and the objects they name are removed once that delete has
+// committed.
+func (q *Queries) ListAttachmentKeysForEntry(ctx context.Context, entryID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, listAttachmentKeysForEntry, entryID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []CountAttachmentsForEntriesRow
+	var items []string
 	for rows.Next() {
-		var i CountAttachmentsForEntriesRow
-		if err := rows.Scan(&i.EntryID, &i.Total); err != nil {
+		var object_key string
+		if err := rows.Scan(&object_key); err != nil {
+			return nil, err
+		}
+		items = append(items, object_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAttachmentsForEntries = `-- name: ListAttachmentsForEntries :many
+SELECT id, entry_id, object_key, file_name, content_type, size_bytes, uploaded_by_user_id, created_at FROM expenses.attachments
+WHERE entry_id = ANY($1::bigint[])
+ORDER BY entry_id, id
+`
+
+// ListAttachmentsForEntries is the receipts each of the given expenses
+// carries, oldest first, for the attachments (and the attachmentCount, which
+// is their number) every entry is rendered with — one query for a whole page
+// rather than one per row. An id with no receipts is simply absent from the
+// result, which the caller reads as an empty list.
+func (q *Queries) ListAttachmentsForEntries(ctx context.Context, entryIds []int64) ([]ExpensesAttachment, error) {
+	rows, err := q.db.Query(ctx, listAttachmentsForEntries, entryIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesAttachment
+	for rows.Next() {
+		var i ExpensesAttachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.EntryID,
+			&i.ObjectKey,
+			&i.FileName,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.UploadedByUserID,
+			&i.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
