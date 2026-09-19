@@ -45,6 +45,11 @@ CREATE TABLE expenses.settings (
     receipt_required_over  numeric(12,2),
     updated_at             timestamptz   NOT NULL
 );
+-- "One row" is the table's rule, not a convention the queries keep: a unique
+-- index on a constant expression admits exactly one row, whoever writes it — a
+-- later migration, a support script, a restore. House style has no CHECK
+-- constraints, and this says the same thing without one.
+CREATE UNIQUE INDEX ux_settings_single_row ON expenses.settings ((true));
 
 -- One money line (design §3.1): an outlay, a mileage line or — from delivery B
 -- — a per diem day. claim_id is the travel claim it belongs to; delivery B adds

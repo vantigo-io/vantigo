@@ -480,7 +480,7 @@ const materialsCategory = 1001
 type metaJSON struct {
 	ProjectsAvailable    bool           `json:"projectsAvailable"`
 	DefaultCurrency      string         `json:"defaultCurrency"`
-	DefaultMarkupPercent float64        `json:"defaultMarkupPercent"`
+	DefaultMarkupPercent *float64       `json:"defaultMarkupPercent"`
 	LockedBefore         *string        `json:"lockedBefore"`
 	ReceiptRequiredOver  *float64       `json:"receiptRequiredOver"`
 	Categories           []categoryJSON `json:"categories"`
@@ -512,7 +512,7 @@ type rateJSON struct {
 // settingsJSON decodes ExpensesSettingsResponse.
 type settingsJSON struct {
 	DefaultCurrency      string   `json:"defaultCurrency"`
-	DefaultMarkupPercent float64  `json:"defaultMarkupPercent"`
+	DefaultMarkupPercent *float64 `json:"defaultMarkupPercent"`
 	LockedBefore         *string  `json:"lockedBefore"`
 	ReceiptRequiredOver  *float64 `json:"receiptRequiredOver"`
 }
@@ -535,6 +535,19 @@ func getMeta(t *testing.T, c *modtest.Client) metaJSON {
 	var meta metaJSON
 	r.JSON(&meta)
 	return meta
+}
+
+// rawMeta reads the module metadata as a bare JSON object, for a test whose
+// subject is whether a key is there at all.
+func rawMeta(t *testing.T, c *modtest.Client) map[string]any {
+	t.Helper()
+	r := c.Do(http.MethodGet, metaPath, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get meta: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var raw map[string]any
+	r.JSON(&raw)
+	return raw
 }
 
 // getSettings reads the settings and fails the test unless it answered 200.

@@ -249,32 +249,69 @@ func TestExpensesRatesReset_PutsBackWhatIsMissingAndTouchesNothingElse(t *testin
 	}
 }
 
-// A reset changes nothing an administrator has decided: an edited seeded day
-// keeps their value, and a second reset is a no-op.
-func TestExpensesRatesReset_KeepsAnAdministratorsOwnDecision(t *testing.T) {
+// A reset really resets: a seeded day an administrator edited goes back to the
+// value, currency and label it shipped with. It is the one write that undoes
+// their own edit, which is exactly what "reset to default" promises.
+func TestExpensesRatesReset_PutsAnEditedSeededDayBack(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
 	admin, _ := signIn(t, h, "expenses:manage")
 
 	seeded := ratesOfKind(listRates(t, admin), "mileage")[0]
 	r := admin.Do(http.MethodPut, ratePath(seeded.Id), map[string]any{
-		"validFrom": "2026-01-01", "value": 4, "currency": "NOK",
+		"validFrom": "2026-01-01", "value": 4, "currency": "EUR",
 	})
 	if r.Status != http.StatusOK {
 		t.Fatalf("change the seeded rate: status %d body %s, want 200", r.Status, r.Body)
 	}
 
 	after := ratesOfKind(resetRates(t, admin, "mileage"), "mileage")
-	if len(after) != 1 || after[0].Value != 4 {
-		t.Errorf("mileage after the reset = %+v, want the administrator's own value kept", after)
+	if len(after) != 1 {
+		t.Fatalf("mileage after the reset = %+v, want the one seeded day", after)
 	}
-	if after[0].Source != nil {
-		t.Errorf("source = %v, want the label gone — the row is theirs now", after[0].Source)
+	if after[0].Value != 5.30 {
+		t.Errorf("value = %v, want the shipped 5.30 back", after[0].Value)
+	}
+	if after[0].Currency == nil || *after[0].Currency != "NOK" {
+		t.Errorf("currency = %v, want NOK back", after[0].Currency)
+	}
+	if after[0].Source == nil || *after[0].Source != "State rate" {
+		t.Errorf("source = %v, want the label back", after[0].Source)
+	}
+	if after[0].Id != seeded.Id {
+		t.Errorf("id = %d, want the same row put back rather than a new one", after[0].Id)
 	}
 
-	// A kind that ships with nothing has nothing to restore.
+	// A second reset is a no-op, and a kind that ships with nothing has
+	// nothing to restore.
+	again := ratesOfKind(resetRates(t, admin, "mileage"), "mileage")
+	if len(again) != 1 || again[0].Value != 5.30 {
+		t.Errorf("mileage after a second reset = %+v, want it unchanged", again)
+	}
 	if got := ratesOfKind(resetRates(t, admin, "mileage_customer"), "mileage_customer"); len(got) != 0 {
 		t.Errorf("resetting mileage_customer produced %+v, want nothing — it ships unseeded", got)
+	}
+}
+
+// A reset touches only the days the product shipped: the company's own rows,
+// on their own days, are left exactly as they are.
+func TestExpensesRatesReset_LeavesTheCompanysOwnRowsAlone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+
+	own := createRate(t, admin, map[string]any{
+		"kind": "mileage", "validFrom": "2026-07-01", "value": 6.1, "source": "Styrevedtak",
+	})
+	after := ratesOfKind(resetRates(t, admin, "mileage"), "mileage")
+	if len(after) != 2 {
+		t.Fatalf("mileage after the reset = %+v, want the company's row beside the seeded one", after)
+	}
+	if after[0].Id != own.Id || after[0].Value != 6.1 {
+		t.Errorf("the company's own row = %+v, want it untouched", after[0])
+	}
+	if after[0].Source == nil || *after[0].Source != "Styrevedtak" {
+		t.Errorf("source = %v, want their own label kept", after[0].Source)
 	}
 }
 

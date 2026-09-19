@@ -71,8 +71,9 @@ type seedRate struct {
 }
 
 // seededRates is the single place the shipped rates are written down. The
-// migration inserts exactly these rows and POST /rates/reset puts back whichever
-// of them is missing; TestSeededRates_AreExactlyWhatTheMigrationInserted holds
+// migration inserts exactly these rows and POST /rates/reset writes them back
+// as they stand here — restoring one that was removed and undoing an edit to
+// one that was kept; TestSeededRates_AreExactlyWhatTheMigrationInserted holds
 // the two against each other, so the table and the migration cannot drift.
 //
 // The two mileage rates were verified against Skatteetaten's published rates on
@@ -345,11 +346,14 @@ func (s *server) DeleteExpensesRatesById(ctx context.Context, req gen.DeleteExpe
 // PostExpensesRatesReset Restore a rate kind's seeded rows
 // (POST /api/v1/expenses/rates/reset)
 //
-// Puts back whichever of the kind's shipped rows is no longer there and changes
-// nothing else: a row an administrator edited on a seeded day keeps their value
-// (the insert is ON CONFLICT DO NOTHING), and rows they added themselves are
-// untouched. A kind that ships with nothing — the customer rate per kilometre,
-// and the per diem rates until a later delivery seeds them — restores nothing.
+// Puts the kind back to what it shipped with: a shipped day that was removed
+// is written again, and one an administrator edited returns to its shipped
+// value, currency and source label. "Reset to default" is what the settings
+// screen calls this, and this is what it now does. Only the days the product
+// ships are touched — a row the company added on a day of its own is not in
+// the conflict target and is never changed — and nothing is ever removed. A
+// kind that ships with nothing (the customer rate per kilometre, and the per
+// diem rates until a later delivery seeds them) restores nothing.
 //
 // The writes go through one transaction so a reset either puts every missing
 // row back or none; the list it answers with is read afterwards, outside it.
@@ -378,7 +382,7 @@ func (s *server) PostExpensesRatesReset(ctx context.Context, req gen.PostExpense
 			if err != nil {
 				return err
 			}
-			if _, err := txq.InsertRateIfMissing(ctx, store.InsertRateIfMissingParams{
+			if _, err := txq.RestoreSeedRate(ctx, store.RestoreSeedRateParams{
 				Kind:      seed.Kind,
 				ValidFrom: pgDate(validFrom),
 				Value:     value,

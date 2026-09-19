@@ -9,7 +9,7 @@ components:
                 name:
                     type: string
                 position:
-                    description: Where the category sits in the picker. Absent puts it last.
+                    description: Where the category sits in the picker, 1 or greater. Absent puts it last.
                     format: int32
                     type: integer
             required:
@@ -42,6 +42,7 @@ components:
                 name:
                     type: string
                 position:
+                    description: Where the category sits in the picker, 1 or greater.
                     format: int32
                     type: integer
             required:
@@ -443,7 +444,7 @@ components:
                     description: The currency a new expense starts in.
                     type: string
                 defaultMarkupPercent:
-                    description: The markup a new billable outlay starts with.
+                    description: The markup a new billable outlay starts with. Present only for expenses:manage, as on GET /settings — the server applies the default itself, so no form needs the number.
                     format: double
                     type: number
                 lockedBefore:
@@ -454,13 +455,12 @@ components:
                     description: Whether the projects module is enabled in this installation (decision X2).
                     type: boolean
                 receiptRequiredOver:
-                    description: An employee-paid outlay above this gross amount cannot be submitted without a receipt. Absent when no threshold is set.
+                    description: An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
                     format: double
                     type: number
             required:
                 - projectsAvailable
                 - defaultCurrency
-                - defaultMarkupPercent
                 - categories
                 - capabilities
             type: object
@@ -524,7 +524,7 @@ components:
                 - value
             type: object
         ExpensesRateResetRequest:
-            description: The rate kind to restore. Seeded rows of that kind that are missing are written back exactly as they shipped; nothing is changed and nothing is removed, so a company's own rows and its own edits to a seeded day survive.
+            description: The rate kind to restore. Every row of that kind the product shipped is written back exactly as it shipped — restored when it was removed, and put back to its shipped value, currency and label when it was edited. The company's own rows, on their own days, are untouched, and nothing is removed.
             properties:
                 kind:
                     type: string
@@ -588,7 +588,7 @@ components:
                     format: date
                     type: string
                 receiptRequiredOver:
-                    description: Greater than zero, at most two decimals.
+                    description: Zero or greater, at most two decimals. Zero means every employee-paid outlay needs a receipt; leaving it out turns the rule off.
                     format: double
                     type: number
             required:
@@ -601,6 +601,7 @@ components:
                 defaultCurrency:
                     type: string
                 defaultMarkupPercent:
+                    description: 'The markup a new billable outlay starts with. Present only for expenses:manage — what the company adds to a supplier cost before invoicing it on is a commercial figure (design §5). No form needs it: the server applies the default itself when a billable outlay names no markup.'
                     format: double
                     type: number
                 lockedBefore:
@@ -608,12 +609,11 @@ components:
                     format: date
                     type: string
                 receiptRequiredOver:
-                    description: Absent when no threshold is set.
+                    description: An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
                     format: double
                     type: number
             required:
                 - defaultCurrency
-                - defaultMarkupPercent
             type: object
         PaginatedResponseOfExpensesEntryResponse:
             properties:
@@ -1114,7 +1114,7 @@ paths:
             x-vantigo-access: permission:expenses:access+expenses:manage
     /api/v1/expenses/rates/reset:
         post:
-            description: Puts back the rows one kind shipped with (decision X8) that are no longer there. Nothing is changed and nothing is removed, so the company's own rows and its own edits to a seeded day survive. A kind with no seeded rows changes nothing.
+            description: 'Puts one kind back to what it shipped with (decision X8): a shipped day that was removed is restored, and one that was edited returns to its shipped value, currency and source label. The company''s own rows, on days the product never shipped, are untouched, and nothing is ever removed. A kind with no shipped rows changes nothing.'
             operationId: postExpensesRatesReset
             requestBody:
                 content:

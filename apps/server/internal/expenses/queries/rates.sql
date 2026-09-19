@@ -24,13 +24,21 @@ INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_a
 VALUES (@kind, @valid_from, @value, @currency, @source, @now::timestamptz, @now::timestamptz)
 RETURNING *;
 
--- name: InsertRateIfMissing :execrows
--- InsertRateIfMissing writes one seeded row back unless the kind already has
--- a row for that day — the reset operation's whole write, so a row an
--- administrator edited on the seeded day keeps their value.
+-- name: RestoreSeedRate :execrows
+-- RestoreSeedRate writes one shipped row back as it shipped — the reset
+-- operation's whole write. A day the product ships is the product's: removed,
+-- it is created again; edited, it returns to its shipped value, currency and
+-- source label, keeping the row's id so anything that quotes it still finds
+-- it. Only the (kind, valid_from) pairs named by the seed table are touched,
+-- so the company's own rows, on their own days, are never in the conflict
+-- target and never change.
 INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_at, updated_at)
 VALUES (@kind, @valid_from, @value, @currency, @source, @now::timestamptz, @now::timestamptz)
-ON CONFLICT (kind, valid_from) DO NOTHING;
+ON CONFLICT (kind, valid_from) DO UPDATE SET
+    value = EXCLUDED.value,
+    currency = EXCLUDED.currency,
+    source = EXCLUDED.source,
+    updated_at = EXCLUDED.updated_at;
 
 -- name: UpdateRate :one
 -- UpdateRate replaces a row's day, value, currency and source; the kind stays

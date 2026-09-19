@@ -42,8 +42,11 @@ func parseSettings(body gen.ExpensesSettingsRequest) (parsedSettings, map[string
 	currency, msg := validateCurrency(body.DefaultCurrency)
 	add("defaultCurrency", msg)
 	add("defaultMarkupPercent", validateDecimal("A markup", body.DefaultMarkupPercent, 0, maxMarkupPercent))
+	// Zero is a policy rather than a mistake — every employee-paid outlay then
+	// needs a receipt — so the bound is zero or greater. Leaving the field out
+	// is what turns the rule off.
 	if body.ReceiptRequiredOver != nil {
-		add("receiptRequiredOver", validateAboveZero("A receipt threshold", *body.ReceiptRequiredOver, maxMoney))
+		add("receiptRequiredOver", validateDecimal("A receipt threshold", *body.ReceiptRequiredOver, 0, maxMoney))
 	}
 	if len(errs) > 0 {
 		return parsedSettings{}, errs, nil
@@ -78,15 +81,15 @@ func settings(ctx context.Context, q *store.Queries) (store.ExpensesSetting, err
 // (GET /api/v1/expenses/settings)
 //
 // Anyone with expenses:access reads them: the lock and the receipt rule decide
-// what they may record, and the client shows both. There is nothing here they
-// may not know — what an administrator alone may see lives on the rates, which
-// this module answers only to expenses:manage.
+// what they may record, and the client shows both. The one figure shaped away
+// from them is the default markup (responses.go), which is the company's
+// commercial decision rather than a rule about what they may record.
 func (s *server) GetExpensesSettings(ctx context.Context, _ gen.GetExpensesSettingsRequestObject) (gen.GetExpensesSettingsResponseObject, error) {
 	row, err := settings(ctx, store.New(s.deps.Pool))
 	if err != nil {
 		return nil, err
 	}
-	resp, err := settingsResponse(row)
+	resp, err := settingsResponse(row, s.has(ctx, "expenses:manage"))
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +124,9 @@ func (s *server) PutExpensesSettings(ctx context.Context, req gen.PutExpensesSet
 	if err != nil {
 		return nil, fmt.Errorf("expenses: change the settings: %w", err)
 	}
-	resp, err := settingsResponse(row)
+	// The caller of a replace holds expenses:manage by the operation's own
+	// access rule, so their copy carries the markup they just set.
+	resp, err := settingsResponse(row, true)
 	if err != nil {
 		return nil, err
 	}

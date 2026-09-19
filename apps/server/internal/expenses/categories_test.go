@@ -132,3 +132,42 @@ func TestExpensesCategories_ChangingThemNeedsManage(t *testing.T) {
 		t.Errorf("an employee changing a category: status %d body %s, want 403", r.Status, r.Body)
 	}
 }
+
+// A position is an administrator-visible setting, so it is held to a rule: the
+// picker's slots are 1-based, the way projects numbers a task among its
+// siblings. Anything below one would sort a category ahead of the ones the
+// product ships with for no reason a person could see.
+func TestExpensesCategories_RefuseAPositionBelowOne(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+
+	for name, body := range map[string]map[string]any{
+		"a create at zero":     {"name": "Parkering", "position": 0},
+		"a create below zero":  {"name": "Bompenger", "position": -5},
+		"a replace below zero": {"name": "Materials", "active": true, "position": -1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			method, path := http.MethodPost, categoriesPath
+			if _, ok := body["active"]; ok {
+				method, path = http.MethodPut, categoryPath(materialsCategory)
+			}
+			errs := refused(t, admin, method, path, body, "Invalid category")
+			if len(errs["position"]) == 0 {
+				t.Errorf("errors = %v, want one on position", errs)
+			}
+		})
+	}
+
+	// One is the first slot and is accepted, and a category with no position
+	// still goes last.
+	first := createCategory(t, admin, map[string]any{"name": "Ferge", "position": 1})
+	if first.Position != 1 {
+		t.Errorf("position = %d, want the first slot", first.Position)
+	}
+	last := createCategory(t, admin, map[string]any{"name": "Parkering"})
+	if last.Position <= int32(len(seededCategories)) {
+		t.Errorf("position = %d, want a category with none to go last", last.Position)
+	}
+}
