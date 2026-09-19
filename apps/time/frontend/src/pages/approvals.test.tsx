@@ -133,6 +133,58 @@ describe("ApprovalsPage", () => {
     expect(screen.getByText("Entry 702 is dated before 2026-09-15, the lock date")).toBeInTheDocument();
   });
 
+  it("offers no approval on an entry the caller may not approve", async () => {
+    const [grace] = approvalGroups;
+    stubTimeApi({
+      approvals: [
+        {
+          ...grace,
+          entries: grace.entries.map((entry) => ({
+            ...entry,
+            capabilities: { ...entry.capabilities, canApprove: false },
+          })),
+        },
+      ],
+    });
+    renderRoute("/time/approvals");
+
+    const card = await groupCard("Grace Hopper");
+    expect(within(card).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+
+    await open("Grace Hopper");
+    const row = (await within(card).findByText("Hardware bring-up")).closest("tr") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  });
+
+  it("says one entry in the singular, and tells the expand control's state", async () => {
+    stubTimeApi({ approvals: approvalGroups });
+    renderRoute("/time/approvals");
+
+    const grace = await groupCard("Grace Hopper");
+    const expand = within(grace).getByRole("button", { name: "Show the entries" });
+    expect(expand).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(expand);
+    const collapse = within(grace).getByRole("button", { name: "Hide the entries" });
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(collapse);
+
+    await userEvent.click(within(grace).getByRole("button", { name: "Approve" }));
+    expect(await screen.findByText("1 entry")).toBeInTheDocument();
+  });
+
+  it("forgets the selection when the queue turns to another page", async () => {
+    stubTimeApi({ approvals: approvalGroups });
+    const { router } = renderRoute("/time/approvals");
+
+    const grace = await groupCard("Grace Hopper");
+    await userEvent.click(within(grace).getByRole("checkbox", { name: "Select Grace Hopper's week" }));
+    expect(screen.getByRole("button", { name: "Approve 1 selected" })).toBeInTheDocument();
+
+    await router.navigate({ to: "/time/approvals", search: { page: 2 } });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Approve 1 selected" })).not.toBeInTheDocument());
+  });
+
   it("says so plainly when the caller approves nobody's time", async () => {
     stubTimeApi({ approvals: problemResponse(403, "Forbidden") });
     renderRoute("/time/approvals");

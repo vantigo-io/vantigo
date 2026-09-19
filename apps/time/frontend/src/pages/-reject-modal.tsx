@@ -53,7 +53,7 @@ const RejectForm = ({ ids, onClose, onRejected }: RejectModalProps & { ids: numb
       notifications.show({
         color: "teal",
         title: t("entriesRejected"),
-        message: t("entriesChanged", { count: entries.length }),
+        message: t(entries.length === 1 ? "entryChanged" : "entriesChanged", { count: entries.length }),
       });
       onRejected();
       await queryClient.invalidateQueries({ queryKey: ["time"] });

@@ -6,15 +6,11 @@ import { IconAlertCircle, IconPencil, IconPlus, IconTrash } from "@tabler/icons-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ContentSkeleton, EmptyState, PageHeader, useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
-import { peopleOverviewQueryOptions } from "../api/people";
 import { deletePersonRate, type PersonRate, personRatesQueryOptions } from "../api/rates";
 import { timeSettingsQueryOptions, updateTimeSettings } from "../api/settings";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
-import { RateFormModal, type RateModalState, type RatePerson } from "./-rate-form-modal";
-
-/** The window the person picker reads activity over: the longest the API allows. */
-const RATE_PEOPLE_WEEKS = 12;
+import { RateFormModal, type RateModalState } from "./-rate-form-modal";
 
 /**
  * The time settings (design §8, `time:manage`): the period lock, and the
@@ -142,24 +138,17 @@ const groupByPerson = (rates: PersonRate[]): RateGroup[] => {
 };
 
 /**
- * The rate cards. A card needs a person, and this module never enumerates the
- * directory — reading identity's users would take an admin permission the
- * time manager need not hold — so the picker offers everyone who has logged
- * time in the last weeks plus everyone who already has a card. Someone with
- * neither gets their first card once they log an hour, or through the API.
+ * The rate cards, grouped by the people the cards themselves name. Who a new
+ * card may be *given* to is a different question, and the form's own picker
+ * asks the API's user search — so somebody with no hours yet can be priced
+ * before their first entry.
  */
 const RatesCard = () => {
   const { t } = useI18n("time");
   const { data, isPending, isError, error } = useQuery(personRatesQueryOptions());
-  // The overview is the module's own list of who has time; a caller without
-  // view-all simply gets the people who already have a card.
-  const { data: overview } = useQuery({ ...peopleOverviewQueryOptions(RATE_PEOPLE_WEEKS), retry: false });
   const [modal, setModal] = useState<RateModalState | null>(null);
 
   const groups = groupByPerson(data ?? []);
-  const people = new Map<string, RatePerson>();
-  for (const person of overview ?? []) people.set(person.userId, person);
-  for (const group of groups) people.set(group.userId, { userId: group.userId, displayName: group.displayName });
 
   return (
     <Card withBorder padding="lg" radius="md">
@@ -193,7 +182,7 @@ const RatesCard = () => {
         ))}
       </Stack>
 
-      <RateFormModal state={modal} people={[...people.values()]} onClose={() => setModal(null)} />
+      <RateFormModal state={modal} onClose={() => setModal(null)} />
     </Card>
   );
 };

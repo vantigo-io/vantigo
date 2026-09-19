@@ -49,5 +49,7 @@ describe("PeoplePage", () => {
 
     expect(await screen.findByText("You cannot see everyone's time")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // Nothing to narrow when there is nothing to see.
+    expect(screen.queryByRole("combobox", { name: "Weeks" })).not.toBeInTheDocument();
   });
 });

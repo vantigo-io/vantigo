@@ -2,7 +2,7 @@ import type { TimeApprovalGroup } from "../api/approvals";
 import type { PaginatedResponse } from "../api/entries";
 import type { TimePersonOverview } from "../api/people";
 import type { MyProject, MyTaskOption, ProjectBillingLine } from "../api/projects";
-import type { PersonRate } from "../api/rates";
+import type { AssignableRateUser, PersonRate } from "../api/rates";
 import type { TimeSettings } from "../api/settings";
 import type { TimeProjectSummary } from "../api/stats";
 import type { TimeWeek } from "../api/weeks";
@@ -28,6 +28,8 @@ export interface TimeServer {
   approvals?: Read<TimeApprovalGroup[]> | (() => TimeApprovalGroup[]);
   people?: Read<TimePersonOverview[]>;
   rates?: Read<PersonRate[]>;
+  /** The directory search behind the rate form's person picker; the stub filters on the term. */
+  assignableUsers?: Read<AssignableRateUser[]>;
   projectSummary?: Read<TimeProjectSummary>;
   /** Answers a write instead of the default success; undefined falls through to it. */
   write?: (method: string, path: string, body: unknown) => Response | undefined;
@@ -100,6 +102,12 @@ export const stubTimeApi = (server: TimeServer = {}) =>
     }
     if (path === "/api/v1/time/people") return Promise.resolve(answer(server.people, []));
     if (path === "/api/v1/time/rates") return Promise.resolve(answer(server.rates, []));
+    if (path === "/api/v1/time/rates/assignable-users") {
+      if (server.assignableUsers instanceof Response) return Promise.resolve(server.assignableUsers.clone());
+      const term = (url.searchParams.get("search") ?? "").toLowerCase();
+      const users = (server.assignableUsers ?? []).filter((user) => user.displayName.toLowerCase().includes(term));
+      return Promise.resolve(jsonResponse(200, users));
+    }
     if (/^\/api\/v1\/time\/projects\/\d+\/summary$/.test(path)) {
       return Promise.resolve(
         server.projectSummary instanceof Response

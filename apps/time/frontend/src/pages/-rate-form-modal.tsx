@@ -1,25 +1,28 @@
 import { Button, Group, Modal, NumberInput, Select, Stack, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { useForm } from "@mantine/form";
+import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
-import { createPersonRate, type PersonRate, type PersonRateInput, updatePersonRate } from "../api/rates";
+import { type ReactNode, useState } from "react";
+import {
+  assignableRateUsersQueryOptions,
+  createPersonRate,
+  type PersonRate,
+  type PersonRateInput,
+  updatePersonRate,
+} from "../api/rates";
 import { ApiValidationError } from "../api/request";
 import "../i18n";
 import { refusalMessage } from "../lib/errors";
+import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
 /** Adding a card, or changing the one the caller read off the table. */
 export type RateModalState = { mode: "create"; userId?: string } | { mode: "edit"; rate: PersonRate };
 
 /** The currency a Norwegian installation writes its rates in unless it says otherwise. */
 export const DEFAULT_RATE_CURRENCY = "NOK";
-
-/** Somebody a rate card can be written for, as the settings page works them out. */
-export interface RatePerson {
-  userId: string;
-  displayName: string;
-}
 
 /** The request fields a refusal may name that this form has an input for. */
 const formFields = new Set(["userId", "validFrom", "billRate", "costRate", "currency"]);
@@ -38,10 +41,14 @@ const amount = (value: number | string): number | null => {
   return trimmed === "" ? null : Number(trimmed);
 };
 
+/** A rate the API would take: given, and more than zero (a plain 0 is not a rate). */
+const positive = (value: number | string): boolean => {
+  const given = amount(value);
+  return given !== null && given > 0;
+};
+
 export interface RateFormModalProps {
   state: RateModalState | null;
-  /** Everyone a card may be written for: the people with time, plus everyone who already has one. */
-  people: RatePerson[];
   onClose: () => void;
 }
 
@@ -52,7 +59,7 @@ export interface RateFormModalProps {
  * offered while creating. The form lives in `RateForm`, which the modal
  * mounts fresh every time it opens.
  */
-export const RateFormModal = ({ state, people, onClose }: RateFormModalProps) => {
+export const RateFormModal = ({ state, onClose }: RateFormModalProps) => {
   const { t } = useI18n("time");
   return (
     <Modal
@@ -61,12 +68,12 @@ export const RateFormModal = ({ state, people, onClose }: RateFormModalProps) =>
       title={state?.mode === "edit" ? t("editRateTitle") : t("addRateTitle")}
       centered
     >
-      {state && <RateForm state={state} people={people} onClose={onClose} />}
+      {state && <RateForm state={state} onClose={onClose} />}
     </Modal>
   );
 };
 
-const RateForm = ({ state, people, onClose }: RateFormModalProps & { state: RateModalState }) => {
+const RateForm = ({ state, onClose }: RateFormModalProps & { state: RateModalState }) => {
   const { t } = useI18n("time");
   const queryClient = useQueryClient();
   const rate = state.mode === "edit" ? state.rate : undefined;
@@ -82,10 +89,14 @@ const RateForm = ({ state, people, onClose }: RateFormModalProps & { state: Rate
     validate: {
       userId: (value) => (value ? null : t("personRequired")),
       validFrom: (value) => (value ? null : t("validFromRequired")),
-      // §4.3: a card has to price something. The message names both rates and
-      // sits on the first of the two, rather than being said twice.
-      billRate: (value, values) =>
-        amount(value) === null && amount(values.costRate) === null ? t("rateRequired") : null,
+      // §4.3: a card has to price something, and a rate it gives is more than
+      // zero. The "one of the two" message names both rates and sits on the
+      // first of them, rather than being said twice.
+      billRate: (value, values) => {
+        if (amount(value) === null) return amount(values.costRate) === null ? t("rateRequired") : null;
+        return positive(value) ? null : t("rateAboveZero");
+      },
+      costRate: (value) => (amount(value) === null || positive(value) ? null : t("rateAboveZero")),
       currency: (value) => (/^[A-Za-z]{3}$/.test(value.trim()) ? null : t("currencyRequired")),
     },
   });
@@ -120,23 +131,13 @@ const RateForm = ({ state, people, onClose }: RateFormModalProps & { state: Rate
     },
   });
 
-  const options = people.map((person) => ({ value: person.userId, label: person.displayName }));
-
   return (
     <form onSubmit={form.onSubmit((values) => save.mutate(values))}>
       <Stack>
         {rate ? (
           <TextInput label={t("person")} value={rate.displayName} readOnly />
         ) : (
-          <Select
-            label={t("person")}
-            placeholder={t("choosePerson")}
-            description={t("ratePersonDescription")}
-            withAsterisk
-            searchable
-            data-autofocus
-            nothingFoundMessage={t("noPeopleForRates")}
-            data={options}
+          <PersonPicker
             value={form.values.userId}
             onChange={(value) => form.setFieldValue("userId", value)}
             error={form.errors.userId}
@@ -149,6 +150,8 @@ const RateForm = ({ state, people, onClose }: RateFormModalProps & { state: Rate
           {...form.getInputProps("validFrom")}
         />
         <Group grow align="start">
+          {/* `min` keeps a negative amount out; zero is typed like any other
+              number and refused in words, so the rule is never a silent clamp. */}
           <NumberInput label={t("billRate")} min={0} decimalScale={2} {...form.getInputProps("billRate")} />
           <NumberInput label={t("costRate")} min={0} decimalScale={2} {...form.getInputProps("costRate")} />
         </Group>
@@ -168,5 +171,56 @@ const RateForm = ({ state, people, onClose }: RateFormModalProps & { state: Rate
         </Group>
       </Stack>
     </form>
+  );
+};
+
+/**
+ * The person a new card is for, searched straight from the API's own window
+ * onto the user directory — so a new hire with nothing logged yet can be given
+ * a rate before their first entry. The server has already narrowed the list
+ * and answers at most twenty, so Mantine's own filtering is switched off; the
+ * chosen person is kept in the list even once the search has moved past them.
+ */
+const PersonPicker = ({
+  value,
+  onChange,
+  error,
+}: {
+  value: string | null;
+  onChange: (value: string | null) => void;
+  error?: ReactNode;
+}) => {
+  const { t } = useI18n("time");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
+  const { data } = useQuery(assignableRateUsersQueryOptions(debouncedSearch));
+  const [chosen, setChosen] = useState<{ value: string; label: string } | null>(null);
+
+  const users = data ?? [];
+  const options = users.map((user) => ({ value: user.userId, label: user.displayName }));
+  if (chosen && !users.some((user) => user.userId === chosen.value)) options.push(chosen);
+
+  return (
+    <Select
+      label={t("person")}
+      placeholder={t("choosePerson")}
+      description={t("ratePersonDescription")}
+      withAsterisk
+      searchable
+      data-autofocus
+      // The API has already matched on the term; filtering again would hide a
+      // person whose name does not contain it the way the client compares.
+      filter={({ options: parsed }) => parsed}
+      onSearchChange={setSearch}
+      nothingFoundMessage={t("noPeopleForRates")}
+      data={options}
+      value={value}
+      onChange={(next) => {
+        const picked = options.find((option) => option.value === next);
+        setChosen(picked ?? null);
+        onChange(next);
+      }}
+      error={error}
+    />
   );
 };

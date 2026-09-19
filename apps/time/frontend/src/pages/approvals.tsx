@@ -44,6 +44,15 @@ export const ApprovalsPage = () => {
   const [selected, setSelected] = useState<number[]>([]);
   const [rejecting, setRejecting] = useState<number[] | null>(null);
 
+  // A selection belongs to the page it was picked on: turning the queue starts
+  // a new one. State adjusted during render from the previous render's value,
+  // the way React documents, rather than an effect that would flash the old bar.
+  const [pageShown, setPageShown] = useState(page);
+  if (pageShown !== page) {
+    setPageShown(page);
+    setSelected([]);
+  }
+
   const toggle = (ids: number[], on: boolean) =>
     setSelected((current) =>
       on ? [...current, ...ids.filter((id) => !current.includes(id))] : current.filter((id) => !ids.includes(id)),
@@ -124,7 +133,7 @@ const useApprove = (onApproved: () => void) => {
       notifications.show({
         color: "teal",
         title: t("entriesApproved"),
-        message: t("entriesChanged", { count: entries.length }),
+        message: t(entries.length === 1 ? "entryChanged" : "entriesChanged", { count: entries.length }),
       });
       onApproved();
       await queryClient.invalidateQueries({ queryKey: ["time"] });
@@ -178,7 +187,12 @@ const GroupCard = ({ group, selected, onToggle, onReject }: GroupCardProps) => {
 
   const ids = group.entries.map((entry) => entry.id);
   const picked = ids.filter((id) => selected.includes(id));
+  // A group acts on the entries this caller may act on. The queue only lists
+  // what they approve for, but an entry can fall out of reach between the read
+  // and the click — the lock moving, say — so the capability decides.
+  const approvable = group.entries.filter((entry) => entry.capabilities.canApprove).map((entry) => entry.id);
   const week = formatters.formatDate(group.weekStart, { dateStyle: "medium", timeZone: "UTC" });
+  const panelId = `approval-entries-${groupKey(group)}`;
 
   return (
     <Card withBorder padding="md" radius="md" data-group={groupKey(group)}>
@@ -194,6 +208,8 @@ const GroupCard = ({ group, selected, onToggle, onReject }: GroupCardProps) => {
             <ActionIcon
               variant="subtle"
               aria-label={open ? t("hideEntries") : t("showEntries")}
+              aria-expanded={open}
+              aria-controls={panelId}
               onClick={() => setOpen((current) => !current)}
             >
               {open ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
@@ -207,16 +223,24 @@ const GroupCard = ({ group, selected, onToggle, onReject }: GroupCardProps) => {
           </Group>
           <Group gap="xs" wrap="nowrap">
             <Text fw={700}>{t("hoursShort", { hours: hours.display(group.hours) })}</Text>
-            <Button size="xs" color="red" variant="light" onClick={() => onReject(ids)}>
-              {t("reject")}
-            </Button>
-            <Button size="xs" loading={approve.isPending} onClick={() => approve.mutate(ids)}>
-              {t("approve")}
-            </Button>
+            {approvable.length > 0 && (
+              <>
+                <Button size="xs" color="red" variant="light" onClick={() => onReject(approvable)}>
+                  {t("reject")}
+                </Button>
+                <Button size="xs" loading={approve.isPending} onClick={() => approve.mutate(approvable)}>
+                  {t("approve")}
+                </Button>
+              </>
+            )}
           </Group>
         </Group>
 
-        {open && <EntryTable entries={group.entries} selected={selected} onToggle={onToggle} onReject={onReject} />}
+        {open && (
+          <div id={panelId}>
+            <EntryTable entries={group.entries} selected={selected} onToggle={onToggle} onReject={onReject} />
+          </div>
+        )}
       </Stack>
     </Card>
   );
@@ -321,19 +345,21 @@ const EntryRow = ({ entry, selected, onToggle, onReject }: EntryRowProps) => {
         </Text>
       </Table.Td>
       <Table.Td>
-        <Group gap={4} justify="flex-end" wrap="nowrap">
-          <Button size="compact-xs" color="red" variant="subtle" onClick={() => onReject([entry.id])}>
-            {t("reject")}
-          </Button>
-          <Button
-            size="compact-xs"
-            variant="light"
-            loading={approve.isPending}
-            onClick={() => approve.mutate([entry.id])}
-          >
-            {t("approve")}
-          </Button>
-        </Group>
+        {entry.capabilities.canApprove && (
+          <Group gap={4} justify="flex-end" wrap="nowrap">
+            <Button size="compact-xs" color="red" variant="subtle" onClick={() => onReject([entry.id])}>
+              {t("reject")}
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="light"
+              loading={approve.isPending}
+              onClick={() => approve.mutate([entry.id])}
+            >
+              {t("approve")}
+            </Button>
+          </Group>
+        )}
       </Table.Td>
     </Table.Tr>
   );

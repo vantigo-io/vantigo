@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { jsonResponse, runQuery, sent } from "../test/api";
 import { stubFetch } from "../test/fetch";
-import { createPersonRate, deletePersonRate, personRatesQueryOptions, updatePersonRate } from "./rates";
+import {
+  assignableRateUsersQueryOptions,
+  createPersonRate,
+  deletePersonRate,
+  personRatesQueryOptions,
+  updatePersonRate,
+} from "./rates";
 
 const USER = "22222222-2222-2222-2222-222222222222";
 
@@ -24,6 +30,28 @@ describe("personRatesQueryOptions", () => {
 
     expect(options.queryKey).toEqual(["time", "rates", USER]);
     expect(fetchMock.actualCalls[0]?.[0]).toBe(`/api/v1/time/rates/users/${USER}`);
+  });
+});
+
+describe("assignableRateUsersQueryOptions", () => {
+  it("asks for the first users when nothing is typed", async () => {
+    const fetchMock = stubFetch(() => Promise.resolve(jsonResponse(200, [])));
+
+    const options = assignableRateUsersQueryOptions("");
+    await runQuery(options);
+
+    expect(options.queryKey).toEqual(["time", "rates", "assignable-users", ""]);
+    expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/time/rates/assignable-users");
+  });
+
+  it("searches on the term, trimmed", async () => {
+    const fetchMock = stubFetch(() => Promise.resolve(jsonResponse(200, [])));
+
+    const options = assignableRateUsersQueryOptions("  Grace  ");
+    await runQuery(options);
+
+    expect(options.queryKey).toEqual(["time", "rates", "assignable-users", "Grace"]);
+    expect(fetchMock.actualCalls[0]?.[0]).toBe("/api/v1/time/rates/assignable-users?search=Grace");
   });
 });
 

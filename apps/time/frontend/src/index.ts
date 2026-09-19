@@ -29,7 +29,6 @@ export {
   RateFormModal,
   type RateFormModalProps,
   type RateModalState,
-  type RatePerson,
 } from "./pages/-rate-form-modal";
 export { REJECTION_REASON_MAX_LENGTH, RejectModal, type RejectModalProps } from "./pages/-reject-modal";
 export { RowPicker, type RowPickerProps } from "./pages/-row-picker";
