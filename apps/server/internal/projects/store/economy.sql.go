@@ -7,9 +7,292 @@ package store
 
 import (
 	"context"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const managedActiveProjects = `-- name: ManagedActiveProjects :many
+SELECT p.id, p.code, p.name, p.description, p.customer_id, p.status, p.start_date, p.end_date, p.billing_type, p.currency, p.fixed_price_amount, p.budget_hours, p.budget_amount, p.revision, p.created_by_user_id, p.created_at, p.updated_at, p.default_bill_rate FROM projects.projects p
+WHERE p.status = 'active'
+  AND EXISTS (SELECT 1 FROM projects.project_roles r
+              WHERE r.project_id = p.id AND r.user_id = $1 AND r.role = 'manager')
+ORDER BY p.code, p.id
+LIMIT $2
+`
+
+type ManagedActiveProjectsParams struct {
+	UserID   uuid.UUID
+	RowLimit int32
+}
+
+// ManagedActiveProjects is the projects the two budget alerts are computed
+// over: the active ones the caller holds the manager role on. Their budgets
+// come from the row; what has been logged against them comes from the actuals
+// contract, in one call for the whole list, which is why the list is capped
+// the way the portfolio is.
+func (q *Queries) ManagedActiveProjects(ctx context.Context, arg ManagedActiveProjectsParams) ([]ProjectsProject, error) {
+	rows, err := q.db.Query(ctx, managedActiveProjects, arg.UserID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsProject
+	for rows.Next() {
+		var i ProjectsProject
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Description,
+			&i.CustomerID,
+			&i.Status,
+			&i.StartDate,
+			&i.EndDate,
+			&i.BillingType,
+			&i.Currency,
+			&i.FixedPriceAmount,
+			&i.BudgetHours,
+			&i.BudgetAmount,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DefaultBillRate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const openMilestonesForProjects = `-- name: OpenMilestonesForProjects :many
+SELECT id, project_id, name, description, planned_date, amount, amount_currency, percent, status, position, ready_at, ready_by_user_id, invoiced_at, invoiced_by_user_id, invoice_reference, invoice_date, invoiced_amount, ever_moved, revision, created_by_user_id, created_at, updated_at FROM projects.billing_milestones
+WHERE project_id = ANY($1::integer[])
+  AND status IN ('planned', 'ready')
+ORDER BY project_id, (planned_date IS NULL), planned_date, position, id
+`
+
+// OpenMilestonesForProjects is the portfolio's one milestone read: every open
+// milestone of a whole page's worth of projects, in one query rather than one
+// per project. Open is 'planned' and 'ready' — an invoiced or cancelled one is
+// neither the next thing to bill nor something ready to bill.
+//
+// The order is the portfolio's "next milestone" rule, so the handler takes the
+// first row of each project's group rather than sorting again: earliest
+// planned date first, milestones nobody has dated after every dated one, and
+// then the plan's own manual order. The partial index over the two open
+// statuses (migration 00011) is what serves it.
+func (q *Queries) OpenMilestonesForProjects(ctx context.Context, projectIds []int32) ([]ProjectsBillingMilestone, error) {
+	rows, err := q.db.Query(ctx, openMilestonesForProjects, projectIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsBillingMilestone
+	for rows.Next() {
+		var i ProjectsBillingMilestone
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Description,
+			&i.PlannedDate,
+			&i.Amount,
+			&i.AmountCurrency,
+			&i.Percent,
+			&i.Status,
+			&i.Position,
+			&i.ReadyAt,
+			&i.ReadyByUserID,
+			&i.InvoicedAt,
+			&i.InvoicedByUserID,
+			&i.InvoiceReference,
+			&i.InvoiceDate,
+			&i.InvoicedAmount,
+			&i.EverMoved,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const overdueMilestonesForManager = `-- name: OverdueMilestonesForManager :many
+SELECT m.id, m.project_id, m.name, m.planned_date
+FROM projects.billing_milestones m
+JOIN projects.projects p ON p.id = m.project_id
+WHERE m.status = 'planned'
+  AND m.planned_date IS NOT NULL
+  AND m.planned_date < $1::date
+  AND p.status = 'active'
+  AND EXISTS (SELECT 1 FROM projects.project_roles r
+              WHERE r.project_id = p.id AND r.user_id = $2 AND r.role = 'manager')
+ORDER BY m.planned_date, m.id
+`
+
+type OverdueMilestonesForManagerParams struct {
+	Today  pgtype.Date
+	UserID uuid.UUID
+}
+
+type OverdueMilestonesForManagerRow struct {
+	ID          int32
+	ProjectID   int32
+	Name        string
+	PlannedDate pgtype.Date
+}
+
+// OverdueMilestonesForManager is the dashboard's milestoneOverdue items: a
+// milestone still planned whose day has passed, on an active project the
+// caller manages. 'ready' is deliberately not here — a ready milestone is
+// already somebody's milestoneReady item, and telling them twice about the
+// same milestone is noise. The date is a plain calendar date in UTC, as
+// everywhere else in this module.
+func (q *Queries) OverdueMilestonesForManager(ctx context.Context, arg OverdueMilestonesForManagerParams) ([]OverdueMilestonesForManagerRow, error) {
+	rows, err := q.db.Query(ctx, overdueMilestonesForManager, arg.Today, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []OverdueMilestonesForManagerRow
+	for rows.Next() {
+		var i OverdueMilestonesForManagerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.PlannedDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const portfolioProjects = `-- name: PortfolioProjects :many
+
+SELECT p.id, p.code, p.name, p.description, p.customer_id, p.status, p.start_date, p.end_date, p.billing_type, p.currency, p.fixed_price_amount, p.budget_hours, p.budget_amount, p.revision, p.created_by_user_id, p.created_at, p.updated_at, p.default_bill_rate FROM projects.projects p
+WHERE ($1::boolean
+       OR EXISTS (SELECT 1 FROM projects.project_roles r
+                  WHERE r.project_id = p.id AND r.user_id = $2 AND r.role = 'manager')
+       OR ($3::boolean
+           AND projects.visible(p.id, $2, $4::boolean)))
+  AND ($5::text IS NULL OR p.status = $5)
+  AND ($6::integer IS NULL OR p.customer_id = $6)
+  AND ($7::text = '' OR p.code ILIKE '%' || $7 || '%' ESCAPE '\'
+                                   OR p.name ILIKE '%' || $7 || '%' ESCAPE '\')
+ORDER BY p.code, p.id
+LIMIT $8
+`
+
+type PortfolioProjectsParams struct {
+	ManageAll      bool
+	UserID         uuid.UUID
+	ViewFinancials bool
+	SeeAll         bool
+	Status         *string
+	CustomerID     *int32
+	Search         string
+	RowLimit       int32
+}
+
+// The portfolio and the dashboard's economy signals (design §5, delivery B)
+// start from one of two predicates, and every query below says which.
+//
+// **Financial rights on the project** is the module's existing rule
+// (authorize.go): projects:manage-all, or the manager role on this project,
+// or projects:view-financials on a project the caller can see —
+// projects.visible, the same function the list and every stats query filter
+// on. It is spelled out here rather than in Go because a portfolio has to
+// page and count over it, exactly as the list does with visibility: a
+// predicate applied to rows already fetched gives a total that lies. It
+// appears three times below, once per query that needs it, and the three
+// must be changed together — a caller who may see a project's money in one
+// of them and not in another would see a figure they cannot open the source
+// of.
+//
+// **The manager role** is the narrower one: holding the role on this project,
+// and not projects:manage-all. It is what the budget and overdue-milestone
+// alerts are addressed to, because an alert is a request to act and an
+// administrator who can manage every project is not the person who acts on
+// each one — they would receive every project's alerts and read none of them.
+// PortfolioProjects is every project the caller has financial rights on,
+// narrowed by the portfolio's own filters. The over-budget and has-ready
+// filters are not here: they are decided from what another module reports,
+// which no SQL of this module may read.
+//
+// row_limit is the cap the handler asks one row past, so "more projects
+// matched than one answer may carry" is one read rather than a count and a
+// read that could disagree. The order is the list's own — by code — so a
+// caller sorting by code gets it straight from the index.
+//
+// search is already ILIKE-escaped by the caller and arrives without its
+// wildcards, exactly as ListProjects takes it.
+func (q *Queries) PortfolioProjects(ctx context.Context, arg PortfolioProjectsParams) ([]ProjectsProject, error) {
+	rows, err := q.db.Query(ctx, portfolioProjects,
+		arg.ManageAll,
+		arg.UserID,
+		arg.ViewFinancials,
+		arg.SeeAll,
+		arg.Status,
+		arg.CustomerID,
+		arg.Search,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectsProject
+	for rows.Next() {
+		var i ProjectsProject
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Description,
+			&i.CustomerID,
+			&i.Status,
+			&i.StartDate,
+			&i.EndDate,
+			&i.BillingType,
+			&i.Currency,
+			&i.FixedPriceAmount,
+			&i.BudgetHours,
+			&i.BudgetAmount,
+			&i.Revision,
+			&i.CreatedByUserID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DefaultBillRate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const projectTaskEstimateHours = `-- name: ProjectTaskEstimateHours :one
 
@@ -41,4 +324,112 @@ func (q *Queries) ProjectTaskEstimateHours(ctx context.Context, projectID int32)
 	var estimate_hours pgtype.Numeric
 	err := row.Scan(&estimate_hours)
 	return estimate_hours, err
+}
+
+const readyMilestoneCount = `-- name: ReadyMilestoneCount :one
+SELECT count(*) FROM projects.billing_milestones m
+JOIN projects.projects p ON p.id = m.project_id
+WHERE m.status = 'ready'
+  AND ($1::boolean
+       OR EXISTS (SELECT 1 FROM projects.project_roles r
+                  WHERE r.project_id = p.id AND r.user_id = $2 AND r.role = 'manager')
+       OR ($3::boolean
+           AND projects.visible(p.id, $2, $4::boolean)))
+`
+
+type ReadyMilestoneCountParams struct {
+	ManageAll      bool
+	UserID         uuid.UUID
+	ViewFinancials bool
+	SeeAll         bool
+}
+
+// ReadyMilestoneCount is the dashboard card's readyMilestones: how many
+// billing milestones are waiting to be invoiced on the projects whose money
+// the caller may see. A count and not an amount — the projects may be in
+// several currencies, and two currencies never add up. Financial rights,
+// because the existence of something ready to invoice is a financial fact.
+func (q *Queries) ReadyMilestoneCount(ctx context.Context, arg ReadyMilestoneCountParams) (int64, error) {
+	row := q.db.QueryRow(ctx, readyMilestoneCount,
+		arg.ManageAll,
+		arg.UserID,
+		arg.ViewFinancials,
+		arg.SeeAll,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const readyMilestonesForCaller = `-- name: ReadyMilestonesForCaller :many
+SELECT m.id, m.project_id, m.name,
+       coalesce(m.ready_at, m.updated_at)::timestamptz AS occurred_at
+FROM projects.billing_milestones m
+JOIN projects.projects p ON p.id = m.project_id
+WHERE m.status = 'ready'
+  AND p.status NOT IN ('cancelled', 'completed')
+  AND ($1::boolean
+       OR EXISTS (SELECT 1 FROM projects.project_roles r
+                  WHERE r.project_id = p.id AND r.user_id = $2 AND r.role = 'manager')
+       OR ($3::boolean
+           AND projects.visible(p.id, $2, $4::boolean)))
+ORDER BY occurred_at, m.id
+`
+
+type ReadyMilestonesForCallerParams struct {
+	ManageAll      bool
+	UserID         uuid.UUID
+	ViewFinancials bool
+	SeeAll         bool
+}
+
+type ReadyMilestonesForCallerRow struct {
+	ID         int32
+	ProjectID  int32
+	Name       string
+	OccurredAt time.Time
+}
+
+// ReadyMilestonesForCaller is the dashboard's milestoneReady items: every
+// milestone waiting to be invoiced on a project the caller has financial
+// rights on. Unlike the two budget alerts this one is not addressed to
+// managers alone — whoever may see the money is who invoices — and unlike
+// them it is not limited to active projects: a milestone on a project that
+// has not started, or is on hold, is still money waiting to be billed. A
+// cancelled project raises nothing, and neither does a completed one: its
+// invoicing is finished, and anything still ready there is a bookkeeping
+// question rather than something to act on today.
+//
+// occurred_at is when the milestone was marked ready, which is the day the
+// dashboard prints as "3 days ago". A row without that stamp — the API sets
+// it on every move to 'ready', so only hand-written data lacks it — falls
+// back to when it was last touched rather than dropping out of the list.
+func (q *Queries) ReadyMilestonesForCaller(ctx context.Context, arg ReadyMilestonesForCallerParams) ([]ReadyMilestonesForCallerRow, error) {
+	rows, err := q.db.Query(ctx, readyMilestonesForCaller,
+		arg.ManageAll,
+		arg.UserID,
+		arg.ViewFinancials,
+		arg.SeeAll,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReadyMilestonesForCallerRow
+	for rows.Next() {
+		var i ReadyMilestonesForCallerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -70,6 +71,46 @@ func (s *server) authorize(ctx context.Context, q *store.Queries, projectID int3
 		a.CanContribute = false
 	}
 	return a, nil
+}
+
+// financialVisibility is "financial rights on the project" for a caller,
+// reduced to what a query can decide a whole table's worth of projects
+// against: the two global permissions, and who the caller is when neither
+// applies. authorize answers the same question for one project it has
+// already loaded; this is that answer for every project at once, which the
+// portfolio and the dashboard's economy signals need — a rule applied to rows
+// already fetched gives a page whose total lies (projects_list.go's
+// visibility, same reason).
+//
+// ViewFinancials is the global permission alone, manage-all included: it
+// grants nothing the ManageAll flag beside it does not already grant, and
+// folding them is what lets the predicate read the permissions once.
+type financialVisibility struct {
+	UserID uuid.UUID
+	// ManageAll is projects:manage-all — financial rights on every project,
+	// no role needed.
+	ManageAll bool
+	// ViewFinancials is a global permission granting financial rights, but
+	// only on projects the caller can see at all, which SeeAll and the
+	// caller's roles decide together (projects.visible).
+	ViewFinancials bool
+	// SeeAll is the caller's view-all/manage-all, the same flag the list and
+	// every stats query filter on.
+	SeeAll bool
+}
+
+// financialVisibilityFor is the caller's financial visibility, read out of
+// globalAccess so that "may see every project" and "may see every project's
+// money" have exactly one definition in this module.
+func (s *server) financialVisibilityFor(ctx context.Context) financialVisibility {
+	p, _ := contracts.PrincipalFrom(ctx)
+	a := s.globalAccess(ctx)
+	return financialVisibility{
+		UserID:         p.UserID,
+		ManageAll:      a.CanManage,
+		ViewFinancials: a.CanSeeFinancials,
+		SeeAll:         a.CanSee,
+	}
 }
 
 // canSeeCosts is design §2 E7: what the work costs the company, and the

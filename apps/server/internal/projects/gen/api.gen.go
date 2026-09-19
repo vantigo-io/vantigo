@@ -510,6 +510,12 @@ type ProjectEconomyCost struct {
 	UncostedHours float64 `json:"uncostedHours"`
 }
 
+// ProjectEconomyCustomer The customer a portfolio row's project bills to, absent on an internal project. The name is resolved through the customer directory, once per distinct customer on the page, and is absent when the directory no longer knows the customer — the project keeps the relationship it was started under either way.
+type ProjectEconomyCustomer struct {
+	Id   int32   `json:"id"`
+	Name *string `json:"name,omitempty"`
+}
+
 // ProjectEconomyLine One row of the per-line breakdown — every billing line of the project, deactivated ones included, in the same order the billing tab lists them, plus one row without a billingLineId for work logged against no line at all. A line the project does not have that work was nonetheless logged against folds into that same row rather than being dropped.
 type ProjectEconomyLine struct {
 	// Active Whether the line is still active. Absent on the row that stands for work logged without a line.
@@ -538,6 +544,41 @@ type ProjectEconomyLine struct {
 
 	// UsedPercent The logged work against this line's own budget — its budget amount when the caller may see amounts and it is set, otherwise its budget hours — rounded half up to one decimal. Absent when the line has no budget to measure against, and when timeTracking is false.
 	UsedPercent *float64 `json:"usedPercent,omitempty"`
+}
+
+// ProjectEconomyListResponse One page of the economy portfolio, with totals over the whole filtered set rather than over the page: a portfolio read to decide where to look must not have its headline figures change when somebody turns the page.
+type ProjectEconomyListResponse struct {
+	Data       []ProjectEconomyRow             `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+
+	// TimeTracking Whether this installation has a module that reports what has been logged against projects, exactly as the per-project economy reports it. False means no row carries actuals or budgetUsed — not that nothing has been logged.
+	TimeTracking bool `json:"timeTracking"`
+
+	// Totals What the whole filtered set adds up to, page or no page. readyAmounts is a list rather than one number because the projects in it may be in several currencies, and two currencies never add up.
+	Totals ProjectEconomyTotals `json:"totals"`
+}
+
+// ProjectEconomyNextMilestone The next open milestone of a portfolio row's project — the earliest-dated 'planned' or 'ready' one, undated ones after dated ones and then in the plan's own order. Absent when the project has no open milestone at all.
+type ProjectEconomyNextMilestone struct {
+	// EffectiveAmount What the milestone is worth, in the project's currency — the flat amount as entered, or the percentage of the project's fixed price. Absent for a milestone nobody can price, exactly as on the invoice plan itself.
+	EffectiveAmount *float64 `json:"effectiveAmount,omitempty"`
+	Id              int32    `json:"id"`
+	Name            string   `json:"name"`
+
+	// Overdue Whether the milestone's planned day has passed, on the server's own UTC calendar.
+	Overdue bool `json:"overdue"`
+
+	// PlannedDate The day the milestone is planned for. Absent when nobody has dated it, which is what sorts it after every dated one.
+	PlannedDate *openapi_types.Date `json:"plannedDate,omitempty"`
+
+	// Status 'planned' or 'ready' — the two open statuses.
+	Status string `json:"status"`
+}
+
+// ProjectEconomyReadyAmount What is ready to invoice in one currency. The portfolio's totals carry one of these per currency, by currency code, because amounts in different currencies are not comparable and adding them would produce a number in neither.
+type ProjectEconomyReadyAmount struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
 }
 
 // ProjectEconomyResponse A project's budget against what has been logged on it (design §5, delivery B). Everyone who sees the project sees the hours; amounts, the fixed price, the milestone totals and the currency need financial rights on it, and the cost block needs projects:view-costs as well. Fields the caller may not see are absent, never null and never zero. Nothing here is cached: the hours are read live through the actuals contract on every request.
@@ -571,6 +612,78 @@ type ProjectEconomyResponse struct {
 
 	// TimeTracking Whether this installation has a module that reports what has been logged against projects. False means the budgets and the invoice plan are still here and there are no actuals to compare them with — not that nothing has been logged.
 	TimeTracking bool `json:"timeTracking"`
+}
+
+// ProjectEconomyRow One project in the economy portfolio. Every row is a project the caller has financial rights on — the project's manager, projects:manage-all, or projects:view-financials on a project they can see — so the amounts are never shaped away here the way they are on the per-project economy; a caller who may not see a project's money does not get its row at all. There is no cost or margin in the portfolio — that block is the per-project read's, behind projects:view-costs.
+type ProjectEconomyRow struct {
+	// Actuals What has been logged on the project. Absent exactly when timeTracking is false.
+	Actuals *ProjectEconomyRowActuals `json:"actuals,omitempty"`
+
+	// BudgetUsed Absent when the project has no basis to measure against — such rows sort last under the budgetUsed sort — and absent when timeTracking is false.
+	BudgetUsed *ProjectEconomyBudgetUsed `json:"budgetUsed,omitempty"`
+
+	// Currency The currency this row's amounts are in. Absent when the project carries none, and then the row has no amounts at all.
+	Currency *string `json:"currency,omitempty"`
+
+	// NextMilestone The project's next open milestone, absent when it has none.
+	NextMilestone *ProjectEconomyNextMilestone `json:"nextMilestone,omitempty"`
+
+	// OverBudget Whether the logged work has passed the budget budgetUsed measures against, decided on the exact ratio rather than on the rounded percent. False when there is nothing to measure against.
+	OverBudget bool `json:"overBudget"`
+
+	// PendingHours The hours waiting for a decision: the submitted and draft buckets added up. Absent exactly when actuals is — nobody has said there are none, only that this installation cannot say.
+	PendingHours *float64 `json:"pendingHours,omitempty"`
+
+	// Project Which project a portfolio row is about, in the fields the table renders and links from.
+	Project ProjectEconomyRowProject `json:"project"`
+
+	// ReadyAmount What the project's 'ready' milestones add up to, in its own currency. Absent when it has none ready, when none of them can be priced, and when the project carries no currency.
+	ReadyAmount *float64 `json:"readyAmount,omitempty"`
+
+	// ReadyCount How many of the project's milestones are ready to invoice.
+	ReadyCount int32 `json:"readyCount"`
+}
+
+// ProjectEconomyRowActuals What has been logged on a portfolio row's project — the three buckets and their totals, and no more. The unpriced, billable and non-billable splits are the per-project economy read's; a portfolio is read across hundreds of projects at once.
+type ProjectEconomyRowActuals struct {
+	// Approved Approved and invoiced entries.
+	Approved ProjectEconomyBucket `json:"approved"`
+
+	// Draft Draft and rejected entries.
+	Draft ProjectEconomyBucket `json:"draft"`
+
+	// Submitted One bucket of logged work. The hours are there for everyone who sees the project; the amount is financial data.
+	Submitted ProjectEconomyBucket `json:"submitted"`
+
+	// TotalAmount The three buckets' bill amounts added up, in the project's currency. Absent when the project carries no currency.
+	TotalAmount *float64 `json:"totalAmount,omitempty"`
+	TotalHours  float64  `json:"totalHours"`
+}
+
+// ProjectEconomyRowProject Which project a portfolio row is about, in the fields the table renders and links from.
+type ProjectEconomyRowProject struct {
+	Code string `json:"code"`
+
+	// Customer Absent on an internal project.
+	Customer *ProjectEconomyCustomer `json:"customer,omitempty"`
+	Id       int32                   `json:"id"`
+	Name     string                  `json:"name"`
+	Status   string                  `json:"status"`
+}
+
+// ProjectEconomyTotals What the whole filtered set adds up to, page or no page. readyAmounts is a list rather than one number because the projects in it may be in several currencies, and two currencies never add up.
+type ProjectEconomyTotals struct {
+	// OverBudgetCount How many of those projects have passed their budget. Always 0 when timeTracking is false, since nothing can be compared then.
+	OverBudgetCount int32 `json:"overBudgetCount"`
+
+	// ProjectCount How many projects the filters matched, which is also the pagination's totalCount.
+	ProjectCount int32 `json:"projectCount"`
+
+	// ReadyAmounts What is ready to invoice, one entry per currency, by currency code. A project whose ready milestones cannot be priced, or that carries no currency, contributes to readyCount and to no amount.
+	ReadyAmounts []ProjectEconomyReadyAmount `json:"readyAmounts"`
+
+	// ReadyCount How many milestones across those projects are ready to invoice.
+	ReadyCount int32 `json:"readyCount"`
 }
 
 // ProjectFinancials The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see".
@@ -643,7 +756,13 @@ type ProjectRoleResponse struct {
 	UserId openapi_types.UUID `json:"userId"`
 }
 
-// ProjectStatsAttentionItem One project the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention; entityId is the project id, which the dashboard turns into a link to /projects/{id}.
+// ProjectStatsAttentionItem One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
+//
+// Five types, each with its own recipients: `projectOverdue`, an active project past its end date, for everyone who can see it; `budgetWarning` (80 % ≤ used ≤ 100 %) and `budgetExceeded` (over 100 %), for the managers of an active project and nobody else, so a holder of projects:manage-all is not sent every project's alerts; `milestoneReady`, for everyone with financial rights on a project that is not cancelled or completed; and `milestoneOverdue`, a planned milestone whose day has passed, for the managers of an active project. One project never raises both budget types.
+//
+// entityId is the project id for the three project-shaped types and `<projectId>/<milestoneId>` for the two milestone ones, which is what the dashboard builds the link from; id is unique within the list.
+//
+// The budget items need what has been logged, which comes from another module. When that module cannot answer, they are left out and the rest of the list is still returned — this endpoint is one of many the dashboard merges, and one degraded module must not empty it.
 type ProjectStatsAttentionItem struct {
 	EntityId   string    `json:"entityId"`
 	Id         string    `json:"id"`
@@ -665,7 +784,10 @@ type ProjectStatsSummaryResponse struct {
 	From                time.Time `json:"from"`
 	NewProjects         int32     `json:"newProjects"`
 	NewProjectsDelta    int32     `json:"newProjectsDelta"`
-	To                  time.Time `json:"to"`
+
+	// ReadyMilestones How many billing milestones are ready to invoice, on the projects whose money the caller may see. A count and not an amount: the projects may be in several currencies, and two currencies never add up. It is a state now rather than a figure over the period, exactly as activeProjects is, and it has no delta for the same reason a currency-mixed amount would have no meaning.
+	ReadyMilestones int32     `json:"readyMilestones"`
+	To              time.Time `json:"to"`
 }
 
 // ProjectStatusChangeRequest defines model for ProjectStatusChangeRequest.
@@ -868,6 +990,28 @@ type GetProjectsCodeSuggestionParams struct {
 	Name *string `form:"name,omitempty" json:"name,omitempty"`
 }
 
+// GetProjectsEconomyParams defines parameters for GetProjectsEconomy.
+type GetProjectsEconomyParams struct {
+	Page     *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// Search Matches the project code or name, case-insensitively. '%' and '_' are literal characters, not wildcards.
+	Search *string `form:"search,omitempty" json:"search,omitempty"`
+
+	// Status One of 'planned', 'active', 'on-hold', 'completed', 'cancelled' or 'all'. Defaults to 'active' — a portfolio is about the work being done now — and 'all' is how every status is asked for.
+	Status     *string `form:"status,omitempty" json:"status,omitempty"`
+	CustomerId *int32  `form:"customerId,omitempty" json:"customerId,omitempty"`
+
+	// OverBudget true keeps only the rows whose logged work has passed the budget. Nothing is over budget when time tracking is off.
+	OverBudget *bool `form:"overBudget,omitempty" json:"overBudget,omitempty"`
+
+	// HasReady true keeps only the rows with at least one milestone ready to invoice.
+	HasReady *bool `form:"hasReady,omitempty" json:"hasReady,omitempty"`
+
+	// Sort Which order the rows come in. 'budgetUsed' (the default) is most-used first on the exact ratio, with rows that have no basis last; 'readyAmount' is by currency code and then the largest amount first, because amounts in different currencies are not comparable and one list cannot rank them against each other; 'nextMilestone' is the soonest planned date first, undated open milestones after dated ones and rows with no open milestone last; 'code' is alphabetical. Every order breaks ties by project code.
+	Sort *string `form:"sort,omitempty" json:"sort,omitempty"`
+}
+
 // GetProjectsStatsSummaryParams defines parameters for GetProjectsStatsSummary.
 type GetProjectsStatsSummaryParams struct {
 	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
@@ -970,6 +1114,9 @@ type ServerInterface interface {
 	// GetProjectsCodeSuggestion Suggest a project code
 	// (GET /api/v1/projects/code-suggestion)
 	GetProjectsCodeSuggestion(w http.ResponseWriter, r *http.Request, params GetProjectsCodeSuggestionParams)
+	// GetProjectsEconomy List the economy of the projects whose money the caller may see
+	// (GET /api/v1/projects/economy)
+	GetProjectsEconomy(w http.ResponseWriter, r *http.Request, params GetProjectsEconomyParams)
 	// DeleteProjectsMilestonesByMilestoneId Delete a billing milestone
 	// (DELETE /api/v1/projects/milestones/{milestoneId})
 	DeleteProjectsMilestonesByMilestoneId(w http.ResponseWriter, r *http.Request, milestoneId int32)
@@ -1257,6 +1404,130 @@ func (siw *ServerInterfaceWrapper) GetProjectsCodeSuggestion(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetProjectsCodeSuggestion(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectsEconomy operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectsEconomy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetProjectsEconomyParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "search" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "search", r.URL.Query(), &params.Search, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "search"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "customerId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "customerId", r.URL.Query(), &params.CustomerId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "customerId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "customerId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "overBudget" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "overBudget", r.URL.Query(), &params.OverBudget, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "overBudget"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "overBudget", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "hasReady" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "hasReady", r.URL.Query(), &params.HasReady, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "hasReady"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "hasReady", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectsEconomy(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2560,6 +2831,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects", wrapper.GetProjects)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/projects", wrapper.PostProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/code-suggestion", wrapper.GetProjectsCodeSuggestion)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/economy", wrapper.GetProjectsEconomy)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/projects/milestones/{milestoneId}", wrapper.DeleteProjectsMilestonesByMilestoneId)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/projects/milestones/{milestoneId}", wrapper.GetProjectsMilestonesByMilestoneId)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/projects/milestones/{milestoneId}", wrapper.PutProjectsMilestonesByMilestoneId)
@@ -2769,6 +3041,70 @@ func (response GetProjectsCodeSuggestion401JSONResponse) VisitGetProjectsCodeSug
 type GetProjectsCodeSuggestion403JSONResponse externalRef0.AuthErrorResponse
 
 func (response GetProjectsCodeSuggestion403JSONResponse) VisitGetProjectsCodeSuggestionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsEconomyRequestObject struct {
+	Params GetProjectsEconomyParams
+}
+
+type GetProjectsEconomyResponseObject interface {
+	VisitGetProjectsEconomyResponse(w http.ResponseWriter) error
+}
+
+type GetProjectsEconomy200JSONResponse ProjectEconomyListResponse
+
+func (response GetProjectsEconomy200JSONResponse) VisitGetProjectsEconomyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsEconomy400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetProjectsEconomy400ApplicationProblemPlusJSONResponse) VisitGetProjectsEconomyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsEconomy401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsEconomy401JSONResponse) VisitGetProjectsEconomyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectsEconomy403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetProjectsEconomy403JSONResponse) VisitGetProjectsEconomyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5383,6 +5719,9 @@ type StrictServerInterface interface {
 	// GetProjectsCodeSuggestion Suggest a project code
 	// (GET /api/v1/projects/code-suggestion)
 	GetProjectsCodeSuggestion(ctx context.Context, request GetProjectsCodeSuggestionRequestObject) (GetProjectsCodeSuggestionResponseObject, error)
+	// GetProjectsEconomy List the economy of the projects whose money the caller may see
+	// (GET /api/v1/projects/economy)
+	GetProjectsEconomy(ctx context.Context, request GetProjectsEconomyRequestObject) (GetProjectsEconomyResponseObject, error)
 	// DeleteProjectsMilestonesByMilestoneId Delete a billing milestone
 	// (DELETE /api/v1/projects/milestones/{milestoneId})
 	DeleteProjectsMilestonesByMilestoneId(ctx context.Context, request DeleteProjectsMilestonesByMilestoneIdRequestObject) (DeleteProjectsMilestonesByMilestoneIdResponseObject, error)
@@ -5614,6 +5953,32 @@ func (sh *strictHandler) GetProjectsCodeSuggestion(w http.ResponseWriter, r *htt
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetProjectsCodeSuggestionResponseObject); ok {
 		if err := validResponse.VisitGetProjectsCodeSuggestionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectsEconomy operation middleware
+func (sh *strictHandler) GetProjectsEconomy(w http.ResponseWriter, r *http.Request, params GetProjectsEconomyParams) {
+	var request GetProjectsEconomyRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectsEconomy(ctx, request.(GetProjectsEconomyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectsEconomy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectsEconomyResponseObject); ok {
+		if err := validResponse.VisitGetProjectsEconomyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
