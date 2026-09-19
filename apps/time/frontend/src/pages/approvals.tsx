@@ -50,6 +50,11 @@ export const ApprovalsPage = () => {
     );
 
   const groups = data?.data ?? [];
+  // An entry approved on its own, or one the queue has moved on from, is no
+  // longer here to act on: the batch is what is both picked and still listed,
+  // so the count never promises a request the server would only refuse.
+  const queued = new Set(groups.flatMap((group) => group.entries.map((entry) => entry.id)));
+  const picked = selected.filter((id) => queued.has(id));
 
   return (
     <Stack gap="lg">
@@ -74,17 +79,17 @@ export const ApprovalsPage = () => {
         </Card>
       )}
 
-      {selected.length > 0 && (
+      {picked.length > 0 && (
         <BatchBar
-          ids={selected}
-          onReject={() => setRejecting(selected)}
+          ids={picked}
+          onReject={() => setRejecting(picked)}
           onClear={() => setSelected([])}
           onApproved={() => setSelected([])}
         />
       )}
 
       {groups.map((group) => (
-        <GroupCard key={groupKey(group)} group={group} selected={selected} onToggle={toggle} onReject={setRejecting} />
+        <GroupCard key={groupKey(group)} group={group} selected={picked} onToggle={toggle} onReject={setRejecting} />
       ))}
 
       {data && data.pagination.totalPages > 1 && (
