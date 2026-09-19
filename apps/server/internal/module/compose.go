@@ -97,7 +97,7 @@ var embedded = &rememberedContracts{load: openapi.Load}
 type rememberedContracts struct {
 	load   freshContracts
 	docs   sync.Map // module name -> *openapi3.T
-	bodies sync.Map // module names in order, comma-joined -> []byte
+	bodies sync.Map // module names in order, NUL-joined -> []byte
 }
 
 func (c *rememberedContracts) doc(ctx context.Context, name string) (*openapi3.T, error) {
@@ -114,7 +114,8 @@ func (c *rememberedContracts) doc(ctx context.Context, name string) (*openapi3.T
 }
 
 func (c *rememberedContracts) combined(ctx context.Context, order []string) ([]byte, error) {
-	key := strings.Join(order, ",")
+	// NUL cannot appear in a module name, so no two sets of modules share a key.
+	key := strings.Join(order, "\x00")
 	if body, ok := c.bodies.Load(key); ok {
 		return body.([]byte), nil
 	}

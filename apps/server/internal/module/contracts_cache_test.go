@@ -3,11 +3,17 @@ package module
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/vantigo-io/vantigo/server/internal/config"
 )
 
 // countingLoad is fakeLoad that also says how often each contract was parsed.
@@ -141,5 +147,69 @@ func TestRememberedContracts_ConcurrentFirstCallersShareOneDocument(t *testing.T
 		if doc != docs[0] {
 			t.Fatalf("caller %d got a document of its own", i)
 		}
+	}
+}
+
+// The three tests above hold for rememberedContracts; this one holds for
+// Compose. Composing twice must hand a module the very same document and
+// serve the very same combined contract — without it, Compose could go back
+// to parsing per composition and every other test here would stay green
+// while the suite went back to seventeen minutes.
+func TestCompose_RemembersTheEmbeddedContractsBetweenCompositions(t *testing.T) {
+	compose := func() (*openapi3.T, []byte) {
+		t.Helper()
+		var doc *openapi3.T
+		mods := []Module{{Name: "identity", Mount: func(d Deps) (http.Handler, error) {
+			doc = d.Doc
+			return http.NotFoundHandler(), nil
+		}}}
+		handler, err := Compose(Deps{Access: &fakeAccess{}, Config: &config.Config{}}, mods...)
+		if err != nil {
+			t.Fatalf("Compose: %v", err)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/openapi.json", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /api/openapi.json = %d, want 200", rec.Code)
+		}
+		body, err := io.ReadAll(rec.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		return doc, body
+	}
+
+	firstDoc, firstBody := compose()
+	secondDoc, secondBody := compose()
+	if firstDoc == nil || firstDoc != secondDoc {
+		t.Error("two compositions were handed different documents; Compose is parsing per composition again")
+	}
+	if len(firstBody) == 0 || !bytes.Equal(firstBody, secondBody) {
+		t.Error("two compositions of the same modules serve different combined contracts")
+	}
+}
+
+// A contract that failed to load is not remembered: the next composition
+// asks again rather than failing forever.
+func TestRememberedContracts_DoNotRememberAFailure(t *testing.T) {
+	t.Parallel()
+	inner := fakeLoad(map[string]string{"alpha": alphaContract})
+	var failed atomic.Bool
+	remembered := &rememberedContracts{load: func(ctx context.Context, name string) (*openapi3.T, error) {
+		if failed.CompareAndSwap(false, true) {
+			return nil, errors.New("the first load fails")
+		}
+		return inner(ctx, name)
+	}}
+	ctx := context.Background()
+
+	if _, err := remembered.doc(ctx, "alpha"); err == nil {
+		t.Fatal("the failing load succeeded")
+	}
+	if _, err := remembered.doc(ctx, "alpha"); err != nil {
+		t.Errorf("the load after a failure: %v, want it to be asked again and succeed", err)
+	}
+	if _, err := remembered.combined(ctx, []string{"alpha"}); err != nil {
+		t.Errorf("combined after a failure: %v", err)
 	}
 }
