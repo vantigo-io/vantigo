@@ -197,9 +197,11 @@ What each caller sees:
   the answer for an id that does not exist. "You may not see it" and "it is not
   there" must not be distinguishable.
 
-The project hours summary follows the **project's** visibility rather than time's: a
-`time:view-all` holder who cannot see the project gets the same bare 404, because the
-summary is a view of a project.
+The project hours summary is open to whoever may see the project and to the holders
+of `time:view-all`, `time:approve` and `time:manage`, who see those hours entry by
+entry anyway; everyone else gets the same bare 404. Its billing block has the one
+answer every entry has: only whoever may see the project's financials gets it, so a
+`time:view-all` holder who cannot see the project reads the hours and no money.
 
 ## Rate cards and the directory
 
