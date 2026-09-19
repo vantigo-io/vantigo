@@ -23,8 +23,8 @@ import (
 // duplicate name, an invalid or duplicate permission, a Mount error, a path
 // two modules both declare, a component two modules declare differently
 // under the same name, two modules both declaring a customer directory, a
-// user directory, a product catalog or a project directory (naming both),
-// or a nil Deps.Config: enablement (which modules MODULES turns on) is
+// user directory, a product catalog, a project directory or project actuals
+// (naming both), or a nil Deps.Config: enablement (which modules MODULES turns on) is
 // meaningless without one, and every real caller already loads one before
 // composing.
 func Compose(deps Deps, mods ...Module) (http.Handler, error) {
@@ -59,10 +59,11 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		}
 	}
 
-	// The customer directory, the user directory, the product catalog and
-	// the project directory are the sanctioned cross-module reads
-	// (contracts.CustomerDirectory, UserDirectory, ProductCatalog,
-	// ProjectDirectory): at most one enabled module may declare each. Each
+	// The customer directory, the user directory, the product catalog, the
+	// project directory and project actuals are the sanctioned cross-module
+	// reads (contracts.CustomerDirectory, UserDirectory, ProductCatalog,
+	// ProjectDirectory, ProjectActuals): at most one enabled module may
+	// declare each. Each
 	// is resolved here, in this order, before any Mount runs, so its result
 	// can be copied onto every module's Deps below — including its own
 	// provider's, which may need it too — and so a later slot's provider
@@ -104,6 +105,18 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 	}
 	if projectsProvider != nil {
 		deps.Projects = projectsProvider.Projects(deps)
+	}
+
+	// Actuals resolves last, after the project directory: the module that
+	// owns logged work is built on the one that owns projects, so its
+	// provider func may read deps.Projects — while it is built, never while
+	// it serves (contracts.ProjectActuals).
+	actualsProvider, err := soleProvider(mods, "project actuals", func(m Module) bool { return m.Actuals != nil })
+	if err != nil {
+		return nil, err
+	}
+	if actualsProvider != nil {
+		deps.Actuals = actualsProvider.Actuals(deps)
 	}
 
 	outer := http.NewServeMux()
