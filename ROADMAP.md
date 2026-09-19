@@ -176,7 +176,7 @@ them.
 *Unblocks:* Time tracking — a stable project identity, a code employees can quote,
 per-project authorization, and a priced line to book hours against.
 
-### Phase 2 — Time tracking and tasks (tasks done; time next)
+### Phase 2 — Time tracking and tasks (done)
 
 Decided in `docs/superpowers/specs/2026-09-18-project-management-plan.md`
 after surveying the Nordic ERPs, the international PSA tools and the dedicated
@@ -189,19 +189,27 @@ explicit chain (billing-line rule → project default → person default; cost
 always from the person) and are snapshotted onto the entry; approval is a
 state machine (`draft → submitted → approved → invoiced`) with period locking.
 
-**Tasks — done.** Inside Projects, following the project's own roles and adding
+**Tasks.** Inside Projects, following the project's own roles and adding
 no permission key: single assignee, the fixed statuses `todo`/`in-progress`/
 `done`, one level of subtasks, checklist items, comments, dates and estimates;
 a Tasks tab with list and board and a task drawer, plus `/projects/my-tasks`
 across projects. This is where `member` and `viewer` stop being the same thing.
 `ProjectDirectory` grew `Projects`, `ProjectByCode`, `BillingLines`, `Task`,
 `OpenTasksForUser` and `CanLogTime` for Time to build on, and the project gained
-`defaultBillRate`. **Time tracking is what remains of this phase.**
+`defaultBillRate`.
+
+**Time tracking.** The `time` module and the `@vantigo/time-ui` app: entries with
+hours or start/end times, the rate chain resolved at every save and frozen at
+submission, effective-dated person rate cards, weekly submission from a grid,
+batch approval and rejection by project managers and `time:approve` holders, a
+period lock for `time:manage`, a people overview, the dashboard figures and a
+Time tab on the project page. `invoiced` is terminal and waits for the module
+that writes it. See [`docs/time.md`](docs/time.md).
 
 *Unblocks:* hours that can be invoiced, the first real consumer of billing
 lines, and a task list contractors and consultants will actually keep.
 
-### Phase 3 — Budgets, billing milestones and costs
+### Phase 3 — Budgets, billing milestones and costs (next)
 
 Budget vs actual per project and billing line (hours, cost, revenue: expected
 → to invoice → invoiced); **billing milestones** on the commercial side (date,

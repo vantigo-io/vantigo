@@ -67,6 +67,7 @@ vantigo/
 │   │       ├── products/            # Products vertical slice
 │   │       ├── energy/              # Energy vertical slice
 │   │       ├── projects/            # Projects vertical slice
+│   │       ├── time/                # Time vertical slice (package timetracking)
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── contracts/           # Cross-module interfaces, permissions, access rules
 │   │       ├── config/              # The environment reference: one struct, one validation pass
@@ -82,7 +83,8 @@ vantigo/
 │   ├── communications/frontend/     # @vantigo/communications-ui
 │   ├── products/frontend/           # @vantigo/products-ui
 │   ├── energy/frontend/             # @vantigo/energy-ui
-│   └── projects/frontend/           # @vantigo/projects-ui
+│   ├── projects/frontend/           # @vantigo/projects-ui
+│   └── time/frontend/               # @vantigo/time-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared app shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client
@@ -106,7 +108,8 @@ own deployable without a rewrite.
   contributes, the background workers it contributes, and the cross-module
   contracts it provides — a customer directory (customers), a user directory
   (identity), a product catalog (products) or a project directory (projects), at
-  most one provider per slot. `module.Compose` mounts each at `/api/v1/<name>/`.
+  most one provider per slot. A module may provide none and only consume, as time
+  does. `module.Compose` mounts each at `/api/v1/<name>/`.
 - Modules **never import each other**. That is enforced by depguard
   (`apps/server/.golangci.yml`): `internal/<module>/...` may import platform
   packages and its own subpackages, never another module's, and `internal/module`
@@ -137,7 +140,7 @@ own deployable without a rewrite.
 ### Database
 
 One PostgreSQL database, one schema per module: `identity`, `customers`, `products`,
-`energy`, `communications` and `projects`. Schemas are hard boundaries:
+`energy`, `communications`, `projects` and `time`. Schemas are hard boundaries:
 
 - **No cross-schema foreign keys or joins.** Reference other modules' data by
   opaque ID only. This is what keeps a future "move this schema to its own
@@ -176,7 +179,7 @@ its own.
 SPA URL convention — *one prefix per app*: every route of a business module
 lives under its module's name, which is also its API prefix and its `MODULES`
 entry (`/customers`, `/customers/contacts`, `/communications/inbox`,
-`/products/categories`, `/energy/metering-points`, `/projects`). Nesting inside the prefix
+`/products/categories`, `/energy/metering-points`, `/projects`, `/time`). Nesting inside the prefix
 means *belonging* (`/customers/:id`). The dashboard (`/dashboard`) is the
 "Home" app; `/settings`, `/workspace` and `/admin` are *areas*: declared in
 `apps.ts` like apps, with their own sidebar and header title, but reached from
@@ -223,7 +226,7 @@ Navigation — *one pattern per level*, so every page reads the same way:
   each operation's access rule and rate limit from the contract at runtime.
 - **Versioned APIs** — Identity lives under `/api/v1/identity`; business modules use
   `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
-  `/api/v1/communications` and `/api/v1/projects`.
+  `/api/v1/communications`, `/api/v1/projects` and `/api/v1/time`.
 - **In-process contracts** — module collaboration uses `internal/contracts`, not
   service-to-service API keys.
 - **Form-friendly errors** — validation errors use camelCase JSON field paths.
@@ -237,7 +240,7 @@ All endpoints are versioned by URL segment. Each module's own contract lives in
 `openapi/<module>.yaml`, and the running server serves the merged contract of the
 enabled modules at `GET /api/openapi.json` (session required). Module prefixes are
 `/api/v1/identity`, `/api/v1/customers`, `/api/v1/products`, `/api/v1/energy`,
-`/api/v1/communications` and `/api/v1/projects`. Every other `/api` path answers the
+`/api/v1/communications`, `/api/v1/projects` and `/api/v1/time`. Every other `/api` path answers the
 catch-all 404 problem.
 
 Errors are RFC 7807 problem responses written by `internal/httpx`; validation errors
@@ -307,6 +310,8 @@ names the owning module, which is what ties the file to that module's `sqlc.yaml
 00006_communications_baseline.sql
 00007_customers_type.sql
 00008_projects_baseline.sql
+00009_projects_tasks.sql
+00010_time_baseline.sql
 ```
 
 They are embedded into the binary (`//go:embed migrations/*.sql`), so the image needs
@@ -407,9 +412,9 @@ that does not match `identity.yaml` fails the test that produced it. `go test
 must have been exercised by at least one successful exchange, with no allow-list, so a newly
 added operation without a passing test fails the whole package.
 
-### Customers, products, energy, communications and projects
+### Customers, products, energy, communications, projects and time
 
-Five business modules mount on that platform, each serving its own contract and
+Six business modules mount on that platform, each serving its own contract and
 owning its own schema:
 
 - `internal/customers` → `/api/v1/customers/*` from `openapi/customers.yaml`:
@@ -431,15 +436,22 @@ owning its own schema:
   always present) and `contracts.ProductCatalog` (products, **optional** — nil when
   products is off, which makes billing-line operations answer 409). See
   [`docs/projects.md`](docs/projects.md).
+- `internal/time` (package `timetracking`) → `/api/v1/time/*` from `openapi/time.yaml`:
+  time entries with snapshotted bill and cost rates, weekly submission, approval and
+  the period lock, person rate cards, and the dashboard and project hours summaries.
+  It provides no contract and consumes `contracts.ProjectDirectory` (projects,
+  **required**), `contracts.UserDirectory` and `contracts.ProductCatalog` (products,
+  optional). See [`docs/time.md`](docs/time.md).
 
 `MODULES` chooses which of them a deployment serves: a comma-separated list,
 parsed once at startup, defaulting to
-`customers,products,energy,communications,projects` — every module this binary can
-mount. Identity is always mounted and is never
+`customers,products,energy,communications,projects,time` — every module this binary
+can mount. Identity is always mounted and is never
 listed. A name the binary does not know fails
 startup, naming the name and the known set. `energy`, `communications` and
 `projects` read customer data through `contracts.CustomerDirectory`, so any of
-them without `customers` fails startup naming both. A disabled module
+them without `customers` fails startup naming both; `time` reads projects through
+`contracts.ProjectDirectory`, so `time` without `projects` fails the same way. A disabled module
 contributes no route, no permission and no contract path, and its paths answer
 the `/api` catch-all 404 — but every schema is migrated regardless, so enabling
 a module later needs no migration.
@@ -544,6 +556,7 @@ bun run --cwd apps/communications/frontend test
 bun run --cwd apps/products/frontend test
 bun run --cwd apps/energy/frontend test
 bun run --cwd apps/projects/frontend test
+bun run --cwd apps/time/frontend test
 ```
 
 The SPA is **not** served by the dev server in production: `scripts/build-artifacts.sh`
