@@ -1,4 +1,4 @@
-import { IconCoin, IconLayoutDashboard, IconListCheck, IconUsers } from "@tabler/icons-react";
+import { IconClock, IconCoin, IconLayoutDashboard, IconListCheck, IconUsers } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useMatches, useNavigate, useParams } from "@tanstack/react-router";
 import { PageTabs, useI18n } from "@vantigo/frontend-shell";
@@ -20,25 +20,27 @@ interface ProjectDetailGate {
   capability?: keyof ProjectCapabilities;
 }
 
-type ProjectDetailView = "overview" | "tasks" | "people" | "billing";
+type ProjectDetailView = "overview" | "tasks" | "people" | "billing" | "time";
 
 interface ProjectDetailTab extends ProjectDetailGate {
   value: ProjectDetailView;
-  labelKey: "project.overviewTab" | "project.tasksTab" | "project.peopleTab" | "project.billingTab";
+  labelKey: "project.overviewTab" | "project.tasksTab" | "project.peopleTab" | "project.billingTab" | "project.timeTab";
   icon: typeof IconLayoutDashboard;
   to:
     | "/projects/$projectId"
     | "/projects/$projectId/tasks"
     | "/projects/$projectId/people"
-    | "/projects/$projectId/billing";
+    | "/projects/$projectId/billing"
+    | "/projects/$projectId/time";
 }
 
 /**
  * The views of the project page, each a child route, so the tab row follows
- * the URL. The four below belong to the Projects app itself, which the
+ * the URL. The first four belong to the Projects app itself, which the
  * permission guard already holds behind `projects:access`, so none of them
- * re-checks it; the module and permission fields are there for the tabs other
- * modules will add, the way Energy adds one to the customer page.
+ * re-checks it; the module and permission fields are for the tabs other
+ * modules add, the way Energy adds one to the customer page and Time adds
+ * the last one here.
  */
 export const projectDetailTabs: ProjectDetailTab[] = [
   {
@@ -71,6 +73,18 @@ export const projectDetailTabs: ProjectDetailTab[] = [
     // project itself — not a permission — says whether this tab has anything
     // to show. Deep-linking it anyway renders the package's forbidden state.
     capability: "canSeeFinancials",
+  },
+  {
+    // The first tab from another module: the hours logged on this project.
+    // It needs the installation to have mounted time and the caller to hold
+    // the app's own permission; who may see which amounts is shaped by the
+    // time API per project, exactly as Billing's are by the projects API.
+    value: "time",
+    labelKey: "project.timeTab",
+    icon: IconClock,
+    to: "/projects/$projectId/time",
+    module: "time",
+    requiredPermissions: ["time:access"],
   },
 ];
 
@@ -113,13 +127,14 @@ export const ProjectDetailLayout = () => {
     authorization.data?.permissions,
     project.data?.capabilities,
   );
-  const activeTab: ProjectDetailView = matches.some((match) => match.routeId === "/projects/$projectId/billing")
-    ? "billing"
-    : matches.some((match) => match.routeId === "/projects/$projectId/people")
-      ? "people"
-      : matches.some((match) => match.routeId === "/projects/$projectId/tasks")
-        ? "tasks"
-        : "overview";
+  // Every tab but the overview is a child segment named after its value, so
+  // the matched route ids say which one the URL is on; the overview is the
+  // index route, and so the fallback.
+  const activeTab: ProjectDetailView =
+    projectDetailTabs.find(
+      (tab) =>
+        tab.value !== "overview" && matches.some((match) => match.routeId === `/projects/$projectId/${tab.value}`),
+    )?.value ?? "overview";
 
   return (
     <>

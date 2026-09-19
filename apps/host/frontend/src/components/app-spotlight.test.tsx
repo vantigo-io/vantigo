@@ -8,7 +8,7 @@ import { spotlightNavSections } from "../apps";
 import { type ModuleKey, visibleNavSections } from "../navigation";
 import { AppSpotlight } from "./app-spotlight";
 
-const allModules: ModuleKey[] = ["communications", "customers", "energy", "products", "projects"];
+const allModules: ModuleKey[] = ["communications", "customers", "energy", "products", "projects", "time"];
 
 const navigateMock = vi.hoisted(() => vi.fn());
 
@@ -140,6 +140,29 @@ describe("AppSpotlight navigation authorization", () => {
     spotlight.close();
     renderSpotlight(["customers:view"], false, false);
     await waitFor(() => expect(screen.queryByText("Create task", { exact: true })).not.toBeInTheDocument());
+  });
+
+  // Logging time needs no more than the Time app itself, and it lands on My
+  // week with no week in the URL, so the action always opens the current week.
+  it("opens My week from the Log time quick action", async () => {
+    const onNavigate = vi.fn();
+    renderSpotlight(["time:access"], false, false, onNavigate);
+
+    fireEvent.click(await waitFor(() => screen.getByText("Log time", { exact: true })));
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith(expect.objectContaining({ to: "/time", search: undefined }));
+  });
+
+  it("hides Log time without time:access and when the time module is not enabled", async () => {
+    renderSpotlight(["projects:access"], false, false);
+    await waitFor(() => expect(screen.queryByText("Log time", { exact: true })).not.toBeInTheDocument());
+
+    cleanup();
+    spotlight.close();
+    renderSpotlight(["*"], true, true, undefined, ["customers", "communications", "products", "energy", "projects"]);
+    await waitFor(() => expect(screen.getByText("Create customer", { exact: true })).toBeInTheDocument());
+    expect(screen.queryByText("Log time", { exact: true })).not.toBeInTheDocument();
   });
 
   it("hides Create task when the projects module is not enabled", async () => {

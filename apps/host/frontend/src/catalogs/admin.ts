@@ -273,6 +273,30 @@ export const hostPermissionTranslationKeys = {
     displayNameKey: "admin.permission.projectsViewFinancials",
     descriptionKey: "admin.permission.projectsViewFinancialsDescription",
   },
+  "time:access": {
+    moduleKey: "admin.permission.module.time",
+    categoryKey: "admin.permission.category.time",
+    displayNameKey: "admin.permission.timeAccess",
+    descriptionKey: "admin.permission.timeAccessDescription",
+  },
+  "time:approve": {
+    moduleKey: "admin.permission.module.time",
+    categoryKey: "admin.permission.category.time",
+    displayNameKey: "admin.permission.timeApprove",
+    descriptionKey: "admin.permission.timeApproveDescription",
+  },
+  "time:view-all": {
+    moduleKey: "admin.permission.module.time",
+    categoryKey: "admin.permission.category.time",
+    displayNameKey: "admin.permission.timeViewAll",
+    descriptionKey: "admin.permission.timeViewAllDescription",
+  },
+  "time:manage": {
+    moduleKey: "admin.permission.module.time",
+    categoryKey: "admin.permission.category.time",
+    displayNameKey: "admin.permission.timeManage",
+    descriptionKey: "admin.permission.timeManageDescription",
+  },
 } as const;
 
 export const getHostPermissionTranslation = (permissionKey: string) =>
@@ -359,6 +383,7 @@ const en = {
   "admin.permission.module.products": "Products",
   "admin.permission.module.energy": "Energy",
   "admin.permission.module.projects": "Projects",
+  "admin.permission.module.time": "Time",
   "admin.permission.category.administration": "Administration",
   "admin.permission.category.customers": "Customers",
   "admin.permission.category.legalIdentity": "Legal identity",
@@ -374,6 +399,7 @@ const en = {
   "admin.permission.category.taxCategories": "Tax categories",
   "admin.permission.category.energy": "Energy",
   "admin.permission.category.projects": "Projects",
+  "admin.permission.category.time": "Time",
   "admin.permission.identityManage": "Manage identity",
   "admin.permission.identityManageDescription": "Manage accounts, roles, and access.",
   "admin.permission.customersView": "View customers",
@@ -466,6 +492,17 @@ const en = {
   "admin.permission.projectsViewFinancials": "View project financials",
   "admin.permission.projectsViewFinancialsDescription":
     "See fixed prices, budget amounts and line pricing on every project you can see.",
+  "admin.permission.timeAccess": "Use Time",
+  "admin.permission.timeAccessDescription":
+    "Use the Time app: log hours on the projects you work on and see your own entries.",
+  "admin.permission.timeApprove": "Approve time",
+  "admin.permission.timeApproveDescription":
+    "Approve or reject submitted hours on every project. Project managers already approve their own projects.",
+  "admin.permission.timeViewAll": "View everyone's time",
+  "admin.permission.timeViewAllDescription": "See everyone's entries, the people overview and cost rates.",
+  "admin.permission.timeManage": "Manage time",
+  "admin.permission.timeManageDescription":
+    "Set person rates and the period lock, withdraw approvals and edit hours past the lock.",
   "admin.accountExists": "An account already exists for this email address.",
   "admin.filterUsers": "Filter users by {{label}}",
   "admin.searchUsers": "Search users",
@@ -666,6 +703,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.module.products": "Produkter",
   "admin.permission.module.energy": "Energi",
   "admin.permission.module.projects": "Prosjekter",
+  "admin.permission.module.time": "Timer",
   "admin.permission.category.administration": "Administrasjon",
   "admin.permission.category.customers": "Kunder",
   "admin.permission.category.legalIdentity": "Juridisk identitet",
@@ -681,6 +719,7 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.category.taxCategories": "Avgiftskategorier",
   "admin.permission.category.energy": "Energi",
   "admin.permission.category.projects": "Prosjekter",
+  "admin.permission.category.time": "Timer",
   "admin.permission.identityManage": "Administrer identitet",
   "admin.permission.identityManageDescription": "Administrer kontoer, roller og tilgang.",
   "admin.permission.customersView": "Se kunder",
@@ -776,6 +815,17 @@ const nb: { [Key in keyof typeof en]: string } = {
   "admin.permission.projectsViewFinancials": "Se prosjektøkonomi",
   "admin.permission.projectsViewFinancialsDescription":
     "Se fastpriser, budsjettbeløp og linjepriser på alle prosjekter du kan se.",
+  "admin.permission.timeAccess": "Bruk Timer",
+  "admin.permission.timeAccessDescription":
+    "Bruk Timer-appen: før timer på prosjektene du jobber på, og se dine egne føringer.",
+  "admin.permission.timeApprove": "Godkjenn timer",
+  "admin.permission.timeApproveDescription":
+    "Godkjenn eller avvis innsendte timer på alle prosjekter. Prosjektledere godkjenner allerede sine egne prosjekter.",
+  "admin.permission.timeViewAll": "Se alles timer",
+  "admin.permission.timeViewAllDescription": "Se alles føringer, personoversikten og kostsatser.",
+  "admin.permission.timeManage": "Administrer timer",
+  "admin.permission.timeManageDescription":
+    "Sett personsatser og periodelåsen, trekk tilbake godkjenninger og rediger timer bak låsen.",
   "admin.accountExists": "Det finnes allerede en konto for denne e-postadressen.",
   "admin.filterUsers": "Filtrer brukere etter {{label}}",
   "admin.searchUsers": "Søk etter brukere",

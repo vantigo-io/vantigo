@@ -25,6 +25,7 @@ import { Route as SessionExpiredRouteImport } from './routes/session-expired'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as TimeRouteImport } from './routes/time'
 import { Route as WorkspaceRouteImport } from './routes/workspace'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as CommunicationsIndexRouteImport } from './routes/communications/index'
@@ -45,6 +46,11 @@ import { Route as ProjectsMyTasksRouteImport } from './routes/projects/my-tasks'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsSecurityRouteImport } from './routes/settings/security'
+import { Route as TimeIndexRouteImport } from './routes/time/index'
+import { Route as TimeApprovalsRouteImport } from './routes/time/approvals'
+import { Route as TimeDayRouteImport } from './routes/time/day'
+import { Route as TimePeopleRouteImport } from './routes/time/people'
+import { Route as TimeSettingsRouteImport } from './routes/time/settings'
 import { Route as WorkspaceIndexRouteImport } from './routes/workspace/index'
 import { Route as WorkspaceInvitationsRouteImport } from './routes/workspace/invitations'
 import { Route as WorkspaceOverviewRouteImport } from './routes/workspace/overview'
@@ -61,6 +67,7 @@ import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$p
 import { Route as ProjectsProjectIdBillingRouteImport } from './routes/projects/$projectId.billing'
 import { Route as ProjectsProjectIdPeopleRouteImport } from './routes/projects/$projectId.people'
 import { Route as ProjectsProjectIdTasksRouteImport } from './routes/projects/$projectId.tasks'
+import { Route as ProjectsProjectIdTimeRouteImport } from './routes/projects/$projectId.time'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -140,6 +147,11 @@ const SetupRoute = SetupRouteImport.update({
 const SignInRoute = SignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TimeRoute = TimeRouteImport.update({
+  id: '/time',
+  path: '/time',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WorkspaceRoute = WorkspaceRouteImport.update({
@@ -243,6 +255,31 @@ const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   path: '/security',
   getParentRoute: () => SettingsRoute,
 } as any)
+const TimeIndexRoute = TimeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => TimeRoute,
+} as any)
+const TimeApprovalsRoute = TimeApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
+  getParentRoute: () => TimeRoute,
+} as any)
+const TimeDayRoute = TimeDayRouteImport.update({
+  id: '/day',
+  path: '/day',
+  getParentRoute: () => TimeRoute,
+} as any)
+const TimePeopleRoute = TimePeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
+  getParentRoute: () => TimeRoute,
+} as any)
+const TimeSettingsRoute = TimeSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => TimeRoute,
+} as any)
 const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -330,6 +367,11 @@ const ProjectsProjectIdTasksRoute = ProjectsProjectIdTasksRouteImport.update({
   path: '/tasks',
   getParentRoute: () => ProjectsProjectIdRoute,
 } as any)
+const ProjectsProjectIdTimeRoute = ProjectsProjectIdTimeRouteImport.update({
+  id: '/time',
+  path: '/time',
+  getParentRoute: () => ProjectsProjectIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -348,6 +390,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
@@ -361,6 +404,10 @@ export interface FileRoutesByFullPath {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/time/approvals': typeof TimeApprovalsRoute
+  '/time/day': typeof TimeDayRoute
+  '/time/people': typeof TimePeopleRoute
+  '/time/settings': typeof TimeSettingsRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -372,6 +419,7 @@ export interface FileRoutesByFullPath {
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
@@ -380,6 +428,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
+  '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
@@ -405,6 +454,10 @@ export interface FileRoutesByTo {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/time/approvals': typeof TimeApprovalsRoute
+  '/time/day': typeof TimeDayRoute
+  '/time/people': typeof TimePeopleRoute
+  '/time/settings': typeof TimeSettingsRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -416,6 +469,7 @@ export interface FileRoutesByTo {
   '/products': typeof ProductsIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
+  '/time': typeof TimeIndexRoute
   '/workspace': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
@@ -424,6 +478,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
+  '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/customers/$customerId': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts': typeof CustomersContactsIndexRoute
   '/energy/metering-points': typeof EnergyMeteringPointsIndexRoute
@@ -447,6 +502,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/setup': typeof SetupRoute
   '/sign-in': typeof SignInRoute
+  '/time': typeof TimeRouteWithChildren
   '/workspace': typeof WorkspaceRouteWithChildren
   '/communications/channels': typeof CommunicationsChannelsRoute
   '/communications/inbox': typeof CommunicationsInboxRoute
@@ -460,6 +516,10 @@ export interface FileRoutesById {
   '/projects/my-tasks': typeof ProjectsMyTasksRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/time/approvals': typeof TimeApprovalsRoute
+  '/time/day': typeof TimeDayRoute
+  '/time/people': typeof TimePeopleRoute
+  '/time/settings': typeof TimeSettingsRoute
   '/workspace/invitations': typeof WorkspaceInvitationsRoute
   '/workspace/overview': typeof WorkspaceOverviewRoute
   '/workspace/roles': typeof WorkspaceRolesRoute
@@ -471,6 +531,7 @@ export interface FileRoutesById {
   '/products/': typeof ProductsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/time/': typeof TimeIndexRoute
   '/workspace/': typeof WorkspaceIndexRoute
   '/customers/$customerId/energy': typeof CustomersCustomerIdEnergyRoute
   '/customers/$customerId/projects': typeof CustomersCustomerIdProjectsRoute
@@ -479,6 +540,7 @@ export interface FileRoutesById {
   '/projects/$projectId/billing': typeof ProjectsProjectIdBillingRoute
   '/projects/$projectId/people': typeof ProjectsProjectIdPeopleRoute
   '/projects/$projectId/tasks': typeof ProjectsProjectIdTasksRoute
+  '/projects/$projectId/time': typeof ProjectsProjectIdTimeRoute
   '/customers/$customerId/': typeof CustomersCustomerIdIndexRoute
   '/customers/contacts/': typeof CustomersContactsIndexRoute
   '/energy/metering-points/': typeof EnergyMeteringPointsIndexRoute
@@ -503,6 +565,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/time'
     | '/workspace'
     | '/communications/channels'
     | '/communications/inbox'
@@ -516,6 +579,10 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
+    | '/time/approvals'
+    | '/time/day'
+    | '/time/people'
+    | '/time/settings'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -527,6 +594,7 @@ export interface FileRouteTypes {
     | '/products/'
     | '/projects/'
     | '/settings/'
+    | '/time/'
     | '/workspace/'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/projects'
@@ -535,6 +603,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/billing'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
+    | '/projects/$projectId/time'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
@@ -560,6 +629,10 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
+    | '/time/approvals'
+    | '/time/day'
+    | '/time/people'
+    | '/time/settings'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -571,6 +644,7 @@ export interface FileRouteTypes {
     | '/products'
     | '/projects'
     | '/settings'
+    | '/time'
     | '/workspace'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/projects'
@@ -579,6 +653,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/billing'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
+    | '/projects/$projectId/time'
     | '/customers/$customerId'
     | '/customers/contacts'
     | '/energy/metering-points'
@@ -601,6 +676,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sign-in'
+    | '/time'
     | '/workspace'
     | '/communications/channels'
     | '/communications/inbox'
@@ -614,6 +690,10 @@ export interface FileRouteTypes {
     | '/projects/my-tasks'
     | '/settings/profile'
     | '/settings/security'
+    | '/time/approvals'
+    | '/time/day'
+    | '/time/people'
+    | '/time/settings'
     | '/workspace/invitations'
     | '/workspace/overview'
     | '/workspace/roles'
@@ -625,6 +705,7 @@ export interface FileRouteTypes {
     | '/products/'
     | '/projects/'
     | '/settings/'
+    | '/time/'
     | '/workspace/'
     | '/customers/$customerId/energy'
     | '/customers/$customerId/projects'
@@ -633,6 +714,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/billing'
     | '/projects/$projectId/people'
     | '/projects/$projectId/tasks'
+    | '/projects/$projectId/time'
     | '/customers/$customerId/'
     | '/customers/contacts/'
     | '/energy/metering-points/'
@@ -656,6 +738,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   SetupRoute: typeof SetupRoute
   SignInRoute: typeof SignInRoute
+  TimeRoute: typeof TimeRouteWithChildren
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
   InvitationsAcceptRoute: typeof InvitationsAcceptRoute
 }
@@ -772,6 +855,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/time': {
+      id: '/time'
+      path: '/time'
+      fullPath: '/time'
+      preLoaderRoute: typeof TimeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/workspace': {
@@ -914,6 +1004,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSecurityRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/time/': {
+      id: '/time/'
+      path: '/'
+      fullPath: '/time/'
+      preLoaderRoute: typeof TimeIndexRouteImport
+      parentRoute: typeof TimeRoute
+    }
+    '/time/approvals': {
+      id: '/time/approvals'
+      path: '/approvals'
+      fullPath: '/time/approvals'
+      preLoaderRoute: typeof TimeApprovalsRouteImport
+      parentRoute: typeof TimeRoute
+    }
+    '/time/day': {
+      id: '/time/day'
+      path: '/day'
+      fullPath: '/time/day'
+      preLoaderRoute: typeof TimeDayRouteImport
+      parentRoute: typeof TimeRoute
+    }
+    '/time/people': {
+      id: '/time/people'
+      path: '/people'
+      fullPath: '/time/people'
+      preLoaderRoute: typeof TimePeopleRouteImport
+      parentRoute: typeof TimeRoute
+    }
+    '/time/settings': {
+      id: '/time/settings'
+      path: '/settings'
+      fullPath: '/time/settings'
+      preLoaderRoute: typeof TimeSettingsRouteImport
+      parentRoute: typeof TimeRoute
+    }
     '/workspace/': {
       id: '/workspace/'
       path: '/'
@@ -1026,6 +1151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdTasksRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/time': {
+      id: '/projects/$projectId/time'
+      path: '/time'
+      fullPath: '/projects/$projectId/time'
+      preLoaderRoute: typeof ProjectsProjectIdTimeRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
   }
 }
 
@@ -1128,6 +1260,7 @@ interface ProjectsProjectIdRouteChildren {
   ProjectsProjectIdBillingRoute: typeof ProjectsProjectIdBillingRoute
   ProjectsProjectIdPeopleRoute: typeof ProjectsProjectIdPeopleRoute
   ProjectsProjectIdTasksRoute: typeof ProjectsProjectIdTasksRoute
+  ProjectsProjectIdTimeRoute: typeof ProjectsProjectIdTimeRoute
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
 }
 
@@ -1135,6 +1268,7 @@ const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
   ProjectsProjectIdBillingRoute: ProjectsProjectIdBillingRoute,
   ProjectsProjectIdPeopleRoute: ProjectsProjectIdPeopleRoute,
   ProjectsProjectIdTasksRoute: ProjectsProjectIdTasksRoute,
+  ProjectsProjectIdTimeRoute: ProjectsProjectIdTimeRoute,
   ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
 }
 
@@ -1173,6 +1307,24 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
   SettingsRouteChildren,
 )
 
+interface TimeRouteChildren {
+  TimeApprovalsRoute: typeof TimeApprovalsRoute
+  TimeDayRoute: typeof TimeDayRoute
+  TimePeopleRoute: typeof TimePeopleRoute
+  TimeSettingsRoute: typeof TimeSettingsRoute
+  TimeIndexRoute: typeof TimeIndexRoute
+}
+
+const TimeRouteChildren: TimeRouteChildren = {
+  TimeApprovalsRoute: TimeApprovalsRoute,
+  TimeDayRoute: TimeDayRoute,
+  TimePeopleRoute: TimePeopleRoute,
+  TimeSettingsRoute: TimeSettingsRoute,
+  TimeIndexRoute: TimeIndexRoute,
+}
+
+const TimeRouteWithChildren = TimeRoute._addFileChildren(TimeRouteChildren)
+
 interface WorkspaceRouteChildren {
   WorkspaceInvitationsRoute: typeof WorkspaceInvitationsRoute
   WorkspaceOverviewRoute: typeof WorkspaceOverviewRoute
@@ -1210,6 +1362,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   SetupRoute: SetupRoute,
   SignInRoute: SignInRoute,
+  TimeRoute: TimeRouteWithChildren,
   WorkspaceRoute: WorkspaceRouteWithChildren,
   InvitationsAcceptRoute: InvitationsAcceptRoute,
 }

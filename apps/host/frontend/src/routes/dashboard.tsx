@@ -105,6 +105,15 @@ interface ProjectsSummary {
   newProjectsDelta: number;
 }
 
+interface TimeSummary {
+  from: string;
+  to: string;
+  hoursThisWeek: number;
+  hoursThisWeekDelta: number;
+  awaitingMyApproval: number;
+  awaitingMyApprovalDelta: number;
+}
+
 interface AttentionItem {
   id: string;
   type: string;
@@ -160,6 +169,14 @@ const moduleCards = [
     module: "projects" as ModuleKey,
     requiredPermissions: ["projects:access"],
   },
+  {
+    title: "dashboard.time",
+    description: "dashboard.manageTime",
+    path: "/time",
+    icon: IconClock,
+    module: "time" as ModuleKey,
+    requiredPermissions: ["time:access"],
+  },
 ] as const;
 
 const presetDays: Record<Exclude<DashboardPreset, "custom">, number> = {
@@ -180,6 +197,7 @@ const metrics = [
   { module: "products" as ModuleKey, metric: "newProducts", color: "orange.6", label: "dashboard.newProducts" },
   { module: "energy" as ModuleKey, metric: "consumptionKwh", color: "teal.6", label: "dashboard.consumption" },
   { module: "projects" as ModuleKey, metric: "newProjects", color: "grape.6", label: "dashboard.newProjects" },
+  { module: "time" as ModuleKey, metric: "hours", color: "cyan.6", label: "dashboard.hoursLogged" },
 ] as const;
 
 const dateOnly = (value: Date) => value.toISOString().slice(0, 10);
@@ -224,6 +242,43 @@ const fetchAttention = async (module: ModuleKey, signal: AbortSignal) => {
     return [];
   }
 };
+
+/**
+ * Where an attention item leads. Every module agrees on `type` and
+ * `entityId`, so this is the one place that turns the pair into a URL.
+ * Time's two ids were decided with its stats contract: an unsubmitted week
+ * carries its Monday, and a waiting approval carries the queue's group key
+ * `<userId>/<Monday>`, which is not addressable — the queue is.
+ */
+export const attentionHref = (item: { module: ModuleKey; type: string; entityId: string }) => {
+  if (item.module === "communications" && item.type === "conversationNoReply") {
+    return `/communications/inbox?conversationId=${encodeURIComponent(item.entityId)}`;
+  }
+  if (item.module === "customers") return `/customers/${encodeURIComponent(item.entityId)}`;
+  if (item.module === "products") return `/products/${encodeURIComponent(item.entityId)}`;
+  if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
+  if (item.module === "projects") return `/projects/${encodeURIComponent(item.entityId)}`;
+  if (item.module === "time") {
+    return item.type === "weekUnsubmitted" ? `/time?week=${encodeURIComponent(item.entityId)}` : "/time/approvals";
+  }
+  return "/communications/inbox";
+};
+
+/**
+ * The catalog key that names a time item, or undefined for an item whose own
+ * `title` the server already wrote. Time's titles are built from data rather
+ * than from a catalog, so they arrive in English; naming them again here is
+ * what puts them in the reader's language.
+ */
+export const attentionTitleKey = (item: { module: ModuleKey; type: string }) => {
+  if (item.module !== "time") return undefined;
+  if (item.type === "weekUnsubmitted") return "dashboard.timeWeekUnsubmitted";
+  if (item.type === "approvalWaiting") return "dashboard.timeApprovalWaiting";
+  return undefined;
+};
+
+/** The Monday a time item is about: alone in the id, or after the user id. */
+export const attentionWeek = (entityId: string) => entityId.slice(entityId.indexOf("/") + 1);
 
 const deltaPercent = (current: number, absoluteDelta: number) => {
   const previous = current - absoluteDelta;
@@ -306,6 +361,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const timeSummary = useQuery({
+    queryKey: ["dashboard", "time", "summary", range.from.toISOString(), range.to.toISOString()],
+    queryFn: ({ signal }) => fetchSummary<TimeSummary>("time", range, signal),
+    enabled: allowed("time"),
+    retry: false,
+  });
+
   const customersTimeseries = useQuery({
     queryKey: [
       "dashboard",
@@ -352,6 +414,13 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const timeTimeseries = useQuery({
+    queryKey: ["dashboard", "time", "timeseries", "hours", range.from.toISOString(), range.to.toISOString()],
+    queryFn: ({ signal }) => fetchTimeseries("time", "hours", range, signal),
+    enabled: allowed("time"),
+    retry: false,
+  });
+
   const customersAttention = useQuery({
     queryKey: ["dashboard", "customers", "attention"],
     queryFn: ({ signal }) => fetchAttention("customers", signal),
@@ -384,12 +453,20 @@ const DashboardPage = () => {
     retry: false,
   });
 
+  const timeAttention = useQuery({
+    queryKey: ["dashboard", "time", "attention"],
+    queryFn: ({ signal }) => fetchAttention("time", signal),
+    enabled: allowed("time"),
+    retry: false,
+  });
+
   const timeseriesByMetric: Record<string, DailyPoint[] | undefined> = {
     "customers:newCustomers": customersTimeseries.data,
     "communications:newConversations": communicationsTimeseries.data,
     "products:newProducts": productsTimeseries.data,
     "energy:consumptionKwh": energyTimeseries.data,
     "projects:newProjects": projectsTimeseries.data,
+    "time:hours": timeTimeseries.data,
   };
   const timeseriesQueries: Record<string, { isPending: boolean; isError: boolean }> = {
     "customers:newCustomers": customersTimeseries,
@@ -397,6 +474,7 @@ const DashboardPage = () => {
     "products:newProducts": productsTimeseries,
     "energy:consumptionKwh": energyTimeseries,
     "projects:newProjects": projectsTimeseries,
+    "time:hours": timeTimeseries,
   };
   const availableMetrics = metrics.filter((metric) => allowed(metric.module));
   const defaultMetric = availableMetrics[0];
@@ -416,13 +494,15 @@ const DashboardPage = () => {
     (allowed("communications") && communicationsAttention.isPending) ||
     (allowed("products") && productsAttention.isPending) ||
     (allowed("energy") && energyAttention.isPending) ||
-    (allowed("projects") && projectsAttention.isPending);
+    (allowed("projects") && projectsAttention.isPending) ||
+    (allowed("time") && timeAttention.isPending);
   const activityLoading =
     (allowed("customers") && customersTimeseries.isPending) ||
     (allowed("communications") && communicationsTimeseries.isPending) ||
     (allowed("products") && productsTimeseries.isPending) ||
     (allowed("energy") && energyTimeseries.isPending) ||
-    (allowed("projects") && projectsTimeseries.isPending);
+    (allowed("projects") && projectsTimeseries.isPending) ||
+    (allowed("time") && timeTimeseries.isPending);
 
   const attentionItems = [
     ...(customersAttention.data ?? []).map((item) => ({ ...item, module: "customers" as ModuleKey })),
@@ -430,6 +510,7 @@ const DashboardPage = () => {
     ...(productsAttention.data ?? []).map((item) => ({ ...item, module: "products" as ModuleKey })),
     ...(energyAttention.data ?? []).map((item) => ({ ...item, module: "energy" as ModuleKey })),
     ...(projectsAttention.data ?? []).map((item) => ({ ...item, module: "projects" as ModuleKey })),
+    ...(timeAttention.data ?? []).map((item) => ({ ...item, module: "time" as ModuleKey })),
   ]
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 8);
@@ -449,20 +530,11 @@ const DashboardPage = () => {
     ...(projectsTimeseries.data ?? [])
       .slice(-3)
       .map((item) => ({ ...item, module: "projects" as ModuleKey, metric: "newProjects" })),
+    ...(timeTimeseries.data ?? []).slice(-3).map((item) => ({ ...item, module: "time" as ModuleKey, metric: "hours" })),
   ]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 6);
 
-  const attentionHref = (item: (typeof attentionItems)[number]) => {
-    if (item.module === "communications" && item.type === "conversationNoReply") {
-      return `/communications/inbox?conversationId=${encodeURIComponent(item.entityId)}`;
-    }
-    if (item.module === "customers") return `/customers/${encodeURIComponent(item.entityId)}`;
-    if (item.module === "products") return `/products/${encodeURIComponent(item.entityId)}`;
-    if (item.module === "energy") return `/energy/metering-points/${encodeURIComponent(item.entityId)}`;
-    if (item.module === "projects") return `/projects/${encodeURIComponent(item.entityId)}`;
-    return "/communications/inbox";
-  };
   const setupItems = [
     {
       module: "customers" as ModuleKey,
@@ -630,6 +702,33 @@ const DashboardPage = () => {
               />
             );
           }
+          if (module.module === "time") {
+            return (
+              <KpiCard
+                key={module.module}
+                label={t("dashboard.hoursThisWeek")}
+                value={
+                  timeSummary.data
+                    ? formatters.formatNumber(timeSummary.data.hoursThisWeek, { maximumFractionDigits: 2 })
+                    : "—"
+                }
+                // The second figure is the one that asks for an action, so it
+                // is the hint rather than a card of its own.
+                hint={t("dashboard.awaitingApprovalHint", { count: timeSummary.data?.awaitingMyApproval ?? 0 })}
+                delta={
+                  timeSummary.data
+                    ? {
+                        value: deltaPercent(timeSummary.data.hoursThisWeek, timeSummary.data.hoursThisWeekDelta),
+                        label: t("dashboard.vsPrevious"),
+                      }
+                    : undefined
+                }
+                sparklineData={sparkline(timeTimeseries.data)}
+                href={href}
+                loading={timeSummary.isPending || timeTimeseries.isPending}
+              />
+            );
+          }
           if (module.module === "products") {
             return (
               <KpiCard
@@ -792,11 +891,17 @@ const DashboardPage = () => {
             <Stack gap="xs" mt="lg">
               {attentionItems.map((item) => {
                 const Icon =
-                  item.type === "supplyPeriodExpiring"
+                  item.type === "supplyPeriodExpiring" || item.module === "time"
                     ? IconClock
                     : item.type === "failedDelivery"
                       ? IconRefreshAlert
                       : IconAlertCircle;
+                // Every other module writes its own title; time's is named
+                // here instead, so it arrives in the reader's language.
+                const titleKey = attentionTitleKey(item);
+                const title = titleKey
+                  ? t(titleKey, { date: formatters.formatDate(attentionWeek(item.entityId), { dateStyle: "medium" }) })
+                  : item.title;
                 return (
                   <Anchor
                     key={`${item.module}-${item.id}`}
@@ -811,7 +916,7 @@ const DashboardPage = () => {
                       </ThemeIcon>
                       <Stack gap={0} style={{ minWidth: 0 }} flex={1}>
                         <Text size="sm" truncate>
-                          {item.title}
+                          {title}
                         </Text>
                         <Text size="xs" c="dimmed">
                           {relativeTime(item.occurredAt, locale)}

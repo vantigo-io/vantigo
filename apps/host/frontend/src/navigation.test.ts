@@ -22,7 +22,7 @@ const fixture: readonly NavSection[] = [
     ],
   },
 ];
-const allModules = ["communications", "customers", "energy", "products", "projects"] as const;
+const allModules = ["communications", "customers", "energy", "products", "projects", "time"] as const;
 const context = (overrides: Partial<Parameters<typeof visibleNavSections>[1]> = {}) => ({
   permissions: ["*"],
   isOwner: false,
@@ -97,6 +97,9 @@ describe("navigation permissions", () => {
     expect(navSearchFor("products-list")).toEqual({ page: 1, search: "", status: "", categoryId: "" });
     expect(navSearchFor("energy-list")).toEqual({ page: 1, search: "" });
     expect(navSearchFor("projects-list")).toEqual({ page: 1, search: "", status: "", mine: false });
+    // My week has one param and no default: an absent week is "this week", so
+    // Spotlight clears a week left over from wherever the caller came from.
+    expect(navSearchFor("time-week")).toEqual({ week: undefined });
     expect(navSearchFor(undefined)).toBeUndefined();
   });
 });

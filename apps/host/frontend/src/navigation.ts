@@ -3,7 +3,7 @@ import type { ComponentType } from "react";
 // The module keys this build knows. Which of them are enabled comes from the
 // injected runtime config (see lib/enabled-modules.ts); which destinations
 // belong to which module is declared by the app registry (apps.ts).
-export const moduleKeys = ["communications", "customers", "energy", "products", "projects"] as const;
+export const moduleKeys = ["communications", "customers", "energy", "products", "projects", "time"] as const;
 export type ModuleKey = (typeof moduleKeys)[number];
 
 export interface NavItem {
@@ -14,10 +14,20 @@ export interface NavItem {
   systemAdminOnly?: boolean;
   capability?: "authorization";
   requiredPermissions?: readonly string[];
+  /**
+   * What the route guard demands on this destination's URL prefix, when that
+   * is less than the sidebar entry asks for. The Time app's approval queue is
+   * the case it exists for: the entry is offered to the permission-holding
+   * approvers, but a project manager approves through their role and reaches
+   * the same page from the dashboard or by pasting the URL, so the guard must
+   * not turn that into an access-denied page. Omitted = the guard uses
+   * `requiredPermissions`, which is what every other destination wants.
+   */
+  guardPermissions?: readonly string[];
   /** The module that must be enabled for this destination. */
   module?: ModuleKey;
   /** Search defaults used when Spotlight opens this destination. */
-  searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list" | "projects-list";
+  searchStrategy?: "customer-list" | "inbox-list" | "products-list" | "energy-list" | "projects-list" | "time-week";
 }
 export interface NavSection {
   /** Optional section heading; unlabeled sections render items only. */
@@ -80,6 +90,11 @@ export const navSearchFor = (strategy: NavItem["searchStrategy"]) => {
       return { page: 1, search: "" };
     case "projects-list":
       return { page: 1, search: "", status: "", mine: false };
+    // My week has no default week: without one the page stands on the current
+    // week, so the entry always opens today's week rather than whichever one
+    // the caller last looked at.
+    case "time-week":
+      return { week: undefined };
     default:
       return undefined;
   }
