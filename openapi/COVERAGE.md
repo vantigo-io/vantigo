@@ -87,7 +87,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `POST /api/v1/communications/tags` (postCommunicationsTags)
 - `PUT /api/v1/communications/conversations/{id}/tags/{tagId}` (putCommunicationsConversationsByIdTagsByTagId)
 
-## projects (40 uncovered)
+## projects (41 uncovered)
 
 - `DELETE /api/v1/projects/milestones/{milestoneId}` (deleteProjectsMilestonesByMilestoneId)
 - `DELETE /api/v1/projects/tasks/{taskId}/checklist/{itemId}` (deleteProjectsTasksByTaskIdChecklistByItemId)
@@ -106,6 +106,7 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `GET /api/v1/projects/tasks/{taskId}` (getProjectsTasksByTaskId)
 - `GET /api/v1/projects/{id}/assignable-users` (getProjectsByIdAssignableUsers)
 - `GET /api/v1/projects/{id}/billing-lines` (getProjectsByIdBillingLines)
+- `GET /api/v1/projects/{id}/economy` (getProjectsByIdEconomy)
 - `GET /api/v1/projects/{id}/milestones` (getProjectsByIdMilestones)
 - `GET /api/v1/projects/{id}/roles` (getProjectsByIdRoles)
 - `GET /api/v1/projects/{id}/tasks` (getProjectsByIdTasks)
@@ -158,4 +159,4 @@ Operations no recorded .NET exchange exercises. Their contract comes from the en
 - `PUT /api/v1/time/rates/{id}` (putTimeRatesById)
 - `PUT /api/v1/time/settings` (putTimeSettings)
 
-Total: 135 of 270 operations have no recorded exchange.
+Total: 136 of 271 operations have no recorded exchange.
