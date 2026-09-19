@@ -15,8 +15,9 @@
 // Time reads projects only through contracts.ProjectDirectory (required:
 // config refuses "time" without "projects"), names people through
 // contracts.UserDirectory, and prices billing lines through
-// contracts.ProductCatalog when products is enabled (D4). It provides no
-// contract of its own yet.
+// contracts.ProductCatalog when products is enabled (D4). It provides one
+// contract of its own: contracts.ProjectActuals (actuals.go), what has been
+// logged against a project, which projects reads its economy from.
 package timetracking
 
 import (
@@ -50,12 +51,15 @@ var permissions = []contracts.Permission{
 var limits = map[string]ratelimit.Policy{}
 
 // Module is time as a platform module: its contract mounted under
-// /api/v1/time/ and its four permissions in the composed catalog.
+// /api/v1/time/, its four permissions in the composed catalog, and the
+// contracts.ProjectActuals it publishes to whoever wants to compare what was
+// logged with what was planned — projects' economy first.
 func Module() module.Module {
 	return module.Module{
 		Name:        "time",
 		Permissions: permissions,
 		Mount:       mount,
+		Actuals:     newActuals,
 	}
 }
 
