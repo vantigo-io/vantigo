@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -31,12 +32,103 @@ func Compose(deps Deps, mods ...Module) (http.Handler, error) {
 	if deps.Config == nil {
 		return nil, fmt.Errorf("module: Compose requires a non-nil Deps.Config to know which modules MODULES enables")
 	}
-	return compose(deps, openapi.Load, mods...)
+	return composeFrom(deps, embedded, mods...)
 }
 
 // compose is Compose with the contract loader as a seam, so tests can
-// compose in-memory contracts instead of the embedded specs.
+// compose in-memory contracts instead of the embedded specs. Nothing it
+// loads is remembered: every call parses its contracts afresh.
 func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error), mods ...Module) (http.Handler, error) {
+	return composeFrom(deps, freshContracts(load), mods...)
+}
+
+// contractSource is where composeFrom gets a module's own contract and the
+// combined one from.
+type contractSource interface {
+	// doc is the contract handed to a module's Mount as Deps.Doc. It may be
+	// shared between compositions, so nobody may change it.
+	doc(ctx context.Context, name string) (*openapi3.T, error)
+	// combined is the body of GET /api/openapi.json for these modules, in
+	// this order.
+	combined(ctx context.Context, order []string) ([]byte, error)
+}
+
+// freshContracts parses on every call and remembers nothing.
+type freshContracts func(context.Context, string) (*openapi3.T, error)
+
+func (load freshContracts) doc(ctx context.Context, name string) (*openapi3.T, error) {
+	return load(ctx, name)
+}
+
+// combined gives mergeContract documents of its own: it internalises their
+// references in place, so they cannot be the ones doc handed out.
+func (load freshContracts) combined(ctx context.Context, order []string) ([]byte, error) {
+	docs := make(map[string]*openapi3.T, len(order))
+	for _, name := range order {
+		doc, err := load(ctx, name)
+		if err != nil {
+			return nil, fmt.Errorf("module: load %s contract: %w", name, err)
+		}
+		docs[name] = doc
+	}
+	contract, err := mergeContract(docs, order)
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(contract)
+	if err != nil {
+		return nil, fmt.Errorf("module: marshal the combined contract: %w", err)
+	}
+	return body, nil
+}
+
+// embedded is the embedded specs, each parsed once per process and each
+// combination of modules merged once per process.
+//
+// A server composes once, so this changes nothing for it. A test binary
+// composes once per test — hundreds of times — and parsing seven modules'
+// contracts twice over on every one of them was most of what the suite did:
+// under the race detector on four cores it took the whole run from seventeen
+// minutes to three. What makes sharing sound is that a contract is read-only
+// once loaded (Deps.Doc says so) and that the race detector, which the same
+// suite runs under, fails the run the moment anything writes to one.
+var embedded = &rememberedContracts{load: openapi.Load}
+
+type rememberedContracts struct {
+	load   freshContracts
+	docs   sync.Map // module name -> *openapi3.T
+	bodies sync.Map // module names in order, comma-joined -> []byte
+}
+
+func (c *rememberedContracts) doc(ctx context.Context, name string) (*openapi3.T, error) {
+	if doc, ok := c.docs.Load(name); ok {
+		return doc.(*openapi3.T), nil
+	}
+	doc, err := c.load(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	// Two first callers may both have parsed it; both get the one that won.
+	kept, _ := c.docs.LoadOrStore(name, doc)
+	return kept.(*openapi3.T), nil
+}
+
+func (c *rememberedContracts) combined(ctx context.Context, order []string) ([]byte, error) {
+	key := strings.Join(order, ",")
+	if body, ok := c.bodies.Load(key); ok {
+		return body.([]byte), nil
+	}
+	// Merged from documents of its own (freshContracts.combined), never from
+	// the shared ones doc hands out: merging rewrites what it is given.
+	body, err := c.load.combined(ctx, order)
+	if err != nil {
+		return nil, err
+	}
+	kept, _ := c.bodies.LoadOrStore(key, body)
+	return kept.([]byte), nil
+}
+
+func composeFrom(deps Deps, contractsFrom contractSource, mods ...Module) (http.Handler, error) {
 	ctx := context.Background()
 	mods = enabledModules(deps, mods)
 
@@ -120,11 +212,10 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 
 	outer := http.NewServeMux()
 	mounts := make([]moduleMount, 0, len(mods))
-	docs := make(map[string]*openapi3.T, len(mods))
 	order := make([]string, 0, len(mods))
 
 	for _, mod := range mods {
-		doc, err := load(ctx, mod.Name)
+		doc, err := contractsFrom.doc(ctx, mod.Name)
 		if err != nil {
 			return nil, fmt.Errorf("module: load %s contract: %w", mod.Name, err)
 		}
@@ -164,26 +255,12 @@ func compose(deps Deps, load func(context.Context, string) (*openapi3.T, error),
 		outer.Handle("/api/v1/"+mod.Name, handler)
 		mounts[len(mounts)-1].root = "/api/v1/" + mod.Name
 
-		// mergeContract (via InternalizeRefs) mutates the *openapi3.T it
-		// merges in place. doc was just handed to Mount as modDeps.Doc and a
-		// module may keep it, so mergeContract gets its own independent copy
-		// — a second, separate call to load — rather than doc itself, which
-		// stays exactly as Mount received it.
-		mergeDoc, err := load(ctx, mod.Name)
-		if err != nil {
-			return nil, fmt.Errorf("module: load %s contract: %w", mod.Name, err)
-		}
-		docs[mod.Name] = mergeDoc
 		order = append(order, mod.Name)
 	}
 
-	contract, err := mergeContract(docs, order)
+	body, err := contractsFrom.combined(ctx, order)
 	if err != nil {
 		return nil, err
-	}
-	body, err := json.Marshal(contract)
-	if err != nil {
-		return nil, fmt.Errorf("module: marshal the combined contract: %w", err)
 	}
 
 	sessionRule := contracts.Rule{Kind: contracts.RuleSession}
