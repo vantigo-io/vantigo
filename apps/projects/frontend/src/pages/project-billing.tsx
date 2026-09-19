@@ -190,18 +190,20 @@ const LineRow = ({
         </Text>
       </Table.Td>
       <Table.Td>
-        {line.catalogUnavailable ? (
-          // variantMissing means nothing here: the catalog was never asked, so
-          // "gone from the catalog" is not an answer anybody gave.
-          <Text size="sm" c="dimmed">
-            {t("productDetailsUnavailable")}
-          </Text>
-        ) : line.variantMissing || !line.productName ? (
+        {/* catalogUnavailable means at least one catalog field on this line
+            could not be read, not that all of them are missing: a name that
+            did come back is shown, and variantMissing is trusted whenever
+            it is set, flag or no flag. */}
+        {line.variantMissing || (!line.productName && !line.catalogUnavailable) ? (
           <Text size="sm" c="dimmed">
             {t("unknownProduct")}
           </Text>
-        ) : (
+        ) : line.productName ? (
           <Text size="sm">{line.productName}</Text>
+        ) : (
+          <Text size="sm" c="dimmed">
+            {t("productDetailsUnavailable")}
+          </Text>
         )}
       </Table.Td>
       <Table.Td>

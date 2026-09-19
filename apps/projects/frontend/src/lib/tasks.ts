@@ -11,9 +11,16 @@ export const COMMENT_BODY_MAX = 4000;
 /** How much of a free-text field an accessible name quotes before an item's own text runs on too long. */
 const LABEL_EXCERPT_MAX = 60;
 
-/** A row's own text, cut to a sensible length for naming its button — the text itself, not a summary of it. */
-export const excerptForLabel = (text: string, max = LABEL_EXCERPT_MAX): string =>
-  text.length > max ? `${text.slice(0, max)}…` : text;
+/**
+ * A row's own text, cut to a sensible length for naming its button — the text
+ * itself, not a summary of it. Cut by code point rather than by `slice`'s
+ * UTF-16 code unit, so an emoji or other surrogate pair sitting on the
+ * boundary comes out whole rather than as a lone, unpaired surrogate.
+ */
+export const excerptForLabel = (text: string, max = LABEL_EXCERPT_MAX): string => {
+  const codePoints = Array.from(text);
+  return codePoints.length > max ? `${codePoints.slice(0, max).join("")}…` : text;
+};
 
 /** A task's status, in the order work moves through it — the order every board column and grouped list uses. */
 export const taskStatuses = ["todo", "in-progress", "done"] as const;

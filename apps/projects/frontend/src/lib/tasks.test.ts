@@ -1,5 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { isTaskStatus, taskStatusColor, taskStatuses, taskStatusLabelKey, taskUrl } from "./tasks";
+import { excerptForLabel, isTaskStatus, taskStatusColor, taskStatuses, taskStatusLabelKey, taskUrl } from "./tasks";
+
+describe("excerptForLabel", () => {
+  it("leaves short text alone", () => {
+    expect(excerptForLabel("Buy cable")).toBe("Buy cable");
+  });
+
+  it("cuts long text to 60 characters and marks it with an ellipsis", () => {
+    const text = "x".repeat(80);
+    expect(excerptForLabel(text)).toBe(`${"x".repeat(60)}…`);
+  });
+
+  // slice() on a JS string counts UTF-16 code units, which splits a surrogate
+  // pair — an emoji sitting right on the cut would come out as a lone,
+  // unpaired surrogate. Counting code points instead keeps it whole.
+  it("cuts by code point, not UTF-16 code unit, so an emoji at the boundary is kept whole", () => {
+    const text = `${"x".repeat(59)}😀y`;
+    expect(excerptForLabel(text)).toBe(`${"x".repeat(59)}😀…`);
+  });
+});
 
 describe("taskStatuses", () => {
   it("are the three the API accepts, in the order work moves through them", () => {

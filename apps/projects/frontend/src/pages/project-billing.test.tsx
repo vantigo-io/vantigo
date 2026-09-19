@@ -179,12 +179,35 @@ describe("ProjectBilling", () => {
     expect(within(neither).getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("names a variant the catalog has forgotten", async () => {
-    stubBilling(project(), [line({ variantMissing: true, productName: null, sku: null, unit: null })]);
+  it("names a variant the catalog has forgotten, whether or not the catalog was also unreadable", async () => {
+    stubBilling(project(), [
+      line({
+        id: 2,
+        code: "GONE1",
+        trackableCode: "KVEWEBS-GONE1",
+        variantMissing: true,
+        productName: null,
+        sku: null,
+        unit: null,
+        catalogUnavailable: false,
+      }),
+      line({
+        id: 3,
+        code: "GONE2",
+        trackableCode: "KVEWEBS-GONE2",
+        variantMissing: true,
+        productName: null,
+        sku: null,
+        unit: null,
+        catalogUnavailable: true,
+      }),
+    ]);
     renderWithProviders(<ProjectBilling projectId={7} />);
 
-    const row = (await screen.findByText("KVEWEBS-PM")).closest("tr") as HTMLElement;
-    expect(within(row).getByText("Unknown product")).toBeInTheDocument();
+    const withoutFlag = (await screen.findByText("KVEWEBS-GONE1")).closest("tr") as HTMLElement;
+    expect(within(withoutFlag).getByText("Unknown product")).toBeInTheDocument();
+    const withFlag = screen.getByText("KVEWEBS-GONE2").closest("tr") as HTMLElement;
+    expect(within(withFlag).getByText("Unknown product")).toBeInTheDocument();
   });
 
   it("warns once when the product catalog could not be read, and leaves the line's own data alone", async () => {
@@ -201,7 +224,7 @@ describe("ProjectBilling", () => {
 
     expect(
       await screen.findByText(
-        "The product catalog could not be read, so product names and list prices are missing. Your billing lines are unchanged.",
+        "The product catalog could not be read completely, so some product names or list prices are missing. Your billing lines are unchanged.",
       ),
     ).toBeInTheDocument();
     const row = (await screen.findByText("KVEWEBS-PM")).closest("tr") as HTMLElement;
@@ -211,6 +234,20 @@ describe("ProjectBilling", () => {
     expect(within(row).getByText("Active")).toBeInTheDocument();
   });
 
+  // The flag was narrowed to mean "at least one catalog field is missing" —
+  // a line can carry it and still have its name, when only the list price
+  // could not be read.
+  it("keeps a flagged line's product name when only its list price could not be read", async () => {
+    stubBilling(project(), [line({ catalogUnavailable: true, pricing: { mode: "list" } })]);
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    const row = (await screen.findByText("KVEWEBS-PM")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("Project manager hour")).toBeInTheDocument();
+    expect(within(row).queryByText("Product details unavailable")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Unknown product")).not.toBeInTheDocument();
+    expect(row).toHaveTextContent("—");
+  });
+
   it("does not warn about the catalog when every line answered fine", async () => {
     stubBilling(project());
     renderWithProviders(<ProjectBilling projectId={7} />);
@@ -218,7 +255,7 @@ describe("ProjectBilling", () => {
     await screen.findByText("KVEWEBS-PM");
     expect(
       screen.queryByText(
-        "The product catalog could not be read, so product names and list prices are missing. Your billing lines are unchanged.",
+        "The product catalog could not be read completely, so some product names or list prices are missing. Your billing lines are unchanged.",
       ),
     ).not.toBeInTheDocument();
   });
