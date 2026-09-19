@@ -157,6 +157,54 @@ describe("ApprovalsPage", () => {
     expect(within(row).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });
 
+  it("takes only the approvable entries into a batch picked by the group", async () => {
+    const [, ada] = approvalGroups;
+    const fetchMock = stubTimeApi({
+      approvals: [
+        {
+          ...ada,
+          entries: ada.entries.map((entry) =>
+            entry.id === 702 ? { ...entry, capabilities: { ...entry.capabilities, canApprove: false } } : entry,
+          ),
+        },
+      ],
+    });
+    renderRoute("/time/approvals");
+
+    const card = await groupCard("Ada Lovelace");
+    await userEvent.click(within(card).getByRole("checkbox", { name: "Select Ada Lovelace's week" }));
+    // The group holds two entries; only one of them is the caller's to approve.
+    expect(screen.getByRole("button", { name: "Approve 1 selected" })).toBeInTheDocument();
+
+    await open("Ada Lovelace");
+    const task = within(card).getByText("KVEM1000 › DEV › Skriv spesifikasjonen").closest("tr") as HTMLElement;
+    expect(within(task).queryByRole("checkbox")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve 1 selected" }));
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST")).toEqual({ url: "/api/v1/time/entries/approve", body: { ids: [701] } }),
+    );
+  });
+
+  it("offers no group checkbox when nothing in the week is the caller's to approve", async () => {
+    const [grace] = approvalGroups;
+    stubTimeApi({
+      approvals: [
+        {
+          ...grace,
+          entries: grace.entries.map((entry) => ({
+            ...entry,
+            capabilities: { ...entry.capabilities, canApprove: false },
+          })),
+        },
+      ],
+    });
+    renderRoute("/time/approvals");
+
+    const card = await groupCard("Grace Hopper");
+    expect(within(card).queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
   it("says one entry in the singular, and tells the expand control's state", async () => {
     stubTimeApi({ approvals: approvalGroups });
     renderRoute("/time/approvals");

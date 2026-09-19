@@ -18,8 +18,15 @@ import "../i18n";
 import { refusalMessage } from "../lib/errors";
 import { SEARCH_DEBOUNCE_MS } from "../lib/search";
 
-/** Adding a card, or changing the one the caller read off the table. */
-export type RateModalState = { mode: "create"; userId?: string } | { mode: "edit"; rate: PersonRate };
+/**
+ * Adding a card, or changing the one the caller read off the table. A create
+ * started from somebody's own row carries their name as well as their id: the
+ * directory search need not have them on its first page, and a required field
+ * must never look empty because of that.
+ */
+export type RateModalState =
+  | { mode: "create"; userId?: string; displayName?: string }
+  | { mode: "edit"; rate: PersonRate };
 
 /** The currency a Norwegian installation writes its rates in unless it says otherwise. */
 export const DEFAULT_RATE_CURRENCY = "NOK";
@@ -139,6 +146,11 @@ const RateForm = ({ state, onClose }: RateFormModalProps & { state: RateModalSta
         ) : (
           <PersonPicker
             value={form.values.userId}
+            prefilled={
+              state.mode === "create" && state.userId && state.displayName
+                ? { value: state.userId, label: state.displayName }
+                : undefined
+            }
             onChange={(value) => form.setFieldValue("userId", value)}
             error={form.errors.userId}
           />
@@ -179,14 +191,18 @@ const RateForm = ({ state, onClose }: RateFormModalProps & { state: RateModalSta
  * onto the user directory — so a new hire with nothing logged yet can be given
  * a rate before their first entry. The server has already narrowed the list
  * and answers at most twenty, so Mantine's own filtering is switched off; the
- * chosen person is kept in the list even once the search has moved past them.
+ * chosen person is kept in the list even once the search has moved past them,
+ * and a person the form was opened for is pinned from the very first render.
  */
 const PersonPicker = ({
   value,
+  prefilled,
   onChange,
   error,
 }: {
   value: string | null;
+  /** The person the form was opened for, named, so the field is never blank. */
+  prefilled?: { value: string; label: string };
   onChange: (value: string | null) => void;
   error?: ReactNode;
 }) => {
@@ -194,7 +210,7 @@ const PersonPicker = ({
   const [search, setSearch] = useState("");
   const [debouncedSearch] = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const { data } = useQuery(assignableRateUsersQueryOptions(debouncedSearch));
-  const [chosen, setChosen] = useState<{ value: string; label: string } | null>(null);
+  const [chosen, setChosen] = useState<{ value: string; label: string } | null>(prefilled ?? null);
 
   const users = data ?? [];
   const options = users.map((user) => ({ value: user.userId, label: user.displayName }));

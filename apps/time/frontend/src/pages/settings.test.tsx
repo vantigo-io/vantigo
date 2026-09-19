@@ -129,6 +129,30 @@ describe("SettingsPage", () => {
     expect(await within(dialog).findByText("That day already has a rate card")).toBeInTheDocument();
   });
 
+  it("keeps the person named when a card is started from their own row", async () => {
+    // The search answers nobody — a directory that would not have this person
+    // on its first page — so only the prefill can name them.
+    const fetchMock = stubTimeApi({ rates: personRates, assignableUsers: [] });
+    renderRoute("/time/settings");
+
+    await screen.findByText("Grace Hopper");
+    await userEvent.click(screen.getByRole("button", { name: "Add a rate for Grace Hopper" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a rate card" });
+    expect(within(dialog).getByRole("combobox", { name: "Person" })).toHaveValue("Grace Hopper");
+
+    await typeDate(within(dialog).getByRole("textbox", { name: "Valid from" }), "Oct 1, 2026");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Cost rate" }), "850");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(sent(fetchMock, "POST").body).toMatchObject({
+        userId: "22222222-2222-2222-2222-222222222222",
+        validFrom: "2026-10-01",
+        costRate: 850,
+      }),
+    );
+  });
+
   it("keeps the person fixed while an existing card is edited", async () => {
     stubTimeApi({ rates: personRates, assignableUsers: assignableUsers });
     renderRoute("/time/settings");
