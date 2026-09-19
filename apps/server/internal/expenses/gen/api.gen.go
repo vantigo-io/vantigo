@@ -9,8 +9,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -40,6 +42,233 @@ type ExpensesCategoryUpdateRequest struct {
 	Active   bool   `json:"active"`
 	Name     string `json:"name"`
 	Position int32  `json:"position"`
+}
+
+// ExpensesEntryBilling What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
+type ExpensesEntryBilling struct {
+	// BillAmount What the customer is billed; zero on a line nobody bills.
+	BillAmount float64 `json:"billAmount"`
+
+	// BillRatePerKm Billable mileage's rate per kilometre. Absent otherwise.
+	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
+
+	// MarkupPercent A billable outlay's markup on the net. Absent otherwise.
+	MarkupPercent *float64 `json:"markupPercent,omitempty"`
+}
+
+// ExpensesEntryBillingLine The billing line an expense is booked on, resolved through the project directory. Absent when the entry is on none, or when the directory no longer lists it.
+type ExpensesEntryBillingLine struct {
+	Code string `json:"code"`
+	Id   int32  `json:"id"`
+}
+
+// ExpensesEntryCapabilities What the calling user may do with this entry, so a client never re-derives the rules of design §5.
+type ExpensesEntryCapabilities struct {
+	// CanApprove Whether the caller may approve or reject it — an approver of it, while it is submitted.
+	CanApprove bool `json:"canApprove"`
+
+	// CanDelete Whether the caller may delete it.
+	CanDelete bool `json:"canDelete"`
+
+	// CanEdit Whether the caller may change it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
+	CanEdit bool `json:"canEdit"`
+
+	// CanMarkInvoiced Whether the caller may mark it invoiced — financial rights on its project, while it is an approved billable line that is not invoiced yet.
+	CanMarkInvoiced bool `json:"canMarkInvoiced"`
+
+	// CanOverrideRate Whether the caller may override the rate on it — an approver of it or expenses:manage, while it is a submitted line carrying a rate.
+	CanOverrideRate bool `json:"canOverrideRate"`
+
+	// CanSeeBilling Whether the billing object is in this copy of the entry.
+	CanSeeBilling bool `json:"canSeeBilling"`
+
+	// CanSubmit Whether the caller may submit it.
+	CanSubmit bool `json:"canSubmit"`
+}
+
+// ExpensesEntryCategory The category an outlay is booked under, with the name as it stands now. Absent on a mileage line, which carries none.
+type ExpensesEntryCategory struct {
+	Id   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+// ExpensesEntryOwner The person the expense concerns — who gets the money back — which is not always who recorded it.
+type ExpensesEntryOwner struct {
+	// Active Whether identity still has them as an active user.
+	Active bool `json:"active"`
+
+	// DisplayName Their display name; 'Unknown user' when the directory no longer knows them.
+	DisplayName string             `json:"displayName"`
+	UserId      openapi_types.UUID `json:"userId"`
+}
+
+// ExpensesEntryProject The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
+type ExpensesEntryProject struct {
+	Code string `json:"code"`
+	Id   int32  `json:"id"`
+	Name string `json:"name"`
+}
+
+// ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.
+type ExpensesEntryRequest struct {
+	// BillRatePerKm What the customer is charged per kilometre on billable mileage. Defaults from the mileage_customer rate in force on the entry date; required when the table has none. Refused on anything else.
+	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
+
+	// Billable Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing.
+	Billable *bool `json:"billable,omitempty"`
+
+	// BillingLineId An active billing line of the same project.
+	BillingLineId *int32 `json:"billingLineId,omitempty"`
+
+	// CategoryId Required on an outlay, and must be an active category. Refused on a mileage line.
+	CategoryId *int32 `json:"categoryId,omitempty"`
+
+	// ClaimId Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+	ClaimId *int64 `json:"claimId,omitempty"`
+
+	// Currency A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other.
+	Currency *string `json:"currency,omitempty"`
+
+	// Description 1 to 500 characters.
+	Description string `json:"description"`
+
+	// DistanceKm Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay.
+	DistanceKm *float64 `json:"distanceKm,omitempty"`
+
+	// EntryDate The day the money was spent or the distance driven. Nothing before the period lock may be recorded except by expenses:manage.
+	EntryDate openapi_types.Date `json:"entryDate"`
+
+	// FromPlace At most 200 characters. Mileage only.
+	FromPlace *string `json:"fromPlace,omitempty"`
+
+	// GrossAmount An outlay's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line, whose amount the server computes.
+	GrossAmount *float64 `json:"grossAmount,omitempty"`
+
+	// Kind 'outlay' or 'mileage'.
+	Kind string `json:"kind"`
+
+	// MarkupPercent A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Defaults from the settings. Refused on anything else.
+	MarkupPercent *float64 `json:"markupPercent,omitempty"`
+
+	// PaidBy 'employee' or 'company'. Required on an outlay, refused on a mileage line — mileage is always owed to the employee.
+	PaidBy *string `json:"paidBy,omitempty"`
+
+	// Passengers 0 to 8. Mileage only; each one adds the passenger supplement per kilometre.
+	Passengers *int32 `json:"passengers,omitempty"`
+
+	// ProjectId The project to book the expense on. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
+	ProjectId *int32 `json:"projectId,omitempty"`
+
+	// Supplier At most 200 characters. Outlays only.
+	Supplier *string `json:"supplier,omitempty"`
+
+	// ToPlace At most 200 characters. Mileage only.
+	ToPlace *string `json:"toPlace,omitempty"`
+
+	// UserId The person the expense concerns. Absent means the caller; naming somebody else needs expenses:manage, and they must be a user identity still has as active.
+	UserId *openapi_types.UUID `json:"userId,omitempty"`
+
+	// VatAmount An outlay's VAT, from zero to its gross. Refused on a mileage line.
+	VatAmount *float64 `json:"vatAmount,omitempty"`
+}
+
+// ExpensesEntryResponse One expense as the caller may see it (design §5). What the caller may not see is absent rather than null or zero — above all the billing object, which needs financial rights on the entry's project.
+type ExpensesEntryResponse struct {
+	// AttachmentCount How many receipts the entry carries.
+	AttachmentCount int32 `json:"attachmentCount"`
+	Billable        bool  `json:"billable"`
+
+	// Billing What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
+	Billing *ExpensesEntryBilling `json:"billing,omitempty"`
+
+	// BillingLine The billing line an expense is booked on, resolved through the project directory. Absent when the entry is on none, or when the directory no longer lists it.
+	BillingLine *ExpensesEntryBillingLine `json:"billingLine,omitempty"`
+
+	// Capabilities What the calling user may do with this entry, so a client never re-derives the rules of design §5.
+	Capabilities ExpensesEntryCapabilities `json:"capabilities"`
+
+	// Category The category an outlay is booked under, with the name as it stands now. Absent on a mileage line, which carries none.
+	Category  *ExpensesEntryCategory `json:"category,omitempty"`
+	CreatedAt time.Time              `json:"createdAt"`
+	Currency  string                 `json:"currency"`
+
+	// DecidedAt When it was approved or rejected. Absent until then.
+	DecidedAt   *time.Time `json:"decidedAt,omitempty"`
+	Description string     `json:"description"`
+
+	// DistanceKm Mileage's distance. Absent on an outlay.
+	DistanceKm *float64           `json:"distanceKm,omitempty"`
+	EntryDate  openapi_types.Date `json:"entryDate"`
+	FromPlace  *string            `json:"fromPlace,omitempty"`
+
+	// GrossAmount An outlay's amount as entered, VAT included; a mileage line's computed amount.
+	GrossAmount float64 `json:"grossAmount"`
+	Id          int64   `json:"id"`
+	Kind        string  `json:"kind"`
+
+	// NetAmount The gross less the VAT — the project's cost and the markup's base.
+	NetAmount float64 `json:"netAmount"`
+
+	// OwedToEmployee What the owner gets back — the gross of an outlay they paid, a mileage line's amount, and nothing at all for an outlay the company paid.
+	OwedToEmployee float64 `json:"owedToEmployee"`
+
+	// Owner The person the expense concerns — who gets the money back — which is not always who recorded it.
+	Owner  ExpensesEntryOwner `json:"owner"`
+	PaidBy *string            `json:"paidBy,omitempty"`
+
+	// PassengerRate The passenger supplement per kilometre the line was priced with. Absent when it carries no passengers.
+	PassengerRate *float64 `json:"passengerRate,omitempty"`
+	Passengers    *int32   `json:"passengers,omitempty"`
+
+	// Project The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
+	Project *ExpensesEntryProject `json:"project,omitempty"`
+
+	// Rate The reimbursement rate per kilometre the line was priced with. Absent on an outlay.
+	Rate            *float64 `json:"rate,omitempty"`
+	RejectionReason *string  `json:"rejectionReason,omitempty"`
+
+	// Revision What an update must carry to be allowed to save.
+	Revision int32 `json:"revision"`
+
+	// Status 'draft', 'submitted', 'approved' or 'rejected'.
+	Status      string     `json:"status"`
+	SubmittedAt *time.Time `json:"submittedAt,omitempty"`
+	Supplier    *string    `json:"supplier,omitempty"`
+	ToPlace     *string    `json:"toPlace,omitempty"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+
+	// VatAmount Absent when none was entered, rather than zero.
+	VatAmount *float64 `json:"vatAmount,omitempty"`
+}
+
+// ExpensesEntryUpdateRequest A full replace of an expense, held to every rule a create is held to, and guarded by the revision the entry was read at. What is left out is cleared. The owner stays whoever the entry already concerns.
+type ExpensesEntryUpdateRequest struct {
+	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
+	Billable      *bool    `json:"billable,omitempty"`
+	BillingLineId *int32   `json:"billingLineId,omitempty"`
+	CategoryId    *int32   `json:"categoryId,omitempty"`
+
+	// ClaimId Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+	ClaimId     *int64   `json:"claimId,omitempty"`
+	Currency    *string  `json:"currency,omitempty"`
+	Description string   `json:"description"`
+	DistanceKm  *float64 `json:"distanceKm,omitempty"`
+
+	// EntryDate Neither the day the entry had nor the day it is given may fall before the period lock, except for expenses:manage.
+	EntryDate     openapi_types.Date `json:"entryDate"`
+	FromPlace     *string            `json:"fromPlace,omitempty"`
+	GrossAmount   *float64           `json:"grossAmount,omitempty"`
+	Kind          string             `json:"kind"`
+	MarkupPercent *float64           `json:"markupPercent,omitempty"`
+	PaidBy        *string            `json:"paidBy,omitempty"`
+	Passengers    *int32             `json:"passengers,omitempty"`
+	ProjectId     *int32             `json:"projectId,omitempty"`
+
+	// Revision The revision the entry was read at. A revision that has moved on is a 409.
+	Revision  int32    `json:"revision"`
+	Supplier  *string  `json:"supplier,omitempty"`
+	ToPlace   *string  `json:"toPlace,omitempty"`
+	VatAmount *float64 `json:"vatAmount,omitempty"`
 }
 
 // ExpensesMetaCapabilities What the calling user may do in this module, so the frontend never re-derives the rules.
@@ -76,6 +305,24 @@ type ExpensesMetaResponse struct {
 
 	// ReceiptRequiredOver An employee-paid outlay above this gross amount cannot be submitted without a receipt. Absent when no threshold is set.
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
+}
+
+// ExpensesProjectOption One project the caller may book an expense on, with the billing lines they may book it against — so the expense form needs no code of the projects module's own.
+type ExpensesProjectOption struct {
+	// BillingLines The project's active billing lines, by code. Empty when it has none.
+	BillingLines []ExpensesProjectOptionBillingLine `json:"billingLines"`
+	Code         string                             `json:"code"`
+
+	// Currency The project's own currency, when it has one.
+	Currency *string `json:"currency,omitempty"`
+	Id       int32   `json:"id"`
+	Name     string  `json:"name"`
+}
+
+// ExpensesProjectOptionBillingLine One billing line of a project an expense may be booked against.
+type ExpensesProjectOptionBillingLine struct {
+	Code string `json:"code"`
+	Id   int32  `json:"id"`
 }
 
 // ExpensesRateRequest A new dated rate (design §3.4). A money kind carries a currency and a value greater than zero with at most two decimals; a percentage kind carries no currency and a value between 0 and 100. One row per kind and valid-from day.
@@ -143,11 +390,46 @@ type ExpensesSettingsResponse struct {
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 
+// PaginatedResponseOfExpensesEntryResponse defines model for PaginatedResponseOfExpensesEntryResponse.
+type PaginatedResponseOfExpensesEntryResponse struct {
+	Data       []ExpensesEntryResponse         `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// GetExpensesEntriesParams defines parameters for GetExpensesEntries.
+type GetExpensesEntriesParams struct {
+	// UserId Narrows the list to one person's expenses. It never widens it: a caller sees only what they may see anyway.
+	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
+
+	// ProjectId Narrows the list to one project.
+	ProjectId *int32 `form:"projectId,omitempty" json:"projectId,omitempty"`
+
+	// Status 'draft', 'submitted', 'approved' or 'rejected'.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Kind 'outlay' or 'mileage'.
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// From The earliest entry date to include.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The latest entry date to include.
+	To       *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+	Page     *int32              `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
 // PostExpensesCategoriesJSONRequestBody defines body for PostExpensesCategories for application/json ContentType.
 type PostExpensesCategoriesJSONRequestBody = ExpensesCategoryRequest
 
 // PutExpensesCategoriesByIdJSONRequestBody defines body for PutExpensesCategoriesById for application/json ContentType.
 type PutExpensesCategoriesByIdJSONRequestBody = ExpensesCategoryUpdateRequest
+
+// PostExpensesEntriesJSONRequestBody defines body for PostExpensesEntries for application/json ContentType.
+type PostExpensesEntriesJSONRequestBody = ExpensesEntryRequest
+
+// PutExpensesEntriesByIdJSONRequestBody defines body for PutExpensesEntriesById for application/json ContentType.
+type PutExpensesEntriesByIdJSONRequestBody = ExpensesEntryUpdateRequest
 
 // PostExpensesRatesJSONRequestBody defines body for PostExpensesRates for application/json ContentType.
 type PostExpensesRatesJSONRequestBody = ExpensesRateRequest
@@ -172,9 +454,27 @@ type ServerInterface interface {
 	// PutExpensesCategoriesById Change an expense category
 	// (PUT /api/v1/expenses/categories/{id})
 	PutExpensesCategoriesById(w http.ResponseWriter, r *http.Request, id int32)
+	// GetExpensesEntries List expenses
+	// (GET /api/v1/expenses/entries)
+	GetExpensesEntries(w http.ResponseWriter, r *http.Request, params GetExpensesEntriesParams)
+	// PostExpensesEntries Record an expense
+	// (POST /api/v1/expenses/entries)
+	PostExpensesEntries(w http.ResponseWriter, r *http.Request)
+	// DeleteExpensesEntriesById Delete an expense
+	// (DELETE /api/v1/expenses/entries/{id})
+	DeleteExpensesEntriesById(w http.ResponseWriter, r *http.Request, id int64)
+	// GetExpensesEntriesById Get an expense by id
+	// (GET /api/v1/expenses/entries/{id})
+	GetExpensesEntriesById(w http.ResponseWriter, r *http.Request, id int64)
+	// PutExpensesEntriesById Change an expense
+	// (PUT /api/v1/expenses/entries/{id})
+	PutExpensesEntriesById(w http.ResponseWriter, r *http.Request, id int64)
 	// GetExpensesMeta Get the Expenses metadata
 	// (GET /api/v1/expenses/meta)
 	GetExpensesMeta(w http.ResponseWriter, r *http.Request)
+	// GetExpensesProjects List the projects an expense may be booked on
+	// (GET /api/v1/expenses/projects)
+	GetExpensesProjects(w http.ResponseWriter, r *http.Request)
 	// GetExpensesRates List the expense rates
 	// (GET /api/v1/expenses/rates)
 	GetExpensesRates(w http.ResponseWriter, r *http.Request)
@@ -261,11 +561,241 @@ func (siw *ServerInterfaceWrapper) PutExpensesCategoriesById(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// GetExpensesEntries operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesEntries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesEntriesParams
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "projectId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "projectId", r.URL.Query(), &params.ProjectId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "projectId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "projectId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesEntries(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesEntries operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesEntries(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesEntries(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteExpensesEntriesById operation middleware
+func (siw *ServerInterfaceWrapper) DeleteExpensesEntriesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteExpensesEntriesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesEntriesById operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesEntriesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesEntriesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutExpensesEntriesById operation middleware
+func (siw *ServerInterfaceWrapper) PutExpensesEntriesById(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutExpensesEntriesById(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetExpensesMeta operation middleware
 func (siw *ServerInterfaceWrapper) GetExpensesMeta(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetExpensesMeta(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesProjects operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesProjects(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesProjects(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -520,7 +1050,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/categories", wrapper.GetExpensesCategories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/categories", wrapper.PostExpensesCategories)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/categories/{id}", wrapper.PutExpensesCategoriesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries", wrapper.GetExpensesEntries)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries", wrapper.PostExpensesEntries)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.DeleteExpensesEntriesById)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.GetExpensesEntriesById)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.PutExpensesEntriesById)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/meta", wrapper.GetExpensesMeta)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects", wrapper.GetExpensesProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.GetExpensesRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates", wrapper.PostExpensesRates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates/reset", wrapper.PostExpensesRatesReset)
@@ -718,6 +1254,331 @@ func (response PutExpensesCategoriesById404Response) VisitPutExpensesCategoriesB
 	return nil
 }
 
+type GetExpensesEntriesRequestObject struct {
+	Params GetExpensesEntriesParams
+}
+
+type GetExpensesEntriesResponseObject interface {
+	VisitGetExpensesEntriesResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesEntries200JSONResponse PaginatedResponseOfExpensesEntryResponse
+
+func (response GetExpensesEntries200JSONResponse) VisitGetExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntries400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesEntries400ApplicationProblemPlusJSONResponse) VisitGetExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesEntries401JSONResponse) VisitGetExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesEntries403JSONResponse) VisitGetExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesRequestObject struct {
+	Body *PostExpensesEntriesJSONRequestBody
+}
+
+type PostExpensesEntriesResponseObject interface {
+	VisitPostExpensesEntriesResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesEntries201JSONResponse ExpensesEntryResponse
+
+func (response PostExpensesEntries201JSONResponse) VisitPostExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntries400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesEntries400ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntries401JSONResponse) VisitPostExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntries403JSONResponse) VisitPostExpensesEntriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesEntriesByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type DeleteExpensesEntriesByIdResponseObject interface {
+	VisitDeleteExpensesEntriesByIdResponse(w http.ResponseWriter) error
+}
+
+type DeleteExpensesEntriesById204Response struct {
+}
+
+func (response DeleteExpensesEntriesById204Response) VisitDeleteExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteExpensesEntriesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteExpensesEntriesById401JSONResponse) VisitDeleteExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesEntriesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response DeleteExpensesEntriesById403JSONResponse) VisitDeleteExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteExpensesEntriesById404Response struct {
+}
+
+func (response DeleteExpensesEntriesById404Response) VisitDeleteExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type GetExpensesEntriesByIdRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetExpensesEntriesByIdResponseObject interface {
+	VisitGetExpensesEntriesByIdResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesEntriesById200JSONResponse ExpensesEntryResponse
+
+func (response GetExpensesEntriesById200JSONResponse) VisitGetExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesEntriesById401JSONResponse) VisitGetExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesEntriesById403JSONResponse) VisitGetExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesEntriesById404Response struct {
+}
+
+func (response GetExpensesEntriesById404Response) VisitGetExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutExpensesEntriesByIdRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PutExpensesEntriesByIdJSONRequestBody
+}
+
+type PutExpensesEntriesByIdResponseObject interface {
+	VisitPutExpensesEntriesByIdResponse(w http.ResponseWriter) error
+}
+
+type PutExpensesEntriesById200JSONResponse ExpensesEntryResponse
+
+func (response PutExpensesEntriesById200JSONResponse) VisitPutExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesById400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PutExpensesEntriesById400ApplicationProblemPlusJSONResponse) VisitPutExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesById401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesEntriesById401JSONResponse) VisitPutExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesById403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PutExpensesEntriesById403JSONResponse) VisitPutExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutExpensesEntriesById404Response struct {
+}
+
+func (response PutExpensesEntriesById404Response) VisitPutExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PutExpensesEntriesById409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PutExpensesEntriesById409ApplicationProblemPlusJSONResponse) VisitPutExpensesEntriesByIdResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetExpensesMetaRequestObject struct {
 }
 
@@ -763,6 +1624,69 @@ func (response GetExpensesMeta403JSONResponse) VisitGetExpensesMetaResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjectsRequestObject struct {
+}
+
+type GetExpensesProjectsResponseObject interface {
+	VisitGetExpensesProjectsResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesProjects200JSONResponse []ExpensesProjectOption
+
+func (response GetExpensesProjects200JSONResponse) VisitGetExpensesProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjects401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesProjects401JSONResponse) VisitGetExpensesProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjects403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesProjects403JSONResponse) VisitGetExpensesProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesProjects404ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesProjects404ApplicationProblemPlusJSONResponse) VisitGetExpensesProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1193,9 +2117,27 @@ type StrictServerInterface interface {
 	// PutExpensesCategoriesById Change an expense category
 	// (PUT /api/v1/expenses/categories/{id})
 	PutExpensesCategoriesById(ctx context.Context, request PutExpensesCategoriesByIdRequestObject) (PutExpensesCategoriesByIdResponseObject, error)
+	// GetExpensesEntries List expenses
+	// (GET /api/v1/expenses/entries)
+	GetExpensesEntries(ctx context.Context, request GetExpensesEntriesRequestObject) (GetExpensesEntriesResponseObject, error)
+	// PostExpensesEntries Record an expense
+	// (POST /api/v1/expenses/entries)
+	PostExpensesEntries(ctx context.Context, request PostExpensesEntriesRequestObject) (PostExpensesEntriesResponseObject, error)
+	// DeleteExpensesEntriesById Delete an expense
+	// (DELETE /api/v1/expenses/entries/{id})
+	DeleteExpensesEntriesById(ctx context.Context, request DeleteExpensesEntriesByIdRequestObject) (DeleteExpensesEntriesByIdResponseObject, error)
+	// GetExpensesEntriesById Get an expense by id
+	// (GET /api/v1/expenses/entries/{id})
+	GetExpensesEntriesById(ctx context.Context, request GetExpensesEntriesByIdRequestObject) (GetExpensesEntriesByIdResponseObject, error)
+	// PutExpensesEntriesById Change an expense
+	// (PUT /api/v1/expenses/entries/{id})
+	PutExpensesEntriesById(ctx context.Context, request PutExpensesEntriesByIdRequestObject) (PutExpensesEntriesByIdResponseObject, error)
 	// GetExpensesMeta Get the Expenses metadata
 	// (GET /api/v1/expenses/meta)
 	GetExpensesMeta(ctx context.Context, request GetExpensesMetaRequestObject) (GetExpensesMetaResponseObject, error)
+	// GetExpensesProjects List the projects an expense may be booked on
+	// (GET /api/v1/expenses/projects)
+	GetExpensesProjects(ctx context.Context, request GetExpensesProjectsRequestObject) (GetExpensesProjectsResponseObject, error)
 	// GetExpensesRates List the expense rates
 	// (GET /api/v1/expenses/rates)
 	GetExpensesRates(ctx context.Context, request GetExpensesRatesRequestObject) (GetExpensesRatesResponseObject, error)
@@ -1346,6 +2288,148 @@ func (sh *strictHandler) PutExpensesCategoriesById(w http.ResponseWriter, r *htt
 	}
 }
 
+// GetExpensesEntries operation middleware
+func (sh *strictHandler) GetExpensesEntries(w http.ResponseWriter, r *http.Request, params GetExpensesEntriesParams) {
+	var request GetExpensesEntriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesEntries(ctx, request.(GetExpensesEntriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesEntries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesEntriesResponseObject); ok {
+		if err := validResponse.VisitGetExpensesEntriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesEntries operation middleware
+func (sh *strictHandler) PostExpensesEntries(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesEntriesRequestObject
+
+	var body PostExpensesEntriesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesEntries(ctx, request.(PostExpensesEntriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesEntries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesEntriesResponseObject); ok {
+		if err := validResponse.VisitPostExpensesEntriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteExpensesEntriesById operation middleware
+func (sh *strictHandler) DeleteExpensesEntriesById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request DeleteExpensesEntriesByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteExpensesEntriesById(ctx, request.(DeleteExpensesEntriesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteExpensesEntriesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteExpensesEntriesByIdResponseObject); ok {
+		if err := validResponse.VisitDeleteExpensesEntriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesEntriesById operation middleware
+func (sh *strictHandler) GetExpensesEntriesById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetExpensesEntriesByIdRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesEntriesById(ctx, request.(GetExpensesEntriesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesEntriesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesEntriesByIdResponseObject); ok {
+		if err := validResponse.VisitGetExpensesEntriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutExpensesEntriesById operation middleware
+func (sh *strictHandler) PutExpensesEntriesById(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PutExpensesEntriesByIdRequestObject
+
+	request.Id = id
+
+	var body PutExpensesEntriesByIdJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutExpensesEntriesById(ctx, request.(PutExpensesEntriesByIdRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutExpensesEntriesById")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutExpensesEntriesByIdResponseObject); ok {
+		if err := validResponse.VisitPutExpensesEntriesByIdResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetExpensesMeta operation middleware
 func (sh *strictHandler) GetExpensesMeta(w http.ResponseWriter, r *http.Request) {
 	var request GetExpensesMetaRequestObject
@@ -1363,6 +2447,30 @@ func (sh *strictHandler) GetExpensesMeta(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetExpensesMetaResponseObject); ok {
 		if err := validResponse.VisitGetExpensesMetaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesProjects operation middleware
+func (sh *strictHandler) GetExpensesProjects(w http.ResponseWriter, r *http.Request) {
+	var request GetExpensesProjectsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesProjects(ctx, request.(GetExpensesProjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesProjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesProjectsResponseObject); ok {
+		if err := validResponse.VisitGetExpensesProjectsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

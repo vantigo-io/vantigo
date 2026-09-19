@@ -43,12 +43,21 @@ func parseCategoryName(raw string) (string, string) {
 	return name, ""
 }
 
-// listCategories is every category in the order the picker offers them, active
-// and not: a stored expense must still be able to name its own.
-func listCategories(ctx context.Context, q *store.Queries) ([]gen.ExpensesCategoryResponse, error) {
+// listCategoryRows is every category row in the order the picker offers them,
+// active and not: a stored expense must still be able to name its own.
+func listCategoryRows(ctx context.Context, q *store.Queries) ([]store.ExpensesCategory, error) {
 	rows, err := q.ListCategories(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("expenses: list the categories: %w", err)
+	}
+	return rows, nil
+}
+
+// listCategories is listCategoryRows on the wire.
+func listCategories(ctx context.Context, q *store.Queries) ([]gen.ExpensesCategoryResponse, error) {
+	rows, err := listCategoryRows(ctx, q)
+	if err != nil {
+		return nil, err
 	}
 	return categoryResponses(rows), nil
 }

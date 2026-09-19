@@ -49,6 +49,369 @@ components:
                 - active
                 - position
             type: object
+        ExpensesEntryBilling:
+            description: What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
+            properties:
+                billAmount:
+                    description: What the customer is billed; zero on a line nobody bills.
+                    format: double
+                    type: number
+                billRatePerKm:
+                    description: Billable mileage's rate per kilometre. Absent otherwise.
+                    format: double
+                    type: number
+                markupPercent:
+                    description: A billable outlay's markup on the net. Absent otherwise.
+                    format: double
+                    type: number
+            required:
+                - billAmount
+            type: object
+        ExpensesEntryBillingLine:
+            description: The billing line an expense is booked on, resolved through the project directory. Absent when the entry is on none, or when the directory no longer lists it.
+            properties:
+                code:
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - code
+            type: object
+        ExpensesEntryCapabilities:
+            description: What the calling user may do with this entry, so a client never re-derives the rules of design §5.
+            properties:
+                canApprove:
+                    description: Whether the caller may approve or reject it — an approver of it, while it is submitted.
+                    type: boolean
+                canDelete:
+                    description: Whether the caller may delete it.
+                    type: boolean
+                canEdit:
+                    description: Whether the caller may change it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
+                    type: boolean
+                canMarkInvoiced:
+                    description: Whether the caller may mark it invoiced — financial rights on its project, while it is an approved billable line that is not invoiced yet.
+                    type: boolean
+                canOverrideRate:
+                    description: Whether the caller may override the rate on it — an approver of it or expenses:manage, while it is a submitted line carrying a rate.
+                    type: boolean
+                canSeeBilling:
+                    description: Whether the billing object is in this copy of the entry.
+                    type: boolean
+                canSubmit:
+                    description: Whether the caller may submit it.
+                    type: boolean
+            required:
+                - canEdit
+                - canDelete
+                - canSubmit
+                - canApprove
+                - canOverrideRate
+                - canMarkInvoiced
+                - canSeeBilling
+            type: object
+        ExpensesEntryCategory:
+            description: The category an outlay is booked under, with the name as it stands now. Absent on a mileage line, which carries none.
+            properties:
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - name
+            type: object
+        ExpensesEntryOwner:
+            description: The person the expense concerns — who gets the money back — which is not always who recorded it.
+            properties:
+                active:
+                    description: Whether identity still has them as an active user.
+                    type: boolean
+                displayName:
+                    description: Their display name; 'Unknown user' when the directory no longer knows them.
+                    type: string
+                userId:
+                    format: uuid
+                    type: string
+            required:
+                - userId
+                - displayName
+                - active
+            type: object
+        ExpensesEntryProject:
+            description: The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
+            properties:
+                code:
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - code
+                - name
+            type: object
+        ExpensesEntryRequest:
+            description: 'One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.'
+            properties:
+                billRatePerKm:
+                    description: What the customer is charged per kilometre on billable mileage. Defaults from the mileage_customer rate in force on the entry date; required when the table has none. Refused on anything else.
+                    format: double
+                    type: number
+                billable:
+                    description: Whether the line is billed on to the customer. Requires a project, and is forced false on a project that bills nothing.
+                    type: boolean
+                billingLineId:
+                    description: An active billing line of the same project.
+                    format: int32
+                    type: integer
+                categoryId:
+                    description: Required on an outlay, and must be an active category. Refused on a mileage line.
+                    format: int32
+                    type: integer
+                claimId:
+                    description: Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+                    format: int64
+                    type: integer
+                currency:
+                    description: A three-letter ISO 4217 code. Required on an outlay. A mileage line takes the installation's default currency and refuses any other.
+                    type: string
+                description:
+                    description: 1 to 500 characters.
+                    type: string
+                distanceKm:
+                    description: Mileage's distance — greater than zero, at most 9999.9, at most one decimal. Refused on an outlay.
+                    format: double
+                    type: number
+                entryDate:
+                    description: The day the money was spent or the distance driven. Nothing before the period lock may be recorded except by expenses:manage.
+                    format: date
+                    type: string
+                fromPlace:
+                    description: At most 200 characters. Mileage only.
+                    type: string
+                grossAmount:
+                    description: An outlay's amount including VAT — greater than zero, at most 9999999999.99, at most two decimals. Refused on a mileage line, whose amount the server computes.
+                    format: double
+                    type: number
+                kind:
+                    description: '''outlay'' or ''mileage''.'
+                    type: string
+                markupPercent:
+                    description: A billable outlay's markup on the net, 0 to 1000 with at most two decimals. Defaults from the settings. Refused on anything else.
+                    format: double
+                    type: number
+                paidBy:
+                    description: '''employee'' or ''company''. Required on an outlay, refused on a mileage line — mileage is always owed to the employee.'
+                    type: string
+                passengers:
+                    description: 0 to 8. Mileage only; each one adds the passenger supplement per kilometre.
+                    format: int32
+                    type: integer
+                projectId:
+                    description: The project to book the expense on. The person it concerns must be allowed to book on it — what logging time needs. Refused when this installation has no projects module.
+                    format: int32
+                    type: integer
+                supplier:
+                    description: At most 200 characters. Outlays only.
+                    type: string
+                toPlace:
+                    description: At most 200 characters. Mileage only.
+                    type: string
+                userId:
+                    description: The person the expense concerns. Absent means the caller; naming somebody else needs expenses:manage, and they must be a user identity still has as active.
+                    format: uuid
+                    type: string
+                vatAmount:
+                    description: An outlay's VAT, from zero to its gross. Refused on a mileage line.
+                    format: double
+                    type: number
+            required:
+                - kind
+                - entryDate
+                - description
+            type: object
+        ExpensesEntryResponse:
+            description: One expense as the caller may see it (design §5). What the caller may not see is absent rather than null or zero — above all the billing object, which needs financial rights on the entry's project.
+            properties:
+                attachmentCount:
+                    description: How many receipts the entry carries.
+                    format: int32
+                    type: integer
+                billable:
+                    type: boolean
+                billing:
+                    $ref: '#/components/schemas/ExpensesEntryBilling'
+                billingLine:
+                    $ref: '#/components/schemas/ExpensesEntryBillingLine'
+                capabilities:
+                    $ref: '#/components/schemas/ExpensesEntryCapabilities'
+                category:
+                    $ref: '#/components/schemas/ExpensesEntryCategory'
+                createdAt:
+                    format: date-time
+                    type: string
+                currency:
+                    type: string
+                decidedAt:
+                    description: When it was approved or rejected. Absent until then.
+                    format: date-time
+                    type: string
+                description:
+                    type: string
+                distanceKm:
+                    description: Mileage's distance. Absent on an outlay.
+                    format: double
+                    type: number
+                entryDate:
+                    format: date
+                    type: string
+                fromPlace:
+                    type: string
+                grossAmount:
+                    description: An outlay's amount as entered, VAT included; a mileage line's computed amount.
+                    format: double
+                    type: number
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    type: string
+                netAmount:
+                    description: The gross less the VAT — the project's cost and the markup's base.
+                    format: double
+                    type: number
+                owedToEmployee:
+                    description: What the owner gets back — the gross of an outlay they paid, a mileage line's amount, and nothing at all for an outlay the company paid.
+                    format: double
+                    type: number
+                owner:
+                    $ref: '#/components/schemas/ExpensesEntryOwner'
+                paidBy:
+                    type: string
+                passengerRate:
+                    description: The passenger supplement per kilometre the line was priced with. Absent when it carries no passengers.
+                    format: double
+                    type: number
+                passengers:
+                    format: int32
+                    type: integer
+                project:
+                    $ref: '#/components/schemas/ExpensesEntryProject'
+                rate:
+                    description: The reimbursement rate per kilometre the line was priced with. Absent on an outlay.
+                    format: double
+                    type: number
+                rejectionReason:
+                    type: string
+                revision:
+                    description: What an update must carry to be allowed to save.
+                    format: int32
+                    type: integer
+                status:
+                    description: '''draft'', ''submitted'', ''approved'' or ''rejected''.'
+                    type: string
+                submittedAt:
+                    format: date-time
+                    type: string
+                supplier:
+                    type: string
+                toPlace:
+                    type: string
+                updatedAt:
+                    format: date-time
+                    type: string
+                vatAmount:
+                    description: Absent when none was entered, rather than zero.
+                    format: double
+                    type: number
+            required:
+                - id
+                - kind
+                - entryDate
+                - description
+                - currency
+                - grossAmount
+                - netAmount
+                - owedToEmployee
+                - billable
+                - status
+                - attachmentCount
+                - owner
+                - revision
+                - createdAt
+                - updatedAt
+                - capabilities
+            type: object
+        ExpensesEntryUpdateRequest:
+            description: A full replace of an expense, held to every rule a create is held to, and guarded by the revision the entry was read at. What is left out is cleared. The owner stays whoever the entry already concerns.
+            properties:
+                billRatePerKm:
+                    format: double
+                    type: number
+                billable:
+                    type: boolean
+                billingLineId:
+                    format: int32
+                    type: integer
+                categoryId:
+                    format: int32
+                    type: integer
+                claimId:
+                    description: Reserved for the travel claims of a later delivery; a request carrying one is refused on this field.
+                    format: int64
+                    type: integer
+                currency:
+                    type: string
+                description:
+                    type: string
+                distanceKm:
+                    format: double
+                    type: number
+                entryDate:
+                    description: Neither the day the entry had nor the day it is given may fall before the period lock, except for expenses:manage.
+                    format: date
+                    type: string
+                fromPlace:
+                    type: string
+                grossAmount:
+                    format: double
+                    type: number
+                kind:
+                    type: string
+                markupPercent:
+                    format: double
+                    type: number
+                paidBy:
+                    type: string
+                passengers:
+                    format: int32
+                    type: integer
+                projectId:
+                    format: int32
+                    type: integer
+                revision:
+                    description: The revision the entry was read at. A revision that has moved on is a 409.
+                    format: int32
+                    type: integer
+                supplier:
+                    type: string
+                toPlace:
+                    type: string
+                vatAmount:
+                    format: double
+                    type: number
+            required:
+                - kind
+                - entryDate
+                - description
+                - revision
+            type: object
         ExpensesMetaCapabilities:
             description: What the calling user may do in this module, so the frontend never re-derives the rules.
             properties:
@@ -100,6 +463,42 @@ components:
                 - defaultMarkupPercent
                 - categories
                 - capabilities
+            type: object
+        ExpensesProjectOption:
+            description: One project the caller may book an expense on, with the billing lines they may book it against — so the expense form needs no code of the projects module's own.
+            properties:
+                billingLines:
+                    description: The project's active billing lines, by code. Empty when it has none.
+                    items:
+                        $ref: '#/components/schemas/ExpensesProjectOptionBillingLine'
+                    type: array
+                code:
+                    type: string
+                currency:
+                    description: The project's own currency, when it has one.
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+                name:
+                    type: string
+            required:
+                - id
+                - code
+                - name
+                - billingLines
+            type: object
+        ExpensesProjectOptionBillingLine:
+            description: One billing line of a project an expense may be booked against.
+            properties:
+                code:
+                    type: string
+                id:
+                    format: int32
+                    type: integer
+            required:
+                - id
+                - code
             type: object
         ExpensesRateRequest:
             description: A new dated rate (design §3.4). A money kind carries a currency and a value greater than zero with at most two decimals; a percentage kind carries no currency and a value between 0 and 100. One row per kind and valid-from day.
@@ -215,6 +614,18 @@ components:
             required:
                 - defaultCurrency
                 - defaultMarkupPercent
+            type: object
+        PaginatedResponseOfExpensesEntryResponse:
+            properties:
+                data:
+                    items:
+                        $ref: '#/components/schemas/ExpensesEntryResponse'
+                    type: array
+                pagination:
+                    $ref: common.yaml#/components/schemas/PaginationMetadata
+            required:
+                - data
+                - pagination
             type: object
 info:
     title: Vantigo Expenses API
@@ -336,6 +747,242 @@ paths:
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access+expenses:manage
+    /api/v1/expenses/entries:
+        get:
+            description: Expenses, the latest day first, and only where the caller may see them — their own, everything on a project they manage, and everyone's for expenses:view-all, expenses:approve and expenses:manage. The same rule a single read applies, so the list never holds an entry its own read would answer 404 for and its total counts only what the caller may see.
+            operationId: getExpensesEntries
+            parameters:
+                - description: 'Narrows the list to one person''s expenses. It never widens it: a caller sees only what they may see anyway.'
+                  in: query
+                  name: userId
+                  schema:
+                    format: uuid
+                    type: string
+                - description: Narrows the list to one project.
+                  in: query
+                  name: projectId
+                  schema:
+                    format: int32
+                    type: integer
+                - description: '''draft'', ''submitted'', ''approved'' or ''rejected''.'
+                  in: query
+                  name: status
+                  schema:
+                    type: string
+                - description: '''outlay'' or ''mileage''.'
+                  in: query
+                  name: kind
+                  schema:
+                    type: string
+                - description: The earliest entry date to include.
+                  in: query
+                  name: from
+                  schema:
+                    format: date
+                    type: string
+                - description: The latest entry date to include.
+                  in: query
+                  name: to
+                  schema:
+                    format: date
+                    type: string
+                - in: query
+                  name: page
+                  schema:
+                    format: int32
+                    type: integer
+                - in: query
+                  name: pageSize
+                  schema:
+                    format: int32
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PaginatedResponseOfExpensesEntryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Bad Request — paging out of range, or an unknown status or kind.
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: List expenses
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        post:
+            description: Records one expense as a draft. A mileage line is priced from the dated rate table for its own date; an outlay is entered as it stands.
+            operationId: postExpensesEntries
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesEntryRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesEntryResponse'
+                    description: Created — a draft owned by the caller, or by the person userId names.
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+            summary: Record an expense
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/entries/{id}:
+        delete:
+            description: Deletes an expense while it is still its owner's to change — a draft or a rejected line, by its owner or by expenses:manage, and not before the period lock.
+            operationId: deleteExpensesEntriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "204":
+                    description: No Content
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller may see the expense but may not delete it.
+                "404":
+                    description: Not Found — no expense has that id, or the caller may not see it.
+            summary: Delete an expense
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        get:
+            description: One expense, shaped for the caller. An expense the caller may not see answers the same bare 404 an unknown id does.
+            operationId: getExpensesEntriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesEntryResponse'
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    description: Not Found — no expense has that id, or the caller may not see it.
+            summary: Get an expense by id
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+        put:
+            description: Replaces an expense, guarded by the revision it was read at. A mileage line is priced again from the rate table, so a draft always shows what it is worth today.
+            operationId: putExpensesEntriesById
+            parameters:
+                - in: path
+                  name: id
+                  required: true
+                  schema:
+                    format: int64
+                    type: integer
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ExpensesEntryUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ExpensesEntryResponse'
+                    description: OK
+                "400":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/HttpValidationProblemDetails
+                    description: Bad Request
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden — the caller may see the expense but may not change it.
+                "404":
+                    description: Not Found — no expense has that id, or the caller may not see it.
+                "409":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Conflict — the expense has moved on from the revision supplied.
+            summary: Change an expense
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
     /api/v1/expenses/meta:
         get:
             description: What this installation of Expenses can do (decision X2) and the settings and categories every form needs, in one read.
@@ -360,6 +1007,41 @@ paths:
                                 $ref: common.yaml#/components/schemas/AuthErrorResponse
                     description: Forbidden
             summary: Get the Expenses metadata
+            tags:
+                - Expenses
+            x-vantigo-access: permission:expenses:access
+    /api/v1/expenses/projects:
+        get:
+            description: The projects the caller may book an expense on, with their active billing lines, so the expense form needs no code of the projects module's own. Answers 404 in an installation with no projects module (decision X2) — the same answer as a path that is not there.
+            operationId: getExpensesProjects
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/ExpensesProjectOption'
+                                type: array
+                    description: OK
+                "401":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Unauthorized
+                "403":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/AuthErrorResponse
+                    description: Forbidden
+                "404":
+                    content:
+                        application/problem+json:
+                            schema:
+                                $ref: common.yaml#/components/schemas/ProblemDetails
+                    description: Not Found — this installation has no projects module.
+            summary: List the projects an expense may be booked on
             tags:
                 - Expenses
             x-vantigo-access: permission:expenses:access

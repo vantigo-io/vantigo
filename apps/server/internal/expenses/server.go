@@ -3,6 +3,7 @@ package expenses
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
@@ -27,6 +28,14 @@ func newServer(d module.Deps) *server { return &server{deps: d} }
 // the way the router evaluates an operation's rule. It fails closed.
 func (s *server) has(ctx context.Context, key string) bool {
 	return contracts.HasPermission(ctx, s.deps.Access, key)
+}
+
+// callerID is the signed-in caller of one request. The router has already
+// authenticated every operation (expenses:access), so a handler always has
+// one.
+func callerID(ctx context.Context) uuid.UUID {
+	p, _ := contracts.PrincipalFrom(ctx)
+	return p.UserID
 }
 
 // lockedTxKey marks a context as belonging to a transaction that may hold row
