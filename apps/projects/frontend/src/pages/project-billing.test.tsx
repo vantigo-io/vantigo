@@ -184,7 +184,7 @@ describe("ProjectBilling", () => {
 
     await screen.findByText("KVEWEBS-PM");
     expect(screen.queryByRole("button", { name: "Add billing line" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit billing line" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit PM" })).not.toBeInTheDocument();
   });
 
   it("opens the form on an existing line for a manager", async () => {
@@ -192,10 +192,22 @@ describe("ProjectBilling", () => {
     renderWithProviders(<ProjectBilling projectId={7} />);
 
     await screen.findByText("KVEWEBS-PM");
-    await userEvent.click(screen.getByRole("button", { name: "Edit billing line" }));
+    await userEvent.click(screen.getByRole("button", { name: "Edit PM" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Edit billing line" });
     await waitFor(() => expect(within(dialog).getByLabelText(/line code/i)).toHaveValue("PM"));
+  });
+
+  // Every line's edit button used to share the one name "Edit billing line",
+  // which is unusable from a screen reader's list of buttons on a page with
+  // more than one line — this pins that each is named after its own line.
+  it("names each line's edit button after its own code", async () => {
+    stubBilling(project(), [line(), line({ id: 2, code: "DEV", trackableCode: "KVEWEBS-DEV" })]);
+    renderWithProviders(<ProjectBilling projectId={7} />);
+
+    expect(await screen.findByRole("button", { name: "Edit PM" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit DEV" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit billing line" })).not.toBeInTheDocument();
   });
 
   it("says when the project has no lines yet", async () => {
