@@ -44,16 +44,22 @@ func Files() fs.FS {
 // contract, that is a third of every Load: identity 62.5 ms → 43.5 ms,
 // customers 18.4 → 12.0, communications 22.0 → 14.6.
 //
-// Only the parse is cached. Every Load still resolves references into a
-// fresh *openapi3.T that its caller alone owns, because internal/module's
-// compose merges one copy (mergeContract mutates it through InternalizeRefs)
-// while the module that was mounted keeps the other. A cache that handed out
-// one shared document would make those the same document; the loaded
-// documents also carry unexported per-document state (T.visited, each Ref's
-// refPath) that Validate and InternalizeRefs write, which a second holder
+// Only the parse is cached here. Every Load still resolves references into
+// a fresh *openapi3.T that its caller alone owns, and two things depend on
+// that: internal/module's mergeContract rewrites the documents it merges
+// (InternalizeRefs), and Validate and InternalizeRefs write unexported
+// per-document state (T.visited, each Ref's refPath) that a second holder
 // would race on. TestLoadMatchesAnUncachedYAMLParse proves the cached parse
 // yields the same document the YAML bytes do, and
 // TestLoadReturnsIndependentDocuments proves two Loads share nothing.
+//
+// internal/module does share one loaded document per module between
+// compositions (its embedded contracts), and that is sound only because of
+// what is done with a shared one: it is read — routed over and looked up —
+// and never validated, internalised or merged; the merge gets documents of
+// its own. The rule for anything handed a module.Deps.Doc is the same: never
+// call Validate or InternalizeRefs on it. The suite runs under the race
+// detector, which fails the run the moment something writes to one.
 var jsonSpecs = sync.OnceValues(convertSpecsToJSON)
 
 func convertSpecsToJSON() (map[string][]byte, error) {
