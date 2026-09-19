@@ -77,8 +77,10 @@ WHERE projects.visible(p.id, sqlc.arg(user_id), sqlc.arg(see_all)::boolean)
 -- not conflict with the FOR KEY SHARE that Postgres takes on this row for
 -- every insert that references it. FOR UPDATE would have made an unrelated
 -- task, role, comment, line or timeline insert on the same project wait
--- behind a guarded write. Nothing here ever changes the project's key, which
--- is what makes the weaker mode correct rather than merely cheaper.
+-- behind a guarded write. The one statement that does change a key here is
+-- UpdateProject writing a new code (ux_projects_code): it runs in the
+-- transaction that already holds this lock, so Postgres upgrades the lock in
+-- place for that one edit — still mutually exclusive, only not any cheaper.
 SELECT * FROM projects.projects WHERE id = @id FOR NO KEY UPDATE;
 
 -- name: UpdateProject :one
