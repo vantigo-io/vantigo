@@ -365,7 +365,7 @@ paths:
             x-vantigo-access: permission:expenses:access
     /api/v1/expenses/rates:
         get:
-            description: Every dated rate, by kind and then the latest first. The client groups them per kind.
+            description: Every dated rate, by kind and then the latest first. The client groups them per kind. A caller without expenses:manage reads every kind except mileage_customer — what the company charges its customer per kilometre is a commercial price — so an expense form can preview what a mileage line will pay without an administrator's rights.
             operationId: getExpensesRates
             responses:
                 "200":
@@ -391,7 +391,7 @@ paths:
             summary: List the expense rates
             tags:
                 - Expenses
-            x-vantigo-access: permission:expenses:access+expenses:manage
+            x-vantigo-access: permission:expenses:access
         post:
             description: Adds a dated rate. It prices expenses saved from now on; a submitted expense's rate never moves.
             operationId: postExpensesRates

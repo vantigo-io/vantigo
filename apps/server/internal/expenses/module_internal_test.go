@@ -10,6 +10,11 @@ import (
 // word of it is pinned: the keys, their display names and descriptions, the
 // category they group under, which of them is sensitive, and that all four may
 // be delegated.
+//
+// Two are sensitive: expenses:manage, which reaches the installation's own
+// money settings and works past the period lock, and expenses:view-all, which
+// exposes colleagues' personal outlays — what they bought, where and for how
+// much — exactly as time:view-all is marked in the sibling module.
 func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 	t.Parallel()
 	want := []contracts.Permission{
@@ -26,7 +31,7 @@ func TestPermissions_AreTheCatalogTheDesignNames(t *testing.T) {
 		{
 			Key: "expenses:view-all", Display: "View all expenses",
 			Description: "See everyone's expenses.",
-			Category:    "Expenses", Sensitive: false, Delegable: true,
+			Category:    "Expenses", Sensitive: true, Delegable: true,
 		},
 		{
 			Key: "expenses:manage", Display: "Manage expenses",

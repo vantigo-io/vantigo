@@ -28,10 +28,13 @@ import (
 // permissions is the module's permission catalog (design §5). Every operation
 // requires expenses:access — it is what puts the app in the switcher and what
 // lets anyone record an expense at all — and the other three sit above it.
-// Only expenses:manage is sensitive: it is the one that reaches the
-// installation's own money settings, records for other people, marks
-// reimbursements paid and works past the period lock. All four are delegable,
-// as every other module's are.
+//
+// Two are sensitive. expenses:manage reaches the installation's own money
+// settings, records for other people, marks reimbursements paid and works past
+// the period lock. expenses:view-all opens every colleague's outlays — what
+// they bought, from whom and for how much — which is personal in a way a time
+// entry is not; the sibling time module marks its own view-all sensitive for
+// the same reason. All four are delegable, as every other module's are.
 var permissions = []contracts.Permission{
 	{
 		Key: "expenses:access", Display: "Use Expenses",
@@ -46,7 +49,7 @@ var permissions = []contracts.Permission{
 	{
 		Key: "expenses:view-all", Display: "View all expenses",
 		Description: "See everyone's expenses.",
-		Category:    "Expenses", Sensitive: false, Delegable: true,
+		Category:    "Expenses", Sensitive: true, Delegable: true,
 	},
 	{
 		Key: "expenses:manage", Display: "Manage expenses",
