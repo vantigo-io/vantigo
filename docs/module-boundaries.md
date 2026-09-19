@@ -25,7 +25,7 @@ Communications' outbox is the working example.
    future extracted service can implement or consume them.
 4. **One schema per module.** Each module maps tables only into its own PostgreSQL
    schema (`identity`, `customers`, `products`, `energy`, `communications`,
-   `projects`), and no module's migrations or queries reference another's. **No
+   `projects`, `time`), and no module's migrations or queries reference another's. **No
    cross-schema foreign keys or joins** — reference other modules' data by opaque ID
    only. That is what keeps a future "move this schema to its own server" a
    connection-string change instead of a data migration.
@@ -74,7 +74,7 @@ MODULES=customers,products
 ```
 
 Unset enables every module this binary can mount
-(`customers,products,energy,communications,projects`). Identity is always mounted and
+(`customers,products,energy,communications,projects,time`). Identity is always mounted and
 is never listed. Entries are trimmed and lower-cased, empty entries are ignored, and a
 name the binary does not know fails startup naming both the value and the known set.
 
@@ -89,8 +89,10 @@ module later needs no migration.
 Some modules cannot be hosted alone. Energy, Communications and Projects read
 customer data through `contracts.CustomerDirectory`, which only Customers implements,
 so enabling any of them without `customers` is rejected at startup with a message
-naming both (`projects requires customers`). A module that starts requiring another
-module's contract adds its own check in `internal/config`.
+naming both (`projects requires customers`). Time hangs its hours off projects and
+reads them through `contracts.ProjectDirectory`, so `time` without `projects` is
+rejected the same way (`time requires projects`). A module that starts requiring
+another module's contract adds its own check in `internal/config`.
 
 A contract can also be **optional**. `contracts.ProductCatalog` is the first:
 Projects prices its billing lines through it, but when `products` is disabled
@@ -99,6 +101,15 @@ instead of failing startup. That is the shape to copy — a required dependency 
 config check, an optional one leaves the `Deps` field nil and **the consumer must
 handle nil**. The one exception is `contracts.UserDirectory`: identity is always
 mounted, so `Deps.Users` is always set once composed.
+
+Time is the first module to consume three at once and provide none:
+`contracts.ProjectDirectory` (required — hence the config check),
+`contracts.UserDirectory` (always there, for names and for the rate card's user
+search) and `contracts.ProductCatalog` (optional — with products disabled a `list` or
+`discount` billing line simply has no price, and the rate chain falls through to the
+project default). It also keeps a rule worth copying: **no contract call inside a
+transaction that holds a lock**, enforced by fakes that record any call made under
+one.
 
 ## Adding a module
 
@@ -138,7 +149,10 @@ operations are exercised.
    list), register the app (label, icon, home path, sidebar entries) in
    `apps/host/frontend/src/apps.ts`, and add a layout route
    `apps/host/frontend/src/routes/<name>.tsx` that renders
-   `createFileRoute("/<name>")(appLayoutOptions("<name>"))`.
+   `createFileRoute("/<name>")(appLayoutOptions("<name>"))`. The route guard derives
+   its rules from those same sidebar entries, so a page that more callers may open
+   than the entry is offered to says so with `guardPermissions` (Time's approval
+   queue: the entry needs `time:approve`, the URL needs only `time:access`).
 10. Import the package's catalog in `apps/host/frontend/src/i18n.ts`
     (`import "@vantigo/<name>-ui/i18n";`), and add the host-owned labels in every
     language: navigation and dashboard strings, and **one entry per permission key in

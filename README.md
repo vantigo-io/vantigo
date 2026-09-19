@@ -45,6 +45,7 @@ your thing, a managed **SaaS offering** is available where we run the platform f
 | **Products**       | The catalog of goods and services the company sells, with prices.    | 🚧 In development |
 | **Energy**         | Metering points, meters, supply periods and consumption.             | 🚧 In development |
 | **Projects**       | Projects per customer, the people on them and their billing rules.   | 🚧 In development |
+| **Time**           | Hours on projects, with rates, weekly submission and approval.       | 🚧 In development |
 
 Identity — accounts, sign-in, MFA, RBAC, OIDC and SCIM — is always part of the
 application and is never listed as an optional module. Which business modules a
@@ -73,8 +74,8 @@ docker compose up -d
 
 Compose starts PostgreSQL, applies the database migrations as a one-shot `migrate`
 job, and then brings up the single Vantigo application on <http://localhost:8080>.
-Customers, Communications, Products, Energy and Projects are modules in that one
-application.
+Customers, Communications, Products, Energy, Projects and Time are modules in that
+one application.
 
 The stack runs outside development, so `vantigo.env` must carry `APP_SECRET` before
 the first start — at least 32 bytes of key material, generated with
@@ -107,6 +108,7 @@ vantigo/
 │   │       ├── products/            # Products vertical slice
 │   │       ├── energy/              # Energy vertical slice
 │   │       ├── projects/            # Projects vertical slice
+│   │       ├── time/                # Time vertical slice
 │   │       ├── module/              # The platform modules mount through
 │   │       ├── db/                  # Pool and the embedded goose migrations
 │   │       └── web/                 # The embedded SPA
@@ -115,7 +117,8 @@ vantigo/
 │   ├── communications/frontend/     # @vantigo/communications-ui
 │   ├── products/frontend/           # @vantigo/products-ui
 │   ├── energy/frontend/             # @vantigo/energy-ui
-│   └── projects/frontend/           # @vantigo/projects-ui
+│   ├── projects/frontend/           # @vantigo/projects-ui
+│   └── time/frontend/               # @vantigo/time-ui
 ├── packages/
 │   ├── frontend-shell/              # @vantigo/frontend-shell — shared shell, theme, branding
 │   └── frontend-api-client/         # @vantigo/frontend-api-client — generated types and client
@@ -304,7 +307,8 @@ the operator runbook, see the
 [SSO and SCIM operations guide](docs/sso-scim-operations.md) and the
 [documentation index](docs/README.md). The Products domain model, pricing rules and
 cross-module contracts are documented in [Products](docs/products.md); projects,
-their codes, roles and billing lines in [Projects](docs/projects.md).
+their codes, roles and billing lines in [Projects](docs/projects.md); hours, rates,
+approval and the period lock in [Time](docs/time.md).
 
 Prefer not to host anything at all? The managed **Vantigo SaaS** runs the exact same
 open-source stack for you.

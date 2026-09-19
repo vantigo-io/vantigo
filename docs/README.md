@@ -17,6 +17,8 @@ Operator and contributor documentation for Vantigo:
 - [Communications module](communications.md) — communications domain and API reference.
 - [Projects module](projects.md) — projects, codes, roles, financial shaping, the
   optional Products dependency and the contracts later modules build on.
+- [Time module](time.md) — time entries, the rate chain and its snapshots, the
+  approval state machine, weekly submission, the period lock and permissions.
 - [Module boundaries](module-boundaries.md) — implementation ownership and module
   conventions.
 - [Object storage](storage.md) — the filesystem-only provider, module scopes, key
