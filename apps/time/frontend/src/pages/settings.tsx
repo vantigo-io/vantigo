@@ -199,7 +199,7 @@ const PersonRates = ({ group, onEdit }: { group: RateGroup; onEdit: (state: Rate
           size="compact-xs"
           variant="subtle"
           leftSection={<IconPlus size={12} />}
-          onClick={() => onEdit({ mode: "create", userId: group.userId })}
+          onClick={() => onEdit({ mode: "create", userId: group.userId, displayName: group.displayName })}
         >
           {t("addRateForPerson", { person: group.displayName })}
         </Button>

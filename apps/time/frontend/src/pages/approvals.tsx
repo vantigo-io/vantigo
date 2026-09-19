@@ -59,11 +59,15 @@ export const ApprovalsPage = () => {
     );
 
   const groups = data?.data ?? [];
-  // An entry approved on its own, or one the queue has moved on from, is no
-  // longer here to act on: the batch is what is both picked and still listed,
-  // so the count never promises a request the server would only refuse.
-  const queued = new Set(groups.flatMap((group) => group.entries.map((entry) => entry.id)));
-  const picked = selected.filter((id) => queued.has(id));
+  // The batch is what is picked, still listed, and still the caller's to
+  // approve. An entry approved on its own, one the queue has moved on from,
+  // and one whose capability has since said no are all out of reach — and the
+  // server is all or nothing, so a single unreachable id would refuse the lot.
+  // Only approvable entries offer a checkbox at all; this is the second lock.
+  const approvable = new Set(
+    groups.flatMap((group) => group.entries.filter((entry) => entry.capabilities.canApprove).map((entry) => entry.id)),
+  );
+  const picked = selected.filter((id) => approvable.has(id));
 
   return (
     <Stack gap="lg">
@@ -185,12 +189,12 @@ const GroupCard = ({ group, selected, onToggle, onReject }: GroupCardProps) => {
   const [open, setOpen] = useState(false);
   const approve = useApprove(() => undefined);
 
-  const ids = group.entries.map((entry) => entry.id);
-  const picked = ids.filter((id) => selected.includes(id));
-  // A group acts on the entries this caller may act on. The queue only lists
-  // what they approve for, but an entry can fall out of reach between the read
-  // and the click — the lock moving, say — so the capability decides.
+  // A group acts on, and selects, the entries this caller may act on. The queue
+  // only lists what they approve for, but an entry can fall out of reach
+  // between the read and the click — the lock moving, say — so the capability
+  // decides, and an entry it says no to is not selectable at all.
   const approvable = group.entries.filter((entry) => entry.capabilities.canApprove).map((entry) => entry.id);
+  const picked = approvable.filter((id) => selected.includes(id));
   const week = formatters.formatDate(group.weekStart, { dateStyle: "medium", timeZone: "UTC" });
   const panelId = `approval-entries-${groupKey(group)}`;
 
@@ -199,12 +203,14 @@ const GroupCard = ({ group, selected, onToggle, onReject }: GroupCardProps) => {
       <Stack gap="sm">
         <Group justify="space-between" wrap="wrap">
           <Group gap="sm" wrap="nowrap">
-            <Checkbox
-              aria-label={t("selectWeek", { person: group.displayName })}
-              checked={picked.length === ids.length && ids.length > 0}
-              indeterminate={picked.length > 0 && picked.length < ids.length}
-              onChange={(event) => onToggle(ids, event.currentTarget.checked)}
-            />
+            {approvable.length > 0 && (
+              <Checkbox
+                aria-label={t("selectWeek", { person: group.displayName })}
+                checked={picked.length === approvable.length}
+                indeterminate={picked.length > 0 && picked.length < approvable.length}
+                onChange={(event) => onToggle(approvable, event.currentTarget.checked)}
+              />
+            )}
             <ActionIcon
               variant="subtle"
               aria-label={open ? t("hideEntries") : t("showEntries")}
@@ -312,11 +318,15 @@ const EntryRow = ({ entry, selected, onToggle, onReject }: EntryRowProps) => {
   return (
     <Table.Tr>
       <Table.Td>
-        <Checkbox
-          aria-label={t("selectEntry", { trackable: label, date })}
-          checked={selected}
-          onChange={(event) => onToggle([entry.id], event.currentTarget.checked)}
-        />
+        {/* Nothing the caller may not approve goes into a batch: an id they
+            cannot act on would refuse the whole all-or-nothing request. */}
+        {entry.capabilities.canApprove && (
+          <Checkbox
+            aria-label={t("selectEntry", { trackable: label, date })}
+            checked={selected}
+            onChange={(event) => onToggle([entry.id], event.currentTarget.checked)}
+          />
+        )}
       </Table.Td>
       <Table.Td>{date}</Table.Td>
       <Table.Td>
