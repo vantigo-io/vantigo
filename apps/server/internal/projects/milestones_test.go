@@ -1132,7 +1132,7 @@ func TestGetProjectsByIdMilestones_AnUnpriceableRow_DegradesRatherThanFailing(t 
 	h := newHarness(t)
 	c, _ := signIn(t, h, "projects:create")
 	project := amountProject(t, c, "MSDEG1")
-	good := createMilestone(t, c, project.Id, map[string]any{"name": "Grei", "amount": 1000})
+	createMilestone(t, c, project.Id, map[string]any{"name": "Grei", "amount": 1000})
 	// A planned percent milestone on a project with no fixed price at all.
 	broken := insertMilestone(t, h, project.Id, map[string]any{
 		"name": "Uprisbar", "percent": 25.00, "position": int32(2),
@@ -1161,5 +1161,4 @@ func TestGetProjectsByIdMilestones_AnUnpriceableRow_DegradesRatherThanFailing(t 
 	if one.EffectiveAmount != nil {
 		t.Errorf("single read EffectiveAmount = %v, want it absent", *one.EffectiveAmount)
 	}
-	_ = good
 }

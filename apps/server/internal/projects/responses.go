@@ -260,7 +260,7 @@ func (s *server) milestonePlanResponse(ctx context.Context, project store.Projec
 		return gen.BillingMilestonePlanResponse{}, err
 	}
 	now := s.deps.Clock()
-	// The four sums are accumulated in exact decimal and rounded once, at the
+	// The three sums are accumulated in exact decimal and rounded once, at the
 	// end (milestoneTotals): adding money in float64 answers 0.10 + 0.20 with
 	// 0.30000000000000004, and this module's money rule is exact decimal.
 	amounts := map[string]*big.Rat{}

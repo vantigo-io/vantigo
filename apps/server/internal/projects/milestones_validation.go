@@ -468,9 +468,10 @@ func milestoneFromUpdate(body gen.BillingMilestoneUpdateRequest) gen.BillingMile
 // amount at all, and says so with errMilestoneUnpriced rather than answering
 // 0.00 — a milestone reading as nothing planned is the kind of silent money
 // loss nobody notices. The status flow refuses every move that would create
-// such a milestone (milestoneMoveRefusal), so the only one that can exist is
-// a cancelled one on a project that has since dropped its price, and the
-// response omits its amount rather than inventing one.
+// such a milestone (milestoneMoveRefusal), so the only one the API can leave
+// behind is a cancelled one on a project that has since dropped its price.
+// Whatever its status, the response omits its amount rather than inventing
+// one, and the plan leaves it out of the totals.
 func milestoneEffectiveAmount(m store.ProjectsBillingMilestone, project store.ProjectsProject) (float64, error) {
 	if m.InvoicedAmount.Valid {
 		return floatFromNumeric(m.InvoicedAmount)
@@ -506,9 +507,11 @@ func milestoneEffectiveAmount(m store.ProjectsBillingMilestone, project store.Pr
 // errMilestoneUnpriced is what a milestone whose effective amount cannot be
 // worked out answers with. It is a legitimate state for exactly one kind of
 // milestone — a cancelled percent one on a project that has since left
-// fixed-price billing — and an infrastructure failure for any other, which is
-// why it is a sentinel the response layer matches on rather than a nil amount
-// every caller has to remember to check.
+// fixed-price billing — and a sign of hand-written data for any other. The
+// response layer matches on it and degrades (no amount, out of the totals, a
+// warning in the log for the illegal statuses) rather than failing the plan;
+// a sentinel keeps that decision in one place instead of a nil amount every
+// caller has to remember to check.
 var errMilestoneUnpriced = errors.New("a milestone with no resolvable amount")
 
 // floatFromNumeric is floatPtrFromNumeric for a column the caller has already
@@ -575,13 +578,13 @@ func milestoneCapabilities(m store.ProjectsBillingMilestone, project store.Proje
 
 // milestoneTotals is what one project's plan adds up to (§3.2): one sum of
 // effective amounts per status, and — against a fixed price — how much of it
-// the plan does not cover or exceeds by. Cancelled milestones get their own
-// sum and count against nothing: they bill nothing, so folding them into the
-// comparison would make a dropped milestone look like planned work.
+// the plan does not cover or exceeds by. Cancelled milestones count against
+// nothing: they bill nothing, so folding them into the comparison would make
+// a dropped milestone look like planned work.
 //
 // Every sum is accumulated as a *big.Rat over the milestones' exact decimal
 // amounts and only rounded once, on the way into the response: adding money
-// in float64 reports 0.10 + 0.20 as 0.30000000000000004, and these four
+// in float64 reports 0.10 + 0.20 as 0.30000000000000004, and these three
 // figures are the Economy tab's headline numbers.
 //
 // Cancelled milestones have no total of their own. They bill nothing, and —

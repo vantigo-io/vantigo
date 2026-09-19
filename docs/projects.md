@@ -438,8 +438,7 @@ between, for example, a line getting a `budgetAmount` and the project's currency
 cleared in the same instant: whichever transaction locks the row first wins, and the
 other re-validates against what the winner left behind. One lock mode everywhere, and
 always taken in the same order relative to any other lock a transaction needs (the
-project row, then a line's or a milestone's own row) — so nothing can deadlock and
-nothing needs to upgrade.
+project row, then a line's or a milestone's own row) — so nothing can deadlock.
 
 `FOR NO KEY UPDATE` rather than `FOR UPDATE` on purpose. The weaker mode still
 conflicts with itself and with the row lock the project's own `UPDATE` takes, so every
@@ -447,8 +446,9 @@ guarded writer still serialises against every other; what it does *not* conflict
 is the `FOR KEY SHARE` Postgres takes on the project row for each insert that
 references it. Under `FOR UPDATE`, creating an unrelated task, role, comment, billing
 line, milestone or timeline entry on the same project would wait behind any guarded
-write. Nothing in this module changes a project's key, which is what makes the weaker
-mode correct and not merely cheaper.
+write. The one edit that does change a key is a new project code (it is unique): that
+update runs in the transaction already holding the lock, which Postgres upgrades in
+place — still mutually exclusive, just not cheaper for that one edit.
 
 A cross-module call — asking the product catalog whether a variant exists — is always
 made **before** the project's lock is taken, never inside the locked transaction:
