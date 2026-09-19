@@ -214,18 +214,11 @@ func (s *server) economyResponse(
 // because an hour logged last month against a line switched off since was
 // still measured against that line's budget.
 func economyBudget(project store.ProjectsProject, lines []store.ProjectsBillingLine, seesAmounts bool) (gen.ProjectEconomyBudget, budgetBasis, error) {
-	hours, err := exactNumeric(project.BudgetHours)
+	basis, err := projectBudgetBasis(project, seesAmounts)
 	if err != nil {
 		return gen.ProjectEconomyBudget{}, budgetBasis{}, err
 	}
-	amount, err := exactNumeric(project.BudgetAmount)
-	if err != nil {
-		return gen.ProjectEconomyBudget{}, budgetBasis{}, err
-	}
-	fixedPrice, err := exactNumeric(project.FixedPriceAmount)
-	if err != nil {
-		return gen.ProjectEconomyBudget{}, budgetBasis{}, err
-	}
+	hours, amount, fixedPrice := basis.Hours, basis.Amount, basis.FixedPrice
 	linesHours, err := sumNumerics(lines, func(l store.ProjectsBillingLine) pgtype.Numeric { return l.BudgetHours })
 	if err != nil {
 		return gen.ProjectEconomyBudget{}, budgetBasis{}, err
@@ -244,14 +237,36 @@ func economyBudget(project store.ProjectsProject, lines []store.ProjectsBillingL
 		budget.FixedPrice = numberPtr(fixedPrice)
 		budget.LinesAmount = numberPtr(linesAmount)
 	}
-	basis := budgetBasis{
+	return budget, basis, nil
+}
+
+// projectBudgetBasis is one project's three candidate bases read out of its
+// row, exactly, and the two facts that decide which of them may be used. It
+// is the only place a project row becomes a budgetBasis, so the project's own
+// economy, the portfolio's rows and the dashboard's budget alerts all measure
+// against the same three numbers — a portfolio that picked the fixed price
+// where the project's page picked the budget amount would be two answers to
+// one question.
+func projectBudgetBasis(project store.ProjectsProject, seesAmounts bool) (budgetBasis, error) {
+	hours, err := exactNumeric(project.BudgetHours)
+	if err != nil {
+		return budgetBasis{}, err
+	}
+	amount, err := exactNumeric(project.BudgetAmount)
+	if err != nil {
+		return budgetBasis{}, err
+	}
+	fixedPrice, err := exactNumeric(project.FixedPriceAmount)
+	if err != nil {
+		return budgetBasis{}, err
+	}
+	return budgetBasis{
 		Amount:      amount,
 		FixedPrice:  fixedPrice,
 		Hours:       hours,
 		BillingType: project.BillingType,
 		SeesAmounts: seesAmounts,
-	}
-	return budget, basis, nil
+	}, nil
 }
 
 // economyActuals renders one subject's logged work. Every hour figure is

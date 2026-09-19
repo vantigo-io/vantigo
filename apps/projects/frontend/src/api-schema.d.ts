@@ -37,6 +37,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/economy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the economy of the projects whose money the caller may see
+         * @description The economy portfolio: every project the caller has financial rights on, with its budget usage, what has been logged on it and what it has ready to invoice, so somebody responsible for several projects can see which of them need looking at without opening each one. Rows the caller may not see the money of are not shaped down, they are absent — the portfolio is a financial surface end to end.
+         */
+        get: operations["getProjectsEconomy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/milestones/{milestoneId}": {
         parameters: {
             query?: never;
@@ -1048,6 +1068,12 @@ export interface components {
              */
             uncostedHours: number;
         };
+        /** @description The customer a portfolio row's project bills to, absent on an internal project. The name is resolved through the customer directory, once per distinct customer on the page, and is absent when the directory no longer knows the customer — the project keeps the relationship it was started under either way. */
+        ProjectEconomyCustomer: {
+            /** Format: int32 */
+            id: number;
+            name?: string | null;
+        };
         /** @description One row of the per-line breakdown — every billing line of the project, deactivated ones included, in the same order the billing tab lists them, plus one row without a billingLineId for work logged against no line at all. A line the project does not have that work was nonetheless logged against folds into that same row rather than being dropped. */
         ProjectEconomyLine: {
             /** @description Whether the line is still active. Absent on the row that stands for work logged without a line. */
@@ -1084,6 +1110,40 @@ export interface components {
              */
             usedPercent?: number | null;
         };
+        /** @description One page of the economy portfolio, with totals over the whole filtered set rather than over the page: a portfolio read to decide where to look must not have its headline figures change when somebody turns the page. */
+        ProjectEconomyListResponse: {
+            data: components["schemas"]["ProjectEconomyRow"][];
+            pagination: components["schemas"]["PaginationMetadata"];
+            /** @description Whether this installation has a module that reports what has been logged against projects, exactly as the per-project economy reports it. False means no row carries actuals or budgetUsed — not that nothing has been logged. */
+            timeTracking: boolean;
+            totals: components["schemas"]["ProjectEconomyTotals"];
+        };
+        /** @description The next open milestone of a portfolio row's project — the earliest-dated 'planned' or 'ready' one, undated ones after dated ones and then in the plan's own order. Absent when the project has no open milestone at all. */
+        ProjectEconomyNextMilestone: {
+            /**
+             * Format: double
+             * @description What the milestone is worth, in the project's currency — the flat amount as entered, or the percentage of the project's fixed price. Absent for a milestone nobody can price, exactly as on the invoice plan itself.
+             */
+            effectiveAmount?: number | null;
+            /** Format: int32 */
+            id: number;
+            name: string;
+            /** @description Whether the milestone's planned day has passed, on the server's own UTC calendar. */
+            overdue: boolean;
+            /**
+             * Format: date
+             * @description The day the milestone is planned for. Absent when nobody has dated it, which is what sorts it after every dated one.
+             */
+            plannedDate?: string | null;
+            /** @description 'planned' or 'ready' — the two open statuses. */
+            status: string;
+        };
+        /** @description What is ready to invoice in one currency. The portfolio's totals carry one of these per currency, by currency code, because amounts in different currencies are not comparable and adding them would produce a number in neither. */
+        ProjectEconomyReadyAmount: {
+            /** Format: double */
+            amount: number;
+            currency: string;
+        };
         /** @description A project's budget against what has been logged on it (design §5, delivery B). Everyone who sees the project sees the hours; amounts, the fixed price, the milestone totals and the currency need financial rights on it, and the cost block needs projects:view-costs as well. Fields the caller may not see are absent, never null and never zero. Nothing here is cached: the hours are read live through the actuals contract on every request. */
         ProjectEconomyResponse: {
             /** @description What has been logged on the project as a whole. Absent exactly when timeTracking is false. */
@@ -1108,6 +1168,80 @@ export interface components {
             taskEstimateHours?: number | null;
             /** @description Whether this installation has a module that reports what has been logged against projects. False means the budgets and the invoice plan are still here and there are no actuals to compare them with — not that nothing has been logged. */
             timeTracking: boolean;
+        };
+        /** @description One project in the economy portfolio. Every row is a project the caller has financial rights on — the project's manager, projects:manage-all, or projects:view-financials on a project they can see — so the amounts are never shaped away here the way they are on the per-project economy; a caller who may not see a project's money does not get its row at all. There is no cost or margin in the portfolio — that block is the per-project read's, behind projects:view-costs. */
+        ProjectEconomyRow: {
+            /** @description What has been logged on the project. Absent exactly when timeTracking is false. */
+            actuals?: components["schemas"]["ProjectEconomyRowActuals"];
+            /** @description Absent when the project has no basis to measure against — such rows sort last under the budgetUsed sort — and absent when timeTracking is false. */
+            budgetUsed?: components["schemas"]["ProjectEconomyBudgetUsed"];
+            /** @description The currency this row's amounts are in. Absent when the project carries none, and then the row has no amounts at all. */
+            currency?: string | null;
+            /** @description The project's next open milestone, absent when it has none. */
+            nextMilestone?: components["schemas"]["ProjectEconomyNextMilestone"];
+            /** @description Whether the logged work has passed the budget budgetUsed measures against, decided on the exact ratio rather than on the rounded percent. False when there is nothing to measure against. */
+            overBudget: boolean;
+            /**
+             * Format: double
+             * @description The hours waiting for a decision: the submitted and draft buckets added up. Absent exactly when actuals is — nobody has said there are none, only that this installation cannot say.
+             */
+            pendingHours?: number | null;
+            project: components["schemas"]["ProjectEconomyRowProject"];
+            /**
+             * Format: double
+             * @description What the project's 'ready' milestones add up to, in its own currency. Absent when it has none ready, when none of them can be priced, and when the project carries no currency.
+             */
+            readyAmount?: number | null;
+            /**
+             * Format: int32
+             * @description How many of the project's milestones are ready to invoice.
+             */
+            readyCount: number;
+        };
+        /** @description What has been logged on a portfolio row's project — the three buckets and their totals, and no more. The unpriced, billable and non-billable splits are the per-project economy read's; a portfolio is read across hundreds of projects at once. */
+        ProjectEconomyRowActuals: {
+            /** @description Approved and invoiced entries. */
+            approved: components["schemas"]["ProjectEconomyBucket"];
+            /** @description Draft and rejected entries. */
+            draft: components["schemas"]["ProjectEconomyBucket"];
+            submitted: components["schemas"]["ProjectEconomyBucket"];
+            /**
+             * Format: double
+             * @description The three buckets' bill amounts added up, in the project's currency. Absent when the project carries no currency.
+             */
+            totalAmount?: number | null;
+            /** Format: double */
+            totalHours: number;
+        };
+        /** @description Which project a portfolio row is about, in the fields the table renders and links from. */
+        ProjectEconomyRowProject: {
+            code: string;
+            /** @description Absent on an internal project. */
+            customer?: components["schemas"]["ProjectEconomyCustomer"];
+            /** Format: int32 */
+            id: number;
+            name: string;
+            status: string;
+        };
+        /** @description What the whole filtered set adds up to, page or no page. readyAmounts is a list rather than one number because the projects in it may be in several currencies, and two currencies never add up. */
+        ProjectEconomyTotals: {
+            /**
+             * Format: int32
+             * @description How many of those projects have passed their budget. Always 0 when timeTracking is false, since nothing can be compared then.
+             */
+            overBudgetCount: number;
+            /**
+             * Format: int32
+             * @description How many projects the filters matched, which is also the pagination's totalCount.
+             */
+            projectCount: number;
+            /** @description What is ready to invoice, one entry per currency, by currency code. A project whose ready milestones cannot be priced, or that carries no currency, contributes to readyCount and to no amount. */
+            readyAmounts: components["schemas"]["ProjectEconomyReadyAmount"][];
+            /**
+             * Format: int32
+             * @description How many milestones across those projects are ready to invoice.
+             */
+            readyCount: number;
         };
         /** @description The project's financial fields, present only when the caller may see them (capabilities.canSeeFinancials) and then always present, possibly with no fields inside, so a client can tell "may see, nothing entered" from "may not see". */
         ProjectFinancials: {
@@ -1183,7 +1317,15 @@ export interface components {
             /** Format: uuid */
             userId: string;
         };
-        /** @description One project the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention; entityId is the project id, which the dashboard turns into a link to /projects/{id}. */
+        /**
+         * @description One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
+         *
+         *     Five types, each with its own recipients: `projectOverdue`, an active project past its end date, for everyone who can see it; `budgetWarning` (80 % ≤ used ≤ 100 %) and `budgetExceeded` (over 100 %), for the managers of an active project and nobody else, so a holder of projects:manage-all is not sent every project's alerts; `milestoneReady`, for everyone with financial rights on a project that is not cancelled or completed; and `milestoneOverdue`, a planned milestone whose day has passed, for the managers of an active project. One project never raises both budget types.
+         *
+         *     entityId is the project id for the three project-shaped types and `<projectId>/<milestoneId>` for the two milestone ones, which is what the dashboard builds the link from; id is unique within the list.
+         *
+         *     The budget items need what has been logged, which comes from another module. When that module cannot answer, they are left out and the rest of the list is still returned — this endpoint is one of many the dashboard merges, and one degraded module must not empty it.
+         */
         ProjectStatsAttentionItem: {
             entityId: string;
             id: string;
@@ -1211,6 +1353,11 @@ export interface components {
             newProjects: number;
             /** Format: int32 */
             newProjectsDelta: number;
+            /**
+             * Format: int32
+             * @description How many billing milestones are ready to invoice, on the projects whose money the caller may see. A count and not an amount: the projects may be in several currencies, and two currencies never add up. It is a state now rather than a figure over the period, exactly as activeProjects is, and it has no delta for the same reason a currency-mixed amount would have no meaning.
+             */
+            readyMilestones: number;
             /** Format: date-time */
             to: string;
         };
@@ -1610,6 +1757,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectCodeSuggestionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthErrorResponse"];
+                };
+            };
+        };
+    };
+    getProjectsEconomy: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+                /** @description Matches the project code or name, case-insensitively. '%' and '_' are literal characters, not wildcards. */
+                search?: string;
+                /** @description One of 'planned', 'active', 'on-hold', 'completed', 'cancelled' or 'all'. Defaults to 'active' — a portfolio is about the work being done now — and 'all' is how every status is asked for. */
+                status?: string;
+                customerId?: number;
+                /** @description true keeps only the rows whose logged work has passed the budget. Nothing is over budget when time tracking is off. */
+                overBudget?: boolean;
+                /** @description true keeps only the rows with at least one milestone ready to invoice. */
+                hasReady?: boolean;
+                /** @description Which order the rows come in. 'budgetUsed' (the default) is most-used first on the exact ratio, with rows that have no basis last; 'readyAmount' is by currency code and then the largest amount first, because amounts in different currencies are not comparable and one list cannot rank them against each other; 'nextMilestone' is the soonest planned date first, undated open milestones after dated ones and rows with no open milestone last; 'code' is alphabetical. Every order breaks ties by project code. */
+                sort?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEconomyListResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Unauthorized */
