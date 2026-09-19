@@ -66,13 +66,19 @@ old hours stay readable.
 
 **One currency per project.** `currency` (ISO 4217 shape, `^[A-Z]{3}$`) is required
 as soon as any amount is set — a fixed price, a budget amount, a default bill rate, a
-`fixed` billing line, a line's `budgetAmount`, or a billing milestone — and while any
-of those exist it can be neither cleared nor changed to another currency (deactivated
-lines count: their amount is still denominated in the currency it was typed in, and
-the line can be reactivated; a **cancelled** milestone does not count — it bills
-nothing, so it cannot hold the currency back). Reprice, remove or cancel those first.
-`list` and `discount` lines resolve in the project's currency, so they never hold it
-back. See [Locking](#locking) for how this is decided safely under concurrent writes.
+`fixed` billing line, a line's `budgetAmount`, or a billing milestone — and it can
+never be **cleared** while any of those is set. **Changing** it to another currency is
+narrower: it is additionally refused only while a `fixed` billing line, a line's
+`budgetAmount`, or a non-cancelled billing milestone exists (deactivated lines count:
+their amount is still denominated in the currency it was typed in, and the line can be
+reactivated; a **cancelled** milestone does not count — it bills nothing, so it cannot
+hold the currency back). The project's own fixed price, budget amount and default bill
+rate do not hold a currency *change* back the same way — only clearing the currency
+while they are set is refused; changing it moves them to the new currency's meaning
+along with the rest of the project. Reprice, remove or cancel the three that do hold a
+change back, first. `list` and `discount` lines resolve in the project's currency, so
+they never hold it back either way. See [Locking](#locking) for how this is decided
+safely under concurrent writes.
 
 The `projects` schema holds no foreign key that leaves it: `customer_id`,
 `variant_id` and every user ID are opaque, per
@@ -283,7 +289,10 @@ milestone becomes a percent one); a percent has none of its own, because it reso
 against a fixed price that is always in the project's current currency. Any project that carries a currency may have
 milestones, whatever its billing type; a `percent` milestone additionally needs the
 project to be `fixed-price` with a `fixedPriceAmount` set, because a percent is a
-share of that number.
+share of that number. `amount` is greater than zero, at most 9 999 999 999.99 and at
+most two decimals; `percent` is greater than zero, at most 100 and at most two
+decimals — both column-bounded, so a number too wide or too precise is a field error
+rather than a database overflow or a silent rounding.
 
 **Effective amount** is what the plan actually counts for a milestone, computed on
 every read rather than stored: the amount frozen when it was invoiced, else the flat
@@ -325,10 +334,13 @@ in a currency the project has since moved off — that last one can only be a re
 and the refusal says to add a new milestone rather than bringing an old number back
 into a different currency. Cancelling is never
 refused this way — it is how a milestone the project can no longer support is got rid
-of. **The one exception** is undoing an invoicing (`invoiced → ready`): it is never
-refused either, because crediting an invoice is a real event that must not be
-blocked. If the milestone was a percent of a fixed price the project has since
-dropped, the undo instead **converts** it to an amount milestone — `amount` becomes
+of. **The one exception** is undoing an invoicing (`invoiced → ready`): the
+missing-fixed-price refusal never applies to it, because crediting an invoice is a
+real event that must not be blocked — the currency check still applies to an undo,
+though a project with an invoiced milestone cannot in practice have lost its currency
+(an invoiced milestone is non-cancelled, and the currency guard above refuses clearing
+the currency while one exists). If the milestone was a percent of a fixed price the
+project has since dropped, the undo instead **converts** it to an amount milestone — `amount` becomes
 the amount that was frozen when it was invoiced, stamped with the currency that
 invoice was raised in, and `percent` is cleared — so the number that was actually
 billed survives even though the share it once was no longer means anything. The timeline entry for that undo carries `convertedToAmount: true`.
@@ -336,14 +348,18 @@ billed survives even though the share it once was no longer means anything. The 
 Marking a milestone `→ ready` stamps who did it and when; `ready → planned` and
 `cancelled → planned` clear those stamps. `→ invoiced` stamps who and when, stores an
 optional `invoiceReference` (≤ 100 characters, trimmed) and `invoiceDate`, and
-freezes the effective amount into `invoicedAmount`; `invoiced → ready` clears all
-four. A reference or a date sent on any other move is refused, naming the field,
-rather than silently ignored.
+freezes the effective amount into `invoicedAmount`; `invoiced → ready` clears all five
+of those columns (who, when, reference, date, frozen amount). A reference or a date
+sent on any other move is refused, naming the field, rather than silently ignored.
 
 **Editing and deleting.** A milestone's content (name, dates, amount or percent) can
 be edited by the project's manager only while it is `planned` or `ready`; an
 `invoiced` or a `cancelled` milestone is read-only until moved back — a 400 on
-`status` says so. An edit that changes nothing writes no timeline entry; one that does
+`status` says so. `PUT` decides in a fixed order once it holds both locks: a stale
+`revision` answers 409 first, then the read-only rule (400 on `status`), and only then
+the project-dependent rules on the body itself (currency, percent-needs-price) —
+so a caller two states behind is told to re-read the plan rather than being sent to
+fix a project field they may no longer be able to touch. An edit that changes nothing writes no timeline entry; one that does
 writes `milestone-changed` naming the fields that moved (`name`, `description`,
 `plannedDate`, `amount`, `percent` — names only, never the values). **Delete** is
 narrower still: only while the milestone is still `planned` **and has never changed

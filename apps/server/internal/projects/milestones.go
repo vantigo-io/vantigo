@@ -151,10 +151,12 @@ func (s *server) GetProjectsByIdMilestones(ctx context.Context, req gen.GetProje
 // (POST /api/v1/projects/{id}/milestones)
 //
 // A create appends: the new milestone takes the number after the last one.
-// That number is read and written under the project's ordering advisory lock,
-// because two creates racing for the end of the same plan would otherwise
-// both read the same maximum and both write the number after it — and no row
-// lock can cover that, since what they race for is the gap after the last row.
+// Two creates racing for the end of the same plan are serialised by the
+// project's own row lock (LockProject), which every milestone write already
+// holds by the time it reads that number — unlike tasks, whose writes take no
+// project lock and so need an ordering advisory lock of their own, a
+// milestone write cannot reach MaxMilestonePosition without it, so no second
+// lock is needed here (see queries/milestones.sql).
 //
 // The project's own row lock comes first all the same, and the body is
 // re-validated against the row it returns: whether this project has a
