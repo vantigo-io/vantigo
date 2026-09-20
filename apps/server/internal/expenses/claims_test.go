@@ -359,6 +359,57 @@ func TestExpensesClaims_ThePeriodLockIsJudgedOnTheDeparture(t *testing.T) {
 	_ = locked
 }
 
+// **Which day a claim's instants name.** A claim stores two timestamptz, which
+// keep the instant and not the offset it was typed in, so there is exactly one
+// derivation available and this module uses it everywhere: the **UTC calendar
+// day**. A departure of 2026-03-01T00:30+02:00 is 2026-02-28T22:30Z, so every
+// date derived from it — the day the period lock judges, the day the list's
+// from/to filter matches, and the first day a per diem line may fall on — is
+// 2026-02-28, not 2026-03-01.
+//
+// Every other test here uses Z instants, which cannot tell the two apart; this
+// one is the offset case, and it is the reason the SQL filter is written
+// `(departure_at AT TIME ZONE 'UTC')::date` and the Go rule `utcDay(...)`.
+func TestExpensesClaims_ADeparturesDayIsItsUTCDay(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	admin, _ := signIn(t, h, "expenses:manage")
+	owner, _ := signIn(t, h)
+
+	// Typed as the first of March in Oslo, which is the last of February in
+	// UTC — and the lock closes everything before the first.
+	const departure = "2026-03-01T00:30:00+02:00"
+	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-03-01"}))
+	errs := refusedClaim(t, owner, http.MethodPost, claimsPath, claimBody(map[string]any{
+		"departureAt": departure, "returnAt": "2026-03-02T12:00:00Z",
+	}))
+	if !mentions(errs["departureAt"], "2026-03-01") {
+		t.Errorf("errors = %v, want the lock to judge the departure on its UTC day, 2026-02-28", errs)
+	}
+
+	// With the lock a day earlier the very same trip saves, and the list finds
+	// it under the UTC day too — 02-28, not 03-01.
+	putSettings(t, admin, settingsBody(map[string]any{"lockedBefore": "2026-02-28"}))
+	claim := createClaim(t, owner, map[string]any{
+		"departureAt": departure, "returnAt": "2026-03-02T12:00:00Z",
+	})
+	if got := claimIDsOf(listClaims(t, owner, "?from=2026-02-28&to=2026-02-28")); len(got) != 1 || got[0] != claim.Id {
+		t.Errorf("claims departing on 2026-02-28 = %v, want [%d]", got, claim.Id)
+	}
+	if got := claimIDsOf(listClaims(t, owner, "?from=2026-03-01")); len(got) != 0 {
+		t.Errorf("claims departing on or after 2026-03-01 = %v, want none", got)
+	}
+
+	// And the trip's first day — what a per diem line may be dated on — is the
+	// same 2026-02-28. The day before it is outside the trip.
+	addLine(t, owner, claim.Id, perDiemBody(map[string]any{"entryDate": "2026-02-28"}))
+	errs = refusedEntry(t, owner, http.MethodPost, entriesPath,
+		perDiemBody(map[string]any{"claimId": claim.Id, "entryDate": "2026-02-27"}))
+	if len(errs["entryDate"]) == 0 {
+		t.Errorf("errors = %v, want entryDate to put 2026-02-27 outside the trip", errs)
+	}
+}
+
 // The list is the claims the caller may see, the most recent trip first, with
 // the filters the contract declares.
 func TestExpensesClaims_TheListIsPagedAndFiltered(t *testing.T) {
@@ -469,6 +520,42 @@ func TestExpensesClaims_TotalsArePerCurrencyAndNeverConverted(t *testing.T) {
 	}
 	if len(page.Data[0].Totals) != 2 {
 		t.Errorf("list totals = %+v, want one line per currency", page.Data[0].Totals)
+	}
+}
+
+// A claim's lines are not loose drafts on the dashboard. Their own status
+// column stays at its default and is never read, so counting them there would
+// report five drafts for a trip whose owner can do nothing with one of them on
+// its own — and the one thing that is actionable, the claim, would not be in
+// the figure at all.
+func TestExpensesClaims_ItsLinesAreNotCountedAsLooseDrafts(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+
+	standalone := createEntry(t, owner, outlayBody(nil))
+	before := getStats(t, owner)
+	if before.Draft != 1 {
+		t.Fatalf("drafts = %d, want the one standalone expense", before.Draft)
+	}
+
+	claim := createClaim(t, owner, nil)
+	for range 5 {
+		addLine(t, owner, claim.Id, outlayBody(nil))
+	}
+	after := getStats(t, owner)
+	if after.Draft != 1 {
+		t.Errorf("drafts = %d after five lines were added to a trip, want the one standalone expense",
+			after.Draft)
+	}
+	// The same figure on the summary card, which reads the same query.
+	if summary := getStatsSummary(t, owner, ""); summary.MyDrafts != 1 {
+		t.Errorf("the summary says %d drafts, want 1", summary.MyDrafts)
+	}
+	// And the standalone expense is still counted, so the filter narrowed
+	// rather than emptied.
+	if got := getEntry(t, owner, standalone.Id); got.Status != "draft" {
+		t.Errorf("the standalone expense is %s, want it still a draft", got.Status)
 	}
 }
 

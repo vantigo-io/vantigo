@@ -95,9 +95,16 @@ UPDATE expenses.entries SET
     updated_at = @now::timestamptz
 WHERE id = ANY(@ids::bigint[])
   AND status = 'approved'
+  AND claim_id IS NULL
   AND reimbursed_at IS NULL
   AND gross_amount > 0
   AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+  -- claim_id IS NULL is the rule this operation is about: a payroll run covers
+  -- a standalone expense or a whole travel claim, never one of a claim's lines
+  -- (unitOf in authorize.go). Go refuses a line by id before this ever runs, so
+  -- the guard is unreachable today — which is exactly why it is here: a
+  -- regression up there should fail loudly rather than quietly pay one line of
+  -- somebody's trip on its own.
 RETURNING *;
 
 -- name: UnmarkEntriesReimbursed :many
@@ -110,7 +117,13 @@ UPDATE expenses.entries SET
     reimbursement_reference = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = ANY(@ids::bigint[]) AND reimbursed_at IS NOT NULL
+WHERE id = ANY(@ids::bigint[]) AND reimbursed_at IS NOT NULL AND claim_id IS NULL
+  -- claim_id IS NULL is the rule this operation is about: a payroll run covers
+  -- a standalone expense or a whole travel claim, never one of a claim's lines
+  -- (unitOf in authorize.go). Go refuses a line by id before this ever runs, so
+  -- the guard is unreachable today — which is exactly why it is here: a
+  -- regression up there should fail loudly rather than quietly pay one line of
+  -- somebody's trip on its own.
 RETURNING *;
 
 -- name: MarkEntryInvoiced :one

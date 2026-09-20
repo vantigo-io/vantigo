@@ -153,7 +153,7 @@ SELECT
     count(*) FILTER (WHERE status = 'approved')  AS approved,
     count(*) FILTER (WHERE status = 'rejected')  AS rejected
 FROM expenses.entries
-WHERE user_id = $1
+WHERE user_id = $1 AND claim_id IS NULL
 `
 
 type StatsMyStatusCountsRow struct {
@@ -172,8 +172,15 @@ type StatsMyStatusCountsRow struct {
 //
 // The count is deliberately fixed: a dashboard that costs one statement per
 // expense is a dashboard nobody keeps open.
-// StatsMyStatusCounts is how many of the caller's own expenses stand in each
-// status, every status present whether or not anything is in it.
+// StatsMyStatusCounts is how many of the caller's own **standalone** expenses
+// stand in each status, every status present whether or not anything is in it.
+//
+// A travel claim's lines are left out. Their own status column stays at its
+// default 'draft' and is never read (unitOf in authorize.go), so counting them
+// here would report five drafts for a trip its owner can do nothing with one
+// at a time — they cannot be submitted, and the one thing that *is* actionable,
+// the claim, would not be in the figure at all. The claims' own per-status
+// counts arrive with the claim flow and are added on top of these.
 func (q *Queries) StatsMyStatusCounts(ctx context.Context, userID uuid.UUID) (StatsMyStatusCountsRow, error) {
 	row := q.db.QueryRow(ctx, statsMyStatusCounts, userID)
 	var i StatsMyStatusCountsRow

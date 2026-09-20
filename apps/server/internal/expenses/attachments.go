@@ -369,13 +369,25 @@ func (s *server) visibleAttachment(ctx context.Context, q *store.Queries, c *cal
 	return attachment, entry, unit, a, true, nil
 }
 
+// The two log keys removeReceiptObject names a swept object's owner by, so
+// neither is spelled out at a call site.
+const (
+	logKeyEntryID = "entry_id"
+	logKeyClaimID = "claim_id"
+)
+
 // removeReceiptObject removes an object the database no longer points at (or
 // never came to). It is best effort by design: the row is what makes a receipt,
 // so an object that outlives it is a stray to be swept, not a reason to fail a
 // request that otherwise succeeded. The key is deliberately not in the log
-// line — it would reach server logs for no one's benefit — so the expense is
-// what a reader correlates on.
-func (s *server) removeReceiptObject(ctx context.Context, entryID int64, key string) {
+// line — it would reach server logs for no one's benefit — so the row that lost
+// it is what a reader correlates on.
+//
+// That row is named by idKey/id rather than always "entry_id", because a
+// travel claim's delete sweeps the objects of every line at once and knows only
+// the claim: an operator chasing a failed sweep must not be sent to look up an
+// expense whose id is really a claim's.
+func (s *server) removeReceiptObject(ctx context.Context, idKey string, id int64, key string) {
 	// Detached from the request's own cancellation, and bounded by a deadline
 	// of its own. Every call of this is a compensation for a decision already
 	// made — the row is gone, or was never written — and internal/storage's fs
@@ -386,7 +398,7 @@ func (s *server) removeReceiptObject(ctx context.Context, entryID int64, key str
 	defer cancel()
 	if err := s.objects.Delete(cleanup, key); err != nil {
 		s.deps.Logger.ErrorContext(cleanup, "expenses: a receipt object could not be removed from the store",
-			"entry_id", entryID, "error", err.Error())
+			idKey, id, "error", err.Error())
 	}
 }
 
@@ -479,13 +491,13 @@ func (s *server) PostExpensesEntriesByIdAttachments(ctx context.Context, req gen
 	})
 	switch {
 	case err != nil:
-		s.removeReceiptObject(ctx, req.Id, key)
+		s.removeReceiptObject(ctx, logKeyEntryID, req.Id, key)
 		return nil, fmt.Errorf("expenses: attach a receipt: %w", err)
 	case gone:
-		s.removeReceiptObject(ctx, req.Id, key)
+		s.removeReceiptObject(ctx, logKeyEntryID, req.Id, key)
 		return gen.PostExpensesEntriesByIdAttachments404Response{}, nil
 	case refusal != "":
-		s.removeReceiptObject(ctx, req.Id, key)
+		s.removeReceiptObject(ctx, logKeyEntryID, req.Id, key)
 		return gen.PostExpensesEntriesByIdAttachments400ApplicationProblemPlusJSONResponse(
 			invalidReceipt(fieldError("entryId", refusal))), nil
 	}
@@ -663,6 +675,6 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 		return gen.DeleteExpensesAttachmentsById400ApplicationProblemPlusJSONResponse(
 			invalidReceipt(fieldError("entryId", refusal))), nil
 	}
-	s.removeReceiptObject(ctx, entry.ID, attachment.ObjectKey)
+	s.removeReceiptObject(ctx, logKeyEntryID, entry.ID, attachment.ObjectKey)
 	return gen.DeleteExpensesAttachmentsById204Response{}, nil
 }

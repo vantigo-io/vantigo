@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/vantigo-io/vantigo/server/internal/apicommon"
@@ -673,7 +674,7 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 			if err != nil {
 				return fmt.Errorf("expenses: lock a travel claim's expenses: %w", err)
 			}
-			if msg := invoicedLineRefusal(lines, projectID); msg != "" {
+			if msg := invoicedLineRefusal(lines); msg != "" {
 				staleField, staleMsg = "projectId", msg
 				return nil
 			}
@@ -804,7 +805,10 @@ func (s *server) DeleteExpensesClaimsById(ctx context.Context, req gen.DeleteExp
 		return gen.DeleteExpensesClaimsById403JSONResponse(forbidden()), nil
 	}
 	for _, key := range keys {
-		s.removeReceiptObject(ctx, req.Id, key)
+		// The claim is what these belonged to, so that is what the sweep logs
+		// if the store refuses one: an entry id here would send an operator to
+		// an expense that is not the one the receipt was on.
+		s.removeReceiptObject(ctx, logKeyClaimID, req.Id, key)
 	}
 	return gen.DeleteExpensesClaimsById204Response{}, nil
 }
@@ -932,6 +936,67 @@ func perDiemDayRefusal(ctx context.Context, txq *store.Queries, p prepared, excl
 	return perDiemDayTaken(p.Parsed.Date), nil
 }
 
+// claimChangedUnderSave reports whether the claim moved, between the read a
+// save was judged against and the row lock it then took, in a way that makes
+// what the save is about to write wrong.
+//
+// A line's columns are **derived** from its claim: its owner and its project
+// (and the billing line, the billable flag and the figures judged against that
+// project), and — for a per diem day — the day rate, the currency and the trip
+// window it was priced and dated against. Those are all read before the
+// transaction, because judging a project means asking the project directory and
+// nothing inside a locked transaction may. So the claim has to be compared
+// again once it is held.
+//
+// It matters most for the project. The list's visibility predicate reads a
+// line's own denormalised `user_id` and `project_id` *because* they always
+// equal the claim's; a line inserted with the claim's previous project would be
+// visible to that project's managers and invisible to the new one's, while the
+// claim's own read showed it to neither. The sibling path is already safe by
+// another route: `PUT /entries/{id}` is guarded by the line's revision, which a
+// re-point bumps, so a racing edit gets a 409.
+//
+// It refuses rather than re-deriving. Re-deriving would need the project
+// directory inside the transaction, which this module forbids; and the window
+// and the day rate would each need their own re-judgement under the lock for a
+// race two writers on one trip have to lose anyway. The caller is told to read
+// the claim again, which is what they would have to do regardless.
+func claimChangedUnderSave(judged, locked store.ExpensesClaim) bool {
+	return locked.UserID != judged.UserID ||
+		!sameProject(locked.ProjectID, judged.ProjectID) ||
+		locked.Abroad != judged.Abroad ||
+		!sameDayRate(locked.AbroadDayRate, judged.AbroadDayRate) ||
+		derefString(locked.AbroadCurrency) != derefString(judged.AbroadCurrency) ||
+		!locked.DepartureAt.Equal(judged.DepartureAt) ||
+		!locked.ReturnAt.Equal(judged.ReturnAt)
+}
+
+// claimChangedMessage is what that refusal says. It is a 400 on claimId rather
+// than a 409: a create carries no revision of the claim to conflict with, and
+// what refuses is a fact about the claim the caller can act on — the module's
+// one rule for that code.
+const claimChangedMessage = "This travel claim changed while the expense was being recorded; read it again and retry"
+
+// sameDayRate reports whether two optional day rates are the same figure,
+// comparing the decimals the columns hold rather than their representations.
+func sameDayRate(a, b pgtype.Numeric) bool {
+	if a.Valid != b.Valid {
+		return false
+	}
+	if !a.Valid {
+		return true
+	}
+	left, err := ratFromNumeric(a)
+	if err != nil {
+		return false
+	}
+	right, err := ratFromNumeric(b)
+	if err != nil {
+		return false
+	}
+	return left.Cmp(right) == 0
+}
+
 // claimLineCapRefusal is the cap of Global Constraints, decided under the
 // claim's own row lock so two lines racing for the last slot cannot both take
 // it.
@@ -942,14 +1007,20 @@ func claimLineCapRefusal(count int64) string {
 	return fmt.Sprintf("A travel claim holds at most %d expenses", maxClaimLines)
 }
 
-// invoicedLineRefusal is the one thing a project re-point cannot do: take the
-// project off a line that has already been billed to a customer. What went out
-// on an invoice keeps the project it went out under, so the claim's project has
-// to stay too.
-func invoicedLineRefusal(lines []store.ExpensesEntry, projectID *int32) string {
-	if projectID != nil {
-		return ""
-	}
+// invoicedLineRefusal is the one thing a project re-point cannot do: move a
+// line that has already been billed to a customer. What went out on an invoice
+// keeps the project it went out under, so the claim's project has to stay too —
+// whether the replace is *changing* the project or taking it off altogether.
+// Either would leave the line saying it belongs to one project while the
+// invoice that went out says another, and would clear the billing line it was
+// invoiced against on the way.
+//
+// It is only ever called on a re-point, so it does not ask what the new project
+// is: any re-point at all is refused while a line of the claim is invoiced.
+// This is what the standalone path already does by another route — an invoiced
+// entry is approved, therefore not editable, therefore its project cannot be
+// changed at all.
+func invoicedLineRefusal(lines []store.ExpensesEntry) string {
 	for _, line := range lines {
 		if line.InvoicedAt != nil {
 			return fmt.Sprintf(
@@ -1041,7 +1112,7 @@ func (s *server) prepareClaimUpdate(ctx context.Context, q *store.Queries, c *ca
 	if err != nil {
 		return parsedClaim{}, repointPlan{}, nil, fmt.Errorf("expenses: read a travel claim's expenses: %w", err)
 	}
-	if msg := invoicedLineRefusal(existing, parsed.ProjectID); msg != "" {
+	if msg := invoicedLineRefusal(existing); msg != "" {
 		add("projectId", msg)
 	}
 	return parsed, plan, errs, nil

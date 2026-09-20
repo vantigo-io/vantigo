@@ -46,7 +46,13 @@ UPDATE expenses.entries SET
     rejection_reason = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = @id AND status IN ('draft', 'rejected')
+WHERE id = @id AND status IN ('draft', 'rejected') AND claim_id IS NULL
+  -- claim_id IS NULL is the rule this operation is about: the unit that moves
+  -- through the flow is a standalone expense or a whole travel claim, never one
+  -- of a claim's lines (unitOf in authorize.go). Go refuses a line by id before
+  -- this ever runs, so the guard is unreachable today — which is exactly why it
+  -- is here: a regression up there should fail loudly rather than quietly move
+  -- one line of somebody's trip on its own.
 RETURNING *;
 
 -- name: ApproveEntries :many
@@ -61,7 +67,13 @@ UPDATE expenses.entries SET
     rejection_reason = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = ANY(@ids::bigint[]) AND status = 'submitted'
+WHERE id = ANY(@ids::bigint[]) AND status = 'submitted' AND claim_id IS NULL
+  -- claim_id IS NULL is the rule this operation is about: the unit that moves
+  -- through the flow is a standalone expense or a whole travel claim, never one
+  -- of a claim's lines (unitOf in authorize.go). Go refuses a line by id before
+  -- this ever runs, so the guard is unreachable today — which is exactly why it
+  -- is here: a regression up there should fail loudly rather than quietly move
+  -- one line of somebody's trip on its own.
 RETURNING *;
 
 -- name: RejectEntries :many
@@ -75,7 +87,13 @@ UPDATE expenses.entries SET
     rejection_reason = @reason::text,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = ANY(@ids::bigint[]) AND status = 'submitted'
+WHERE id = ANY(@ids::bigint[]) AND status = 'submitted' AND claim_id IS NULL
+  -- claim_id IS NULL is the rule this operation is about: the unit that moves
+  -- through the flow is a standalone expense or a whole travel claim, never one
+  -- of a claim's lines (unitOf in authorize.go). Go refuses a line by id before
+  -- this ever runs, so the guard is unreachable today — which is exactly why it
+  -- is here: a regression up there should fail loudly rather than quietly move
+  -- one line of somebody's trip on its own.
 RETURNING *;
 
 -- name: UnapproveEntries :many
@@ -99,8 +117,14 @@ UPDATE expenses.entries SET
     passenger_rate_table_value = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = ANY(@ids::bigint[]) AND status = 'approved'
+WHERE id = ANY(@ids::bigint[]) AND status = 'approved' AND claim_id IS NULL
   AND reimbursed_at IS NULL AND invoiced_at IS NULL
+  -- claim_id IS NULL is the rule this operation is about: the unit that moves
+  -- through the flow is a standalone expense or a whole travel claim, never one
+  -- of a claim's lines (unitOf in authorize.go). Go refuses a line by id before
+  -- this ever runs, so the guard is unreachable today — which is exactly why it
+  -- is here: a regression up there should fail loudly rather than quietly move
+  -- one line of somebody's trip on its own.
 RETURNING *;
 
 -- name: OverrideEntryRate :one

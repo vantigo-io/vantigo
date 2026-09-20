@@ -68,7 +68,7 @@ func TestRemoveReceiptObject_OutlivesTheRequestItBelongsTo(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // the client has gone: this is what the handler is left holding
 
-	s.removeReceiptObject(ctx, 42, "receipts/42/9c4f")
+	s.removeReceiptObject(ctx, logKeyEntryID, 42, "receipts/42/9c4f")
 
 	if len(objects.deleted) != 1 || objects.deleted[0] != "receipts/42/9c4f" {
 		t.Errorf("deleted = %v, want the one key, removed despite the cancelled request", objects.deleted)

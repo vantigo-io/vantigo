@@ -118,6 +118,13 @@ DROP TABLE expenses.claims;
 -- Only the rows this migration seeded, named by kind, day and label, so a rate
 -- an administrator entered on another day — or one they relabelled as their
 -- own — is left exactly where it is.
+--
+-- The identity is deliberately (kind, valid_from, source) and not the value:
+-- ux_rates_kind_valid_from admits only one row per kind and day, so a company
+-- that wants its own figure for 2026-01-01 has to overwrite the shipped row,
+-- and a row they edited **but left labelled "State rate"** goes with this
+-- delete. Relabelling it as their own is what spares it, which is the same
+-- signal POST /rates/reset reads when it decides what to put back.
 DELETE FROM expenses.rates
 WHERE source = 'State rate'
   AND valid_from = DATE '2026-01-01'

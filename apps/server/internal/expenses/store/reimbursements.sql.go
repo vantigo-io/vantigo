@@ -305,9 +305,16 @@ UPDATE expenses.entries SET
     updated_at = $1::timestamptz
 WHERE id = ANY($5::bigint[])
   AND status = 'approved'
+  AND claim_id IS NULL
   AND reimbursed_at IS NULL
   AND gross_amount > 0
   AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+  -- claim_id IS NULL is the rule this operation is about: a payroll run covers
+  -- a standalone expense or a whole travel claim, never one of a claim's lines
+  -- (unitOf in authorize.go). Go refuses a line by id before this ever runs, so
+  -- the guard is unreachable today — which is exactly why it is here: a
+  -- regression up there should fail loudly rather than quietly pay one line of
+  -- somebody's trip on its own.
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 
@@ -508,7 +515,13 @@ UPDATE expenses.entries SET
     reimbursement_reference = NULL,
     revision = revision + 1,
     updated_at = $1::timestamptz
-WHERE id = ANY($2::bigint[]) AND reimbursed_at IS NOT NULL
+WHERE id = ANY($2::bigint[]) AND reimbursed_at IS NOT NULL AND claim_id IS NULL
+  -- claim_id IS NULL is the rule this operation is about: a payroll run covers
+  -- a standalone expense or a whole travel claim, never one of a claim's lines
+  -- (unitOf in authorize.go). Go refuses a line by id before this ever runs, so
+  -- the guard is unreachable today — which is exactly why it is here: a
+  -- regression up there should fail loudly rather than quietly pay one line of
+  -- somebody's trip on its own.
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 
