@@ -325,16 +325,31 @@ are bookkeeping done once a period has closed. See [`docs/expenses.md`](docs/exp
 *Unblocks:* a company's non-hours costs recorded and paid back, and a customer's
 project a step closer to fully costed with Time's hours already in.
 
-### Next — Travel claims and per diem
+### Phase 2 — Travel claims and per diem (done)
 
-A travel claim as the unit several outlays and per-diem days are grouped and
-submitted under, and the per-diem rate kinds this delivery's schema already
-reserves — seeded and priced once the official per-diem rates are verified against
-their source, never from memory.
+A **travel claim** is the unit a trip's outlays, mileage and per-diem days are
+grouped, submitted, approved and paid under: it carries the status, the
+decision, the reimbursement and the project, while each line keeps its own
+amounts, receipts and invoicing. **Per diem** is a day of the trip per line,
+priced at the rate in force on that day less the percentage of every meal
+somebody else paid for, with the days a trip's own times imply suggested by the
+server and ticked off by the traveller. The per-diem and meal rate kinds phase 1
+reserved are seeded from the state's *Særavtale om dekning av utgifter til reise
+og kost innenlands* (in force 2026-01-01 to 2027-12-31), verified against the
+source rather than written from memory, and are the administrator's to change
+from there. Because a claim stores two instants, the installation gained a
+**business time zone** — the one calendar the period lock, the per-diem window
+and the payroll file are judged by. In the app: the trip's own page, travel
+claims as units in the approval queue and the payroll list (one selection, one
+request, across both kinds), and the rate kinds and time zone in settings. See
+[`docs/expenses.md`](docs/expenses.md).
 
-### Later
+*Unblocks:* a whole trip recorded, approved and paid as one, and per diem
+priced by the agreement instead of by hand in a spreadsheet.
 
-- **The project page's Economy tab, cost side.** Expenses joins Time's hours on the
-  Economy tab (`/projects/$projectId/economy`) as the other half of a project's
-  actual cost, following the same optional-contract shape
-  (`contracts.ProjectActuals`) Time already provides it through.
+### Next — The project page's Economy tab, cost side
+
+Expenses joins Time's hours on the Economy tab (`/projects/$projectId/economy`)
+as the other half of a project's actual cost, following the same
+optional-contract shape (`contracts.ProjectActuals`) Time already provides it
+through, with the project page's own Expenses tab beside it.

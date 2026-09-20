@@ -58,22 +58,10 @@ installation, and so is `MODULES=expenses` alone.
   in force on a day is the row of that kind with the greatest `validFrom` on or
   before it. Ten kinds exist in the schema: `mileage`, `mileage_passenger`,
   `mileage_customer` (money per kilometre), four per-diem kinds and three meal
-  percentages. Seeded at migration time, all `validFrom: 2026-01-01` and
-  `source: "State rate"`: `mileage` 5.30 NOK and `mileage_passenger` 1.00 NOK
-  (verified against Skatteetaten's published rates), and `per_diem_6_12` 397
-  NOK, `per_diem_over_12` 736 NOK, `per_diem_overnight_hotel` 1012 NOK,
-  `meal_breakfast_percent` 20, `meal_lunch_percent` 30 and
-  `meal_dinner_percent` 50 (verified against the state's *Særavtale om dekning
-  av utgifter til reise og kost innenlands*, §§ 6 and 9). Two kinds are
-  deliberately unseeded: `mileage_customer` — what a customer is charged per
-  kilometre — because that is the company's own price, not a public rate, and
-  `per_diem_overnight_other`, because the agreement knows one overnight rate
-  and a night somewhere that is not a hotel is priced at a figure the company
-  sets. A
-  row an administrator edits or removes can always be restored with
-  `POST /rates/reset`, which puts a kind's shipped rows back exactly as the
-  migration wrote them (value, currency, source) without touching a row on a day
-  the product does not ship.
+  percentages. Eight are seeded at migration time and two deliberately are not;
+  the figures, their source and validity, and what the agreement says that this
+  module leaves to an approver, are in "The rates, and what they deliberately do
+  not model" below.
 - **Settings** (`expenses.settings`) — one row: the period lock (`lockedBefore`),
   the installation's `defaultCurrency`, `defaultMarkupPercent` (an
   `expenses:manage`-only figure — see below), the optional `receiptRequiredOver`
@@ -372,6 +360,57 @@ query a day.
 column takes the empty string: what the day *is* is its `perDiem.type`, which
 every reader already has, and a name the server invented would sit in the column
 in one language for ever.
+
+## The rates, and what they deliberately do not model
+
+The rate in force on a day is the row of that kind with the greatest `validFrom`
+on or before it, and a row carries **no end date**: it stands until a later row
+takes over. Every seeded row is written by migration 00013 with `validFrom`
+2026-01-01 and `source: "State rate"`:
+
+| Kind | Value | Source |
+|---|---|---|
+| `mileage` | 5.30 NOK/km | Skatteetaten's published rates, verified 2026-09-19 |
+| `mileage_passenger` | 1.00 NOK/km | the same |
+| `per_diem_6_12` | 397.00 NOK | *Særavtale om dekning av utgifter til reise og kost innenlands* (regjeringen.no), in force **2026-01-01 to 2027-12-31**, § 6, verified 2026-09-20 |
+| `per_diem_over_12` | 736.00 NOK | the same, § 6 |
+| `per_diem_overnight_hotel` | 1 012.00 NOK | the same, § 9 |
+| `meal_breakfast_percent` | 20 | the same, § 6 |
+| `meal_lunch_percent` | 30 | the same, § 6 |
+| `meal_dinner_percent` | 50 | the same, § 6 |
+
+**The rates are the administrator's, and nothing keeps them current.** They are
+added, edited and removed through `/rates`, and `POST /rates/reset` puts a
+kind's shipped rows back exactly as the migration wrote them without touching a
+row on a day the product never shipped. Nothing in the product fetches a rate
+from anywhere: **when the agreement is renegotiated — it expires 2027-12-31 —
+somebody has to enter the new rows by hand, dated from the day they take
+effect.** The old rows stay, which is the point: an expense dated last year is
+still priced by last year's figure, and a submitted one keeps whatever it was
+frozen with whatever the table says today.
+
+Two kinds ship **unseeded**, and each is a deliberate blank rather than an
+oversight:
+
+- `mileage_customer` — what a customer is charged per kilometre is the company's
+  own price, not a public rate.
+- `per_diem_overnight_other` — the agreement knows **one** overnight rate, the
+  hotel one. A company that pays differently for lodging without cooking
+  facilities enters its own figure; until it does, a day of that type cannot be
+  priced at all (400 on `perDiemType`), which is louder and safer than pricing
+  it at the hotel rate nobody agreed to.
+
+And three things the agreement says that this module deliberately **does not
+model**, because each is a fact about a trip that no field here records and an
+approver is the one who can judge it:
+
+- the **unreceipted night supplement** (§ 10, 452 NOK) — whether somebody slept
+  somewhere that issued no receipt is not something the claim knows;
+- the agreement's **distance condition** (a journey over 15 km) — the claim
+  stores where a trip went, not how far;
+- **rate tables for travel abroad** — a claim abroad carries its own
+  `abroadDayRate` and `abroadCurrency`, agreed on the claim itself, so no table
+  of countries is shipped or has to be kept up to date.
 
 ## The flow, and what freezes on submit
 
@@ -809,11 +848,15 @@ coverage gate (below) with no allow-list.
 
 ## What comes next
 
-The trip's own page in the app, where the days above are ticked off, the
-suggestion is offered and a whole trip is submitted, approved and put on a
-payroll run through the units this module now serves. Then **the project page's
-own Economy tab, on the cost side**: what a project's expenses cost and bill,
-beside the hours Time already reports there.
+**The project page's own Economy tab, on the cost side**: what a project's
+expenses cost and bill, beside the hours Time already reports there.
+
+Travel claims and per diem are done, front to back: the trip's own page at
+`/expenses/claims/$claimId`, where the days are suggested and ticked off and
+the whole trip is submitted; the approval queue and the payroll list, where a
+trip is one selectable row beside the loose expenses and a decision on a mixed
+selection is one request; and the settings page, where every rate kind and the
+installation's business time zone are managed.
 
 ## Development
 
