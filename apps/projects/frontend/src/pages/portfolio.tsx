@@ -142,6 +142,16 @@ export const EconomyPortfolio = () => {
               ))}
             </Stack>
           )}
+          {/* The figures above are each in one currency and fold in no other,
+              so what is waiting elsewhere has to be said in projects rather
+              than in money — the amounts are on each project's own Economy tab,
+              per currency and never converted. Absent when there are none: a
+              "0 projects" line is a sentence nobody needs to read. */}
+          {(totals.readyExpenseOtherCurrencyCount ?? 0) > 0 && (
+            <Text size="sm" c="dimmed" data-testid="ready-other-currency-count">
+              {t("readyInAnotherCurrencyCount", { count: totals.readyExpenseOtherCurrencyCount })}
+            </Text>
+          )}
         </Stack>
       )}
 
@@ -391,6 +401,17 @@ const PortfolioRow = ({ row }: { row: EconomyRow }) => {
           {row.readyCount > 0 && (row.readyExpenseCount ?? 0) > 0 && (
             <Text size="xs" c="dimmed" data-testid="ready-split">
               {t("readySplit", { milestones: money(row.readyAmount), expenses: money(row.readyExpenseAmount) })}
+            </Text>
+          )}
+          {/* Something is ready in a currency this row cannot report, so there
+              is no amount to print — only the fact, which is the one thing that
+              must not be lost. It is plain text and links nowhere: the project's
+              own code beside it is already the link to the page that has the
+              figures, and a second link to the same row would be one more stop
+              on the way for anyone using a keyboard or a screen reader. */}
+          {row.readyExpenseOtherCurrency && (
+            <Text size="xs" c="dimmed" data-testid="ready-other-currency">
+              {t("readyInAnotherCurrency")}
             </Text>
           )}
         </Stack>

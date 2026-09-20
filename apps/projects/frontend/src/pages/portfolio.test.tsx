@@ -62,6 +62,7 @@ const trackedPortfolio = (rows: EconomyRow[], overrides: Partial<EconomyPortfoli
       overBudgetCount: 0,
       readyCount: rows.length,
       readyExpenseCount: 0,
+      readyExpenseOtherCurrencyCount: 0,
       readyAmounts: [{ currency: "NOK", amount: 200000, expenseAmount: 0, totalAmount: 200000 }],
     },
     ...overrides,
@@ -92,6 +93,19 @@ const asTheServerWouldSend = (body: EconomyPortfolioPage): EconomyPortfolioPage 
   }
   if (body.expenseTracking !== (body.totals.readyExpenseCount != null)) {
     throw new Error("The totals carry readyExpenseCount exactly when the installation tracks expenses");
+  }
+  if (body.expenseTracking !== (body.totals.readyExpenseOtherCurrencyCount != null)) {
+    throw new Error("The totals carry readyExpenseOtherCurrencyCount exactly when the installation tracks expenses");
+  }
+  const flagged = body.data.filter((project) => project.readyExpenseOtherCurrency).length;
+  if (body.data.some((project) => project.readyExpenseOtherCurrency === false)) {
+    throw new Error("readyExpenseOtherCurrency is present only when true, never false");
+  }
+  if (!body.expenseTracking && flagged > 0) {
+    throw new Error("No row is flagged where the installation does not track expenses");
+  }
+  if (body.expenseTracking && (body.totals.readyExpenseOtherCurrencyCount ?? 0) < flagged) {
+    throw new Error("readyExpenseOtherCurrencyCount counts at least the flagged rows on this page");
   }
   for (const ready of body.totals.readyAmounts) {
     if (
@@ -430,6 +444,73 @@ describe("EconomyPortfolio", () => {
     expect(within(projectRow).queryByTestId("ready-split")).not.toBeInTheDocument();
   });
 
+  // A project whose only invoiceable money is in a currency its row cannot
+  // report is the one the server flags rather than drops. The row shows no
+  // amount for it — there is none to show in this row's currency — but it says
+  // there is something to find, and the project link beside it is the way there.
+  it("says when a row has more ready in another currency", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        trackedPortfolio(
+          [
+            trackedRow({ readyExpenseOtherCurrency: true }),
+            trackedRow({ project: { ...row().project, id: 8, code: "KVEAPP0", name: "App" } }),
+          ],
+          {
+            totals: {
+              projectCount: 2,
+              overBudgetCount: 0,
+              readyCount: 2,
+              readyExpenseCount: 0,
+              readyExpenseOtherCurrencyCount: 1,
+              readyAmounts: [{ currency: "NOK", amount: 200000, expenseAmount: 0, totalAmount: 200000 }],
+            },
+          },
+        ),
+      ),
+    );
+    renderPage();
+
+    const flaggedRow = (await screen.findByRole("link", { name: "KVEWEBS" })).closest("tr") as HTMLElement;
+    expect(within(flaggedRow).getByTestId("ready-other-currency")).toHaveTextContent("+ ready in another currency");
+    const plainRow = (await screen.findByRole("link", { name: "KVEAPP0" })).closest("tr") as HTMLElement;
+    expect(within(plainRow).queryByTestId("ready-other-currency")).not.toBeInTheDocument();
+  });
+
+  it("counts the projects with something ready in another currency under the cards", async () => {
+    stubPortfolio(
+      jsonResponse(
+        200,
+        trackedPortfolio([trackedRow({ readyExpenseOtherCurrency: true })], {
+          totals: {
+            projectCount: 1,
+            overBudgetCount: 0,
+            readyCount: 1,
+            readyExpenseCount: 0,
+            readyExpenseOtherCurrencyCount: 2,
+            readyAmounts: [{ currency: "NOK", amount: 200000, expenseAmount: 0, totalAmount: 200000 }],
+          },
+        }),
+      ),
+    );
+    renderPage();
+
+    const totals = await screen.findByTestId("economy-portfolio-totals");
+    expect(within(totals).getByTestId("ready-other-currency-count")).toHaveTextContent(
+      "2 projects have something ready in another currency",
+    );
+  });
+
+  it("says nothing about other currencies when no project has any", async () => {
+    stubPortfolio(jsonResponse(200, trackedPortfolio([trackedRow()])));
+    renderPage();
+
+    await screen.findByTestId("economy-portfolio-totals");
+    expect(screen.queryByTestId("ready-other-currency-count")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("ready-other-currency")).not.toBeInTheDocument();
+  });
+
   it("keeps the ready column exactly as it was where expenses are not tracked", async () => {
     stubPortfolio(jsonResponse(200, portfolio([row()])));
     renderPage();
@@ -454,6 +535,7 @@ describe("EconomyPortfolio", () => {
             overBudgetCount: 3,
             readyCount: 5,
             readyExpenseCount: 4,
+            readyExpenseOtherCurrencyCount: 0,
             readyAmounts: [
               { currency: "NOK", amount: 200000, expenseAmount: 5000, totalAmount: 205000 },
               { currency: "EUR", amount: 0, expenseAmount: 400, totalAmount: 400 },
