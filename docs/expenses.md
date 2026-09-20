@@ -680,15 +680,24 @@ everything). Format, byte for byte:
 - **A per diem day** has no description of its own unless its owner wrote one, so
   its `Description` cell carries the per diem type (`day_6_12`, `overnight_hotel`,
   …) and its `Category` cell is empty — it is booked on none.
-- Rows are ordered by the person's **display name**, then entry date, then id — a
-  file read by a person, not by the database's own uuid order.
+- Rows are ordered by the person's **display name**, then by the **unit's own
+  day** (a standalone expense's entry date; a travel claim's departure day in the
+  installation's time zone), then by the unit itself, and inside a unit by the
+  line's date and id — a file read by a person, not by the database's own uuid
+  order. The unit is part of the key so a trip's lines stand **together** under
+  its `Unit` cell: a loose expense dated between two of a trip's days follows the
+  whole trip rather than splitting it.
 - Headers: `Content-Type: text/csv; charset=utf-8`,
   `Content-Disposition: attachment; filename="expenses-reimbursements-YYYY-MM-DD.csv"`
   (today, UTC), `Cache-Control: private, no-store`.
 - It takes the list's own filters, or explicit `entryIds` **and** `claimIds`
   instead of them; a selection that is present and names nothing at all is
   refused rather than read as "everything", and an id the export cannot hold is
-  named under the list that named it rather than left out silently.
+  named under the list that named it rather than left out silently. One of a
+  **claim's lines** named on `entryIds` is refused like every other standalone
+  operation's (`Expense N belongs to travel claim M; export the claim`), even
+  when the claim is named too: the unit a payroll run pays is the whole trip, so
+  a file holds a trip whole or not at all.
 - **Capped at 5 000 rows.** The cap counts *rows*, so a trip of forty lines
   costs forty of them. Over the cap is a 400 titled "Too many rows to export",
   with a `detail` asking for a narrower filter and **no `errors` object at all** —
@@ -727,7 +736,8 @@ independently and a bare `12` would not say which page to open.
 
 `title` is a name — an expense's description, a person's display name — never a
 finished sentence, **except `reimbursementWaiting`, whose title is a deliberately
-untranslated English fallback** ("N expenses are waiting to be reimbursed") for a
+untranslated English fallback** ("N expenses and travel claims are waiting to be
+reimbursed" — the figure counts units, so the sentence names both) for a
 client that does not know the type; a translating client renders its own sentence
 from `type` and `count` instead, which is exactly what `count` exists for.
 

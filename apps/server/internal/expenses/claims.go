@@ -124,6 +124,16 @@ type claimFigures struct {
 	// Owes is whether the claim owes its owner anything at all, which is what
 	// decides whether a payroll run can cover it.
 	Owes bool
+	// Invoiced is whether any of its lines has been billed on to the customer,
+	// which is what stops an unapprove. It is read here rather than by a query
+	// of its own because the capability needs it for a whole page of trips at
+	// once, and this is the one query that already reads every line of each.
+	//
+	// It is safe as a *positive* fact because the capability that consults it
+	// also requires Lines > 0: the zero value — a caller that has not read the
+	// lines — answers "no lines", which makes canUnapprove false rather than
+	// promising one on figures nobody read.
+	Invoiced bool
 }
 
 // claimFiguresOf reads the totals of every claim in one go. The arithmetic is
@@ -165,6 +175,7 @@ func (s *server) claimFiguresOf(ctx context.Context, q *store.Queries, ids []int
 			Currency: row.Currency, Amount: billable,
 		})
 		f.Owes = f.Owes || owed > 0
+		f.Invoiced = f.Invoiced || row.AnyInvoiced
 		out[*row.ClaimID] = f
 	}
 	return out, nil
@@ -964,6 +975,16 @@ func (s *server) DeleteExpensesClaimsById(ctx context.Context, req gen.DeleteExp
 		}
 		if staleField, staleMsg = claimStateRefusal(c, locked); staleMsg != "" {
 			return nil
+		}
+		// The lines, in id order, before the delete rather than through the
+		// cascade. ON DELETE CASCADE would take exactly the same row locks, but
+		// in whatever order it happens to walk the children in, and this module
+		// promises every transaction takes a claim's lines ascending: a batch
+		// holding line 5 and waiting for line 9 must not meet a delete holding 9
+		// and waiting for 5. Taking them here costs one statement on a delete
+		// and leaves the cascade nothing new to acquire.
+		if _, err = txq.LockClaimLines(ctx, &req.Id); err != nil {
+			return fmt.Errorf("expenses: lock a travel claim's expenses: %w", err)
 		}
 		if keys, err = txq.ListAttachmentKeysForClaim(ctx, &req.Id); err != nil {
 			return fmt.Errorf("expenses: read a travel claim's receipt keys: %w", err)

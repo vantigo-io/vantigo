@@ -342,27 +342,32 @@ func (q *Queries) ListReimbursementGroups(ctx context.Context, arg ListReimburse
 }
 
 const listReimbursementRows = `-- name: ListReimbursementRows :many
-SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent, c.purpose AS claim_purpose FROM expenses.entries e
+SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent, c.purpose AS claim_purpose,
+       (c.departure_at AT TIME ZONE $1::text)::date AS claim_departure_day
+FROM expenses.entries e
 LEFT JOIN expenses.claims c ON c.id = e.claim_id
 WHERE e.gross_amount > 0
   AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee'))
   AND (
       (e.claim_id IS NULL AND e.status = 'approved'
-       AND ($1::boolean OR $2::boolean = (e.reimbursed_at IS NOT NULL)))
+       AND ($2::boolean OR $3::boolean = (e.reimbursed_at IS NOT NULL)))
       OR (c.id IS NOT NULL AND c.status = 'approved'
-       AND ($1::boolean OR $2::boolean = (c.reimbursed_at IS NOT NULL)))
+       AND ($2::boolean OR $3::boolean = (c.reimbursed_at IS NOT NULL)))
   )
-  AND ($3::boolean OR e.id = ANY($4::bigint[]) OR e.claim_id = ANY($5::bigint[]))
-  AND ($1::boolean OR $6::uuid IS NULL OR e.user_id = $6::uuid)
-  AND ($1::boolean OR $7::date IS NULL
-       OR COALESCE((c.departure_at AT TIME ZONE $8::text)::date, e.entry_date) >= $7::date)
-  AND ($1::boolean OR $9::date IS NULL
-       OR COALESCE((c.departure_at AT TIME ZONE $8::text)::date, e.entry_date) <= $9::date)
+  AND ($4::boolean
+       OR (e.claim_id IS NULL AND e.id = ANY($5::bigint[]))
+       OR e.claim_id = ANY($6::bigint[]))
+  AND ($2::boolean OR $7::uuid IS NULL OR e.user_id = $7::uuid)
+  AND ($2::boolean OR $8::date IS NULL
+       OR COALESCE((c.departure_at AT TIME ZONE $1::text)::date, e.entry_date) >= $8::date)
+  AND ($2::boolean OR $9::date IS NULL
+       OR COALESCE((c.departure_at AT TIME ZONE $1::text)::date, e.entry_date) <= $9::date)
 ORDER BY e.user_id, e.entry_date, e.id
 LIMIT $10
 `
 
 type ListReimbursementRowsParams struct {
+	TimeZone   string
 	ByIds      bool
 	Reimbursed bool
 	AllIds     bool
@@ -370,14 +375,14 @@ type ListReimbursementRowsParams struct {
 	ClaimIds   []int64
 	UserID     *uuid.UUID
 	FromDate   pgtype.Date
-	TimeZone   string
 	ToDate     pgtype.Date
 	RowLimit   int32
 }
 
 type ListReimbursementRowsRow struct {
-	ExpensesEntry ExpensesEntry
-	ClaimPurpose  *string
+	ExpensesEntry     ExpensesEntry
+	ClaimPurpose      *string
+	ClaimDepartureDay pgtype.Date
 }
 
 // ListReimbursementRows is the export's whole set in one statement, and it is a
@@ -387,12 +392,24 @@ type ListReimbursementRowsRow struct {
 // on.
 //
 // The same predicate again, narrowed either by the list's filters or by explicit
-// ids (all_ids false — an expense named by entry_ids, or every line of a claim
-// named by claim_ids). It reads one row more than the cap so the caller can tell
-// "this is the whole file" from "there is more than a file may hold" without a
-// second count.
+// ids (all_ids false — a **standalone** expense named by entry_ids, or every
+// line of a claim named by claim_ids). It reads one row more than the cap so the
+// caller can tell "this is the whole file" from "there is more than a file may
+// hold" without a second count.
+//
+// claim_id IS NULL on the entry_ids branch is the module's rule that a claim's
+// line is never named on its own: the unit a payroll run pays is the whole trip,
+// so a file must never hold one line of one. Go refuses such an id by id before
+// this runs (missingExportIDs), so the guard is the last line rather than the
+// rule — but here the two together are what keeps half a trip out of payroll.
+//
+// The claim's departure day comes with each of its lines as well as its
+// purpose: it is the day the *unit* is read at, which is what the file groups a
+// trip's lines by, and it is a day in the installation's own zone rather than an
+// instant (reimbursementCSV).
 func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimbursementRowsParams) ([]ListReimbursementRowsRow, error) {
 	rows, err := q.db.Query(ctx, listReimbursementRows,
+		arg.TimeZone,
 		arg.ByIds,
 		arg.Reimbursed,
 		arg.AllIds,
@@ -400,7 +417,6 @@ func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimburseme
 		arg.ClaimIds,
 		arg.UserID,
 		arg.FromDate,
-		arg.TimeZone,
 		arg.ToDate,
 		arg.RowLimit,
 	)
@@ -463,6 +479,7 @@ func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimburseme
 			&i.ExpensesEntry.MealLunchPercent,
 			&i.ExpensesEntry.MealDinnerPercent,
 			&i.ClaimPurpose,
+			&i.ClaimDepartureDay,
 		); err != nil {
 			return nil, err
 		}

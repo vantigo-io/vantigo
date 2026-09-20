@@ -67,7 +67,13 @@ SELECT
         WHEN gross_amount > 0 AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
         THEN gross_amount ELSE 0
     END)::numeric(14,2) AS owed_to_employee,
-    SUM(CASE WHEN billable THEN COALESCE(bill_amount, 0) ELSE 0 END)::numeric(14,2) AS bill_amount
+    SUM(CASE WHEN billable THEN COALESCE(bill_amount, 0) ELSE 0 END)::numeric(14,2) AS bill_amount,
+    -- Whether any of the claim's lines has been billed on to the customer. It
+    -- is not a figure but a fact about the trip, and it rides along here
+    -- because an unapprove is refused by it: a trip with a line on an invoice
+    -- cannot go back to being a draft its owner may rewrite, and the capability
+    -- has to say so rather than offering a button the server answers 400 to.
+    bool_or(invoiced_at IS NOT NULL)::boolean AS any_invoiced
 FROM expenses.entries
 WHERE claim_id = ANY($1::bigint[])
 GROUP BY claim_id, currency
@@ -81,6 +87,7 @@ type ClaimTotalsRow struct {
 	Gross          pgtype.Numeric
 	OwedToEmployee pgtype.Numeric
 	BillAmount     pgtype.Numeric
+	AnyInvoiced    bool
 }
 
 // ClaimTotals is each claim's figures per currency, for a whole page of them
@@ -103,6 +110,7 @@ func (q *Queries) ClaimTotals(ctx context.Context, claimIds []int64) ([]ClaimTot
 			&i.Gross,
 			&i.OwedToEmployee,
 			&i.BillAmount,
+			&i.AnyInvoiced,
 		); err != nil {
 			return nil, err
 		}
@@ -780,7 +788,16 @@ UPDATE expenses.entries SET
     bill_amount = $6,
     revision = revision + 1,
     updated_at = $7::timestamptz
-WHERE id = $8
+WHERE expenses.entries.id = $8
+  -- The claim's own status, guarded here as well as in Go, for the reason
+  -- RepricePerDiemLine is: this statement writes *frozen* figures — billable
+  -- and the three billing columns — and the one rule of the freeze is that
+  -- nothing recomputes them afterwards. A claim's edit is the only caller and
+  -- PUT /claims/{id} is refused once the trip has been submitted, so a Go
+  -- regression should write nothing rather than quietly re-point an approved
+  -- trip's lines and clear what they bill.
+  AND (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id)
+      IN ('draft', 'rejected')
 `
 
 type SetClaimLineProjectParams struct {
