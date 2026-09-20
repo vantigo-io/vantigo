@@ -17,11 +17,15 @@ import { ClaimPage } from "@vantigo/expenses-ui/pages/claim";
  */
 export const Route = createFileRoute("/expenses/claims/$claimId")({
   params: {
-    parse: ({ claimId }) => ({ claimId: Number(claimId) }),
+    // Decimal digits and nothing else. `Number` alone would accept `1e3`,
+    // `0x10` and a leading space as real claims under a URL nobody could have
+    // linked to, and `99999999999999999999` as a request the server cannot
+    // answer; anything that is not the id it looks like is a not-found.
+    parse: ({ claimId }) => ({ claimId: /^\d+$/.test(claimId) ? Number(claimId) : Number.NaN }),
     stringify: ({ claimId }) => ({ claimId: String(claimId) }),
   },
   beforeLoad: ({ params }) => {
-    if (!Number.isInteger(params.claimId) || params.claimId <= 0) throw notFound();
+    if (!Number.isSafeInteger(params.claimId) || params.claimId <= 0) throw notFound();
   },
   component: ClaimRoute,
 });

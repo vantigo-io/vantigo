@@ -75,10 +75,18 @@ describe("the expenses routes' search params", () => {
     };
     expect(params.parse({ claimId: "1012" })).toEqual({ claimId: 1012 });
     expect(params.stringify({ claimId: 1012 })).toEqual({ claimId: "1012" });
+    // Decimal digits and nothing else: `Number` alone reads each of these as a
+    // number, and the first three would resolve to a real claim under a URL
+    // nobody could have linked to.
+    for (const raw of ["1e3", "0x10", " 12", "12abc", "", "1.5"]) {
+      expect(params.parse({ claimId: raw }).claimId).toBeNaN();
+    }
 
     const guard = ExpensesClaimRoute.options.beforeLoad as (context: { params: { claimId: number } }) => void;
     expect(() => guard({ params: { claimId: 1012 } })).not.toThrow();
-    for (const claimId of [Number("abc"), 0, -3, 1.5]) {
+    // 1e20 parses as digits but is past what a float can hold exactly, so it
+    // would reach the server as an id it cannot answer.
+    for (const claimId of [Number("abc"), 0, -3, 1.5, 1e20]) {
       let thrown: unknown;
       try {
         guard({ params: { claimId } });
