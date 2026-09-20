@@ -15,6 +15,34 @@ WHERE id = ANY(@ids::bigint[])
 ORDER BY id
 FOR UPDATE;
 
+-- name: LockClaims :many
+-- LockClaims reads the travel claims in ids and holds their rows until the
+-- transaction ends, **in id order** — the first half of a mixed batch's lock
+-- order. Every write in this module takes a claim's row before it takes any of
+-- its lines, so a batch that starts here can never be the one to close a cycle.
+-- An id with no claim is simply absent from the result.
+SELECT * FROM expenses.claims
+WHERE id = ANY(@ids::bigint[])
+ORDER BY id
+FOR UPDATE;
+
+-- name: LockBatchEntries :many
+-- LockBatchEntries holds every expense row one mixed batch is about — the lines
+-- of the travel claims it names and the standalone expenses it names — in **one
+-- statement, in id order**.
+--
+-- One statement is the point. Taking each claim's lines separately and the
+-- named expenses afterwards would let two batches that name each other's claims
+-- cross: batch A holding claim 9's lines and waiting for a line of claim 8,
+-- while batch B holds claim 8's lines and waits for a line of claim 9. Asking
+-- for every row of the batch in one ascending pass makes that impossible, and it
+-- is still the module's documented order — claim rows first, then lines in id
+-- order — with the standalone expenses folded into the same ascending pass.
+SELECT * FROM expenses.entries
+WHERE claim_id = ANY(@claim_ids::bigint[]) OR id = ANY(@entry_ids::bigint[])
+ORDER BY id
+FOR UPDATE;
+
 -- name: SubmitEntry :one
 -- SubmitEntry moves one draft or rejected expense to submitted and freezes it
 -- (decision X4): the rate, the passenger supplement, the amount and what the
@@ -127,6 +155,130 @@ WHERE id = ANY(@ids::bigint[]) AND status = 'approved' AND claim_id IS NULL
   -- one line of somebody's trip on its own.
 RETURNING *;
 
+-- The same five moves over the other unit: a whole travel claim. Every stamp is
+-- the claim's own — its lines carry none — and each statement repeats the guards
+-- the caller already judged under the claim's row lock, so the two can never
+-- disagree and a Go regression fails loudly rather than moving a trip nobody
+-- decided on.
+
+-- name: SubmitClaim :one
+-- SubmitClaim moves one draft or rejected travel claim to submitted. The lines
+-- were frozen by FreezeClaimLine in this same transaction, before this ran, so
+-- what the trip is worth is settled the moment its status changes. The previous
+-- decision goes with it: a rejected claim comes back as if it had never been
+-- decided on.
+UPDATE expenses.claims SET
+    status = 'submitted',
+    submitted_at = @now::timestamptz,
+    decided_at = NULL,
+    decided_by_user_id = NULL,
+    rejection_reason = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = @id AND status IN ('draft', 'rejected')
+RETURNING *;
+
+-- name: FreezeClaimLine :exec
+-- FreezeClaimLine writes one line of a travel claim its final figures, in the
+-- transaction that submits the claim (decision X4). It is SubmitEntry's body
+-- without the status: a line has no status of its own, because the unit that
+-- moves is the claim.
+--
+-- The currency and the three meal percentages are here as well as the amount,
+-- because a per diem day is priced from all five and the freeze has just read
+-- them again. A rate an approver had overridden is cleared with them: the line
+-- has just been priced from the table, so a record saying otherwise would be a
+-- lie.
+--
+-- The claim's own status is guarded rather than the line's. A line's column
+-- stays at its default 'draft' and says nothing, and the claim's row is held by
+-- the caller, so this reads the very row the freeze was judged against.
+UPDATE expenses.entries SET
+    currency = @currency,
+    rate = @rate,
+    passenger_rate = @passenger_rate,
+    gross_amount = @gross_amount,
+    meal_breakfast_percent = @meal_breakfast_percent,
+    meal_lunch_percent = @meal_lunch_percent,
+    meal_dinner_percent = @meal_dinner_percent,
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
+    billable = @billable,
+    markup_percent = @markup_percent,
+    bill_rate_per_km = @bill_rate_per_km,
+    bill_amount = @bill_amount,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE expenses.entries.id = @id
+  AND expenses.entries.claim_id = @claim_id
+  AND (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id)
+      IN ('draft', 'rejected');
+
+-- name: ApproveClaims :many
+-- ApproveClaims moves submitted travel claims to approved, recording who
+-- decided and when. The frozen figures are not touched: an approval agrees with
+-- them.
+UPDATE expenses.claims SET
+    status = 'approved',
+    decided_at = @now::timestamptz,
+    decided_by_user_id = @decided_by::uuid,
+    rejection_reason = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = ANY(@ids::bigint[]) AND status = 'submitted'
+RETURNING *;
+
+-- name: RejectClaims :many
+-- RejectClaims sends submitted travel claims back with the reason their owner
+-- sees. The submission stamp stays: the trip was submitted, and the next submit
+-- overwrites it.
+UPDATE expenses.claims SET
+    status = 'rejected',
+    decided_at = @now::timestamptz,
+    decided_by_user_id = @decided_by::uuid,
+    rejection_reason = @reason::text,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = ANY(@ids::bigint[]) AND status = 'submitted'
+RETURNING *;
+
+-- name: UnapproveClaims :many
+-- UnapproveClaims returns approved travel claims to a fresh draft, clearing the
+-- decision and the submission stamp. Never one already reimbursed, and never one
+-- holding a line that has been invoiced: undoing either of those has its own
+-- door on its own track, and the caller has refused them before this runs.
+UPDATE expenses.claims SET
+    status = 'draft',
+    submitted_at = NULL,
+    decided_at = NULL,
+    decided_by_user_id = NULL,
+    rejection_reason = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = ANY(@ids::bigint[])
+  AND status = 'approved'
+  AND reimbursed_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM expenses.entries e
+      WHERE e.claim_id = expenses.claims.id AND e.invoiced_at IS NOT NULL)
+RETURNING *;
+
+-- name: ClearClaimLineOverrides :exec
+-- ClearClaimLineOverrides drops the rate-override audit from every line of the
+-- claims being unapproved — what UnapproveEntries does for a standalone expense,
+-- one level up. *Fresh* means the draft carries nothing of the decision that was
+-- undone, and an approver's replaced rate is part of that decision. The frozen
+-- amounts stay where they are until the next save or submit reprices them.
+UPDATE expenses.entries SET
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE claim_id = ANY(@claim_ids::bigint[])
+  AND rate_overridden_by_user_id IS NOT NULL;
+
 -- name: OverrideEntryRate :one
 -- OverrideEntryRate replaces a submitted mileage line's or per diem day's rate
 -- and the amount it was frozen at (decision X8), recording who did it and what
@@ -180,40 +332,79 @@ RETURNING *;
 -- name: CountApprovalGroups :one
 -- CountApprovalGroups is how many people have something waiting for this
 -- caller — the total the approval queue pages through. It shares its predicate
--- with ListApprovalGroupEntries, so the count and the pages can never disagree.
-SELECT count(DISTINCT user_id) FROM expenses.entries
-WHERE status = 'submitted'
-  AND (@see_all::boolean OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
-  AND (sqlc.narg(locked_before)::date IS NULL OR entry_date >= sqlc.narg(locked_before)::date);
-
--- name: ListApprovalGroupEntries :many
--- ListApprovalGroupEntries is one page of the approval queue, paged **by
--- person in SQL**: the people are grouped and the page taken first, and only
--- then are their expenses read, so a page always holds whole groups and the
--- database never hands Go more rows than the page needs.
+-- with ListApprovalGroups, so the count and the pages can never disagree.
 --
--- The page is taken in the queue's own order: the person who has been waiting
--- longest first — the oldest expense date in their group — and then their user
--- id. It is deliberately not by display name: the names live in identity, and
--- ordering on them would mean reading every group into Go before paging, which
--- is what this query exists to avoid.
---
--- The rows themselves come back by person and then by day, and the caller puts
--- the groups back into the queue's order from the very figures it pages on
--- (min(entry_date), user id) — which it can, because a page holds whole groups.
-WITH groups AS (
-    SELECT user_id, min(entry_date) AS oldest
-    FROM expenses.entries
+-- The queue is a queue of **units**: a standalone expense, or a whole travel
+-- claim. A claim's lines keep their own status column at its default and are
+-- never listed loose (unitOf in authorize.go), which is what claim_id IS NULL
+-- says here; the claims themselves are the second half of the union. A person
+-- with one submitted trip and no loose expenses is one group, counted once.
+SELECT count(*) FROM (
+    SELECT user_id FROM expenses.entries
     WHERE status = 'submitted'
+      AND claim_id IS NULL
       AND (@see_all::boolean OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
       AND (sqlc.narg(locked_before)::date IS NULL OR entry_date >= sqlc.narg(locked_before)::date)
-    GROUP BY user_id
-    ORDER BY min(entry_date), user_id
-    LIMIT @page_size OFFSET @page_offset
+    UNION
+    SELECT user_id FROM expenses.claims
+    WHERE status = 'submitted'
+      AND (@see_all::boolean OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
+      AND (sqlc.narg(locked_before)::date IS NULL
+           OR (departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(locked_before)::date)
+) AS groups;
+
+-- name: ListApprovalGroups :many
+-- ListApprovalGroups is one page of the approval queue's **people**, taken in
+-- the queue's own order: whoever has been waiting longest first — the oldest
+-- day among their waiting units — and then their user id. It is deliberately
+-- not by display name: the names live in identity, and ordering on them would
+-- mean reading every group into Go before paging, which is what this query
+-- exists to avoid.
+--
+-- A unit's day is the expense's own entry date, or the day the trip departed in
+-- the installation's business time zone — the same derivation businessDay makes
+-- in Go, from the same stored name, so a queue and a period lock can never
+-- disagree about which day a trip departed on.
+WITH units AS (
+    SELECT user_id, entry_date AS waiting_since FROM expenses.entries
+    WHERE status = 'submitted'
+      AND claim_id IS NULL
+      AND (@see_all::boolean OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
+      AND (sqlc.narg(locked_before)::date IS NULL OR entry_date >= sqlc.narg(locked_before)::date)
+    UNION ALL
+    SELECT user_id, (departure_at AT TIME ZONE @time_zone::text)::date FROM expenses.claims
+    WHERE status = 'submitted'
+      AND (@see_all::boolean OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
+      AND (sqlc.narg(locked_before)::date IS NULL
+           OR (departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(locked_before)::date)
 )
-SELECT e.* FROM expenses.entries e
-JOIN groups ON groups.user_id = e.user_id
-WHERE e.status = 'submitted'
-  AND (@see_all::boolean OR (e.project_id IS NOT NULL AND e.project_id = ANY(@managed_project_ids::integer[])))
-  AND (sqlc.narg(locked_before)::date IS NULL OR e.entry_date >= sqlc.narg(locked_before)::date)
-ORDER BY e.user_id, e.entry_date, e.id;
+SELECT user_id
+FROM units
+GROUP BY user_id
+ORDER BY min(waiting_since), user_id
+LIMIT @page_size OFFSET @page_offset;
+
+-- name: ListApprovalGroupEntries :many
+-- ListApprovalGroupEntries is the standalone expenses of the people one page of
+-- the queue holds. The page of people is taken first (ListApprovalGroups) and
+-- only then are their units read, so the database never hands Go more rows than
+-- the page needs and a page always holds whole groups.
+SELECT * FROM expenses.entries
+WHERE status = 'submitted'
+  AND claim_id IS NULL
+  AND user_id = ANY(@user_ids::uuid[])
+  AND (@see_all::boolean OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
+  AND (sqlc.narg(locked_before)::date IS NULL OR entry_date >= sqlc.narg(locked_before)::date)
+ORDER BY user_id, entry_date, id;
+
+-- name: ListApprovalGroupClaims :many
+-- ListApprovalGroupClaims is the other half of the same page: the travel claims
+-- of those people, one row each. Its predicate is the union's second branch,
+-- written out again so the page and the count cannot drift.
+SELECT * FROM expenses.claims
+WHERE status = 'submitted'
+  AND user_id = ANY(@user_ids::uuid[])
+  AND (@see_all::boolean OR (project_id IS NOT NULL AND project_id = ANY(@managed_project_ids::integer[])))
+  AND (sqlc.narg(locked_before)::date IS NULL
+       OR (departure_at AT TIME ZONE @time_zone::text)::date >= sqlc.narg(locked_before)::date)
+ORDER BY user_id, departure_at, id;

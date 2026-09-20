@@ -87,10 +87,16 @@ UPDATE expenses.entries SET
     decided_by_user_id = NULL,
     revision = revision + 1,
     updated_at = @now::timestamptz
-WHERE id = @id
-  AND revision = @revision
-  AND status IN ('draft', 'rejected')
-  AND (@any_owner::boolean OR user_id = @user_id::uuid)
+WHERE expenses.entries.id = @id
+  AND expenses.entries.revision = @revision
+  -- The status guarded is the **unit's** (unitOf in authorize.go): a line
+  -- inside a travel claim is editable exactly while its claim is, and its own
+  -- column stays at its default 'draft'. The handler holds the claim's row lock
+  -- before this runs, so the subquery reads the very row it judged.
+  AND COALESCE(
+        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+        expenses.entries.status) IN ('draft', 'rejected')
+  AND (@any_owner::boolean OR expenses.entries.user_id = @user_id::uuid)
 RETURNING *;
 
 -- name: DeleteEntry :execrows
@@ -100,9 +106,13 @@ RETURNING *;
 -- delete removes nothing. any_owner is expenses:manage, which deletes anyone's
 -- draft.
 DELETE FROM expenses.entries
-WHERE id = @id
-  AND status IN ('draft', 'rejected')
-  AND (@any_owner::boolean OR user_id = @user_id::uuid);
+WHERE expenses.entries.id = @id
+  -- The unit's status again, for the reason UpdateEntry reads it: a line's own
+  -- column says nothing, and the claim's row is held before this runs.
+  AND COALESCE(
+        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+        expenses.entries.status) IN ('draft', 'rejected')
+  AND (@any_owner::boolean OR expenses.entries.user_id = @user_id::uuid);
 
 -- name: CountEntries :one
 -- CountEntries counts what ListEntries pages through, under exactly the same

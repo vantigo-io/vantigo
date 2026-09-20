@@ -49,7 +49,8 @@ export const RejectModal = ({ entryIds, onClose, onRejected }: RejectModalProps)
       notifications.show({
         color: "teal",
         title: t("expensesRejected"),
-        message: rejected.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: rejected.length }),
+        message:
+          rejected.entries.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: rejected.entries.length }),
       });
       onRejected();
     },

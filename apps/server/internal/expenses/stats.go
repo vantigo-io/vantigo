@@ -48,7 +48,16 @@ const (
 	attentionReimbursementWaiting = "reimbursementWaiting"
 
 	reimbursementsEntity = "reimbursements"
+
+	// claimEntityPrefix is how a travel claim names itself among the attention
+	// items. An expense's entity is its bare id, so a trip's needs a word in
+	// front of it: the two units number independently and "12" would say
+	// nothing about which page to open.
+	claimEntityPrefix = "claim/"
 )
+
+// claimEntityID is one travel claim's entity id among the attention items.
+func claimEntityID(id int64) string { return claimEntityPrefix + strconv.FormatInt(id, 10) }
 
 // rejectedAttentionLimit is how many of the caller's own rejected expenses the
 // dashboard is told about. It is a dashboard rather than a list: somebody with
@@ -67,9 +76,9 @@ func (s *server) GetExpensesStats(ctx context.Context, _ gen.GetExpensesStatsReq
 	if err != nil {
 		return nil, err
 	}
-	counts, err := q.StatsMyStatusCounts(ctx, c.UserID)
+	counts, err := s.statusCounts(ctx, q, c.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("expenses: count the caller's expenses: %w", err)
+		return nil, err
 	}
 	owed, err := s.unreimbursedFor(ctx, q, c.UserID)
 	if err != nil {
@@ -80,12 +89,37 @@ func (s *server) GetExpensesStats(ctx context.Context, _ gen.GetExpensesStatsReq
 		return nil, err
 	}
 	return gen.GetExpensesStats200JSONResponse{
-		Draft:              int32(counts.Drafts),
-		Submitted:          int32(counts.Submitted),
-		Approved:           int32(counts.Approved),
-		Rejected:           int32(counts.Rejected),
+		Draft:              counts.Drafts,
+		Submitted:          counts.Submitted,
+		Approved:           counts.Approved,
+		Rejected:           counts.Rejected,
 		Unreimbursed:       owed,
 		AwaitingMyApproval: awaiting,
+	}, nil
+}
+
+// unitCounts is how many of the caller's own **units** stand in each status:
+// their standalone expenses and their travel claims added together. A trip
+// counts once whatever it holds — its lines keep their own status column at its
+// default and are never counted (unitOf in authorize.go), because a figure of
+// five drafts for a trip its owner can do nothing with one at a time would
+// point at nothing anybody can act on.
+type unitCounts struct{ Drafts, Submitted, Approved, Rejected int32 }
+
+func (s *server) statusCounts(ctx context.Context, q *store.Queries, userID uuid.UUID) (unitCounts, error) {
+	entries, err := q.StatsMyStatusCounts(ctx, userID)
+	if err != nil {
+		return unitCounts{}, fmt.Errorf("expenses: count the caller's expenses: %w", err)
+	}
+	claims, err := q.StatsMyClaimStatusCounts(ctx, userID)
+	if err != nil {
+		return unitCounts{}, fmt.Errorf("expenses: count the caller's travel claims: %w", err)
+	}
+	return unitCounts{
+		Drafts:    int32(entries.Drafts + claims.Drafts),
+		Submitted: int32(entries.Submitted + claims.Submitted),
+		Approved:  int32(entries.Approved + claims.Approved),
+		Rejected:  int32(entries.Rejected + claims.Rejected),
 	}, nil
 }
 
@@ -125,7 +159,18 @@ func (s *server) awaitingApproval(ctx context.Context, q *store.Queries, c *call
 	if err != nil {
 		return 0, 0, fmt.Errorf("expenses: count the expenses awaiting approval: %w", err)
 	}
-	return int32(row.Awaiting), int32(row.Awaiting - row.AwaitingAtPeriodStart), nil
+	// The other unit, counted once each: a trip waiting for this approver is
+	// one thing to decide, not one per line it holds.
+	claims, err := q.StatsAwaitingApprovalClaims(ctx, store.StatsAwaitingApprovalClaimsParams{
+		PeriodFrom: periodFrom, SeeAll: scope.seeAll,
+		ManagedProjectIds: scope.managed, LockedBefore: scope.lock, TimeZone: c.Settings.TimeZone,
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("expenses: count the travel claims awaiting approval: %w", err)
+	}
+	awaiting := row.Awaiting + claims.Awaiting
+	atStart := row.AwaitingAtPeriodStart + claims.AwaitingAtPeriodStart
+	return int32(awaiting), int32(awaiting - atStart), nil
 }
 
 // GetExpensesStatsSummary Get expenses dashboard summary
@@ -148,9 +193,9 @@ func (s *server) GetExpensesStatsSummary(ctx context.Context, req gen.GetExpense
 	if err != nil {
 		return nil, err
 	}
-	counts, err := q.StatsMyStatusCounts(ctx, c.UserID)
+	counts, err := s.statusCounts(ctx, q, c.UserID)
 	if err != nil {
-		return nil, fmt.Errorf("expenses: count the caller's expenses: %w", err)
+		return nil, err
 	}
 	owed, err := s.unreimbursedFor(ctx, q, c.UserID)
 	if err != nil {
@@ -165,7 +210,7 @@ func (s *server) GetExpensesStatsSummary(ctx context.Context, req gen.GetExpense
 		To:                      periodTo,
 		AwaitingMyApproval:      awaiting,
 		AwaitingMyApprovalDelta: delta,
-		MyDrafts:                int32(counts.Drafts),
+		MyDrafts:                counts.Drafts,
 		MyUnreimbursed:          owed,
 	}, nil
 }
@@ -249,10 +294,17 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 	if err != nil {
 		return nil, fmt.Errorf("expenses: list the caller's rejected expenses: %w", err)
 	}
+	rejectedClaims, err := q.StatsMyRejectedClaims(ctx, store.StatsMyRejectedClaimsParams{
+		UserID: c.UserID, RowLimit: rejectedAttentionLimit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("expenses: list the caller's rejected travel claims: %w", err)
+	}
 	var groups []store.StatsApprovalWaitingGroupsRow
 	if scope.approvesAny() {
 		if groups, err = q.StatsApprovalWaitingGroups(ctx, store.StatsApprovalWaitingGroupsParams{
 			SeeAll: scope.seeAll, ManagedProjectIds: scope.managed, LockedBefore: scope.lock,
+			TimeZone: c.Settings.TimeZone,
 		}); err != nil {
 			return nil, fmt.Errorf("expenses: list the approvals waiting: %w", err)
 		}
@@ -284,7 +336,8 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 		return unknownUser
 	}
 
-	items := make(gen.GetExpensesStatsAttention200JSONResponse, 0, len(rejected)+len(groups)+1)
+	items := make(gen.GetExpensesStatsAttention200JSONResponse,
+		0, len(rejected)+len(rejectedClaims)+len(groups)+1)
 	for _, r := range rejected {
 		if r.DecidedAt == nil {
 			// StatsMyRejected's own predicate excludes these, so this cannot
@@ -297,6 +350,24 @@ func (s *server) GetExpensesStatsAttention(ctx context.Context, _ gen.GetExpense
 			Id:         id,
 			Type:       attentionExpenseRejected,
 			Title:      r.Description,
+			OccurredAt: r.DecidedAt.UTC(),
+			EntityId:   id,
+		})
+	}
+	// A rejected trip is **one** item, titled by its purpose — never one per
+	// line, which would bury the dashboard under a trip nobody can act on a
+	// piece of. Its entity is written "claim/<id>" so the host can tell which
+	// of the two units a numeric id belongs to and link to the right page; an
+	// expense and a trip can share a number, and a bare one would be ambiguous.
+	for _, r := range rejectedClaims {
+		if r.DecidedAt == nil {
+			continue
+		}
+		id := claimEntityID(r.ID)
+		items = append(items, gen.ExpensesStatsAttentionItem{
+			Id:         id,
+			Type:       attentionExpenseRejected,
+			Title:      r.Purpose,
 			OccurredAt: r.DecidedAt.UTC(),
 			EntityId:   id,
 		})

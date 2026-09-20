@@ -95,7 +95,7 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
       notifications.show({
         color: "teal",
         title: t("expensesSubmitted"),
-        message: moved.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: moved.length }),
+        message: moved.entries.length === 1 ? t("oneExpense") : t("countOfExpenses", { count: moved.entries.length }),
       });
     },
     onError: (error) => {

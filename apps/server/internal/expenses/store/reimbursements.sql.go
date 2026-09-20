@@ -15,14 +15,32 @@ import (
 
 const countReimbursementGroups = `-- name: CountReimbursementGroups :one
 
-SELECT count(DISTINCT user_id) FROM expenses.entries
-WHERE status = 'approved'
-  AND gross_amount > 0
-  AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
-  AND ($1::boolean = (reimbursed_at IS NOT NULL))
-  AND ($2::uuid IS NULL OR user_id = $2::uuid)
-  AND ($3::date IS NULL OR entry_date >= $3::date)
-  AND ($4::date IS NULL OR entry_date <= $4::date)
+
+SELECT count(*) FROM (
+    SELECT user_id FROM expenses.entries
+    WHERE status = 'approved'
+      AND claim_id IS NULL
+      AND gross_amount > 0
+      AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+      AND ($1::boolean = (reimbursed_at IS NOT NULL))
+      AND ($2::uuid IS NULL OR user_id = $2::uuid)
+      AND ($3::date IS NULL OR entry_date >= $3::date)
+      AND ($4::date IS NULL OR entry_date <= $4::date)
+    UNION
+    SELECT user_id FROM expenses.claims c
+    WHERE c.status = 'approved'
+      AND ($1::boolean = (c.reimbursed_at IS NOT NULL))
+      AND EXISTS (
+          SELECT 1 FROM expenses.entries e
+          WHERE e.claim_id = c.id
+            AND e.gross_amount > 0
+            AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+      AND ($2::uuid IS NULL OR c.user_id = $2::uuid)
+      AND ($3::date IS NULL
+           OR (c.departure_at AT TIME ZONE $5::text)::date >= $3::date)
+      AND ($4::date IS NULL
+           OR (c.departure_at AT TIME ZONE $5::text)::date <= $4::date)
+) AS groups
 `
 
 type CountReimbursementGroupsParams struct {
@@ -30,6 +48,7 @@ type CountReimbursementGroupsParams struct {
 	UserID     *uuid.UUID
 	FromDate   pgtype.Date
 	ToDate     pgtype.Date
+	TimeZone   string
 }
 
 // Decision X5's first track: what the employee is owed back. Every query here
@@ -42,79 +61,131 @@ type CountReimbursementGroupsParams struct {
 // gross of an outlay the employee paid, the whole of a mileage line, and
 // nothing at all for an outlay the company paid. A gross that rounds to zero
 // owes nothing either, which is why gross_amount > 0 is part of it.
+// The predicate, written out once in words and then in full in every query
+// below: a **unit** — a standalone expense, or a whole travel claim — that is
+// approved, has not been paid (or has, for state=reimbursed) and owes its owner
+// something. A claim owes what its lines owe; a claim whose lines owe nothing is
+// not in the list, exactly as a company-paid outlay is not.
 // CountReimbursementGroups is how many people the reimbursement list holds —
-// the total it pages through. Its predicate is ListReimbursementGroupEntries'.
+// the total it pages through. Its predicate is ListReimbursementGroups'.
 func (q *Queries) CountReimbursementGroups(ctx context.Context, arg CountReimbursementGroupsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countReimbursementGroups,
 		arg.Reimbursed,
 		arg.UserID,
 		arg.FromDate,
 		arg.ToDate,
+		arg.TimeZone,
 	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
+const listReimbursementGroupClaims = `-- name: ListReimbursementGroupClaims :many
+SELECT c.id, c.user_id, c.created_by_user_id, c.purpose, c.destination, c.abroad, c.abroad_day_rate, c.abroad_currency, c.departure_at, c.return_at, c.project_id, c.status, c.submitted_at, c.decided_at, c.decided_by_user_id, c.rejection_reason, c.reimbursed_at, c.reimbursed_by_user_id, c.reimbursement_reference, c.reimbursement_date, c.revision, c.created_at, c.updated_at FROM expenses.claims c
+WHERE c.status = 'approved'
+  AND ($1::boolean = (c.reimbursed_at IS NOT NULL))
+  AND c.user_id = ANY($2::uuid[])
+  AND EXISTS (
+      SELECT 1 FROM expenses.entries e
+      WHERE e.claim_id = c.id
+        AND e.gross_amount > 0
+        AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+  AND ($3::date IS NULL
+       OR (c.departure_at AT TIME ZONE $4::text)::date >= $3::date)
+  AND ($5::date IS NULL
+       OR (c.departure_at AT TIME ZONE $4::text)::date <= $5::date)
+ORDER BY c.user_id, c.departure_at, c.id
+`
+
+type ListReimbursementGroupClaimsParams struct {
+	Reimbursed bool
+	UserIds    []uuid.UUID
+	FromDate   pgtype.Date
+	TimeZone   string
+	ToDate     pgtype.Date
+}
+
+// ListReimbursementGroupClaims is the other half of the same page: the travel
+// claims of those people, one row each.
+func (q *Queries) ListReimbursementGroupClaims(ctx context.Context, arg ListReimbursementGroupClaimsParams) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, listReimbursementGroupClaims,
+		arg.Reimbursed,
+		arg.UserIds,
+		arg.FromDate,
+		arg.TimeZone,
+		arg.ToDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
+			&i.ProjectID,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReimbursementGroupEntries = `-- name: ListReimbursementGroupEntries :many
-WITH groups AS (
-    SELECT user_id, min(entry_date) AS oldest, max(reimbursed_at) AS paid
-    FROM expenses.entries
-    WHERE status = 'approved'
-      AND gross_amount > 0
-      AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
-      AND ($1::boolean = (reimbursed_at IS NOT NULL))
-      AND ($2::uuid IS NULL OR user_id = $2::uuid)
-      AND ($3::date IS NULL OR entry_date >= $3::date)
-      AND ($4::date IS NULL OR entry_date <= $4::date)
-    GROUP BY user_id
-    ORDER BY
-        CASE WHEN $1::boolean THEN NULL ELSE min(entry_date) END ASC,
-        CASE WHEN $1::boolean THEN max(reimbursed_at) END DESC,
-        user_id
-    LIMIT $6 OFFSET $5
-)
-SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent FROM expenses.entries e
-JOIN groups ON groups.user_id = e.user_id
-WHERE e.status = 'approved'
-  AND e.gross_amount > 0
-  AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee'))
-  AND ($1::boolean = (e.reimbursed_at IS NOT NULL))
-  AND ($2::uuid IS NULL OR e.user_id = $2::uuid)
-  AND ($3::date IS NULL OR e.entry_date >= $3::date)
-  AND ($4::date IS NULL OR e.entry_date <= $4::date)
-ORDER BY e.user_id, e.entry_date, e.id
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries
+WHERE status = 'approved'
+  AND claim_id IS NULL
+  AND gross_amount > 0
+  AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+  AND ($1::boolean = (reimbursed_at IS NOT NULL))
+  AND user_id = ANY($2::uuid[])
+  AND ($3::date IS NULL OR entry_date >= $3::date)
+  AND ($4::date IS NULL OR entry_date <= $4::date)
+ORDER BY user_id, entry_date, id
 `
 
 type ListReimbursementGroupEntriesParams struct {
 	Reimbursed bool
-	UserID     *uuid.UUID
+	UserIds    []uuid.UUID
 	FromDate   pgtype.Date
 	ToDate     pgtype.Date
-	PageOffset int32
-	PageSize   int32
 }
 
-// ListReimbursementGroupEntries is one page of the reimbursement list, paged
-// **by person in SQL** exactly as the approval queue is: the people are
-// grouped and the page taken first, and only then are their expenses read, so
-// a page always holds whole groups.
-//
-// The page is taken in the order the state asks for. What is waiting puts the
-// person who has waited longest first (the oldest expense date in their
-// group); what has been paid puts the latest payout first, so an undo is
-// reachable without paging. The two orders are separate CASE expressions
-// because one is a date and the other an instant; the caller re-derives the
-// same order in Go from the figures it pages on, which it can, because a page
-// holds whole groups.
+// ListReimbursementGroupEntries is the standalone expenses of the people one
+// page holds.
 func (q *Queries) ListReimbursementGroupEntries(ctx context.Context, arg ListReimbursementGroupEntriesParams) ([]ExpensesEntry, error) {
 	rows, err := q.db.Query(ctx, listReimbursementGroupEntries,
 		arg.Reimbursed,
-		arg.UserID,
+		arg.UserIds,
 		arg.FromDate,
 		arg.ToDate,
-		arg.PageOffset,
-		arg.PageSize,
 	)
 	if err != nil {
 		return nil, err
@@ -185,44 +256,151 @@ func (q *Queries) ListReimbursementGroupEntries(ctx context.Context, arg ListRei
 	return items, nil
 }
 
+const listReimbursementGroups = `-- name: ListReimbursementGroups :many
+WITH units AS (
+    SELECT user_id, entry_date AS waiting_since, reimbursed_at FROM expenses.entries
+    WHERE status = 'approved'
+      AND claim_id IS NULL
+      AND gross_amount > 0
+      AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+      AND ($1::boolean = (reimbursed_at IS NOT NULL))
+      AND ($4::uuid IS NULL OR user_id = $4::uuid)
+      AND ($5::date IS NULL OR entry_date >= $5::date)
+      AND ($6::date IS NULL OR entry_date <= $6::date)
+    UNION ALL
+    SELECT c.user_id, (c.departure_at AT TIME ZONE $7::text)::date, c.reimbursed_at
+    FROM expenses.claims c
+    WHERE c.status = 'approved'
+      AND ($1::boolean = (c.reimbursed_at IS NOT NULL))
+      AND EXISTS (
+          SELECT 1 FROM expenses.entries e
+          WHERE e.claim_id = c.id
+            AND e.gross_amount > 0
+            AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+      AND ($4::uuid IS NULL OR c.user_id = $4::uuid)
+      AND ($5::date IS NULL
+           OR (c.departure_at AT TIME ZONE $7::text)::date >= $5::date)
+      AND ($6::date IS NULL
+           OR (c.departure_at AT TIME ZONE $7::text)::date <= $6::date)
+)
+SELECT user_id
+FROM units
+GROUP BY user_id
+ORDER BY
+    CASE WHEN $1::boolean THEN NULL ELSE min(waiting_since) END ASC,
+    CASE WHEN $1::boolean THEN max(reimbursed_at) END DESC,
+    user_id
+LIMIT $3 OFFSET $2
+`
+
+type ListReimbursementGroupsParams struct {
+	Reimbursed bool
+	PageOffset int32
+	PageSize   int32
+	UserID     *uuid.UUID
+	FromDate   pgtype.Date
+	ToDate     pgtype.Date
+	TimeZone   string
+}
+
+// ListReimbursementGroups is one page of the list's **people**, paged in SQL
+// exactly as the approval queue's are: the people are grouped and the page taken
+// first, and only then are their units read, so a page always holds whole
+// groups.
+//
+// The order is the one the state asks for. What is waiting puts the person who
+// has waited longest first (the oldest day among their units); what has been
+// paid puts the latest payout first, so an undo is reachable without paging. The
+// two orders are separate CASE expressions because one is a date and the other
+// an instant.
+func (q *Queries) ListReimbursementGroups(ctx context.Context, arg ListReimbursementGroupsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listReimbursementGroups,
+		arg.Reimbursed,
+		arg.PageOffset,
+		arg.PageSize,
+		arg.UserID,
+		arg.FromDate,
+		arg.ToDate,
+		arg.TimeZone,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReimbursementRows = `-- name: ListReimbursementRows :many
-SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries
-WHERE status = 'approved'
-  AND gross_amount > 0
-  AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
-  AND ($1::boolean OR $2::boolean = (reimbursed_at IS NOT NULL))
-  AND ($3::boolean OR id = ANY($4::bigint[]))
-  AND ($1::boolean OR $5::uuid IS NULL OR user_id = $5::uuid)
-  AND ($1::boolean OR $6::date IS NULL OR entry_date >= $6::date)
-  AND ($1::boolean OR $7::date IS NULL OR entry_date <= $7::date)
-ORDER BY user_id, entry_date, id
-LIMIT $8
+SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent, c.purpose AS claim_purpose FROM expenses.entries e
+LEFT JOIN expenses.claims c ON c.id = e.claim_id
+WHERE e.gross_amount > 0
+  AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee'))
+  AND (
+      (e.claim_id IS NULL AND e.status = 'approved'
+       AND ($1::boolean OR $2::boolean = (e.reimbursed_at IS NOT NULL)))
+      OR (c.id IS NOT NULL AND c.status = 'approved'
+       AND ($1::boolean OR $2::boolean = (c.reimbursed_at IS NOT NULL)))
+  )
+  AND ($3::boolean OR e.id = ANY($4::bigint[]) OR e.claim_id = ANY($5::bigint[]))
+  AND ($1::boolean OR $6::uuid IS NULL OR e.user_id = $6::uuid)
+  AND ($1::boolean OR $7::date IS NULL
+       OR COALESCE((c.departure_at AT TIME ZONE $8::text)::date, e.entry_date) >= $7::date)
+  AND ($1::boolean OR $9::date IS NULL
+       OR COALESCE((c.departure_at AT TIME ZONE $8::text)::date, e.entry_date) <= $9::date)
+ORDER BY e.user_id, e.entry_date, e.id
+LIMIT $10
 `
 
 type ListReimbursementRowsParams struct {
 	ByIds      bool
 	Reimbursed bool
 	AllIds     bool
-	Ids        []int64
+	EntryIds   []int64
+	ClaimIds   []int64
 	UserID     *uuid.UUID
 	FromDate   pgtype.Date
+	TimeZone   string
 	ToDate     pgtype.Date
 	RowLimit   int32
 }
 
-// ListReimbursementRows is the export's whole set in one statement: the same
-// predicate again, narrowed either by the list's filters or by explicit ids
-// (all_ids false). It reads one row more than the cap so the caller can tell
-// "this is the whole file" from "there is more than a file may hold" without
-// a second count.
-func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimbursementRowsParams) ([]ExpensesEntry, error) {
+type ListReimbursementRowsRow struct {
+	ExpensesEntry ExpensesEntry
+	ClaimPurpose  *string
+}
+
+// ListReimbursementRows is the export's whole set in one statement, and it is a
+// set of **lines** rather than of units: a standalone expense is its own line,
+// and a travel claim contributes one row per expense it holds. The claim's
+// purpose comes with each of them, because the file says which trip a line was
+// on.
+//
+// The same predicate again, narrowed either by the list's filters or by explicit
+// ids (all_ids false — an expense named by entry_ids, or every line of a claim
+// named by claim_ids). It reads one row more than the cap so the caller can tell
+// "this is the whole file" from "there is more than a file may hold" without a
+// second count.
+func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimbursementRowsParams) ([]ListReimbursementRowsRow, error) {
 	rows, err := q.db.Query(ctx, listReimbursementRows,
 		arg.ByIds,
 		arg.Reimbursed,
 		arg.AllIds,
-		arg.Ids,
+		arg.EntryIds,
+		arg.ClaimIds,
 		arg.UserID,
 		arg.FromDate,
+		arg.TimeZone,
 		arg.ToDate,
 		arg.RowLimit,
 	)
@@ -230,38 +408,131 @@ func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimburseme
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ExpensesEntry
+	var items []ListReimbursementRowsRow
 	for rows.Next() {
-		var i ExpensesEntry
+		var i ListReimbursementRowsRow
+		if err := rows.Scan(
+			&i.ExpensesEntry.ID,
+			&i.ExpensesEntry.UserID,
+			&i.ExpensesEntry.CreatedByUserID,
+			&i.ExpensesEntry.ClaimID,
+			&i.ExpensesEntry.Kind,
+			&i.ExpensesEntry.EntryDate,
+			&i.ExpensesEntry.Description,
+			&i.ExpensesEntry.CategoryID,
+			&i.ExpensesEntry.Supplier,
+			&i.ExpensesEntry.PaidBy,
+			&i.ExpensesEntry.Currency,
+			&i.ExpensesEntry.GrossAmount,
+			&i.ExpensesEntry.VatAmount,
+			&i.ExpensesEntry.DistanceKm,
+			&i.ExpensesEntry.FromPlace,
+			&i.ExpensesEntry.ToPlace,
+			&i.ExpensesEntry.Passengers,
+			&i.ExpensesEntry.Rate,
+			&i.ExpensesEntry.PassengerRate,
+			&i.ExpensesEntry.RateOverriddenByUserID,
+			&i.ExpensesEntry.RateTableValue,
+			&i.ExpensesEntry.PassengerRateTableValue,
+			&i.ExpensesEntry.ProjectID,
+			&i.ExpensesEntry.BillingLineID,
+			&i.ExpensesEntry.Billable,
+			&i.ExpensesEntry.MarkupPercent,
+			&i.ExpensesEntry.BillRatePerKm,
+			&i.ExpensesEntry.BillAmount,
+			&i.ExpensesEntry.Status,
+			&i.ExpensesEntry.SubmittedAt,
+			&i.ExpensesEntry.DecidedAt,
+			&i.ExpensesEntry.DecidedByUserID,
+			&i.ExpensesEntry.RejectionReason,
+			&i.ExpensesEntry.ReimbursedAt,
+			&i.ExpensesEntry.ReimbursedByUserID,
+			&i.ExpensesEntry.ReimbursementReference,
+			&i.ExpensesEntry.ReimbursementDate,
+			&i.ExpensesEntry.InvoicedAt,
+			&i.ExpensesEntry.InvoicedByUserID,
+			&i.ExpensesEntry.InvoiceReference,
+			&i.ExpensesEntry.Revision,
+			&i.ExpensesEntry.CreatedAt,
+			&i.ExpensesEntry.UpdatedAt,
+			&i.ExpensesEntry.PerDiemType,
+			&i.ExpensesEntry.BreakfastCovered,
+			&i.ExpensesEntry.LunchCovered,
+			&i.ExpensesEntry.DinnerCovered,
+			&i.ExpensesEntry.MealBreakfastPercent,
+			&i.ExpensesEntry.MealLunchPercent,
+			&i.ExpensesEntry.MealDinnerPercent,
+			&i.ClaimPurpose,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markClaimsReimbursed = `-- name: MarkClaimsReimbursed :many
+UPDATE expenses.claims SET
+    reimbursed_at = $1::timestamptz,
+    reimbursed_by_user_id = $2::uuid,
+    reimbursement_date = $3,
+    reimbursement_reference = $4,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = ANY($5::bigint[])
+  AND status = 'approved'
+  AND reimbursed_at IS NULL
+  AND EXISTS (
+      SELECT 1 FROM expenses.entries e
+      WHERE e.claim_id = expenses.claims.id
+        AND e.gross_amount > 0
+        AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+RETURNING id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at
+`
+
+type MarkClaimsReimbursedParams struct {
+	Now               time.Time
+	ReimbursedBy      uuid.UUID
+	ReimbursementDate pgtype.Date
+	Reference         *string
+	Ids               []int64
+}
+
+// MarkClaimsReimbursed records one payroll run on the travel claims it paid.
+// The stamp is the claim's own and its lines carry none: a trip is paid as one
+// unit, for the sum of what its lines owe its owner. The rows are already
+// locked by the caller, which decided every one of them may be paid; the guards
+// here are the last line, not the rule.
+func (q *Queries) MarkClaimsReimbursed(ctx context.Context, arg MarkClaimsReimbursedParams) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, markClaimsReimbursed,
+		arg.Now,
+		arg.ReimbursedBy,
+		arg.ReimbursementDate,
+		arg.Reference,
+		arg.Ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
 			&i.CreatedByUserID,
-			&i.ClaimID,
-			&i.Kind,
-			&i.EntryDate,
-			&i.Description,
-			&i.CategoryID,
-			&i.Supplier,
-			&i.PaidBy,
-			&i.Currency,
-			&i.GrossAmount,
-			&i.VatAmount,
-			&i.DistanceKm,
-			&i.FromPlace,
-			&i.ToPlace,
-			&i.Passengers,
-			&i.Rate,
-			&i.PassengerRate,
-			&i.RateOverriddenByUserID,
-			&i.RateTableValue,
-			&i.PassengerRateTableValue,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
 			&i.ProjectID,
-			&i.BillingLineID,
-			&i.Billable,
-			&i.MarkupPercent,
-			&i.BillRatePerKm,
-			&i.BillAmount,
 			&i.Status,
 			&i.SubmittedAt,
 			&i.DecidedAt,
@@ -271,19 +542,9 @@ func (q *Queries) ListReimbursementRows(ctx context.Context, arg ListReimburseme
 			&i.ReimbursedByUserID,
 			&i.ReimbursementReference,
 			&i.ReimbursementDate,
-			&i.InvoicedAt,
-			&i.InvoicedByUserID,
-			&i.InvoiceReference,
 			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.PerDiemType,
-			&i.BreakfastCovered,
-			&i.LunchCovered,
-			&i.DinnerCovered,
-			&i.MealBreakfastPercent,
-			&i.MealLunchPercent,
-			&i.MealDinnerPercent,
 		); err != nil {
 			return nil, err
 		}
@@ -505,6 +766,70 @@ func (q *Queries) MarkEntryInvoiced(ctx context.Context, arg MarkEntryInvoicedPa
 		&i.MealDinnerPercent,
 	)
 	return i, err
+}
+
+const unmarkClaimsReimbursed = `-- name: UnmarkClaimsReimbursed :many
+UPDATE expenses.claims SET
+    reimbursed_at = NULL,
+    reimbursed_by_user_id = NULL,
+    reimbursement_date = NULL,
+    reimbursement_reference = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = ANY($2::bigint[]) AND reimbursed_at IS NOT NULL
+RETURNING id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at
+`
+
+type UnmarkClaimsReimbursedParams struct {
+	Now time.Time
+	Ids []int64
+}
+
+// UnmarkClaimsReimbursed takes a payroll run back off the travel claims it was
+// recorded on, the whole of it, so they stand in the waiting list exactly as
+// they did before.
+func (q *Queries) UnmarkClaimsReimbursed(ctx context.Context, arg UnmarkClaimsReimbursedParams) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, unmarkClaimsReimbursed, arg.Now, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
+			&i.ProjectID,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const unmarkEntriesReimbursed = `-- name: UnmarkEntriesReimbursed :many

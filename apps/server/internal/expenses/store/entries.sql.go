@@ -84,9 +84,13 @@ func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int
 
 const deleteEntry = `-- name: DeleteEntry :execrows
 DELETE FROM expenses.entries
-WHERE id = $1
-  AND status IN ('draft', 'rejected')
-  AND ($2::boolean OR user_id = $3::uuid)
+WHERE expenses.entries.id = $1
+  -- The unit's status again, for the reason UpdateEntry reads it: a line's own
+  -- column says nothing, and the claim's row is held before this runs.
+  AND COALESCE(
+        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+        expenses.entries.status) IN ('draft', 'rejected')
+  AND ($2::boolean OR expenses.entries.user_id = $3::uuid)
 `
 
 type DeleteEntryParams struct {
@@ -561,10 +565,16 @@ UPDATE expenses.entries SET
     decided_by_user_id = NULL,
     revision = revision + 1,
     updated_at = $29::timestamptz
-WHERE id = $30
-  AND revision = $31
-  AND status IN ('draft', 'rejected')
-  AND ($32::boolean OR user_id = $33::uuid)
+WHERE expenses.entries.id = $30
+  AND expenses.entries.revision = $31
+  -- The status guarded is the **unit's** (unitOf in authorize.go): a line
+  -- inside a travel claim is editable exactly while its claim is, and its own
+  -- column stays at its default 'draft'. The handler holds the claim's row lock
+  -- before this runs, so the subquery reads the very row it judged.
+  AND COALESCE(
+        (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
+        expenses.entries.status) IN ('draft', 'rejected')
+  AND ($32::boolean OR expenses.entries.user_id = $33::uuid)
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 

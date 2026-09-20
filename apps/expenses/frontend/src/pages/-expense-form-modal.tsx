@@ -355,7 +355,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
           ? await updateExpense(saved.id, { ...input, revision } as ExpenseUpdateInput)
           : await createExpense(input);
       if (!andSubmit) return { stored, submitted: false as const };
-      const [after] = await submitExpenses([stored.id]).catch(async (error: Error) => {
+      const moved = await submitExpenses([stored.id]).catch(async (error: Error) => {
         // The expense is saved either way; only the submission was refused.
         // The list has to learn about it here, because `onSuccess` — where
         // every other write invalidates — is not going to run: a new draft
@@ -366,7 +366,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
         await queryClient.invalidateQueries({ queryKey: [EXPENSES_QUERY_KEY] });
         throw error;
       });
-      return { stored: after ?? stored, submitted: true as const };
+      return { stored: moved.entries[0] ?? stored, submitted: true as const };
     },
     onSuccess: async ({ stored, submitted }) => {
       setRefusals([]);

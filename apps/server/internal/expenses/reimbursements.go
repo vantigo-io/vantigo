@@ -24,9 +24,12 @@ import (
 // is expenses:manage's whole job here — the list a payroll run is made from,
 // the run itself, the way back from it, and the file a payroll system reads.
 //
-// The unit is a standalone expense, which is every expense there is in this
-// delivery; travel claims become units of their own in delivery B, and the
-// batch these operations run through is already the one that will take them.
+// The unit is a standalone expense or a whole travel claim. A trip is paid as
+// one, for the sum of what its lines owe its owner, and its lines never appear
+// as loose expenses — the list, the batch and the stamp are all the claim's.
+// The one place the *lines* come back is the payroll file, which is a file of
+// lines: a payroll system wants each amount on its own row, with the trip it
+// was on named beside it.
 //
 // The period lock appears nowhere in it. The lock protects what an employee
 // submitted and what an approver decided — a date, an amount, a status. A
@@ -112,18 +115,35 @@ func (s *server) GetExpensesReimbursements(ctx context.Context, req gen.GetExpen
 
 	total, err := q.CountReimbursementGroups(ctx, store.CountReimbursementGroupsParams{
 		Reimbursed: filter.Paid, UserID: filter.UserID,
-		FromDate: filter.FromDate, ToDate: filter.ToDate,
+		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.Settings.TimeZone,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("expenses: count the reimbursement list's groups: %w", err)
 	}
-	rows, err := q.ListReimbursementGroupEntries(ctx, store.ListReimbursementGroupEntriesParams{
+	// The page of *people* first, in the order the state asks for, and only
+	// then their units — so a page always holds whole groups and the database
+	// never hands Go more rows than the page needs.
+	userIDs, err := q.ListReimbursementGroups(ctx, store.ListReimbursementGroupsParams{
 		Reimbursed: filter.Paid, UserID: filter.UserID,
-		FromDate: filter.FromDate, ToDate: filter.ToDate,
+		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.Settings.TimeZone,
 		PageSize: pageSize, PageOffset: (page - 1) * pageSize,
 	})
 	if err != nil {
+		return nil, fmt.Errorf("expenses: page the reimbursement list: %w", err)
+	}
+	rows, err := q.ListReimbursementGroupEntries(ctx, store.ListReimbursementGroupEntriesParams{
+		Reimbursed: filter.Paid, UserIds: userIDs,
+		FromDate: filter.FromDate, ToDate: filter.ToDate,
+	})
+	if err != nil {
 		return nil, fmt.Errorf("expenses: list what is owed back: %w", err)
+	}
+	claims, err := q.ListReimbursementGroupClaims(ctx, store.ListReimbursementGroupClaimsParams{
+		Reimbursed: filter.Paid, UserIds: userIDs,
+		FromDate: filter.FromDate, ToDate: filter.ToDate, TimeZone: c.Settings.TimeZone,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("expenses: list the travel claims owed back: %w", err)
 	}
 	// One renderer: an expense here is shaped exactly as a single read of it
 	// would be for this caller, capabilities and all.
@@ -131,7 +151,11 @@ func (s *server) GetExpensesReimbursements(ctx context.Context, req gen.GetExpen
 	if err != nil {
 		return nil, err
 	}
-	data, err := reimbursementGroups(rows, entries, filter.Paid)
+	units, err := s.claimUnitsOf(ctx, q, c, claims)
+	if err != nil {
+		return nil, err
+	}
+	data, err := reimbursementGroups(userIDs, rows, entries, units)
 	if err != nil {
 		return nil, err
 	}
@@ -141,59 +165,76 @@ func (s *server) GetExpensesReimbursements(ctx context.Context, req gen.GetExpen
 	}, nil
 }
 
-// reimbursementGroups gathers one page's rows into one group per person, in
-// the very order the page was taken in (ListReimbursementGroupEntries),
-// re-derived here from the rows themselves — which it can be, because a page
-// holds whole groups. The names come off the rendered expenses, so this asks
-// identity for nothing the shaping has not already asked for.
-func reimbursementGroups(rows []store.ExpensesEntry, entries []gen.ExpensesEntryResponse, paid bool) ([]gen.ExpensesReimbursementGroup, error) {
+// reimbursementGroups gathers one page's units into one group per person, in
+// the very order the page was taken in (ListReimbursementGroups) — the user ids
+// arrive already sorted, so Go re-derives nothing and the two can never
+// disagree. The names come off the rendered expenses and the rendered claims, so
+// this asks identity for nothing the shaping has not already asked for.
+func reimbursementGroups(userIDs []uuid.UUID, rows []store.ExpensesEntry,
+	entries []gen.ExpensesEntryResponse, units []claimUnitResponse,
+) ([]gen.ExpensesReimbursementGroup, error) {
 	type group struct {
 		user    gen.ExpensesUserRef
-		oldest  time.Time
-		latest  time.Time
 		entries []gen.ExpensesEntryResponse
+		claims  []gen.ExpensesClaimSummary
 		totals  map[string]*currencyTotal
 	}
-	order := make([]uuid.UUID, 0, len(rows))
-	byUser := map[uuid.UUID]*group{}
+	byUser := make(map[uuid.UUID]*group, len(userIDs))
+	order := make([]uuid.UUID, 0, len(userIDs))
+	for _, id := range userIDs {
+		byUser[id] = &group{totals: map[string]*currencyTotal{}}
+		order = append(order, id)
+	}
 	for i, row := range rows {
 		g, ok := byUser[row.UserID]
 		if !ok {
-			g = &group{
-				user:   gen.ExpensesUserRef(entries[i].Owner),
-				oldest: row.EntryDate.Time,
-				totals: map[string]*currencyTotal{},
-			}
-			byUser[row.UserID] = g
-			order = append(order, row.UserID)
+			continue
 		}
-		if row.EntryDate.Time.Before(g.oldest) {
-			g.oldest = row.EntryDate.Time
-		}
-		if row.ReimbursedAt != nil && row.ReimbursedAt.After(g.latest) {
-			g.latest = *row.ReimbursedAt
-		}
+		g.user = gen.ExpensesUserRef(entries[i].Owner)
 		g.entries = append(g.entries, entries[i])
 		if err := addToTotals(g.totals, row); err != nil {
 			return nil, err
 		}
 	}
-	slices.SortFunc(order, func(a, b uuid.UUID) int {
-		if paid {
-			// The latest payout first, so an undo is the top of the list.
-			return cmp.Or(byUser[b].latest.Compare(byUser[a].latest), strings.Compare(a.String(), b.String()))
+	for _, unit := range units {
+		g, ok := byUser[unit.owner.UserId]
+		if !ok {
+			continue
 		}
-		return cmp.Or(byUser[a].oldest.Compare(byUser[b].oldest), strings.Compare(a.String(), b.String()))
-	})
+		g.user = unit.owner
+		g.claims = append(g.claims, unit.summary)
+		addSummaryToTotals(g.totals, unit.summary)
+	}
 
 	data := make([]gen.ExpensesReimbursementGroup, 0, len(order))
 	for _, id := range order {
 		g := byUser[id]
+		if g.user.UserId == uuid.Nil {
+			g.user = gen.ExpensesUserRef{UserId: id, DisplayName: unknownUser}
+		}
 		data = append(data, gen.ExpensesReimbursementGroup{
-			User: g.user, Entries: g.entries, Totals: currencyTotals(g.totals),
+			User: g.user, Entries: entriesOrEmpty(g.entries), Claims: claimsOrEmpty(g.claims),
+			Totals: currencyTotals(g.totals),
 		})
 	}
 	return data, nil
+}
+
+// entriesOrEmpty and claimsOrEmpty keep a group's two lists arrays rather than
+// nulls: a person with only trips and a person with only loose expenses read
+// the same way.
+func entriesOrEmpty(list []gen.ExpensesEntryResponse) []gen.ExpensesEntryResponse {
+	if list == nil {
+		return []gen.ExpensesEntryResponse{}
+	}
+	return list
+}
+
+func claimsOrEmpty(list []gen.ExpensesClaimSummary) []gen.ExpensesClaimSummary {
+	if list == nil {
+		return []gen.ExpensesClaimSummary{}
+	}
+	return list
 }
 
 // parseReimbursedBody runs the payroll run's own rules over its body: the day
@@ -249,6 +290,15 @@ func (s *server) PostExpensesReimbursed(ctx context.Context, req gen.PostExpense
 			}
 			return ""
 		},
+		claimAlso: func(id int64, claim store.ExpensesClaim, lines []store.ExpensesEntry) string {
+			switch {
+			case claim.ReimbursedAt != nil:
+				return fmt.Sprintf("Travel claim %d has already been reimbursed", id)
+			case !claimOwesEmployee(lines):
+				return fmt.Sprintf("Travel claim %d owes the employee nothing", id)
+			}
+			return ""
+		},
 		apply: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error) {
 			rows, err := txq.MarkEntriesReimbursed(ctx, store.MarkEntriesReimbursedParams{
 				Ids: ids, ReimbursedBy: by, ReimbursementDate: date, Reference: reference, Now: now,
@@ -258,7 +308,16 @@ func (s *server) PostExpensesReimbursed(ctx context.Context, req gen.PostExpense
 			}
 			return rows, nil
 		},
-	}, gen.ExpensesFlowRequest{EntryIds: body.EntryIds, ClaimIds: body.ClaimIds}, errs)
+		applyClaims: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesClaim, error) {
+			rows, err := txq.MarkClaimsReimbursed(ctx, store.MarkClaimsReimbursedParams{
+				Ids: ids, ReimbursedBy: by, ReimbursementDate: date, Reference: reference, Now: now,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("expenses: mark travel claims reimbursed: %w", err)
+			}
+			return rows, nil
+		},
+	}, body.EntryIds, body.ClaimIds, errs)
 	switch {
 	case err != nil:
 		return nil, err
@@ -267,7 +326,21 @@ func (s *server) PostExpensesReimbursed(ctx context.Context, req gen.PostExpense
 	case out.errs != nil:
 		return gen.PostExpensesReimbursed400ApplicationProblemPlusJSONResponse(invalidReimbursement(out.errs)), nil
 	}
-	return gen.PostExpensesReimbursed200JSONResponse(out.entries), nil
+	return gen.PostExpensesReimbursed200JSONResponse(out.response()), nil
+}
+
+// claimOwesEmployee reports whether a travel claim owes its owner anything at
+// all — the Go half of the EXISTS the reimbursement queries apply in SQL, and
+// the two must stay one rule. A trip of nothing but company-paid outlays owes
+// nothing and cannot go on a payroll run, exactly as such an outlay cannot on
+// its own.
+func claimOwesEmployee(lines []store.ExpensesEntry) bool {
+	for _, line := range lines {
+		if owesEmployee(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // PostExpensesReimbursedUndo Undo marking expenses reimbursed
@@ -290,6 +363,12 @@ func (s *server) PostExpensesReimbursedUndo(ctx context.Context, req gen.PostExp
 			}
 			return ""
 		},
+		claimAlso: func(id int64, claim store.ExpensesClaim, _ []store.ExpensesEntry) string {
+			if claim.ReimbursedAt == nil {
+				return fmt.Sprintf("Travel claim %d has not been reimbursed", id)
+			}
+			return ""
+		},
 		apply: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesEntry, error) {
 			rows, err := txq.UnmarkEntriesReimbursed(ctx, store.UnmarkEntriesReimbursedParams{Ids: ids, Now: now})
 			if err != nil {
@@ -297,7 +376,14 @@ func (s *server) PostExpensesReimbursedUndo(ctx context.Context, req gen.PostExp
 			}
 			return rows, nil
 		},
-	}, body, nil)
+		applyClaims: func(ctx context.Context, txq *store.Queries, ids []int64) ([]store.ExpensesClaim, error) {
+			rows, err := txq.UnmarkClaimsReimbursed(ctx, store.UnmarkClaimsReimbursedParams{Ids: ids, Now: now})
+			if err != nil {
+				return nil, fmt.Errorf("expenses: undo a travel claim's reimbursement: %w", err)
+			}
+			return rows, nil
+		},
+	}, body.EntryIds, body.ClaimIds, nil)
 	switch {
 	case err != nil:
 		return nil, err
@@ -306,7 +392,7 @@ func (s *server) PostExpensesReimbursedUndo(ctx context.Context, req gen.PostExp
 	case out.errs != nil:
 		return gen.PostExpensesReimbursedUndo400ApplicationProblemPlusJSONResponse(invalidReimbursement(out.errs)), nil
 	}
-	return gen.PostExpensesReimbursedUndo200JSONResponse(out.entries), nil
+	return gen.PostExpensesReimbursedUndo200JSONResponse(out.response()), nil
 }
 
 // csvDownload writes the payroll export itself: the generated response type
@@ -332,10 +418,12 @@ func (d csvDownload) VisitGetExpensesReimbursementsExportCsvResponse(w http.Resp
 // GetExpensesReimbursementsExportCsv Export what is owed back as CSV
 // (GET /api/v1/expenses/reimbursements/export.csv)
 //
-// The same expenses the list holds, as the file a payroll system reads. Every
-// name it needs — the people, the projects, the categories — is resolved in
-// bulk before a byte is written, so the file costs a fixed number of reads
-// however many rows it has.
+// The same units the list holds, as the file a payroll system reads — but a
+// file of **lines**: a standalone expense is its own row, and a travel claim
+// writes one row per expense it holds, each carrying the trip it was on. Every
+// name it needs — the people, the projects, the categories — is resolved in bulk
+// before a byte is written, so the file costs a fixed number of reads however
+// many rows it has.
 func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen.GetExpensesReimbursementsExportCsvRequestObject) (gen.GetExpensesReimbursementsExportCsvResponseObject, error) {
 	p := req.Params
 	paid, msg := parseState(p.State)
@@ -343,29 +431,40 @@ func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen
 		return gen.GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse(
 			invalidExportQuery([]string{msg})), nil
 	}
-	// A parameter that is there and names nothing is a mistake, not "export
+	// A selection that is there and names nothing is a mistake, not "export
 	// everything": a client building it from a row selection with nothing
-	// ticked would otherwise be handed the whole unpaid list. Leaving it out
-	// is still the filter mode, which is what that button should send.
-	byIDs := p.EntryIds != nil
-	var ids []int64
+	// ticked would otherwise be handed the whole unpaid list. Leaving both
+	// parameters out is still the filter mode, which is what that button should
+	// send.
+	byIDs := p.EntryIds != nil || p.ClaimIds != nil
+	var ids, claimIDs []int64
 	if byIDs {
-		ids = uniqueIDs(*p.EntryIds)
+		ids = uniqueIDs(idsOf(p.EntryIds))
+		claimIDs = uniqueIDs(idsOf(p.ClaimIds))
 	}
-	if byIDs && len(ids) == 0 {
+	if byIDs && len(ids)+len(claimIDs) == 0 {
 		return gen.GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse(
-			invalidExport(fieldError("entryIds", "At least one expense id is required"))), nil
+			invalidExport(fieldError("entryIds", "At least one expense or travel claim id is required"))), nil
 	}
-	if len(ids) > exportMaxRows {
+	if len(ids)+len(claimIDs) > exportMaxRows {
 		return gen.GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse(
 			invalidExport(fieldError("entryIds", fmt.Sprintf(
-				"At most %d expense ids may be exported at once; %d were given", exportMaxRows, len(ids))))), nil
+				"At most %d expense and travel claim ids may be exported at once; %d were given",
+				exportMaxRows, len(ids)+len(claimIDs))))), nil
 	}
 
 	q := store.New(s.deps.Pool)
+	// One reading of the settings for both the zone the filters judge a trip's
+	// departure in and the zone the file is named in, so the two cannot differ.
+	current, err := settings(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	zone := zoneOf(current)
 	rows, err := q.ListReimbursementRows(ctx, store.ListReimbursementRowsParams{
-		ByIds: byIDs, Reimbursed: paid, AllIds: !byIDs, Ids: ids,
+		ByIds: byIDs, Reimbursed: paid, AllIds: !byIDs, EntryIds: ids, ClaimIds: claimIDs,
 		UserID: p.UserId, FromDate: optionalDate(p.From), ToDate: optionalDate(p.To),
+		TimeZone: current.TimeZone,
 		// One row more than the cap, so "the whole file" and "more than a file
 		// may hold" are told apart without a second count.
 		RowLimit: int32(exportMaxRows) + 1,
@@ -375,14 +474,18 @@ func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen
 	}
 	if byIDs {
 		// Only expenses:manage reaches here, and expenses:manage sees every
-		// expense, so an id with no row is an id with no expense.
+		// expense, so an id with no row is an id with nothing behind it.
 		existing, err := q.GetEntries(ctx, ids)
 		if err != nil {
 			return nil, fmt.Errorf("expenses: read the expenses named for export: %w", err)
 		}
-		if refusals := missingExportIDs(ids, rows, existing); len(refusals) > 0 {
+		existingClaims, err := q.GetClaims(ctx, claimIDs)
+		if err != nil {
+			return nil, fmt.Errorf("expenses: read the travel claims named for export: %w", err)
+		}
+		if refusals := missingExportIDs(ids, claimIDs, rows, existing, existingClaims); refusals != nil {
 			return gen.GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse(
-				invalidExport(map[string][]string{"entryIds": refusals})), nil
+				invalidExport(refusals)), nil
 		}
 	}
 	if len(rows) > exportMaxRows {
@@ -390,15 +493,11 @@ func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen
 			tooManyExportRows(exportMaxRows)), nil
 	}
 
-	names, err := s.namesFor(ctx, rows)
+	names, err := s.namesFor(ctx, entriesOfExport(rows))
 	if err != nil {
 		return nil, err
 	}
 	body, err := reimbursementCSV(rows, names)
-	if err != nil {
-		return nil, err
-	}
-	zone, err := s.businessZone(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -411,21 +510,43 @@ func (s *server) GetExpensesReimbursementsExportCsv(ctx context.Context, req gen
 	}, nil
 }
 
-// missingExportIDs is the per-id refusals of an export that named ids: an id
-// that names no expense reads as the unknown id's "was not found", and one
-// that names an expense a payroll run does not pay for says so. Nothing is
-// left out of a payroll file silently — a file missing a line nobody was told
-// about is worse than no file.
-func missingExportIDs(ids []int64, rows, existing []store.ExpensesEntry) []string {
-	exportable := make(map[int64]bool, len(rows))
+// entriesOfExport is the export's rows as plain expenses, which is what the
+// name resolution takes. The claim's purpose rides along on each row and needs
+// no directory of its own.
+func entriesOfExport(rows []store.ListReimbursementRowsRow) []store.ExpensesEntry {
+	out := make([]store.ExpensesEntry, 0, len(rows))
 	for _, row := range rows {
-		exportable[row.ID] = true
+		out = append(out, row.ExpensesEntry)
+	}
+	return out
+}
+
+// missingExportIDs is the per-id refusals of an export that named ids: an id
+// that names nothing reads as the unknown id's "was not found", and one that
+// names a unit a payroll run does not pay for says so. Nothing is left out of a
+// payroll file silently — a file missing a line nobody was told about is worse
+// than no file. The messages are keyed by the list that named the id, as every
+// batch here keys them.
+func missingExportIDs(ids, claimIDs []int64, rows []store.ListReimbursementRowsRow,
+	existing []store.ExpensesEntry, existingClaims []store.ExpensesClaim,
+) map[string][]string {
+	exportable := make(map[int64]bool, len(rows))
+	exportableClaims := map[int64]bool{}
+	for _, row := range rows {
+		exportable[row.ExpensesEntry.ID] = true
+		if row.ExpensesEntry.ClaimID != nil {
+			exportableClaims[*row.ExpensesEntry.ClaimID] = true
+		}
 	}
 	known := make(map[int64]bool, len(existing))
 	for _, row := range existing {
 		known[row.ID] = true
 	}
-	var refusals []string
+	knownClaims := make(map[int64]bool, len(existingClaims))
+	for _, claim := range existingClaims {
+		knownClaims[claim.ID] = true
+	}
+	var refusals, claimRefusals []string
 	for _, id := range ids {
 		switch {
 		case exportable[id]:
@@ -436,7 +557,17 @@ func missingExportIDs(ids []int64, rows, existing []store.ExpensesEntry) []strin
 				"Expense %d cannot be exported: only an approved expense that owes somebody something can be", id))
 		}
 	}
-	return refusals
+	for _, id := range claimIDs {
+		switch {
+		case exportableClaims[id]:
+		case !knownClaims[id]:
+			claimRefusals = append(claimRefusals, notFoundClaimRefusal(id))
+		default:
+			claimRefusals = append(claimRefusals, fmt.Sprintf(
+				"Travel claim %d cannot be exported: only an approved travel claim that owes somebody something can be", id))
+		}
+	}
+	return refusalsOf(refusals, claimRefusals)
 }
 
 // The payroll file's own shape. It is a contract with a spreadsheet rather
@@ -453,24 +584,37 @@ const (
 
 // csvHeader is the columns, in order. They are English and untranslated: the
 // file is read by a payroll system and by whoever set it up, not by every
-// employee, and a column name that moved with the reader's language would
-// break the import the first time somebody switched it.
+// employee, and a column name that moved with the reader's language would break
+// the import the first time somebody switched it.
+//
+// Unit and Purpose lead, because the file is a file of *lines* and the first
+// thing a reader needs is which unit a line belongs to: 'expense 2001' for a
+// standalone one, 'claim 1012' for a line of a trip, with the trip's purpose
+// beside it.
 var csvHeader = []string{
-	"Employee", "User id", "Date", "Kind", "Description",
+	"Unit", "Purpose", "Employee", "User id", "Date", "Kind", "Description",
 	"Category", "Currency", "Gross", "VAT", "Owed", "Project code",
 }
+
+// The two words the unit cell is built from. They are the module's own
+// vocabulary rather than the contract's status values, and a payroll system
+// keys its import on them, so they are here once.
+const (
+	csvUnitExpense = "expense"
+	csvUnitClaim   = "claim"
+)
 
 // reimbursementCSV is rows as the payroll file, with every name already
 // resolved (namesFor). Rows come out by the person's display name, then by
 // date and id: a payroll file is read by a person, and the database's own
 // order is by a uuid nobody can read.
-func reimbursementCSV(rows []store.ExpensesEntry, names entryNames) ([]byte, error) {
+func reimbursementCSV(rows []store.ListReimbursementRowsRow, names entryNames) ([]byte, error) {
 	ordered := slices.Clone(rows)
-	slices.SortFunc(ordered, func(a, b store.ExpensesEntry) int {
+	slices.SortFunc(ordered, func(a, b store.ListReimbursementRowsRow) int {
 		return cmp.Or(
-			strings.Compare(displayNameOf(a.UserID, names), displayNameOf(b.UserID, names)),
-			a.EntryDate.Time.Compare(b.EntryDate.Time),
-			cmp.Compare(a.ID, b.ID),
+			strings.Compare(displayNameOf(a.ExpensesEntry.UserID, names), displayNameOf(b.ExpensesEntry.UserID, names)),
+			a.ExpensesEntry.EntryDate.Time.Compare(b.ExpensesEntry.EntryDate.Time),
+			cmp.Compare(a.ExpensesEntry.ID, b.ExpensesEntry.ID),
 		)
 	})
 
@@ -495,22 +639,37 @@ func displayNameOf(userID uuid.UUID, names entryNames) string {
 	return unknownUser
 }
 
-// csvCells is one expense as its row of the file. Amounts are rendered from
-// the exact decimals the columns hold, never from a float, and with the
-// decimal comma the file's readers expect; a VAT or a project code there is
+// csvCells is one line as its row of the file. Amounts are rendered from the
+// exact decimals the columns hold, never from a float, and with the decimal
+// comma the file's readers expect; a VAT, a purpose or a project code there is
 // none of is an empty cell rather than a zero or a dash.
-func csvCells(row store.ExpensesEntry, names entryNames) ([]string, error) {
-	gross, err := ratFromNumeric(row.GrossAmount)
+func csvCells(row store.ListReimbursementRowsRow, names entryNames) ([]string, error) {
+	entry := row.ExpensesEntry
+	gross, err := ratFromNumeric(entry.GrossAmount)
 	if err != nil {
 		return nil, err
 	}
-	vat, err := ratPtrFromNumeric(row.VatAmount)
+	vat, err := ratPtrFromNumeric(entry.VatAmount)
 	if err != nil {
 		return nil, err
 	}
-	category := ""
-	if row.CategoryID != nil {
-		if c, ok := names.categories[*row.CategoryID]; ok {
+	unit, purpose := fmt.Sprintf("%s %d", csvUnitExpense, entry.ID), ""
+	if entry.ClaimID != nil {
+		unit = fmt.Sprintf("%s %d", csvUnitClaim, *entry.ClaimID)
+		if row.ClaimPurpose != nil {
+			purpose = *row.ClaimPurpose
+		}
+	}
+	// A per diem day carries no description of its own unless its owner wrote
+	// one, and no category at all: what the day *is* is its type, which is what
+	// the file says instead. Everything else keeps what somebody typed.
+	description, category := entry.Description, ""
+	if entry.Kind == kindPerDiem {
+		if entry.PerDiemType != nil {
+			description = *entry.PerDiemType
+		}
+	} else if entry.CategoryID != nil {
+		if c, ok := names.categories[*entry.CategoryID]; ok {
 			category = c.Name
 		}
 	}
@@ -519,22 +678,24 @@ func csvCells(row store.ExpensesEntry, names entryNames) ([]string, error) {
 	// projects module. The column stays either way, so a payroll system need
 	// not know which modules an installation runs.
 	project := ""
-	if row.ProjectID != nil {
-		if p, ok := names.projects[*row.ProjectID]; ok {
+	if entry.ProjectID != nil {
+		if p, ok := names.projects[*entry.ProjectID]; ok {
 			project = p.Code
 		}
 	}
 	return []string{
-		displayNameOf(row.UserID, names),
-		row.UserID.String(),
-		row.EntryDate.Time.Format(time.DateOnly),
-		row.Kind,
-		row.Description,
+		unit,
+		purpose,
+		displayNameOf(entry.UserID, names),
+		entry.UserID.String(),
+		entry.EntryDate.Time.Format(time.DateOnly),
+		entry.Kind,
+		description,
 		category,
-		row.Currency,
+		entry.Currency,
 		csvAmount(gross),
 		csvAmountPtr(vat),
-		csvAmount(owedToEmployee(row, gross)),
+		csvAmount(owedToEmployee(entry, gross)),
 		project,
 	}, nil
 }

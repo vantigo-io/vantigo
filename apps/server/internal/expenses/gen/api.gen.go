@@ -21,18 +21,21 @@ import (
 	externalRef0 "github.com/vantigo-io/vantigo/server/internal/apicommon/gen"
 )
 
-// ExpensesApprovalGroup One person's submitted expenses that the caller may approve, with the figures an approver decides on at a glance.
+// ExpensesApprovalGroup One person's submitted units that the caller may approve, with the figures an approver decides on at a glance. A unit is a standalone expense or a whole travel claim, so the group holds two lists: a claim is one row of claims and never a run of loose entries.
 type ExpensesApprovalGroup struct {
-	// Entries The person's submitted expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller.
+	// Claims The person's submitted travel claims, the earliest departure first. Each is one unit to approve; the trip's own page (GET /claims/{id}) holds its lines.
+	Claims []ExpensesClaimSummary `json:"claims"`
+
+	// Entries The person's submitted standalone expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller. A travel claim's lines are never here — the claim is the unit.
 	Entries []ExpensesEntryResponse `json:"entries"`
 
-	// OverriddenRates How many of the entries carry a rate an approver has already replaced.
+	// OverriddenRates How many lines in the group carry a rate an approver has already replaced, the claims' lines included.
 	OverriddenRates int32 `json:"overriddenRates"`
 
-	// ReceiptsMissing How many of the entries are outlays with no receipt at all. Mileage never takes one and is never counted.
+	// ReceiptsMissing How many lines in the group are outlays with no receipt at all, the claims' lines included. Mileage and a per diem day never take one and are never counted.
 	ReceiptsMissing int32 `json:"receiptsMissing"`
 
-	// Totals The group's figures, one line per currency, by currency code. Nothing is ever converted.
+	// Totals The group's figures, one line per currency, by currency code — the standalone expenses and the claims' lines together. Nothing is ever converted.
 	Totals []ExpensesCurrencyTotal `json:"totals"`
 
 	// User One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
@@ -252,6 +255,32 @@ type ExpensesClaimResponse struct {
 	// Totals The claim's figures, one line per currency, by currency code. Nothing is ever converted.
 	Totals    []ExpensesCurrencyTotal `json:"totals"`
 	UpdatedAt time.Time               `json:"updatedAt"`
+}
+
+// ExpensesClaimSummary One travel claim as a *unit* in a queue — the approval queue and the reimbursement list. It is the trip at a glance, with the figures whoever is deciding needs and nothing else: the lines themselves are one read away at GET /claims/{id}, which a queue of a hundred trips has no business carrying.
+type ExpensesClaimSummary struct {
+	// Capabilities What the calling user may do with this travel claim, so a client never re-derives the rules of design §5. A claim is the unit that moves through the flow and through a payroll run, so these are the claim's own — its lines carry no submit, approve or reimburse of their own.
+	Capabilities ExpensesClaimCapabilities `json:"capabilities"`
+	DepartureAt  time.Time                 `json:"departureAt"`
+	Destination  *string                   `json:"destination,omitempty"`
+	Id           int64                     `json:"id"`
+
+	// LineCount How many expenses the trip holds.
+	LineCount int32 `json:"lineCount"`
+
+	// OverriddenRates How many of its lines carry a rate an approver has already replaced.
+	OverriddenRates int32 `json:"overriddenRates"`
+
+	// Project The project an expense is booked on, resolved through the project directory. Absent when the entry is on none, when this installation has no projects module (decision X2), or when the directory no longer knows the project — the stored id stays either way.
+	Project *ExpensesEntryProject `json:"project,omitempty"`
+	Purpose string                `json:"purpose"`
+
+	// ReceiptsMissing How many of its lines are outlays with no receipt at all. Mileage and a per diem day never take one and are never counted.
+	ReceiptsMissing int32     `json:"receiptsMissing"`
+	ReturnAt        time.Time `json:"returnAt"`
+
+	// Totals The trip's figures, one line per currency, by currency code. Nothing is ever converted.
+	Totals []ExpensesCurrencyTotal `json:"totals"`
 }
 
 // ExpensesClaimUpdateRequest A full replace of a travel claim's header, guarded by the revision it was read at. What is left out is cleared. Changing the project re-points every line onto it in the same transaction and clears a line's billing line when it does not belong to the new project; clearing the project makes every line non-billable. A line that has already been invoiced holds the project where it is. The owner stays whoever the claim already concerns.
@@ -656,13 +685,22 @@ type ExpensesEntryUpdateRequest struct {
 	VatAmount *float64 `json:"vatAmount,omitempty"`
 }
 
-// ExpensesFlowRequest The expenses to move through the flow (decision X4). All or nothing: one expense that may not be moved refuses the whole request with a message per offending id on entryIds, and nothing changes. At most 500 distinct expenses at once; an id given twice is one expense, so the cap is counted after the duplicates are collapsed.
+// ExpensesFlowRequest The units to move through the flow (decision X4): standalone expenses, travel claims, or both in one batch. All or nothing — one unit that may not be moved refuses the whole request, with a message per offending id on the list that named it, and nothing changes. At least one id between the two lists is required. At most 500 distinct *units* across both; an id given twice is one unit, so the cap is counted after the duplicates are collapsed.
 type ExpensesFlowRequest struct {
-	// ClaimIds Reserved for the travel claims of a later delivery, which are approved as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
+	// ClaimIds The travel claims to move. A claim moves as one unit — its lines go with it and are never named on their own — so an entryIds naming one of a claim's lines is refused and points at the claim.
 	ClaimIds *[]int64 `json:"claimIds,omitempty"`
 
-	// EntryIds At most 500 *distinct* expenses; an id given twice is one expense, here as everywhere else. A longer array naming no more than 500 expenses is accepted.
-	EntryIds []int64 `json:"entryIds"`
+	// EntryIds The standalone expenses to move. An id that belongs to a travel claim is refused with a message naming the claim.
+	EntryIds *[]int64 `json:"entryIds,omitempty"`
+}
+
+// ExpensesFlowResponse What one batch moved. The two lists are separate because the two units are — a claim is not an expense, and a client that ticked both gets each back in the shape it reads it in — and each holds its own ids in the order they were given.
+type ExpensesFlowResponse struct {
+	// Claims The travel claims that moved, in the order their ids were given.
+	Claims []ExpensesClaimListResponse `json:"claims"`
+
+	// Entries The standalone expenses that moved, in the order their ids were given.
+	Entries []ExpensesEntryResponse `json:"entries"`
 }
 
 // ExpensesInvoicedRequest Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project; the period lock does not hold it back, because invoicing is bookkeeping done after the period closes.
@@ -714,6 +752,9 @@ type ExpensesMetaResponse struct {
 
 	// ReceiptRequiredOver An employee-paid outlay above this gross amount cannot be submitted without a receipt. Zero means every one of them needs a receipt. Absent when the rule is off.
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
+
+	// TimeZone The installation's business time zone, an IANA name ('Europe/Oslo' by default): the zone every date derived from a travel claim's departure and return instants is taken in. A form labelling a trip's days has to label them in it rather than in the browser's, or it will disagree with the server about which day a save lands on. The same value GET /settings answers, here because meta is the one read an expense form makes.
+	TimeZone string `json:"timeZone"`
 }
 
 // ExpensesPerDiemSuggestedDay One day the server proposes for a trip. It is a suggestion and nothing more: nothing is written, and the client records whichever of them the traveller agrees with as ordinary per diem lines. A trip may run 366 days while a claim holds at most 200 expenses, so a client offering "record them all" has to reckon with the cap itself — the 201st create is refused on claimId and says nothing about the suggestion.
@@ -810,40 +851,43 @@ type ExpensesRateUpdateRequest struct {
 	Value     float64            `json:"value"`
 }
 
-// ExpensesReimbursedRequest The expenses one payroll run pays for (decision X5). All or nothing, exactly as the flow's batches are: one expense that may not be paid refuses the whole request with a message per offending id on entryIds, and nothing is stamped. At most 500 distinct expenses at once; an id given twice is one expense.
+// ExpensesReimbursedRequest The units one payroll run pays for (decision X5): standalone expenses, travel claims, or both. All or nothing, exactly as the flow's batches are — one unit that may not be paid refuses the whole request with a message per offending id on the list that named it, and nothing is stamped. At least one id between the two lists is required, and at most 500 distinct units across both.
 type ExpensesReimbursedRequest struct {
-	// ClaimIds Reserved for the travel claims of a later delivery, which are reimbursed as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
+	// ClaimIds The travel claims to pay. A trip is paid as one unit, for the sum of what its lines owe its owner; a claim that owes nothing cannot be marked.
 	ClaimIds *[]int64 `json:"claimIds,omitempty"`
 
 	// Date The day the payroll run was made. A calendar date, today or earlier — never a date somebody means to pay on.
 	Date openapi_types.Date `json:"date"`
 
-	// EntryIds At most 500 *distinct* expenses; an id given twice is one expense.
-	EntryIds []int64 `json:"entryIds"`
+	// EntryIds The standalone expenses to pay. An id that belongs to a travel claim is refused with a message naming the claim.
+	EntryIds *[]int64 `json:"entryIds,omitempty"`
 
 	// Reference The payroll run, for whoever has to find it again. Optional, at most 100 characters once trimmed.
 	Reference *string `json:"reference,omitempty"`
 }
 
-// ExpensesReimbursementGroup One person's approved expenses that are owed back to them, with the figures a payroll run is made from.
+// ExpensesReimbursementGroup One person's approved units that are owed back to them, with the figures a payroll run is made from. A unit is a standalone expense or a whole travel claim, so the group holds two lists: a trip is paid as one.
 type ExpensesReimbursementGroup struct {
-	// Entries The person's expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller.
+	// Claims The person's approved travel claims that owe them something, the earliest departure first. Each is one unit of the payroll run.
+	Claims []ExpensesClaimSummary `json:"claims"`
+
+	// Entries The person's standalone expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller. A travel claim's lines are never here — the claim is the unit.
 	Entries []ExpensesEntryResponse `json:"entries"`
 
-	// Totals The group's figures, one line per currency, by currency code. Nothing is ever converted.
+	// Totals The group's figures, one line per currency, by currency code — the standalone expenses and the claims' lines together. Nothing is ever converted.
 	Totals []ExpensesCurrencyTotal `json:"totals"`
 
 	// User One person, named through identity — an expense's owner, the owner of an approval or reimbursement group, whoever overrode a rate, whoever decided the expense, whoever paid it back, or whoever invoiced it.
 	User ExpensesUserRef `json:"user"`
 }
 
-// ExpensesRejectRequest The expenses to reject and why, under exactly the rules an approval follows. The reason is shown to their owner, who may then edit and submit again.
+// ExpensesRejectRequest The units to reject and why, under exactly the rules an approval follows. The reason is shown to their owner, who may then edit and submit again. At least one id between the two lists is required, and at most 500 distinct units across both.
 type ExpensesRejectRequest struct {
-	// ClaimIds Reserved for the travel claims of a later delivery; a request naming one is refused on this field.
+	// ClaimIds The travel claims to reject. The reason is stamped on the claim, which its owner edits and submits afresh.
 	ClaimIds *[]int64 `json:"claimIds,omitempty"`
 
-	// EntryIds At most 500 *distinct* expenses; an id given twice is one expense.
-	EntryIds []int64 `json:"entryIds"`
+	// EntryIds The standalone expenses to reject. An id that belongs to a travel claim is refused with a message naming the claim.
+	EntryIds *[]int64 `json:"entryIds,omitempty"`
 
 	// Reason Why they are rejected. Required; 1 to 1000 characters once trimmed.
 	Reason string `json:"reason"`
@@ -884,7 +928,7 @@ type ExpensesSettingsResponse struct {
 
 // ExpensesStatsAttentionItem One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
 //
-// Three types, each with its own recipients. `approvalWaiting`: one per person with submitted expenses the caller may approve; entityId and id are that person's user id, title is their display name, occurredAt is the oldest of their submissions and count is how many expenses are waiting. `expenseRejected`: one of the caller's own expenses that was sent back; entityId and id are the expense id, title is its description and occurredAt is when it was decided, newest first and at most twenty of them. `reimbursementWaiting`: for holders of expenses:manage, a single item when anything at all is waiting to be paid; entityId and id are the literal string 'reimbursements', because the payroll list is what it links to rather than any one expense, occurredAt is the oldest approval among them and count is how many.
+// Three types, each with its own recipients, and each counted in *units* — a standalone expense or a whole travel claim. `approvalWaiting`: one per person with submitted units the caller may approve; entityId and id are that person's user id, title is their display name, occurredAt is the oldest of their submissions and count is how many units are waiting. `expenseRejected`: one of the caller's own units that was sent back; for an expense entityId and id are the expense id and title is its description, for a travel claim they are 'claim/<id>' and title is the trip's purpose, and occurredAt is when it was decided, newest first and at most twenty of them. `reimbursementWaiting`: for holders of expenses:manage, a single item when anything at all is waiting to be paid; entityId and id are the literal string 'reimbursements', because the payroll list is what it links to rather than any one unit, occurredAt is the oldest approval among them and count is how many units.
 type ExpensesStatsAttentionItem struct {
 	// Count How many things the item stands for, when it stands for more than one. Absent on an item that is about a single expense. It is here because a count inside a server-written title could never be translated.
 	Count      *int32    `json:"count,omitempty"`
@@ -1068,8 +1112,11 @@ type GetExpensesReimbursementsExportCsvParams struct {
 	// To The latest entry date to include. Ignored when entryIds is given.
 	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
 
-	// EntryIds Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a parameter that is present but names nothing is refused rather than read as "everything" — a button with nothing selected should leave it out and send the filters.
+	// EntryIds Exactly these standalone expenses instead of the filters, together with claimIds. An id that is not one the export could hold refuses the whole file rather than being left out of it silently, and a selection that is present but names nothing at all is refused rather than read as "everything" — a button with nothing ticked should leave both out and send the filters.
 	EntryIds *[]int64 `form:"entryIds,omitempty" json:"entryIds,omitempty"`
+
+	// ClaimIds Exactly these travel claims instead of the filters, together with entryIds. Each writes one row per line of the trip, under its own unit cell.
+	ClaimIds *[]int64 `form:"claimIds,omitempty" json:"claimIds,omitempty"`
 }
 
 // GetExpensesStatsSummaryParams defines parameters for GetExpensesStatsSummary.
@@ -2443,6 +2490,19 @@ func (siw *ServerInterfaceWrapper) GetExpensesReimbursementsExportCsv(w http.Res
 		return
 	}
 
+	// ------------- Optional query parameter "claimIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "claimIds", r.URL.Query(), &params.ClaimIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "claimIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "claimIds", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetExpensesReimbursementsExportCsv(w, r, params)
 	}))
@@ -2897,7 +2957,7 @@ type PostExpensesApproveResponseObject interface {
 	VisitPostExpensesApproveResponse(w http.ResponseWriter) error
 }
 
-type PostExpensesApprove200JSONResponse []ExpensesEntryResponse
+type PostExpensesApprove200JSONResponse ExpensesFlowResponse
 
 func (response PostExpensesApprove200JSONResponse) VisitPostExpensesApproveResponse(w http.ResponseWriter) error {
 
@@ -4995,7 +5055,7 @@ type PostExpensesReimbursedResponseObject interface {
 	VisitPostExpensesReimbursedResponse(w http.ResponseWriter) error
 }
 
-type PostExpensesReimbursed200JSONResponse []ExpensesEntryResponse
+type PostExpensesReimbursed200JSONResponse ExpensesFlowResponse
 
 func (response PostExpensesReimbursed200JSONResponse) VisitPostExpensesReimbursedResponse(w http.ResponseWriter) error {
 
@@ -5059,7 +5119,7 @@ type PostExpensesReimbursedUndoResponseObject interface {
 	VisitPostExpensesReimbursedUndoResponse(w http.ResponseWriter) error
 }
 
-type PostExpensesReimbursedUndo200JSONResponse []ExpensesEntryResponse
+type PostExpensesReimbursedUndo200JSONResponse ExpensesFlowResponse
 
 func (response PostExpensesReimbursedUndo200JSONResponse) VisitPostExpensesReimbursedUndoResponse(w http.ResponseWriter) error {
 
@@ -5257,7 +5317,7 @@ type PostExpensesRejectResponseObject interface {
 	VisitPostExpensesRejectResponse(w http.ResponseWriter) error
 }
 
-type PostExpensesReject200JSONResponse []ExpensesEntryResponse
+type PostExpensesReject200JSONResponse ExpensesFlowResponse
 
 func (response PostExpensesReject200JSONResponse) VisitPostExpensesRejectResponse(w http.ResponseWriter) error {
 
@@ -5660,7 +5720,7 @@ type PostExpensesSubmitResponseObject interface {
 	VisitPostExpensesSubmitResponse(w http.ResponseWriter) error
 }
 
-type PostExpensesSubmit200JSONResponse []ExpensesEntryResponse
+type PostExpensesSubmit200JSONResponse ExpensesFlowResponse
 
 func (response PostExpensesSubmit200JSONResponse) VisitPostExpensesSubmitResponse(w http.ResponseWriter) error {
 
@@ -5724,7 +5784,7 @@ type PostExpensesUnapproveResponseObject interface {
 	VisitPostExpensesUnapproveResponse(w http.ResponseWriter) error
 }
 
-type PostExpensesUnapprove200JSONResponse []ExpensesEntryResponse
+type PostExpensesUnapprove200JSONResponse ExpensesFlowResponse
 
 func (response PostExpensesUnapprove200JSONResponse) VisitPostExpensesUnapproveResponse(w http.ResponseWriter) error {
 

@@ -665,7 +665,7 @@ func (s *server) PostExpensesClaimsByIdPerDiemSuggestion(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	claim, _, found, err := s.visibleClaim(ctx, q, c, req.Id, false)
+	claim, _, found, err := s.visibleClaim(ctx, q, c, req.Id, claimFigures{})
 	if err != nil {
 		return nil, err
 	}

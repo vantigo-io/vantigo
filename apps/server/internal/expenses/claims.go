@@ -90,10 +90,10 @@ func claimNotYours(id int64) string {
 
 // visibleClaim loads one claim and the caller's access to it, answering
 // found=false both for an unknown id and for a claim the caller may not see, so
-// the two can never be told apart. owesAnything is what its lines come to,
-// which only the capabilities need; a caller that has not read them passes
-// false and gets the safe answer.
-func (s *server) visibleClaim(ctx context.Context, q *store.Queries, c *caller, id int64, owesAnything bool) (
+// the two can never be told apart. f is what its lines come to, which only the
+// capabilities need; a caller that has not read them passes the zero value and
+// gets the safe answer.
+func (s *server) visibleClaim(ctx context.Context, q *store.Queries, c *caller, id int64, f claimFigures) (
 	store.ExpensesClaim, claimAccess, bool, error,
 ) {
 	claim, err := q.GetClaim(ctx, id)
@@ -107,7 +107,7 @@ func (s *server) visibleClaim(ctx context.Context, q *store.Queries, c *caller, 
 	if err != nil {
 		return store.ExpensesClaim{}, claimAccess{}, false, err
 	}
-	a := c.claimAccessFor(claim, role, owesAnything)
+	a := c.claimAccessFor(claim, role, f)
 	if !a.CanSee {
 		return store.ExpensesClaim{}, claimAccess{}, false, nil
 	}
@@ -324,6 +324,152 @@ func claimListResponse(claim store.ExpensesClaim, c *caller, a claimAccess, name
 	}, nil
 }
 
+// claimCounts is the two figures a queue shows about a trip that its totals
+// cannot: how many of its lines want a receipt they do not have, and how many
+// carry a rate an approver replaced.
+type claimCounts struct {
+	ReceiptsMissing int32
+	OverriddenRates int32
+}
+
+// claimCountsOf reads those two for a whole page of trips at once, so a queue
+// of a hundred costs one statement rather than a hundred.
+func (s *server) claimCountsOf(ctx context.Context, q *store.Queries, ids []int64) (map[int64]claimCounts, error) {
+	out := map[int64]claimCounts{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.ClaimAttentionCounts(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("expenses: read the travel claims' receipt and override counts: %w", err)
+	}
+	for _, row := range rows {
+		if row.ClaimID == nil {
+			continue
+		}
+		out[*row.ClaimID] = claimCounts{
+			ReceiptsMissing: int32(row.ReceiptsMissing),
+			OverriddenRates: int32(row.OverriddenRates),
+		}
+	}
+	return out, nil
+}
+
+// claimSummaryResponse is one travel claim as a **unit** in a queue — the
+// approval queue's and the reimbursement list's. It is deliberately not the
+// claim's own response: a queue of a hundred trips carrying every line of each
+// would be a page nobody could load, and the trip's own read is one click away.
+func claimSummaryResponse(claim store.ExpensesClaim, names entryNames, a claimAccess,
+	f claimFigures, n claimCounts,
+) gen.ExpensesClaimSummary {
+	out := gen.ExpensesClaimSummary{
+		Id:              claim.ID,
+		Purpose:         claim.Purpose,
+		Destination:     claim.Destination,
+		DepartureAt:     claim.DepartureAt,
+		ReturnAt:        claim.ReturnAt,
+		LineCount:       f.Lines,
+		Totals:          f.totalsOf(),
+		ReceiptsMissing: n.ReceiptsMissing,
+		OverriddenRates: n.OverriddenRates,
+		Capabilities:    claimCapabilities(a),
+	}
+	// A project the directory no longer lists — or an installation with no
+	// projects module at all — leaves the stored id where it is and shows
+	// nothing for it (decision X2).
+	if claim.ProjectID != nil {
+		if p, ok := names.projects[*claim.ProjectID]; ok {
+			out.Project = &gen.ExpensesEntryProject{Id: p.ID, Code: p.Code, Name: p.Name}
+		}
+	}
+	return out
+}
+
+// claimUnitResponse is one claim as a queue holds it: the summary, and the
+// person whose group it belongs in.
+type claimUnitResponse struct {
+	owner   gen.ExpensesUserRef
+	summary gen.ExpensesClaimSummary
+}
+
+// claimUnitsOf renders a page's claims as queue units: their figures, their
+// two counts and their names all resolved in bulk, and the capabilities
+// answered by exactly the function a single read of the claim answers them
+// with.
+func (s *server) claimUnitsOf(ctx context.Context, q *store.Queries, c *caller,
+	claims []store.ExpensesClaim,
+) ([]claimUnitResponse, error) {
+	if len(claims) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(claims))
+	for _, claim := range claims {
+		ids = append(ids, claim.ID)
+	}
+	figures, err := s.claimFiguresOf(ctx, q, ids)
+	if err != nil {
+		return nil, err
+	}
+	counts, err := s.claimCountsOf(ctx, q, ids)
+	if err != nil {
+		return nil, err
+	}
+	names, err := s.namesFor(ctx, nil, claims...)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]claimUnitResponse, 0, len(claims))
+	for _, claim := range claims {
+		role, err := c.roleOf(ctx, s, claim.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		a := c.claimAccessFor(claim, role, figures[claim.ID])
+		out = append(out, claimUnitResponse{
+			owner:   userRef(claim.UserID, names),
+			summary: claimSummaryResponse(claim, names, a, figures[claim.ID], counts[claim.ID]),
+		})
+	}
+	return out, nil
+}
+
+// claimListResponses renders a set of claims in the list's own shape — what a
+// batch answers with once it has moved them. It is the list handler's own
+// three reads, over a set somebody else chose.
+func (s *server) claimListResponses(ctx context.Context, c *caller, claims []store.ExpensesClaim) (
+	[]gen.ExpensesClaimListResponse, error,
+) {
+	out := make([]gen.ExpensesClaimListResponse, 0, len(claims))
+	if len(claims) == 0 {
+		return out, nil
+	}
+	q := store.New(s.deps.Pool)
+	ids := make([]int64, 0, len(claims))
+	for _, claim := range claims {
+		ids = append(ids, claim.ID)
+	}
+	figures, err := s.claimFiguresOf(ctx, q, ids)
+	if err != nil {
+		return nil, err
+	}
+	names, err := s.namesFor(ctx, nil, claims...)
+	if err != nil {
+		return nil, err
+	}
+	for _, claim := range claims {
+		role, err := c.roleOf(ctx, s, claim.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := claimListResponse(claim, c, c.claimAccessFor(claim, role, figures[claim.ID]), names, figures[claim.ID])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, resp)
+	}
+	return out, nil
+}
+
 // claimResponseFor renders the single claim a create, a read or a replace
 // answers with: its lines read in the order it shows them, their names and the
 // claim's own resolved in one pass, and every line rendered by the entry
@@ -351,7 +497,7 @@ func (s *server) claimResponseFor(ctx context.Context, q *store.Queries, c *call
 	if err != nil {
 		return gen.ExpensesClaimResponse{}, err
 	}
-	return claimResponse(claim, c, c.claimAccessFor(claim, role, figures[claim.ID].Owes), names, figures[claim.ID], lines)
+	return claimResponse(claim, c, c.claimAccessFor(claim, role, figures[claim.ID]), names, figures[claim.ID], lines)
 }
 
 // GetExpensesClaims List travel claims
@@ -441,7 +587,7 @@ func (s *server) GetExpensesClaims(ctx context.Context, req gen.GetExpensesClaim
 		if err != nil {
 			return nil, err
 		}
-		resp, err := claimListResponse(claim, c, c.claimAccessFor(claim, role, figures[claim.ID].Owes), names, figures[claim.ID])
+		resp, err := claimListResponse(claim, c, c.claimAccessFor(claim, role, figures[claim.ID]), names, figures[claim.ID])
 		if err != nil {
 			return nil, err
 		}
@@ -461,7 +607,7 @@ func (s *server) GetExpensesClaimsById(ctx context.Context, req gen.GetExpensesC
 	if err != nil {
 		return nil, err
 	}
-	claim, _, found, err := s.visibleClaim(ctx, q, c, req.Id, false)
+	claim, _, found, err := s.visibleClaim(ctx, q, c, req.Id, claimFigures{})
 	if err != nil {
 		return nil, err
 	}
@@ -620,7 +766,7 @@ func (s *server) PutExpensesClaimsById(ctx context.Context, req gen.PutExpensesC
 	if err != nil {
 		return nil, err
 	}
-	current, a, found, err := s.visibleClaim(ctx, q, c, req.Id, false)
+	current, a, found, err := s.visibleClaim(ctx, q, c, req.Id, claimFigures{})
 	if err != nil {
 		return nil, err
 	}
@@ -784,7 +930,7 @@ func (s *server) DeleteExpensesClaimsById(ctx context.Context, req gen.DeleteExp
 	if err != nil {
 		return nil, err
 	}
-	current, a, found, err := s.visibleClaim(ctx, q, c, req.Id, false)
+	current, a, found, err := s.visibleClaim(ctx, q, c, req.Id, claimFigures{})
 	if err != nil {
 		return nil, err
 	}
@@ -895,7 +1041,7 @@ func (s *server) resolveClaimLine(ctx context.Context, q *store.Queries, c *call
 	if err != nil {
 		return nil, err
 	}
-	a := c.claimAccessFor(claim, role, false)
+	a := c.claimAccessFor(claim, role, claimFigures{})
 	switch {
 	case !a.CanSee:
 		// A claim the caller cannot see reads exactly as one that is not

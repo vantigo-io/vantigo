@@ -14,13 +14,23 @@ import (
 )
 
 const statsApprovalWaitingGroups = `-- name: StatsApprovalWaitingGroups :many
+WITH units AS (
+    SELECT user_id, submitted_at FROM expenses.entries
+    WHERE status = 'submitted'
+      AND claim_id IS NULL
+      AND ($1::boolean OR (project_id IS NOT NULL AND project_id = ANY($2::integer[])))
+      AND ($3::date IS NULL OR entry_date >= $3::date)
+    UNION ALL
+    SELECT user_id, submitted_at FROM expenses.claims
+    WHERE status = 'submitted'
+      AND ($1::boolean OR (project_id IS NOT NULL AND project_id = ANY($2::integer[])))
+      AND ($3::date IS NULL
+           OR (departure_at AT TIME ZONE $4::text)::date >= $3::date)
+)
 SELECT user_id,
        count(*)::bigint AS waiting,
        MIN(submitted_at)::timestamptz AS oldest_submitted_at
-FROM expenses.entries
-WHERE status = 'submitted'
-  AND ($1::boolean OR (project_id IS NOT NULL AND project_id = ANY($2::integer[])))
-  AND ($3::date IS NULL OR entry_date >= $3::date)
+FROM units
 GROUP BY user_id
 `
 
@@ -28,6 +38,7 @@ type StatsApprovalWaitingGroupsParams struct {
 	SeeAll            bool
 	ManagedProjectIds []int32
 	LockedBefore      pgtype.Date
+	TimeZone          string
 }
 
 type StatsApprovalWaitingGroupsRow struct {
@@ -40,7 +51,12 @@ type StatsApprovalWaitingGroupsRow struct {
 // waiting for this caller, under the approval queue's own predicate: how many
 // of their expenses are waiting, and when the oldest of them was submitted.
 func (q *Queries) StatsApprovalWaitingGroups(ctx context.Context, arg StatsApprovalWaitingGroupsParams) ([]StatsApprovalWaitingGroupsRow, error) {
-	rows, err := q.db.Query(ctx, statsApprovalWaitingGroups, arg.SeeAll, arg.ManagedProjectIds, arg.LockedBefore)
+	rows, err := q.db.Query(ctx, statsApprovalWaitingGroups,
+		arg.SeeAll,
+		arg.ManagedProjectIds,
+		arg.LockedBefore,
+		arg.TimeZone,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +84,7 @@ SELECT
     )) AS awaiting_at_period_start
 FROM expenses.entries
 WHERE status IN ('submitted', 'approved', 'rejected')
+  AND claim_id IS NULL
   AND ($2::boolean OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
   AND ($4::date IS NULL OR entry_date >= $4::date)
 `
@@ -102,10 +119,85 @@ func (q *Queries) StatsAwaitingApproval(ctx context.Context, arg StatsAwaitingAp
 	return i, err
 }
 
+const statsAwaitingApprovalClaims = `-- name: StatsAwaitingApprovalClaims :one
+SELECT
+    count(*) FILTER (WHERE status = 'submitted') AS awaiting,
+    count(*) FILTER (WHERE submitted_at < $1::timestamptz AND (
+        status = 'submitted'
+        OR (status IN ('approved', 'rejected') AND decided_at >= $1::timestamptz)
+    )) AS awaiting_at_period_start
+FROM expenses.claims
+WHERE status IN ('submitted', 'approved', 'rejected')
+  AND ($2::boolean OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
+  AND ($4::date IS NULL
+       OR (departure_at AT TIME ZONE $5::text)::date >= $4::date)
+`
+
+type StatsAwaitingApprovalClaimsParams struct {
+	PeriodFrom        time.Time
+	SeeAll            bool
+	ManagedProjectIds []int32
+	LockedBefore      pgtype.Date
+	TimeZone          string
+}
+
+type StatsAwaitingApprovalClaimsRow struct {
+	Awaiting              int64
+	AwaitingAtPeriodStart int64
+}
+
+// StatsAwaitingApprovalClaims is StatsAwaitingApproval over the other unit, so
+// the dashboard counts a trip once rather than once per line it holds. The two
+// figures are added in Go.
+func (q *Queries) StatsAwaitingApprovalClaims(ctx context.Context, arg StatsAwaitingApprovalClaimsParams) (StatsAwaitingApprovalClaimsRow, error) {
+	row := q.db.QueryRow(ctx, statsAwaitingApprovalClaims,
+		arg.PeriodFrom,
+		arg.SeeAll,
+		arg.ManagedProjectIds,
+		arg.LockedBefore,
+		arg.TimeZone,
+	)
+	var i StatsAwaitingApprovalClaimsRow
+	err := row.Scan(&i.Awaiting, &i.AwaitingAtPeriodStart)
+	return i, err
+}
+
+const statsMyClaimStatusCounts = `-- name: StatsMyClaimStatusCounts :one
+SELECT
+    count(*) FILTER (WHERE status = 'draft')     AS drafts,
+    count(*) FILTER (WHERE status = 'submitted') AS submitted,
+    count(*) FILTER (WHERE status = 'approved')  AS approved,
+    count(*) FILTER (WHERE status = 'rejected')  AS rejected
+FROM expenses.claims
+WHERE user_id = $1
+`
+
+type StatsMyClaimStatusCountsRow struct {
+	Drafts    int64
+	Submitted int64
+	Approved  int64
+	Rejected  int64
+}
+
+// StatsMyClaimStatusCounts is the other half of the figure above: how many of
+// the caller's own **travel claims** stand in each status. A trip counts once,
+// whatever it holds, because a trip is what its owner submits.
+func (q *Queries) StatsMyClaimStatusCounts(ctx context.Context, userID uuid.UUID) (StatsMyClaimStatusCountsRow, error) {
+	row := q.db.QueryRow(ctx, statsMyClaimStatusCounts, userID)
+	var i StatsMyClaimStatusCountsRow
+	err := row.Scan(
+		&i.Drafts,
+		&i.Submitted,
+		&i.Approved,
+		&i.Rejected,
+	)
+	return i, err
+}
+
 const statsMyRejected = `-- name: StatsMyRejected :many
 SELECT id, description, decided_at
 FROM expenses.entries
-WHERE user_id = $1 AND status = 'rejected' AND decided_at IS NOT NULL
+WHERE user_id = $1 AND claim_id IS NULL AND status = 'rejected' AND decided_at IS NOT NULL
 ORDER BY decided_at DESC, id DESC
 LIMIT $2
 `
@@ -135,6 +227,49 @@ func (q *Queries) StatsMyRejected(ctx context.Context, arg StatsMyRejectedParams
 	for rows.Next() {
 		var i StatsMyRejectedRow
 		if err := rows.Scan(&i.ID, &i.Description, &i.DecidedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const statsMyRejectedClaims = `-- name: StatsMyRejectedClaims :many
+SELECT id, purpose, decided_at
+FROM expenses.claims
+WHERE user_id = $1 AND status = 'rejected' AND decided_at IS NOT NULL
+ORDER BY decided_at DESC, id DESC
+LIMIT $2
+`
+
+type StatsMyRejectedClaimsParams struct {
+	UserID   uuid.UUID
+	RowLimit int32
+}
+
+type StatsMyRejectedClaimsRow struct {
+	ID        int64
+	Purpose   string
+	DecidedAt *time.Time
+}
+
+// StatsMyRejectedClaims is the same list over the other unit: the caller's own
+// travel claims that were sent back. One item per trip, titled by its purpose —
+// never one per line, which would bury the dashboard under a trip nobody can act
+// on a piece of.
+func (q *Queries) StatsMyRejectedClaims(ctx context.Context, arg StatsMyRejectedClaimsParams) ([]StatsMyRejectedClaimsRow, error) {
+	rows, err := q.db.Query(ctx, statsMyRejectedClaims, arg.UserID, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatsMyRejectedClaimsRow
+	for rows.Next() {
+		var i StatsMyRejectedClaimsRow
+		if err := rows.Scan(&i.ID, &i.Purpose, &i.DecidedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -194,15 +329,16 @@ func (q *Queries) StatsMyStatusCounts(ctx context.Context, userID uuid.UUID) (St
 }
 
 const statsMyUnreimbursed = `-- name: StatsMyUnreimbursed :many
-SELECT currency, SUM(gross_amount)::numeric(14,2) AS amount
-FROM expenses.entries
-WHERE user_id = $1
-  AND status = 'approved'
-  AND reimbursed_at IS NULL
-  AND gross_amount > 0
-  AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
-GROUP BY currency
-ORDER BY currency
+SELECT e.currency, SUM(e.gross_amount)::numeric(14,2) AS amount
+FROM expenses.entries e
+LEFT JOIN expenses.claims c ON c.id = e.claim_id
+WHERE e.user_id = $1
+  AND e.gross_amount > 0
+  AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee'))
+  AND COALESCE(c.status, e.status) = 'approved'
+  AND COALESCE(c.reimbursed_at, e.reimbursed_at) IS NULL
+GROUP BY e.currency
+ORDER BY e.currency
 `
 
 type StatsMyUnreimbursedRow struct {
@@ -210,9 +346,11 @@ type StatsMyUnreimbursedRow struct {
 	Amount   pgtype.Numeric
 }
 
-// StatsMyUnreimbursed is what the caller is still owed, per currency: their
-// own approved expenses that owe them something and have not been paid. The
-// predicate is the reimbursement list's, restricted to one person.
+// StatsMyUnreimbursed is what the caller is still owed, per currency, over
+// every **unit** that owes them: their own approved standalone expenses, and
+// the lines of their own approved travel claims — both not yet paid. The
+// predicate is the reimbursement list's, restricted to one person, and a
+// claim's lines are judged by the claim exactly as the list judges them.
 func (q *Queries) StatsMyUnreimbursed(ctx context.Context, userID uuid.UUID) ([]StatsMyUnreimbursedRow, error) {
 	rows, err := q.db.Query(ctx, statsMyUnreimbursed, userID)
 	if err != nil {
@@ -234,16 +372,17 @@ func (q *Queries) StatsMyUnreimbursed(ctx context.Context, userID uuid.UUID) ([]
 }
 
 const statsNetBuckets = `-- name: StatsNetBuckets :many
-SELECT entry_date AS day,
-       SUM(gross_amount - COALESCE(vat_amount, 0))::numeric(14,2) AS value
-FROM expenses.entries
-WHERE user_id = $1
-  AND status = 'approved'
-  AND currency = $2
-  AND (entry_date::timestamp AT TIME ZONE 'UTC') >= $3::timestamptz
-  AND (entry_date::timestamp AT TIME ZONE 'UTC') < $4::timestamptz
-GROUP BY entry_date
-ORDER BY entry_date
+SELECT e.entry_date AS day,
+       SUM(e.gross_amount - COALESCE(e.vat_amount, 0))::numeric(14,2) AS value
+FROM expenses.entries e
+LEFT JOIN expenses.claims c ON c.id = e.claim_id
+WHERE e.user_id = $1
+  AND COALESCE(c.status, e.status) = 'approved'
+  AND e.currency = $2
+  AND (e.entry_date::timestamp AT TIME ZONE 'UTC') >= $3::timestamptz
+  AND (e.entry_date::timestamp AT TIME ZONE 'UTC') < $4::timestamptz
+GROUP BY e.entry_date
+ORDER BY e.entry_date
 `
 
 type StatsNetBucketsParams struct {
@@ -289,13 +428,26 @@ func (q *Queries) StatsNetBuckets(ctx context.Context, arg StatsNetBucketsParams
 }
 
 const statsReimbursementsWaiting = `-- name: StatsReimbursementsWaiting :many
+WITH units AS (
+    SELECT decided_at, updated_at FROM expenses.entries
+    WHERE status = 'approved'
+      AND claim_id IS NULL
+      AND reimbursed_at IS NULL
+      AND gross_amount > 0
+      AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+    UNION ALL
+    SELECT c.decided_at, c.updated_at FROM expenses.claims c
+    WHERE c.status = 'approved'
+      AND c.reimbursed_at IS NULL
+      AND EXISTS (
+          SELECT 1 FROM expenses.entries e
+          WHERE e.claim_id = c.id
+            AND e.gross_amount > 0
+            AND NOT (e.kind = 'outlay' AND (e.paid_by IS NULL OR e.paid_by <> 'employee')))
+)
 SELECT count(*)::bigint AS waiting,
        COALESCE(MIN(decided_at), MIN(updated_at))::timestamptz AS oldest_decided_at
-FROM expenses.entries
-WHERE status = 'approved'
-  AND reimbursed_at IS NULL
-  AND gross_amount > 0
-  AND NOT (kind = 'outlay' AND (paid_by IS NULL OR paid_by <> 'employee'))
+FROM units
 HAVING count(*) > 0
 `
 

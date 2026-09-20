@@ -644,6 +644,7 @@ type metaJSON struct {
 	DefaultMarkupPercent *float64       `json:"defaultMarkupPercent"`
 	LockedBefore         *string        `json:"lockedBefore"`
 	ReceiptRequiredOver  *float64       `json:"receiptRequiredOver"`
+	TimeZone             string         `json:"timeZone"`
 	Categories           []categoryJSON `json:"categories"`
 	Capabilities         struct {
 		CanApprove bool `json:"canApprove"`
@@ -1533,10 +1534,39 @@ type approvalTotalJSON struct {
 	OwedToEmployee float64 `json:"owedToEmployee"`
 }
 
+// claimSummaryJSON decodes ExpensesClaimSummary — one travel claim as a unit
+// in the approval queue or the reimbursement list.
+type claimSummaryJSON struct {
+	Id              int64                 `json:"id"`
+	Purpose         string                `json:"purpose"`
+	Destination     *string               `json:"destination"`
+	DepartureAt     string                `json:"departureAt"`
+	ReturnAt        string                `json:"returnAt"`
+	Project         *entryProjectJSON     `json:"project"`
+	LineCount       int32                 `json:"lineCount"`
+	Totals          []currencyTotalJSON   `json:"totals"`
+	ReceiptsMissing int32                 `json:"receiptsMissing"`
+	OverriddenRates int32                 `json:"overriddenRates"`
+	Capabilities    claimCapabilitiesJSON `json:"capabilities"`
+}
+
+// claimSummaryByID is one trip out of a group's claims, or a failed test.
+func claimSummaryByID(t *testing.T, claims []claimSummaryJSON, id int64) claimSummaryJSON {
+	t.Helper()
+	for _, claim := range claims {
+		if claim.Id == id {
+			return claim
+		}
+	}
+	t.Fatalf("travel claim %d is not among %v", id, claims)
+	return claimSummaryJSON{}
+}
+
 // approvalGroupJSON decodes ExpensesApprovalGroup.
 type approvalGroupJSON struct {
 	User            entryOwnerJSON      `json:"user"`
 	Entries         []entryJSON         `json:"entries"`
+	Claims          []claimSummaryJSON  `json:"claims"`
 	Totals          []approvalTotalJSON `json:"totals"`
 	ReceiptsMissing int32               `json:"receiptsMissing"`
 	OverriddenRates int32               `json:"overriddenRates"`
@@ -1560,18 +1590,65 @@ func flowBody(entryIDs []int64, overrides map[string]any) map[string]any {
 	return bodyWith(map[string]any{"entryIds": entryIDs}, overrides)
 }
 
-// moveEntries posts one of the four batch operations and fails the test unless
-// it answered 200, returning the moved expenses in the order the ids were
-// given.
-func moveEntries(t *testing.T, c *modtest.Client, path string, body map[string]any) []entryJSON {
+// flowResultJSON decodes ExpensesFlowResponse — what one batch moved, each
+// unit in its own list.
+type flowResultJSON struct {
+	Entries []entryJSON     `json:"entries"`
+	Claims  []claimListJSON `json:"claims"`
+}
+
+// moveUnits posts one of the six batch operations and fails the test unless it
+// answered 200, returning both lists as they came back.
+func moveUnits(t *testing.T, c *modtest.Client, path string, body map[string]any) flowResultJSON {
 	t.Helper()
 	r := c.Do(http.MethodPost, path, body)
 	if r.Status != http.StatusOK {
 		t.Fatalf("post %s %v: status %d body %s, want 200", path, body, r.Status, r.Body)
 	}
-	var moved []entryJSON
+	var moved flowResultJSON
 	r.JSON(&moved)
 	return moved
+}
+
+// moveEntries is moveUnits for a batch of standalone expenses alone, which is
+// what most tests are about.
+func moveEntries(t *testing.T, c *modtest.Client, path string, body map[string]any) []entryJSON {
+	t.Helper()
+	return moveUnits(t, c, path, body).Entries
+}
+
+// claimFlowBody is the body a batch of travel claims takes.
+func claimFlowBody(claimIDs []int64, overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{"claimIds": claimIDs}, overrides)
+}
+
+// The four flow moves and the two payroll ones, over travel claims.
+func submitClaims(t *testing.T, c *modtest.Client, ids ...int64) []claimListJSON {
+	t.Helper()
+	return moveUnits(t, c, submitPath, claimFlowBody(ids, nil)).Claims
+}
+
+func approveClaims(t *testing.T, c *modtest.Client, ids ...int64) []claimListJSON {
+	t.Helper()
+	return moveUnits(t, c, approvePath, claimFlowBody(ids, nil)).Claims
+}
+
+func rejectClaims(t *testing.T, c *modtest.Client, reason string, ids ...int64) []claimListJSON {
+	t.Helper()
+	return moveUnits(t, c, rejectPath, claimFlowBody(ids, map[string]any{"reason": reason})).Claims
+}
+
+func unapproveClaims(t *testing.T, c *modtest.Client, ids ...int64) []claimListJSON {
+	t.Helper()
+	return moveUnits(t, c, unapprovePath, claimFlowBody(ids, nil)).Claims
+}
+
+// approvedClaimBy submits as the owner and approves as the approver, the
+// shortest road to an approved trip.
+func approvedClaimBy(t *testing.T, owner, approver *modtest.Client, ids ...int64) {
+	t.Helper()
+	submitClaims(t, owner, ids...)
+	approveClaims(t, approver, ids...)
 }
 
 func submitEntries(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
@@ -1680,6 +1757,7 @@ func downloadReceipt(t *testing.T, c *modtest.Client, id int64) *modtest.Respons
 type reimbursementGroupJSON struct {
 	User    entryOwnerJSON      `json:"user"`
 	Entries []entryJSON         `json:"entries"`
+	Claims  []claimSummaryJSON  `json:"claims"`
 	Totals  []approvalTotalJSON `json:"totals"`
 }
 
@@ -1720,6 +1798,24 @@ func reimbursedBody(entryIDs []int64, overrides map[string]any) map[string]any {
 func markReimbursed(t *testing.T, c *modtest.Client, body map[string]any) []entryJSON {
 	t.Helper()
 	return moveEntries(t, c, reimbursedPath, body)
+}
+
+// reimbursedClaimBody is the payroll run's body over travel claims.
+func reimbursedClaimBody(claimIDs []int64, overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{"claimIds": claimIDs, "date": "2026-04-02"}, overrides)
+}
+
+// markClaimsReimbursed records a payroll run over trips and fails the test
+// unless it answered 200.
+func markClaimsReimbursed(t *testing.T, c *modtest.Client, body map[string]any) []claimListJSON {
+	t.Helper()
+	return moveUnits(t, c, reimbursedPath, body).Claims
+}
+
+// undoClaimsReimbursed takes the stamp back off trips.
+func undoClaimsReimbursed(t *testing.T, c *modtest.Client, ids ...int64) []claimListJSON {
+	t.Helper()
+	return moveUnits(t, c, reimbursedUndoPath, claimFlowBody(ids, nil)).Claims
 }
 
 // undoReimbursed takes the reimbursement stamp back off and fails the test

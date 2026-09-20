@@ -103,11 +103,22 @@ export const deleteExpense = (id: number): Promise<void> =>
   request<void>(`/api/v1/expenses/entries/${id}`, { method: "DELETE" });
 
 /**
+ * What one batch moved: the standalone expenses and the travel claims, each in
+ * the order its own ids were given. The two lists are separate because the two
+ * units are — a trip is not an expense, and a caller that moved both gets each
+ * back in the shape it reads it in.
+ */
+export interface FlowResult {
+  entries: Expense[];
+  claims: unknown[];
+}
+
+/**
  * Submits expenses for approval. All or nothing: a refusal names each
  * offending id on `entryIds` and nothing moves. `capabilities.canSubmit` is
  * optimistic — the server can still refuse for a missing rate, the receipt
  * rule or an amount that overruns — so the messages are what the caller is
  * shown.
  */
-export const submitExpenses = (entryIds: number[]): Promise<Expense[]> =>
-  request<Expense[]>("/api/v1/expenses/submit", json("POST", { entryIds }));
+export const submitExpenses = (entryIds: number[]): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/submit", json("POST", { entryIds }));

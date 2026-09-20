@@ -13,6 +13,71 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const approveClaims = `-- name: ApproveClaims :many
+UPDATE expenses.claims SET
+    status = 'approved',
+    decided_at = $1::timestamptz,
+    decided_by_user_id = $2::uuid,
+    rejection_reason = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = ANY($3::bigint[]) AND status = 'submitted'
+RETURNING id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at
+`
+
+type ApproveClaimsParams struct {
+	Now       time.Time
+	DecidedBy uuid.UUID
+	Ids       []int64
+}
+
+// ApproveClaims moves submitted travel claims to approved, recording who
+// decided and when. The frozen figures are not touched: an approval agrees with
+// them.
+func (q *Queries) ApproveClaims(ctx context.Context, arg ApproveClaimsParams) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, approveClaims, arg.Now, arg.DecidedBy, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
+			&i.ProjectID,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const approveEntries = `-- name: ApproveEntries :many
 UPDATE expenses.entries SET
     status = 'approved',
@@ -112,27 +177,149 @@ func (q *Queries) ApproveEntries(ctx context.Context, arg ApproveEntriesParams) 
 	return items, nil
 }
 
+const clearClaimLineOverrides = `-- name: ClearClaimLineOverrides :exec
+UPDATE expenses.entries SET
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE claim_id = ANY($2::bigint[])
+  AND rate_overridden_by_user_id IS NOT NULL
+`
+
+type ClearClaimLineOverridesParams struct {
+	Now      time.Time
+	ClaimIds []int64
+}
+
+// ClearClaimLineOverrides drops the rate-override audit from every line of the
+// claims being unapproved — what UnapproveEntries does for a standalone expense,
+// one level up. *Fresh* means the draft carries nothing of the decision that was
+// undone, and an approver's replaced rate is part of that decision. The frozen
+// amounts stay where they are until the next save or submit reprices them.
+func (q *Queries) ClearClaimLineOverrides(ctx context.Context, arg ClearClaimLineOverridesParams) error {
+	_, err := q.db.Exec(ctx, clearClaimLineOverrides, arg.Now, arg.ClaimIds)
+	return err
+}
+
 const countApprovalGroups = `-- name: CountApprovalGroups :one
-SELECT count(DISTINCT user_id) FROM expenses.entries
-WHERE status = 'submitted'
-  AND ($1::boolean OR (project_id IS NOT NULL AND project_id = ANY($2::integer[])))
-  AND ($3::date IS NULL OR entry_date >= $3::date)
+SELECT count(*) FROM (
+    SELECT user_id FROM expenses.entries
+    WHERE status = 'submitted'
+      AND claim_id IS NULL
+      AND ($1::boolean OR (project_id IS NOT NULL AND project_id = ANY($2::integer[])))
+      AND ($3::date IS NULL OR entry_date >= $3::date)
+    UNION
+    SELECT user_id FROM expenses.claims
+    WHERE status = 'submitted'
+      AND ($1::boolean OR (project_id IS NOT NULL AND project_id = ANY($2::integer[])))
+      AND ($3::date IS NULL
+           OR (departure_at AT TIME ZONE $4::text)::date >= $3::date)
+) AS groups
 `
 
 type CountApprovalGroupsParams struct {
 	SeeAll            bool
 	ManagedProjectIds []int32
 	LockedBefore      pgtype.Date
+	TimeZone          string
 }
 
 // CountApprovalGroups is how many people have something waiting for this
 // caller — the total the approval queue pages through. It shares its predicate
-// with ListApprovalGroupEntries, so the count and the pages can never disagree.
+// with ListApprovalGroups, so the count and the pages can never disagree.
+//
+// The queue is a queue of **units**: a standalone expense, or a whole travel
+// claim. A claim's lines keep their own status column at its default and are
+// never listed loose (unitOf in authorize.go), which is what claim_id IS NULL
+// says here; the claims themselves are the second half of the union. A person
+// with one submitted trip and no loose expenses is one group, counted once.
 func (q *Queries) CountApprovalGroups(ctx context.Context, arg CountApprovalGroupsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countApprovalGroups, arg.SeeAll, arg.ManagedProjectIds, arg.LockedBefore)
+	row := q.db.QueryRow(ctx, countApprovalGroups,
+		arg.SeeAll,
+		arg.ManagedProjectIds,
+		arg.LockedBefore,
+		arg.TimeZone,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const freezeClaimLine = `-- name: FreezeClaimLine :exec
+UPDATE expenses.entries SET
+    currency = $1,
+    rate = $2,
+    passenger_rate = $3,
+    gross_amount = $4,
+    meal_breakfast_percent = $5,
+    meal_lunch_percent = $6,
+    meal_dinner_percent = $7,
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
+    billable = $8,
+    markup_percent = $9,
+    bill_rate_per_km = $10,
+    bill_amount = $11,
+    revision = revision + 1,
+    updated_at = $12::timestamptz
+WHERE expenses.entries.id = $13
+  AND expenses.entries.claim_id = $14
+  AND (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id)
+      IN ('draft', 'rejected')
+`
+
+type FreezeClaimLineParams struct {
+	Currency             string
+	Rate                 pgtype.Numeric
+	PassengerRate        pgtype.Numeric
+	GrossAmount          pgtype.Numeric
+	MealBreakfastPercent pgtype.Numeric
+	MealLunchPercent     pgtype.Numeric
+	MealDinnerPercent    pgtype.Numeric
+	Billable             bool
+	MarkupPercent        pgtype.Numeric
+	BillRatePerKm        pgtype.Numeric
+	BillAmount           pgtype.Numeric
+	Now                  time.Time
+	ID                   int64
+	ClaimID              *int64
+}
+
+// FreezeClaimLine writes one line of a travel claim its final figures, in the
+// transaction that submits the claim (decision X4). It is SubmitEntry's body
+// without the status: a line has no status of its own, because the unit that
+// moves is the claim.
+//
+// The currency and the three meal percentages are here as well as the amount,
+// because a per diem day is priced from all five and the freeze has just read
+// them again. A rate an approver had overridden is cleared with them: the line
+// has just been priced from the table, so a record saying otherwise would be a
+// lie.
+//
+// The claim's own status is guarded rather than the line's. A line's column
+// stays at its default 'draft' and says nothing, and the claim's row is held by
+// the caller, so this reads the very row the freeze was judged against.
+func (q *Queries) FreezeClaimLine(ctx context.Context, arg FreezeClaimLineParams) error {
+	_, err := q.db.Exec(ctx, freezeClaimLine,
+		arg.Currency,
+		arg.Rate,
+		arg.PassengerRate,
+		arg.GrossAmount,
+		arg.MealBreakfastPercent,
+		arg.MealLunchPercent,
+		arg.MealDinnerPercent,
+		arg.Billable,
+		arg.MarkupPercent,
+		arg.BillRatePerKm,
+		arg.BillAmount,
+		arg.Now,
+		arg.ID,
+		arg.ClaimID,
+	)
+	return err
 }
 
 const getEntries = `-- name: GetEntries :many
@@ -214,54 +401,104 @@ func (q *Queries) GetEntries(ctx context.Context, ids []int64) ([]ExpensesEntry,
 	return items, nil
 }
 
-const listApprovalGroupEntries = `-- name: ListApprovalGroupEntries :many
-WITH groups AS (
-    SELECT user_id, min(entry_date) AS oldest
-    FROM expenses.entries
-    WHERE status = 'submitted'
-      AND ($1::boolean OR (project_id IS NOT NULL AND project_id = ANY($2::integer[])))
-      AND ($3::date IS NULL OR entry_date >= $3::date)
-    GROUP BY user_id
-    ORDER BY min(entry_date), user_id
-    LIMIT $5 OFFSET $4
-)
-SELECT e.id, e.user_id, e.created_by_user_id, e.claim_id, e.kind, e.entry_date, e.description, e.category_id, e.supplier, e.paid_by, e.currency, e.gross_amount, e.vat_amount, e.distance_km, e.from_place, e.to_place, e.passengers, e.rate, e.passenger_rate, e.rate_overridden_by_user_id, e.rate_table_value, e.passenger_rate_table_value, e.project_id, e.billing_line_id, e.billable, e.markup_percent, e.bill_rate_per_km, e.bill_amount, e.status, e.submitted_at, e.decided_at, e.decided_by_user_id, e.rejection_reason, e.reimbursed_at, e.reimbursed_by_user_id, e.reimbursement_reference, e.reimbursement_date, e.invoiced_at, e.invoiced_by_user_id, e.invoice_reference, e.revision, e.created_at, e.updated_at, e.per_diem_type, e.breakfast_covered, e.lunch_covered, e.dinner_covered, e.meal_breakfast_percent, e.meal_lunch_percent, e.meal_dinner_percent FROM expenses.entries e
-JOIN groups ON groups.user_id = e.user_id
-WHERE e.status = 'submitted'
-  AND ($1::boolean OR (e.project_id IS NOT NULL AND e.project_id = ANY($2::integer[])))
-  AND ($3::date IS NULL OR e.entry_date >= $3::date)
-ORDER BY e.user_id, e.entry_date, e.id
+const listApprovalGroupClaims = `-- name: ListApprovalGroupClaims :many
+SELECT id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at FROM expenses.claims
+WHERE status = 'submitted'
+  AND user_id = ANY($1::uuid[])
+  AND ($2::boolean OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
+  AND ($4::date IS NULL
+       OR (departure_at AT TIME ZONE $5::text)::date >= $4::date)
+ORDER BY user_id, departure_at, id
 `
 
-type ListApprovalGroupEntriesParams struct {
+type ListApprovalGroupClaimsParams struct {
+	UserIds           []uuid.UUID
 	SeeAll            bool
 	ManagedProjectIds []int32
 	LockedBefore      pgtype.Date
-	PageOffset        int32
-	PageSize          int32
+	TimeZone          string
 }
 
-// ListApprovalGroupEntries is one page of the approval queue, paged **by
-// person in SQL**: the people are grouped and the page taken first, and only
-// then are their expenses read, so a page always holds whole groups and the
-// database never hands Go more rows than the page needs.
-//
-// The page is taken in the queue's own order: the person who has been waiting
-// longest first — the oldest expense date in their group — and then their user
-// id. It is deliberately not by display name: the names live in identity, and
-// ordering on them would mean reading every group into Go before paging, which
-// is what this query exists to avoid.
-//
-// The rows themselves come back by person and then by day, and the caller puts
-// the groups back into the queue's order from the very figures it pages on
-// (min(entry_date), user id) — which it can, because a page holds whole groups.
-func (q *Queries) ListApprovalGroupEntries(ctx context.Context, arg ListApprovalGroupEntriesParams) ([]ExpensesEntry, error) {
-	rows, err := q.db.Query(ctx, listApprovalGroupEntries,
+// ListApprovalGroupClaims is the other half of the same page: the travel claims
+// of those people, one row each. Its predicate is the union's second branch,
+// written out again so the page and the count cannot drift.
+func (q *Queries) ListApprovalGroupClaims(ctx context.Context, arg ListApprovalGroupClaimsParams) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, listApprovalGroupClaims,
+		arg.UserIds,
 		arg.SeeAll,
 		arg.ManagedProjectIds,
 		arg.LockedBefore,
-		arg.PageOffset,
-		arg.PageSize,
+		arg.TimeZone,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
+			&i.ProjectID,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listApprovalGroupEntries = `-- name: ListApprovalGroupEntries :many
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries
+WHERE status = 'submitted'
+  AND claim_id IS NULL
+  AND user_id = ANY($1::uuid[])
+  AND ($2::boolean OR (project_id IS NOT NULL AND project_id = ANY($3::integer[])))
+  AND ($4::date IS NULL OR entry_date >= $4::date)
+ORDER BY user_id, entry_date, id
+`
+
+type ListApprovalGroupEntriesParams struct {
+	UserIds           []uuid.UUID
+	SeeAll            bool
+	ManagedProjectIds []int32
+	LockedBefore      pgtype.Date
+}
+
+// ListApprovalGroupEntries is the standalone expenses of the people one page of
+// the queue holds. The page of people is taken first (ListApprovalGroups) and
+// only then are their units read, so the database never hands Go more rows than
+// the page needs and a page always holds whole groups.
+func (q *Queries) ListApprovalGroupEntries(ctx context.Context, arg ListApprovalGroupEntriesParams) ([]ExpensesEntry, error) {
+	rows, err := q.db.Query(ctx, listApprovalGroupEntries,
+		arg.UserIds,
+		arg.SeeAll,
+		arg.ManagedProjectIds,
+		arg.LockedBefore,
 	)
 	if err != nil {
 		return nil, err
@@ -321,6 +558,224 @@ func (q *Queries) ListApprovalGroupEntries(ctx context.Context, arg ListApproval
 			&i.MealBreakfastPercent,
 			&i.MealLunchPercent,
 			&i.MealDinnerPercent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listApprovalGroups = `-- name: ListApprovalGroups :many
+WITH units AS (
+    SELECT user_id, entry_date AS waiting_since FROM expenses.entries
+    WHERE status = 'submitted'
+      AND claim_id IS NULL
+      AND ($3::boolean OR (project_id IS NOT NULL AND project_id = ANY($4::integer[])))
+      AND ($5::date IS NULL OR entry_date >= $5::date)
+    UNION ALL
+    SELECT user_id, (departure_at AT TIME ZONE $6::text)::date FROM expenses.claims
+    WHERE status = 'submitted'
+      AND ($3::boolean OR (project_id IS NOT NULL AND project_id = ANY($4::integer[])))
+      AND ($5::date IS NULL
+           OR (departure_at AT TIME ZONE $6::text)::date >= $5::date)
+)
+SELECT user_id
+FROM units
+GROUP BY user_id
+ORDER BY min(waiting_since), user_id
+LIMIT $2 OFFSET $1
+`
+
+type ListApprovalGroupsParams struct {
+	PageOffset        int32
+	PageSize          int32
+	SeeAll            bool
+	ManagedProjectIds []int32
+	LockedBefore      pgtype.Date
+	TimeZone          string
+}
+
+// ListApprovalGroups is one page of the approval queue's **people**, taken in
+// the queue's own order: whoever has been waiting longest first — the oldest
+// day among their waiting units — and then their user id. It is deliberately
+// not by display name: the names live in identity, and ordering on them would
+// mean reading every group into Go before paging, which is what this query
+// exists to avoid.
+//
+// A unit's day is the expense's own entry date, or the day the trip departed in
+// the installation's business time zone — the same derivation businessDay makes
+// in Go, from the same stored name, so a queue and a period lock can never
+// disagree about which day a trip departed on.
+func (q *Queries) ListApprovalGroups(ctx context.Context, arg ListApprovalGroupsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listApprovalGroups,
+		arg.PageOffset,
+		arg.PageSize,
+		arg.SeeAll,
+		arg.ManagedProjectIds,
+		arg.LockedBefore,
+		arg.TimeZone,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockBatchEntries = `-- name: LockBatchEntries :many
+SELECT id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent FROM expenses.entries
+WHERE claim_id = ANY($1::bigint[]) OR id = ANY($2::bigint[])
+ORDER BY id
+FOR UPDATE
+`
+
+type LockBatchEntriesParams struct {
+	ClaimIds []int64
+	EntryIds []int64
+}
+
+// LockBatchEntries holds every expense row one mixed batch is about — the lines
+// of the travel claims it names and the standalone expenses it names — in **one
+// statement, in id order**.
+//
+// One statement is the point. Taking each claim's lines separately and the
+// named expenses afterwards would let two batches that name each other's claims
+// cross: batch A holding claim 9's lines and waiting for a line of claim 8,
+// while batch B holds claim 8's lines and waits for a line of claim 9. Asking
+// for every row of the batch in one ascending pass makes that impossible, and it
+// is still the module's documented order — claim rows first, then lines in id
+// order — with the standalone expenses folded into the same ascending pass.
+func (q *Queries) LockBatchEntries(ctx context.Context, arg LockBatchEntriesParams) ([]ExpensesEntry, error) {
+	rows, err := q.db.Query(ctx, lockBatchEntries, arg.ClaimIds, arg.EntryIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesEntry
+	for rows.Next() {
+		var i ExpensesEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.ClaimID,
+			&i.Kind,
+			&i.EntryDate,
+			&i.Description,
+			&i.CategoryID,
+			&i.Supplier,
+			&i.PaidBy,
+			&i.Currency,
+			&i.GrossAmount,
+			&i.VatAmount,
+			&i.DistanceKm,
+			&i.FromPlace,
+			&i.ToPlace,
+			&i.Passengers,
+			&i.Rate,
+			&i.PassengerRate,
+			&i.RateOverriddenByUserID,
+			&i.RateTableValue,
+			&i.PassengerRateTableValue,
+			&i.ProjectID,
+			&i.BillingLineID,
+			&i.Billable,
+			&i.MarkupPercent,
+			&i.BillRatePerKm,
+			&i.BillAmount,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.InvoicedAt,
+			&i.InvoicedByUserID,
+			&i.InvoiceReference,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PerDiemType,
+			&i.BreakfastCovered,
+			&i.LunchCovered,
+			&i.DinnerCovered,
+			&i.MealBreakfastPercent,
+			&i.MealLunchPercent,
+			&i.MealDinnerPercent,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockClaims = `-- name: LockClaims :many
+SELECT id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at FROM expenses.claims
+WHERE id = ANY($1::bigint[])
+ORDER BY id
+FOR UPDATE
+`
+
+// LockClaims reads the travel claims in ids and holds their rows until the
+// transaction ends, **in id order** — the first half of a mixed batch's lock
+// order. Every write in this module takes a claim's row before it takes any of
+// its lines, so a batch that starts here can never be the one to close a cycle.
+// An id with no claim is simply absent from the result.
+func (q *Queries) LockClaims(ctx context.Context, ids []int64) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, lockClaims, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
+			&i.ProjectID,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -528,6 +983,77 @@ func (q *Queries) OverrideEntryRate(ctx context.Context, arg OverrideEntryRatePa
 	return i, err
 }
 
+const rejectClaims = `-- name: RejectClaims :many
+UPDATE expenses.claims SET
+    status = 'rejected',
+    decided_at = $1::timestamptz,
+    decided_by_user_id = $2::uuid,
+    rejection_reason = $3::text,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = ANY($4::bigint[]) AND status = 'submitted'
+RETURNING id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at
+`
+
+type RejectClaimsParams struct {
+	Now       time.Time
+	DecidedBy uuid.UUID
+	Reason    string
+	Ids       []int64
+}
+
+// RejectClaims sends submitted travel claims back with the reason their owner
+// sees. The submission stamp stays: the trip was submitted, and the next submit
+// overwrites it.
+func (q *Queries) RejectClaims(ctx context.Context, arg RejectClaimsParams) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, rejectClaims,
+		arg.Now,
+		arg.DecidedBy,
+		arg.Reason,
+		arg.Ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
+			&i.ProjectID,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const rejectEntries = `-- name: RejectEntries :many
 UPDATE expenses.entries SET
     status = 'rejected',
@@ -630,6 +1156,66 @@ func (q *Queries) RejectEntries(ctx context.Context, arg RejectEntriesParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const submitClaim = `-- name: SubmitClaim :one
+
+UPDATE expenses.claims SET
+    status = 'submitted',
+    submitted_at = $1::timestamptz,
+    decided_at = NULL,
+    decided_by_user_id = NULL,
+    rejection_reason = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = $2 AND status IN ('draft', 'rejected')
+RETURNING id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at
+`
+
+type SubmitClaimParams struct {
+	Now time.Time
+	ID  int64
+}
+
+// The same five moves over the other unit: a whole travel claim. Every stamp is
+// the claim's own — its lines carry none — and each statement repeats the guards
+// the caller already judged under the claim's row lock, so the two can never
+// disagree and a Go regression fails loudly rather than moving a trip nobody
+// decided on.
+// SubmitClaim moves one draft or rejected travel claim to submitted. The lines
+// were frozen by FreezeClaimLine in this same transaction, before this ran, so
+// what the trip is worth is settled the moment its status changes. The previous
+// decision goes with it: a rejected claim comes back as if it had never been
+// decided on.
+func (q *Queries) SubmitClaim(ctx context.Context, arg SubmitClaimParams) (ExpensesClaim, error) {
+	row := q.db.QueryRow(ctx, submitClaim, arg.Now, arg.ID)
+	var i ExpensesClaim
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.CreatedByUserID,
+		&i.Purpose,
+		&i.Destination,
+		&i.Abroad,
+		&i.AbroadDayRate,
+		&i.AbroadCurrency,
+		&i.DepartureAt,
+		&i.ReturnAt,
+		&i.ProjectID,
+		&i.Status,
+		&i.SubmittedAt,
+		&i.DecidedAt,
+		&i.DecidedByUserID,
+		&i.RejectionReason,
+		&i.ReimbursedAt,
+		&i.ReimbursedByUserID,
+		&i.ReimbursementReference,
+		&i.ReimbursementDate,
+		&i.Revision,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const submitEntry = `-- name: SubmitEntry :one
@@ -751,6 +1337,77 @@ func (q *Queries) SubmitEntry(ctx context.Context, arg SubmitEntryParams) (Expen
 		&i.MealDinnerPercent,
 	)
 	return i, err
+}
+
+const unapproveClaims = `-- name: UnapproveClaims :many
+UPDATE expenses.claims SET
+    status = 'draft',
+    submitted_at = NULL,
+    decided_at = NULL,
+    decided_by_user_id = NULL,
+    rejection_reason = NULL,
+    revision = revision + 1,
+    updated_at = $1::timestamptz
+WHERE id = ANY($2::bigint[])
+  AND status = 'approved'
+  AND reimbursed_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM expenses.entries e
+      WHERE e.claim_id = expenses.claims.id AND e.invoiced_at IS NOT NULL)
+RETURNING id, user_id, created_by_user_id, purpose, destination, abroad, abroad_day_rate, abroad_currency, departure_at, return_at, project_id, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, revision, created_at, updated_at
+`
+
+type UnapproveClaimsParams struct {
+	Now time.Time
+	Ids []int64
+}
+
+// UnapproveClaims returns approved travel claims to a fresh draft, clearing the
+// decision and the submission stamp. Never one already reimbursed, and never one
+// holding a line that has been invoiced: undoing either of those has its own
+// door on its own track, and the caller has refused them before this runs.
+func (q *Queries) UnapproveClaims(ctx context.Context, arg UnapproveClaimsParams) ([]ExpensesClaim, error) {
+	rows, err := q.db.Query(ctx, unapproveClaims, arg.Now, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesClaim
+	for rows.Next() {
+		var i ExpensesClaim
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.CreatedByUserID,
+			&i.Purpose,
+			&i.Destination,
+			&i.Abroad,
+			&i.AbroadDayRate,
+			&i.AbroadCurrency,
+			&i.DepartureAt,
+			&i.ReturnAt,
+			&i.ProjectID,
+			&i.Status,
+			&i.SubmittedAt,
+			&i.DecidedAt,
+			&i.DecidedByUserID,
+			&i.RejectionReason,
+			&i.ReimbursedAt,
+			&i.ReimbursedByUserID,
+			&i.ReimbursementReference,
+			&i.ReimbursementDate,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const unapproveEntries = `-- name: UnapproveEntries :many

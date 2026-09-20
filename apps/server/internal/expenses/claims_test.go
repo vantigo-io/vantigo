@@ -531,11 +531,11 @@ func TestExpensesClaims_TotalsArePerCurrencyAndNeverConverted(t *testing.T) {
 	}
 }
 
-// A claim's lines are not loose drafts on the dashboard. Their own status
-// column stays at its default and is never read, so counting them there would
-// report five drafts for a trip whose owner can do nothing with one of them on
-// its own — and the one thing that is actionable, the claim, would not be in
-// the figure at all.
+// A claim's lines are not loose drafts on the dashboard: the **trip** is the
+// draft. Their own status column stays at its default and is never read, so
+// counting them there would report five drafts for a trip whose owner can do
+// nothing with one of them on its own, while the one thing that is actionable
+// would be missing from the figure.
 func TestExpensesClaims_ItsLinesAreNotCountedAsLooseDrafts(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -551,14 +551,22 @@ func TestExpensesClaims_ItsLinesAreNotCountedAsLooseDrafts(t *testing.T) {
 	for range 5 {
 		addLine(t, owner, claim.Id, outlayBody(nil))
 	}
+	// Two units now: the loose expense, and the trip — whatever the trip holds.
 	after := getStats(t, owner)
-	if after.Draft != 1 {
-		t.Errorf("drafts = %d after five lines were added to a trip, want the one standalone expense",
+	if after.Draft != 2 {
+		t.Errorf("drafts = %d after five lines were added to a trip, want the standalone expense and the trip",
 			after.Draft)
 	}
-	// The same figure on the summary card, which reads the same query.
-	if summary := getStatsSummary(t, owner, ""); summary.MyDrafts != 1 {
-		t.Errorf("the summary says %d drafts, want 1", summary.MyDrafts)
+	// The same figure on the summary card, which reads the same queries.
+	if summary := getStatsSummary(t, owner, ""); summary.MyDrafts != 2 {
+		t.Errorf("the summary says %d drafts, want 2", summary.MyDrafts)
+	}
+	// Five more lines move nothing: a trip is one thing to submit.
+	for range 5 {
+		addLine(t, owner, claim.Id, outlayBody(map[string]any{"description": "Enda mer"}))
+	}
+	if again := getStats(t, owner); again.Draft != 2 {
+		t.Errorf("drafts = %d after ten lines, want the same two units", again.Draft)
 	}
 	// And the standalone expense is still counted, so the filter narrowed
 	// rather than emptied.
@@ -603,4 +611,18 @@ func TestExpensesClaims_LinesAreOrderedAndRenderedLikeAnyExpense(t *testing.T) {
 			t.Errorf("line %d rate = %v, want the dated table's 5.30", line.Id, line.Rate)
 		}
 	}
+}
+
+// claimColumnsDump is the flow and payroll columns of one travel claim, for a
+// failure message that says what actually happened rather than what a response
+// claimed.
+func claimColumnsDump(t *testing.T, h *harness, id int64) string {
+	t.Helper()
+	return modtest.One[string](t, h.Harness, `
+		SELECT format('status=%s revision=%s submitted_at=%s decided_at=%s decided_by=%s '
+			|| 'reason=%s reimbursed_at=%s reimbursed_by=%s reimbursement_date=%s reference=%s',
+			status, revision, submitted_at, decided_at, decided_by_user_id,
+			rejection_reason, reimbursed_at, reimbursed_by_user_id,
+			reimbursement_date, reimbursement_reference)
+		FROM expenses.claims WHERE id = $1`, id)
 }
