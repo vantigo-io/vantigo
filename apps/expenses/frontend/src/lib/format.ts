@@ -34,6 +34,30 @@ export const useExpenseFormat = () => {
       formatters.formatNumber(value, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }),
     date: (date: string) => formatCalendarDate(date, formatters.formatDate),
     dateTime: (instant: string) => formatters.formatDate(new Date(instant), { dateStyle: "medium" }),
+    /**
+     * An instant written in the installation's own time zone. A travel
+     * claim's departure and return are instants, and the day they fall on is
+     * the day the company's calendar says — never the reader's browser, which
+     * would put a trip that left at half past midnight on the day before.
+     *
+     * A zone name this browser has never heard of would throw, so the reader
+     * is given the instant in their own zone rather than nothing at all.
+     */
+    zonedDateTime: (instant: string, timeZone: string) => {
+      const options: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" };
+      try {
+        return formatters.formatDate(new Date(instant), { ...options, timeZone });
+      } catch {
+        return formatters.formatDate(new Date(instant), options);
+      }
+    },
+    zonedDate: (instant: string, timeZone: string) => {
+      try {
+        return formatters.formatDate(new Date(instant), { dateStyle: "medium", timeZone });
+      } catch {
+        return formatters.formatDate(new Date(instant), { dateStyle: "medium" });
+      }
+    },
     distance: (km: number) => t("kilometresShort", { km: formatters.formatNumber(km, { maximumFractionDigits: 1 }) }),
     /**
      * A percentage, written with the decimals it actually has. 17.5 % and

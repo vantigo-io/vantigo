@@ -1,4 +1,5 @@
 import type { ExpenseUserRef } from "../api/approvals";
+import type { Claim, ClaimCapabilities } from "../api/claims";
 import type { Expense, ExpenseAttachment, ExpenseCapabilities } from "../api/entries";
 import type { ExpensesMeta } from "../api/meta";
 import type { ExpenseProjectOption } from "../api/projects";
@@ -158,6 +159,32 @@ export const rates: ExpenseRate[] = [
   { id: 2, kind: "mileage_passenger", validFrom: "2026-01-01", value: 1, currency: "NOK", source: "State rate" },
 ];
 
+/**
+ * The per diem half of the shipped table (migration 00013). It is kept apart
+ * from `rates` so that the tests that are not about travel claims keep the
+ * two-row table they were written against; a claim test passes
+ * `rates: [...rates, ...perDiemRates]`.
+ *
+ * `per_diem_overnight_other` is deliberately **not** here, exactly as the
+ * migration leaves it unseeded — which is what makes a day of that type
+ * refuse until an administrator enters the company's own rate.
+ */
+export const perDiemRates: ExpenseRate[] = [
+  { id: 3, kind: "per_diem_6_12", validFrom: "2026-01-01", value: 397, currency: "NOK", source: "State rate" },
+  { id: 4, kind: "per_diem_over_12", validFrom: "2026-01-01", value: 736, currency: "NOK", source: "State rate" },
+  {
+    id: 5,
+    kind: "per_diem_overnight_hotel",
+    validFrom: "2026-01-01",
+    value: 1012,
+    currency: "NOK",
+    source: "State rate",
+  },
+  { id: 6, kind: "meal_breakfast_percent", validFrom: "2026-01-01", value: 20, source: "State rate" },
+  { id: 7, kind: "meal_lunch_percent", validFrom: "2026-01-01", value: 30, source: "State rate" },
+  { id: 8, kind: "meal_dinner_percent", validFrom: "2026-01-01", value: 50, source: "State rate" },
+];
+
 export const settings = (overrides: Partial<ExpenseSettings> = {}): ExpenseSettings => ({
   defaultCurrency: "NOK",
   defaultMarkupPercent: 10,
@@ -179,6 +206,87 @@ export const submitted = (overrides: Partial<Expense> = {}): Expense =>
     capabilities: capabilities({ canApprove: true }),
     ...overrides,
   });
+
+/** Nothing the caller may do to a trip, so a test turns on only what it is about. */
+export const noClaimCapabilities: ClaimCapabilities = {
+  canEdit: false,
+  canDelete: false,
+  canSubmit: false,
+  canApprove: false,
+  canUnapprove: false,
+  canMarkReimbursed: false,
+  canUndoReimbursed: false,
+};
+
+/** The owner's own draft trip: theirs to change, delete and submit. */
+export const ownClaimCapabilities: ClaimCapabilities = {
+  ...noClaimCapabilities,
+  canEdit: true,
+  canDelete: true,
+  canSubmit: true,
+};
+
+export const claimCapabilities = (overrides: Partial<ClaimCapabilities> = {}): ClaimCapabilities => ({
+  ...noClaimCapabilities,
+  ...overrides,
+});
+
+/**
+ * A travel claim as the server answers one: the caller's own domestic draft,
+ * departing 2026-03-09 07:00 and home 2026-03-11 16:00 in Oslo — the same
+ * trip the backend's own harness uses, so a per diem day on the 9th, 10th or
+ * 11th falls inside it. `lines` and `totals` are answered by the fake server
+ * from the entries store, not from here.
+ */
+export const claim = (overrides: Partial<Claim> = {}): Claim => ({
+  id: 1012,
+  purpose: "Montasje hos kunden",
+  destination: "Bergen",
+  abroad: false,
+  departureAt: "2026-03-09T06:00:00Z",
+  returnAt: "2026-03-11T15:00:00Z",
+  status: "draft",
+  owner: owner(),
+  lines: [],
+  totals: [],
+  revision: 1,
+  createdAt: "2026-03-08T09:00:00Z",
+  updatedAt: "2026-03-08T09:00:00Z",
+  capabilities: ownClaimCapabilities,
+  ...overrides,
+});
+
+/** A per diem day as the server answers one: priced from the dated table, no meal covered. */
+export const perDiemLine = (overrides: Partial<Expense> = {}): Expense => ({
+  id: 801,
+  claimId: 1012,
+  kind: "per_diem",
+  entryDate: "2026-03-09",
+  description: "",
+  currency: "NOK",
+  grossAmount: 1012,
+  netAmount: 1012,
+  owedToEmployee: 1012,
+  rate: 1012,
+  billable: false,
+  status: "draft",
+  attachmentCount: 0,
+  attachments: [],
+  owner: owner(),
+  revision: 1,
+  createdAt: "2026-03-09T09:00:00Z",
+  updatedAt: "2026-03-09T09:00:00Z",
+  capabilities: ownDraftCapabilities,
+  perDiem: {
+    type: "overnight_hotel",
+    breakfastCovered: false,
+    lunchCovered: false,
+    dinnerCovered: false,
+    dayRate: 1012,
+    mealPercents: { breakfast: 20, lunch: 30, dinner: 50 },
+  },
+  ...overrides,
+});
 
 export const stats = (overrides: Partial<ExpenseStats> = {}): ExpenseStats => ({
   draft: 0,

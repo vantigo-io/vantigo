@@ -1,5 +1,6 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import type { components } from "../api-schema";
+import type { PerDiem } from "../lib/per-diem";
 import type { ExpenseKind, ExpenseStatus, PaidBy } from "../lib/status";
 import { EXPENSES_QUERY_KEY, json, request } from "./request";
 
@@ -14,10 +15,12 @@ type Schemas = components["schemas"];
  * are narrowed here to the exact values the backend answers; everything else
  * is the generated shape.
  */
-export type Expense = Omit<Schemas["ExpensesEntryResponse"], "kind" | "status" | "paidBy"> & {
+export type Expense = Omit<Schemas["ExpensesEntryResponse"], "kind" | "status" | "paidBy" | "perDiem"> & {
   kind: ExpenseKind;
   status: ExpenseStatus;
   paidBy?: PaidBy;
+  /** Present on a per diem day and on nothing else. A day exists only inside a travel claim. */
+  perDiem?: PerDiem;
 };
 
 export type ExpenseCapabilities = Schemas["ExpensesEntryCapabilities"];
@@ -52,6 +55,14 @@ export interface ExpenseFilters {
   from?: string;
   to?: string;
   reimbursed?: boolean;
+  /** One travel claim's lines. A claim's own read carries them too, in order. */
+  claimId?: number;
+  /**
+   * Only the expenses that are units of their own. "My expenses" sets it,
+   * because a travel claim's lines belong to the trip listed beside them and
+   * would otherwise be counted twice. Left out, both are in the list.
+   */
+  standalone?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -60,6 +71,8 @@ const listQuery = (filters: ExpenseFilters): string => {
   const query = new URLSearchParams();
   if (filters.userId) query.set("userId", filters.userId);
   if (filters.projectId !== undefined) query.set("projectId", String(filters.projectId));
+  if (filters.claimId !== undefined) query.set("claimId", String(filters.claimId));
+  if (filters.standalone !== undefined) query.set("standalone", String(filters.standalone));
   if (filters.status) query.set("status", filters.status);
   if (filters.kind) query.set("kind", filters.kind);
   if (filters.from) query.set("from", filters.from);
@@ -110,8 +123,32 @@ export const deleteExpense = (id: number): Promise<void> =>
  */
 export interface FlowResult {
   entries: Expense[];
-  claims: unknown[];
+  claims: Schemas["ExpensesClaimListResponse"][];
 }
+
+/**
+ * The two lists a batch operation takes. At least one id between them is
+ * required; a list with nothing in it is simply left out of the request,
+ * because a present but empty selection is refused.
+ */
+export interface FlowUnits {
+  entryIds?: number[];
+  claimIds?: number[];
+}
+
+const unitsBody = ({ entryIds, claimIds }: FlowUnits): FlowUnits => ({
+  ...(entryIds && entryIds.length > 0 ? { entryIds } : {}),
+  ...(claimIds && claimIds.length > 0 ? { claimIds } : {}),
+});
+
+/**
+ * Submits a selection of both kinds of unit in one request. All or nothing
+ * across both lists: a refusal names each offending id on the list that named
+ * it — `entryIds` for a standalone expense, `claimIds` for a trip — and
+ * nothing moves.
+ */
+export const submitUnits = (units: FlowUnits): Promise<FlowResult> =>
+  request<FlowResult>("/api/v1/expenses/submit", json("POST", unitsBody(units)));
 
 /**
  * Submits expenses for approval. All or nothing: a refusal names each

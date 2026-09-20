@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@vantigo/frontend-shell";
 import { useState } from "react";
 import { deleteReceipt } from "../api/attachments";
+import type { Claim } from "../api/claims";
 import {
   ApiValidationError,
   createExpense,
@@ -58,8 +59,16 @@ import {
 import { mileagePreview } from "../lib/rates";
 import type { ExpenseKind, PaidBy } from "../lib/status";
 
-/** Recording a new expense, or changing one the caller read off their list. */
-export type ExpenseModalState = { mode: "create" } | { mode: "edit"; expense: Expense };
+/**
+ * Recording a new expense, or changing one the caller read off their list.
+ *
+ * A `claim` makes it a **line of a travel claim**: the kind is fixed by the
+ * section it was opened from, the project block is replaced by the trip's own
+ * project, and there is no "save and submit" — a trip is submitted whole.
+ */
+export type ExpenseModalState =
+  | { mode: "create"; kind?: ExpenseKind; claim?: Claim }
+  | { mode: "edit"; expense: Expense; claim?: Claim };
 
 export interface ExpenseFormModalProps {
   state: ExpenseModalState | null;
@@ -145,6 +154,12 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
 
   const opened = state.mode === "edit" ? state.expense : undefined;
   /**
+   * The travel claim this line belongs to, when it is one. Everything the
+   * claim decides — the owner, the project, when it may be changed and when
+   * it is submitted — is the claim's, so the form neither asks nor sends it.
+   */
+  const claim = state.claim;
+  /**
    * What the form is editing. A create becomes an edit as soon as it is
    * saved, so its receipts can be added without closing and reopening.
    */
@@ -173,7 +188,7 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
 
   const form = useForm<ExpenseFormValues>({
     initialValues: {
-      kind: opened?.kind ?? "outlay",
+      kind: opened?.kind ?? (state.mode === "create" ? (state.kind ?? "outlay") : "outlay"),
       entryDate: opened?.entryDate ?? today(),
       description: opened?.description ?? "",
       categoryId: opened?.category ? String(opened.category.id) : null,
@@ -299,13 +314,18 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
       kind: values.kind,
       entryDate: values.entryDate ?? "",
       description: values.description.trim(),
-      ...(meta?.projectsAvailable && values.projectId
-        ? {
-            projectId: Number(values.projectId),
-            ...(values.billingLineId ? { billingLineId: Number(values.billingLineId) } : {}),
-            billable: values.billable,
-          }
-        : {}),
+      // A line's project is always its claim's — naming another one is a 400
+      // — so inside a trip only the line's own billable flag is sent, and
+      // only where the trip is booked on something at all.
+      ...(claim
+        ? { claimId: claim.id, ...(meta?.projectsAvailable && claim.project ? { billable: values.billable } : {}) }
+        : meta?.projectsAvailable && values.projectId
+          ? {
+              projectId: Number(values.projectId),
+              ...(values.billingLineId ? { billingLineId: Number(values.billingLineId) } : {}),
+              billable: values.billable,
+            }
+          : {}),
     };
     if (values.kind === "mileage") {
       return {
@@ -439,20 +459,22 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
         )}
         <RefusalList messages={refusals} />
 
-        <Input.Wrapper label={t("kind")} labelElement="div">
-          <SegmentedControl
-            fullWidth
-            mt={4}
-            disabled={saved !== undefined}
-            aria-label={t("kind")}
-            value={values.kind}
-            onChange={(next) => form.setFieldValue("kind", next as ExpenseKind)}
-            data={[
-              { value: "outlay", label: t("kindOutlay") },
-              { value: "mileage", label: t("kindMileage") },
-            ]}
-          />
-        </Input.Wrapper>
+        {claim === undefined && (
+          <Input.Wrapper label={t("kind")} labelElement="div">
+            <SegmentedControl
+              fullWidth
+              mt={4}
+              disabled={saved !== undefined}
+              aria-label={t("kind")}
+              value={values.kind}
+              onChange={(next) => form.setFieldValue("kind", next as ExpenseKind)}
+              data={[
+                { value: "outlay", label: t("kindOutlay") },
+                { value: "mileage", label: t("kindMileage") },
+              ]}
+            />
+          </Input.Wrapper>
+        )}
 
         <Group grow align="start">
           <DateInput
@@ -566,7 +588,28 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
           </Stack>
         )}
 
-        {meta?.projectsAvailable && (
+        {claim !== undefined && meta?.projectsAvailable && claim.project && (
+          <>
+            <Divider />
+            <Stack gap="xs">
+              <Text size="sm">
+                {t("bookedOnProject", { project: `${claim.project.code} · ${claim.project.name}` })}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {t("lineFollowsClaim")}
+              </Text>
+              <Switch label={t("billable")} {...form.getInputProps("billable", { type: "checkbox" })} />
+              {billing && (
+                <Stack gap={2} data-testid="expense-billing">
+                  <Title order={6}>{t("billingHeading")}</Title>
+                  <Text size="sm">{`${t("billAmount")}: ${format.money(billing.billAmount, currency)}`}</Text>
+                </Stack>
+              )}
+            </Stack>
+          </>
+        )}
+
+        {claim === undefined && meta?.projectsAvailable && (
           <>
             <Divider />
             {projectOptions.length === 0 && !values.projectId ? (
@@ -654,16 +697,20 @@ const ExpenseForm = ({ state, onClose }: { state: ExpenseModalState; onClose: ()
           </>
         )}
 
-        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+        <SimpleGrid cols={{ base: 1, sm: claim ? 2 : 3 }} spacing="sm">
           <Button type="button" variant="default" onClick={onClose}>
             {t("cancel")}
           </Button>
           <Button type="submit" loading={save.isPending}>
             {saved ? t("save") : t("saveDraft")}
           </Button>
-          <Button type="button" variant="light" loading={save.isPending} onClick={() => submit(true)()}>
-            {t("saveAndSubmit")}
-          </Button>
+          {/* A trip is submitted whole, lines and all, so a line inside one is
+              never sent for approval on its own. */}
+          {claim === undefined && (
+            <Button type="button" variant="light" loading={save.isPending} onClick={() => submit(true)()}>
+              {t("saveAndSubmit")}
+            </Button>
+          )}
         </SimpleGrid>
       </Stack>
     </form>

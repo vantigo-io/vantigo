@@ -58,6 +58,12 @@ describe("ReimbursementsPage", () => {
       reference: "LØNN-2026-09",
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     });
+    // The run is recorded *and* the dialog is done with. Everything after the
+    // notification — `onDone`, the selection being cleared, the dialog
+    // closing — happens in the same success handler that reads the answer's
+    // shape, so a fake that answers the wrong one leaves the dialog standing
+    // while the request itself looks perfectly correct.
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Record a payroll run" })).not.toBeInTheDocument());
   });
 
   it("undoes a payment from the half that shows what has been paid", async () => {
