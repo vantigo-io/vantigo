@@ -35,6 +35,26 @@ describe("a project's expense reads", () => {
     await expect(runQuery(expensesQueryOptions({ projectId: PROJECT }))).resolves.toBeDefined();
   });
 
+  it("pages an empty list the way the server does: no pages, and page 0 refused", async () => {
+    // `apicommon.TotalPages` is the bare ceiling division, so nothing recorded
+    // is `totalPages: 0` — and `validatePageParams` refuses any page below 1.
+    // A fake that rounded up to 1 and accepted page 0 hid a clamp that turned
+    // every empty list into a red error.
+    stubExpensesApi({ entries: [] });
+
+    const empty = (await runQuery(expensesQueryOptions({ projectId: PROJECT }))) as {
+      pagination: { totalPages: number; totalCount: number; hasPreviousPage: boolean };
+    };
+    expect(empty.pagination.totalPages).toBe(0);
+    expect(empty.pagination.totalCount).toBe(0);
+    expect(empty.pagination.hasPreviousPage).toBe(false);
+
+    const refused = await runQuery(expensesQueryOptions({ projectId: PROJECT, page: 0 })).catch(
+      (error: ApiError) => error,
+    );
+    expect((refused as ApiError).status).toBe(400);
+  });
+
   it("answers one bare 404 for the totals when the installation has no projects module", async () => {
     stubExpensesApi({ entries: [], meta: meta({ projectsAvailable: false }) });
 

@@ -60,6 +60,15 @@ export interface ExpensesServer {
    * from the store — the one half of a page failing while the other does not.
    */
   entryList?: Response;
+  /**
+   * Whether `GET /entries?toInvoice=true` is refused, independently of the
+   * summary. The refusal follows the summary's own rule by default — the two
+   * are the same question — but the panel only offers the chip when the
+   * summary was readable, so nothing could otherwise reach it: this is the
+   * rights-changed-between-the-two-reads case, and the only way to test the
+   * chip's refusal on the very request that carries it.
+   */
+  refuseToInvoice?: boolean;
   /** What the per diem suggestion answers. Left out, the fake works the days out itself. */
   suggestion?: Read<PerDiemSuggestedDay[]>;
   /**
@@ -142,8 +151,23 @@ export type ExpensesStub = StubbedFetch & { release: () => void };
 const answer = <T>(read: Read<T> | undefined, fallback: T): Response =>
   read instanceof Response ? read.clone() : jsonResponse(200, read ?? fallback);
 
+/**
+ * The paging bounds `validatePageParams` holds every list to, and the default
+ * `pageParams` falls back to. 25, not 20: `listDefaultPageSize` in
+ * `internal/expenses/entries.go`.
+ */
+const LIST_DEFAULT_PAGE_SIZE = 25;
+const LIST_MAX_PAGE_SIZE = 100;
+const LIST_MAX_PAGE = Math.floor(2_147_483_647 / LIST_MAX_PAGE_SIZE);
+
+/**
+ * One page of a list, as `apicommon.Pagination` builds it. **`totalPages` is
+ * the bare ceiling division, so an empty list is `0`** — not 1. A client that
+ * treats it as "at least one page" and clamps to it asks for page 0, which the
+ * server refuses; the fake answering 1 here hid exactly that.
+ */
 const page = <T>(data: T[], pageNumber: number, pageSize: number) => {
-  const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+  const totalPages = Math.ceil(data.length / pageSize);
   const start = (pageNumber - 1) * pageSize;
   return {
     data: data.slice(start, start + pageSize),
@@ -153,13 +177,47 @@ const page = <T>(data: T[], pageNumber: number, pageSize: number) => {
       totalCount: data.length,
       totalPages,
       hasNextPage: pageNumber < totalPages,
-      hasPreviousPage: pageNumber > 1,
+      hasPreviousPage: pageNumber > 1 && data.length > 0,
     },
   };
 };
 
 const problem = (status: number, title: string, errors?: Record<string, string[]>) =>
   jsonResponse(status, { title, status, ...(errors ? { errors } : {}) });
+
+/**
+ * The access layer's one uniform refusal — `apicommon.ForbiddenBody()`, the
+ * `AuthErrorResponse` of `openapi/common.yaml`. Every 403 in this API is this
+ * body, whatever was asked and why; it is not a `ProblemDetails` and names no
+ * field. (The *summary's* 404 is the one that is truly empty.)
+ */
+const forbidden = () =>
+  jsonResponse(403, {
+    error: { code: "forbidden", message: "You do not have permission to access this resource." },
+  });
+
+/**
+ * The paging refusal every list shares, in `validatePageParams`' own words and
+ * with its own collect-them-all shape. Returned **before** anything is read:
+ * the server validates the query first and asks the directory afterwards.
+ */
+const pageRefusal = (query: URLSearchParams): Response | undefined => {
+  const errs: string[] = [];
+  const raw = query.get("page");
+  const size = query.get("pageSize");
+  if (raw !== null) {
+    const value = Number(raw);
+    if (value < 1) errs.push(`'page' must be 1 or greater, but was ${value}.`);
+    else if (value > LIST_MAX_PAGE) errs.push(`'page' must be at most ${LIST_MAX_PAGE}, but was ${value}.`);
+  }
+  if (size !== null) {
+    const value = Number(size);
+    if (value < 1 || value > LIST_MAX_PAGE_SIZE) {
+      errs.push(`'pageSize' must be between 1 and ${LIST_MAX_PAGE_SIZE}, but was ${value}.`);
+    }
+  }
+  return errs.length > 0 ? problem(400, "Invalid query parameters", { page: errs }) : undefined;
+};
 
 /**
  * What the server would price a saved expense at. An outlay is entered as it
@@ -445,7 +503,13 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
    * does — and absent for one who may not. The column itself never travels.
    */
   const renderEntry = (entry: StoredExpense): Expense => {
-    const { billAmount: _column, ...wire } = entry;
+    const wire: StoredExpense = { ...entry };
+    // The column never travels; `billing` is what the caller is shown.
+    delete wire.billAmount;
+    // A line's rendered status is its **unit's** — a trip's line is its trip's
+    // — which is what `responses.go` puts on the wire and what every badge in
+    // this package reads.
+    wire.status = unitStatusOf(entry);
     if (!entry.capabilities.canSeeBilling) return { ...wire, billing: undefined };
     return { ...wire, billing: { ...entry.billing, billAmount: billAmountOf(entry) ?? 0 } };
   };
@@ -774,6 +838,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     }
 
     if (path === "/api/v1/expenses/approvals" && method === "GET") {
+      const badPaging = pageRefusal(url.searchParams);
+      if (badPaging) return Promise.resolve(badPaging);
       if (server.approvals instanceof Response) return Promise.resolve(server.approvals.clone());
       // A trip's lines are never loose entries in a queue: the claim is the
       // unit, and its lines take their rendered status from it.
@@ -797,7 +863,10 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           };
         });
       return Promise.resolve(
-        jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 20)),
+        jsonResponse(
+          200,
+          page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? LIST_DEFAULT_PAGE_SIZE),
+        ),
       );
     }
 
@@ -965,6 +1034,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     }
 
     if (path === "/api/v1/expenses/reimbursements" && method === "GET") {
+      const badPaging = pageRefusal(url.searchParams);
+      if (badPaging) return Promise.resolve(badPaging);
       if (server.reimbursements instanceof Response) return Promise.resolve(server.reimbursements.clone());
       const state = url.searchParams.get("state") ?? "waiting";
       const owes = (unit: { status?: string; reimbursement?: unknown }, owed: number) =>
@@ -987,7 +1058,10 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
           totals: totalsOf([...group.entries, ...group.claims.flatMap((claim) => linesOf(claim.id))]),
         }));
       return Promise.resolve(
-        jsonResponse(200, page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? 20)),
+        jsonResponse(
+          200,
+          page(groups, Number(url.searchParams.get("page") ?? 1), server.pageSize ?? LIST_DEFAULT_PAGE_SIZE),
+        ),
       );
     }
 
@@ -1235,6 +1309,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
     }
 
     if (path === "/api/v1/expenses/claims" && method === "GET") {
+      const badPaging = pageRefusal(url.searchParams);
+      if (badPaging) return Promise.resolve(badPaging);
       if (server.claimList) return Promise.resolve(server.claimList.clone());
       const query = url.searchParams;
       const userId = query.get("userId");
@@ -1250,7 +1326,9 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         .filter((claim) => reimbursed === null || (claim.reimbursement !== undefined) === (reimbursed === "true"))
         .sort((a, b) => (a.departureAt === b.departureAt ? b.id - a.id : a.departureAt < b.departureAt ? 1 : -1))
         .map(claimListResponse);
-      return Promise.resolve(jsonResponse(200, page(matching, Number(query.get("page") ?? 1), server.pageSize ?? 20)));
+      return Promise.resolve(
+        jsonResponse(200, page(matching, Number(query.get("page") ?? 1), server.pageSize ?? LIST_DEFAULT_PAGE_SIZE)),
+      );
     }
 
     const one = /^\/api\/v1\/expenses\/entries\/(\d+)$/.exec(path);
@@ -1420,6 +1498,8 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       const standalone = query.get("standalone");
       const claimId = query.get("claimId");
       const projectId = query.get("projectId");
+      const badPaging = pageRefusal(query);
+      if (badPaging) return Promise.resolve(badPaging);
       if (server.entryList) return Promise.resolve(server.entryList.clone());
       // `toInvoice=false` is the parameter **left out** — no filter, and none
       // of the rules below — which is what an unticked box asks for. `true`
@@ -1428,17 +1508,6 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
       // than answered with an empty page that would not say which was wrong.
       const toInvoice = query.get("toInvoice") === "true";
       if (toInvoice) {
-        // What a line *bills* is the project's money, so the filter is for the
-        // same people the summary is: whoever has financial rights on the
-        // project. Everyone else is refused — one uniform refusal, not an
-        // empty page, which would read as "nothing is ready".
-        if (summaryRefused()) {
-          return Promise.resolve(
-            problem(403, "Forbidden", {
-              toInvoice: ["'toInvoice=true' is for whoever may see what this project's lines bill."],
-            }),
-          );
-        }
         const errors: string[] = [];
         if (projectId === null) {
           errors.push("'toInvoice=true' needs a 'projectId': what is ready to invoice is read one project at a time.");
@@ -1455,6 +1524,13 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         if (errors.length > 0) {
           return Promise.resolve(problem(400, "Invalid query parameters", { toInvoice: errors }));
         }
+        // Only now: the server validates the query and *then* asks the
+        // directory, so a contradictory query from a refused caller is a 400,
+        // not a 403. What a line bills is the project's money, so the filter
+        // is for the same callers the summary is — everyone else gets the
+        // access layer's uniform refusal, not an empty page that would read
+        // as "nothing is ready".
+        if (server.refuseToInvoice ?? summaryRefused()) return Promise.resolve(forbidden());
       }
       const matching = entries
         .filter((entry) => !userId || entry.owner.userId === userId)
@@ -1474,7 +1550,10 @@ export const stubExpensesApi = (server: ExpensesServer = {}): ExpensesStub => {
         .filter((entry) => reimbursed === null || (entry.reimbursement !== undefined) === (reimbursed === "true"))
         .sort((a, b) => (a.entryDate === b.entryDate ? b.id - a.id : a.entryDate < b.entryDate ? 1 : -1));
       return Promise.resolve(
-        jsonResponse(200, page(renderEntries(matching), Number(query.get("page") ?? 1), server.pageSize ?? 20)),
+        jsonResponse(
+          200,
+          page(renderEntries(matching), Number(query.get("page") ?? 1), server.pageSize ?? LIST_DEFAULT_PAGE_SIZE),
+        ),
       );
     }
 
