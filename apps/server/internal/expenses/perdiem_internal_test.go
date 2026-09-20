@@ -1,9 +1,12 @@
 package expenses
 
 import (
+	"errors"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/vantigo-io/vantigo/server/internal/expenses/store"
 )
 
 // The per diem arithmetic and the day counting of design §4, tested where they
@@ -65,11 +68,19 @@ func TestPerDiemAmount_IsTheDayRateLessEveryCoveredMeal(t *testing.T) {
 		"abroad, the claim's own rate":            {"90.00", "20", "30", "50", false, false, false, "90.00"},
 		"abroad, the claim's own rate, breakfast": {"90.00", "20", "30", "50", true, false, false, "72.00"},
 
-		// One rounding, half away from zero: 123.45 less half of it is 61.725.
-		"rounded half up":          {"123.45", "20", "50", "50", false, true, false, "61.73"},
-		"rounded half up, a krone": {"1.05", "20", "50", "50", false, true, false, "0.53"},
-		// 100.01 less a third: rounding the deduction first would answer 66.67.
-		"rounded once, at the end": {"100.01", "33.33", "30", "50", true, false, false, "66.68"},
+		// Half away from zero: 123.45 less half of it is 61.725 → 61.73. It is
+		// also the one-rounding case for a single meal — taking the deduction
+		// first would round 61.725 up to 61.73 and leave 61.72.
+		"rounded half up, and rounded once":  {"123.45", "20", "50", "50", false, true, false, "61.73"},
+		"rounded half up, a krone":           {"1.05", "20", "50", "50", false, true, false, "0.53"},
+		"an odd day rate and an odd percent": {"100.01", "33.33", "30", "50", true, false, false, "66.68"},
+		// Two meals, and the one case that really discriminates: 5 % of 10.10 is
+		// 0.505, so deducting each meal separately rounds *up* twice (0.51 +
+		// 0.51 = 1.02) and answers 9.08. Summing the percentages first is one
+		// exact 10 % and answers 9.09.
+		"two meals, rounded once and not twice": {"10.10", "5", "5", "50", true, true, false, "9.09"},
+		// Two meals over a half-up boundary: 20 + 30 of 123.45 is 61.725.
+		"two meals, rounded half up": {"123.45", "20", "30", "50", true, true, false, "61.73"},
 
 		// Percentages an administrator set over a hundred between them: the day
 		// pays nothing, never less than nothing.
@@ -89,7 +100,10 @@ func TestPerDiemAmount_IsTheDayRateLessEveryCoveredMeal(t *testing.T) {
 				Dinner:    ratOrNil(t, tc.dinner),
 			}
 			meals := perDiemMeals{Breakfast: tc.bCovered, Lunch: tc.lCovered, Dinner: tc.dCover}
-			got := perDiemAmount(rates, meals)
+			got, err := perDiemAmount(rates, meals)
+			if err != nil {
+				t.Fatalf("perDiemAmount(%s, %+v): %v", tc.dayRate, meals, err)
+			}
 			if got.Cmp(rat(t, tc.want)) != 0 {
 				t.Errorf("perDiemAmount(%s, %+v) = %s, want %s", tc.dayRate, meals, got.FloatString(4), tc.want)
 			}
@@ -102,9 +116,71 @@ func TestPerDiemAmount_IsTheDayRateLessEveryCoveredMeal(t *testing.T) {
 // the thing that silently pays a whole day out.
 func TestPerDiemAmount_ACoveredMealWithNoPercentageDeductsNothing(t *testing.T) {
 	t.Parallel()
-	got := perDiemAmount(perDiemRates{DayRate: rat(t, "397.00")}, perDiemMeals{Breakfast: true, Dinner: true})
+	got, err := perDiemAmount(perDiemRates{DayRate: rat(t, "397.00")}, perDiemMeals{Breakfast: true, Dinner: true})
+	if err != nil {
+		t.Fatalf("perDiemAmount: %v", err)
+	}
 	if got.Cmp(rat(t, "397.00")) != 0 {
 		t.Errorf("perDiemAmount with no percentages = %s, want 397.00", got.FloatString(2))
+	}
+}
+
+// A day with no rate at all is an answer, not a panic: Task 3's freeze is about
+// to be a fourth caller, and a nil rate in a money path must fail loudly where
+// the caller can turn it into the field error that names what is missing.
+func TestPerDiemAmount_RefusesADayWithNoRate(t *testing.T) {
+	t.Parallel()
+	if _, err := perDiemAmount(perDiemRates{}, perDiemMeals{}); !errors.Is(err, errNoDayRate) {
+		t.Errorf("perDiemAmount with no day rate = %v, want errNoDayRate", err)
+	}
+}
+
+// The suggestion prices a whole trip from rows read once — it must never be a
+// query a day, because the longest trip the contract allows is 366 of them.
+// This is the picking rule those rows are then read with, which is exactly the
+// one EffectiveRate applies in SQL: the greatest valid_from on or before the
+// day.
+func TestDayRatePricer_PicksTheRowInForceOnEachDay(t *testing.T) {
+	t.Parallel()
+	row := func(validFrom, value string) store.ExpensesRate {
+		n, err := numericFromText(value)
+		if err != nil {
+			t.Fatalf("numeric %s: %v", value, err)
+		}
+		return store.ExpensesRate{Kind: rateKindPerDiemHotel, ValidFrom: pgDate(day(t, validFrom)), Value: n}
+	}
+	// Ascending by valid_from, as RatesOfKind reads them.
+	pricer := dayRatePricer{rows: []store.ExpensesRate{
+		row("2026-01-01", "1012.00"), row("2026-07-01", "1100.00"), row("2027-01-01", "1150.00"),
+	}}
+	for _, tc := range []struct{ date, want string }{
+		{"2026-01-01", "1012.00"}, // the day a row starts is its own
+		{"2026-06-30", "1012.00"},
+		{"2026-07-01", "1100.00"},
+		{"2026-12-31", "1100.00"},
+		{"2030-01-01", "1150.00"}, // the latest row goes on forever
+	} {
+		got, err := pricer.on(day(t, tc.date))
+		if err != nil {
+			t.Fatalf("on(%s): %v", tc.date, err)
+		}
+		if value := got.FloatString(2); value != tc.want {
+			t.Errorf("on(%s) = %s, want %s", tc.date, value, tc.want)
+		}
+	}
+	// Before the first row nothing prices the day, which the handler renders as
+	// a suggestion with no rate and no amount rather than as a failure.
+	if _, err := pricer.on(day(t, "2025-12-31")); !errors.Is(err, errNoRate) {
+		t.Errorf("on a day before the first row = %v, want errNoRate", err)
+	}
+	if _, err := (dayRatePricer{}).on(day(t, "2026-03-09")); !errors.Is(err, errNoRate) {
+		t.Errorf("on with no rows at all = %v, want errNoRate", err)
+	}
+	// A trip abroad is priced at the claim's own figure, every day of it.
+	abroad := dayRatePricer{abroad: rat(t, "90.00")}
+	got, err := abroad.on(day(t, "2030-01-01"))
+	if err != nil || got.FloatString(2) != "90.00" {
+		t.Errorf("abroad on = %v, %v, want 90.00", got, err)
 	}
 }
 
@@ -184,6 +260,14 @@ func TestSuggestPerDiem_CountsTheDaysOfATrip(t *testing.T) {
 		"forty-eight hours exactly is two days": {
 			departure, "2026-03-11T07:00:00Z", true,
 			[]string{"2026-03-09 overnight_hotel", "2026-03-10 overnight_hotel"},
+		},
+		"fifty-four hours exactly is two days, the six hours over being not more than six": {
+			departure, "2026-03-11T13:00:00Z", true,
+			[]string{"2026-03-09 overnight_hotel", "2026-03-10 overnight_hotel"},
+		},
+		"seventy-two hours exactly is three days": {
+			departure, "2026-03-12T07:00:00Z", true,
+			[]string{"2026-03-09 overnight_hotel", "2026-03-10 overnight_hotel", "2026-03-11 overnight_hotel"},
 		},
 		"a minute past fifty-four hours is three days": {
 			departure, "2026-03-11T13:01:00Z", true,

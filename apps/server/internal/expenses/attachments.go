@@ -457,7 +457,7 @@ func (s *server) PostExpensesEntriesByIdAttachments(ctx context.Context, req gen
 		gone    bool
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, entry.ClaimID)
+		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, req.Id, entry.ClaimID)
 		if err != nil {
 			return err
 		}
@@ -646,7 +646,7 @@ func (s *server) DeleteExpensesAttachmentsById(ctx context.Context, req gen.Dele
 
 	var refusal string
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, entry.ID, entry.ClaimID)
+		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, entry.ID, entry.ClaimID)
 		if err != nil {
 			return err
 		}

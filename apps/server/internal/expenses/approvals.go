@@ -255,7 +255,7 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 		stale    [2]string
 	)
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
-		locked, lockedUnit, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
+		locked, lockedUnit, _, found, err := lockEntryUnit(ctx, txq, req.Id, row.ClaimID)
 		if err != nil {
 			return err
 		}
@@ -332,7 +332,7 @@ func overriddenAmount(row store.ExpensesEntry, rate, passengerRate *big.Rat) (*b
 			return nil, err
 		}
 		rates.DayRate = rate
-		return perDiemAmount(rates, meals), nil
+		return perDiemAmount(rates, meals)
 	}
 	km, err := ratPtrFromNumeric(row.DistanceKm)
 	if err != nil {

@@ -660,6 +660,57 @@ func (q *Queries) LockClaimLines(ctx context.Context, claimID *int64) ([]Expense
 	return items, nil
 }
 
+const repricePerDiemLine = `-- name: RepricePerDiemLine :exec
+UPDATE expenses.entries SET
+    currency = $1,
+    rate = $2,
+    meal_breakfast_percent = $3,
+    meal_lunch_percent = $4,
+    meal_dinner_percent = $5,
+    gross_amount = $6,
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
+    revision = revision + 1,
+    updated_at = $7::timestamptz
+WHERE id = $8 AND kind = 'per_diem'
+`
+
+type RepricePerDiemLineParams struct {
+	Currency             string
+	Rate                 pgtype.Numeric
+	MealBreakfastPercent pgtype.Numeric
+	MealLunchPercent     pgtype.Numeric
+	MealDinnerPercent    pgtype.Numeric
+	GrossAmount          pgtype.Numeric
+	Now                  time.Time
+	ID                   int64
+}
+
+// RepricePerDiemLine writes one per diem day's figures again after its claim's
+// own money changed — the trip flipped abroad or back, or its day rate was
+// corrected. It is the only writer of a line's amount that a *claim's* edit
+// has, and it runs in the same transaction, under the claim's row lock.
+//
+// The override audit goes with it, exactly as UpdateEntry and SubmitEntry drop
+// it: the day has just been priced from the table (or from the claim) again, so
+// a record saying an approver's figure stands would be a lie. The revision
+// moves, so a client holding the line at its old revision is told to read it
+// again rather than writing over an amount it never saw.
+func (q *Queries) RepricePerDiemLine(ctx context.Context, arg RepricePerDiemLineParams) error {
+	_, err := q.db.Exec(ctx, repricePerDiemLine,
+		arg.Currency,
+		arg.Rate,
+		arg.MealBreakfastPercent,
+		arg.MealLunchPercent,
+		arg.MealDinnerPercent,
+		arg.GrossAmount,
+		arg.Now,
+		arg.ID,
+	)
+	return err
+}
+
 const setClaimLineProject = `-- name: SetClaimLineProject :exec
 UPDATE expenses.entries SET
     project_id = $1,

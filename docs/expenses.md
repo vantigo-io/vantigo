@@ -230,6 +230,15 @@ line, a markup and a customer rate per kilometre are each refused **on their own
 field**. It is always owed to the employee, never billed on, carries no VAT and
 takes no receipt.
 
+**Never priced, by any door.** The entry doors refuse `billable` and
+`billingLineId` on their own fields, and so do the three doors on the project's
+side of the line: `PUT /entries/{id}/billing`, its picker
+`GET /entries/{id}/billing-lines` and `POST /entries/{id}/invoiced` each refuse a
+per diem day on `kind`, and `canSetBilling` and `canMarkInvoiced` are false for
+one. A day away is paid back out of the company's own pocket; there is no
+customer on the other side of it, and no role — not even the project's manager —
+that may invent one.
+
 **What it is worth.** `dayRate × (1 − Σ covered meal percents / 100)`, floored at
 zero, rounded once. The day rate is the `per_diem_*` row in force on the line's
 own date — or, on a claim `abroad`, the claim's own `abroadDayRate`, in its own
@@ -254,6 +263,28 @@ per diem day.
 claim's own row lock, so two days racing for one date cannot both take it (400 on
 `entryDate`) — and the date must fall between the trip's departure day and its
 return day, both included.
+
+**The claim answers for its days.** A per diem day is the first kind whose price
+and whose validity come from the *claim* rather than from itself, so
+`PUT /claims/{id}` has to answer for the days it already holds — and does, inside
+the transaction that already holds the claim's row and its lines:
+
+- narrowing `departureAt` or `returnAt` past a day already recorded is **refused**
+  on that end's own field, naming every stranded date. A day somebody recorded is
+  theirs; a trip correction quietly taking money off a claim is the one outcome
+  nobody would forgive.
+- changing `abroad`, `abroadDayRate` or `abroadCurrency` **reprices** every per
+  diem day of the claim — the rate, the three percentage snapshots, the amount and
+  the currency — and bumps each line's revision, so a client holding one at its old
+  revision is told to read it again. A day that could not be priced after the
+  change (a trip turned domestic on a date the table prices no day of that type)
+  refuses the whole edit, because half a claim repriced is worse than an edit the
+  caller can undo.
+
+The same reasoning reaches one door down: `PUT /entries/{id}` on a per diem line
+reprices it against the claim the *transaction* holds, not the one it read before
+taking the lock, so a claim edit committing in between cannot leave a day at
+yesterday's rate.
 
 **Which day is which.** A claim stores two instants, and `timestamptz` keeps the
 instant rather than the offset it was typed in, so this module makes exactly one
@@ -294,6 +325,15 @@ of a longer one is not another day.
 `overnight: true` proposes `overnight_hotel` throughout, the type the agreement
 prices; a traveller who stayed somewhere else changes it on the line. The client
 may mirror the counting for display, but the figures on the page are the server's.
+A trip may run 366 days against a cap of 200 lines, so a "record them all" button
+has to reckon with the cap itself. The whole suggestion is priced from **one**
+read of one rate kind — every day of one suggestion shares a type — rather than a
+query a day.
+
+**A per diem day has no description of its own unless its owner wrote one.** The
+column takes the empty string: what the day *is* is its `perDiem.type`, which
+every reader already has, and a name the server invented would sit in the column
+in one language for ever.
 
 ## The flow, and what freezes on submit
 
@@ -375,9 +415,11 @@ or per diem day's* rate and, optionally — on mileage alone — its passenger
 supplement, an approver's (or `expenses:manage`'s) correction when the table's own
 figure is wrong for this one trip. It is guarded by the revision the line was read at (409 on a stale one) and
 records an audit: who overrode it, and — the first time a request replaces it —
-what the table's own value had been (`rateOverride.tableValue`,
+what the line **had been priced at** (`rateOverride.tableValue`,
 `rateOverride.passengerTableValue`), so a later reader can see what changed without
-a second lookup. Leaving the passenger rate out of a request keeps whatever
+a second lookup. That figure is usually a row of the dated table; on a per diem day
+of a claim abroad it is the claim's own `abroadDayRate`, which is why the field is
+"what it was priced at" rather than "what the table said". Leaving the passenger rate out of a request keeps whatever
 supplement the line already carries, so an approver correcting the rate alone does
 not silently drop it. The override audit is cleared by an unapprove and by the
 line's next submit, both of which make the figure a fresh, unoverridden one again.
@@ -394,7 +436,8 @@ see the project's financial figures on the expense's project (its manager,
 **not `expenses:manage`**, which has no say in what a project charges its customer,
 and not the expense's owner. It is **open in every status the line can still be
 priced in — draft, rejected, submitted or approved — and refused only once the
-line has been invoiced**. The period lock does not reach it: pricing is bookkeeping
+line has been invoiced**, and refused outright on a per diem day, which bills
+nobody anything. The period lock does not reach it: pricing is bookkeeping
 done after a period closes, and an invoice for December goes out in January.
 
 `GET /entries/{id}/billing-lines` is the picker for that dialog, and deliberately
@@ -639,9 +682,9 @@ says.
 | `POST /unapprove` | Same, plus `expenses:manage` |
 | `GET /approvals` | An approver; 403 for a caller who approves nothing |
 | `PUT /entries/{id}/rate` | An approver or `expenses:manage`, on a submitted mileage line or per diem day |
-| `PUT /entries/{id}/billing` | Financial rights on the entry's project |
+| `PUT /entries/{id}/billing` | Financial rights on the entry's project; never a per diem day |
 | `GET /entries/{id}/billing-lines` | Financial rights on the entry's project — the pricing dialog's own picker, not the caller's bookable-projects list |
-| `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project |
+| `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project; never a per diem day |
 | `GET /reimbursements`, `/reimbursements/export.csv`, `POST /reimbursed`, `/reimbursed/undo` | `expenses:manage` |
 | `GET /projects` | The caller's own bookable projects (or, `userId`, a colleague's, with `expenses:manage`) |
 | `GET /categories` | Anyone in the app |

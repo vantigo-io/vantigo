@@ -159,6 +159,31 @@ WHERE claim_id = @claim_id
   AND entry_date = @entry_date
   AND id <> @exclude_id::bigint;
 
+-- name: RepricePerDiemLine :exec
+-- RepricePerDiemLine writes one per diem day's figures again after its claim's
+-- own money changed — the trip flipped abroad or back, or its day rate was
+-- corrected. It is the only writer of a line's amount that a *claim's* edit
+-- has, and it runs in the same transaction, under the claim's row lock.
+--
+-- The override audit goes with it, exactly as UpdateEntry and SubmitEntry drop
+-- it: the day has just been priced from the table (or from the claim) again, so
+-- a record saying an approver's figure stands would be a lie. The revision
+-- moves, so a client holding the line at its old revision is told to read it
+-- again rather than writing over an amount it never saw.
+UPDATE expenses.entries SET
+    currency = @currency,
+    rate = @rate,
+    meal_breakfast_percent = @meal_breakfast_percent,
+    meal_lunch_percent = @meal_lunch_percent,
+    meal_dinner_percent = @meal_dinner_percent,
+    gross_amount = @gross_amount,
+    rate_overridden_by_user_id = NULL,
+    rate_table_value = NULL,
+    passenger_rate_table_value = NULL,
+    revision = revision + 1,
+    updated_at = @now::timestamptz
+WHERE id = @id AND kind = 'per_diem';
+
 -- name: SetClaimLineProject :exec
 -- SetClaimLineProject re-points one of a claim's lines onto the claim's
 -- project, in the transaction that changed it. The billing columns come with

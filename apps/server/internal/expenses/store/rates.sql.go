@@ -153,6 +153,45 @@ func (q *Queries) ListRates(ctx context.Context) ([]ExpensesRate, error) {
 	return items, nil
 }
 
+const ratesOfKind = `-- name: RatesOfKind :many
+SELECT id, kind, valid_from, value, currency, source, created_at, updated_at FROM expenses.rates WHERE kind = $1 ORDER BY valid_from
+`
+
+// RatesOfKind is every row of one kind, oldest first — what a reader that has
+// to price *many* days of the same kind takes instead of a query a day. The
+// per diem suggestion is that reader: a trip may run 366 days, and picking the
+// row in force on each of them in Go is the same rule EffectiveRate applies in
+// SQL (the greatest valid_from on or before the day) over rows already in
+// hand.
+func (q *Queries) RatesOfKind(ctx context.Context, kind string) ([]ExpensesRate, error) {
+	rows, err := q.db.Query(ctx, ratesOfKind, kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ExpensesRate
+	for rows.Next() {
+		var i ExpensesRate
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.ValidFrom,
+			&i.Value,
+			&i.Currency,
+			&i.Source,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const restoreSeedRate = `-- name: RestoreSeedRate :execrows
 INSERT INTO expenses.rates (kind, valid_from, value, currency, source, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $6::timestamptz)

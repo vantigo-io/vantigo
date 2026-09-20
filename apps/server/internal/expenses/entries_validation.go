@@ -211,6 +211,10 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 	p.Description = strings.TrimSpace(body.Description)
 	switch {
 	case p.Description == "" && p.Kind != kindPerDiem:
+		// A per diem day may have none: what it is is its perDiemType, which
+		// every reader already has, and a name the *server* invented would be
+		// stored in one language for ever. The column takes the empty string
+		// and the client names the day in its reader's own words.
 		add("description", "A description is required")
 	case utf8.RuneCountInString(p.Description) > descriptionMaxLength:
 		add("description", fmt.Sprintf("A description can be at most %d characters", descriptionMaxLength))
@@ -245,11 +249,6 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 		parsePerDiem(&p, body, add)
 	}
 	parseProjectFields(&p, body, inClaim, add)
-	// The description a per diem day was not given: the name of the kind of
-	// day it is, decided once the type has passed its own rule.
-	if p.Kind == kindPerDiem {
-		p.Description = perDiemDescription(p.Description, p.PerDiemType)
-	}
 
 	if len(errs) > 0 {
 		return parsedEntry{}, errs
