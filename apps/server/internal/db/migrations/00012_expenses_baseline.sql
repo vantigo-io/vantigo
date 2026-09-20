@@ -103,6 +103,26 @@ CREATE INDEX ix_entries_user_id_entry_date ON expenses.entries (user_id, entry_d
 CREATE INDEX ix_entries_project_id_entry_date ON expenses.entries (project_id, entry_date);
 CREATE INDEX ix_entries_submitted ON expenses.entries (status) WHERE status = 'submitted';
 CREATE INDEX ix_entries_claim_id ON expenses.entries (claim_id);
+-- The two tracks after approval (design §2, decision X5). Both are partial on
+-- the state the track is about, so each holds only the rows still waiting for
+-- somebody to act and shrinks again as they are dealt with.
+--
+-- The payroll one serves every query of the reimbursement track — the list's
+-- count and page, the export, and what one person is still owed — and it is
+-- the only index the dashboard's "waiting to be reimbursed" figure has: that
+-- one carries no user predicate at all and runs on every expenses:manage
+-- dashboard load, so without it each paint is a sequential scan of the whole
+-- table. user_id leads because four of the five group or order by it; the
+-- fifth reads the index end to end, which is what it wants.
+CREATE INDEX ix_entries_reimbursement_waiting ON expenses.entries (user_id, entry_date)
+    WHERE status = 'approved' AND reimbursed_at IS NULL;
+-- The invoicing one is the same shape for the other track, keyed on the
+-- project because that is the side it belongs to: what a project still has to
+-- put on an invoice. It goes in here because no later delivery of this module
+-- adds a migration (internal/db/schema_test.go says so), so an index the
+-- project-side reads will need has this one chance to be written.
+CREATE INDEX ix_entries_to_invoice ON expenses.entries (project_id, entry_date)
+    WHERE status = 'approved' AND billable AND invoiced_at IS NULL;
 
 -- A receipt (design §3.2, decision X11): the row owns the object key, the
 -- bytes live in the object store, and deleting the entry takes its receipts

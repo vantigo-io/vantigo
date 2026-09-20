@@ -66,6 +66,48 @@ func TestExpensesReceipts_TwoUploadsRacingForTheLastSlot(t *testing.T) {
 	}
 }
 
+// TestExpensesReceipts_AnUploadRacingAKindChange: a receipt arriving at the
+// very moment the expense stops being an outlay must not slip through the
+// window between the save's own count and the row lock it writes under. Both
+// paths take the expense's row lock and both judge the pair under it, so
+// whichever commits first, the row is never left a mileage line carrying a
+// receipt — the one state no door of this module can undo.
+func TestExpensesReceipts_AnUploadRacingAKindChange(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+
+	for round := range raceRounds {
+		entry := createEntry(t, owner, outlayBody(nil))
+
+		var upload, change int
+		race(
+			func() {
+				upload = postReceipt(t, owner, entry.Id, "i-kapplop.pdf", "application/pdf", testPDF(8)).Status
+			},
+			func() {
+				change = owner.Do(http.MethodPut, entryPath(entry.Id),
+					mileageBody(map[string]any{"revision": entry.Revision})).Status
+			},
+		)
+		if upload != http.StatusCreated && upload != http.StatusBadRequest {
+			t.Errorf("round %d: upload answered %d, want 201 (it won) or 400 (the line had become mileage)",
+				round, upload)
+		}
+		if change != http.StatusOK && change != http.StatusBadRequest {
+			t.Errorf("round %d: the kind change answered %d, want 200 (it won) or 400 (a receipt had landed)",
+				round, change)
+		}
+		// The row, not the responses, is what matters: whichever way the race
+		// went, these two can never both be true of it.
+		got := getEntry(t, owner, entry.Id)
+		if got.Kind == "mileage" && got.AttachmentCount > 0 {
+			t.Fatalf("round %d: the expense is a mileage line carrying %d receipts, which nothing can reach",
+				round, got.AttachmentCount)
+		}
+	}
+}
+
 // TestExpensesReceipts_AnUploadRacingTheExpensesDeletion: both take the
 // expense's row lock, so they cannot interleave — either the upload commits
 // first and the delete carries its object away with the rest, or the delete

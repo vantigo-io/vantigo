@@ -599,6 +599,7 @@ components:
                     format: double
                     type: number
                 kind:
+                    description: 'Changing an outlay that still carries receipts into a mileage line is refused on this field: a receipt belongs to an outlay, so the change would leave them where nothing can reach them. Remove them first.'
                     type: string
                 markupPercent:
                     description: 'See the create request: only a caller with financial rights on the project may name it, and leaving it out keeps what the line already carries.'
