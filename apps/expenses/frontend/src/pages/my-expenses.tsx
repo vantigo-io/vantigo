@@ -264,14 +264,14 @@ export const MyExpensesPage = ({ userId }: MyExpensesProps) => {
                                 <Text size="sm" c="red">
                                   {t("rejectedBecause", { reason: expense.decision.reason })}
                                 </Text>
-                                {expense.decision.by && (
-                                  <Text size="xs" c="dimmed">
-                                    {t("rejectedBy", {
-                                      person: expense.decision.by.displayName,
-                                      date: format.dateTime(expense.decision.at),
-                                    })}
-                                  </Text>
-                                )}
+                                <Text size="xs" c="dimmed">
+                                  {expense.decision.by
+                                    ? t("rejectedBy", {
+                                        person: expense.decision.by.displayName,
+                                        date: format.dateTime(expense.decision.at),
+                                      })
+                                    : t("rejectedOn", { date: format.dateTime(expense.decision.at) })}
+                                </Text>
                               </>
                             )}
                             {expense.reimbursement && (

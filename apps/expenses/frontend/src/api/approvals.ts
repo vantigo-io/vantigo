@@ -20,6 +20,31 @@ export type RateOverrideInput = Schemas["ExpensesRateOverrideRequest"];
 export type BillingInput = Schemas["ExpensesBillingRequest"];
 
 /**
+ * One billing line a pricer may book an expense against. `active` is false
+ * only for the line the expense already carries after its project stopped
+ * using it — the dialog has to show what is stored without offering it again.
+ */
+export type ExpenseBillingLineOption = Schemas["ExpensesBillingLineOption"];
+
+/**
+ * The billing lines of the expense's *own* project, judged by exactly the
+ * rule `PUT /entries/{id}/billing` is judged by.
+ *
+ * `GET /projects` cannot serve the pricing dialog: it answers the projects the
+ * **caller** may book an expense on, which is the member-or-manager right on a
+ * project still open for work, while pricing belongs to whoever may see the
+ * project's money. A finance person on no project team, and anybody pricing a
+ * line on a completed project, would be offered nothing at all by that list —
+ * and the line already stored would render as "No billing line".
+ */
+export const expenseBillingLinesQueryOptions = (entryId: number) =>
+  queryOptions({
+    queryKey: [EXPENSES_QUERY_KEY, "entries", "billing-lines", entryId],
+    queryFn: ({ signal }) =>
+      request<ExpenseBillingLineOption[]>(`/api/v1/expenses/entries/${entryId}/billing-lines`, { signal }),
+  });
+
+/**
  * The approval queue: the submitted expenses the caller may approve, grouped
  * per person, the person who has been waiting longest first, and paged by
  * person — so a page always holds whole groups. A caller who approves nothing

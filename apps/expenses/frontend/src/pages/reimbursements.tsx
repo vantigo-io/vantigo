@@ -10,6 +10,7 @@ import {
   Table,
   Text,
   Title,
+  VisuallyHidden,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -293,7 +294,9 @@ const PersonCard = ({
           <Table striped highlightOnHover aria-label={t("expensesOf", { person: group.user.displayName })}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th />
+                <Table.Th>
+                  <VisuallyHidden>{t("select")}</VisuallyHidden>
+                </Table.Th>
                 <Table.Th>{t("date")}</Table.Th>
                 <Table.Th>{t("description")}</Table.Th>
                 <Table.Th>{t("project")}</Table.Th>

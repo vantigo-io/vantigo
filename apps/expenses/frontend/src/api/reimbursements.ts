@@ -2,7 +2,7 @@ import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 import { appUrl } from "@vantigo/frontend-shell";
 import type { components } from "../api-schema";
 import type { Expense, PaginatedResponse } from "./entries";
-import { ApiValidationError, EXPENSES_QUERY_KEY, json, readJson, request } from "./request";
+import { ApiValidationError, EXPENSES_QUERY_KEY, handleUnauthorized, json, readJson, request } from "./request";
 
 type Schemas = components["schemas"];
 
@@ -102,6 +102,10 @@ export const downloadReimbursementsCsv = async (
   if (response.ok) {
     return { blob: await response.blob(), fileName: fileNameFrom(response.headers.get("Content-Disposition")) };
   }
+  // The shared client is what signs somebody out; this one request does not go
+  // through it, so an expired session has to be handed over by hand rather
+  // than shown as a raw problem sentence.
+  if (response.status === 401) await handleUnauthorized();
   const problem = await readJson<{ title?: string; detail?: string; errors?: Record<string, string[]> }>(
     response,
   ).catch(() => null);
@@ -113,7 +117,14 @@ export const downloadReimbursementsCsv = async (
   });
 };
 
-/** Hands the file to the browser, then lets go of the object URL it needed to. */
+/**
+ * Hands the file to the browser, then lets go of the object URL it needed to.
+ *
+ * The revoke is deferred on purpose. A download is dispatched asynchronously,
+ * so revoking in the same turn as the click is a race that Chromium happens to
+ * win and Firefox and Safari lose — the download finds a URL that is already
+ * gone, nothing is saved, and nothing says so.
+ */
 export const saveCsv = ({ blob, fileName }: CsvDownload): void => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -121,6 +132,8 @@ export const saveCsv = ({ blob, fileName }: CsvDownload): void => {
   link.download = fileName;
   document.body.append(link);
   link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 0);
 };

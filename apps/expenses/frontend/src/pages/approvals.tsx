@@ -12,6 +12,7 @@ import {
   Text,
   Title,
   UnstyledButton,
+  VisuallyHidden,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconChecks, IconLock } from "@tabler/icons-react";
@@ -271,7 +272,11 @@ const EntryTable = ({
       <Table striped highlightOnHover aria-label={label}>
         <Table.Thead>
           <Table.Tr>
-            {onToggle && <Table.Th />}
+            {onToggle && (
+              <Table.Th>
+                <VisuallyHidden>{t("select")}</VisuallyHidden>
+              </Table.Th>
+            )}
             <Table.Th>{t("date")}</Table.Th>
             <Table.Th>{t("description")}</Table.Th>
             <Table.Th>{t("kind")}</Table.Th>

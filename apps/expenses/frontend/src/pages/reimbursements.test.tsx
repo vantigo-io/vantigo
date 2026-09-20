@@ -141,4 +141,12 @@ describe("ReimbursementsPage", () => {
 
     expect(await screen.findByText("You cannot see what is owed back")).toBeInTheDocument();
   });
+
+  it("names the column the payroll checkboxes sit in", async () => {
+    stubExpensesApi({ entries: [owed()] });
+    renderRoute("/expenses/reimbursements");
+
+    const table = await screen.findByRole("table", { name: "Grace Hopper's expenses" });
+    expect(within(table).getByRole("columnheader", { name: "Select" })).toBeInTheDocument();
+  });
 });

@@ -35,5 +35,14 @@ export const useExpenseFormat = () => {
     date: (date: string) => formatCalendarDate(date, formatters.formatDate),
     dateTime: (instant: string) => formatters.formatDate(new Date(instant), { dateStyle: "medium" }),
     distance: (km: number) => t("kilometresShort", { km: formatters.formatNumber(km, { maximumFractionDigits: 1 }) }),
+    /**
+     * A percentage, written with the decimals it actually has. 17.5 % and
+     * 12.5 % are both storable and both typeable in the rate form, so
+     * rounding them to a whole number would show a figure nobody entered.
+     */
+    percent: (value: number) =>
+      t("vatPercent", {
+        rate: formatters.formatNumber(value, { maximumFractionDigits: 2 }),
+      }),
   };
 };

@@ -1,4 +1,4 @@
-import type { ExpenseApprovalGroup, ExpenseCurrencyTotal } from "../api/approvals";
+import type { ExpenseApprovalGroup, ExpenseBillingLineOption, ExpenseCurrencyTotal } from "../api/approvals";
 import type { ExpenseCategory } from "../api/categories";
 import type { Expense, ExpenseAttachment, ExpenseInput, ExpenseUpdateInput } from "../api/entries";
 import type { ExpensesMeta } from "../api/meta";
@@ -46,6 +46,12 @@ export interface ExpensesServer {
   approvals?: Read<ExpenseApprovalGroup[]>;
   /** The payroll list. Left out, it is derived from the store the same way. */
   reimbursements?: Read<ExpenseReimbursementGroup[]>;
+  /**
+   * What `GET /entries/{id}/billing-lines` answers — the lines of the
+   * *expense's own* project, judged by the right to price rather than the
+   * right to book. Left out, the entry's own current line and nothing else.
+   */
+  billingLines?: Read<ExpenseBillingLineOption[]>;
   settings?: Read<ExpenseSettings>;
   /** The category store, mutated in place by the writes. */
   categories?: ExpenseCategory[];
@@ -152,8 +158,9 @@ const groupedByOwner = (entries: Expense[]): { user: Expense["owner"]; entries: 
 /**
  * The Expenses API as the pages read and write it, from an in-memory store.
  * It answers `/meta`, `/entries` (list, read, create, replace, delete),
- * `/submit`, `/approve`, `/reject`, `/unapprove`, the rate override and the
- * billing door, `/approvals`, `/reimbursements` (+ `/reimbursed`, its undo
+ * `/submit`, `/approve`, `/reject`, `/unapprove`, the rate override, the
+ * billing door and the lines it may pick from, `/approvals`,
+ * `/reimbursements` (+ `/reimbursed`, its undo
  * and the CSV), `/settings`, `/rates` (+ reset), `/categories`, `/projects`,
  * `/stats` and the two receipt operations. `write` and `upload` let a test
  * put a refusal in the place of any of them.
@@ -369,6 +376,17 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
       return Promise.resolve(jsonResponse(200, entry));
     }
 
+    const billingLines = /^\/api\/v1\/expenses\/entries\/(\d+)\/billing-lines$/.exec(path);
+    if (billingLines && method === "GET") {
+      if (server.billingLines instanceof Response) return Promise.resolve(server.billingLines.clone());
+      const entry = find(Number(billingLines[1]));
+      if (!entry) return Promise.resolve(new Response(null, { status: 404 }));
+      const own: ExpenseBillingLineOption[] = entry.billingLine
+        ? [{ id: entry.billingLine.id, code: entry.billingLine.code, active: true }]
+        : [];
+      return Promise.resolve(jsonResponse(200, server.billingLines ?? own));
+    }
+
     const billing = /^\/api\/v1\/expenses\/entries\/(\d+)\/billing$/.exec(path);
     if (billing && method === "PUT") {
       const entry = find(Number(billing[1]));
@@ -377,7 +395,11 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
         return Promise.resolve(jsonResponse(409, { title: "The expense has moved on", status: 409 }));
       }
       entry.billable = body.billable;
-      entry.billingLine = body.billingLineId ? { id: body.billingLineId, code: "PM" } : undefined;
+      entry.billingLine = body.billingLineId
+        ? entry.billingLine?.id === body.billingLineId
+          ? entry.billingLine
+          : { id: body.billingLineId, code: "PM" }
+        : undefined;
       const markup = body.markupPercent ?? entry.billing?.markupPercent;
       const perKm = body.billRatePerKm ?? entry.billing?.billRatePerKm;
       entry.billing = body.billable
