@@ -898,6 +898,38 @@ func claimLineRules(p *parsedEntry, userID *openapi_types.UUID, claim store.Expe
 			add("billable", "Only an expense on a project can be billed on to a customer")
 		}
 	}
+	// A per diem day is a day *of the trip*, so its date has to be one: the
+	// departure day and the return day included, both taken as the UTC calendar
+	// days of the claim's two instants — the one derivation of a claim's dates
+	// this module makes (see perdiem.go's header). That a claim holds at most
+	// one day per date is decided under the claim's own row lock instead, where
+	// two saves racing for the same day can be told apart.
+	if p.Kind == kindPerDiem {
+		from, to := claimDays(claim)
+		if p.Date.Before(from) || p.Date.After(to) {
+			add("entryDate", perDiemOutsideTrip(from, to))
+		}
+	}
+}
+
+// perDiemDayRefusal is the one-per-date rule, decided under the claim's own row
+// lock (the module's lock order, this file's header) so two days of the same
+// date added at once cannot both take it. excludeID is the line being replaced,
+// 0 on a create.
+func perDiemDayRefusal(ctx context.Context, txq *store.Queries, p prepared, excludeID int64) (string, error) {
+	if p.Parsed.Kind != kindPerDiem || p.Claim == nil {
+		return "", nil
+	}
+	count, err := txq.CountClaimPerDiemOnDate(ctx, store.CountClaimPerDiemOnDateParams{
+		ClaimID: &p.Claim.ID, EntryDate: pgDate(p.Parsed.Date), ExcludeID: excludeID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("expenses: count a travel claim's per diem days: %w", err)
+	}
+	if count == 0 {
+		return "", nil
+	}
+	return perDiemDayTaken(p.Parsed.Date), nil
 }
 
 // claimLineCapRefusal is the cap of Global Constraints, decided under the

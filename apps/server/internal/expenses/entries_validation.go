@@ -23,18 +23,18 @@ import (
 // Every failure is collected, so one round trip reports every problem with a
 // body rather than the first.
 
-// The kinds of money line (decision X3). Travel claims and their per diem are
-// a later delivery's: the kind is known here only so it can be refused with a
-// message that says when it arrives, rather than as "not a kind".
+// The kinds of money line (decision X3). The per diem day is the one that
+// exists only inside a travel claim; the other two stand alone or inside one.
 const (
 	kindOutlay  = "outlay"
 	kindMileage = "mileage"
 	kindPerDiem = "per_diem"
 )
 
-// entryKinds is what a request may carry today, in the order design §3.1 names
-// them.
-var entryKinds = []string{kindOutlay, kindMileage}
+// entryKinds is every kind a request may carry, in the order design §3.1 names
+// them. It is also what the list's kind filter accepts, so the two can never
+// drift.
+var entryKinds = []string{kindOutlay, kindMileage, kindPerDiem}
 
 // Who paid an outlay (design §3.1). Mileage is always owed to the employee and
 // carries neither value.
@@ -73,9 +73,14 @@ const (
 // below are written once and neither save can drift from the other. The update
 // carries no userId: a replace never moves an expense to another person.
 type entryBody struct {
-	Kind          string
-	EntryDate     openapi_types.Date
-	Description   string
+	Kind             string
+	EntryDate        openapi_types.Date
+	Description      string
+	PerDiemType      *string
+	BreakfastCovered *bool
+	LunchCovered     *bool
+	DinnerCovered    *bool
+
 	CategoryID    *int32
 	Supplier      *string
 	PaidBy        *string
@@ -97,7 +102,9 @@ type entryBody struct {
 // bodyOfCreate is a create request as one entryBody.
 func bodyOfCreate(b gen.ExpensesEntryRequest) entryBody {
 	return entryBody{
-		Kind: b.Kind, EntryDate: b.EntryDate, Description: b.Description,
+		Kind: b.Kind, EntryDate: b.EntryDate, Description: derefString(b.Description),
+		PerDiemType:      b.PerDiemType,
+		BreakfastCovered: b.BreakfastCovered, LunchCovered: b.LunchCovered, DinnerCovered: b.DinnerCovered,
 		CategoryID: b.CategoryId, Supplier: b.Supplier, PaidBy: b.PaidBy, Currency: b.Currency,
 		GrossAmount: b.GrossAmount, VatAmount: b.VatAmount,
 		DistanceKm: b.DistanceKm, FromPlace: b.FromPlace, ToPlace: b.ToPlace, Passengers: b.Passengers,
@@ -109,7 +116,9 @@ func bodyOfCreate(b gen.ExpensesEntryRequest) entryBody {
 // bodyOfUpdate is a replace request as one entryBody.
 func bodyOfUpdate(b gen.ExpensesEntryUpdateRequest) entryBody {
 	return entryBody{
-		Kind: b.Kind, EntryDate: b.EntryDate, Description: b.Description,
+		Kind: b.Kind, EntryDate: b.EntryDate, Description: derefString(b.Description),
+		PerDiemType:      b.PerDiemType,
+		BreakfastCovered: b.BreakfastCovered, LunchCovered: b.LunchCovered, DinnerCovered: b.DinnerCovered,
 		CategoryID: b.CategoryId, Supplier: b.Supplier, PaidBy: b.PaidBy, Currency: b.Currency,
 		GrossAmount: b.GrossAmount, VatAmount: b.VatAmount,
 		DistanceKm: b.DistanceKm, FromPlace: b.FromPlace, ToPlace: b.ToPlace, Passengers: b.Passengers,
@@ -123,10 +132,17 @@ func bodyOfUpdate(b gen.ExpensesEntryUpdateRequest) entryBody {
 // rates and amount, an effective billable, a defaulted markup — is resolved
 // afterwards, in entries.go, because it needs the rate table and the project.
 type parsedEntry struct {
-	Kind          string
-	ClaimID       *int64
-	Date          time.Time
-	Description   string
+	Kind        string
+	ClaimID     *int64
+	Date        time.Time
+	Description string
+
+	// PerDiemType and Meals are the per diem day's own two answers: which kind
+	// of day it was, and which meals somebody else paid for. Both are nil and
+	// zero on every other kind.
+	PerDiemType *string
+	Meals       perDiemMeals
+
 	CategoryID    *int32
 	Supplier      *string
 	PaidBy        *string
@@ -163,13 +179,28 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 
 	p := parsedEntry{Kind: strings.TrimSpace(body.Kind), Currency: defaultCurrency, ClaimID: body.ClaimID}
 	switch {
-	case p.Kind == kindPerDiem:
+	case p.Kind == kindPerDiem && !inClaim:
 		// The per diem day is the one kind that only ever exists inside a
-		// claim, and it arrives with its own arithmetic; until then it is
-		// refused with a message that says so rather than as "not a kind".
-		add("kind", "Per diem belongs to a travel claim, which arrives in a later delivery")
+		// travel claim: a trip is what gives a day its rate, its currency and
+		// the window its date has to fall in, and there is no such thing as a
+		// day of no trip.
+		add("kind", perDiemNeedsClaim)
 	case !slices.Contains(entryKinds, p.Kind):
 		add("kind", fmt.Sprintf("'%s' is not an expense kind; must be one of %s", body.Kind, strings.Join(entryKinds, ", ")))
+	}
+	if p.Kind != kindPerDiem && body.PerDiemType != nil {
+		add("perDiemType", notOnKind("perDiemType", p.Kind))
+	}
+	if p.Kind != kindPerDiem {
+		for field, given := range map[string]bool{
+			"breakfastCovered": body.BreakfastCovered != nil,
+			"lunchCovered":     body.LunchCovered != nil,
+			"dinnerCovered":    body.DinnerCovered != nil,
+		} {
+			if given {
+				add(field, notOnKind(field, p.Kind))
+			}
+		}
 	}
 
 	if body.EntryDate.IsZero() {
@@ -179,7 +210,7 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 	}
 	p.Description = strings.TrimSpace(body.Description)
 	switch {
-	case p.Description == "":
+	case p.Description == "" && p.Kind != kindPerDiem:
 		add("description", "A description is required")
 	case utf8.RuneCountInString(p.Description) > descriptionMaxLength:
 		add("description", fmt.Sprintf("A description can be at most %d characters", descriptionMaxLength))
@@ -210,8 +241,15 @@ func parseEntry(body entryBody, defaultCurrency string, projectsOn, inClaim bool
 		parseOutlay(&p, body, add)
 	case kindMileage:
 		parseMileage(&p, body, defaultCurrency, add)
+	case kindPerDiem:
+		parsePerDiem(&p, body, add)
 	}
 	parseProjectFields(&p, body, inClaim, add)
+	// The description a per diem day was not given: the name of the kind of
+	// day it is, decided once the type has passed its own rule.
+	if p.Kind == kindPerDiem {
+		p.Description = perDiemDescription(p.Description, p.PerDiemType)
+	}
 
 	if len(errs) > 0 {
 		return parsedEntry{}, errs
@@ -412,7 +450,16 @@ func derefString(v *string) string {
 
 // notOnKind is the message a field carries when the kind does not have it.
 func notOnKind(field, kind string) string {
-	return fmt.Sprintf("A %s line carries no %s", kind, field)
+	return fmt.Sprintf("A %s line carries no %s", kindLabel(kind), field)
+}
+
+// kindLabel names a kind the way a refusal says it out loud. Only the per diem
+// day's stored value is not already a word.
+func kindLabel(kind string) string {
+	if kind == kindPerDiem {
+		return "per diem"
+	}
+	return kind
 }
 
 // withoutProjects is the message a project-shaped field carries in an
@@ -423,7 +470,18 @@ func withoutProjects(what string) string {
 
 // utcDay is a calendar date as the UTC day it names, whatever offset it
 // arrived with — entry dates are calendar days, never instants.
+//
+// It is **the** derivation of "which day is this" in this module, and it is the
+// one an instant goes through too: a travel claim's departure and return are
+// timestamptz columns, which keep the instant and not the offset it was typed
+// in, so the day a trip belongs to is the UTC day of that instant. The instant
+// is moved to UTC first, because pgx hands a timestamptz back in the process's
+// own zone — read in Oslo, an 01:00 departure would otherwise be judged a day
+// later in Go than the very same row is judged in SQL, where ListClaims reads
+// (departure_at AT TIME ZONE 'UTC')::date. A calendar date off the wire is
+// already UTC midnight, so for those this changes nothing.
 func utcDay(d time.Time) time.Time {
+	d = d.UTC()
 	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 }
 

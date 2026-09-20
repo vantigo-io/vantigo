@@ -18,7 +18,7 @@ import (
 
 // This file is the approver's own two reads and one write: the queue of what is
 // waiting for them, and decision X8's rate override on a single submitted
-// mileage line.
+// mileage line or per diem day.
 
 // GetExpensesApprovals Get the approval queue
 // (GET /api/v1/expenses/approvals)
@@ -191,15 +191,15 @@ func rateOverrideRefusal(c *caller, row store.ExpensesEntry, unit entryUnit) (st
 	switch {
 	case !c.mayWritePast(unit.Date):
 		return "entryDate", lockedBeforeMessage(*lockedBefore(c.Settings))
-	case row.Kind != kindMileage:
-		return "kind", "Only a mileage line carries a rate to override"
+	case row.Kind != kindMileage && row.Kind != kindPerDiem:
+		return "kind", "Only a mileage line or a per diem day carries a rate to override"
 	case unit.Status != statusSubmitted:
 		return "status", fmt.Sprintf("Only a submitted expense's rate can be overridden; this one is %s", unit.Status)
 	}
 	return "", ""
 }
 
-// PutExpensesEntriesByIdRate Override a mileage rate
+// PutExpensesEntriesByIdRate Override a rate
 // (PUT /api/v1/expenses/entries/{id}/rate)
 //
 // Decision X8's last sentence. Who may: whoever approves this expense — its
@@ -208,7 +208,10 @@ func rateOverrideRefusal(c *caller, row store.ExpensesEntry, unit entryUnit) (st
 // allowed and there is no reason to special-case them out of it.
 //
 // It reprices the line's own amount and nothing else: what the customer is
-// billed comes from a rate of the customer's, which this does not touch.
+// billed comes from a rate of the customer's, which this does not touch. On a
+// per diem day the day rate is what moves, and the amount is worked out again
+// from it and the meal percentages the day was saved with — the line's own
+// record, never the table as it stands today.
 func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpensesEntriesByIdRateRequestObject) (gen.PutExpensesEntriesByIdRateResponseObject, error) {
 	body := gen.ExpensesRateOverrideRequest{}
 	if req.Body != nil {
@@ -270,14 +273,11 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 			conflict = &locked.Revision
 			return nil
 		}
-		km, err := ratPtrFromNumeric(locked.DistanceKm)
+		amount, err := overriddenAmount(locked, rate, passengerRate)
 		if err != nil {
 			return err
 		}
-		if km == nil {
-			return fmt.Errorf("expenses: mileage expense %d carries no distance", locked.ID)
-		}
-		gross, err := numericFromRat(mileageAmount(km, rate, passengerRate, int(locked.Passengers)), moneyPlaces)
+		gross, err := numericFromRat(amount, moneyPlaces)
 		if err != nil {
 			return err
 		}
@@ -319,11 +319,38 @@ func (s *server) PutExpensesEntriesByIdRate(ctx context.Context, req gen.PutExpe
 	return gen.PutExpensesEntriesByIdRate200JSONResponse(resp), nil
 }
 
+// overriddenAmount is what a line comes to at a rate somebody replaced: the
+// kilometres at the new rate per kilometre, or — for a per diem day — the new
+// day rate less exactly the meal percentages the day was **saved** with. The
+// deductions are the line's own record rather than the table's of today, so a
+// correction to the day rate can never silently drop a breakfast somebody else
+// paid for, nor pick up a percentage an administrator has changed since.
+func overriddenAmount(row store.ExpensesEntry, rate, passengerRate *big.Rat) (*big.Rat, error) {
+	if row.Kind == kindPerDiem {
+		rates, meals, err := perDiemStored(row)
+		if err != nil {
+			return nil, err
+		}
+		rates.DayRate = rate
+		return perDiemAmount(rates, meals), nil
+	}
+	km, err := ratPtrFromNumeric(row.DistanceKm)
+	if err != nil {
+		return nil, err
+	}
+	if km == nil {
+		return nil, fmt.Errorf("expenses: mileage expense %d carries no distance", row.ID)
+	}
+	return mileageAmount(km, rate, passengerRate, int(row.Passengers)), nil
+}
+
 // parseRateOverride runs the override's own rules over its body and answers the
 // two rates as exact decimals. A passenger supplement is only meaningful on a
-// line that carries passengers, and one left out keeps what the line was frozen
-// with, so an approver correcting the rate alone does not lose it — and the
-// line then records nothing about a supplement nobody touched.
+// mileage line that carries passengers, and one left out keeps what the line
+// was frozen with, so an approver correcting the rate alone does not lose it —
+// and the line then records nothing about a supplement nobody touched. A per
+// diem day carries no supplement at all, so naming one on one is refused rather
+// than stored and never used.
 func parseRateOverride(body gen.ExpensesRateOverrideRequest, row store.ExpensesEntry) (*big.Rat, *big.Rat, map[string][]string, error) {
 	var errs map[string][]string
 	add := func(field, msg string) { errs = withFieldError(errs, field, msg) }
@@ -340,6 +367,8 @@ func parseRateOverride(body gen.ExpensesRateOverrideRequest, row store.ExpensesE
 	}
 	if body.PassengerRate != nil {
 		switch {
+		case row.Kind == kindPerDiem:
+			add("passengerRate", perDiemNoPassengers)
 		case row.Passengers == 0:
 			add("passengerRate", "This line carries no passengers, so it takes no passenger supplement")
 		case validateDecimal("A passenger rate", *body.PassengerRate, 0, maxRateValue) != "":
@@ -355,11 +384,11 @@ func parseRateOverride(body gen.ExpensesRateOverrideRequest, row store.ExpensesE
 		return nil, nil, errs, nil
 	}
 
-	km, err := ratPtrFromNumeric(row.DistanceKm)
+	amount, err := overriddenAmount(row, rate, passengerRate)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if km != nil && overflowsMoney(mileageAmount(km, rate, passengerRate, int(row.Passengers))) {
+	if overflowsMoney(amount) {
 		add("rate", amountTooBig)
 		return nil, nil, errs, nil
 	}

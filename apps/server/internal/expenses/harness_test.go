@@ -581,6 +581,12 @@ func ratePath(id int32) string     { return fmt.Sprintf("%s/%d", ratesPath, id) 
 func categoryPath(id int32) string { return fmt.Sprintf("%s/%d", categoriesPath, id) }
 func entryPath(id int64) string    { return fmt.Sprintf("%s/%d", entriesPath, id) }
 func claimPath(id int64) string    { return fmt.Sprintf("%s/%d", claimsPath, id) }
+
+// perDiemSuggestionPath is where a claim's own days are proposed from its
+// departure and its return. It writes nothing.
+func perDiemSuggestionPath(id int64) string {
+	return fmt.Sprintf("%s/%d/per-diem-suggestion", claimsPath, id)
+}
 func attachmentPath(id int64) string {
 	return fmt.Sprintf("%s/%d", attachmentsPath, id)
 }
@@ -965,6 +971,23 @@ type (
 		By     entryOwnerJSON `json:"by"`
 		Reason *string        `json:"reason"`
 	}
+	// mealPercentsJSON decodes ExpensesEntryMealPercents — what each covered
+	// meal deducted, as the table stood when the day was priced.
+	mealPercentsJSON struct {
+		Breakfast *float64 `json:"breakfast"`
+		Lunch     *float64 `json:"lunch"`
+		Dinner    *float64 `json:"dinner"`
+	}
+	// entryPerDiemJSON decodes ExpensesEntryPerDiem — the per diem day one
+	// line is.
+	entryPerDiemJSON struct {
+		Type             string           `json:"type"`
+		BreakfastCovered bool             `json:"breakfastCovered"`
+		LunchCovered     bool             `json:"lunchCovered"`
+		DinnerCovered    bool             `json:"dinnerCovered"`
+		DayRate          float64          `json:"dayRate"`
+		MealPercents     mealPercentsJSON `json:"mealPercents"`
+	}
 )
 
 // entryJSON decodes ExpensesEntryResponse.
@@ -987,6 +1010,7 @@ type entryJSON struct {
 	Passengers      *int32                  `json:"passengers"`
 	Rate            *float64                `json:"rate"`
 	PassengerRate   *float64                `json:"passengerRate"`
+	PerDiem         *entryPerDiemJSON       `json:"perDiem"`
 	OwedToEmployee  float64                 `json:"owedToEmployee"`
 	Status          string                  `json:"status"`
 	SubmittedAt     *string                 `json:"submittedAt"`
@@ -1047,6 +1071,18 @@ func mileageBody(overrides map[string]any) map[string]any {
 		"entryDate":   "2026-03-10",
 		"description": "Til anlegget og tilbake",
 		"distanceKm":  120.0,
+	}, overrides)
+}
+
+// perDiemBody is a valid minimal per diem day: a 6–12 hour day inside the trip
+// claimBody describes, with no meal covered. It carries no claimId of its own —
+// addLine puts it there — because a per diem day standing alone is one of the
+// things the tests are about.
+func perDiemBody(overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{
+		"kind":        "per_diem",
+		"entryDate":   "2026-03-10",
+		"perDiemType": "day_6_12",
 	}, overrides)
 }
 
@@ -1332,6 +1368,28 @@ func refusedClaim(t *testing.T, c *modtest.Client, method, path string, body any
 func addLine(t *testing.T, c *modtest.Client, claimID int64, body map[string]any) entryJSON {
 	t.Helper()
 	return createEntry(t, c, bodyWith(body, map[string]any{"claimId": claimID}))
+}
+
+// suggestedDayJSON decodes ExpensesPerDiemSuggestedDay.
+type suggestedDayJSON struct {
+	EntryDate   string   `json:"entryDate"`
+	PerDiemType string   `json:"perDiemType"`
+	DayRate     *float64 `json:"dayRate"`
+	Amount      *float64 `json:"amount"`
+	Exists      bool     `json:"exists"`
+}
+
+// suggestDays asks a claim for the per diem days its times imply and fails the
+// test unless it answered 200.
+func suggestDays(t *testing.T, c *modtest.Client, claimID int64, overnight bool) []suggestedDayJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, perDiemSuggestionPath(claimID), map[string]any{"overnight": overnight})
+	if r.Status != http.StatusOK {
+		t.Fatalf("suggest days for claim %d: status %d body %s, want 200", claimID, r.Status, r.Body)
+	}
+	var days []suggestedDayJSON
+	r.JSON(&days)
+	return days
 }
 
 // seedClaimStatus moves a claim straight to a status the flow does not reach

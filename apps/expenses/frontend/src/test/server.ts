@@ -568,7 +568,10 @@ export const stubExpensesApi = (server: ExpensesServer = {}) => {
         id: takeId(),
         kind: input.kind as Expense["kind"],
         entryDate: input.entryDate,
-        description: input.description,
+        // The contract lets a per diem day arrive with no description — the
+        // real server names it after the kind of day it is. Nothing here
+        // records one yet, so an absent description is simply empty.
+        description: input.description ?? "",
         category: input.categoryId ? categoryStore.find((one) => one.id === input.categoryId) : undefined,
         billable: input.billable ?? false,
         status: "draft",

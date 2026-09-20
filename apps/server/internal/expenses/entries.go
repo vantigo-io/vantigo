@@ -51,6 +51,12 @@ type entryValues struct {
 	MarkupPercent *big.Rat
 	BillRatePerKm *big.Rat
 	BillAmount    *big.Rat
+
+	// MealPercents is what each of a per diem day's three meals deducted, as
+	// the rate table stood on the day the line was priced. It is snapshotted
+	// onto the row beside the amount, so an approver's later rate override can
+	// reprice the day from the very deductions it was saved with.
+	MealPercents perDiemRates
 }
 
 // columns is entryValues in the shape the queries want, each amount written
@@ -65,6 +71,10 @@ type entryColumns struct {
 	MarkupPercent pgtype.Numeric
 	BillRatePerKm pgtype.Numeric
 	BillAmount    pgtype.Numeric
+
+	MealBreakfastPercent pgtype.Numeric
+	MealLunchPercent     pgtype.Numeric
+	MealDinnerPercent    pgtype.Numeric
 }
 
 // columnsOf converts a parsed body and the values resolved for it into the
@@ -85,6 +95,9 @@ func columnsOf(p parsedEntry, v entryValues) (entryColumns, error) {
 		{v.MarkupPercent, moneyPlaces, &c.MarkupPercent},
 		{v.BillRatePerKm, moneyPlaces, &c.BillRatePerKm},
 		{v.BillAmount, moneyPlaces, &c.BillAmount},
+		{v.MealPercents.Breakfast, moneyPlaces, &c.MealBreakfastPercent},
+		{v.MealPercents.Lunch, moneyPlaces, &c.MealLunchPercent},
+		{v.MealPercents.Dinner, moneyPlaces, &c.MealDinnerPercent},
 	} {
 		if *conv.into, err = numericFromRatPtr(conv.value, conv.places); err != nil {
 			return entryColumns{}, err
@@ -267,10 +280,22 @@ func storedBillingFigure(current *store.ExpensesEntry, pick func(store.ExpensesE
 // refusing an employee over a price they may not know exists; whoever can see
 // the project's money fills it in.
 func (s *server) resolveValues(ctx context.Context, q *store.Queries, c *caller, p parsedEntry,
-	sc billingScope, add func(field, msg string),
+	claim *store.ExpensesClaim, sc billingScope, add func(field, msg string),
 ) (entryValues, error) {
 	project := sc.Project
 	v := entryValues{Currency: p.Currency, Gross: p.Gross, Vat: p.Vat}
+
+	if p.Kind == kindPerDiem {
+		// A per diem day is never billable and never the customer's, so it
+		// leaves here the moment it is priced: everything below this is about
+		// what a project charges for a line, and a day of somebody's trip
+		// charges nobody anything.
+		if err := s.pricePerDiem(ctx, q, c, &v, p, claim, add); err != nil {
+			return entryValues{}, err
+		}
+		refuseFiguresNothingWillUse(p, add)
+		return v, nil
+	}
 
 	if p.Kind == kindMileage {
 		v.Currency = c.Settings.DefaultCurrency
@@ -385,10 +410,14 @@ func refuseFiguresNothingWillUse(p parsedEntry, add func(field, msg string)) {
 var maxMoneyRat = ratFromFloat(maxMoney)
 
 // drivingField is the field a caller can have driven an amount with on this
-// kind: what they paid for an outlay, how far they drove on a mileage line.
+// kind: what they paid for an outlay, how far they drove on a mileage line,
+// which kind of day a per diem was.
 func drivingField(kind string) string {
-	if kind == kindMileage {
+	switch kind {
+	case kindMileage:
 		return "distanceKm"
+	case kindPerDiem:
+		return "perDiemType"
 	}
 	return "grossAmount"
 }
@@ -430,10 +459,9 @@ func carriedBillAmount(p prepared, row store.ExpensesEntry) (*big.Rat, error) {
 // refusing the write would be a 500 for a body that broke no documented rule.
 // The refusal names the field that drove the amount.
 func checkAmountsFit(p parsedEntry, v entryValues, add func(field, msg string)) {
-	grossField := "grossAmount"
-	billField := "markupPercent"
+	grossField, billField := drivingField(p.Kind), "markupPercent"
 	if p.Kind == kindMileage {
-		grossField, billField = "distanceKm", "billRatePerKm"
+		billField = "billRatePerKm"
 	}
 	if overflowsMoney(v.Gross) {
 		add(grossField, amountTooBig)
@@ -574,7 +602,7 @@ func (s *server) prepare(ctx context.Context, q *store.Queries, c *caller, body 
 		add("entryDate", lockedBeforeMessage(*lockedBefore(c.Settings)))
 	}
 	carry := current != nil && (!s.projectsAvailable() || projectLost)
-	values, err := s.resolveValues(ctx, q, c, parsed,
+	values, err := s.resolveValues(ctx, q, c, parsed, claim,
 		billingScope{Project: project, Financial: financial, Current: current}, add)
 	if err != nil {
 		return prepared{}, err
@@ -642,13 +670,22 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 		Passengers:      p.Parsed.Passengers,
 		Rate:            p.Columns.Rate,
 		PassengerRate:   p.Columns.PassengerRate,
-		ProjectID:       p.Parsed.ProjectID,
-		BillingLineID:   p.Parsed.LineID,
-		Billable:        p.Values.Billable,
-		MarkupPercent:   p.Columns.MarkupPercent,
-		BillRatePerKm:   p.Columns.BillRatePerKm,
-		BillAmount:      p.Columns.BillAmount,
-		Now:             s.deps.Clock(),
+
+		PerDiemType:          p.Parsed.PerDiemType,
+		BreakfastCovered:     p.Parsed.Meals.Breakfast,
+		LunchCovered:         p.Parsed.Meals.Lunch,
+		DinnerCovered:        p.Parsed.Meals.Dinner,
+		MealBreakfastPercent: p.Columns.MealBreakfastPercent,
+		MealLunchPercent:     p.Columns.MealLunchPercent,
+		MealDinnerPercent:    p.Columns.MealDinnerPercent,
+
+		ProjectID:     p.Parsed.ProjectID,
+		BillingLineID: p.Parsed.LineID,
+		Billable:      p.Values.Billable,
+		MarkupPercent: p.Columns.MarkupPercent,
+		BillRatePerKm: p.Columns.BillRatePerKm,
+		BillAmount:    p.Columns.BillAmount,
+		Now:           s.deps.Clock(),
 	}
 
 	var created store.ExpensesEntry
@@ -664,7 +701,7 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 	}
 
 	var gone bool
-	var refusal string
+	var refusalField, refusal string
 	err = s.withLockedTx(ctx, func(ctx context.Context, txq *store.Queries) error {
 		claim, err := txq.LockClaim(ctx, p.Claim.ID)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -678,7 +715,7 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 		// committed since is the refusal resolveClaimLine would have given,
 		// arrived a moment later.
 		if _, msg := entryStateRefusal(c, claimUnit(claim)); msg != "" {
-			refusal = msg
+			refusalField, refusal = "claimId", msg
 			return nil
 		}
 		count, err := txq.CountClaimLines(ctx, &claim.ID)
@@ -686,6 +723,16 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 			return fmt.Errorf("expenses: count a travel claim's expenses: %w", err)
 		}
 		if refusal = claimLineCapRefusal(count); refusal != "" {
+			refusalField = "claimId"
+			return nil
+		}
+		// One per diem day per date, decided here for the same reason the cap
+		// is: two days racing for one date must not both take it.
+		if refusal, err = perDiemDayRefusal(ctx, txq, p, 0); err != nil {
+			return err
+		}
+		if refusal != "" {
+			refusalField = "entryDate"
 			return nil
 		}
 		created, err = txq.InsertEntry(ctx, params)
@@ -702,7 +749,7 @@ func (s *server) PostExpensesEntries(ctx context.Context, req gen.PostExpensesEn
 			invalidEntry(fieldError("claimId", noSuchClaim(p.Claim.ID)))), nil
 	case refusal != "":
 		return gen.PostExpensesEntries400ApplicationProblemPlusJSONResponse(
-			invalidEntry(fieldError("claimId", refusal))), nil
+			invalidEntry(fieldError(refusalField, refusal))), nil
 	}
 
 	resp, err := s.entryResponseFor(ctx, c, created)
@@ -856,6 +903,17 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			staleField, staleMsg = "kind", receiptsStranded
 			return nil
 		}
+		// And on the claim's other per diem days as they stand under its lock:
+		// a day of the same date added since must win, and a per diem line
+		// keeping the date it already has must not find itself.
+		taken, err := perDiemDayRefusal(ctx, txq, p, row.ID)
+		if err != nil {
+			return err
+		}
+		if taken != "" {
+			staleField, staleMsg = "entryDate", taken
+			return nil
+		}
 		if row.Revision != body.Revision {
 			conflict = &row.Revision
 			return nil
@@ -880,6 +938,15 @@ func (s *server) PutExpensesEntriesById(ctx context.Context, req gen.PutExpenses
 			Passengers:    p.Parsed.Passengers,
 			Rate:          p.Columns.Rate,
 			PassengerRate: p.Columns.PassengerRate,
+
+			PerDiemType:          p.Parsed.PerDiemType,
+			BreakfastCovered:     p.Parsed.Meals.Breakfast,
+			LunchCovered:         p.Parsed.Meals.Lunch,
+			DinnerCovered:        p.Parsed.Meals.Dinner,
+			MealBreakfastPercent: p.Columns.MealBreakfastPercent,
+			MealLunchPercent:     p.Columns.MealLunchPercent,
+			MealDinnerPercent:    p.Columns.MealDinnerPercent,
+
 			ProjectID:     p.Parsed.ProjectID,
 			BillingLineID: p.Parsed.LineID,
 			Billable:      p.Values.Billable,

@@ -13,12 +13,16 @@ INSERT INTO expenses.entries (
     user_id, created_by_user_id, claim_id, kind, entry_date, description,
     category_id, supplier, paid_by, currency, gross_amount, vat_amount,
     distance_km, from_place, to_place, passengers, rate, passenger_rate,
+    per_diem_type, breakfast_covered, lunch_covered, dinner_covered,
+    meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent,
     project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount,
     created_at, updated_at
 ) VALUES (
     @user_id, @created_by_user_id, @claim_id, @kind, @entry_date, @description,
     @category_id, @supplier, @paid_by, @currency, @gross_amount, @vat_amount,
     @distance_km, @from_place, @to_place, @passengers, @rate, @passenger_rate,
+    @per_diem_type, @breakfast_covered, @lunch_covered, @dinner_covered,
+    @meal_breakfast_percent, @meal_lunch_percent, @meal_dinner_percent,
     @project_id, @billing_line_id, @billable, @markup_percent, @bill_rate_per_km, @bill_amount,
     @now::timestamptz, @now::timestamptz
 )
@@ -60,6 +64,13 @@ UPDATE expenses.entries SET
     passengers = @passengers,
     rate = @rate,
     passenger_rate = @passenger_rate,
+    per_diem_type = @per_diem_type,
+    breakfast_covered = @breakfast_covered,
+    lunch_covered = @lunch_covered,
+    dinner_covered = @dinner_covered,
+    meal_breakfast_percent = @meal_breakfast_percent,
+    meal_lunch_percent = @meal_lunch_percent,
+    meal_dinner_percent = @meal_dinner_percent,
     rate_overridden_by_user_id = NULL,
     rate_table_value = NULL,
     passenger_rate_table_value = NULL,

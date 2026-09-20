@@ -354,6 +354,14 @@ func entryResponse(row store.ExpensesEntry, unit entryUnit, a entryAccess, names
 		}
 		resp.Passengers = ptrTo(int32(row.Passengers))
 	}
+	if row.Kind == kindPerDiem {
+		if resp.Rate, err = floatPtrFromNumeric(row.Rate); err != nil {
+			return gen.ExpensesEntryResponse{}, err
+		}
+		if resp.PerDiem, err = perDiemResponse(row); err != nil {
+			return gen.ExpensesEntryResponse{}, err
+		}
+	}
 	// Decision X8: a rate somebody replaced is shown to everyone who may see
 	// the expense, its owner included — what they are paid was decided by a
 	// person rather than by the table, and they are entitled to know.

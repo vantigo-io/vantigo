@@ -300,7 +300,7 @@ func receiptPart(mr *multipart.Reader) (data []byte, fileName, declared string, 
 // that refuses and the thing the caller can do something about.
 func entryTakesReceipts(c *caller, entry store.ExpensesEntry, unit entryUnit) string {
 	if entry.Kind != kindOutlay {
-		return "Only an outlay carries a receipt; a mileage line has none"
+		return "Only an outlay carries a receipt; a mileage line and a per diem day have none"
 	}
 	_, msg := entryStateRefusal(c, unit)
 	return msg
@@ -315,7 +315,7 @@ func entryTakesReceipts(c *caller, entry store.ExpensesEntry, unit entryUnit) st
 // them here instead would put an object-store call in the update path, which
 // this module deliberately keeps out of it (see the file header), so the save
 // is what gives way.
-const receiptsStranded = "Remove this expense's receipts before making it a mileage line"
+const receiptsStranded = "Remove this expense's receipts before making it a line of another kind"
 
 // changeStrandsReceipts reports whether replacing current with a body of this
 // kind would leave receipts on a line that cannot carry them.

@@ -104,8 +104,9 @@ WHERE id = ANY(@ids::bigint[]) AND status = 'approved'
 RETURNING *;
 
 -- name: OverrideEntryRate :one
--- OverrideEntryRate replaces a submitted mileage line's rate and the amount it
--- was frozen at (decision X8), recording who did it and what the table had said
+-- OverrideEntryRate replaces a submitted mileage line's or per diem day's rate
+-- and the amount it was frozen at (decision X8), recording who did it and what
+-- the table had said
 -- about *both* rates it can replace. Each of the two table values keeps what the
 -- line was frozen at before the **first** override of that rate, so a second one
 -- never loses the table's own figure; the passenger one is only recorded when
@@ -131,7 +132,7 @@ UPDATE expenses.entries SET
 -- runs, so the subquery reads the very row it judged.
 WHERE expenses.entries.id = @id
   AND expenses.entries.revision = @revision
-  AND expenses.entries.kind = 'mileage'
+  AND expenses.entries.kind IN ('mileage', 'per_diem')
   AND COALESCE(
         (SELECT c.status FROM expenses.claims c WHERE c.id = expenses.entries.claim_id),
         expenses.entries.status) = 'submitted'
