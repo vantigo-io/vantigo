@@ -576,7 +576,7 @@ figures that span all three:
 
 `expenses` is the same idea for money somebody spent: the three buckets
 (`approved`, `submitted`, `draft`, each `{count, cost, amount}`), the two
-across-bucket totals, and the four invoicing figures. The bucket a line falls in is
+across-bucket totals, and the five invoicing figures. The bucket a line falls in is
 its **unit's** status — a travel claim's line is judged through the claim somebody
 approved or sent back — so `approved` carries the lines already invoiced (invoicing
 is a stamp here, not a status) and `draft` carries the rejected ones, exactly as the
@@ -601,7 +601,7 @@ was recorded in the project's currency. Everything else is reported as what it i
 per currency, in `otherCurrencies` (`{currency, count, cost, amount, readyAmount}`)
 — never converted, never dropped and never added to anything, because a sum across
 currencies is a number in neither. A project that carries **no currency** therefore
-has no figures of its own at all: the nine own-currency figures are absent together
+has no figures of its own at all: the ten own-currency figures are absent together
 and every currency is in `otherCurrencies`. `otherCurrencies` itself is absent when
 empty.
 
@@ -870,6 +870,15 @@ the harness-wide check fails the test if one ever is. A failing call is a **500*
 both endpoints, exactly as a failing actuals call is: a margin or a "ready to
 invoice" column short by everything one module knows is a wrong number, not a
 missing one.
+
+**The two endpoints read the answer to different depths, deliberately.** The
+per-project economy publishes every figure of every currency, so it parses every
+one and refuses a figure it cannot read — including a `Total` whose line count
+contradicts its own three buckets, the guard the actuals side has on its hours. The
+portfolio publishes two figures per row (the ready count and amount, in the row's
+own currency), so it reads exactly those two: at the 2 000-project cap that saves
+tens of thousands of discarded decimal parses, and it means a malformed figure in a
+currency the table would never have printed cannot take the whole page down with it.
 
 ## Locking
 

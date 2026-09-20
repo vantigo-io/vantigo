@@ -238,6 +238,41 @@ func TestGetProjectsEconomy_RowCountsOnlyItsOwnCurrency(t *testing.T) {
 	}
 }
 
+// The portfolio reads two figures of the contract's answer and parses two:
+// a currency it would never print cannot fail the page, however malformed it
+// is. The per-project economy publishes that currency and so still refuses
+// it — the asymmetry is the point, and it is pinned here rather than left to
+// be discovered by a portfolio of two thousand projects going dark over one
+// receipt.
+func TestGetProjectsEconomy_AMalformedOtherCurrencyDoesNotFailThePage(t *testing.T) {
+	t.Parallel()
+	actuals, expenses := newFakeActuals(), newFakeExpenses()
+	h := newHarnessWithActualsAndExpenses(t, actuals, expenses)
+	creator, _ := signIn(t, h, "projects:create")
+	project := portfolioProject(t, creator, "PXMALF11", nil)
+	rotten := spentInCurrency("EUR", spentBucket(1, "0.00", "0.00"),
+		spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+	rotten.Submitted.BillAmount = "not a number"
+	expenses.set(project.Id, recordedExpenses("2026-09-19",
+		readyExpenses("NOK", 2, "750.00"), rotten))
+
+	row := portfolioRow(t, getPortfolio(t, creator, "sort=code"), "PXMALF11")
+	if row.ReadyExpenseCount == nil || *row.ReadyExpenseCount != 2 {
+		t.Errorf("row.readyExpenseCount = %v, want 2: the row's own currency is readable", row.ReadyExpenseCount)
+	}
+	if row.ReadyExpenseAmount == nil || *row.ReadyExpenseAmount != 750 {
+		t.Errorf("row.readyExpenseAmount = %v, want 750", row.ReadyExpenseAmount)
+	}
+
+	// The per-project read does publish that currency, so it refuses rather
+	// than showing a figure it could not read.
+	r := readEconomy(t, creator, project.Id,
+		modtest.SkipContract("an unreadable amount is an infrastructure failure, deliberately off-contract"))
+	if r.Status != http.StatusInternalServerError {
+		t.Errorf("the project's own economy: status %d body %s, want 500", r.Status, r.Body)
+	}
+}
+
 // The totals stay one entry per currency and gain the same split: what the
 // milestones come to, what the expenses come to, and their total. A currency
 // nothing but expenses is ready in still gets an entry.

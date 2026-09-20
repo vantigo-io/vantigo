@@ -444,13 +444,18 @@ func (s *server) portfolioRowFor(
 	// the two halves together and is what the ready order is taken on.
 	out.readyTotal = out.ready
 	if expenseTracking {
-		figures, err := expensesOf(spent, project.Currency)
+		// Only what is ready, and only in the row's own currency: a portfolio
+		// row publishes two figures of the contract's answer, so it reads two
+		// rather than parsing every bucket of every currency to throw the rest
+		// away — and a malformed figure in a currency this table would never
+		// print cannot then fail the whole page.
+		ready, amount, err := readyExpensesOf(spent, project.Currency)
 		if err != nil {
 			return portfolioRow{}, err
 		}
 		count := int32(0)
-		if own := figures.Own; own != nil && own.ReadyCount > 0 {
-			count, out.readyExpense = int32(own.ReadyCount), own.ReadyAmount
+		if ready > 0 {
+			count, out.readyExpense = int32(ready), amount
 		}
 		out.row.ReadyExpenseCount = &count
 		out.row.ReadyExpenseAmount = numberPtr(out.readyExpense)

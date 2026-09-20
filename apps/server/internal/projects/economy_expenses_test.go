@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"reflect"
 	"testing"
@@ -318,6 +319,71 @@ func TestGetProjectEconomy_AnotherCurrencyIsReportedNotConverted(t *testing.T) {
 	}
 }
 
+// The currency rule where it costs money to get wrong: a receipt in another
+// currency must not move the margin by a cent. The block assertion above
+// would not catch a leak into the margin alone, and the margin is the number
+// somebody invoices from — so it is pinned on its own, against the
+// labour-only figure, with expenseCost published as 0 rather than absent.
+func TestGetProjectEconomy_AnotherCurrencyDoesNotMoveTheMargin(t *testing.T) {
+	t.Parallel()
+	actuals, expenses := newFakeActuals(), newFakeExpenses()
+	h := newHarnessWithActualsAndExpenses(t, actuals, expenses)
+	manager, _ := signIn(t, h, "projects:create")
+	project, _, _ := economySetUp(t, manager, "ECOEXPMARCUR1000")
+	actuals.set(project.Id, loggedTotals(loggedBucket(10, "9000.00", "4000.00"),
+		loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")))
+	// Everything the project has spent is in EUR, on a NOK project.
+	eur := spentInCurrency("EUR", spentBucket(2, "500.00", "700.00"),
+		spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+	eur.ReadyCount, eur.ReadyAmount = 2, "700.00"
+	expenses.set(project.Id, recordedExpenses("2026-09-19", eur))
+
+	costs, _ := signIn(t, h, "projects:view-all", "projects:view-financials", "projects:view-costs")
+	economy := getEconomy(t, costs, project.Id)
+	if economy.Cost == nil || economy.Cost.ExpenseCost == nil {
+		t.Fatalf("cost = %+v, want the block with expenseCost", economy.Cost)
+	}
+	if *economy.Cost.ExpenseCost != 0 {
+		t.Errorf("cost.expenseCost = %v, want 0: nothing was spent in the project's own currency",
+			*economy.Cost.ExpenseCost)
+	}
+	// 9 000 billed − 4 000 cost. Folding the EUR receipt in either direction
+	// would answer 5 200 or 4 500, both of them numbers in no currency.
+	if economy.Cost.Margin != 5000 {
+		t.Errorf("cost.margin = %v, want 5000, the labour margin untouched by a EUR receipt", economy.Cost.Margin)
+	}
+	if economy.Cost.Total != 4000 {
+		t.Errorf("cost.total = %v, want the labour cost alone", economy.Cost.Total)
+	}
+	// And the receipt is still reported, as what it is.
+	e := economy.Expenses
+	if e == nil || e.TotalCost == nil || *e.TotalCost != 0 || *e.TotalAmount != 0 {
+		t.Errorf("expenses own-currency totals = %+v, want zeroes", e)
+	}
+	if len(e.OtherCurrencies) != 1 || e.OtherCurrencies[0].Currency != "EUR" || e.OtherCurrencies[0].Cost != 500 {
+		t.Errorf("expenses.otherCurrencies = %+v, want the EUR receipt reported", e.OtherCurrencies)
+	}
+}
+
+// A provider whose Total disagrees with its buckets about how many lines
+// there are is broken, and a broken read is a 500 rather than a line count
+// nobody can account for — the guard the actuals side has on its hours,
+// carried across to the one expense figure that is exact either way.
+func TestGetProjectEconomy_RefusesAnExpenseTotalThatContradictsItsBuckets(t *testing.T) {
+	t.Parallel()
+	_, manager, _, expenses, project := expenseSetUp(t, "ECOEXPCNT1000")
+	nok := spentInCurrency("NOK", spentBucket(2, "100.00", "120.00"),
+		spentBucket(1, "50.00", "0.00"), spentBucket(0, "0.00", "0.00"))
+	nok.Total.Count = 9 // three lines in the buckets, nine in the total
+	expenses.set(project.Id, recordedExpenses("2026-09-19", nok))
+
+	r := readEconomy(t, manager, project.Id,
+		modtest.SkipContract("a provider contradicting itself is an infrastructure failure, deliberately off-contract"))
+	if r.Status != http.StatusInternalServerError {
+		t.Errorf("status %d body %s, want 500", r.Status, r.Body)
+	}
+}
+
 // A project with no currency of its own has no figures of its own: every
 // currency anything was recorded in is "in another currency", and there is
 // nothing for a margin to be computed from.
@@ -329,9 +395,14 @@ func TestGetProjectEconomy_ProjectWithoutACurrencyReportsEveryCurrencyAsAnother(
 	project := economyProject(t, manager, "ECOEXPNOC1000", map[string]any{"currency": nil, "budgetAmount": nil})
 	actuals.set(project.Id, loggedTotals(loggedBucket(4, "0.00", "0.00"),
 		loggedBucket(0, "0.00", "0.00"), loggedBucket(0, "0.00", "0.00")))
+	// Deliberately handed to the consumer *out of order*: the contract's
+	// provider promises its list by currency code, but otherCurrencies is a
+	// promise this module publishes as its own, so it is this module that has
+	// to keep it.
 	expenses.set(project.Id, recordedExpenses("2026-09-19",
-		spentInCurrency("EUR", spentBucket(1, "90.00", "100.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00")),
-		spentInCurrency("NOK", spentBucket(2, "1000.00", "1200.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))))
+		spentInCurrency("USD", spentBucket(1, "10.00", "0.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00")),
+		spentInCurrency("NOK", spentBucket(2, "1000.00", "1200.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00")),
+		spentInCurrency("EUR", spentBucket(1, "90.00", "100.00"), spentBucket(0, "0.00", "0.00"), spentBucket(0, "0.00", "0.00"))))
 
 	economy := getEconomy(t, manager, project.Id)
 	e := economy.Expenses
@@ -341,8 +412,12 @@ func TestGetProjectEconomy_ProjectWithoutACurrencyReportsEveryCurrencyAsAnother(
 	if e.Approved != nil || e.TotalCost != nil || e.TotalAmount != nil || e.ReadyCount != nil || e.UnpricedCount != nil {
 		t.Errorf("expenses = %+v, want no own-currency figures on a project that carries no currency", e)
 	}
-	if len(e.OtherCurrencies) != 2 || e.OtherCurrencies[0].Currency != "EUR" || e.OtherCurrencies[1].Currency != "NOK" {
-		t.Errorf("expenses.otherCurrencies = %+v, want both currencies, by code", e.OtherCurrencies)
+	codes := make([]string, 0, len(e.OtherCurrencies))
+	for _, other := range e.OtherCurrencies {
+		codes = append(codes, other.Currency)
+	}
+	if fmt.Sprint(codes) != "[EUR NOK USD]" {
+		t.Errorf("expenses.otherCurrencies = %v, want every currency by code however the provider ordered them", codes)
 	}
 	if economy.Cost != nil {
 		t.Errorf("cost = %+v, want it absent on a project with no currency", economy.Cost)

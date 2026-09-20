@@ -1148,7 +1148,7 @@ export interface components {
              */
             readyAmount: number;
         };
-        /** @description What the project's expenses cost, what they will bill, and what of them is ready to invoice. Present when this installation has a module that reports expenses (expenseTracking) *and* the caller has financial rights on the project — every figure in it is money — and absent otherwise, never zeroed. **None of it reaches the budget**: expenses are not work measured against a budget, so nothing here is in budgetUsed, overBudget, a line's usedPercent or the logged work those are computed from. The nine figures of the project's own currency (the three buckets and the six beside them) are present or absent *together*, on the project carrying a currency; a project that carries none has only otherCurrencies. A project whose expenses are tracked and has none recorded is here with zeroes, which is a different answer from the block being absent. */
+        /** @description What the project's expenses cost, what they will bill, and what of them is ready to invoice. Present when this installation has a module that reports expenses (expenseTracking) *and* the caller has financial rights on the project — every figure in it is money — and absent otherwise, never zeroed. **None of it reaches the budget**: expenses are not work measured against a budget, so nothing here is in budgetUsed, overBudget, a line's usedPercent or the logged work those are computed from. The ten figures of the project's own currency (the three buckets and the seven beside them) are present or absent *together*, on the project carrying a currency; a project that carries none has only otherCurrencies. A project whose expenses are tracked and has none recorded is here with zeroes, which is a different answer from the block being absent. */
         ProjectEconomyExpenses: {
             /** @description What has been approved, in the project's own currency, invoiced lines included. Absent when the project carries no currency. */
             approved?: components["schemas"]["ProjectEconomyExpenseBucket"];
@@ -1348,7 +1348,7 @@ export interface components {
             readyExpenseAmount?: number | null;
             /**
              * Format: int32
-             * @description How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
+             * @description How many of the project's expense lines are ready to invoice — approved, billable, priced, not yet invoiced — **in the project's own currency only**. A line in another currency is not counted and not converted here; the per-project economy is where a project's other currencies are reported, because a portfolio row is one line of a table — and 0 on a project that carries no currency at all, whose lines are reported under the per-project economy's `otherCurrencies`. Absent exactly when expenseTracking is false, which is how "this installation cannot say" is told from "there are none".
              */
             readyExpenseCount?: number | null;
             /**
@@ -1406,7 +1406,7 @@ export interface components {
             readyCount: number;
             /**
              * Format: int32
-             * @description How many expense lines across those projects are ready to invoice, each counted only in its own project's currency. Absent exactly when expenseTracking is false.
+             * @description How many expense lines across those projects are ready to invoice, each counted only in its own project's currency — a line in another currency, and every line of a project that carries no currency at all, is counted in no row and so in no total either. Absent exactly when expenseTracking is false.
              */
             readyExpenseCount?: number | null;
         };

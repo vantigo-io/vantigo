@@ -1299,7 +1299,7 @@ type economyCostJSON struct {
 }
 
 // economyExpensesJSON decodes ProjectEconomyExpenses. Every main figure is a
-// pointer because the nine of them are present or absent *together*, on the
+// pointer because the ten of them are present or absent *together*, on the
 // project carrying a currency: a project with none reports every line it has
 // under otherCurrencies and has no figures of its own at all.
 type economyExpensesJSON struct {

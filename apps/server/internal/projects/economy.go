@@ -408,7 +408,7 @@ func economyCost(w loggedWork, expenses *currencyExpenses) *gen.ProjectEconomyCo
 }
 
 // economyExpenses is what the project's expenses cost and will bill, for a
-// caller who may see money at all. The nine figures of the project's own
+// caller who may see money at all. The ten figures of the project's own
 // currency are present or absent together, on the project carrying one: a
 // project without a currency has no figures of its own, because a line counts
 // towards a project's figures only when it is in the project's currency and

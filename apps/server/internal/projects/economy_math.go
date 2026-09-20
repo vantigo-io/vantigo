@@ -3,6 +3,8 @@ package projects
 import (
 	"fmt"
 	"math/big"
+	"slices"
+	"strings"
 
 	"github.com/vantigo-io/vantigo/server/internal/contracts"
 )
@@ -440,6 +442,15 @@ func expensesOf(t contracts.ProjectExpenseTotals, currency *string) (expenseFigu
 		}
 		out.Others = append(out.Others, one)
 	}
+	// By currency code, because that is what this module's own contract
+	// promises of otherCurrencies. The provider promises the same order of
+	// its list, so this sorts an already-sorted slice today — but a promise
+	// Projects publishes as its own must be kept by Projects, not borrowed
+	// from another module's discipline where nothing here would notice it
+	// lapsing.
+	slices.SortFunc(out.Others, func(a, b currencyExpenses) int {
+		return strings.Compare(a.Currency, b.Currency)
+	})
 	return out, nil
 }
 
@@ -447,7 +458,21 @@ func expensesOf(t contracts.ProjectExpenseTotals, currency *string) (expenseFigu
 // provider spelled in a text big.Rat cannot read is an error rather than a
 // zero, exactly as it is on the actuals side: a margin silently computed from
 // nothing is worse than no answer at all.
+//
+// The same goes for a provider whose Total disagrees with its buckets about
+// how many lines there are, which is bucketSumsOf's guard carried across:
+// counts are exact, so Total's count is the three buckets' counts added or
+// the provider is broken, and a project reading "no lines" beside three
+// filled buckets is refused here rather than shown. (The amounts cannot be
+// checked that way — Total is rounded once from the unrounded sum and
+// legitimately differs from the buckets by a cent, which is the whole reason
+// it exists.)
 func currencyExpensesOf(c contracts.CurrencyExpenses) (currencyExpenses, error) {
+	if buckets := c.Approved.Count + c.Submitted.Count + c.Draft.Count; c.Total.Count != buckets {
+		return currencyExpenses{}, fmt.Errorf(
+			"projects: the expenses provider reports %d %s lines in total and %d across its buckets",
+			c.Total.Count, c.Currency, buckets)
+	}
 	out := currencyExpenses{
 		Currency:      c.Currency,
 		ReadyCount:    c.ReadyCount,
@@ -483,6 +508,39 @@ func currencyExpensesOf(c contracts.CurrencyExpenses) (currencyExpenses, error) 
 	}
 	out.ReadyAmount, out.InvoicedAmount = ready, invoiced
 	return out, nil
+}
+
+// readyExpensesOf is what one project has ready to invoice in one currency,
+// and nothing else: the portfolio's whole use of the expenses contract.
+//
+// It exists rather than calling expensesOf because a portfolio row publishes
+// two of that function's figures and pays for all of them — at the
+// 2 000-project cap, tens of thousands of decimal parses whose results are
+// discarded. The narrower read also narrows the failure surface, which
+// matters more: a malformed submitted bill amount, in a currency this
+// endpoint would never have printed, should not fail a page of two thousand
+// projects. The per-project economy still uses expensesOf, because it
+// publishes every one of those figures and must refuse a figure it cannot
+// read.
+//
+// A project that carries no currency has nothing ready *in its own currency*,
+// which is 0 and no amount — its lines are reported by the per-project
+// economy's otherCurrencies instead.
+func readyExpensesOf(t contracts.ProjectExpenseTotals, currency *string) (int64, *big.Rat, error) {
+	if currency == nil {
+		return 0, nil, nil
+	}
+	for _, reported := range t.Currencies {
+		if reported.Currency != *currency {
+			continue
+		}
+		amount, err := exactAmount(reported.ReadyAmount)
+		if err != nil {
+			return 0, nil, err
+		}
+		return reported.ReadyCount, amount, nil
+	}
+	return 0, nil, nil
 }
 
 // zeroCurrencyExpenses is a currency nothing was recorded in — every figure at
