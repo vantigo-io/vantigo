@@ -45,7 +45,7 @@ export { TaskFormModal, type TaskFormModalProps, type TaskModalState } from "./p
 export { MyTasksPage } from "./pages/my-tasks";
 export { EconomyPortfolio } from "./pages/portfolio";
 export { ProjectBilling } from "./pages/project-billing";
-export { ProjectEconomy } from "./pages/project-economy";
+export { ProjectEconomy, type ProjectEconomyProps } from "./pages/project-economy";
 export { ProjectPeople } from "./pages/project-people";
 export { ProjectTasks, type ProjectTasksProps } from "./pages/project-tasks";
 export { ProjectDetailHeader, ProjectOverview } from "./pages/projects.$projectId";

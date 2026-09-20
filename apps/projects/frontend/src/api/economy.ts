@@ -22,6 +22,17 @@ export type EconomyCost = Schemas["ProjectEconomyCost"];
 export type EconomyLine = Schemas["ProjectEconomyLine"];
 
 /**
+ * What the project's expenses cost and will bill. The block is there when the
+ * installation tracks expenses *and* the caller may see the project's money;
+ * the figures of the project's own currency are present or absent **together**,
+ * on the project carrying a currency, so a currencyless project answers with an
+ * object that has none of them — never with zeroes.
+ */
+export type EconomyExpenses = Schemas["ProjectEconomyExpenses"];
+export type EconomyExpenseBucket = Schemas["ProjectEconomyExpenseBucket"];
+export type EconomyExpenseCurrency = Schemas["ProjectEconomyExpenseCurrency"];
+
+/**
  * A project's budget against what has been logged on it. Every optional field
  * is *absent*, never null and never zero: an absent `budgetUsed` is "no budget
  * to measure against", not 0 %, and absent `actuals` is "this installation

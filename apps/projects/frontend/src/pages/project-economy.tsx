@@ -1,6 +1,7 @@
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
   Box,
   Button,
@@ -16,9 +17,14 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconDots, IconInfoCircle, IconLock, IconPlus } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ContentSkeleton, EmptyState, useI18n } from "@vantigo/frontend-shell";
+import { ContentSkeleton, EmptyState, useI18n, useShellLink } from "@vantigo/frontend-shell";
 import { type ReactNode, useId, useState } from "react";
-import { type Economy, type EconomyLine, projectEconomyQueryOptions } from "../api/economy";
+import {
+  type Economy,
+  type EconomyExpenseCurrency,
+  type EconomyLine,
+  projectEconomyQueryOptions,
+} from "../api/economy";
 import {
   type BillingMilestone,
   type BillingMilestoneTotals,
@@ -41,17 +47,30 @@ import { MilestoneFormModal, type MilestoneModalState } from "./-milestone-form-
 import { MilestoneInvoicedModal } from "./-milestone-invoiced-modal";
 import { ProjectFormModal, type ProjectModalState } from "./-project-form-modal";
 
+export interface ProjectEconomyProps {
+  projectId: number;
+  /**
+   * Where this project's expenses live in the host's routes, for the link
+   * beside the billable expenses waiting to go on an invoice. Without it the
+   * row is a plain sentence: this package knows no route of the Expenses app
+   * and imports nothing from it, so the host is the one that can say.
+   */
+  expensesHref?: string;
+}
+
 /**
- * The Economy tab (design §7): the budget against what has been logged, and
- * below it the invoice plan.
+ * The Economy tab (design §7): the budget against what has been logged, what
+ * the project's expenses cost, and below them the invoice plan.
  *
  * The economy read never answers 403 — a caller who may not see the money is
  * answered without it, progressively emptier — so the budget half is shown to
  * everyone who sees the project, in hours when that is all they may see. The
  * invoice plan is financial data throughout and the API refuses it outright,
  * so that half alone stays behind `canSeeFinancials` and is never asked for.
+ * The costs section carries nothing but money, so it stands or falls with the
+ * `expenses` block the server either sends or does not.
  */
-export const ProjectEconomy = ({ projectId }: { projectId: number }) => {
+export const ProjectEconomy = ({ projectId, expensesHref }: ProjectEconomyProps) => {
   const { t } = useI18n("projects");
   const { data: project, isPending, isError, error } = useQuery(projectQueryOptions(projectId));
 
@@ -72,8 +91,9 @@ export const ProjectEconomy = ({ projectId }: { projectId: number }) => {
   return (
     <Stack gap="lg" mt="md">
       <BudgetSection projectId={projectId} />
+      <ExpensesSection projectId={projectId} />
       {project.capabilities.canSeeFinancials ? (
-        <InvoicePlan projectId={projectId} project={project} />
+        <InvoicePlan projectId={projectId} project={project} expensesHref={expensesHref} />
       ) : (
         <EmptyState icon={IconLock} title={t("financialsHidden")} description={t("invoicePlanHiddenDescription")} />
       )}
@@ -214,6 +234,36 @@ const BudgetSection = ({ projectId }: { projectId: number }) => {
               {t("uncostedHoursNote", { hours: hours(economy.cost.uncostedHours) })}
             </Text>
           )}
+          {/* The margin is both halves of the project now, so it says so and
+              shows what each half cost — the server publishes the two figures
+              precisely so this does not have to subtract one from the other.
+              `expenseCost` is there exactly when the cost block is and the
+              expenses are tracked, so the block itself is the condition. */}
+          {economy.cost?.expenseCost != null && (
+            <>
+              <Text size="sm" c="dimmed" data-testid="margin-counts-expenses">
+                {t("marginCountsExpenses")}
+              </Text>
+              <Text size="sm" c="dimmed" data-testid="margin-cost-split">
+                {t("marginCostSplit", { labour: money(economy.cost.total), expenses: money(economy.cost.expenseCost) })}
+              </Text>
+              {/* What the margin is short by, the same way the uncosted hours
+                  are said out loud: a billable line nobody priced is in no
+                  amount, and another currency is never converted into this one. */}
+              {(economy.expenses?.unpricedCount ?? 0) > 0 && (
+                <Text size="sm" c="dimmed" data-testid="margin-unpriced-expenses-note">
+                  {t("marginLeavesOutUnpricedExpenses", { count: economy.expenses?.unpricedCount ?? 0 })}
+                </Text>
+              )}
+              {economy.expenses?.otherCurrencies && economy.expenses.otherCurrencies.length > 0 && (
+                <Text size="sm" c="dimmed" data-testid="margin-other-currencies-note">
+                  {t("marginLeavesOutOtherCurrencies", {
+                    currencies: economy.expenses.otherCurrencies.map((entry) => entry.currency).join(", "),
+                  })}
+                </Text>
+              )}
+            </>
+          )}
           {economy.taskEstimateHours != null && (
             <Text size="sm" c="dimmed">
               {t("taskEstimateTotal", { hours: hours(economy.taskEstimateHours) })}
@@ -258,6 +308,194 @@ const basisAmount = (economy: Economy, basis: BudgetBasis): number | null | unde
     : basis === "fixedPrice"
       ? economy.budget.fixedPrice
       : economy.budget.hours;
+
+/**
+ * What the project's expenses cost and what of them the customer is charged
+ * (X12): a section of its own, because none of it is work measured against a
+ * budget — and it says so out loud, since that is the first thing somebody
+ * looking at "Budget used" above it will wonder.
+ *
+ * Three absences mean three different things and all three are rendered
+ * differently: no expenses module at all (`expenseTracking` false) puts nothing
+ * here, a caller who may not see the project's money gets no `expenses` block
+ * and so nothing here either, and a block with nothing recorded in it is one
+ * plain sentence rather than a table of zeroes.
+ */
+const ExpensesSection = ({ projectId }: { projectId: number }) => {
+  const { t, formatters } = useI18n("projects");
+  const { data: economy } = useQuery(projectEconomyQueryOptions(projectId));
+  const dates = useProjectDates();
+  const headingId = useId();
+  const { money } = useEconomyFormat(economy?.currency ?? undefined);
+
+  if (!economy?.expenseTracking) return null;
+  const expenses = economy.expenses;
+  if (!expenses) return null;
+
+  const others = expenses.otherCurrencies ?? [];
+  // The ten figures of the project's own currency are one group: a project
+  // that carries no currency has none of them, and the block can be empty.
+  const buckets = [
+    { key: "approved", label: t("expenseStateApproved"), bucket: expenses.approved },
+    { key: "submitted", label: t("expenseStateSubmitted"), bucket: expenses.submitted },
+    // Rejected expenses are back with the person who recorded them, which is
+    // where a draft is; the row says so rather than leaving them unaccounted for.
+    { key: "draft", label: t("expenseStateDraft"), bucket: expenses.draft, note: t("expenseDraftIncludesRejected") },
+  ];
+  const recorded = buckets.some(({ bucket }) => (bucket?.count ?? 0) > 0) || others.length > 0;
+
+  return (
+    <Card withBorder padding="lg" radius="md" data-testid="project-expenses">
+      <Stack gap="md">
+        <Stack gap={2}>
+          <Text fw={600} component="h3" id={headingId}>
+            {t("expenseCosts")}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {t("expenseCostsDescription")}
+          </Text>
+        </Stack>
+
+        {!recorded ? (
+          <Text size="sm">{t("noExpensesRecorded")}</Text>
+        ) : (
+          <>
+            {expenses.approved && expenses.submitted && expenses.draft && (
+              <Table.ScrollContainer minWidth={560}>
+                <Table striped aria-labelledby={headingId}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t("status")}</Table.Th>
+                      <Table.Th>{t("expenseLines")}</Table.Th>
+                      <Table.Th>{t("expenseCostColumn")}</Table.Th>
+                      <Table.Th>{t("expensePassedOn")}</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {buckets.map(({ key, label, bucket, note }) =>
+                      bucket === undefined ? null : (
+                        <Table.Tr key={key}>
+                          <Table.Td>
+                            {/* What is approved and what is not is the point of
+                                the table, so each state is written out and never
+                                left to a colour. */}
+                            <Stack gap={2}>
+                              <Text size="sm" fw={500}>
+                                {label}
+                              </Text>
+                              {note && (
+                                <Text size="xs" c="dimmed">
+                                  {note}
+                                </Text>
+                              )}
+                            </Stack>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{formatters.formatNumber(bucket.count)}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{money(bucket.cost)}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{money(bucket.amount)}</Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      ),
+                    )}
+                    {/* Each bucket is rounded on its own, so the three need not
+                        add up to the cent: the totals are the server's own
+                        across-bucket figures and are never summed here. There
+                        is no across-bucket count to publish, hence the dash. */}
+                    <Table.Tr data-testid="expense-totals">
+                      <Table.Td>
+                        <Text size="sm" fw={600}>
+                          {t("expenseTotal")}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm">{t("notAvailable")}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={600}>
+                          {money(expenses.totalCost)}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={600}>
+                          {money(expenses.totalAmount)}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+
+            <Stack gap={4}>
+              {expenses.readyCount != null && (
+                <Text size="sm">
+                  {t("expensesReadyLines", { count: expenses.readyCount, amount: money(expenses.readyAmount) })}
+                </Text>
+              )}
+              {expenses.invoicedCount != null && (
+                <Text size="sm">
+                  {t("expensesInvoicedLines", {
+                    count: expenses.invoicedCount,
+                    amount: money(expenses.invoicedAmount),
+                  })}
+                </Text>
+              )}
+              {/* A billable line nobody has priced is in no amount, so the
+                  figures say how many lines they are short by — a missing price
+                  is not a price of nothing. */}
+              {(expenses.unpricedCount ?? 0) > 0 && (
+                <Text size="sm" c="dimmed" data-testid="expenses-unpriced-note">
+                  {t("expensesUnpriced", { count: expenses.unpricedCount ?? 0 })}
+                </Text>
+              )}
+              {others.map((entry) => (
+                <OtherCurrencyNote key={entry.currency} entry={entry} />
+              ))}
+              {expenses.lastEntryDate && (
+                <Text size="sm" c="dimmed">
+                  {t("lastExpense", { date: dates.day(expenses.lastEntryDate) })}
+                </Text>
+              )}
+            </Stack>
+          </>
+        )}
+
+        {/* Somebody reading "Budget used" above will ask, so it is answered
+            here rather than in a tooltip nobody opens. */}
+        <Text size="sm" c="dimmed" data-testid="expenses-not-in-budget">
+          {t("expensesNotInBudget")}
+        </Text>
+      </Stack>
+    </Card>
+  );
+};
+
+/**
+ * One currency the project itself is not in. Nothing is converted — two
+ * currencies added together are a number in neither — so the line is written in
+ * the currency it was recorded in and says it stands outside the figures above.
+ */
+const OtherCurrencyNote = ({ entry }: { entry: EconomyExpenseCurrency }) => {
+  const { t } = useI18n("projects");
+  const { money } = useEconomyFormat(entry.currency);
+
+  return (
+    <Text size="sm" c="dimmed" data-testid="expenses-other-currency-note">
+      {t("expensesOtherCurrency", {
+        count: entry.count,
+        currency: entry.currency,
+        cost: money(entry.cost),
+        amount: money(entry.amount),
+        ready: money(entry.readyAmount),
+      })}
+    </Text>
+  );
+};
 
 /**
  * One billing line's budget against its own logged work. A line's percentage
@@ -350,7 +588,15 @@ const EconomyLineRow = ({ line, currency }: { line: EconomyLine; currency?: stri
   );
 };
 
-const InvoicePlan = ({ projectId, project }: { projectId: number; project: Project }) => {
+const InvoicePlan = ({
+  projectId,
+  project,
+  expensesHref,
+}: {
+  projectId: number;
+  project: Project;
+  expensesHref?: string;
+}) => {
   const { t } = useI18n("projects");
   const { data: plan, isPending, isError, error } = useQuery(milestonePlanQueryOptions(projectId));
   const [modalState, setModalState] = useState<MilestoneModalState | null>(null);
@@ -442,6 +688,8 @@ const InvoicePlan = ({ projectId, project }: { projectId: number; project: Proje
             </Table.ScrollContainer>
           )}
 
+          <ReadyExpenses projectId={projectId} expensesHref={expensesHref} />
+
           {plan && <PlanFooter totals={plan.totals} />}
         </Stack>
       </Card>
@@ -456,6 +704,42 @@ const InvoicePlan = ({ projectId, project }: { projectId: number; project: Proje
       <MilestoneInvoicedModal milestone={invoicing} onClose={() => setInvoicing(null)} />
       <ProjectFormModal state={projectModal} onClose={() => setProjectModal(null)} />
     </>
+  );
+};
+
+/**
+ * The billable expenses that can go on an invoice today, beside the milestones
+ * that can: approved, billable, priced and not yet invoiced, in the project's
+ * own currency. They are not milestones and never join the plan's own totals —
+ * this is the one line that says somebody planning an invoice has more to put
+ * on it than the rows above.
+ */
+const ReadyExpenses = ({ projectId, expensesHref }: { projectId: number; expensesHref?: string }) => {
+  const { t } = useI18n("projects");
+  const Link = useShellLink();
+  const { data: economy } = useQuery(projectEconomyQueryOptions(projectId));
+  const { money } = useEconomyFormat(economy?.currency ?? undefined);
+
+  const expenses = economy?.expenseTracking ? economy.expenses : undefined;
+  const count = expenses?.readyCount ?? 0;
+  if (count <= 0) return null;
+
+  return (
+    <Alert color="teal" variant="light" icon={<IconInfoCircle size={16} />} data-testid="expenses-ready-to-invoice">
+      <Group justify="space-between" wrap="wrap" gap="xs">
+        <Text size="sm">{t("expensesReadyToInvoiceRow", { count, amount: money(expenses?.readyAmount) })}</Text>
+        {expensesHref &&
+          (Link ? (
+            <Anchor size="sm" renderRoot={(props) => <Link to={expensesHref} {...props} />}>
+              {t("viewTheExpenses")}
+            </Anchor>
+          ) : (
+            <Anchor size="sm" href={expensesHref}>
+              {t("viewTheExpenses")}
+            </Anchor>
+          ))}
+      </Group>
+    </Alert>
   );
 };
 

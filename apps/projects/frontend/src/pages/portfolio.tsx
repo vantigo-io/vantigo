@@ -72,24 +72,63 @@ export const EconomyPortfolio = () => {
   // shows.
   const refusal = isError && error instanceof ApiValidationError ? Object.values(error.fieldErrors)[0] : undefined;
 
-  const readyAmounts = (data?.totals.readyAmounts ?? [])
-    .map((ready) => formatters.formatCurrency(ready.amount, ready.currency))
+  // What is ready to invoice is milestones *and* billable expenses now, and the
+  // server has already added the two halves of each currency up — `totalAmount`
+  // is also what the ready order sorts by, so the card shows that and never the
+  // milestone half alone. Without expense tracking there is no total and the
+  // milestone amount is the whole answer, exactly as before.
+  const totals = data?.totals;
+  const readyAmounts = (totals?.readyAmounts ?? [])
+    .map((ready) => formatters.formatCurrency(ready.totalAmount ?? ready.amount, ready.currency))
     .join(" · ");
+  // A currency can be in the list for its expenses alone, where the milestone
+  // half is a sum over no milestones rather than a figure that went missing.
+  const readySplit = (totals?.readyAmounts ?? [])
+    .filter((ready) => ready.expenseAmount)
+    .map((ready) =>
+      t("readySplit", {
+        milestones: formatters.formatCurrency(ready.amount, ready.currency),
+        expenses: formatters.formatCurrency(ready.expenseAmount ?? 0, ready.currency),
+      }),
+    )
+    .join(" · ");
+  const readyCounts =
+    totals?.readyExpenseCount == null
+      ? undefined
+      : t("readyCountSplit", {
+          milestones: t("readyMilestoneCount", { count: totals.readyCount }),
+          expenses: t("readyExpenseLineCount", { count: totals.readyExpenseCount }),
+        });
 
   return (
     <Stack gap="lg">
       <PageHeader title={t("economyPortfolio")} description={t("economyPortfolioDescription")} />
 
-      {data && (
-        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" data-testid="economy-portfolio-totals">
-          <KpiCard label={t("projects")} value={formatters.formatNumber(data.totals.projectCount)} />
-          <KpiCard label={t("overBudget")} value={formatters.formatNumber(data.totals.overBudgetCount)} />
-          <KpiCard
-            label={t("readyTotal")}
-            value={formatters.formatNumber(data.totals.readyCount)}
-            hint={readyAmounts || undefined}
-          />
-        </SimpleGrid>
+      {data && totals && (
+        <Stack gap="xs" data-testid="economy-portfolio-totals">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+            <KpiCard label={t("projects")} value={formatters.formatNumber(totals.projectCount)} />
+            <KpiCard label={t("overBudget")} value={formatters.formatNumber(totals.overBudgetCount)} />
+            {/* The card's own figure keeps counting milestones; what the two
+                halves are is said in words underneath, where there is room for
+                both numbers and both amounts. */}
+            <KpiCard
+              label={t("readyTotal")}
+              value={formatters.formatNumber(totals.readyCount)}
+              hint={readyAmounts || undefined}
+            />
+          </SimpleGrid>
+          {readyCounts && (
+            <Text size="sm" c="dimmed" data-testid="ready-counts">
+              {readyCounts}
+            </Text>
+          )}
+          {readySplit && (
+            <Text size="sm" c="dimmed" data-testid="ready-amount-split">
+              {t("readyAmountSplit", { split: readySplit })}
+            </Text>
+          )}
+        </Stack>
       )}
 
       <Card withBorder padding="lg" radius="md">
@@ -136,8 +175,11 @@ export const EconomyPortfolio = () => {
               checked={params.overBudget}
               onChange={() => filterBy({ overBudget: !params.overBudget })}
             />
+            {/* Where expenses count too, a project can be waiting for an
+                invoice with no milestone at all, so the filter is no longer
+                about milestones alone. */}
             <Switch
-              label={t("onlyWithReadyMilestones")}
+              label={data?.expenseTracking ? t("onlyWithReadyToInvoice") : t("onlyWithReadyMilestones")}
               checked={params.hasReady}
               onChange={() => filterBy({ hasReady: !params.hasReady })}
             />
@@ -182,6 +224,14 @@ export const EconomyPortfolio = () => {
                     </Table.Tbody>
                   </Table>
                 </Table.ScrollContainer>
+              )}
+
+              {/* A row is one line of a table and folds in no other currency;
+                  a project's foreign receipts are its own tab's business. */}
+              {data.expenseTracking && data.data.length > 0 && (
+                <Text size="sm" c="dimmed" data-testid="portfolio-other-currency-note">
+                  {t("portfolioOtherCurrencyNote")}
+                </Text>
               )}
 
               {data.data.length === 0 && <EmptyState title={t("noEconomyProjects")} />}
@@ -303,11 +353,27 @@ const PortfolioRow = ({ row }: { row: EconomyRow }) => {
         )}
       </Table.Td>
       <Table.Td>
+        {/* What is ready to invoice is the milestones and the billable expenses
+            together, as the server added them up and orders the page by. The
+            two halves are named under it rather than left to be guessed at, and
+            neither number is arithmetic of this page's own. */}
         <Stack gap={2}>
-          <Text size="sm">{row.readyCount}</Text>
-          {row.readyAmount != null && (
+          <Text size="sm">
+            {row.readyExpenseCount == null
+              ? row.readyCount
+              : t("readyCountSplitShort", {
+                  milestones: t("readyMilestoneCount", { count: row.readyCount }),
+                  expenses: t("readyExpenseLineCount", { count: row.readyExpenseCount }),
+                })}
+          </Text>
+          {(row.readyTotalAmount ?? row.readyAmount) != null && (
             <Text size="xs" c="dimmed">
-              {money(row.readyAmount)}
+              {money(row.readyTotalAmount ?? row.readyAmount)}
+            </Text>
+          )}
+          {(row.readyExpenseCount ?? 0) > 0 && (
+            <Text size="xs" c="dimmed" data-testid="ready-split">
+              {t("readySplit", { milestones: money(row.readyAmount), expenses: money(row.readyExpenseAmount) })}
             </Text>
           )}
         </Stack>
