@@ -35,7 +35,14 @@ rather than treating it as an unknown value.
   `Subcontractor`, `Equipment hire`, `Travel`, `Accommodation`, `Meals`, `Phone and
   internet`, `Other`, seeded in that order). A category is never deleted, only
   deactivated — a line that already carries one keeps it and stays editable, but a
-  deactivated category cannot be put on a *different* line.
+  deactivated category cannot be put on a *different* line. Its `position` is a
+  **dense, server-owned 1..n** over every category, not a number the caller's
+  request is stored verbatim — the server owns the numbering exactly as Projects
+  owns a task's place among its siblings. Moving a category, or inserting one at
+  a given place, locks the whole list in its current order, takes the category
+  out and puts it back at the requested place (the end, for one past it), and
+  renumbers every row in the same transaction; a replace that repeats the place a
+  category already holds renumbers nothing.
 - **Dated rate** (`expenses.rates`) — one row per kind and `validFrom` date: the rate
   in force on a day is the row of that kind with the greatest `validFrom` on or
   before it. Ten kinds exist in the schema: `mileage`, `mileage_passenger`,
@@ -94,8 +101,8 @@ was started with the `projects` module. Without it:
 - every project-shaped field — `projectId`, `billingLineId`, `billable`,
   `markupPercent`, `billRatePerKm` — is refused on its own field, on a create and on
   a replace alike;
-- `GET /entries/projects` (the picker) answers a 404 problem naming the missing
-  module, rather than an empty list a client might mistake for "no projects";
+- `GET /projects` (the picker) answers a 404 problem naming the missing module,
+  rather than an empty list a client might mistake for "no projects";
 - billing never appears — `canSeeBilling`, `canSetBilling`, `canMarkInvoiced` and
   `canUndoInvoiced` are all `false`, even on a row that still carries a stored
   `projectId` from before the module was switched off, and the `billing` object is
@@ -103,14 +110,16 @@ was started with the `projects` module. Without it:
 
 **What happens to a stored project id when Projects is switched off.** The columns
 are not cleared — a project link is data, not a fact this module owns the right to
-delete — but nothing can be judged against a project nobody can ask about, so a save
-on such a line *carries the six project columns through untouched* (the project,
-the billing line, `billable`, the markup or customer rate) rather than refusing the
-edit outright. What the line bills the customer is not simply copied, though: it is
-recomputed from the carried markup or rate against whatever new gross or distance
-the save is writing, so the figure never goes stale against a rewritten amount. The
-same carry-through applies when the projects module stays on but the *particular*
-project a line was booked on has since been deleted from the directory.
+delete — but nothing can be judged against a project nobody can ask about, so a
+save on such a line keeps five of its six project columns exactly as stored:
+`projectId`, `billingLineId`, `billable`, the markup percentage and the customer
+rate per kilometre are all carried through untouched rather than refusing the
+edit outright. The sixth, what the line bills the customer, is **not** copied —
+it is *recomputed* from those same carried figures against whatever new gross or
+distance the save is writing, so the figure never goes stale against a rewritten
+amount. The same carry-through applies when the projects module stays on but the
+*particular* project a line was booked on has since been deleted from the
+directory.
 
 **Who may book on a project.** The rule is exactly the one Time uses to decide who
 may log time on a project (`contracts.ProjectDirectory.CanLogTime`) — judged on the
@@ -221,6 +230,17 @@ priced in — draft, rejected, submitted or approved — and refused only once t
 line has been invoiced**. The period lock does not reach it: pricing is bookkeeping
 done after a period closes, and an invoice for December goes out in January.
 
+`GET /entries/{id}/billing-lines` is the picker for that dialog, and deliberately
+not `GET /projects` again: the project picker answers what the *caller* may book
+an expense on (a member-or-manager right on a project still open for work), while
+pricing belongs to whoever may see the project's *money* — its manager,
+`projects:manage-all`, or `projects:view-financials` — which is a different right
+held by a different person. Keying the picker on `GET /projects` would offer a
+finance person on no project team nothing at all, and would still offer a line on
+a project that has since been completed; this operation is keyed on the *expense*
+instead and judged by exactly the rule `PUT /entries/{id}/billing` is judged by,
+so the dialog can never offer a line the save then refuses.
+
 ## The two tracks after approval
 
 Once approved, an expense can move down either or both of two independent tracks,
@@ -297,8 +317,9 @@ row a single read of it would 404 for.
 
 ## Receipts
 
-A receipt is JPEG, PNG, HEIC or PDF, at most 10 MB, and an outlay carries at most
-ten. Only an outlay takes one at all — a mileage line never does, and a save that
+A receipt is JPEG, PNG, HEIC or PDF, at most 10 MiB (10,485,760 bytes, "10 MB" the
+friendly figure the contract itself uses), and an outlay carries at most ten. Only
+an outlay takes one at all — a mileage line never does, and a save that
 would turn an outlay with receipts into a mileage line is refused (on `kind`) rather
 than stranding them.
 
@@ -311,9 +332,12 @@ sent as `image/png`, is refused, while an invoice saved as "Faktura nr. 12345" (
 extension) or a phone sending `application/octet-stream` are both accepted, because
 neither contradicts anything.
 
-Every receipt is stored under a **fresh random key** (`receipts/<entryId>/<uuid>`) —
-never derived from the file name, so no upload can collide with another or be
-guessed. Receipts are **served only through the API**, `GET /attachments/{id}`,
+Every receipt is stored under a **fresh random key**, `receipts/<entryId>/<uuid>`
+relative to this module's own object-store scope (`expenses`), so the physical key
+is `expenses/receipts/<entryId>/<uuid>` — never derived from the file name, so no
+upload can collide with another or be guessed. See
+[Object storage](storage.md#module-scopes-and-the-physical-key) for the scope
+mechanism. Receipts are **served only through the API**, `GET /attachments/{id}`,
 which streams the bytes with the type they were sniffed as, never cached, never
 sniffed again by the browser (`X-Content-Type-Options: nosniff`), and under a
 sandboxing content-security-policy (`default-src 'none'; sandbox`) that keeps a
@@ -435,6 +459,7 @@ says.
 | `GET /approvals` | An approver; 403 for a caller who approves nothing |
 | `PUT /entries/{id}/rate` | An approver or `expenses:manage`, on a submitted mileage line |
 | `PUT /entries/{id}/billing` | Financial rights on the entry's project |
+| `GET /entries/{id}/billing-lines` | Financial rights on the entry's project — the pricing dialog's own picker, not the caller's bookable-projects list |
 | `POST /entries/{id}/invoiced`, `.../invoiced/undo` | Financial rights on the entry's project |
 | `GET /reimbursements`, `/reimbursements/export.csv`, `POST /reimbursed`, `/reimbursed/undo` | `expenses:manage` |
 | `GET /projects` | The caller's own bookable projects (or, `userId`, a colleague's, with `expenses:manage`) |
@@ -446,7 +471,7 @@ says.
 | `PUT /settings` | `expenses:manage` |
 | `GET /stats`, `/stats/summary`, `/stats/timeseries`, `/stats/attention` | The caller's own figures, plus their approval queue's size |
 
-That is all 37 operations the contract declares, each exercised by the module's own
+That is all 38 operations the contract declares, each exercised by the module's own
 coverage gate (below) with no allow-list.
 
 ## What comes next

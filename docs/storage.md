@@ -85,9 +85,24 @@ and no storage operation fails for want of one.
 
 Scope names are canonical lowercase ASCII `[a-z0-9-]`, at most 64 characters, with no
 slashes or dots. Communications uses the scope `communications`, so one of its
-attachments lands at `communications/<relative-key>`. A scoped store refuses a
+attachments lands at `communications/<relative-key>`. Expenses uses the scope
+`expenses`: a receipt's relative key is `receipts/<entryId>/<uuid>`, so its
+physical key is `expenses/receipts/<entryId>/<uuid>`. A scoped store refuses a
 relative key that equals its scope or already begins with `{scope}/`: callers pass
 relative keys only and must never construct the prefix themselves.
+
+**Expenses' receipts, specifically.** They are the only thing this module stores.
+A receipt is read by whoever may see the expense it is on — the same rule that
+governs the expense itself, not a rule of its own — and always through the
+application's own download endpoint (below), never a direct storage read. An
+object is removed with its expense: on an ordinary delete the object goes once
+the database row's removal has committed, and on a failed or refused write the
+object that was staged for it is removed again, so a failure never leaves an
+object nothing points at. The one window nothing closes is the process dying
+between writing the object and that compensating removal or commit completing —
+there is no background sweeper today, so a receipt orphaned that way outlives the
+request that caused it. See [Expenses](expenses.md#receipts) for the upload rules
+(types, size, count, sniffing) and the rate limit.
 
 ## Downloads
 
@@ -99,3 +114,9 @@ authorizes the attachment, loads it through the scoped store, and returns the by
 with the stored content type and a sanitized filename; the `downloadPath` field in
 its DTOs is that same-origin application endpoint, never a storage location. See
 [Communications](communications.md) for the attachment lifecycle.
+
+Expenses' `GET /attachments/{id}` follows the same shape: it authorizes the
+receipt through the expense it belongs to, loads it through the module's own
+`expenses`-scoped store, and streams the bytes back with the content type they
+were sniffed as on upload and the file name as it was given — never a storage
+location of any kind. See [Expenses](expenses.md#receipts).
