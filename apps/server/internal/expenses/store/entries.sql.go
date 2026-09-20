@@ -24,6 +24,7 @@ WHERE ($1::boolean
   AND ($7::text IS NULL OR kind = $7::text)
   AND ($8::date IS NULL OR entry_date >= $8::date)
   AND ($9::date IS NULL OR entry_date <= $9::date)
+  AND ($10::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $10::boolean)
 `
 
 type CountEntriesParams struct {
@@ -36,6 +37,7 @@ type CountEntriesParams struct {
 	Kind              *string
 	FromDate          pgtype.Date
 	ToDate            pgtype.Date
+	Reimbursed        *bool
 }
 
 // CountEntries counts what ListEntries pages through, under exactly the same
@@ -56,6 +58,7 @@ func (q *Queries) CountEntries(ctx context.Context, arg CountEntriesParams) (int
 		arg.Kind,
 		arg.FromDate,
 		arg.ToDate,
+		arg.Reimbursed,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -281,8 +284,9 @@ WHERE ($1::boolean
   AND ($7::text IS NULL OR kind = $7::text)
   AND ($8::date IS NULL OR entry_date >= $8::date)
   AND ($9::date IS NULL OR entry_date <= $9::date)
+  AND ($10::boolean IS NULL OR (reimbursed_at IS NOT NULL) = $10::boolean)
 ORDER BY entry_date DESC, id DESC
-LIMIT $11 OFFSET $10
+LIMIT $12 OFFSET $11
 `
 
 type ListEntriesParams struct {
@@ -295,6 +299,7 @@ type ListEntriesParams struct {
 	Kind              *string
 	FromDate          pgtype.Date
 	ToDate            pgtype.Date
+	Reimbursed        *bool
 	PageOffset        int32
 	PageSize          int32
 }
@@ -312,6 +317,7 @@ func (q *Queries) ListEntries(ctx context.Context, arg ListEntriesParams) ([]Exp
 		arg.Kind,
 		arg.FromDate,
 		arg.ToDate,
+		arg.Reimbursed,
 		arg.PageOffset,
 		arg.PageSize,
 	)

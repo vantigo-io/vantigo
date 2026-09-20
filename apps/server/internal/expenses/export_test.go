@@ -20,3 +20,13 @@ func SetContractCallHook(hook func(ctx context.Context, method string)) {
 // external tests, so the test that proves the limit bites cannot drift from
 // the policy the module registers.
 const ReceiptUploadsPerHour = receiptUploadsPerHour
+
+// SetExportMaxRows moves the payroll export's row cap for the length of one
+// test and answers the function that puts the real one back. Proving the cap
+// bites otherwise means recording five thousand expenses; the test that uses
+// it does not run in parallel, because the cap is the package's.
+func SetExportMaxRows(n int) func() {
+	previous := exportMaxRows
+	exportMaxRows = n
+	return func() { exportMaxRows = previous }
+}

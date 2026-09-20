@@ -33,21 +33,10 @@ type ExpensesApprovalGroup struct {
 	ReceiptsMissing int32 `json:"receiptsMissing"`
 
 	// Totals The group's figures, one line per currency, by currency code. Nothing is ever converted.
-	Totals []ExpensesApprovalTotal `json:"totals"`
+	Totals []ExpensesCurrencyTotal `json:"totals"`
 
 	// User One person, named through identity — the owner of an approval group, or whoever overrode a rate.
 	User ExpensesUserRef `json:"user"`
-}
-
-// ExpensesApprovalTotal One currency's figures inside an approval group.
-type ExpensesApprovalTotal struct {
-	Currency string `json:"currency"`
-
-	// Gross The entries' gross amounts together.
-	Gross float64 `json:"gross"`
-
-	// OwedToEmployee What the person is owed back — the company's own outlays add nothing.
-	OwedToEmployee float64 `json:"owedToEmployee"`
 }
 
 // ExpensesAttachmentResponse One receipt on an expense (design §3.2). The bytes themselves are never in a JSON body: they are read back from GET /attachments/{id}, which serves them with the expense's own visibility.
@@ -108,6 +97,23 @@ type ExpensesCategoryUpdateRequest struct {
 	Position int32 `json:"position"`
 }
 
+// ExpensesCurrencyAmount One currency's amount in a dashboard reading. Nothing is ever converted (design §4), so a caller owed money in two currencies gets two lines and never a sum that is in neither.
+type ExpensesCurrencyAmount struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
+// ExpensesCurrencyTotal One currency's figures inside a group of expenses — the approval queue's, and the reimbursement list's. Nothing is ever converted.
+type ExpensesCurrencyTotal struct {
+	Currency string `json:"currency"`
+
+	// Gross The entries' gross amounts together.
+	Gross float64 `json:"gross"`
+
+	// OwedToEmployee What the person is owed back — the company's own outlays add nothing.
+	OwedToEmployee float64 `json:"owedToEmployee"`
+}
+
 // ExpensesEntryBilling What an expense bills its customer (decision X7). Present only for a caller with financial rights on the entry's project — its managers, projects:manage-all, and projects:view-financials on a project they can see — and then always present, even with nothing in it, so a client can tell "may see, nothing billed" from "may not see". The entry's owner does not see it as such.
 type ExpensesEntryBilling struct {
 	// BillAmount What the customer is billed; zero on a line nobody bills.
@@ -115,6 +121,9 @@ type ExpensesEntryBilling struct {
 
 	// BillRatePerKm Billable mileage's rate per kilometre. Absent otherwise.
 	BillRatePerKm *float64 `json:"billRatePerKm,omitempty"`
+
+	// Invoice What the customer has been billed for this line (decision X5). Absent until somebody marks it invoiced. It sits inside billing on purpose — an invoice number is the project's business, not the employee's.
+	Invoice *ExpensesEntryInvoice `json:"invoice,omitempty"`
 
 	// MarkupPercent A billable outlay's markup on the net. Absent otherwise.
 	MarkupPercent *float64 `json:"markupPercent,omitempty"`
@@ -137,8 +146,11 @@ type ExpensesEntryCapabilities struct {
 	// CanEdit Whether the caller may change it — its owner or expenses:manage, while it is a draft or rejected, and not before the period lock.
 	CanEdit bool `json:"canEdit"`
 
-	// CanMarkInvoiced Whether the caller may mark it invoiced — financial rights on its project, while it is an approved billable line that is not invoiced yet.
+	// CanMarkInvoiced Whether the caller may mark it invoiced — financial rights on its project, while it is an approved billable line that carries an amount to bill and is not invoiced yet. The period lock does not hold it back: the lock protects what the employee submitted and what was approved, and invoicing is bookkeeping done after the period closes.
 	CanMarkInvoiced bool `json:"canMarkInvoiced"`
+
+	// CanMarkReimbursed Whether the caller may mark it reimbursed — expenses:manage, while it is approved, owes the employee something and has not been paid yet. The period lock does not hold it back: payroll runs after the books close, and only expenses:manage, whom the lock never held back, marks a reimbursement.
+	CanMarkReimbursed bool `json:"canMarkReimbursed"`
 
 	// CanOverrideRate Whether the caller may override the rate on it — an approver of it or expenses:manage, while it is a submitted mileage line.
 	CanOverrideRate bool `json:"canOverrideRate"`
@@ -154,12 +166,30 @@ type ExpensesEntryCapabilities struct {
 
 	// CanUnapprove Whether the caller may return it to a draft — an approver of it or expenses:manage, while it is approved and has been neither reimbursed nor invoiced.
 	CanUnapprove bool `json:"canUnapprove"`
+
+	// CanUndoInvoiced Whether the caller may take the invoicing back — financial rights on its project, while it stands invoiced.
+	CanUndoInvoiced bool `json:"canUndoInvoiced"`
+
+	// CanUndoReimbursed Whether the caller may take the reimbursement back — expenses:manage, while it stands reimbursed.
+	CanUndoReimbursed bool `json:"canUndoReimbursed"`
 }
 
 // ExpensesEntryCategory The category an outlay is booked under, with the name as it stands now. Absent on a mileage line, which carries none.
 type ExpensesEntryCategory struct {
 	Id   int32  `json:"id"`
 	Name string `json:"name"`
+}
+
+// ExpensesEntryInvoice That a billable line has been billed on to the customer, by whom and when, with the reference of the invoice it went out on.
+type ExpensesEntryInvoice struct {
+	// At When it was marked invoiced.
+	At time.Time `json:"at"`
+
+	// By One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	By ExpensesUserRef `json:"by"`
+
+	// Reference The invoice it went out on, as whoever marked it typed it. Absent when none was given.
+	Reference *string `json:"reference,omitempty"`
 }
 
 // ExpensesEntryOwner The person the expense concerns — who gets the money back — which is not always who recorded it.
@@ -186,6 +216,21 @@ type ExpensesEntryRateOverride struct {
 
 	// TableValue The reimbursement rate per kilometre the line was frozen at before the first override. Absent when the line carried none.
 	TableValue *float64 `json:"tableValue,omitempty"`
+}
+
+// ExpensesEntryReimbursement That the employee has been paid back for this expense (decision X5), by whom, when it was recorded, the day the money went and the payroll reference. Whoever may see the expense sees it — being told that you have been paid is not a privilege.
+type ExpensesEntryReimbursement struct {
+	// At When it was marked reimbursed.
+	At time.Time `json:"at"`
+
+	// By One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	By ExpensesUserRef `json:"by"`
+
+	// Date The day the payroll run it went with was made. A calendar date, never in the future.
+	Date openapi_types.Date `json:"date"`
+
+	// Reference The payroll run it went with, as whoever marked it typed it. Absent when none was given.
+	Reference *string `json:"reference,omitempty"`
 }
 
 // ExpensesEntryRequest One money line (design §3.1). The fields a kind does not carry are refused on their own field rather than ignored: an outlay carries a category, a payer, a currency and a gross amount with optional VAT; a mileage line carries a distance, optional places and passengers, and is priced by the server from the dated rate table. Travel claims and their per diem arrive in a later delivery, so kind per_diem and claimId are refused for now.
@@ -309,8 +354,11 @@ type ExpensesEntryResponse struct {
 	Rate *float64 `json:"rate,omitempty"`
 
 	// RateOverride The record an overridden mileage rate leaves on the line (decision X8) — who replaced the rate the table gave it, and what the table had said. Present only when somebody has, and then shown to everyone who may see the expense, its owner included.
-	RateOverride    *ExpensesEntryRateOverride `json:"rateOverride,omitempty"`
-	RejectionReason *string                    `json:"rejectionReason,omitempty"`
+	RateOverride *ExpensesEntryRateOverride `json:"rateOverride,omitempty"`
+
+	// Reimbursement That the employee has been paid back for it. Absent until then.
+	Reimbursement   *ExpensesEntryReimbursement `json:"reimbursement,omitempty"`
+	RejectionReason *string                     `json:"rejectionReason,omitempty"`
 
 	// Revision What an update must carry to be allowed to save.
 	Revision int32 `json:"revision"`
@@ -366,6 +414,21 @@ type ExpensesFlowRequest struct {
 	// ClaimIds Reserved for the travel claims of a later delivery, which are approved as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
 	ClaimIds *[]int64 `json:"claimIds,omitempty"`
 	EntryIds []int64  `json:"entryIds"`
+}
+
+// ExpensesInvoicedRequest Marks one approved, billable line as billed on to the customer (decision X5). The caller needs financial rights on the line's project; the period lock does not hold it back, because invoicing is bookkeeping done after the period closes.
+type ExpensesInvoicedRequest struct {
+	// Reference The invoice it went out on. Optional, at most 100 characters once trimmed.
+	Reference *string `json:"reference,omitempty"`
+
+	// Revision The revision the entry was read at. A revision that has moved on is a 409.
+	Revision int32 `json:"revision"`
+}
+
+// ExpensesInvoicedUndoRequest Takes the invoicing back off one line, under exactly the rights that set it.
+type ExpensesInvoicedUndoRequest struct {
+	// Revision The revision the entry was read at. A revision that has moved on is a 409.
+	Revision int32 `json:"revision"`
 }
 
 // ExpensesMetaCapabilities What the calling user may do in this module, so the frontend never re-derives the rules.
@@ -474,6 +537,31 @@ type ExpensesRateUpdateRequest struct {
 	Value     float64            `json:"value"`
 }
 
+// ExpensesReimbursedRequest The expenses one payroll run pays for (decision X5). All or nothing, exactly as the flow's batches are: one expense that may not be paid refuses the whole request with a message per offending id on entryIds, and nothing is stamped. At most 500 ids at once; an id given twice is one expense.
+type ExpensesReimbursedRequest struct {
+	// ClaimIds Reserved for the travel claims of a later delivery, which are reimbursed as one unit. A request naming one is refused on this field; an empty array or none at all is accepted.
+	ClaimIds *[]int64 `json:"claimIds,omitempty"`
+
+	// Date The day the payroll run was made. A calendar date, today or earlier — never a date somebody means to pay on.
+	Date     openapi_types.Date `json:"date"`
+	EntryIds []int64            `json:"entryIds"`
+
+	// Reference The payroll run, for whoever has to find it again. Optional, at most 100 characters once trimmed.
+	Reference *string `json:"reference,omitempty"`
+}
+
+// ExpensesReimbursementGroup One person's approved expenses that are owed back to them, with the figures a payroll run is made from.
+type ExpensesReimbursementGroup struct {
+	// Entries The person's expenses, oldest day first and then as recorded. Shaped exactly as a single read of each would be for this caller.
+	Entries []ExpensesEntryResponse `json:"entries"`
+
+	// Totals The group's figures, one line per currency, by currency code. Nothing is ever converted.
+	Totals []ExpensesCurrencyTotal `json:"totals"`
+
+	// User One person, named through identity — the owner of an approval group, or whoever overrode a rate.
+	User ExpensesUserRef `json:"user"`
+}
+
 // ExpensesRejectRequest The expenses to reject and why, under exactly the rules an approval follows. The reason is shown to their owner, who may then edit and submit again.
 type ExpensesRejectRequest struct {
 	// ClaimIds Reserved for the travel claims of a later delivery; a request naming one is refused on this field.
@@ -511,6 +599,58 @@ type ExpensesSettingsResponse struct {
 	ReceiptRequiredOver *float64 `json:"receiptRequiredOver,omitempty"`
 }
 
+// ExpensesStatsAttentionItem One thing the dashboard wants a human to look at. The shape is the dashboard's, shared by every module's /stats/attention, and the host translates the sentence from `type` — the title is only the name of the thing.
+//
+// Three types, each with its own recipients. `approvalWaiting`: one per person with submitted expenses the caller may approve; entityId and id are that person's user id, title is their display name, occurredAt is the oldest of their submissions and count is how many expenses are waiting. `expenseRejected`: one of the caller's own expenses that was sent back; entityId and id are the expense id, title is its description and occurredAt is when it was decided, newest first and at most twenty of them. `reimbursementWaiting`: for holders of expenses:manage, a single item when anything at all is waiting to be paid; entityId and id are the literal string 'reimbursements', because the payroll list is what it links to rather than any one expense, occurredAt is the oldest approval among them and count is how many.
+type ExpensesStatsAttentionItem struct {
+	// Count How many things the item stands for, when it stands for more than one. Absent on an item that is about a single expense. It is here because a count inside a server-written title could never be translated.
+	Count      *int32    `json:"count,omitempty"`
+	EntityId   string    `json:"entityId"`
+	Id         string    `json:"id"`
+	OccurredAt time.Time `json:"occurredAt"`
+	Title      string    `json:"title"`
+	Type       string    `json:"type"`
+}
+
+// ExpensesStatsDailyBucket One UTC calendar day of a time series. Days with nothing in them are absent, not zero — the dashboard's sparkline plots the points it is given.
+type ExpensesStatsDailyBucket struct {
+	Date *openapi_types.Date `json:"date,omitempty"`
+
+	// Value The net amount approved that day, in the installation's default currency.
+	Value *float64 `json:"value,omitempty"`
+}
+
+// ExpensesStatsResponse The caller's own key figures, for the strip above their expense list. Every status is always present, 0 included.
+type ExpensesStatsResponse struct {
+	Approved int32 `json:"approved"`
+
+	// AwaitingMyApproval How many submitted expenses the caller may approve — the approval queue's own scope, counted in expenses; 0 for a caller who approves nothing.
+	AwaitingMyApproval int32 `json:"awaitingMyApproval"`
+	Draft              int32 `json:"draft"`
+	Rejected           int32 `json:"rejected"`
+	Submitted          int32 `json:"submitted"`
+
+	// Unreimbursed What the caller is still owed — their own approved expenses that owe them something and have not been paid — one line per currency. Empty when there is nothing.
+	Unreimbursed []ExpensesCurrencyAmount `json:"unreimbursed"`
+}
+
+// ExpensesStatsSummaryResponse The dashboard's expenses card over one period, in the envelope every module's /stats/summary shares. Only awaitingMyApproval moves with the period; the other two are a state now, and neither can have a delta — a draft count cannot be reconstructed for a past moment, because a rejected expense becomes a draft again, and a currency-mixed amount would have no meaning as one.
+type ExpensesStatsSummaryResponse struct {
+	// AwaitingMyApproval How many submitted expenses the caller may approve; 0 for a caller who approves nothing.
+	AwaitingMyApproval int32 `json:"awaitingMyApproval"`
+
+	// AwaitingMyApprovalDelta awaitingMyApproval against how many of the same expenses were already waiting when the period began — reconstructed from the expenses' submission and decision times, so one since unapproved or edited back to draft no longer counts in it.
+	AwaitingMyApprovalDelta int32     `json:"awaitingMyApprovalDelta"`
+	From                    time.Time `json:"from"`
+
+	// MyDrafts How many of the caller's own expenses are still drafts.
+	MyDrafts int32 `json:"myDrafts"`
+
+	// MyUnreimbursed What the caller is still owed, one line per currency. Empty when there is nothing.
+	MyUnreimbursed []ExpensesCurrencyAmount `json:"myUnreimbursed"`
+	To             time.Time                `json:"to"`
+}
+
 // ExpensesUserRef One person, named through identity — the owner of an approval group, or whoever overrode a rate.
 type ExpensesUserRef struct {
 	// Active Whether identity still has them as an active user.
@@ -530,6 +670,12 @@ type PaginatedResponseOfExpensesApprovalGroup struct {
 // PaginatedResponseOfExpensesEntryResponse defines model for PaginatedResponseOfExpensesEntryResponse.
 type PaginatedResponseOfExpensesEntryResponse struct {
 	Data       []ExpensesEntryResponse         `json:"data"`
+	Pagination externalRef0.PaginationMetadata `json:"pagination"`
+}
+
+// PaginatedResponseOfExpensesReimbursementGroup defines model for PaginatedResponseOfExpensesReimbursementGroup.
+type PaginatedResponseOfExpensesReimbursementGroup struct {
+	Data       []ExpensesReimbursementGroup    `json:"data"`
 	Pagination externalRef0.PaginationMetadata `json:"pagination"`
 }
 
@@ -557,14 +703,65 @@ type GetExpensesEntriesParams struct {
 	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
 
 	// To The latest entry date to include.
-	To       *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
-	Page     *int32              `form:"page,omitempty" json:"page,omitempty"`
-	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// Reimbursed Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it.
+	Reimbursed *bool  `form:"reimbursed,omitempty" json:"reimbursed,omitempty"`
+	Page       *int32 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize   *int32 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
 
 // PostExpensesEntriesByIdAttachmentsMultipartBody defines parameters for PostExpensesEntriesByIdAttachments.
 type PostExpensesEntriesByIdAttachmentsMultipartBody struct {
 	File openapi_types.File `json:"file"`
+}
+
+// GetExpensesReimbursementsParams defines parameters for GetExpensesReimbursements.
+type GetExpensesReimbursementsParams struct {
+	// State 'waiting' (the default) or 'reimbursed'.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// UserId Narrows the list to one person.
+	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
+
+	// From The earliest entry date to include.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The latest entry date to include.
+	To       *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+	Page     *int32              `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int32              `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// GetExpensesReimbursementsExportCsvParams defines parameters for GetExpensesReimbursementsExportCsv.
+type GetExpensesReimbursementsExportCsvParams struct {
+	// State 'waiting' (the default) or 'reimbursed'. Ignored when entryIds is given.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// UserId Narrows the export to one person. Ignored when entryIds is given.
+	UserId *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
+
+	// From The earliest entry date to include. Ignored when entryIds is given.
+	From *openapi_types.Date `form:"from,omitempty" json:"from,omitempty"`
+
+	// To The latest entry date to include. Ignored when entryIds is given.
+	To *openapi_types.Date `form:"to,omitempty" json:"to,omitempty"`
+
+	// EntryIds Exactly these expenses instead of the filters. An id that is not one the export could hold refuses the whole file rather than being left out of it silently.
+	EntryIds *[]int64 `form:"entryIds,omitempty" json:"entryIds,omitempty"`
+}
+
+// GetExpensesStatsSummaryParams defines parameters for GetExpensesStatsSummary.
+type GetExpensesStatsSummaryParams struct {
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To   *time.Time `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetExpensesStatsTimeseriesParams defines parameters for GetExpensesStatsTimeseries.
+type GetExpensesStatsTimeseriesParams struct {
+	Metric *string    `form:"metric,omitempty" json:"metric,omitempty"`
+	From   *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To     *time.Time `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // PostExpensesApproveJSONRequestBody defines body for PostExpensesApprove for application/json ContentType.
@@ -588,6 +785,12 @@ type PostExpensesEntriesByIdAttachmentsMultipartRequestBody PostExpensesEntriesB
 // PutExpensesEntriesByIdBillingJSONRequestBody defines body for PutExpensesEntriesByIdBilling for application/json ContentType.
 type PutExpensesEntriesByIdBillingJSONRequestBody = ExpensesBillingRequest
 
+// PostExpensesEntriesByIdInvoicedJSONRequestBody defines body for PostExpensesEntriesByIdInvoiced for application/json ContentType.
+type PostExpensesEntriesByIdInvoicedJSONRequestBody = ExpensesInvoicedRequest
+
+// PostExpensesEntriesByIdInvoicedUndoJSONRequestBody defines body for PostExpensesEntriesByIdInvoicedUndo for application/json ContentType.
+type PostExpensesEntriesByIdInvoicedUndoJSONRequestBody = ExpensesInvoicedUndoRequest
+
 // PutExpensesEntriesByIdRateJSONRequestBody defines body for PutExpensesEntriesByIdRate for application/json ContentType.
 type PutExpensesEntriesByIdRateJSONRequestBody = ExpensesRateOverrideRequest
 
@@ -599,6 +802,12 @@ type PostExpensesRatesResetJSONRequestBody = ExpensesRateResetRequest
 
 // PutExpensesRatesByIdJSONRequestBody defines body for PutExpensesRatesById for application/json ContentType.
 type PutExpensesRatesByIdJSONRequestBody = ExpensesRateUpdateRequest
+
+// PostExpensesReimbursedJSONRequestBody defines body for PostExpensesReimbursed for application/json ContentType.
+type PostExpensesReimbursedJSONRequestBody = ExpensesReimbursedRequest
+
+// PostExpensesReimbursedUndoJSONRequestBody defines body for PostExpensesReimbursedUndo for application/json ContentType.
+type PostExpensesReimbursedUndoJSONRequestBody = ExpensesFlowRequest
 
 // PostExpensesRejectJSONRequestBody defines body for PostExpensesReject for application/json ContentType.
 type PostExpensesRejectJSONRequestBody = ExpensesRejectRequest
@@ -656,6 +865,12 @@ type ServerInterface interface {
 	// PutExpensesEntriesByIdBilling Price an expense from its project
 	// (PUT /api/v1/expenses/entries/{id}/billing)
 	PutExpensesEntriesByIdBilling(w http.ResponseWriter, r *http.Request, id int64)
+	// PostExpensesEntriesByIdInvoiced Mark an expense invoiced
+	// (POST /api/v1/expenses/entries/{id}/invoiced)
+	PostExpensesEntriesByIdInvoiced(w http.ResponseWriter, r *http.Request, id int64)
+	// PostExpensesEntriesByIdInvoicedUndo Undo marking an expense invoiced
+	// (POST /api/v1/expenses/entries/{id}/invoiced/undo)
+	PostExpensesEntriesByIdInvoicedUndo(w http.ResponseWriter, r *http.Request, id int64)
 	// PutExpensesEntriesByIdRate Override a mileage rate
 	// (PUT /api/v1/expenses/entries/{id}/rate)
 	PutExpensesEntriesByIdRate(w http.ResponseWriter, r *http.Request, id int64)
@@ -680,6 +895,18 @@ type ServerInterface interface {
 	// PutExpensesRatesById Change an expense rate
 	// (PUT /api/v1/expenses/rates/{id})
 	PutExpensesRatesById(w http.ResponseWriter, r *http.Request, id int32)
+	// PostExpensesReimbursed Mark expenses reimbursed
+	// (POST /api/v1/expenses/reimbursed)
+	PostExpensesReimbursed(w http.ResponseWriter, r *http.Request)
+	// PostExpensesReimbursedUndo Undo marking expenses reimbursed
+	// (POST /api/v1/expenses/reimbursed/undo)
+	PostExpensesReimbursedUndo(w http.ResponseWriter, r *http.Request)
+	// GetExpensesReimbursements List what is owed back
+	// (GET /api/v1/expenses/reimbursements)
+	GetExpensesReimbursements(w http.ResponseWriter, r *http.Request, params GetExpensesReimbursementsParams)
+	// GetExpensesReimbursementsExportCsv Export what is owed back as CSV
+	// (GET /api/v1/expenses/reimbursements/export.csv)
+	GetExpensesReimbursementsExportCsv(w http.ResponseWriter, r *http.Request, params GetExpensesReimbursementsExportCsvParams)
 	// PostExpensesReject Reject expenses
 	// (POST /api/v1/expenses/reject)
 	PostExpensesReject(w http.ResponseWriter, r *http.Request)
@@ -689,6 +916,18 @@ type ServerInterface interface {
 	// PutExpensesSettings Change the expense settings
 	// (PUT /api/v1/expenses/settings)
 	PutExpensesSettings(w http.ResponseWriter, r *http.Request)
+	// GetExpensesStats Get the caller's expense key figures
+	// (GET /api/v1/expenses/stats)
+	GetExpensesStats(w http.ResponseWriter, r *http.Request)
+	// GetExpensesStatsAttention Get expenses dashboard attention items
+	// (GET /api/v1/expenses/stats/attention)
+	GetExpensesStatsAttention(w http.ResponseWriter, r *http.Request)
+	// GetExpensesStatsSummary Get expenses dashboard summary
+	// (GET /api/v1/expenses/stats/summary)
+	GetExpensesStatsSummary(w http.ResponseWriter, r *http.Request, params GetExpensesStatsSummaryParams)
+	// GetExpensesStatsTimeseries Get expenses dashboard time series
+	// (GET /api/v1/expenses/stats/timeseries)
+	GetExpensesStatsTimeseries(w http.ResponseWriter, r *http.Request, params GetExpensesStatsTimeseriesParams)
 	// PostExpensesSubmit Submit expenses
 	// (POST /api/v1/expenses/submit)
 	PostExpensesSubmit(w http.ResponseWriter, r *http.Request)
@@ -959,6 +1198,19 @@ func (siw *ServerInterfaceWrapper) GetExpensesEntries(w http.ResponseWriter, r *
 		return
 	}
 
+	// ------------- Optional query parameter "reimbursed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "reimbursed", r.URL.Query(), &params.Reimbursed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "reimbursed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "reimbursed", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "page" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
@@ -1140,6 +1392,58 @@ func (siw *ServerInterfaceWrapper) PutExpensesEntriesByIdBilling(w http.Response
 	handler.ServeHTTP(w, r)
 }
 
+// PostExpensesEntriesByIdInvoiced operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesEntriesByIdInvoiced(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesEntriesByIdInvoiced(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesEntriesByIdInvoicedUndo operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesEntriesByIdInvoicedUndo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesEntriesByIdInvoicedUndo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutExpensesEntriesByIdRate operation middleware
 func (siw *ServerInterfaceWrapper) PutExpensesEntriesByIdRate(w http.ResponseWriter, r *http.Request) {
 
@@ -1288,6 +1592,217 @@ func (siw *ServerInterfaceWrapper) PutExpensesRatesById(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// PostExpensesReimbursed operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesReimbursed(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesReimbursed(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostExpensesReimbursedUndo operation middleware
+func (siw *ServerInterfaceWrapper) PostExpensesReimbursedUndo(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostExpensesReimbursedUndo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesReimbursements operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesReimbursements(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesReimbursementsParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesReimbursements(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesReimbursementsExportCsv operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesReimbursementsExportCsv(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesReimbursementsExportCsvParams
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "userId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "userId", r.URL.Query(), &params.UserId, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "userId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "entryIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "entryIds", r.URL.Query(), &params.EntryIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "entryIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryIds", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesReimbursementsExportCsv(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PostExpensesReject operation middleware
 func (siw *ServerInterfaceWrapper) PostExpensesReject(w http.ResponseWriter, r *http.Request) {
 
@@ -1321,6 +1836,139 @@ func (siw *ServerInterfaceWrapper) PutExpensesSettings(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutExpensesSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesStats operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesStats(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesStats(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesStatsAttention operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesStatsAttention(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesStatsAttention(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesStatsSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesStatsSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesStatsSummaryParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesStatsSummary(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetExpensesStatsTimeseries operation middleware
+func (siw *ServerInterfaceWrapper) GetExpensesStatsTimeseries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetExpensesStatsTimeseriesParams
+
+	// ------------- Optional query parameter "metric" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "metric", r.URL.Query(), &params.Metric, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "metric"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "metric", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetExpensesStatsTimeseries(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1492,6 +2140,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}", wrapper.PutExpensesEntriesById)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/attachments", wrapper.PostExpensesEntriesByIdAttachments)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/billing", wrapper.PutExpensesEntriesByIdBilling)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/invoiced", wrapper.PostExpensesEntriesByIdInvoiced)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/invoiced/undo", wrapper.PostExpensesEntriesByIdInvoicedUndo)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/entries/{id}/rate", wrapper.PutExpensesEntriesByIdRate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/meta", wrapper.GetExpensesMeta)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/projects", wrapper.GetExpensesProjects)
@@ -1500,9 +2150,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/rates/reset", wrapper.PostExpensesRatesReset)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/expenses/rates/{id}", wrapper.DeleteExpensesRatesById)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/rates/{id}", wrapper.PutExpensesRatesById)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/reimbursed", wrapper.PostExpensesReimbursed)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/reimbursed/undo", wrapper.PostExpensesReimbursedUndo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/reimbursements", wrapper.GetExpensesReimbursements)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/reimbursements/export.csv", wrapper.GetExpensesReimbursementsExportCsv)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/reject", wrapper.PostExpensesReject)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/settings", wrapper.GetExpensesSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/expenses/settings", wrapper.PutExpensesSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/stats", wrapper.GetExpensesStats)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/stats/attention", wrapper.GetExpensesStatsAttention)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/stats/summary", wrapper.GetExpensesStatsSummary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/expenses/stats/timeseries", wrapper.GetExpensesStatsTimeseries)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/submit", wrapper.PostExpensesSubmit)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/expenses/unapprove", wrapper.PostExpensesUnapprove)
 
@@ -2505,6 +3163,180 @@ func (response PutExpensesEntriesByIdBilling409ApplicationProblemPlusJSONRespons
 	return err
 }
 
+type PostExpensesEntriesByIdInvoicedRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostExpensesEntriesByIdInvoicedJSONRequestBody
+}
+
+type PostExpensesEntriesByIdInvoicedResponseObject interface {
+	VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesEntriesByIdInvoiced200JSONResponse ExpensesEntryResponse
+
+func (response PostExpensesEntriesByIdInvoiced200JSONResponse) VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoiced400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesEntriesByIdInvoiced400ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoiced401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntriesByIdInvoiced401JSONResponse) VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoiced403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntriesByIdInvoiced403JSONResponse) VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoiced404Response struct {
+}
+
+func (response PostExpensesEntriesByIdInvoiced404Response) VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostExpensesEntriesByIdInvoiced409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostExpensesEntriesByIdInvoiced409ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdInvoicedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoicedUndoRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *PostExpensesEntriesByIdInvoicedUndoJSONRequestBody
+}
+
+type PostExpensesEntriesByIdInvoicedUndoResponseObject interface {
+	VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesEntriesByIdInvoicedUndo200JSONResponse ExpensesEntryResponse
+
+func (response PostExpensesEntriesByIdInvoicedUndo200JSONResponse) VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoicedUndo400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesEntriesByIdInvoicedUndo400ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoicedUndo401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntriesByIdInvoicedUndo401JSONResponse) VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoicedUndo403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesEntriesByIdInvoicedUndo403JSONResponse) VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesEntriesByIdInvoicedUndo404Response struct {
+}
+
+func (response PostExpensesEntriesByIdInvoicedUndo404Response) VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error {
+	w.WriteHeader(404)
+	return nil
+}
+
+type PostExpensesEntriesByIdInvoicedUndo409ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response PostExpensesEntriesByIdInvoicedUndo409ApplicationProblemPlusJSONResponse) VisitPostExpensesEntriesByIdInvoicedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PutExpensesEntriesByIdRateRequestObject struct {
 	Id   int64 `json:"id"`
 	Body *PutExpensesEntriesByIdRateJSONRequestBody
@@ -3006,6 +3838,268 @@ func (response PutExpensesRatesById404Response) VisitPutExpensesRatesByIdRespons
 	return nil
 }
 
+type PostExpensesReimbursedRequestObject struct {
+	Body *PostExpensesReimbursedJSONRequestBody
+}
+
+type PostExpensesReimbursedResponseObject interface {
+	VisitPostExpensesReimbursedResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesReimbursed200JSONResponse []ExpensesEntryResponse
+
+func (response PostExpensesReimbursed200JSONResponse) VisitPostExpensesReimbursedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReimbursed400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesReimbursed400ApplicationProblemPlusJSONResponse) VisitPostExpensesReimbursedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReimbursed401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesReimbursed401JSONResponse) VisitPostExpensesReimbursedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReimbursed403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesReimbursed403JSONResponse) VisitPostExpensesReimbursedResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReimbursedUndoRequestObject struct {
+	Body *PostExpensesReimbursedUndoJSONRequestBody
+}
+
+type PostExpensesReimbursedUndoResponseObject interface {
+	VisitPostExpensesReimbursedUndoResponse(w http.ResponseWriter) error
+}
+
+type PostExpensesReimbursedUndo200JSONResponse []ExpensesEntryResponse
+
+func (response PostExpensesReimbursedUndo200JSONResponse) VisitPostExpensesReimbursedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReimbursedUndo400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response PostExpensesReimbursedUndo400ApplicationProblemPlusJSONResponse) VisitPostExpensesReimbursedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReimbursedUndo401JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesReimbursedUndo401JSONResponse) VisitPostExpensesReimbursedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostExpensesReimbursedUndo403JSONResponse externalRef0.AuthErrorResponse
+
+func (response PostExpensesReimbursedUndo403JSONResponse) VisitPostExpensesReimbursedUndoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesReimbursementsRequestObject struct {
+	Params GetExpensesReimbursementsParams
+}
+
+type GetExpensesReimbursementsResponseObject interface {
+	VisitGetExpensesReimbursementsResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesReimbursements200JSONResponse PaginatedResponseOfExpensesReimbursementGroup
+
+func (response GetExpensesReimbursements200JSONResponse) VisitGetExpensesReimbursementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesReimbursements400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesReimbursements400ApplicationProblemPlusJSONResponse) VisitGetExpensesReimbursementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesReimbursements401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesReimbursements401JSONResponse) VisitGetExpensesReimbursementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesReimbursements403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesReimbursements403JSONResponse) VisitGetExpensesReimbursementsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesReimbursementsExportCsvRequestObject struct {
+	Params GetExpensesReimbursementsExportCsvParams
+}
+
+type GetExpensesReimbursementsExportCsvResponseObject interface {
+	VisitGetExpensesReimbursementsExportCsvResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesReimbursementsExportCsv200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetExpensesReimbursementsExportCsv200TextcsvResponse) VisitGetExpensesReimbursementsExportCsvResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse externalRef0.HttpValidationProblemDetails
+
+func (response GetExpensesReimbursementsExportCsv400ApplicationProblemPlusJSONResponse) VisitGetExpensesReimbursementsExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesReimbursementsExportCsv401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesReimbursementsExportCsv401JSONResponse) VisitGetExpensesReimbursementsExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesReimbursementsExportCsv403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesReimbursementsExportCsv403JSONResponse) VisitGetExpensesReimbursementsExportCsvResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type PostExpensesRejectRequestObject struct {
 	Body *PostExpensesRejectJSONRequestBody
 }
@@ -3172,6 +4266,232 @@ func (response PutExpensesSettings401JSONResponse) VisitPutExpensesSettingsRespo
 type PutExpensesSettings403JSONResponse externalRef0.AuthErrorResponse
 
 func (response PutExpensesSettings403JSONResponse) VisitPutExpensesSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsRequestObject struct {
+}
+
+type GetExpensesStatsResponseObject interface {
+	VisitGetExpensesStatsResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesStats200JSONResponse ExpensesStatsResponse
+
+func (response GetExpensesStats200JSONResponse) VisitGetExpensesStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStats401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStats401JSONResponse) VisitGetExpensesStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStats403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStats403JSONResponse) VisitGetExpensesStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsAttentionRequestObject struct {
+}
+
+type GetExpensesStatsAttentionResponseObject interface {
+	VisitGetExpensesStatsAttentionResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesStatsAttention200JSONResponse []ExpensesStatsAttentionItem
+
+func (response GetExpensesStatsAttention200JSONResponse) VisitGetExpensesStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsAttention401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStatsAttention401JSONResponse) VisitGetExpensesStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsAttention403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStatsAttention403JSONResponse) VisitGetExpensesStatsAttentionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsSummaryRequestObject struct {
+	Params GetExpensesStatsSummaryParams
+}
+
+type GetExpensesStatsSummaryResponseObject interface {
+	VisitGetExpensesStatsSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesStatsSummary200JSONResponse ExpensesStatsSummaryResponse
+
+func (response GetExpensesStatsSummary200JSONResponse) VisitGetExpensesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsSummary400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesStatsSummary400ApplicationProblemPlusJSONResponse) VisitGetExpensesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsSummary401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStatsSummary401JSONResponse) VisitGetExpensesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsSummary403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStatsSummary403JSONResponse) VisitGetExpensesStatsSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsTimeseriesRequestObject struct {
+	Params GetExpensesStatsTimeseriesParams
+}
+
+type GetExpensesStatsTimeseriesResponseObject interface {
+	VisitGetExpensesStatsTimeseriesResponse(w http.ResponseWriter) error
+}
+
+type GetExpensesStatsTimeseries200JSONResponse []ExpensesStatsDailyBucket
+
+func (response GetExpensesStatsTimeseries200JSONResponse) VisitGetExpensesStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsTimeseries400ApplicationProblemPlusJSONResponse externalRef0.ProblemDetails
+
+func (response GetExpensesStatsTimeseries400ApplicationProblemPlusJSONResponse) VisitGetExpensesStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsTimeseries401JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStatsTimeseries401JSONResponse) VisitGetExpensesStatsTimeseriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetExpensesStatsTimeseries403JSONResponse externalRef0.AuthErrorResponse
+
+func (response GetExpensesStatsTimeseries403JSONResponse) VisitGetExpensesStatsTimeseriesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3355,6 +4675,12 @@ type StrictServerInterface interface {
 	// PutExpensesEntriesByIdBilling Price an expense from its project
 	// (PUT /api/v1/expenses/entries/{id}/billing)
 	PutExpensesEntriesByIdBilling(ctx context.Context, request PutExpensesEntriesByIdBillingRequestObject) (PutExpensesEntriesByIdBillingResponseObject, error)
+	// PostExpensesEntriesByIdInvoiced Mark an expense invoiced
+	// (POST /api/v1/expenses/entries/{id}/invoiced)
+	PostExpensesEntriesByIdInvoiced(ctx context.Context, request PostExpensesEntriesByIdInvoicedRequestObject) (PostExpensesEntriesByIdInvoicedResponseObject, error)
+	// PostExpensesEntriesByIdInvoicedUndo Undo marking an expense invoiced
+	// (POST /api/v1/expenses/entries/{id}/invoiced/undo)
+	PostExpensesEntriesByIdInvoicedUndo(ctx context.Context, request PostExpensesEntriesByIdInvoicedUndoRequestObject) (PostExpensesEntriesByIdInvoicedUndoResponseObject, error)
 	// PutExpensesEntriesByIdRate Override a mileage rate
 	// (PUT /api/v1/expenses/entries/{id}/rate)
 	PutExpensesEntriesByIdRate(ctx context.Context, request PutExpensesEntriesByIdRateRequestObject) (PutExpensesEntriesByIdRateResponseObject, error)
@@ -3379,6 +4705,18 @@ type StrictServerInterface interface {
 	// PutExpensesRatesById Change an expense rate
 	// (PUT /api/v1/expenses/rates/{id})
 	PutExpensesRatesById(ctx context.Context, request PutExpensesRatesByIdRequestObject) (PutExpensesRatesByIdResponseObject, error)
+	// PostExpensesReimbursed Mark expenses reimbursed
+	// (POST /api/v1/expenses/reimbursed)
+	PostExpensesReimbursed(ctx context.Context, request PostExpensesReimbursedRequestObject) (PostExpensesReimbursedResponseObject, error)
+	// PostExpensesReimbursedUndo Undo marking expenses reimbursed
+	// (POST /api/v1/expenses/reimbursed/undo)
+	PostExpensesReimbursedUndo(ctx context.Context, request PostExpensesReimbursedUndoRequestObject) (PostExpensesReimbursedUndoResponseObject, error)
+	// GetExpensesReimbursements List what is owed back
+	// (GET /api/v1/expenses/reimbursements)
+	GetExpensesReimbursements(ctx context.Context, request GetExpensesReimbursementsRequestObject) (GetExpensesReimbursementsResponseObject, error)
+	// GetExpensesReimbursementsExportCsv Export what is owed back as CSV
+	// (GET /api/v1/expenses/reimbursements/export.csv)
+	GetExpensesReimbursementsExportCsv(ctx context.Context, request GetExpensesReimbursementsExportCsvRequestObject) (GetExpensesReimbursementsExportCsvResponseObject, error)
 	// PostExpensesReject Reject expenses
 	// (POST /api/v1/expenses/reject)
 	PostExpensesReject(ctx context.Context, request PostExpensesRejectRequestObject) (PostExpensesRejectResponseObject, error)
@@ -3388,6 +4726,18 @@ type StrictServerInterface interface {
 	// PutExpensesSettings Change the expense settings
 	// (PUT /api/v1/expenses/settings)
 	PutExpensesSettings(ctx context.Context, request PutExpensesSettingsRequestObject) (PutExpensesSettingsResponseObject, error)
+	// GetExpensesStats Get the caller's expense key figures
+	// (GET /api/v1/expenses/stats)
+	GetExpensesStats(ctx context.Context, request GetExpensesStatsRequestObject) (GetExpensesStatsResponseObject, error)
+	// GetExpensesStatsAttention Get expenses dashboard attention items
+	// (GET /api/v1/expenses/stats/attention)
+	GetExpensesStatsAttention(ctx context.Context, request GetExpensesStatsAttentionRequestObject) (GetExpensesStatsAttentionResponseObject, error)
+	// GetExpensesStatsSummary Get expenses dashboard summary
+	// (GET /api/v1/expenses/stats/summary)
+	GetExpensesStatsSummary(ctx context.Context, request GetExpensesStatsSummaryRequestObject) (GetExpensesStatsSummaryResponseObject, error)
+	// GetExpensesStatsTimeseries Get expenses dashboard time series
+	// (GET /api/v1/expenses/stats/timeseries)
+	GetExpensesStatsTimeseries(ctx context.Context, request GetExpensesStatsTimeseriesRequestObject) (GetExpensesStatsTimeseriesResponseObject, error)
 	// PostExpensesSubmit Submit expenses
 	// (POST /api/v1/expenses/submit)
 	PostExpensesSubmit(ctx context.Context, request PostExpensesSubmitRequestObject) (PostExpensesSubmitResponseObject, error)
@@ -3840,6 +5190,72 @@ func (sh *strictHandler) PutExpensesEntriesByIdBilling(w http.ResponseWriter, r 
 	}
 }
 
+// PostExpensesEntriesByIdInvoiced operation middleware
+func (sh *strictHandler) PostExpensesEntriesByIdInvoiced(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostExpensesEntriesByIdInvoicedRequestObject
+
+	request.Id = id
+
+	var body PostExpensesEntriesByIdInvoicedJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesEntriesByIdInvoiced(ctx, request.(PostExpensesEntriesByIdInvoicedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesEntriesByIdInvoiced")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesEntriesByIdInvoicedResponseObject); ok {
+		if err := validResponse.VisitPostExpensesEntriesByIdInvoicedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesEntriesByIdInvoicedUndo operation middleware
+func (sh *strictHandler) PostExpensesEntriesByIdInvoicedUndo(w http.ResponseWriter, r *http.Request, id int64) {
+	var request PostExpensesEntriesByIdInvoicedUndoRequestObject
+
+	request.Id = id
+
+	var body PostExpensesEntriesByIdInvoicedUndoJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesEntriesByIdInvoicedUndo(ctx, request.(PostExpensesEntriesByIdInvoicedUndoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesEntriesByIdInvoicedUndo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesEntriesByIdInvoicedUndoResponseObject); ok {
+		if err := validResponse.VisitPostExpensesEntriesByIdInvoicedUndoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PutExpensesEntriesByIdRate operation middleware
 func (sh *strictHandler) PutExpensesEntriesByIdRate(w http.ResponseWriter, r *http.Request, id int64) {
 	var request PutExpensesEntriesByIdRateRequestObject
@@ -4066,6 +5482,120 @@ func (sh *strictHandler) PutExpensesRatesById(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// PostExpensesReimbursed operation middleware
+func (sh *strictHandler) PostExpensesReimbursed(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesReimbursedRequestObject
+
+	var body PostExpensesReimbursedJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesReimbursed(ctx, request.(PostExpensesReimbursedRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesReimbursed")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesReimbursedResponseObject); ok {
+		if err := validResponse.VisitPostExpensesReimbursedResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostExpensesReimbursedUndo operation middleware
+func (sh *strictHandler) PostExpensesReimbursedUndo(w http.ResponseWriter, r *http.Request) {
+	var request PostExpensesReimbursedUndoRequestObject
+
+	var body PostExpensesReimbursedUndoJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostExpensesReimbursedUndo(ctx, request.(PostExpensesReimbursedUndoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostExpensesReimbursedUndo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostExpensesReimbursedUndoResponseObject); ok {
+		if err := validResponse.VisitPostExpensesReimbursedUndoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesReimbursements operation middleware
+func (sh *strictHandler) GetExpensesReimbursements(w http.ResponseWriter, r *http.Request, params GetExpensesReimbursementsParams) {
+	var request GetExpensesReimbursementsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesReimbursements(ctx, request.(GetExpensesReimbursementsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesReimbursements")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesReimbursementsResponseObject); ok {
+		if err := validResponse.VisitGetExpensesReimbursementsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesReimbursementsExportCsv operation middleware
+func (sh *strictHandler) GetExpensesReimbursementsExportCsv(w http.ResponseWriter, r *http.Request, params GetExpensesReimbursementsExportCsvParams) {
+	var request GetExpensesReimbursementsExportCsvRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesReimbursementsExportCsv(ctx, request.(GetExpensesReimbursementsExportCsvRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesReimbursementsExportCsv")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesReimbursementsExportCsvResponseObject); ok {
+		if err := validResponse.VisitGetExpensesReimbursementsExportCsvResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // PostExpensesReject operation middleware
 func (sh *strictHandler) PostExpensesReject(w http.ResponseWriter, r *http.Request) {
 	var request PostExpensesRejectRequestObject
@@ -4145,6 +5675,106 @@ func (sh *strictHandler) PutExpensesSettings(w http.ResponseWriter, r *http.Requ
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PutExpensesSettingsResponseObject); ok {
 		if err := validResponse.VisitPutExpensesSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesStats operation middleware
+func (sh *strictHandler) GetExpensesStats(w http.ResponseWriter, r *http.Request) {
+	var request GetExpensesStatsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesStats(ctx, request.(GetExpensesStatsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesStats")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesStatsResponseObject); ok {
+		if err := validResponse.VisitGetExpensesStatsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesStatsAttention operation middleware
+func (sh *strictHandler) GetExpensesStatsAttention(w http.ResponseWriter, r *http.Request) {
+	var request GetExpensesStatsAttentionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesStatsAttention(ctx, request.(GetExpensesStatsAttentionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesStatsAttention")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesStatsAttentionResponseObject); ok {
+		if err := validResponse.VisitGetExpensesStatsAttentionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesStatsSummary operation middleware
+func (sh *strictHandler) GetExpensesStatsSummary(w http.ResponseWriter, r *http.Request, params GetExpensesStatsSummaryParams) {
+	var request GetExpensesStatsSummaryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesStatsSummary(ctx, request.(GetExpensesStatsSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesStatsSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesStatsSummaryResponseObject); ok {
+		if err := validResponse.VisitGetExpensesStatsSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetExpensesStatsTimeseries operation middleware
+func (sh *strictHandler) GetExpensesStatsTimeseries(w http.ResponseWriter, r *http.Request, params GetExpensesStatsTimeseriesParams) {
+	var request GetExpensesStatsTimeseriesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetExpensesStatsTimeseries(ctx, request.(GetExpensesStatsTimeseriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetExpensesStatsTimeseries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetExpensesStatsTimeseriesResponseObject); ok {
+		if err := validResponse.VisitGetExpensesStatsTimeseriesResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

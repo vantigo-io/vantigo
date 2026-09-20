@@ -904,6 +904,7 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		Kind:              filterValue(p.Kind),
 		FromDate:          optionalDate(p.From),
 		ToDate:            optionalDate(p.To),
+		Reimbursed:        p.Reimbursed,
 	}
 	total, err := q.CountEntries(ctx, filter)
 	if err != nil {
@@ -919,6 +920,7 @@ func (s *server) GetExpensesEntries(ctx context.Context, req gen.GetExpensesEntr
 		Kind:              filter.Kind,
 		FromDate:          filter.FromDate,
 		ToDate:            filter.ToDate,
+		Reimbursed:        filter.Reimbursed,
 		PageSize:          pageSize,
 		PageOffset:        (page - 1) * pageSize,
 	})

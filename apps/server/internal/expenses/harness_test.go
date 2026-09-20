@@ -554,6 +554,16 @@ const (
 	rejectPath         = "/api/v1/expenses/reject"
 	unapprovePath      = "/api/v1/expenses/unapprove"
 	approvalsPath      = "/api/v1/expenses/approvals"
+
+	reimbursementsPath       = "/api/v1/expenses/reimbursements"
+	reimbursementsExportPath = reimbursementsPath + "/export.csv"
+	reimbursedPath           = "/api/v1/expenses/reimbursed"
+	reimbursedUndoPath       = reimbursedPath + "/undo"
+
+	statsPath           = "/api/v1/expenses/stats"
+	statsSummaryPath    = statsPath + "/summary"
+	statsTimeseriesPath = statsPath + "/timeseries"
+	statsAttentionPath  = statsPath + "/attention"
 )
 
 func ratePath(id int32) string     { return fmt.Sprintf("%s/%d", ratesPath, id) }
@@ -567,6 +577,16 @@ func attachmentPath(id int64) string {
 // adds: an approver's rate override and the project side's pricing.
 func entryRatePath(id int64) string    { return fmt.Sprintf("%s/%d/rate", entriesPath, id) }
 func entryBillingPath(id int64) string { return fmt.Sprintf("%s/%d/billing", entriesPath, id) }
+
+// entryInvoicedPath and entryInvoicedUndoPath are the second of the two tracks
+// after approval: what the customer has been billed for, per line.
+func entryInvoicedPath(id int64) string {
+	return fmt.Sprintf("%s/%d/invoiced", entriesPath, id)
+}
+
+func entryInvoicedUndoPath(id int64) string {
+	return fmt.Sprintf("%s/%d/invoiced/undo", entriesPath, id)
+}
 
 // entryAttachmentsPath is where a receipt is uploaded: the entry's own
 // sub-collection, unlike the read and the delete, which are by attachment id
@@ -583,6 +603,11 @@ const (
 	invalidReceiptTitle    = "Invalid receipt"
 	invalidSubmissionTitle = "Invalid submission"
 	invalidApprovalTitle   = "Invalid approval"
+
+	// The two titles the tracks after approval carry: a payroll run and a
+	// payroll export are their own moment, and neither is an approval.
+	invalidReimbursementTitle = "Invalid reimbursement"
+	invalidExportTitle        = "Invalid export"
 )
 
 // materialsCategory is the first seeded category's id. The migration gives
@@ -877,20 +902,40 @@ type (
 		Active      bool      `json:"active"`
 	}
 	entryBillingJSON struct {
-		MarkupPercent *float64 `json:"markupPercent"`
-		BillRatePerKm *float64 `json:"billRatePerKm"`
-		BillAmount    float64  `json:"billAmount"`
+		MarkupPercent *float64          `json:"markupPercent"`
+		BillRatePerKm *float64          `json:"billRatePerKm"`
+		BillAmount    float64           `json:"billAmount"`
+		Invoice       *entryInvoiceJSON `json:"invoice"`
+	}
+	// entryInvoiceJSON decodes ExpensesEntryInvoice — what the customer has
+	// been billed for. It lives inside billing, so only a caller with
+	// financial rights on the project ever sees it.
+	entryInvoiceJSON struct {
+		At        string         `json:"at"`
+		By        entryOwnerJSON `json:"by"`
+		Reference *string        `json:"reference"`
+	}
+	// entryReimbursementJSON decodes ExpensesEntryReimbursement — what the
+	// employee has been paid back, which whoever sees the expense sees.
+	entryReimbursementJSON struct {
+		At        string         `json:"at"`
+		By        entryOwnerJSON `json:"by"`
+		Date      string         `json:"date"`
+		Reference *string        `json:"reference"`
 	}
 	entryCapabilitiesJSON struct {
-		CanEdit         bool `json:"canEdit"`
-		CanDelete       bool `json:"canDelete"`
-		CanSubmit       bool `json:"canSubmit"`
-		CanApprove      bool `json:"canApprove"`
-		CanUnapprove    bool `json:"canUnapprove"`
-		CanOverrideRate bool `json:"canOverrideRate"`
-		CanMarkInvoiced bool `json:"canMarkInvoiced"`
-		CanSeeBilling   bool `json:"canSeeBilling"`
-		CanSetBilling   bool `json:"canSetBilling"`
+		CanEdit           bool `json:"canEdit"`
+		CanDelete         bool `json:"canDelete"`
+		CanSubmit         bool `json:"canSubmit"`
+		CanApprove        bool `json:"canApprove"`
+		CanUnapprove      bool `json:"canUnapprove"`
+		CanOverrideRate   bool `json:"canOverrideRate"`
+		CanMarkInvoiced   bool `json:"canMarkInvoiced"`
+		CanUndoInvoiced   bool `json:"canUndoInvoiced"`
+		CanMarkReimbursed bool `json:"canMarkReimbursed"`
+		CanUndoReimbursed bool `json:"canUndoReimbursed"`
+		CanSeeBilling     bool `json:"canSeeBilling"`
+		CanSetBilling     bool `json:"canSetBilling"`
 	}
 	// entryRateOverrideJSON decodes ExpensesEntryRateOverride — who overrode a
 	// mileage line's rate and what the rate table had said.
@@ -902,38 +947,39 @@ type (
 
 // entryJSON decodes ExpensesEntryResponse.
 type entryJSON struct {
-	Id              int64                  `json:"id"`
-	Kind            string                 `json:"kind"`
-	EntryDate       string                 `json:"entryDate"`
-	Description     string                 `json:"description"`
-	Category        *entryCategoryJSON     `json:"category"`
-	Supplier        *string                `json:"supplier"`
-	PaidBy          *string                `json:"paidBy"`
-	Currency        string                 `json:"currency"`
-	GrossAmount     float64                `json:"grossAmount"`
-	VatAmount       *float64               `json:"vatAmount"`
-	NetAmount       float64                `json:"netAmount"`
-	DistanceKm      *float64               `json:"distanceKm"`
-	FromPlace       *string                `json:"fromPlace"`
-	ToPlace         *string                `json:"toPlace"`
-	Passengers      *int32                 `json:"passengers"`
-	Rate            *float64               `json:"rate"`
-	PassengerRate   *float64               `json:"passengerRate"`
-	OwedToEmployee  float64                `json:"owedToEmployee"`
-	Status          string                 `json:"status"`
-	SubmittedAt     *string                `json:"submittedAt"`
-	DecidedAt       *string                `json:"decidedAt"`
-	RejectionReason *string                `json:"rejectionReason"`
-	RateOverride    *entryRateOverrideJSON `json:"rateOverride"`
-	Project         *entryProjectJSON      `json:"project"`
-	BillingLine     *entryLineJSON         `json:"billingLine"`
-	Billable        bool                   `json:"billable"`
-	Billing         *entryBillingJSON      `json:"billing"`
-	AttachmentCount int32                  `json:"attachmentCount"`
-	Attachments     []attachmentJSON       `json:"attachments"`
-	Owner           entryOwnerJSON         `json:"owner"`
-	Revision        int32                  `json:"revision"`
-	Capabilities    entryCapabilitiesJSON  `json:"capabilities"`
+	Id              int64                   `json:"id"`
+	Kind            string                  `json:"kind"`
+	EntryDate       string                  `json:"entryDate"`
+	Description     string                  `json:"description"`
+	Category        *entryCategoryJSON      `json:"category"`
+	Supplier        *string                 `json:"supplier"`
+	PaidBy          *string                 `json:"paidBy"`
+	Currency        string                  `json:"currency"`
+	GrossAmount     float64                 `json:"grossAmount"`
+	VatAmount       *float64                `json:"vatAmount"`
+	NetAmount       float64                 `json:"netAmount"`
+	DistanceKm      *float64                `json:"distanceKm"`
+	FromPlace       *string                 `json:"fromPlace"`
+	ToPlace         *string                 `json:"toPlace"`
+	Passengers      *int32                  `json:"passengers"`
+	Rate            *float64                `json:"rate"`
+	PassengerRate   *float64                `json:"passengerRate"`
+	OwedToEmployee  float64                 `json:"owedToEmployee"`
+	Status          string                  `json:"status"`
+	SubmittedAt     *string                 `json:"submittedAt"`
+	DecidedAt       *string                 `json:"decidedAt"`
+	RejectionReason *string                 `json:"rejectionReason"`
+	RateOverride    *entryRateOverrideJSON  `json:"rateOverride"`
+	Project         *entryProjectJSON       `json:"project"`
+	BillingLine     *entryLineJSON          `json:"billingLine"`
+	Billable        bool                    `json:"billable"`
+	Billing         *entryBillingJSON       `json:"billing"`
+	Reimbursement   *entryReimbursementJSON `json:"reimbursement"`
+	AttachmentCount int32                   `json:"attachmentCount"`
+	Attachments     []attachmentJSON        `json:"attachments"`
+	Owner           entryOwnerJSON          `json:"owner"`
+	Revision        int32                   `json:"revision"`
+	Capabilities    entryCapabilitiesJSON   `json:"capabilities"`
 }
 
 // entryPageJSON decodes PaginatedResponseOfExpensesEntryResponse.
@@ -1352,4 +1398,225 @@ func downloadReceipt(t *testing.T, c *modtest.Client, id int64) *modtest.Respons
 		t.Fatalf("download attachment %d: status %d body %s, want 200", id, r.Status, r.Body)
 	}
 	return r
+}
+
+// reimbursementGroupJSON decodes ExpensesReimbursementGroup — one person's
+// approved expenses that are owed back to them, with their totals.
+type reimbursementGroupJSON struct {
+	User    entryOwnerJSON      `json:"user"`
+	Entries []entryJSON         `json:"entries"`
+	Totals  []approvalTotalJSON `json:"totals"`
+}
+
+// reimbursementPageJSON decodes PaginatedResponseOfExpensesReimbursementGroup.
+type reimbursementPageJSON struct {
+	Data       []reimbursementGroupJSON `json:"data"`
+	Pagination struct {
+		Page       int32 `json:"page"`
+		PageSize   int32 `json:"pageSize"`
+		TotalCount int32 `json:"totalCount"`
+		TotalPages int32 `json:"totalPages"`
+	} `json:"pagination"`
+}
+
+// getReimbursements reads a page of the reimbursement list and fails the test
+// unless it answered 200. query is appended as it stands ("?state=reimbursed"),
+// "" for none.
+func getReimbursements(t *testing.T, c *modtest.Client, query string) reimbursementPageJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, reimbursementsPath+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get reimbursements %q: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	var page reimbursementPageJSON
+	r.JSON(&page)
+	return page
+}
+
+// reimbursedBody is the body POST /reimbursed takes. A nil override removes
+// the field, so a test can say "with no date at all" as well as "with this
+// one".
+func reimbursedBody(entryIDs []int64, overrides map[string]any) map[string]any {
+	return bodyWith(map[string]any{"entryIds": entryIDs, "date": "2026-04-02"}, overrides)
+}
+
+// markReimbursed marks expenses reimbursed and fails the test unless it
+// answered 200.
+func markReimbursed(t *testing.T, c *modtest.Client, body map[string]any) []entryJSON {
+	t.Helper()
+	return moveEntries(t, c, reimbursedPath, body)
+}
+
+// undoReimbursed takes the reimbursement stamp back off and fails the test
+// unless it answered 200.
+func undoReimbursed(t *testing.T, c *modtest.Client, ids ...int64) []entryJSON {
+	t.Helper()
+	return moveEntries(t, c, reimbursedUndoPath, flowBody(ids, nil))
+}
+
+// refusedReimbursement is a reimbursement batch that did not pass: the field
+// errors of the validation problem it was refused with.
+func refusedReimbursement(t *testing.T, c *modtest.Client, path string, body map[string]any) map[string][]string {
+	t.Helper()
+	return refused(t, c, http.MethodPost, path, body, invalidReimbursementTitle)
+}
+
+// markInvoiced marks one billable line invoiced and fails the test unless it
+// answered 200.
+func markInvoiced(t *testing.T, c *modtest.Client, id int64, body map[string]any) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, entryInvoicedPath(id), body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("mark %d invoiced with %v: status %d body %s, want 200", id, body, r.Status, r.Body)
+	}
+	var entry entryJSON
+	r.JSON(&entry)
+	return entry
+}
+
+// undoInvoiced takes the invoicing stamp back off one line and fails the test
+// unless it answered 200.
+func undoInvoiced(t *testing.T, c *modtest.Client, id int64, body map[string]any) entryJSON {
+	t.Helper()
+	r := c.Do(http.MethodPost, entryInvoicedUndoPath(id), body)
+	if r.Status != http.StatusOK {
+		t.Fatalf("undo the invoicing of %d with %v: status %d body %s, want 200", id, body, r.Status, r.Body)
+	}
+	var entry entryJSON
+	r.JSON(&entry)
+	return entry
+}
+
+// currencyAmountJSON decodes ExpensesCurrencyAmount — one currency's figure in
+// a dashboard reading.
+type currencyAmountJSON struct {
+	Currency string  `json:"currency"`
+	Amount   float64 `json:"amount"`
+}
+
+// statsJSON decodes ExpensesStatsResponse.
+type statsJSON struct {
+	Draft              int32                `json:"draft"`
+	Submitted          int32                `json:"submitted"`
+	Approved           int32                `json:"approved"`
+	Rejected           int32                `json:"rejected"`
+	Unreimbursed       []currencyAmountJSON `json:"unreimbursed"`
+	AwaitingMyApproval int32                `json:"awaitingMyApproval"`
+}
+
+// statsSummaryJSON decodes ExpensesStatsSummaryResponse.
+type statsSummaryJSON struct {
+	From                    string               `json:"from"`
+	To                      string               `json:"to"`
+	AwaitingMyApproval      int32                `json:"awaitingMyApproval"`
+	AwaitingMyApprovalDelta int32                `json:"awaitingMyApprovalDelta"`
+	MyDrafts                int32                `json:"myDrafts"`
+	MyUnreimbursed          []currencyAmountJSON `json:"myUnreimbursed"`
+}
+
+// bucketJSON decodes ExpensesStatsDailyBucket.
+type bucketJSON struct {
+	Date  string  `json:"date"`
+	Value float64 `json:"value"`
+}
+
+// attentionJSON decodes ExpensesStatsAttentionItem.
+type attentionJSON struct {
+	Id         string `json:"id"`
+	Type       string `json:"type"`
+	Title      string `json:"title"`
+	OccurredAt string `json:"occurredAt"`
+	EntityId   string `json:"entityId"`
+	Count      *int32 `json:"count"`
+}
+
+// getStats reads the module's own key figures and fails the test unless it
+// answered 200.
+func getStats(t *testing.T, c *modtest.Client) statsJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, statsPath, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get stats: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var stats statsJSON
+	r.JSON(&stats)
+	return stats
+}
+
+// getStatsSummary reads the dashboard card and fails the test unless it
+// answered 200.
+func getStatsSummary(t *testing.T, c *modtest.Client, query string) statsSummaryJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, statsSummaryPath+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get stats summary %q: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	var summary statsSummaryJSON
+	r.JSON(&summary)
+	return summary
+}
+
+// getTimeseries reads the dashboard's sparkline and fails the test unless it
+// answered 200.
+func getTimeseries(t *testing.T, c *modtest.Client, query string) []bucketJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, statsTimeseriesPath+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get stats timeseries %q: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	var buckets []bucketJSON
+	r.JSON(&buckets)
+	return buckets
+}
+
+// getAttention reads the dashboard's attention items and fails the test unless
+// it answered 200.
+func getAttention(t *testing.T, c *modtest.Client) []attentionJSON {
+	t.Helper()
+	r := c.Do(http.MethodGet, statsAttentionPath, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("get stats attention: status %d body %s, want 200", r.Status, r.Body)
+	}
+	var items []attentionJSON
+	r.JSON(&items)
+	return items
+}
+
+// attentionOfType is every item of one type, in the order the endpoint gave
+// them.
+func attentionOfType(items []attentionJSON, kind string) []attentionJSON {
+	var out []attentionJSON
+	for _, item := range items {
+		if item.Type == kind {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// exportCSV reads the payroll export and fails the test unless it answered
+// 200, returning the whole response so a test can read its headers too.
+func exportCSV(t *testing.T, c *modtest.Client, query string) *modtest.Response {
+	t.Helper()
+	r := c.Do(http.MethodGet, reimbursementsExportPath+query, nil)
+	if r.Status != http.StatusOK {
+		t.Fatalf("export %q: status %d body %s, want 200", query, r.Status, r.Body)
+	}
+	return r
+}
+
+// refusedExport is an export that did not pass: the field errors of the
+// validation problem it was refused with.
+func refusedExport(t *testing.T, c *modtest.Client, query string) map[string][]string {
+	t.Helper()
+	return refused(t, c, http.MethodGet, reimbursementsExportPath+query, nil, invalidExportTitle)
+}
+
+// forbidden asserts that one request was refused with the access layer's 403.
+func forbidden(t *testing.T, c *modtest.Client, method, path string, body any) {
+	t.Helper()
+	r := c.Do(method, path, body)
+	if r.Status != http.StatusForbidden {
+		t.Errorf("%s %s: status %d body %s, want 403", method, path, r.Status, r.Body)
+	}
 }
