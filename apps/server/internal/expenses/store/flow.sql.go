@@ -1527,7 +1527,7 @@ UPDATE expenses.entries SET
     bill_amount = $5,
     revision = revision + 1,
     updated_at = $6::timestamptz
-WHERE id = $7 AND revision = $8 AND invoiced_at IS NULL
+WHERE id = $7 AND revision = $8 AND invoiced_at IS NULL AND kind <> 'per_diem'
 RETURNING id, user_id, created_by_user_id, claim_id, kind, entry_date, description, category_id, supplier, paid_by, currency, gross_amount, vat_amount, distance_km, from_place, to_place, passengers, rate, passenger_rate, rate_overridden_by_user_id, rate_table_value, passenger_rate_table_value, project_id, billing_line_id, billable, markup_percent, bill_rate_per_km, bill_amount, status, submitted_at, decided_at, decided_by_user_id, rejection_reason, reimbursed_at, reimbursed_by_user_id, reimbursement_reference, reimbursement_date, invoiced_at, invoiced_by_user_id, invoice_reference, revision, created_at, updated_at, per_diem_type, breakfast_covered, lunch_covered, dinner_covered, meal_breakfast_percent, meal_lunch_percent, meal_dinner_percent
 `
 
@@ -1545,6 +1545,12 @@ type UpdateEntryBillingParams struct {
 // UpdateEntryBilling is the project side's pricing: the billing columns and
 // nothing else. The expense's own amount, status and stamps are untouched, and
 // an invoiced line is refused here as well as by the caller.
+//
+// kind <> 'per_diem' is the other half of that: a per diem day is never billed
+// on to a customer, and the capability and the handler both exclude it, so this
+// guard is unreachable today — which is exactly why it is here, beside the
+// module's other SQL twins. A Go regression should write nothing rather than
+// quietly make a day of somebody's subsistence billable.
 func (q *Queries) UpdateEntryBilling(ctx context.Context, arg UpdateEntryBillingParams) (ExpensesEntry, error) {
 	row := q.db.QueryRow(ctx, updateEntryBilling,
 		arg.BillingLineID,

@@ -173,7 +173,7 @@ export interface paths {
         put?: never;
         /**
          * Suggest a trip's per diem days
-         * @description The per diem days a trip would have, worked out from its departure and its return (design §4). It writes nothing: the client shows the days and records whichever ones the traveller agrees with as ordinary per diem lines. A trip under six hours suggests none. Without an overnight it is one day — day_6_12 up to and including twelve hours, day_over_12 beyond — dated on the departure day. With one it is one overnight_hotel line per full 24-hour period from the departure, plus one more when what is left over is strictly longer than six hours — and never fewer than one, so any overnight trip from six hours up is a day. Each is dated on the day its own period starts. The six hours is therefore inclusive as the threshold a whole trip has to clear and exclusive for the remainder after a full period: six hours exactly with an overnight is one day, thirty hours exactly is still one, and thirty hours and a minute is two. The day boundaries are 24 hours from the departure instant, not calendar midnights, and the dates are calendar days in UTC. It is a POST because the answer depends on a body, and readable by whoever may see the claim.
+         * @description The per diem days a trip would have, worked out from its departure and its return (design §4). It writes nothing: the client shows the days and records whichever ones the traveller agrees with as ordinary per diem lines. A trip under six hours suggests none. Without an overnight it is one day — day_6_12 up to and including twelve hours, day_over_12 beyond — dated on the departure day. With one it is one overnight_hotel line per full 24-hour period from the departure, plus one more when what is left over is strictly longer than six hours — and never fewer than one, so any overnight trip from six hours up is a day. The six hours is therefore inclusive as the threshold a whole trip has to clear and exclusive for the remainder after a full period: six hours exactly with an overnight is one day, thirty hours exactly is still one, and thirty hours and a minute is two. The day boundaries are 24 hours from the departure instant, not calendar midnights; the dates are consecutive calendar days from the departure's own day in the installation's business time zone, so the two nights a year the clocks move cannot put two days on one date or skip one. It is a POST because the answer depends on a body, and readable by whoever may see the claim.
          */
         post: operations["postExpensesClaimsByIdPerDiemSuggestion"];
         delete?: never;
@@ -975,8 +975,12 @@ export interface components {
              * @description How many of its lines are outlays with no receipt at all. Mileage and a per diem day never take one and are never counted.
              */
             receiptsMissing: number;
+            /** @description The payroll run that paid the trip back, absent until one has. Same shape and same shaping as on the claim itself — the reference is the clerk's record of their own run, so it reaches the person it paid and whoever reads everybody's expenses, and never a project manager as such. */
+            reimbursement?: components["schemas"]["ExpensesEntryReimbursement"];
             /** Format: date-time */
             returnAt: string;
+            /** @description The trip's own status — 'draft', 'submitted', 'approved' or 'rejected'. It is the status of every line it holds, which carries none of its own, and a queue row shows it rather than inferring it from the list it arrived in. */
+            status: string;
             /** @description The trip's figures, one line per currency, by currency code. Nothing is ever converted. */
             totals: components["schemas"]["ExpensesCurrencyTotal"][];
         };
@@ -1487,6 +1491,8 @@ export interface components {
              * @description What that day would come to with no meal covered — the day rate, rounded once. Absent with the rate, for the same reason.
              */
             amount?: number;
+            /** @description The currency dayRate and amount are in — the claim's own abroadCurrency on a trip abroad, the installation's default otherwise. Present exactly when they are, and absent with them, so a client never has to infer it from the claim. */
+            currency?: string;
             /**
              * Format: double
              * @description The per_diem_* rate in force on that date for that type, or the claim's own abroadDayRate on a trip abroad. Absent when the table prices no such day — which is what a day of type overnight_other gets until an administrator enters the company's own rate for it.
@@ -1494,7 +1500,7 @@ export interface components {
             dayRate?: number;
             /**
              * Format: date
-             * @description The day the period starts, as a calendar day in UTC.
+             * @description The day the period starts, as a calendar day in the installation's business time zone — the day the claim itself is judged in, so a suggested day never falls outside the trip the save judges it against.
              */
             entryDate: string;
             /** @description Whether the claim already holds a per diem line on that date. The suggestion is answered either way — what to do about a day already recorded is the client's decision, not the server's — and this is what lets it say so without a second read. */
@@ -1504,8 +1510,8 @@ export interface components {
         };
         /** @description What the trip's times cannot say. Whether the traveller slept away is a fact only they know, and it decides whether the trip is counted in 24-hour periods from the departure or as a single day. */
         ExpensesPerDiemSuggestionRequest: {
-            /** @description Whether the traveller stayed the night away from home. */
-            overnight: boolean;
+            /** @description Whether the traveller stayed the night away from home. It has no default: the two instants cannot tell, and a suggestion that guessed would answer a confident day count from nothing. A body that leaves it out is refused with a 400 naming it, which is why the schema does not require it — the server's own refusal says so, rather than a client's validator. */
+            overnight?: boolean;
         };
         /** @description One project the caller may book an expense on, with the billing lines they may book it against — so the expense form needs no code of the projects module's own. */
         ExpensesProjectOption: {
@@ -2166,9 +2172,9 @@ export interface operations {
                 userId?: string;
                 /** @description 'draft', 'submitted', 'approved' or 'rejected'. */
                 status?: string;
-                /** @description The earliest departure day to include, judged in UTC. */
+                /** @description The earliest departure day to include, judged in the installation's business time zone. */
                 from?: string;
-                /** @description The latest departure day to include, judged in UTC. */
+                /** @description The latest departure day to include, judged in the installation's business time zone. */
                 to?: string;
                 /** @description Narrows the list to what has been reimbursed, or to what has not. Left out, both are in it. */
                 reimbursed?: boolean;
@@ -2462,6 +2468,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExpensesPerDiemSuggestedDay"][];
+                };
+            };
+            /** @description Bad Request — on overnight, for a body that does not say whether the traveller stayed the night away. Nothing is suggested from a guess. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
             /** @description Unauthorized */

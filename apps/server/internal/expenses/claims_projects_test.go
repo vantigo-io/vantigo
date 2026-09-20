@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 )
 
 // This file is the optional projects link on a travel claim (decisions X2 and
@@ -270,6 +271,13 @@ func TestExpensesClaimProjects_ALinesProjectIsAlwaysItsClaims(t *testing.T) {
 			if err := h.Pool().QueryRow(context.Background(), claimLineInvariant).Scan(&n); err == nil && n > worst {
 				worst = n
 			}
+			// A pause between readings. Without it this goroutine takes a
+			// connection out of the pool as fast as it can give one back, and
+			// on CI's four cores it competes with the nine writers it is
+			// watching — which makes the race it exists to observe less likely
+			// rather than more. A millisecond is far shorter than any of the
+			// windows it is looking for.
+			time.Sleep(time.Millisecond)
 		}
 	}()
 
@@ -321,9 +329,17 @@ func TestExpensesClaimProjects_ALinesProjectIsAlwaysItsClaims(t *testing.T) {
 	if stray := h.Count(t, claimLineInvariant); stray != 0 {
 		t.Errorf("%d of the claim's lines carry a project or an owner that is not the claim's, want none", stray)
 	}
-	// The rounds really did both things, or the invariant held vacuously.
+	// The rounds really did both things, or the invariant held vacuously. Lines
+	// were created **and** the claim was re-pointed at least once: the revision
+	// moves on every accepted PUT, so anything above its initial 1 is a
+	// re-point that won. Counting only the lines would let a run where every
+	// mover lost its 409 pass as proof of an invariant nothing challenged.
 	if lines := h.Count(t, `SELECT count(*) FROM expenses.entries WHERE claim_id = $1`, claim.Id); lines == 0 {
 		t.Errorf("no line was ever recorded, so the race never happened")
+	}
+	if revision := h.Count(t, `SELECT revision FROM expenses.claims WHERE id = $1`, claim.Id); revision <= 1 {
+		t.Errorf("the claim stands at revision %d, so no re-point ever won and the invariant held vacuously",
+			revision)
 	}
 }
 
@@ -384,4 +400,76 @@ func lineByID(t *testing.T, lines []entryJSON, id int64) entryJSON {
 	}
 	t.Fatalf("line %d is not among the claim's %d lines", id, len(lines))
 	return entryJSON{}
+}
+
+// A per diem day is never billed on to a customer — and the X2 carry-through
+// must not make one look as though it is. When the projects module is off, or
+// the line's project has gone from the directory, a replace carries what was
+// booked off the locked row rather than re-deciding it; a line that becomes a
+// per diem day in that same save would otherwise keep the outlay's billable
+// flag and its markup. The freeze is the second door: it must write the day as
+// not billable rather than inherit what the row happens to hold.
+func TestExpensesClaimProjects_APerDiemDayIsNeverBillable(t *testing.T) {
+	t.Parallel()
+	for name, withProjects := range map[string]bool{
+		"with the projects module": true,
+		"without it":               false,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var h *harness
+			if withProjects {
+				h = newHarness(t)
+			} else {
+				h = newHarnessWithoutProjects(t)
+			}
+			admin, _ := signIn(t, h, "expenses:manage", "expenses:approve")
+			owner, ownerID := signIn(t, h)
+			if withProjects {
+				h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+			}
+
+			claim := createClaim(t, owner, nil)
+			line := addLine(t, owner, claim.Id, outlayBody(nil))
+			// A billable outlay on a project, written straight to the row: the
+			// point of the test is what a *later* save does with those columns,
+			// and the doors that set them are covered elsewhere.
+			h.Exec(t, `UPDATE expenses.entries
+				SET project_id = $2, billable = true, markup_percent = 10.00, bill_amount = 1375.00
+				WHERE id = $1`, line.Id, projectKraftVerket)
+			h.Exec(t, `UPDATE expenses.claims SET project_id = $2 WHERE id = $1`, claim.Id, projectKraftVerket)
+			if withProjects {
+				// The project goes from the directory, which is the other half
+				// of the carry-through's reach.
+				h.projects.removeProject(projectKraftVerket)
+			}
+
+			saved := updateEntry(t, owner, line.Id, bodyWith(perDiemBody(nil), map[string]any{
+				"revision": getEntry(t, owner, line.Id).Revision,
+			}))
+			if saved.Kind != "per_diem" {
+				t.Fatalf("the line is %s, want it saved as a per diem day", saved.Kind)
+			}
+			if saved.Billable {
+				t.Errorf("the saved day answers billable %v, want a per diem day never billable", saved.Billable)
+			}
+			if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+				WHERE id = $1 AND NOT billable AND markup_percent IS NULL
+				  AND bill_rate_per_km IS NULL AND bill_amount IS NULL AND billing_line_id IS NULL`,
+				line.Id); n != 1 {
+				t.Errorf("%s, want a per diem day with no billing figures at all",
+					entryColumnsDump(t, h, line.Id))
+			}
+			// And the freeze writes the same, rather than inheriting a flag a
+			// row somehow still holds.
+			h.Exec(t, `UPDATE expenses.entries SET billable = true, markup_percent = 10.00 WHERE id = $1`, line.Id)
+			approvedClaimBy(t, owner, admin, claim.Id)
+			if n := h.Count(t, `SELECT count(*) FROM expenses.entries
+				WHERE id = $1 AND NOT billable AND markup_percent IS NULL
+				  AND bill_rate_per_km IS NULL AND bill_amount IS NULL`, line.Id); n != 1 {
+				t.Errorf("%s, want the freeze to write a per diem day as not billable",
+					entryColumnsDump(t, h, line.Id))
+			}
+		})
+	}
 }

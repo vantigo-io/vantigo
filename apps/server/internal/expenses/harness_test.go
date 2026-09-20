@@ -623,6 +623,7 @@ const (
 	invalidReceiptTitle    = "Invalid receipt"
 	invalidSubmissionTitle = "Invalid submission"
 	invalidApprovalTitle   = "Invalid approval"
+	invalidSuggestionTitle = "Invalid per diem suggestion"
 
 	// The two titles the tracks after approval carry: a payroll run and a
 	// payroll export are their own moment, and neither is an approval.
@@ -1548,6 +1549,11 @@ type claimSummaryJSON struct {
 	ReceiptsMissing int32                 `json:"receiptsMissing"`
 	OverriddenRates int32                 `json:"overriddenRates"`
 	Capabilities    claimCapabilitiesJSON `json:"capabilities"`
+
+	// The two a queue row shows about the trip itself: what it is, and the
+	// payroll run that paid it back once one has.
+	Status        string                  `json:"status"`
+	Reimbursement *entryReimbursementJSON `json:"reimbursement"`
 }
 
 // claimSummaryByID is one trip out of a group's claims, or a failed test.

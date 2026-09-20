@@ -17,7 +17,7 @@
 -- here would report five drafts for a trip its owner can do nothing with one
 -- at a time — they cannot be submitted, and the one thing that *is* actionable,
 -- the claim, would not be in the figure at all. The claims' own per-status
--- counts arrive with the claim flow and are added on top of these.
+-- counts are StatsMyClaimStatusCounts below, and the handler adds the two.
 SELECT
     count(*) FILTER (WHERE status = 'draft')     AS drafts,
     count(*) FILTER (WHERE status = 'submitted') AS submitted,

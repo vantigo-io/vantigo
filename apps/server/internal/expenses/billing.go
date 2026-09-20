@@ -446,13 +446,16 @@ func (s *server) GetExpensesEntriesByIdBillingLines(ctx context.Context, req gen
 		return gen.GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse(
 			invalidEntry(fieldError("projectId",
 				"This expense is not booked on a project, so there is nothing to bill a customer for"))), nil
-	case row.Kind == kindPerDiem:
-		// The save refuses it, so the dialog must too — the property this
-		// operation's own comment promises.
-		return gen.GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse(
-			invalidEntry(fieldError("kind", perDiemNotBillable))), nil
 	case !a.CanSeeBilling:
 		return gen.GetExpensesEntriesByIdBillingLines403JSONResponse(forbidden()), nil
+	case row.Kind == kindPerDiem:
+		// The save refuses it, so the dialog must too — the property this
+		// operation's own comment promises. It comes **after** the 403, as it
+		// does on the pricing door: 404, then 403, then what the thing is. A
+		// caller who may not see the project's money on this expense learns
+		// nothing about it here that their own copy does not already say.
+		return gen.GetExpensesEntriesByIdBillingLines400ApplicationProblemPlusJSONResponse(
+			invalidEntry(fieldError("kind", perDiemNotBillable))), nil
 	}
 
 	lines, err := s.projectsBillingLines(ctx, *row.ProjectID)

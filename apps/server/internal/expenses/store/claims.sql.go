@@ -358,8 +358,8 @@ type InsertClaimParams struct {
 // and everything for see_all — and because a line's owner and project are
 // always its claim's, a line is visible exactly when its claim is.
 // **The lock order** is the claim's row first and then its lines in id order;
-// every query here that takes a lock is written to be called in that order (see
-// the comment on lockOrder in claims.go).
+// every query here that takes a lock is written to be called in that order (the
+// paragraph headed "The lock order" at the top of claims.go spells it out).
 // InsertClaim records one travel claim as a draft with no lines. status and
 // revision take the column defaults ('draft', 1); created_by_user_id is
 // whoever made the request, which is not always user_id, the person the trip

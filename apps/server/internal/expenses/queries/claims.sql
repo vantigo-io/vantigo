@@ -5,8 +5,8 @@
 -- and everything for see_all — and because a line's owner and project are
 -- always its claim's, a line is visible exactly when its claim is.
 -- **The lock order** is the claim's row first and then its lines in id order;
--- every query here that takes a lock is written to be called in that order (see
--- the comment on lockOrder in claims.go).
+-- every query here that takes a lock is written to be called in that order (the
+-- paragraph headed "The lock order" at the top of claims.go spells it out).
 
 -- name: InsertClaim :one
 -- InsertClaim records one travel claim as a draft with no lines. status and

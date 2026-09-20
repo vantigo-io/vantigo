@@ -916,3 +916,53 @@ func TestExpensesPerDiem_TwoDaysRacingForOneDate(t *testing.T) {
 		}
 	}
 }
+
+// Whether the traveller slept away is the one thing the trip's own times cannot
+// tell, and there is no honest default for it: a body that leaves it out would
+// otherwise be answered a confident one-day suggestion worked out from a guess.
+// It is refused on the field, the way this module refuses every other request it
+// cannot answer.
+func TestExpensesPerDiemSuggestion_RefusesABodyThatDoesNotSayWhetherTheyStayedTheNight(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, _ := signIn(t, h)
+	claim := createClaim(t, owner, nil) // three days, so an overnight would suggest several
+
+	errs := refused(t, owner, http.MethodPost, perDiemSuggestionPath(claim.Id),
+		map[string]any{}, invalidSuggestionTitle)
+	if len(errs["overnight"]) == 0 {
+		t.Errorf("errors = %v, want one on overnight", errs)
+	}
+	// Said either way, it answers.
+	if days := suggestDays(t, owner, claim.Id, false); len(days) != 1 {
+		t.Errorf("overnight: false = %+v, want the one day the trip earns", days)
+	}
+	if days := suggestDays(t, owner, claim.Id, true); len(days) != 3 {
+		t.Errorf("overnight: true = %+v, want a day per night", days)
+	}
+}
+
+// The picker answers its refusals in the module's own order — 404, then 403,
+// then what the expense is — exactly as the pricing door does. A caller who may
+// see a per diem day but not the money its project makes is told they may not
+// look, not what kind of line it is.
+func TestExpensesPerDiem_ThePickerRefusesInTheOrderThePricingDoorDoes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	owner, ownerID := signIn(t, h)
+	h.projects.addRole(projectKraftVerket, ownerID, roleMember)
+
+	claim := createClaim(t, owner, map[string]any{"projectId": projectKraftVerket})
+	day := addLine(t, owner, claim.Id, perDiemBody(nil))
+
+	// The owner sees the day and not the project's money on it.
+	if read := getEntry(t, owner, day.Id); read.Capabilities.CanSeeBilling {
+		t.Fatalf("capabilities = %+v, want a member not to see the project's billing", read.Capabilities)
+	}
+	forbidden(t, owner, http.MethodGet, billingLinesPath(day.Id), nil)
+	// And the pricing door answers the same way for the same caller.
+	if r := owner.Do(http.MethodPut, entryBillingPath(day.Id),
+		map[string]any{"revision": day.Revision, "billable": false}); r.Status != http.StatusForbidden {
+		t.Errorf("the pricing door: status %d body %s, want the same 403 the picker answers", r.Status, r.Body)
+	}
+}

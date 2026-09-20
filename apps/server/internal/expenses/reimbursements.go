@@ -203,7 +203,9 @@ func reimbursementGroups(userIDs []uuid.UUID, rows []store.ExpensesEntry,
 		}
 		g.user = unit.owner
 		g.claims = append(g.claims, unit.summary)
-		addSummaryToTotals(g.totals, unit.summary)
+		// Only what the trip owes: this list's standalone half holds nothing
+		// else, so a group's gross would otherwise mean two things at once.
+		addClaimToTotals(g.totals, unit.figures, true)
 	}
 
 	data := make([]gen.ExpensesReimbursementGroup, 0, len(order))

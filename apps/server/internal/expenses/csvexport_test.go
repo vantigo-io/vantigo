@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -273,5 +274,37 @@ func TestExpensesReimbursementsExport_WithoutProjects_LeavesTheProjectColumnEmpt
 	}, "\r\n")
 	if got != want {
 		t.Errorf("the export is\n%q\nwant\n%q", got, want)
+	}
+}
+
+// "Today" is today **in the installation's own zone**, in both places the
+// payroll track asks for it: the rule that a run cannot be recorded in the
+// future, and the day the exported file is named after. At 23:30 UTC on the
+// last day of a month, Oslo is already an hour and a half into the next one —
+// which is the hour a clerk in Oslo making the month's last run is actually
+// working in, and the boundary a UTC rule gets wrong twelve times a year.
+//
+// It is not parallel: it moves the harness clock.
+func TestExpensesReimbursements_TodayIsTodayInTheBusinessZone(t *testing.T) {
+	h := newHarness(t)
+	// From the harness's own start (2026-09-12 12:00 UTC) to 23:30 UTC on the
+	// 30th: 2026-10-01 01:30 in Oslo, the installation's default zone. The
+	// clock moves before anybody signs in, because a session outlives nothing
+	// like eighteen days.
+	h.Advance(18*24*time.Hour + 11*time.Hour + 30*time.Minute)
+	boss, _ := signIn(t, h, "expenses:approve", "expenses:manage")
+	owner, _ := signIn(t, h)
+	entry := createEntry(t, owner, outlayBody(nil))
+	approvedBy(t, owner, boss, entry.Id)
+
+	// The first of October is today here, so a run dated then is not in the
+	// future. Under a UTC rule it would be tomorrow and refused.
+	markReimbursed(t, boss, reimbursedBody([]int64{entry.Id}, map[string]any{"date": "2026-10-01"}))
+
+	// And the file a clerk downloads now is named after the day they would
+	// write on the folder.
+	want := `attachment; filename="expenses-reimbursements-2026-10-01.csv"`
+	if got := exportCSV(t, boss, "?state=reimbursed").Header("Content-Disposition"); got != want {
+		t.Errorf("Content-Disposition = %q, want %q", got, want)
 	}
 }
